@@ -1,6 +1,6 @@
 # daari — Product Requirements Document
 
-> **Status:** Draft v0.3 — not approved  
+> **Status:** Draft v0.4 — not approved  
 > **Last updated:** 2026-06-15  
 > **Owner:** Naveen Reddy Alka
 
@@ -85,72 +85,74 @@ Routing metadata (`daari_meta`: tier, cache hit, tool invoked) is added via resp
 11. As a developer, I want daari to invoke local CLI tools (formatter, linter, git, build) when they satisfy the request, so that deterministic tooling is preferred over inference.
 12. As a developer, I want tool-native execution to work even when my primary UI is Cursor or Claude Code, so that daari bridges AI clients and non-AI backends.
 13. As a developer, I want daari to report when a response came from a tool vs a model, so that I understand what actually ran.
+14. As a developer, I want daari to require confirmation before Lt runs destructive IDE actions (rename, delete, mass refactor), so that tool-native dispatch cannot silently corrupt my codebase.
 
+**Lt phasing:** Phase B starts with **git, formatter, linter only** (non-destructive CLI). IntelliJ and destructive ops in Phase B.1 with confirmation gate — see [routing-spec](routing-spec.md#lt-matching-phase-b).
 ### Caching
 
-14. As a developer, I want exact-match caching keyed on prompt + relevant parameters, so that deterministic repeats hit L0.
-15. As a developer, I want semantic caching using local embeddings, so that paraphrased repeats still hit cache.
-16. As a developer, I want configurable cache TTL and invalidation, so that stale answers expire.
-17. As a developer, I want to bypass cache per request, so that I can force fresh inference when debugging.
-18. As a developer, I want to inspect cache entries and hit rates, so that I can tune what is worth caching.
+15. As a developer, I want exact-match caching keyed on prompt + relevant parameters, so that deterministic repeats hit L0.
+16. As a developer, I want semantic caching using local embeddings, so that paraphrased repeats still hit cache.
+17. As a developer, I want configurable cache TTL and invalidation, so that stale answers expire.
+18. As a developer, I want to bypass cache per request, so that I can force fresh inference when debugging.
+19. As a developer, I want to inspect cache entries and hit rates, so that I can tune what is worth caching.
 
 ### Local models
 
-19. As a developer, I want daari to use Ollama (or equivalent) for local inference, so that I do not build model serving from scratch.
-20. As a developer, I want different model sizes mapped to tiers (SLM / medium / large), so that routing maps to capability.
-21. As a developer, I want daari to run on Apple Silicon macOS, so that it fits my daily dev machine.
-22. As a developer, I want daari to respect memory and concurrency limits, so that local inference does not freeze my machine.
+20. As a developer, I want daari to use Ollama (or equivalent) for local inference, so that I do not build model serving from scratch.
+21. As a developer, I want different model sizes mapped to tiers (SLM / medium / large), so that routing maps to capability.
+22. As a developer, I want daari to run on Apple Silicon macOS, so that it fits my daily dev machine.
+23. As a developer, I want daari to respect memory and concurrency limits, so that local inference does not freeze my machine.
 
 ### Classification & routing logic
 
-23. As a developer, I want daari to detect task types (tool-native, classify, extract, transform, generate), so that routing is task-aware not random.
-24. As a developer, I want routing based on prompt size, structure, and task type, so that large/complex requests skip inappropriate tiers.
-25. As a developer, I want a dry-run mode that shows the chosen path without executing, so that I can debug routing rules.
-26. As a developer, I want to override the tier manually per request, so that I can force a specific model, tool, or cache bypass.
+24. As a developer, I want daari to detect task types (tool-native, classify, extract, transform, generate), so that routing is task-aware not random.
+25. As a developer, I want routing based on prompt size, structure, and task type, so that large/complex requests skip inappropriate tiers.
+26. As a developer, I want a dry-run mode that shows the chosen path without executing, so that I can debug routing rules.
+27. As a developer, I want to override the tier manually per request, so that I can force a specific model, tool, or cache bypass.
 
 ### Operations & observability
 
-27. As a developer, I want a CLI to start/stop the daemon and view stats, so that operation is scriptable.
-28. As a developer, I want per-tier counters (hits, misses, latency, errors), so that I can measure frontier avoidance and tool-native usage.
-29. As a developer, I want request/response logs with redaction options, so that I can debug without leaking secrets to disk.
-30. As a developer, I want daari to start on login optionally, so that it is always available like other dev services.
+28. As a developer, I want a CLI to start/stop the daemon and view stats, so that operation is scriptable.
+29. As a developer, I want per-tier counters (hits, misses, latency, errors), so that I can measure frontier avoidance and tool-native usage.
+30. As a developer, I want request/response logs with redaction options, so that I can debug without leaking secrets to disk.
+31. As a developer, I want daari to start on login optionally, so that it is always available like other dev services.
 
 ### Universal integration (any tool, minimal change)
 
-31. As a developer, I want to use daari with Cursor with minimal config change, so that my existing IDE workflow keeps working.
-32. As a developer, I want to use daari with Claude Code with minimal config change, so that CLI agent sessions route through daari.
-33. As a developer, I want to use daari with any OpenAI-compatible client, so that future tools work without daari-specific code.
-34. As a developer, I want daari to accept standard chat completion payloads, so that existing SDKs work unchanged.
-35. As a developer, I want streaming responses supported for model tiers, so that UX matches direct API usage.
-36. As a developer, I want daari to handle tool-call shaped requests gracefully, so that agent workflows do not break.
-37. As a developer, I want to use daari alongside a traditional IDE (IntelliJ, VS Code) without replacing it, so that AI clients and classic IDEs cooperate through daari's tool-native tier.
+32. As a developer, I want to use daari with Cursor with minimal config change, so that my existing IDE workflow keeps working.
+33. As a developer, I want to use daari with Claude Code with minimal config change, so that CLI agent sessions route through daari *(Phase B — requires Anthropic gateway)*.
+34. As a developer, I want to use daari with any OpenAI-compatible client, so that future tools work without daari-specific code.
+35. As a developer, I want daari to accept standard chat completion payloads, so that existing SDKs work unchanged.
+36. As a developer, I want streaming responses supported for model tiers, so that UX matches direct API usage.
+37. As a developer, I want daari to handle tool-call shaped requests gracefully, so that agent workflows do not break — see [ADR-0004](../adr/0004-agent-tool-call-compatibility.md).
+38. As a developer, I want to use daari alongside a traditional IDE (IntelliJ, VS Code) without replacing it, so that AI clients and classic IDEs cooperate through daari's tool-native tier.
 
 ### One-click / single-command setup
 
-38. As a developer, I want a single install command that sets up daari, local models, and the daemon, so that I am not manually wiring pieces.
-39. As a developer, I want `daari setup <tool>` recipes for Cursor, Claude Code, and generic OpenAI clients, so that each tool is configured automatically or via a guided one-step flow.
-40. As a developer, I want setup to detect which tools are already installed, so that only relevant configs are applied.
-41. As a developer, I want setup to be idempotent and reversible, so that I can re-run or undo without breaking my tools.
-42. As a developer, I want a health check after setup (`daari doctor`), so that I know the full stack works before coding.
+39. As a developer, I want a single install command that sets up daari, local models, and the daemon, so that I am not manually wiring pieces.
+40. As a developer, I want `daari setup <tool>` recipes for Cursor, Claude Code, and generic OpenAI clients, so that each tool is configured automatically or via a guided one-step flow — see [setup-spec](setup-spec.md).
+41. As a developer, I want setup to detect which tools are already installed, so that only relevant configs are applied.
+42. As a developer, I want setup to be idempotent and reversible (`daari setup --undo`), so that I can re-run or undo without breaking my tools.
+43. As a developer, I want a health check after setup (`daari doctor`), so that I know the full stack works before coding.
 
 ### Quality & safety
 
-43. As a developer, I want confidence thresholds before accepting a small model answer, so that weak outputs escalate instead of shipping.
-44. As a developer, I want an eval set of labeled prompts with expected tiers, so that routing changes are regression-tested.
-45. As a developer, I want daari to never cache requests marked sensitive, so that secrets are not persisted.
+44. As a developer, I want confidence thresholds before accepting a small model answer, so that weak outputs escalate instead of shipping — see [routing-spec](routing-spec.md#confidence-scoring).
+45. As a developer, I want an eval set of labeled prompts with expected tiers, so that routing changes are regression-tested.
+46. As a developer, I want daari to never cache requests marked sensitive, so that secrets are not persisted.
 
 ### Configuration
 
-46. As a developer, I want a single config file for tiers, models, tools, thresholds, and cache settings, so that setup is reproducible.
-47. As a developer, I want sensible defaults that work with one local Ollama model, so that MVP setup is fast.
-48. As a developer, I want to disable frontier APIs entirely in config, so that no request can leak to the cloud.
+47. As a developer, I want a single config file for tiers, models, tools, thresholds, and cache settings, so that setup is reproducible.
+48. As a developer, I want sensible defaults that work with one local Ollama model, so that MVP setup is fast.
+49. As a developer, I want to disable frontier APIs entirely in config, so that no request can leak to the cloud.
 
 ### Future (out of MVP, in product vision)
 
-49. As a developer, I want an MCP server exposing daari routing, so that agents can query tier decisions natively.
-50. As a developer, I want per-project routing profiles, so that different repos can have different tier maps.
-51. As a developer, I want daari to learn from corrections (user rejected cache hit), so that routing improves over time.
-52. As a developer, I want Anthropic-compatible API shape as an optional second gateway, so that tools requiring Claude wire format integrate without translation layers in the client.
+50. As a developer, I want an MCP server exposing daari routing, so that agents can query tier decisions natively.
+51. As a developer, I want per-project routing profiles, so that different repos can have different tier maps.
+52. As a developer, I want daari to learn from corrections (user rejected cache hit), so that routing improves over time.
+53. As a developer, I want Anthropic-compatible API shape as an optional second gateway, so that tools requiring Claude wire format integrate without translation layers in the client.
 
 ## Implementation Decisions
 
@@ -202,14 +204,14 @@ daari is an **end-to-end local platform**, not just a proxy:
 | IntelliJ | Register as tool backend (not AI client) | `daari setup intellij` |
 | Any new tool | Same compat API if supported | `daari setup detect` |
 
-**Single-click install (target):**
+**Single-click install (Phase A — repo script only):**
 
 ```bash
-curl -fsSL https://daari.dev/install | sh   # future
-# or locally during development:
-./install.sh                                 # daemon + ollama pull + doctor
-daari setup --all                            # configure detected tools
+./install.sh          # Phase A: venv + deps + Ollama model pull
+daari setup --all     # Phase B: configure detected tools
 ```
+
+*Future:* hosted install URL when domain and release artifacts exist — see [setup-spec](setup-spec.md).
 
 ### Tiered execution model
 
@@ -352,10 +354,11 @@ Full comparison: [04-competitive-landscape.md](../discovery/04-competitive-lands
 | Setup | Recipe dry-run produces expected config diff |
 | Config | Invalid config rejected at startup |
 
-### Eval harness (v1)
+### Eval harness
 
-- `evals/routing/` — labeled prompts with expected tier (L0–L6, Lt)
-- Run in CI: routing accuracy must not regress
+- **Phase A (MVP):** 20 golden prompts in [routing-spec](routing-spec.md#golden-prompt-eval-set) — `evals/routing/prompts.jsonl`
+- **Phase B:** Expand to full regression suite; run in CI
+- Routing accuracy ≥90% on v1 eval set
 
 ## Out of Scope
 
@@ -412,17 +415,20 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 ### Phase B — v1 (full local-first stack)
 - L1 semantic cache + L2 rules
-- **Lt tool-native tier** — git, formatter, linter; IntelliJ CLI (basic)
+- **Lt tool-native tier (B.0)** — git, formatter, linter only (non-destructive)
+- **Lt (B.1)** — IntelliJ CLI + destructive-op confirmation
 - L4 medium model + confidence escalation to L6
 - Setup recipes: `claude-code`, `openai-compat`, `intellij`
 - `daari setup --all` + detect
-- Eval set + routing regression tests
+- Full routing regression tests
 
-### Phase C — v2
+### Phase C1 — v2a (agent + profiles)
 - L5 large local tier
 - MCP server for agent introspection
 - Per-project routing profiles
-- Optional Anthropic-compat gateway
+
+### Phase C2 — v2b (client expansion)
+- Anthropic-compat gateway (enables Claude Code setup)
 - Richer IntelliJ / IDE tool registry
 
 ## Open Decisions
@@ -430,13 +436,21 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 | ID | Question | Options | Status |
 |----|----------|---------|--------|
 | **OD-1** | Frontier fallback policy? | Never / opt-in / auto-escalate | **Accepted: auto-escalate** — [ADR-0001](../adr/0001-frontier-fallback-policy.md) |
-| **OD-2** | Primary language? | Rust / Go / Python / TypeScript | **Pending** — see `docs/discovery/03-approach-options.md` |
-| **OD-3** | Semantic cache store? | SQLite+vec / chroma / in-memory | Pending |
-| **OD-4** | Classifier implementation? | Heuristics / SLM / hybrid | **Hybrid** (draft) |
-| **OD-5** | IntelliJ integration mechanism? | CLI (`idea` command) / REST / file-based | Pending — CLI first recommended |
-| **OD-6** | Install delivery? | curl pipe / brew / npm / bundled binary | Pending — `install.sh` for MVP |
+| **OD-2** | Primary language? | Rust / Go / Python / TypeScript | **Accepted: Python 3.12** — [ADR-0005](../adr/0005-python-tech-stack.md) |
+| **OD-3** | Semantic cache store? | SQLite+vec / chroma / in-memory | **Draft: sqlite-vec** for v1 |
+| **OD-4** | Classifier implementation? | Heuristics / SLM / hybrid | **Hybrid** — [routing-spec](routing-spec.md) |
+| **OD-5** | IntelliJ integration mechanism? | CLI / REST / file-based | **Accepted: CLI first** — Phase B.1 |
+| **OD-6** | Install delivery? | curl pipe / brew / npm / bundled binary | **Accepted: `./install.sh`** for MVP — [setup-spec](setup-spec.md) |
+| **OD-7** | MVP scope | Tracer bullet vs full Phase A | **Accepted: tracer bullet** |
 
-| **OD-7** | MVP scope | Tracer bullet vs full Phase A | **Accepted: tracer bullet** — see Phased Delivery |
+### Specification documents
+
+| Doc | Purpose |
+|-----|---------|
+| [routing-spec.md](routing-spec.md) | Classifier, confidence, golden prompts |
+| [setup-spec.md](setup-spec.md) | Install, setup recipes, undo |
+| [glossary.md](glossary.md) | Terms |
+| [PLAN-REVIEW.md](PLAN-REVIEW.md) | Issue tracker |
 
 ## Further Notes
 
@@ -450,5 +464,6 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 - [ ] Vision approved
 - [ ] Discovery approved
-- [ ] Approach / ADR-0001 accepted
-- [ ] PRD v0.3 approved — *date: _________*
+- [ ] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md)
+- [ ] Specs reviewed: [routing-spec](routing-spec.md) · [setup-spec](setup-spec.md)
+- [ ] PRD v0.4 approved — *date: _________*
