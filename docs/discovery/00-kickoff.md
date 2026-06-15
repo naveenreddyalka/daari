@@ -44,4 +44,4 @@ Does the Telugu meaning of daari (path, way, road) matter to the product story?
 
 - Main thing: local execution, no frontier for smaller/repeated/cacheable work
 - Tiered local stack — "any levels of local stuff" TBD in detail
-- PRD draft: `docs/prd/PRD.md`
+- PRD v0.2: universal clients, Lt tool-native tier, setup module, OpenAI-compat rationale

@@ -3,9 +3,9 @@
 > **Status:** Discovery & PRD phase  
 > **Repo:** https://github.com/naveenreddyalka/daari
 
-**Local inference router** — route small, repeated, and cacheable AI tasks through local tiers (cache, rules, on-device models) instead of frontier APIs.
+**Local execution router (e2e)** — works with Cursor, Claude Code, CLI, UI, IDE. Routes to cache, existing tools (IntelliJ/git/lint — no AI), local models, frontier last. OpenAI-compatible API + single-command setup per tool.
 
-Currently in **PRD draft v0.1** — see [`docs/prd/PRD.md`](docs/prd/PRD.md).
+PRD v0.2: [`docs/prd/PRD.md`](docs/prd/PRD.md)
 
 ## What is here now
 

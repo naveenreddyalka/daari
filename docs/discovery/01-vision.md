@@ -7,7 +7,7 @@
 
 ## Elevator pitch
 
-**daari** is a local inference router that keeps everyday AI work off frontier APIs. Small, repeated, and cacheable tasks run through a tiered local stack — cache, rules, and on-device models — so OpenAI and Anthropic are not invoked for work that does not need them.
+**daari** is a **local execution router** — an end-to-end platform that works with Cursor, Claude Code, any CLI, UI, or IDE. It routes each task to the cheapest capable path: cache, rules, **existing tools** (IntelliJ refactor, git, linter — no AI), local models, and only then frontier APIs.
 
 ## Problem
 
@@ -34,24 +34,25 @@ A **path** (దారి) through local tiers can handle the bulk. Frontier mode
 
 ## Solution (conceptual)
 
-daari sits between your tools and models. It classifies each request, picks the cheapest capable path, and executes locally when possible.
+daari sits between your tools and backends. It classifies each request and picks the cheapest capable path — including **non-AI tool-native execution** when an IDE or CLI can do the job.
 
 ```
-Tool (Cursor, CLI, script)
+Tool (Cursor, Claude Code, CLI, UI, IDE)
         │
         ▼
    ┌─────────┐
-   │  daari  │  ← route, cache, execute
+   │  daari  │  ← route, setup, execute locally
    └─────────┘
         │
    ┌────┴────────────────────────────┐
    │ L0 Cache                        │
    │ L1 Semantic cache               │
    │ L2 Rules / templates            │
+   │ Lt Tool-native (IDE, git, lint) │  ← no AI
    │ L3 Small local model (SLM)      │
    │ L4 Medium local model           │
    │ L5 Large local model (optional) │
-   │ L6 Frontier API (TBD policy)    │
+   │ L6 Frontier API (last resort)   │
    └─────────────────────────────────┘
 ```
 
@@ -67,7 +68,7 @@ Not targeting: teams needing managed cloud inference, non-technical consumers, m
 
 - Training or fine-tuning models from scratch
 - Building a general chat UI (daari is infrastructure, not a ChatGPT clone)
-- Replacing Cursor/Claude entirely on day one — daari augments/routes first
+- Replacing IntelliJ, VS Code, or Cursor — daari works **with** them
 - Multi-user SaaS or billing
 - Windows/Linux support before macOS works well
 
@@ -79,8 +80,9 @@ Not targeting: teams needing managed cloud inference, non-technical consumers, m
 
 - ≥70% of daari-routed requests never touch a frontier API
 - Measurable cost/latency reduction vs. baseline "everything to Claude/GPT"
-- Stable local API that Cursor or CLI tools can call
-- Clear tier routing with observable metrics (which path was taken, why)
+- Stable local API any compatible client can call (Cursor, Claude Code, CLI)
+- **Single-command setup** for detected tools (`daari setup --all`)
+- Clear tier routing with observable metrics (cache / tool / model / frontier)
 
 ## Open decision
 
