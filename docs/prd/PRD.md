@@ -22,7 +22,7 @@ This wastes money, adds latency, sends local code and context to third-party API
 4. **Small local model (SLM)** — classification, extraction, tiny completions  
 5. **Medium local model** — moderate generation  
 6. **Large local model** — heavier local work when hardware allows  
-7. **Frontier API** — *policy pending*; only if explicitly allowed  
+7. **Frontier API** — last resort only; auto-escalate when local tiers fail confidence checks
 
 The name *daari* (Telugu: path) reflects the core idea: every request gets the **cheapest capable path**, not the most expensive default.
 
@@ -112,7 +112,7 @@ The name *daari* (Telugu: path) reflects the core idea: every request gets the *
 | L3 | SLM | ~1–3B local model | Classify, short extract |
 | L4 | Medium | ~7–8B local model | Docstrings, small codegen |
 | L5 | Large local | ~13B+ quantized | Heavier local generation |
-| L6 | Frontier | OpenAI / Anthropic API | *Only if policy allows* |
+| L6 | Frontier | OpenAI / Anthropic API | Last resort when local confidence low |
 
 ### Routing pipeline
 
@@ -224,7 +224,7 @@ flowchart TB
 
 | ID | Question | Options | Recommendation |
 |----|----------|---------|----------------|
-| **OD-1** | Frontier fallback policy? | A) Never call frontier B) Opt-in per request C) Auto-escalate when local fails | **A for v1** — matches stated goal; add C later if quality gaps appear |
+| **OD-1** | Frontier fallback policy? | A) Never call frontier B) Opt-in per request C) Auto-escalate when local fails | **C — accepted** — auto-escalate as last resort when local confidence is low |
 | **OD-2** | Primary language? | Rust / Go / Python / TypeScript | **Python or Go** — see `docs/discovery/03-approach-options.md` |
 | **OD-3** | Semantic cache store? | SQLite+vec / embedded chroma / in-memory | Decide in approach phase |
 | **OD-4** | Classifier implementation? | Heuristics only / SLM / hybrid | **Hybrid** for MVP |
