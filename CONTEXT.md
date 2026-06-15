@@ -15,15 +15,11 @@ No application code yet.
 
 ## What daari is
 
-An **end-to-end local execution router** that works with Cursor, Claude Code, any CLI/UI/IDE with minimal config change.
+An **open-source, local-first execution router** — **not a cloud proxy**. Minimize cost by routing work through local tiers before any frontier API.
 
-Routes each request through: **cache → rules → tool-native (no AI) → local models → frontier (last resort)**.
+**Competitive docs:** [landscape](docs/discovery/04-competitive-landscape.md) · [plan review](docs/prd/PLAN-REVIEW.md)
 
-- **OpenAI-compatible API** — primary adapter so tools only change base URL ([ADR-0002](docs/adr/0002-openai-compatible-api.md))
-- **Lt tool-native tier** — IntelliJ, git, linter, formatter when no AI needed ([ADR-0003](docs/adr/0003-tool-native-tier.md))
-- **Setup module** — `install.sh`, `daari setup <tool>`, `daari doctor`
-
-Full spec: [`docs/prd/PRD.md`](docs/prd/PRD.md)
+Full spec: [`docs/prd/PRD.md`](docs/prd/PRD.md) (v0.3)
 
 ## Decisions made
 

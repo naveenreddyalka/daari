@@ -1,6 +1,6 @@
 # daari — Product Requirements Document
 
-> **Status:** Draft v0.2 — not approved  
+> **Status:** Draft v0.3 — not approved  
 > **Last updated:** 2026-06-15  
 > **Owner:** Naveen Reddy Alka
 
@@ -18,9 +18,24 @@ Additionally, each AI-enabled tool (Cursor, Claude Code, custom CLIs, future UIs
 
 This wastes money, adds latency, leaks code to the cloud unnecessarily, and ignores capabilities already present in tools like IntelliJ that need no model at all.
 
+## Product principles
+
+daari is **not** another cloud LLM proxy. It is an **open-source, local-first execution platform** built to **run as much as possible cheaply on your machine**.
+
+| Principle | Meaning |
+|-----------|---------|
+| **Open source** | Core daari (router, cache, setup, CLI) is OSS (Apache 2.0). No vendor lock-in. |
+| **Local-first** | Default path is on-device: cache → rules → tools → local models. |
+| **Cost-minimize** | Every request takes the cheapest capable tier. Frontier (L6) is last resort. |
+| **AI is optional** | Many tasks need no model at all (Lt tool-native tier). |
+| **Not a proxy** | OpenAI-compat is a **client adapter**, not the product identity. |
+| **Privacy by default** | Routable work stays on your machine. No telemetry unless you opt in. |
+
+**Competitive context:** See [Competitive landscape](../discovery/04-competitive-landscape.md) and [Plan review](PLAN-REVIEW.md).
+
 ## Solution
 
-**daari** is a **local execution router** — an end-to-end local daemon and setup tool that sits between any client (Cursor, Claude Code, CLI, UI, IDE) and the backends that can actually do the work.
+**daari** is an **open-source local execution router** — not a pass-through proxy to cloud APIs. It is an end-to-end local daemon and setup tool that sits between any client (Cursor, Claude Code, CLI, UI, IDE) and the backends that can actually do the work **at lowest cost**.
 
 For each incoming request, daari picks the **cheapest capable path**:
 
@@ -286,6 +301,36 @@ flowchart TB
 | `daari setup --all` | Detect installed tools, run applicable setups |
 | `daari doctor` | Verify daemon, Ollama, tool paths, sample route |
 
+### Client support matrix (honest)
+
+| Client | MVP | v1 | Integration |
+|--------|-----|-----|-------------|
+| Cursor | ✅ | ✅ | OpenAI-compat base URL |
+| OpenAI SDK / scripts | ✅ | ✅ | `base_url` override |
+| Claude Code | ⚠️ manual | ✅ | Anthropic shape may need Phase B gateway |
+| IntelliJ | — | ✅ Lt backend | Tool executor, not AI client |
+| Generic UI | ⚠️ if OpenAI-compat | ✅ | Same as SDK |
+
+### Open source & privacy commitments
+
+- **License:** Apache 2.0 for daari core
+- **Dependencies:** OSS-only for core path; no required proprietary services
+- **Models:** User-provided via Ollama or local backends — daari does not ship weights
+- **Frontier keys:** User-owned; stored locally; never sent to daari project infra
+- **Telemetry:** Off by default; opt-in only if added later
+- **Cache data:** Stored locally; user controls TTL and purge
+
+### daari vs alternatives (summary)
+
+| | Cloud gateways (LiteLLM, OpenRouter) | Local runners (Ollama) | **daari** |
+|---|--------------------------------------|------------------------|-----------|
+| Goal | Access many providers | Run one local model | **Minimize cost — local path for max tasks** |
+| OSS | Mixed | Mostly | **Yes — full stack** |
+| Non-AI tools | No | No | **Yes — Lt tier** |
+| Dev tool setup | Manual | N/A | **`daari setup <tool>`** |
+
+Full comparison: [04-competitive-landscape.md](../discovery/04-competitive-landscape.md)
+
 ## Testing Decisions
 
 ### Principles
@@ -330,16 +375,42 @@ flowchart TB
 - General consumer chat product
 - Replacing IDEs entirely
 
+## Success metrics
+
+| Metric | MVP target | v1 target | Definition |
+|--------|------------|-----------|------------|
+| **$0 tier rate** | ≥30% | ≥50% | % requests at L0/L1/L2/Lt (no model, no frontier cost) |
+| **Local AI rate** | ≥20% | ≥30% | % at L3–L5 |
+| **Frontier rate** | ≤50% | ≤20% | % at L6 |
+| **Cost saved** | Measurable on eval set | ≥60% vs all-L6 baseline | Estimated $ on labeled dev prompt suite |
+| **p50 latency (L0–Lt)** | <100ms | <100ms | Cache and tool tiers |
+| **p50 latency (L3)** | <2s | <1s | Single local model |
+
+Baseline for comparison: **all requests to frontier (L6)** — the default today without daari.
+
 ## Phased Delivery
 
-### Phase A — MVP (prove routing + one tool setup)
-- Daemon + OpenAI-compatible gateway
-- L0 exact cache + L3 via Ollama + heuristic router
-- CLI: `daari serve`, `daari stats`, `daari doctor`
-- Setup: `daari setup cursor` (first recipe) + `install.sh`
-- Document Claude Code manual setup (automate in Phase B)
+### Phase A — Tracer bullet MVP (prove local cost wins)
 
-### Phase B — v1 (local-first + multi-tool)
+**Goal:** Show daari saves money/latency with minimal scope. ~2–3 weeks.
+
+- Daemon + OpenAI-compatible gateway
+- L0 exact cache only
+- L3 single Ollama model + heuristic router (prompt length/keywords)
+- CLI: `daari serve`, `daari stats`
+- **Manual** Cursor setup doc (automated `daari setup cursor` in Phase A.1)
+- 10-prompt eval set with tier labels
+- Metrics: $0 tier rate, frontier rate, latency
+
+**Explicitly deferred from Phase A:** L1 semantic cache, Lt tier, L4/L5, L6 escalation, setup automation, Claude Code.
+
+### Phase A.1 — Setup + frontier escalation
+
+- `daari setup cursor` + `install.sh` + `daari doctor`
+- L6 auto-escalate when local fails (ADR-0001)
+- `daari setup` writes config backup (reversible)
+
+### Phase B — v1 (full local-first stack)
 - L1 semantic cache + L2 rules
 - **Lt tool-native tier** — git, formatter, linter; IntelliJ CLI (basic)
 - L4 medium model + confidence escalation to L6
@@ -365,10 +436,13 @@ flowchart TB
 | **OD-5** | IntelliJ integration mechanism? | CLI (`idea` command) / REST / file-based | Pending — CLI first recommended |
 | **OD-6** | Install delivery? | curl pipe / brew / npm / bundled binary | Pending — `install.sh` for MVP |
 
+| **OD-7** | MVP scope | Tracer bullet vs full Phase A | **Accepted: tracer bullet** — see Phased Delivery |
+
 ## Further Notes
 
-- **OpenAI-compatible ≠ OpenAI dependency** — it is the adapter for universal client support
-- **Lt (tool-native)** is a first-class tier, not an afterthought — many tasks need no AI
+- **daari ≠ proxy** — open-source local cost optimizer; compat API is the adapter
+- **Ollama is a backend**, not a competitor — daari orchestrates it at L3–L5
+- **Lt (tool-native)** is the key differentiator vs LiteLLM/Bifrost/GPTCache
 - Telugu **daari** = path — routing metaphor covers models *and* tools
 - Reusable skills → `agent-skills` repo; daari-specific → `.cursor/skills/` here
 
@@ -377,4 +451,4 @@ flowchart TB
 - [ ] Vision approved
 - [ ] Discovery approved
 - [ ] Approach / ADR-0001 accepted
-- [ ] PRD v0.2 approved — *date: _________*
+- [ ] PRD v0.3 approved — *date: _________*

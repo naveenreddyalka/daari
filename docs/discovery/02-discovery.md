@@ -30,6 +30,8 @@
 
 ## Current alternatives
 
+See full analysis: [`04-competitive-landscape.md`](04-competitive-landscape.md)
+
 | Alternative | Gap |
 |-------------|-----|
 | **Send everything to Claude/GPT** | Expensive, slow, leaky for small tasks |

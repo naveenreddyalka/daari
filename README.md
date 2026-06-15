@@ -1,39 +1,28 @@
 # daari
 
-> **Status:** Discovery & PRD phase  
-> **Repo:** https://github.com/naveenreddyalka/daari
+> **Open-source local execution router** — run cheaply on your machine, not in the cloud.
 
-**Local execution router (e2e)** — works with Cursor, Claude Code, CLI, UI, IDE. Routes to cache, existing tools (IntelliJ/git/lint — no AI), local models, frontier last. OpenAI-compatible API + single-command setup per tool.
+**Status:** PRD draft v0.3 — [review docs](docs/prd/PLAN-REVIEW.md) · [competitors](docs/discovery/04-competitive-landscape.md)
 
-PRD v0.2: [`docs/prd/PRD.md`](docs/prd/PRD.md)
+Route dev agent work through local tiers (cache → IDE tools → local AI) instead of frontier APIs. **Not a proxy** — a cost optimizer you own.
 
-## What is here now
+## Docs
 
-| Path | Purpose |
-|------|---------|
-| [`CONTEXT.md`](CONTEXT.md) | Agent handoff — read this first in any session |
-| [`docs/PRD-PLAN.md`](docs/PRD-PLAN.md) | Plan for how we write the PRD (phases, deliverables, gates) |
-| [`docs/discovery/`](docs/discovery/) | Working notes during discovery |
-| [`docs/prd/`](docs/prd/) | Final PRD and requirements (when approved) |
-| [`docs/adr/`](docs/adr/) | Architecture Decision Records |
+| Doc | Purpose |
+|-----|---------|
+| [`docs/prd/PRD.md`](docs/prd/PRD.md) | Product requirements (v0.3) |
+| [`docs/prd/PLAN-REVIEW.md`](docs/prd/PLAN-REVIEW.md) | Plan review — issues & recommendations |
+| [`docs/discovery/04-competitive-landscape.md`](docs/discovery/04-competitive-landscape.md) | Competitors & differentiation |
+| [`docs/prd/glossary.md`](docs/prd/glossary.md) | Terms (L0–L6, Lt, etc.) |
+| [`CONTEXT.md`](CONTEXT.md) | Agent handoff |
 
-## Conventions
+## Principles
 
-- **Docs live in this repo** — PRD, discovery notes, ADRs are versioned here.
-- **Reusable agent skills live elsewhere** — see [Skills repo](#skills-repo) below.
-- **Decisions get written down** — if we discuss it, we capture it in `docs/discovery/` or an ADR.
+- **Open source** — Apache 2.0, you own the stack
+- **Local-first** — on-device by default
+- **Cost-minimize** — cheapest capable path for every task
+- **AI optional** — many tasks use IDE/CLI tools, not models
 
-## Skills repo
+## Repo
 
-Project-specific skills stay in this repo under `.cursor/skills/` (when needed).
-
-**Cross-project, reusable skills** belong in a separate repo so other projects can install them:
-
-- Intended location: `https://github.com/naveenreddyalka/agent-skills` *(create when first skill is ready)*
-
-## Getting started (agents)
-
-1. Read `CONTEXT.md`
-2. Read `docs/PRD-PLAN.md` for current phase and next steps
-3. Check `docs/discovery/` for latest notes
-4. Do not write implementation code until PRD is approved
+https://github.com/naveenreddyalka/daari
