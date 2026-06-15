@@ -32,7 +32,7 @@ See [`docs/prd/PRD.md`](docs/prd/PRD.md) for full draft.
 
 ## Open decisions
 
-1. **Frontier policy** — never vs opt-in vs auto-escalate ([PRD OD-1](docs/prd/PRD.md#open-decisions))
+- Frontier policy: **auto-escalate** when local tiers fail confidence (OD-1 decided 2026-06-15)
 2. **Language** — Python (recommended MVP) vs Go vs other ([approach options](docs/discovery/03-approach-options.md))
 3. **Audience** — solo vs others at v1
 
