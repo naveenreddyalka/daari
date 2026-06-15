@@ -1,7 +1,7 @@
 # PRD Plan — daari
 
 > **Purpose:** Define *how* we go from "empty repo" to an approved PRD ready for implementation.  
-> **Status:** Phase 0 — not started  
+> **Status:** Phase 2–4 — PRD draft v0.1 written, awaiting review  
 > **Owner:** Naveen Reddy Alka
 
 ---

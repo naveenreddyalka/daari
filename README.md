@@ -3,7 +3,9 @@
 > **Status:** Discovery & PRD phase  
 > **Repo:** https://github.com/naveenreddyalka/daari
 
-Personal project workspace. We are in the **requirements and discovery** phase — defining what daari is, who it is for, and how we will build it.
+**Local inference router** — route small, repeated, and cacheable AI tasks through local tiers (cache, rules, on-device models) instead of frontier APIs.
+
+Currently in **PRD draft v0.1** — see [`docs/prd/PRD.md`](docs/prd/PRD.md).
 
 ## What is here now
 
