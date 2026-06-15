@@ -7,7 +7,7 @@
 
 ## Product shape (recommended)
 
-**Local daemon + OpenAI-compatible proxy + CLI**
+**Local daemon + OpenAI-compatible gateway + CLI**
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -95,7 +95,7 @@ Python 3.12
 └── Ollama           # L3+ inference (external)
 ```
 
-**Decision pending your approval** → record in ADR-0001 when chosen.
+**Decision:** Python 3.12 — see [ADR-0005](../adr/0005-python-tech-stack.md).
 
 ---
 

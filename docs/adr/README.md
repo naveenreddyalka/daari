@@ -18,5 +18,6 @@ Status: proposed | accepted | deprecated
 | ADR-0001 | Frontier fallback policy | accepted |
 | ADR-0002 | OpenAI-compatible API as primary integration | accepted |
 | ADR-0003 | Tool-native execution tier (Lt) | accepted |
-
-First expected: **ADR-0001 — Tech stack and product shape** (Phase 3).
+| ADR-0004 | Agent tool-call compatibility | accepted |
+| ADR-0005 | Python tech stack for MVP | accepted |
+| ADR-0006 | Local daemon security model | accepted |

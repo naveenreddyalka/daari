@@ -72,7 +72,7 @@ Initial categories daari should recognize:
 4. **extract** — structured pull from text (SLM)
 5. **transform** — reformat, shorten, expand lightly (SLM/small)
 6. **generate_small** — short completion (medium local)
-7. **generate_large** — long or multi-step (large local / frontier TBD)
+7. **generate_large** — long or multi-step (large local / L6 last resort)
 8. **unknown** — conservative default path
 
 ## Integration surfaces

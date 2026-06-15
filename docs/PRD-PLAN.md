@@ -217,8 +217,6 @@ Adjust as needed. Quality of thinking beats speed.
 
 ## Next action
 
-**→ Start Phase 1: Vision**
+**→ PRD v0.4 approval** — all plan review issues resolved. See [`docs/prd/PLAN-REVIEW.md`](docs/prd/PLAN-REVIEW.md).
 
-Answer the first discovery question (see `docs/discovery/00-kickoff.md`).
-
-When Phase 1 doc is drafted and approved, update the status line at the top of this file.
+Then: Phase A implementation plan.

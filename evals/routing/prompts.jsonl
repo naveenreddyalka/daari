@@ -1,0 +1,4 @@
+# Routing eval prompts — placeholder
+# Full spec: docs/prd/routing-spec.md#golden-prompt-eval-set
+# Format: one JSON object per line
+# {"id":"GP-01","prompt":"...","expected_tier_mvp":"L0","expected_tier_v1":"L0"}
