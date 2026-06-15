@@ -9,44 +9,44 @@
 
 ## Current phase
 
-**Discovery & PRD** — we have not defined the product yet.
+**Discovery & PRD (draft v0.1)** — vision and PRD drafted; awaiting approval and open decisions.
 
-The repo contains planning scaffolding only (`LICENSE`, docs structure). No application code exists.
+No application code yet.
+
+## What daari is
+
+A **local inference router**: sits between dev tools (Cursor, CLI) and models. Routes each request through tiered local paths — cache, rules, small/medium/large local models — so frontier APIs (OpenAI, Anthropic) are not used for small, repeated, or cacheable tasks.
+
+See [`docs/prd/PRD.md`](docs/prd/PRD.md) for full draft.
 
 ## What we know
 
-- Project name: **daari** (Telugu: దారి — path, way, road)
-- Repo renamed from `Daari` → `daari` on GitHub
-- Git remote: `https://github.com/naveenreddyalka/daari.git`
-- Owner: Naveen Reddy Alka
+| Topic | Decision / draft |
+|-------|------------------|
+| **Problem** | Frontier APIs overused for trivial/repeated agent tasks |
+| **Solution** | Tiered local router (L0 cache → L6 frontier optional) |
+| **Primary user** | Naveen (personal dev workflow, macOS) |
+| **Integration** | OpenAI-compatible local API + CLI |
+| **MVP tiers** | L0 exact cache + L3 Ollama + heuristic router |
+| **Name** | daari = path (Telugu) — routing metaphor |
 
-## What we do not know yet
+## Open decisions
 
-These are the open questions the discovery phase must answer:
-
-1. **Problem** — What problem does daari solve? For whom?
-2. **Scope** — Web app, CLI, mobile, API, agent tooling, or something else?
-3. **Users** — Personal tool, public product, or team/internal?
-4. **Success** — What does "working" look like in 3 months?
-5. **Stack** — Language, framework, hosting (intentionally undecided)
+1. **Frontier policy** — never vs opt-in vs auto-escalate ([PRD OD-1](docs/prd/PRD.md#open-decisions))
+2. **Language** — Python (recommended MVP) vs Go vs other ([approach options](docs/discovery/03-approach-options.md))
+3. **Audience** — solo vs others at v1
 
 ## First actions (every session)
 
 1. Read this file
-2. Read [`docs/PRD-PLAN.md`](docs/PRD-PLAN.md) — check which phase we are in
-3. Read latest files in [`docs/discovery/`](docs/discovery/)
-4. Continue discovery or PRD work; do not skip ahead to implementation
+2. Read [`docs/PRD-PLAN.md`](docs/PRD-PLAN.md) — check phase
+3. Read [`docs/prd/PRD.md`](docs/prd/PRD.md) and latest [`docs/discovery/`](docs/discovery/)
+4. Do not implement until PRD approved
 
 ## Related repos
 
 | Repo | Role |
 |------|------|
-| [`naveenreddyalka/daari`](https://github.com/naveenreddyalka/daari) | This project — product, docs, code |
-| [`naveenreddyalka/next`](https://github.com/naveenreddyalka/next) | Job search hub — similar doc patterns (CONTEXT.md, AGENTS.md) |
-| `naveenreddyalka/agent-skills` *(planned)* | Reusable Cursor/Claude skills shared across projects |
-
-## Naming
-
-- GitHub repo: `daari` (lowercase)
-- Local folder: `Daari` (cosmetic; optional rename to `daari`)
-- Product name in docs: **daari** unless branding says otherwise
+| [`naveenreddyalka/daari`](https://github.com/naveenreddyalka/daari) | This project |
+| [`naveenreddyalka/next`](https://github.com/naveenreddyalka/next) | Job search hub — doc patterns |
+| `naveenreddyalka/agent-skills` *(planned)* | Reusable agent skills |
