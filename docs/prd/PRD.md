@@ -165,7 +165,12 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 52. As a developer, I want daari to learn from corrections (user rejected cache hit), so that routing improves over time.
 53. As a developer, I want Anthropic-compatible API shape as an optional second gateway, so that tools requiring Claude wire format integrate without translation layers in the client.
 
-## Implementation Decisions
+### Local model improvement (later phases)
+
+54. As a developer, I want daari to learn from my local usage (accepted responses, corrections, tier overrides), so that routing and model selection improve on my machine over time.
+55. As a developer, I want daari to recommend or auto-select the best local Ollama model per task type based on my hardware and feedback, so that I don't manually tune tiers.
+56. As a developer, I want optional local fine-tuning or adapter training from my session data, so that a personal local model gets better for my codebase and workflow.
+57. As a developer, I want to opt in to share anonymized routing feedback, so that future daari releases improve defaults for everyone — without sharing my code or prompts by default.
 
 ### Product shape
 
@@ -384,10 +389,13 @@ Full comparison: [04-competitive-landscape.md](../discovery/04-competitive-lands
 - Full IntelliJ plugin (CLI/API integration first)
 
 ### Entire product (never, unless explicitly reopened)
-- Training foundation models
+- Training **foundation models from scratch**
 - Hosted SaaS inference
 - General consumer chat product
 - Replacing IDEs entirely
+- **Mandatory** upload of user prompts/code for model improvement
+
+**Note:** Local **fine-tuning/adaptation** from user feedback and **opt-in** collective routing stats are **in scope** for Phase D — see user stories #54–57.
 
 ## Success metrics
 
@@ -442,6 +450,19 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 - Anthropic-compat gateway (enables Claude Code setup)
 - Richer IntelliJ / IDE tool registry
 
+### Phase D — local learning & collective improvement (future)
+
+**Goal:** Improve local models and routing per installation; optional opt-in improvement for all users.
+
+| Track | Scope | Privacy |
+|-------|-------|---------|
+| **D1 — Personal** | Local feedback loop: cache tuning, tier thresholds, model picker per task | All data stays on device |
+| **D2 — Local fine-tune** | Fine-tune/adapt small local model from user corrections (not train foundation models) | User-owned weights in `~/.daari/models/` |
+| **D3 — Opt-in collective** | Anonymized routing stats (tier success rates, latency) uploaded if user enables | No prompts/code unless explicitly opted in |
+| **D4 — Release defaults** | daari project uses aggregated opt-in stats to improve out-of-box routing for next version | OSS transparent; user consent required |
+
+**Out of scope for D:** training foundation models from scratch, mandatory cloud upload, using user code without explicit consent.
+
 **Detailed breakdown:** [ROADMAP.md](ROADMAP.md) — languages, clients, and tools per phase.
 
 ## Open Decisions
@@ -476,8 +497,8 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 ## Approval
 
-- [ ] Vision approved
-- [ ] Discovery approved
+- [x] Step 1 — Problem & principles approved — 2026-06-15
+- [ ] Step 2 — Solution & tiers
 - [ ] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md) · [0007](../adr/0007-pluggable-gateway-adapters.md)
 - [ ] Specs reviewed: [routing-spec](routing-spec.md) · [setup-spec](setup-spec.md)
 - [ ] PRD v0.4 approved — *date: _________*

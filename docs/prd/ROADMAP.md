@@ -261,6 +261,45 @@ gantt
 | B | ✅ + Lt subprocess | — | — | — |
 | C1 | ✅ + MCP | — | ⚠️ UI optional | — |
 | C2 | ✅ + Anthropic gateway | — | ⚠️ UI | ⚠️ IntelliJ plugin if needed |
+| D | ✅ + ML feedback loop | — | — | Local fine-tune libs |
+
+---
+
+## Phase D — Local learning & collective improvement (future)
+
+**Goal:** Each installation gets smarter locally; optional opt-in helps next release for everyone.
+
+### D1 — Personal feedback loop (on-device)
+
+| Component | Tech |
+|-----------|------|
+| Feedback capture | Python — user accepts/rejects response, tier override logs |
+| Model picker | Python — recommend Ollama model per task type from local stats |
+| Routing tuner | Python — adjust confidence thresholds from outcomes |
+
+All data in `~/.daari/feedback/` — never leaves machine unless D3 opted in.
+
+### D2 — Local fine-tuning (personal)
+
+| Component | Tech |
+|-----------|------|
+| Fine-tune pipeline | Python + Ollama/MLX fine-tune tools |
+| Training data | User corrections only — exported from local feedback store |
+| Output | Personal adapter weights in `~/.daari/models/` |
+
+**Not:** training a new foundation model. **Yes:** adapting a small local model to your workflow.
+
+### D3 — Opt-in collective stats
+
+| Component | Tech |
+|-----------|------|
+| Anonymized export | Python — tier success rates, latency percentiles, model IDs |
+| Upload | Opt-in only; user reviews what leaves device |
+| Content | **No** prompts/code by default |
+
+### D4 — Better defaults next release
+
+daari OSS project may publish improved routing defaults derived from aggregated opt-in stats (transparent, documented).
 
 ---
 
