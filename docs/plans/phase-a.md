@@ -259,6 +259,31 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 
 ---
 
+## Phase A.1 — Install & setup
+
+> **Tracker:** [TRACKING.md](../TRACKING.md) · **ROADMAP:** [Phase A.1](../prd/ROADMAP.md#phase-a1--install--frontier-fallback)
+
+### Subtasks
+
+- [x] `scripts/install.sh` — venv, pip, Ollama pull (`13a2345`)
+- [x] `daari doctor` — Python, config, Ollama, model, optional daemon
+- [x] `daari setup cursor --dry-run` — planned diff without writes
+- [x] `daari setup cursor` — apply patches + backup (`aaf3f06`)
+- [x] `daari setup --undo cursor` — restore latest backup
+- [x] `daari setup` — interactive wizard (Cursor / models / doctor)
+- [x] `daari setup models` — pick Ollama model for L3 tier
+- [ ] `daari install` — Typer parity with `install.sh` (ROADMAP; script works today)
+- [ ] L6 frontier executor + confidence scoring (ADR-0001) — **deferred**
+- [~] Cursor smoke test on device with Cursor installed — user-owned, non-blocking
+
+### Exit criteria
+
+- [~] `./install.sh && daari doctor` passes on fresh clone
+- [x] `daari setup cursor --dry-run` shows diff
+- [ ] Low-confidence local response escalates to L6 (if keys configured)
+
+---
+
 ## After Phase A
 
-→ [Phase A.1](../prd/ROADMAP.md#phase-a1--install--frontier-fallback): `install.sh`, `daari setup cursor`, L6 escalation
+→ Phase A.1 above; then Phase B (L1, L2, Lt, …)

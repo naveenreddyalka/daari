@@ -29,6 +29,7 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 
 | Doc | Purpose |
 |-----|---------|
+| [`docs/TRACKING.md`](docs/TRACKING.md) | Phase task tracker (A / A.1 / deferred) |
 | [`docs/DEVELOPING.md`](docs/DEVELOPING.md) | Dev pickup — clone, run, test |
 | [`docs/plans/phase-a.md`](docs/plans/phase-a.md) | Phase A implementation plan |
 | [`docs/prd/PRD.md`](docs/prd/PRD.md) | Product requirements |
