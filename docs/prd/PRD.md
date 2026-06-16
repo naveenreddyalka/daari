@@ -1,6 +1,6 @@
 # daari — Product Requirements Document
 
-> **Status:** Draft v0.4 — not approved  
+> **Status:** Approved v0.4 — 2026-06-15  
 > **Last updated:** 2026-06-15  
 > **Owner:** Naveen Reddy Alka
 
@@ -215,6 +215,17 @@ Live factual queries (stories 62–68): [sources-integration.md](sources-integra
 77. As a developer, I want to invalidate or clear command context (`re-run`, `daari context clear`), so that I can force fresh execution when CCS would otherwise serve old output.
 
 **Lt phasing:** Phase B.0 = allowlist + blocklist + default deny unknown. Phase B.1 = confirmation gate + project commands + context clear CLI.
+
+### Enterprise platform (distributed install, org cache, org learning — later phases)
+
+78. As an **enterprise admin**, I want to deploy daari consistently across developer machines (MDM, Ansible, internal bundle), so that every engineer runs the same version and policy.
+79. As an **enterprise admin**, I want a central **org policy** (allowlists, tier caps, frontier disable, allowed providers), so that IT governs what daari can run without per-laptop manual config.
+80. As a **developer in an enterprise**, I want **org-wide shared cache** (L0/L1/CCS-org) after my local cache misses, so that colleagues' prior safe results benefit my sessions without re-calling models or tools.
+81. As an **enterprise admin**, I want to control **what cache classes** sync org-wide (with redaction and opt-out), so that we gain network effects without leaking secrets or code.
+82. As a **developer in an enterprise**, I want daari to **learn from org-wide feedback** (tier success, overrides, explicit ratings), so that routing improves for everyone in my company the more we use it.
+83. As an **enterprise admin**, I want **tenant-isolated** learning and cache (no cross-company data), with self-hosted control plane on our network, so that we meet compliance and data residency requirements.
+
+**Design:** [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · **Phase E1–E3** (after C3 / alongside Phase D)
 
 ## Implementation Decisions
 
@@ -496,7 +507,8 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 ### Phase A.1 — Setup + frontier escalation
 
-- `daari setup cursor` + `install.sh` + `daari doctor`
+- **`daari setup`** — interactive wizard (pick Cursor, model, doctor)
+- `daari setup cursor` + `daari setup models` + `install.sh` + `daari doctor`
 - L6 auto-escalate when local fails (ADR-0001)
 - `daari setup` writes config backup (reversible)
 
@@ -523,9 +535,23 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 - Richer IntelliJ / IDE tool registry
 - Browser extension (Google auth for Lt-fetch)
 
-### Phase C3 — enterprise integrations
+### Phase C3 — enterprise integrations (APIs)
 - Sourcegraph, GitHub Enterprise, GitLab providers
 - Company MCP servers + `integrations.yaml` enterprise config
+
+### Phase E — enterprise platform (later)
+
+**Goal:** Distributed fleet, org-wide cache, org collective learning — **opt-in deployment mode**; OSS single-user unchanged.
+
+| Sub-phase | Ships |
+|-----------|-------|
+| **E1** | Install bundle, `enterprise.yaml`, org policy sync, fleet profiles (`developer` / `ci` / `admin`) |
+| **E2** | Org cache client — L0-org, L1-org, CCS-org + self-hosted cache service |
+| **E3** | Org feedback aggregation, shared routing profile, tier tuning per tenant |
+
+Spec: [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md)
+
+**Depends on:** Phase B+ (L1, CCS), C3 optional (corp APIs). **Orthogonal to** Phase D (personal / global OSS learning).
 
 ### Phase D — local learning & collective improvement (future)
 
@@ -537,6 +563,9 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 | **D2 — Local fine-tune** | Fine-tune/adapt small local model from user corrections (not train foundation models) | User-owned weights in `~/.daari/models/` |
 | **D3 — Opt-in collective** | Anonymized routing stats (tier success rates, latency) uploaded if user enables | No prompts/code unless explicitly opted in |
 | **D4 — Release defaults** | daari project uses aggregated opt-in stats to improve out-of-box routing for next version | OSS transparent; user consent required |
+| **E3 — Org learning** | Shared routing profile + tier tuning for **one tenant** | Admin-governed; see [enterprise.md](enterprise.md) |
+
+**Enterprise org learning (Phase E3)** is separate — tenant-scoped, admin-governed, benefits all users **in one company**. See [enterprise.md](enterprise.md).
 
 **Out of scope for D:** training foundation models from scratch, mandatory cloud upload, using user code without explicit consent.
 
@@ -548,7 +577,7 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 |----|----------|---------|--------|
 | **OD-1** | Frontier fallback policy? | Never / opt-in / auto-escalate | **Accepted: auto-escalate** — [ADR-0001](../adr/0001-frontier-fallback-policy.md) |
 | **OD-2** | Primary language? | Rust / Go / Python / TypeScript | **Accepted: Python 3.12** — [ADR-0005](../adr/0005-python-tech-stack.md) |
-| **OD-3** | Semantic cache store? | SQLite+vec / chroma / in-memory | **Draft: sqlite-vec** for v1 |
+| **OD-3** | Semantic cache store? | SQLite+vec / chroma / in-memory | **Accepted: sqlite-vec** — Phase B |
 | **OD-4** | Classifier implementation? | Heuristics / SLM / hybrid | **Hybrid** — [routing-spec](routing-spec.md) |
 | **OD-5** | IntelliJ integration mechanism? | CLI / REST / file-based | **Accepted: CLI first** — Phase B.1 |
 | **OD-6** | Install delivery? | curl pipe / brew / npm / bundled binary | **Accepted: `./install.sh`** for MVP — [setup-spec](setup-spec.md) |
@@ -560,12 +589,13 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 |-----|---------|
 | [ROADMAP.md](ROADMAP.md) | **Detailed phase plan** — languages, clients, tools per phase |
 | [integrations.md](integrations.md) | Provider framework, MCP, enterprise APIs |
+| [enterprise.md](enterprise.md) | **Phase E** — distributed install, org cache, org learning |
 | [sources-integration.md](sources-integration.md) | Open APIs + Google |
 | [ADR-0012](../adr/0012-execution-policy.md) | Lt execution policy, CCS cache policy |
 | [routing-spec.md](routing-spec.md) | Classifier, confidence, golden prompts |
 | [setup-spec.md](setup-spec.md) | Install, setup recipes, undo |
 | [glossary.md](glossary.md) | Terms |
-| [PLAN-REVIEW.md](PLAN-REVIEW.md) | Issue tracker |
+| [phase-a.md](../plans/phase-a.md) | **Phase A implementation plan** — start here |
 
 ## Further Notes
 
@@ -579,15 +609,15 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 - [x] Step 1 — Problem & principles approved — 2026-06-15
 - [x] Step 2 — Solution & tiers approved — 2026-06-15
-- [ ] Step 3 — User stories (full pass)
-- [ ] Step 4 — Architecture & modules
-- [ ] Step 5 — Phasing & MVP scope
-- [ ] Step 6 — Metrics & evals
-- [ ] Step 7 — Open decisions
-- [ ] Step 8 — Specs & ADRs sign-off
-- [ ] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md) · [0007](../adr/0007-pluggable-gateway-adapters.md) · [0008](../adr/0008-developer-command-rules-and-context-cache.md) · [0009](../adr/0009-live-factual-fetch-l2-live.md) · [0010](../adr/0010-browser-bridge-google-search.md) · [0011](../adr/0011-pluggable-integration-providers.md) · [0012](../adr/0012-execution-policy.md)
-- [ ] Specs reviewed: [routing-spec](routing-spec.md) · [setup-spec](setup-spec.md) · [integrations](integrations.md) · [sources-integration](sources-integration.md)
-- [ ] PRD v0.4 approved — *date: _________*
+- [x] Step 3 — User stories approved as-is — 2026-06-15
+- [x] Step 4 — Architecture & modules approved — 2026-06-15
+- [x] Step 5 — Phasing & MVP scope approved — 2026-06-15
+- [x] Step 6 — Metrics & evals approved — 2026-06-15
+- [x] Step 7 — Open decisions approved — 2026-06-15
+- [x] Step 8 — Specs & ADRs sign-off — 2026-06-15
+- [x] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md) · [0007](../adr/0007-pluggable-gateway-adapters.md) · [0008](../adr/0008-developer-command-rules-and-context-cache.md) · [0009](../adr/0009-live-factual-fetch-l2-live.md) · [0010](../adr/0010-browser-bridge-google-search.md) · [0011](../adr/0011-pluggable-integration-providers.md) · [0012](../adr/0012-execution-policy.md)
+- [x] Specs reviewed: [routing-spec](routing-spec.md) · [setup-spec](setup-spec.md) · [integrations](integrations.md) · [sources-integration](sources-integration.md)
+- [x] PRD v0.4 approved — 2026-06-15
 
 ### Step 2 — coverage notes (2026-06-15)
 
@@ -602,7 +632,8 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 | Long-running / background commands | Timeout in ADR-0012; no job queue | B+ |
 | Session grants ("allow for 1h") | ADR-0012 non-goal | C+ |
 | File-watch / auto re-run on save | Out of product scope | — |
-| Multi-user / RBAC | Enterprise `allowed_providers` only | C1+ |
+| Multi-user / RBAC | Enterprise control plane + profiles | E1+ |
+| Enterprise distributed / org cache / org learning | [enterprise.md](enterprise.md) Phase E | E1–E3 |
 | Image / multimodal routing | Not in tier model | Future |
 
 **Minor follow-ups (optional, not blocking):** align routing pipeline diagram with full order (include CCS, L2-dev, L2-live); add user story for offline/no-network mode when L6/L2-live unavailable.

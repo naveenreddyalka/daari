@@ -22,13 +22,92 @@
 
 | Command | Phase | Behavior |
 |---------|-------|----------|
+| **`daari setup`** | **A.1** | **Interactive wizard** — pick clients, models, run doctor (see below) |
 | `daari setup cursor` | A.1 | Patch Cursor custom model settings |
+| `daari setup models` | A.1 | Pick / map Ollama models to L3 tier (interactive or flags) |
 | `daari setup claude-code` | B | Requires Anthropic-compat gateway |
 | `daari setup openai-compat` | B | Print env vars for generic SDK |
-| `daari setup intellij` | B | Register IntelliJ path for Lt tier |
-| `daari setup --all` | B | Detect + run applicable recipes |
+| `daari setup intellij` | B.1 | Register IntelliJ path for **Lt** tier (not AI client) |
+| `daari setup --all` | B | Detect + run applicable recipes (non-interactive) |
 | `daari setup --undo <tool>` | A.1 | Restore latest backup for tool |
 | `daari doctor` | A.1 | Health check |
+
+---
+
+## Interactive wizard (`daari setup`)
+
+**Yes — users need a guided path.** Not everyone knows what to configure or that IntelliJ is an Lt backend, not an AI client.
+
+Two entry modes (same engine):
+
+| Mode | When |
+|------|------|
+| **`daari setup`** | First install, exploratory — prompts for choices |
+| **`daari setup <tool>`** | Scriptable, docs, CI — skip prompts |
+
+### Wizard flow (Phase A.1)
+
+```
+$ daari setup
+
+  daari setup — configure your local stack
+
+  Detected on this machine:
+    ✓ Ollama (3 models: llama3.2:3b, llama3.1:8b, …)
+    ✓ Cursor
+    ✗ IntelliJ IDEA (not found)
+    ✗ Claude Code (not supported in this version)
+
+  What do you want to set up?  [Space to select, Enter to confirm]
+
+  ❯ Cursor          — point AI chat at daari (OpenAI-compat)
+    Local model     — choose default model for L3 tier
+    Run health check — daari doctor after setup
+    Skip for now
+
+  → User picks Cursor
+
+  Configure Cursor to use http://127.0.0.1:11435/v1 ?  [Y/n]
+  → Backup + patch settings
+  → Done. Run: daari serve
+
+  Optional: configure local model now?  [y/N]
+  → Lists `ollama list`, user picks default for L3
+  → Writes ~/.daari/config.yaml
+```
+
+### Phase B+ wizard additions
+
+| Step | Command / screen | Notes |
+|------|------------------|-------|
+| IntelliJ (Lt) | `daari setup intellij` | Explain: *"Registers IDE for refactor/lint — not your AI chat client"* |
+| OpenAI SDK | `daari setup openai-compat` | Print `export OPENAI_BASE_URL=…` |
+| Claude Code | `daari setup claude-code` | Only when Anthropic gateway ships (C2) |
+| All detected | `daari setup --all` | Non-interactive batch for power users |
+
+### Model selection (`daari setup models`)
+
+```bash
+daari setup models              # interactive: ollama list → pick L3 default
+daari setup models --tier l3 --model llama3.2:3b   # non-interactive
+daari setup models --list       # show current tier → model map
+```
+
+- Pulls from **`ollama list`** (live) — not hard-coded
+- Phase A.1: L3 only; Phase B adds L4/L5 mapping
+- If Ollama missing: wizard offers `ollama pull llama3.2:3b` hint
+
+### Help & discoverability
+
+```bash
+daari setup --help              # list subcommands
+daari setup cursor --dry-run    # show diff, no writes
+daari doctor                    # post-setup: daemon, ollama, cursor endpoint, sample route
+```
+
+**Phase A (tracer bullet):** Manual only — [cursor.md](../setup/cursor.md). No wizard yet.
+
+**Phase A.1:** Ship `daari setup` wizard + `daari setup cursor` + `daari setup models` + `daari doctor`.
 
 ---
 
@@ -56,7 +135,8 @@ daari setup --undo cursor
 
 ## Cursor recipe (Phase A.1)
 
-**Target file(s):** Cursor user settings (path varies by OS)
+**Code:** `daari/clients/cursor/recipe.py`  
+**Manual doc:** [cursor.md](../setup/cursor.md)
 
 **Changes:**
 - Add custom model pointing to `http://127.0.0.1:11435/v1`

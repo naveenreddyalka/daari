@@ -1,4 +1,10 @@
-# Routing eval prompts — placeholder
-# Full spec: docs/prd/routing-spec.md#golden-prompt-eval-set
-# Format: one JSON object per line
-# {"id":"GP-01","prompt":"...","expected_tier_mvp":"L0","expected_tier_v1":"L0"}
+{"id":"GP-01","prompt":"Write a one-line Python hello world function","expected_tier_mvp":"L3","expected_tier_v1":"L3","notes":"First request — routes to L3; repeat same prompt for L0 test"}
+{"id":"GP-02","prompt":"Is this a test file?\n\npublic class CalculatorTest {\n  @Test void adds() { assertEquals(2, calc.add(1,1)); }\n}","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-03","prompt":"Format as JSON: {foo: 1, bar: two}","expected_tier_mvp":"L3","expected_tier_v1":"L2"}
+{"id":"GP-04","prompt":"Write commit message for:\n\n diff --git a/foo.py b/foo.py\n +def hello(): return 'hi'","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-05","prompt":"Write commit message for:\n\n diff --git a/foo.py b/foo.py\n +def hello(): return 'hi'","expected_tier_mvp":"L0","expected_tier_v1":"L0","notes":"Identical to GP-04 — expect L0 after GP-04 cached"}
+{"id":"GP-06","prompt":"Run eslint on src/","expected_tier_mvp":"L3","expected_tier_v1":"Lt"}
+{"id":"GP-07","prompt":"git status","expected_tier_mvp":"L3","expected_tier_v1":"Lt"}
+{"id":"GP-08","prompt":"Explain microservices vs monolith architecture in detail with tradeoffs, examples, and when to choose each. At least 500 words.","expected_tier_mvp":"L3","expected_tier_v1":"L6"}
+{"id":"GP-09","prompt":"Add docstring to this function:\n\ndef add(a, b):\n    return a + b","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-10","prompt":"Refactor this 500-line class for SOLID principles:\n\nclass UserService:\n    # ... large class body omitted for eval ...","expected_tier_mvp":"L3","expected_tier_v1":"L5"}
