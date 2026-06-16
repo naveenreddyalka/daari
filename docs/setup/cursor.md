@@ -1,6 +1,6 @@
-# Manual Cursor setup — Phase A
+# Manual Cursor setup — Phase A fallback
 
-> Use this until `daari setup cursor` ships in Phase A.1.
+> Prefer automated setup: `daari setup cursor` (see [DEVELOPING.md](../DEVELOPING.md)).
 
 ## Prerequisites
 

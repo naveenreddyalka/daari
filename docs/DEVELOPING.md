@@ -10,7 +10,7 @@
 | **Ollama** | latest | [ollama.com](https://ollama.com) — local model runtime |
 | **git** | any recent | clone the repo |
 
-Optional: [Cursor](https://cursor.com) for IDE integration — see [docs/setup/cursor.md](setup/cursor.md) (manual until `daari setup cursor` ships fully).
+Optional: [Cursor](https://cursor.com) for IDE integration — run `daari setup cursor` or see [docs/setup/cursor.md](setup/cursor.md).
 
 ---
 
@@ -85,13 +85,19 @@ Routing evals (GP-01–GP-10) live in `tests/test_routing_eval.py`. Live Ollama 
 
 ---
 
-## Cursor setup (optional — other device)
+## Cursor setup (optional)
 
-Automated setup is in progress (`daari setup cursor --dry-run`). Until then, use the manual guide:
+Automated setup:
 
-→ **[docs/setup/cursor.md](setup/cursor.md)**
+```bash
+daari setup cursor --dry-run   # preview changes
+daari setup cursor             # backup + patch Cursor config
+daari setup --undo cursor      # restore latest backup
+```
 
-Phase A Cursor smoke test is deferred to user verification on the machine where Cursor is installed — not blocking Phase A completion.
+Or use the interactive wizard: `daari setup`
+
+Manual fallback: **[docs/setup/cursor.md](setup/cursor.md)**
 
 ---
 
@@ -116,13 +122,13 @@ Phase A Cursor smoke test is deferred to user verification on the machine where 
 
 | Item | Status |
 |------|--------|
-| `scripts/install.sh` | ✅ started |
-| `daari doctor` | ✅ started |
-| `daari setup cursor --dry-run` | ✅ started |
-| `daari setup cursor` (apply + backup) | ⬜ |
-| `daari setup --undo cursor` | ⬜ |
-| `daari setup` interactive wizard | ⬜ |
-| `daari setup models` | ⬜ |
+| `scripts/install.sh` | ✅ |
+| `daari doctor` | ✅ |
+| `daari setup cursor --dry-run` | ✅ |
+| `daari setup cursor` (apply + backup) | ✅ |
+| `daari setup --undo cursor` | ✅ |
+| `daari setup` interactive wizard | ✅ |
+| `daari setup models` | ✅ |
 | L6 frontier escalation (ADR-0001) | ⬜ deferred |
 
 See [ROADMAP Phase A.1](prd/ROADMAP.md#phase-a1--install--frontier-fallback) and [setup-spec](prd/setup-spec.md).
