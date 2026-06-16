@@ -16,7 +16,10 @@
 | **$0 tier** | L0, L1, L2, or Lt — zero marginal inference cost |
 | **CCS** | Command context store — reuse command output across turns |
 | **L2-live** | Live factual rule profile (weather, search) |
-| **Lt-fetch** | External API/search fetch (subset of Lt tool executor) |
+| **ProviderRegistry** | Plugin system for all backends (ground level Phase A) |
+| **IntegrationProvider** | Protocol — MCP, Sourcegraph, skills, open APIs, Google implement this |
+| **PolicyEngine** | Lt deny/ask/allow before execution — [ADR-0012](../adr/0012-execution-policy.md) |
+| **Lt-fetch** | External API/search fetch via registered providers (subset of Lt) |
 | **Router** | Classifies requests and selects tier |
 | **Executor** | Runs the work at a tier (tool, Ollama, frontier) |
 | **Frontier** | Cloud LLM providers (OpenAI, Anthropic) |

@@ -20,4 +20,10 @@ Status: proposed | accepted | deprecated
 | ADR-0003 | Tool-native execution tier (Lt) | accepted |
 | ADR-0004 | Agent tool-call compatibility | accepted |
 | ADR-0005 | Python tech stack for MVP | accepted |
-| ADR-0010 | Browser bridge + Google search for Lt-fetch | accepted |
+| ADR-0006 | Local daemon security | accepted |
+| ADR-0007 | Pluggable gateway adapters | accepted |
+| ADR-0008 | Developer command rules and context cache | accepted |
+| ADR-0009 | Live factual fetch (L2-live) | accepted |
+| ADR-0010 | Browser bridge + Google search | accepted |
+| ADR-0011 | Pluggable integration provider framework | accepted |
+| ADR-0012 | Execution policy (Lt) and CCS cache policy | accepted |

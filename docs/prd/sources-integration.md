@@ -1,7 +1,9 @@
 # Sources Integration — Open APIs + Google
 
 > **Status:** Draft  
-> **Related:** [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) · [ADR-0010](../adr/0010-browser-bridge-google-search.md) · [PRD](PRD.md)
+> **Related:** [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) · [ADR-0010](../adr/0010-browser-bridge-google-search.md) · [ADR-0011](../adr/0011-pluggable-integration-providers.md) · [integrations.md](integrations.md) · [PRD](PRD.md)
+
+Open API and Google providers are a **subset** of the unified [IntegrationProvider](integrations.md) framework — they register in `ProviderRegistry` like MCP and enterprise backends.
 
 ---
 

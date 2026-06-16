@@ -41,7 +41,7 @@ When L2-dev matches with `action: execute`, **Lt** runs the command:
 
 - Subprocess with cwd = project root (from config or detected git root)
 - Timeout, output size limits, allowlist/blocklist
-- Destructive commands require confirmation ([ADR-0003](0003-tool-native-tier.md))
+- Destructive commands require confirmation ([ADR-0003](0003-tool-native-tier.md), [ADR-0012](0012-execution-policy.md))
 
 ### 3. CCS — command context store (new cache layer)
 

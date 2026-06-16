@@ -99,9 +99,10 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 11. As a developer, I want daari to invoke local CLI tools (formatter, linter, git, build) when they satisfy the request, so that deterministic tooling is preferred over inference.
 12. As a developer, I want tool-native execution to work even when my primary UI is Cursor or Claude Code, so that daari bridges AI clients and non-AI backends.
 13. As a developer, I want daari to report when a response came from a tool vs a model, so that I understand what actually ran.
-14. As a developer, I want daari to require confirmation before Lt runs destructive IDE actions (rename, delete, mass refactor), so that tool-native dispatch cannot silently corrupt my codebase.
+14. As a developer, I want daari to require confirmation before Lt runs destructive IDE actions (rename, delete, mass refactor), so that tool-native dispatch cannot silently corrupt my codebase — see [ADR-0012](../adr/0012-execution-policy.md).
 
 **Lt phasing:** Phase B starts with **git, formatter, linter only** (non-destructive CLI). IntelliJ and destructive ops in Phase B.1 with confirmation gate — see [routing-spec](routing-spec.md#lt-matching-phase-b).
+
 ### Caching
 
 15. As a developer, I want exact-match caching keyed on prompt + relevant parameters, so that deterministic repeats hit L0.
@@ -194,7 +195,26 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 67. As a developer, I want Lt-fetch to try structured APIs first and Google/browser second (configurable priority), so that I balance speed, accuracy, and auth needs.
 68. As a developer, I want **both** open API integrations (Open-Meteo, etc.) **and** Google integrations (CSE API + browser) available—not one or the other—so that I can use the best source per query type.
 
-**Design:** [sources-integration.md](sources-integration.md) · [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) · [ADR-0010](../adr/0010-browser-bridge-google-search.md)
+### Enterprise & local integrations (provider framework)
+
+69. As a developer, I want a **pluggable provider registry** at daari's core, so that MCP servers, enterprise APIs, and skills can be added in later phases without rewriting the router.
+70. As a developer, I want to register **local or company MCP servers** (Sourcegraph, internal git, corp tools), so that code search and internal APIs run without an LLM.
+71. As a developer, I want to configure **enterprise APIs** (Sourcegraph, GitHub Enterprise, GitLab) in `integrations.yaml`, so that company-local services are first-class backends.
+72. As a developer, I want **skills** (packaged rules + provider actions) loadable from `.daari/skills/` or a skills repo, so that teams ship integrations without forking daari.
+
+**Design:** [integrations.md](integrations.md) · [ADR-0011](../adr/0011-pluggable-integration-providers.md)
+
+Live factual queries (stories 62–68): [sources-integration.md](sources-integration.md) · [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) · [ADR-0010](../adr/0010-browser-bridge-google-search.md)
+
+### Execution policy (Lt) & CCS cache policy
+
+73. As a developer, I want daari to apply a **deny / ask / allow** policy before any Lt execution, so that unknown or dangerous commands never run silently.
+74. As a developer, I want allowlists merged from global, user, and project config (`.daari/commands.yaml`), so that team-safe commands are explicit and blocklist always wins.
+75. As a developer, I want a confirmation flow for destructive or unlisted commands, so that I approve before IntelliJ rename or custom scripts run — [ADR-0012](../adr/0012-execution-policy.md).
+76. As a developer, I want sensitive or opted-out commands excluded from CCS, with TTL and redaction, so that cached command output does not leak secrets or go stale.
+77. As a developer, I want to invalidate or clear command context (`re-run`, `daari context clear`), so that I can force fresh execution when CCS would otherwise serve old output.
+
+**Lt phasing:** Phase B.0 = allowlist + blocklist + default deny unknown. Phase B.1 = confirmation gate + project commands + context clear CLI.
 
 ## Implementation Decisions
 
@@ -277,10 +297,13 @@ After Lt runs a command: write **CCS** always; write **L0** if full response is 
 ### Routing pipeline
 
 ```
-Request → normalize → L0? → L1? → L2? → Lt? (IDE/CLI) → classify → L3?
-                                              ↓ confidence fail
-                                         L4 → L5 → L6 (last resort)
+Request → normalize
+  → L0? → CCS? → L1? → L2-dev? → L2-live? → L2?
+  → PolicyEngine? → Lt? (shell | fetch | integration)
+  → classify → L3? → L4? → L5? → L6 (last resort)
 ```
+
+Lt branch runs only after PolicyEngine **ALLOW** (or confirmed ASK).
 
 ### Major modules (logical)
 
@@ -290,11 +313,14 @@ Request → normalize → L0? → L1? → L2? → Lt? (IDE/CLI) → classify →
 | **Router** | Task classification, tier selection, escalation logic |
 | **Cache** | L0 exact, L1 semantic, **CCS command context** |
 | **Rules** | L2 generic + **L2-dev** developer command registry |
-| **Tool executor** | IDE/CLI backend registry, dispatch, result formatting |
+| **Tool executor** | IDE/CLI backends + **ProviderRegistry** (MCP, enterprise APIs) |
 | **Model executor** | Ollama/local backends per tier L3–L5; frontier L6 |
+| **ProviderRegistry** | Ground-level plugin system — all backends register here ([ADR-0011](../adr/0011-pluggable-integration-providers.md)) |
+| **Integrations** | MCP servers, Sourcegraph, GHE, skills — config in `integrations.yaml` |
 | **Setup** | Install scripts, per-tool config recipes, detect, doctor |
 | **Observability** | Metrics, structured logs, CLI stats |
 | **Config** | Tier map, models, tools, thresholds, policies |
+| **PolicyEngine** | Lt deny/ask/allow; CCS eligibility — [ADR-0012](../adr/0012-execution-policy.md) |
 
 ### Architecture sketch
 
@@ -314,6 +340,7 @@ flowchart TB
         Router --> Cache
         Router --> Rules
         Router --> Tools[Tool Executor]
+        Router --> Providers[ProviderRegistry]
         Router --> Models[Model Executor]
         Router --> Obs[Metrics + Logs]
     end
@@ -322,6 +349,7 @@ flowchart TB
     Cache --> L1[L1 Semantic]
     Rules --> L2[L2 Rules]
     Tools --> Lt[Lt IntelliJ / git / lint / format]
+    Providers --> Integ[MCP / Sourcegraph / skills / APIs]
     Models --> L3[L3 SLM]
     Models --> L4[L4 Medium]
     Models --> L5[L5 Large]
@@ -334,7 +362,7 @@ flowchart TB
 
 - `POST /v1/chat/completions` — OpenAI-compatible (primary)
 - Headers: `X-Daari-Tier-Override`, `X-Daari-No-Cache`, `X-Daari-Prefer-Tool`
-- Response extension `daari_meta`: `{ tier, cache_hit, executor, tool, latency_ms, model }`
+- Response extension `daari_meta`: `{ tier, cache_hit, executor, provider_id, tool, latency_ms, model }`
 
 ### Setup module (MVP scope)
 
@@ -356,7 +384,7 @@ daari integrates **both** provider families for L2-live / Lt-fetch:
 | **Open APIs** | Open-Meteo, wttr.in, pluggable REST | C1 |
 | **Google** | Custom Search JSON API, browser extension + user auth | C1 + C2 |
 
-User configures priority in `sources.yaml`. Full spec: [sources-integration.md](sources-integration.md).
+User configures priority in `sources.yaml`. Full spec: [sources-integration.md](sources-integration.md) · Enterprise/MCP: [integrations.md](integrations.md)
 
 ### Client support matrix (honest)
 
@@ -458,6 +486,7 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 - Daemon + OpenAI-compatible gateway
 - L0 exact cache only
 - L3 single Ollama model + heuristic router (prompt length/keywords)
+- **`ProviderRegistry` + protocol (empty of enterprise; cache + ollama only)** — [ADR-0011](../adr/0011-pluggable-integration-providers.md)
 - CLI: `daari serve`, `daari stats`
 - **Manual** Cursor setup doc (automated `daari setup cursor` in Phase A.1)
 - 10-prompt eval set with tier labels
@@ -474,21 +503,29 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 ### Phase B — v1 (full local-first stack)
 - L1 semantic cache + L2 rules
 - **L2-dev + CCS** — developer command detect, execute, remember output ([ADR-0008](../adr/0008-developer-command-rules-and-context-cache.md))
+- **PolicyEngine** — allowlist, blocklist, confirmation ([ADR-0012](../adr/0012-execution-policy.md))
 - **Lt (B.0)** — git, formatter, linter, **shell commands** from L2-dev match
-- **Lt (B.1)** — IntelliJ CLI + destructive-op confirmation
+- **Lt (B.1)** — IntelliJ CLI + destructive-op confirmation + `daari context clear`
 - L4 medium model + confidence escalation to L6
 - Setup recipes: `claude-code`, `openai-compat`, `intellij`
 - `daari setup --all` + detect
 - Full routing regression tests
 
-### Phase C1 — v2a (agent + profiles)
+### Phase C1 — v2a (agent + profiles + integration foundation)
 - L5 large local tier
-- MCP server for agent introspection
+- MCP server for agent introspection + **MCP client** for local/corp servers
+- **ProviderRegistry plugins** + skills loader — [integrations.md](integrations.md)
+- L2-live + Lt-fetch (open APIs + Google CSE)
 - Per-project routing profiles
 
 ### Phase C2 — v2b (client expansion)
 - Anthropic-compat gateway (enables Claude Code setup)
 - Richer IntelliJ / IDE tool registry
+- Browser extension (Google auth for Lt-fetch)
+
+### Phase C3 — enterprise integrations
+- Sourcegraph, GitHub Enterprise, GitLab providers
+- Company MCP servers + `integrations.yaml` enterprise config
 
 ### Phase D — local learning & collective improvement (future)
 
@@ -522,7 +559,9 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 | Doc | Purpose |
 |-----|---------|
 | [ROADMAP.md](ROADMAP.md) | **Detailed phase plan** — languages, clients, tools per phase |
-| [sources-integration.md](sources-integration.md) | Open APIs + Google provider registry |
+| [integrations.md](integrations.md) | Provider framework, MCP, enterprise APIs |
+| [sources-integration.md](sources-integration.md) | Open APIs + Google |
+| [ADR-0012](../adr/0012-execution-policy.md) | Lt execution policy, CCS cache policy |
 | [routing-spec.md](routing-spec.md) | Classifier, confidence, golden prompts |
 | [setup-spec.md](setup-spec.md) | Install, setup recipes, undo |
 | [glossary.md](glossary.md) | Terms |
@@ -539,7 +578,31 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 ## Approval
 
 - [x] Step 1 — Problem & principles approved — 2026-06-15
-- [ ] Step 2 — Solution & tiers
-- [ ] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md) · [0007](../adr/0007-pluggable-gateway-adapters.md)
-- [ ] Specs reviewed: [routing-spec](routing-spec.md) · [setup-spec](setup-spec.md)
+- [x] Step 2 — Solution & tiers approved — 2026-06-15
+- [ ] Step 3 — User stories (full pass)
+- [ ] Step 4 — Architecture & modules
+- [ ] Step 5 — Phasing & MVP scope
+- [ ] Step 6 — Metrics & evals
+- [ ] Step 7 — Open decisions
+- [ ] Step 8 — Specs & ADRs sign-off
+- [ ] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md) · [0007](../adr/0007-pluggable-gateway-adapters.md) · [0008](../adr/0008-developer-command-rules-and-context-cache.md) · [0009](../adr/0009-live-factual-fetch-l2-live.md) · [0010](../adr/0010-browser-bridge-google-search.md) · [0011](../adr/0011-pluggable-integration-providers.md) · [0012](../adr/0012-execution-policy.md)
+- [ ] Specs reviewed: [routing-spec](routing-spec.md) · [setup-spec](setup-spec.md) · [integrations](integrations.md) · [sources-integration](sources-integration.md)
 - [ ] PRD v0.4 approved — *date: _________*
+
+### Step 2 — coverage notes (2026-06-15)
+
+**In scope for Step 2 (documented):** tier stack L0–L6 + L2-dev + L2-live + CCS + Lt; routing order; gateway adapters; ProviderRegistry; execution policy; live sources; enterprise integration framework.
+
+**Intentionally deferred (later steps / phases — not gaps blocking Step 2):**
+
+| Topic | Where handled | Phase |
+|-------|---------------|-------|
+| Streaming responses | Story #36 | A stretch / B |
+| Lt failure → L3 explain stderr | ADR-0012 opt-in `tools.explain_on_failure` | B.1+ |
+| Long-running / background commands | Timeout in ADR-0012; no job queue | B+ |
+| Session grants ("allow for 1h") | ADR-0012 non-goal | C+ |
+| File-watch / auto re-run on save | Out of product scope | — |
+| Multi-user / RBAC | Enterprise `allowed_providers` only | C1+ |
+| Image / multimodal routing | Not in tier model | Future |
+
+**Minor follow-ups (optional, not blocking):** align routing pipeline diagram with full order (include CCS, L2-dev, L2-live); add user story for offline/no-network mode when L6/L2-live unavailable.
