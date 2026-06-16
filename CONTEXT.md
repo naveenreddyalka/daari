@@ -9,10 +9,10 @@
 
 ## Current phase
 
-**Phase A.1 — Install & setup scaffold** (in progress)  
+**Phase A.1 — Install & setup** (complete)  
 Phase A tracer bullet **complete**: `daari serve`, L0 cache, L3 Ollama, OpenAI gateway, routing evals.
 
-**Last verified:** pytest green; `daari doctor` + `daari setup cursor --dry-run` scaffolded; install script added.
+**Last verified:** 24 pytest passing; `daari setup cursor`, `--undo`, wizard, and `setup models` shipped.
 
 **Key commits:** `cf50264` (Phase A scaffold), `6768fb8` (routing evals GP-01–GP-10).
 
@@ -57,15 +57,13 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 **Separate repo:** `agent-skills` only — reusable skills, not daari runtime.
 
-## Next tasks (Phase A.1)
+## Next tasks (Phase B)
 
-1. **`daari setup cursor`** — apply patches + backup (dry-run done)
-2. **`daari setup --undo cursor`** — restore backups
-3. **`daari setup`** — interactive wizard
-4. **`daari setup models`** — Ollama model picker
-5. **L6 frontier escalation** — per ADR-0001 (deferred unless trivial)
+1. **L6 frontier escalation** — per ADR-0001
+2. **`daari setup claude-code`** — when Anthropic gateway ships
+3. **`daari setup openai-compat`** — env var helper for generic SDK
 
-**Cursor smoke test:** deferred to user's personal machine — see [cursor.md](docs/setup/cursor.md).
+**Cursor smoke test:** run `daari setup cursor` on a machine with Cursor installed — see [cursor.md](docs/setup/cursor.md).
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 

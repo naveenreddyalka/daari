@@ -5,9 +5,11 @@ import json
 import typer
 import uvicorn
 
-from daari.clients.registry import default_registry
-from daari.config.settings import Settings, get_settings
+from daari.cli.setup_actions import apply_cursor_setup
+from daari.config.settings import get_settings
 from daari.setup.doctor import doctor_exit_code, run_doctor
+from daari.setup.models import setup_models_interactive
+from daari.setup.wizard import run_setup_wizard
 
 app = typer.Typer(
     name="daari",
@@ -73,6 +75,39 @@ def doctor() -> None:
         raise typer.Exit(code=code)
 
 
+@setup_app.callback(invoke_without_command=True)
+def setup_main(
+    ctx: typer.Context,
+    undo: str | None = typer.Option(
+        None,
+        "--undo",
+        metavar="TOOL",
+        help="Restore the latest backup for a setup tool.",
+    ),
+) -> None:
+    """Interactive setup wizard, or undo a previous setup."""
+    if undo:
+        from daari.clients.registry import default_registry
+
+        registry = default_registry()
+        recipe = registry.get(undo)
+        if recipe is None:
+            typer.echo(f"Unknown setup tool: {undo}", err=True)
+            raise typer.Exit(code=1)
+        try:
+            result = recipe.undo()
+        except FileNotFoundError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"Restored backup from {result.backup_dir}")
+        for path in result.files_restored:
+            typer.echo(f"  - {path}")
+        raise typer.Exit()
+
+    if ctx.invoked_subcommand is None:
+        run_setup_wizard()
+
+
 @setup_app.command("cursor")
 def setup_cursor(
     dry_run: bool = typer.Option(
@@ -80,44 +115,24 @@ def setup_cursor(
         "--dry-run",
         help="Show planned changes without writing files.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-apply even when already configured.",
+    ),
 ) -> None:
     """Configure Cursor to use the daari OpenAI-compat gateway."""
-    settings = get_settings()
-    registry = default_registry()
-    recipe = registry.get("cursor")
-    if recipe is None:
-        typer.echo("Cursor setup recipe not found.", err=True)
-        raise typer.Exit(code=1)
+    apply_cursor_setup(dry_run=dry_run, force=force)
 
-    base_url = f"http://{settings.server.host}:{settings.server.port}/v1"
-    plan = recipe.dry_run(base_url=base_url, api_key="daari-local", model_name="daari")
 
-    typer.echo(f"Cursor detected: {'yes' if plan.detected else 'no'}")
-    typer.echo("Settings paths:")
-    for path in plan.settings_paths:
-        typer.echo(f"  - {path}")
-
-    if plan.changes:
-        typer.echo("\nPlanned changes:")
-        for change in plan.changes:
-            typer.echo(f"  [{change.action}] {change.path}")
-            typer.echo(f"    {change.detail}")
-
-    if plan.notes:
-        typer.echo("\nNotes:")
-        for note in plan.notes:
-            typer.echo(f"  - {note}")
-
-    if dry_run:
-        typer.echo("\nDry-run complete — no files modified.")
-        return
-
-    typer.echo(
-        "\nAutomated patching not implemented yet. Use --dry-run to preview, "
-        "or follow docs/setup/cursor.md for manual setup.",
-        err=True,
-    )
-    raise typer.Exit(code=1)
+@setup_app.command("models")
+def setup_models(
+    tier: str = typer.Option("l3", "--tier", help="Model tier to configure."),
+    model: str | None = typer.Option(None, "--model", help="Model name (non-interactive)."),
+    list_models: bool = typer.Option(False, "--list", help="Show current tier map."),
+) -> None:
+    """Pick an Ollama model for a daari tier."""
+    setup_models_interactive(get_settings(), tier=tier, model=model, list_only=list_models)
 
 
 if __name__ == "__main__":

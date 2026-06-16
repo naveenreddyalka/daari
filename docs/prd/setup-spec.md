@@ -138,11 +138,17 @@ daari setup --undo cursor
 **Code:** `daari/clients/cursor/recipe.py`  
 **Manual doc:** [cursor.md](../setup/cursor.md)
 
-**Changes:**
-- Add custom model pointing to `http://127.0.0.1:11435/v1`
-- API key: `daari-local` (or match `DAARI_API_KEY`)
+**Changes (automated by `daari setup cursor`):**
+- Backs up `settings.json` and `state.vscdb` under `~/.daari/backups/cursor/<timestamp>/`
+- Patches `settings.json`: `openai.baseUrl`, `openai.apiKey`, and `daari.setup.cursor` marker
+- Patches Cursor `state.vscdb` application storage: `openAIBaseUrl`, `useOpenAIKey`, `availableAPIKeyModels`
+- Base URL: `http://127.0.0.1:11435/v1` (from user config)
+- API key: `daari-local` (or match `DAARI_API_KEY` in future)
+- Model name: `daari`
 
-**Manual fallback (Phase A):** Document in `docs/setup/cursor.md` — no automation.
+**Known limitation:** Cursor may store the OpenAI API key in OS secure storage on some versions. If chat still fails after setup, enter `daari-local` once in **Cursor Settings → Models → OpenAI API Key**. Restart Cursor after apply.
+
+**Manual fallback (Phase A):** Document in `docs/setup/cursor.md`.
 
 ---
 
