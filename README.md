@@ -8,6 +8,8 @@ Route dev agent work through local tiers (cache → IDE tools → local AI) inst
 
 ## Quick start (dev)
 
+Full pickup guide (clone, venv, smoke test, pytest): **[docs/DEVELOPING.md](docs/DEVELOPING.md)**
+
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
@@ -27,6 +29,7 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 
 | Doc | Purpose |
 |-----|---------|
+| [`docs/DEVELOPING.md`](docs/DEVELOPING.md) | Dev pickup — clone, run, test |
 | [`docs/plans/phase-a.md`](docs/plans/phase-a.md) | Phase A implementation plan |
 | [`docs/prd/PRD.md`](docs/prd/PRD.md) | Product requirements |
 | [`docs/setup/cursor.md`](docs/setup/cursor.md) | Manual Cursor setup |
