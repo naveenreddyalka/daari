@@ -9,7 +9,7 @@
 
 ## Current phase
 
-**Phase A — Tracer bullet MVP** — PRD v0.4 approved. Implementation plan ready. No application code yet.
+**Phase A — Tracer bullet MVP** — Python scaffold shipped; `daari serve` + L0 + L3 Ollama path.
 
 ## What daari is
 
