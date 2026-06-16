@@ -15,7 +15,8 @@
 | **L6** | Frontier cloud API (OpenAI/Anthropic) — last resort |
 | **$0 tier** | L0, L1, L2, or Lt — zero marginal inference cost |
 | **CCS** | Command context store — reuse command output across turns |
-| **L2-dev** | Developer command rule profile (detect run/test/script) |
+| **L2-live** | Live factual rule profile (weather, search) |
+| **Lt-fetch** | External API/search fetch (subset of Lt tool executor) |
 | **Router** | Classifies requests and selects tier |
 | **Executor** | Runs the work at a tier (tool, Ollama, frontier) |
 | **Frontier** | Cloud LLM providers (OpenAI, Anthropic) |

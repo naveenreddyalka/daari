@@ -46,7 +46,8 @@ For each incoming request, daari picks the **cheapest capable path**:
 | **L1** | Semantic cache | No |
 | **L2** | Rules / templates | No |
 | **L2-dev** | Developer command rules | No — detect run script/test/lint |
-| **CCS** | Command context store | No — reuse prior command output |
+| **L2-live** | Live factual rules | No — weather, search, prices — [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) |
+| **CCS** | Command context store | No — reuse prior command/output (incl. fetch results) |
 | **Lt** | Tool-native execution | **No** — run the command/tool |
 | **L3** | Small local model (SLM) | Yes — local |
 | **L4** | Medium local model | Yes — local |
@@ -182,6 +183,14 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 61. As a developer, I want daari to inject recent command context into the next agent response, so that follow-up questions ("what did lint say?") don't need a model or re-execution.
 
 **Design:** L2-dev rules detect → Lt executes → CCS remembers — [ADR-0008](../adr/0008-developer-command-rules-and-context-cache.md).
+
+### Live factual queries (L2-live + Lt-fetch)
+
+62. As a developer, I want daari to answer live factual questions (weather, prices, news) by fetching real sources—not hallucinating via a model—when a configured provider exists.
+63. As a developer, I want live fetch results cached briefly (CCS), so that "weather today?" twice in an hour doesn't re-hit the API or a model.
+64. As a developer, I want to configure external sources in `sources.yaml` (API keys, enable/disable), so that I control what leaves my machine and when.
+
+**Design:** L2-live detect → Lt-fetch (HTTP/API) → CCS — [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md). Browser automation deferred; structured APIs first.
 
 ## Implementation Decisions
 
