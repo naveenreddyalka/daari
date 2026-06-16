@@ -9,7 +9,7 @@
 
 ## Current phase
 
-**PRD v0.4 review** — plan issues 18/18 resolved. Specs + ADRs complete. Awaiting PRD approval before implementation.
+**PRD v0.4 review** — Step 1–2 approved. Steps 3–8 pending. Specs + ADRs complete. No application code yet.
 
 No application code yet.
 
@@ -31,10 +31,13 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 | Security | [0006](docs/adr/0006-local-daemon-security.md) localhost default |
 | Routing | [routing-spec](docs/prd/routing-spec.md) |
 | Setup | [setup-spec](docs/prd/setup-spec.md) |
+| Integration providers | [0011](docs/adr/0011-pluggable-integration-providers.md) — MCP, Sourcegraph, skills; ground level Phase A |
+| Execution policy | [0012](docs/adr/0012-execution-policy.md) — Lt deny/ask/allow, CCS cache policy |
+| Live sources | [sources-integration](docs/prd/sources-integration.md) · [integrations](docs/prd/integrations.md) |
 
 ## Next step
 
-Approve PRD v0.4 → write Phase A implementation plan.
+Approve PRD Steps 3–8 → write Phase A implementation plan.
 
 ## Related repos
 

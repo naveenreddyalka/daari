@@ -78,6 +78,7 @@ daari/gateway/
 | L0 exact cache | diskcache or SQLite | Hash(prompt + params) |
 | Model executor | httpx → Ollama | Single model, e.g. `llama3.2:3b` |
 | Router | Python heuristics | Logged; all requests → L3 unless L0 hit |
+| **ProviderRegistry** | Protocol + empty registry | cache + ollama providers only — [ADR-0011](../adr/0011-pluggable-integration-providers.md) |
 | CLI | Typer | `daari serve`, `daari stats` |
 | Config | pydantic-settings | `~/.daari/config.yaml` |
 | Eval | pytest + 10 prompts | From [routing-spec](routing-spec.md) GP-01–GP-10 |
@@ -147,26 +148,29 @@ daari/gateway/
 **Goal:** Semantic cache, rules, Lt CLI tools, multi-model, multi-client setup  
 **Language:** Python 3.12 (+ bash for any shell helpers)
 
-### B.0 — Cache, rules, L2-dev, CCS, Lt CLI
+### B.0 — Cache, rules, L2-dev, CCS, Lt CLI, execution policy
 
 | Component | Tech |
 |-----------|------|
 | L1 semantic cache | sqlite-vec + Ollama embeddings |
 | L2 rules engine | Python regex/templates |
-| **L2-dev** | Developer command patterns + `.daari/commands.yaml` |
+| **L2-dev** | Developer command patterns |
 | **CCS** | Command context store in `~/.daari/context/` |
+| **PolicyEngine B.0** | Allowlist + blocklist + default deny unknown — [ADR-0012](../adr/0012-execution-policy.md) |
+| **CCS policy** | TTL, sensitive skip, redaction, size limits |
 | **Lt B.0** | Python subprocess → git, eslint, prettier, **shell from L2-dev** |
 | L4 medium model | Second Ollama model (e.g. `llama3.1:8b`) |
 | Hybrid classifier | Heuristics + optional SLM |
 | `daari setup openai-compat` | Python — print/export env vars |
 | Eval expansion | 20 prompts GP-01–GP-20 |
 
-### B.1 — Lt IDE + confirmation
+### B.1 — Lt IDE + confirmation + project commands
 
 | Component | Tech |
 |-----------|------|
 | **Lt B.1** | Python subprocess → **IntelliJ** `idea` CLI |
-| Destructive op gate | `X-Daari-Confirm-Tool` header |
+| **PolicyEngine B.1** | Confirmation gate (`X-Daari-Confirm-Tool`), `.daari/commands.yaml` merge |
+| **`daari context clear`** | Invalidate CCS for repo/command |
 | `daari setup intellij` | Python — register IDE path in config |
 
 ### Clients supported (end of Phase B)
@@ -188,33 +192,23 @@ daari/gateway/
 
 ---
 
-## Phase C1 — Agent & profiles (v2a)
+## Phase C1 — Agent, live sources & integration foundation (v2a)
 
 **Duration:** ~3–4 weeks  
+**Goal:** L2-live + Lt-fetch, MCP client, provider plugins, profiles  
 **Language:** Python (+ TypeScript if UI started)
 
 | Component | Tech |
 |-----------|------|
 | L5 large local model | Ollama (e.g. `llama3.1:70b` q4 or best fit) |
-| MCP server | Python (FastMCP or official SDK) |
+| MCP server (ingress) | Python — agents query daari |
+| **MCP client (egress)** | Call local/corp MCP servers — [integrations.md](integrations.md) |
+| **ProviderRegistry plugins** | `entry_points`, `.daari/providers/` |
+| **Skills loader** | `.daari/skills/*.yaml` |
 | Per-project profiles | YAML in `.daari.yaml` per repo |
-| Optional stats UI | TypeScript + React (separate package) — reads localhost API |
+| Optional stats UI | TypeScript + React — reads localhost API |
 
-### Clients
-
-| Client | New capability |
-|--------|----------------|
-| MCP agents | Query routing decisions natively |
-| All OpenAI-compat | Per-project tier maps |
-
----
-
----
-
-## Phase C1 — Live sources (open APIs + Google CSE)
-
-**Duration:** ~2–3 weeks  
-**Goal:** L2-live + Lt-fetch with **both** open APIs and Google Search API
+### Live source providers (Lt-fetch)
 
 | Provider family | Ships | Language |
 |-----------------|-------|----------|
@@ -224,7 +218,15 @@ daari/gateway/
 | **Google Custom Search API** | Search, weather snippets, news | Python |
 | **sources.yaml** | Priority + keys | YAML config |
 
-Spec: [sources-integration.md](sources-integration.md)
+Spec: [sources-integration.md](sources-integration.md) (subset of [IntegrationProvider](integrations.md))
+
+### Clients
+
+| Client | New capability |
+|--------|----------------|
+| MCP agents | Query routing decisions natively |
+| All OpenAI-compat | Per-project tier maps |
+| Corp MCP servers | daari calls tools on VPN/local network |
 
 ---
 
@@ -251,6 +253,22 @@ Spec: [sources-integration.md](sources-integration.md)
 | **IntelliJ** | Lt + optional plugin | ✅ |
 | **VS Code** | Lt via CLI | ✅ |
 | **Future UI** | TS dashboard | Optional |
+
+---
+
+## Phase C3 — Enterprise integrations
+
+**Duration:** ~2–3 weeks after C2  
+**Goal:** Company-local APIs without LLM — Sourcegraph, GHE, GitLab, custom corp plugins
+
+| Integration | Provider |
+|-------------|----------|
+| Sourcegraph | `daari-provider-sourcegraph` or builtin |
+| GitHub Enterprise | REST provider |
+| GitLab self-hosted | REST provider |
+| Custom corp APIs | Generic HTTP provider + skills |
+
+Spec: [integrations.md](integrations.md) · [ADR-0011](../adr/0011-pluggable-integration-providers.md)
 
 ---
 

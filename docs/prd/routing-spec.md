@@ -286,5 +286,6 @@ File: `evals/routing/prompts.jsonl` (to be created at implementation)
 | Item | ADR / doc |
 |------|-----------|
 | Tool-call cache/routing | ADR-0004 |
-| Lt destructive confirmation | ADR-0003, PRD user story #53 |
+| Lt destructive confirmation | ADR-0003, ADR-0012, PRD #14, #75 |
+| Execution policy (allow/deny/ask) | ADR-0012 |
 | Semantic cache thresholds | OD-3 |
