@@ -431,6 +431,8 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 - Anthropic-compat gateway (enables Claude Code setup)
 - Richer IntelliJ / IDE tool registry
 
+**Detailed breakdown:** [ROADMAP.md](ROADMAP.md) — languages, clients, and tools per phase.
+
 ## Open Decisions
 
 | ID | Question | Options | Status |
@@ -447,6 +449,7 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 | Doc | Purpose |
 |-----|---------|
+| [ROADMAP.md](ROADMAP.md) | **Detailed phase plan** — languages, clients, tools per phase |
 | [routing-spec.md](routing-spec.md) | Classifier, confidence, golden prompts |
 | [setup-spec.md](setup-spec.md) | Install, setup recipes, undo |
 | [glossary.md](glossary.md) | Terms |
