@@ -45,7 +45,9 @@ For each incoming request, daari picks the **cheapest capable path**:
 | **L0** | Exact cache | No |
 | **L1** | Semantic cache | No |
 | **L2** | Rules / templates | No |
-| **Lt** | Tool-native (IDE, CLI, linter, git, etc.) | **No** |
+| **L2-dev** | Developer command rules | No — detect run script/test/lint |
+| **CCS** | Command context store | No — reuse prior command output |
+| **Lt** | Tool-native execution | **No** — run the command/tool |
 | **L3** | Small local model (SLM) | Yes — local |
 | **L4** | Medium local model | Yes — local |
 | **L5** | Large local model | Yes — local |
@@ -172,6 +174,17 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 56. As a developer, I want optional local fine-tuning or adapter training from my session data, so that a personal local model gets better for my codebase and workflow.
 57. As a developer, I want to opt in to share anonymized routing feedback, so that future daari releases improve defaults for everyone — without sharing my code or prompts by default.
 
+### Developer commands & context (L2-dev + CCS)
+
+58. As a developer, I want daari to recognize when I'm asking to run a basic command or script (not generate prose), so that it executes locally instead of calling a model.
+59. As a developer, I want executed command output stored in a **command context cache (CCS)**, so that repeat questions reuse prior results without re-running.
+60. As a developer, I want my project to define safe commands in `.daari/commands.yaml`, so that team/enterprise workflows are allowlisted and reusable.
+61. As a developer, I want daari to inject recent command context into the next agent response, so that follow-up questions ("what did lint say?") don't need a model or re-execution.
+
+**Design:** L2-dev rules detect → Lt executes → CCS remembers — [ADR-0008](../adr/0008-developer-command-rules-and-context-cache.md).
+
+## Implementation Decisions
+
 ### Product shape
 
 daari is an **end-to-end local platform**, not just a proxy:
@@ -236,15 +249,17 @@ daari setup --all     # Phase B: configure detected tools
 | L0 | Exact cache | Hash(prompt + params) | No | Identical repeats |
 | L1 | Semantic cache | Local embedding similarity | No | Paraphrased repeats |
 | L2 | Rules | Templates, regex, parsers | No | JSON format, field extract |
-| **Lt** | **Tool-native** | IDE/CLI subprocess, APIs | **No** | Rename, refactor, lint, format, git ops |
+| **L2-dev** | Dev command rules | Pattern registry + `.daari/commands.yaml` | No | Detect run/test/lint/script intent |
+| **CCS** | Command context | Prior run output keyed by command+cwd+repo | No | Reuse output; "what did test show?" |
+| **Lt** | Tool-native | IDE/CLI subprocess, APIs | **No** | Execute command after L2-dev match |
 | L3 | SLM | ~1–3B local model | Local | Classify, short extract |
 | L4 | Medium | ~7–8B local model | Local | Docstrings, small codegen |
 | L5 | Large local | ~13B+ quantized | Local | Heavier local generation |
 | L6 | Frontier | OpenAI / Anthropic API | Cloud | Last resort — low confidence |
 
-**Routing order:** L0 → L1 → L2 → **Lt** → L3 → (confidence check) → L4 → L5 → L6
+**Routing order:** L0 → **CCS** → L1 → **L2-dev** → L2 → **Lt** → L3 → (confidence) → L4 → L5 → L6
 
-Tool-native (Lt) is tried **before** any local model when the router identifies a mappable IDE/CLI operation.
+After Lt runs a command: write **CCS** always; write **L0** if full response is cacheable.
 
 ### Routing pipeline
 
@@ -260,8 +275,8 @@ Request → normalize → L0? → L1? → L2? → Lt? (IDE/CLI) → classify →
 |--------|----------------|
 | **Gateway** | Pluggable adapters (OpenAI first) → canonical internal model → router |
 | **Router** | Task classification, tier selection, escalation logic |
-| **Cache** | Exact + semantic stores, TTL, invalidation |
-| **Rules** | Deterministic handlers registry |
+| **Cache** | L0 exact, L1 semantic, **CCS command context** |
+| **Rules** | L2 generic + **L2-dev** developer command registry |
 | **Tool executor** | IDE/CLI backend registry, dispatch, result formatting |
 | **Model executor** | Ollama/local backends per tier L3–L5; frontier L6 |
 | **Setup** | Install scripts, per-tool config recipes, detect, doctor |
@@ -434,7 +449,8 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 ### Phase B — v1 (full local-first stack)
 - L1 semantic cache + L2 rules
-- **Lt tool-native tier (B.0)** — git, formatter, linter only (non-destructive)
+- **L2-dev + CCS** — developer command detect, execute, remember output ([ADR-0008](../adr/0008-developer-command-rules-and-context-cache.md))
+- **Lt (B.0)** — git, formatter, linter, **shell commands** from L2-dev match
 - **Lt (B.1)** — IntelliJ CLI + destructive-op confirmation
 - L4 medium model + confidence escalation to L6
 - Setup recipes: `claude-code`, `openai-compat`, `intellij`
