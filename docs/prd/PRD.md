@@ -189,8 +189,11 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 62. As a developer, I want daari to answer live factual questions (weather, prices, news) by fetching real sources—not hallucinating via a model—when a configured provider exists.
 63. As a developer, I want live fetch results cached briefly (CCS), so that "weather today?" twice in an hour doesn't re-hit the API or a model.
 64. As a developer, I want to configure external sources in `sources.yaml` (API keys, enable/disable), so that I control what leaves my machine and when.
+65. As a developer, I want daari to use **Google Search** (official API or browser with my Google login) for live facts, so that one source covers weather, news, and general queries without an LLM.
+66. As a developer, I want a **browser extension** paired to daari that uses my existing Google session, so that I don't store Google credentials in daari but still get authenticated search results.
+67. As a developer, I want Lt-fetch to try structured APIs first and Google/browser second (configurable priority), so that I balance speed, accuracy, and auth needs.
 
-**Design:** L2-live detect → Lt-fetch (HTTP/API) → CCS — [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md). Browser automation deferred; structured APIs first.
+**Design:** [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) · [ADR-0010](../adr/0010-browser-bridge-google-search.md)
 
 ## Implementation Decisions
 
@@ -266,7 +269,7 @@ daari setup --all     # Phase B: configure detected tools
 | L5 | Large local | ~13B+ quantized | Local | Heavier local generation |
 | L6 | Frontier | OpenAI / Anthropic API | Cloud | Last resort — low confidence |
 
-**Routing order:** L0 → **CCS** → L1 → **L2-dev** → L2 → **Lt** → L3 → (confidence) → L4 → L5 → L6
+**Routing order:** L0 → **CCS** → L1 → **L2-dev** → **L2-live** → L2 → **Lt** (shell | fetch) → L3 → … → L6
 
 After Lt runs a command: write **CCS** always; write **L0** if full response is cacheable.
 

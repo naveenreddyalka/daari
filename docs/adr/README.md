@@ -20,4 +20,4 @@ Status: proposed | accepted | deprecated
 | ADR-0003 | Tool-native execution tier (Lt) | accepted |
 | ADR-0004 | Agent tool-call compatibility | accepted |
 | ADR-0005 | Python tech stack for MVP | accepted |
-| ADR-0009 | Live factual fetch (L2-live, Lt-fetch) | accepted |
+| ADR-0010 | Browser bridge + Google search for Lt-fetch | accepted |
