@@ -46,7 +46,7 @@
 
 ## Phase A.1 — Install & setup (+ frontier fallback per ROADMAP)
 
-**Status:** In progress — setup stack shipped; L6 / `daari install` not started
+**Status:** Setup stack complete (`aaf3f06`); **L6 escalation** and **`daari install`** remain
 
 **Merged commits (main):**
 
