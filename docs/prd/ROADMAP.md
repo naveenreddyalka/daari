@@ -147,13 +147,15 @@ daari/gateway/
 **Goal:** Semantic cache, rules, Lt CLI tools, multi-model, multi-client setup  
 **Language:** Python 3.12 (+ bash for any shell helpers)
 
-### B.0 — Cache, rules, Lt CLI
+### B.0 — Cache, rules, L2-dev, CCS, Lt CLI
 
 | Component | Tech |
 |-----------|------|
-| L1 semantic cache | sqlite-vec + Ollama embeddings (`nomic-embed-text`) |
-| L2 rules engine | Python regex/templates registry |
-| **Lt B.0** | Python subprocess → **git**, **eslint**, **prettier** |
+| L1 semantic cache | sqlite-vec + Ollama embeddings |
+| L2 rules engine | Python regex/templates |
+| **L2-dev** | Developer command patterns + `.daari/commands.yaml` |
+| **CCS** | Command context store in `~/.daari/context/` |
+| **Lt B.0** | Python subprocess → git, eslint, prettier, **shell from L2-dev** |
 | L4 medium model | Second Ollama model (e.g. `llama3.1:8b`) |
 | Hybrid classifier | Heuristics + optional SLM |
 | `daari setup openai-compat` | Python — print/export env vars |

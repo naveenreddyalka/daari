@@ -14,7 +14,8 @@
 | **L5** | Large local model |
 | **L6** | Frontier cloud API (OpenAI/Anthropic) — last resort |
 | **$0 tier** | L0, L1, L2, or Lt — zero marginal inference cost |
-| **Gateway** | Pluggable wire-format adapters (not tied to OpenAI long-term) |
+| **CCS** | Command context store — reuse command output across turns |
+| **L2-dev** | Developer command rule profile (detect run/test/script) |
 | **Router** | Classifies requests and selects tier |
 | **Executor** | Runs the work at a tier (tool, Ollama, frontier) |
 | **Frontier** | Cloud LLM providers (OpenAI, Anthropic) |

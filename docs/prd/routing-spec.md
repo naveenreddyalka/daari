@@ -18,15 +18,17 @@ Define **how** daari classifies requests, selects tiers, scores confidence, and 
 1. Normalize request
 2. Check headers (X-Daari-Tier-Override, X-Daari-No-Cache)
 3. L0 exact cache lookup
-4. L1 semantic cache lookup        [Phase B]
-5. L2 rules match                  [Phase B]
-6. Lt tool-native match            [Phase B — git/lint/format only at first]
-7. Classify task → initial model tier (L3 default in MVP)
-8. Execute at tier
-9. Confidence check on result      [Phase A.1 for L6 escalation]
-10. Escalate L3 → L4 → L5 → L6 if below threshold
-11. Cache write (if cacheable)
-12. Return response + daari_meta
+4. CCS command context lookup           [Phase B — ADR-0008]
+5. L1 semantic cache lookup              [Phase B]
+6. L2-dev developer command rules        [Phase B — ADR-0008]
+7. L2 generic rules match              [Phase B]
+8. Lt tool-native match / execute        [Phase B]
+9. Classify task → initial model tier (L3 default in MVP)
+10. Execute at tier
+11. Confidence check on result           [Phase A.1 for L6 escalation]
+12. Escalate L3 → L4 → L5 → L6 if below threshold
+13. Cache write: CCS after Lt; L0 if cacheable
+14. Return response + daari_meta
 ```
 
 **MVP (Phase A):** Steps 1–3, 7 (heuristic only), 8 at L3 only, 11–12. No L1/L2/Lt/L4/L5/L6.
@@ -136,6 +138,60 @@ confidence:
 frontier:
   enabled: true
 ```
+
+---
+
+## L2-dev — developer command rules (Phase B)
+
+**Purpose:** Fine-tuned for coding/enterprise — detect **execute command** vs **ask model**.
+
+| Rule ID | Trigger (regex / intent) | Action | Lt command |
+|---------|--------------------------|--------|------------|
+| DEV-01 | `(?i)^(run \|execute )?(git status)` | execute | `git status` |
+| DEV-02 | `(?i)^(run \|execute )?(git diff)` | execute | `git diff` |
+| DEV-03 | `(?i)(run tests\|npm test\|pytest)` | execute | project test command from config |
+| DEV-04 | `(?i)(run lint\|eslint\|run linter)` | execute | lint command from config |
+| DEV-05 | `(?i)run (script )?(\./[\w./-]+\.(sh\|py))` | execute | script path (validated under repo) |
+| DEV-06 | `(?i)(what did (test\|lint) (say\|show)\|last test output)` | **ccs_read** | no execution — inject CCS |
+| DEV-07 | `(?i)(re-run\|run again) (tests\|lint)` | execute + invalidate CCS | force fresh Lt run |
+
+**Project overrides:** `.daari/commands.yaml` maps intent aliases → shell command (enterprise teams).
+
+```yaml
+# .daari/commands.yaml example
+commands:
+  test: "npm test"
+  lint: "npm run lint"
+  build: "./gradlew build"
+allow_scripts:
+  - "./scripts/ci-check.sh"
+```
+
+---
+
+## CCS — command context store (Phase B)
+
+**Not L0.** Stores **execution results** for developer reuse.
+
+**Key:**
+```
+SHA256(repo_root + cwd + normalized_command)
+```
+
+**On Lt execute success:** write CCS entry (stdout summary + path to full log, exit code, TTL).
+
+**On DEV-06 / readonly query:** return CCS content in response; tier = `CCS` in daari_meta.
+
+**TTL defaults:**
+
+| Command type | TTL |
+|--------------|-----|
+| `git status`, `git diff` | 60s |
+| test/lint | 300s |
+| build | 600s |
+| scripts | configurable |
+
+**Headers:** `X-Daari-ReRun-Command: true` bypasses CCS read.
 
 ---
 
