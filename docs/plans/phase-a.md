@@ -9,10 +9,10 @@
 
 ## Exit criteria (from ROADMAP)
 
-- [ ] Second identical prompt hits **L0**
-- [ ] `daari stats` shows tier breakdown
-- [ ] Cursor works via [manual setup](../setup/cursor.md)
-- [ ] 10 eval prompts (GP-01–GP-10) pass MVP criteria
+- [x] Second identical prompt hits **L0**
+- [x] `daari stats` shows tier breakdown
+- [ ] Cursor works via [manual setup](../setup/cursor.md) — doc verified; needs user smoke test in Cursor
+- [x] 10 eval prompts (GP-01–GP-10) pass MVP criteria (`tests/test_routing_eval.py`)
 
 ---
 
