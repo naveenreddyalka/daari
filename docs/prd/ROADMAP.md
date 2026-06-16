@@ -209,13 +209,33 @@ daari/gateway/
 
 ---
 
-## Phase C2 — Client expansion (v2b)
+---
+
+## Phase C1 — Live sources (open APIs + Google CSE)
+
+**Duration:** ~2–3 weeks  
+**Goal:** L2-live + Lt-fetch with **both** open APIs and Google Search API
+
+| Provider family | Ships | Language |
+|-----------------|-------|----------|
+| **Open-Meteo** | Weather | Python |
+| **wttr.in** | Weather fallback | Python |
+| **Generic REST** | Pluggable open APIs | Python |
+| **Google Custom Search API** | Search, weather snippets, news | Python |
+| **sources.yaml** | Priority + keys | YAML config |
+
+Spec: [sources-integration.md](sources-integration.md)
+
+---
+
+## Phase C2 — Client expansion + browser Google auth (v2b)
 
 **Duration:** ~3–4 weeks  
 **Language:** Python gateway + optional Kotlin (IntelliJ plugin)
 
 | Component | Tech | Language |
 |-----------|------|----------|
+| **Browser extension** (Google auth) | Search via user session | **TypeScript** |
 | **Anthropic-compat gateway** | Second HTTP router | Python |
 | `daari setup claude-code` | Config patch | Python |
 | Richer IntelliJ registry | More refactor intents | Python CLI → **Kotlin plugin** if CLI insufficient |
