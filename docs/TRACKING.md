@@ -1,112 +1,98 @@
-# daari — implementation tracking
+# daari — Task tracking
 
-> Living checklist for phase delivery. Update when tasks land or exit criteria change.  
-> **Last updated:** 2026-06-16  
-> **Tests:** 24 pytest passing (`pytest` in project venv)
+> Last updated: 2026-06-16  
+> Update this file when phases/tasks complete.
 
-**Plans:** [Phase A](plans/phase-a.md) · [ROADMAP Phase A.1+](prd/ROADMAP.md) · [PRD](prd/PRD.md)
+## Legend
 
----
-
-## Phase A — Tracer bullet (L0 + L3 + OpenAI gateway)
-
-**Status:** Complete (exit criteria met)
-
-| # | Task | Status |
-|---|------|--------|
-| A1 | Scaffold — `pyproject.toml`, Typer CLI | [x] `cf50264` |
-| A2 | Config — `Settings` / `~/.daari/config.yaml` | [x] |
-| A3 | Internal model — `InternalRequest` / `InternalResponse` | [x] |
-| A4 | L0 exact cache | [x] |
-| A5 | ProviderRegistry — cache + Ollama | [x] |
-| A6 | OpenAI gateway — `POST /v1/chat/completions` | [x] |
-| A7 | FastAPI server — `daari serve` | [x] |
-| A8 | Ollama executor (L3) | [x] |
-| A9 | Router — L0 → L3 | [x] |
-| A10 | Metrics / tier counters | [x] |
-| A11 | `daari stats` | [x] |
-| A12 | Agent passthrough (tool_calls skip L0) | [x] |
-| A13 | `X-Daari-No-Cache`, tier override headers | [x] |
-| A14 | Ollama-down → clear 503 | [x] |
-| A15 | Eval file GP-01–GP-10 | [x] |
-| A16 | Routing eval pytest | [x] `6768fb8` |
-| A17 | Live Ollama integration (optional skip) | [x] |
-| A18 | Manual Cursor doc | [x] [setup/cursor.md](setup/cursor.md) |
-| A19 | Dev pickup docs | [x] [DEVELOPING.md](DEVELOPING.md) |
-| A20 | Streaming SSE | [ ] Deferred (documented in PRD) |
-
-### Phase A exit criteria
-
-- [x] Second identical prompt hits **L0**
-- [x] `daari stats` shows tier breakdown
-- [~] Cursor via manual setup — **smoke test on a machine with Cursor installed** (non-blocking)
-- [x] GP-01–GP-10 eval prompts pass (`tests/test_routing_eval.py`)
+- [x] done  [ ] pending  [~] in progress  [-] deferred
 
 ---
 
-## Phase A.1 — Install & setup (+ frontier fallback per ROADMAP)
+## Phase A — Tracer bullet
 
-**Status:** Setup stack complete (`aaf3f06`); **L6 escalation** and **`daari install`** remain
+| Task | Status | Notes |
+|------|--------|-------|
+| Scaffold (`pyproject.toml`, Typer CLI) | [x] | `cf50264` |
+| Config (`Settings`, `~/.daari/config.yaml`) | [x] | |
+| Internal model (`InternalRequest` / `InternalResponse`) | [x] | |
+| L0 exact cache | [x] | diskcache |
+| ProviderRegistry (cache + Ollama) | [x] | |
+| OpenAI gateway (`POST /v1/chat/completions`) | [x] | |
+| FastAPI server (`daari serve`) | [x] | port 11435 |
+| Ollama executor (L3) | [x] | |
+| Router L0 → L3 | [x] | |
+| Metrics / `daari stats` | [x] | |
+| Agent passthrough (tool_calls skip L0) | [x] | ADR-0004 |
+| `X-Daari-No-Cache` / tier override headers | [x] | |
+| Ollama-down → 503 | [x] | |
+| Eval file GP-01–GP-10 | [x] | |
+| Routing eval pytest | [x] | `6768fb8` |
+| Live Ollama integration test (optional) | [x] | skipped without `OLLAMA_HOST` |
+| Manual Cursor doc | [x] | [setup/cursor.md](setup/cursor.md) |
+| Dev pickup docs | [x] | [DEVELOPING.md](DEVELOPING.md) |
+| Streaming SSE | [-] | deferred per PRD |
 
-**Merged commits (main):**
+**Exit criteria**
 
-| Commit | What |
-|--------|------|
-| `13a2345` | `install.sh`, `daari doctor`, Cursor recipe scaffold (dry-run), DEVELOPING handoff |
-| `aaf3f06` | Cursor **apply** + **backup/undo**, interactive **`daari setup`** wizard, **`daari setup models`**, `tests/test_setup.py` |
-
-### Ships (ROADMAP)
-
-| Component | Status | Notes |
+| Criterion | Status | Notes |
 |-----------|--------|-------|
-| `./scripts/install.sh` | [x] | bash venv + pip + Ollama pull |
-| `daari install` (Typer) | [ ] | ROADMAP item — use script today |
+| Second identical prompt hits L0 | [x] | |
+| `daari stats` shows tier breakdown | [x] | |
+| Cursor via manual setup | [~] | doc ready; user smoke test deferred |
+| GP-01–GP-10 pass MVP criteria | [x] | `tests/test_routing_eval.py` |
+
+**Tests:** 24 pytest passing (`pytest` in project venv)
+
+---
+
+## Phase A.1 — Install & setup
+
+| Task | Status | Notes |
+|------|--------|-------|
+| `scripts/install.sh` | [x] | venv + pip + Ollama pull; `13a2345` |
 | `daari doctor` | [x] | `daari/setup/doctor.py` |
-| `daari setup cursor` | [x] | apply + `--dry-run` + `--force` |
-| `daari setup --undo cursor` | [x] | backup restore via `daari/setup/backup.py` |
-| Interactive `daari setup` | [x] | `daari/setup/wizard.py` |
+| `daari setup cursor --dry-run` | [x] | |
+| `daari setup cursor` (apply + backup) | [x] | `aaf3f06` |
+| `daari setup --undo cursor` | [x] | `daari/setup/backup.py` |
+| Interactive `daari setup` wizard | [x] | `daari/setup/wizard.py` |
 | `daari setup models` | [x] | `daari/setup/models.py` |
 | JSONC patch helpers | [x] | `daari/setup/jsonc.py` |
-| L6 frontier executor | [ ] | Phase A.1 ROADMAP — not in tree |
-| Confidence scoring → L6 | [ ] | Per [routing-spec](prd/routing-spec.md) |
+| Setup tests | [x] | `tests/test_setup.py` |
+| `daari install` (Typer) | [ ] | ROADMAP item — use `install.sh` today |
+| L6 frontier executor | [ ] | not in tree |
+| Confidence scoring → L6 | [ ] | per [routing-spec](prd/routing-spec.md) |
 
-### Phase A.1 exit criteria (ROADMAP)
+**Exit criteria**
 
-- [~] `./install.sh && daari doctor` passes — **automated in CI/dev; run on fresh clone to confirm**
-- [x] `daari setup cursor --dry-run` shows planned diff (covered by `tests/test_setup.py`)
-- [ ] Low-confidence local response escalates to **L6** (requires keys + executor)
+| Criterion | Status | Notes |
+|-----------|--------|-------|
+| `./install.sh && daari doctor` passes | [~] | run on fresh clone to confirm |
+| `daari setup cursor --dry-run` shows diff | [x] | covered by tests |
+| Low-confidence response escalates to L6 | [ ] | needs executor + API keys |
 
-### Remaining before calling A.1 “done”
-
-1. **L6 escalation** + confidence scoring (ADR-0001)
-2. **`daari install`** Typer parity with `install.sh` (optional polish)
-3. **Cursor smoke test** on hardware with Cursor — [cursor.md](setup/cursor.md)
-4. Re-run **`./install.sh && daari doctor`** on a clean machine and check off exit criterion
-
----
-
-## Phase B+ — Preview (deferred)
-
-Per [ROADMAP](prd/ROADMAP.md): L1 semantic cache, L2 rules, L2-dev, CCS, Lt CLI, PolicyEngine, multi-model, `daari setup openai-compat`, Anthropic gateway (Phase C), MCP, etc.
-
-**Next engineering focus:** Phase B.0 cache/rules/Lt CLI stack; Phase B frontier items overlap with unfinished A.1 L6 work.
+**Key commits:** `13a2345` (scaffold), `aaf3f06` (apply, undo, wizard, models)
 
 ---
 
-## Test inventory
+## Phase B (preview — not started)
 
-| Suite | File | Count (approx.) |
-|-------|------|-----------------|
-| L0 / router / gateway | `test_*.py` (excl. setup, doctor, eval) | — |
-| Routing evals GP-01–GP-10 | `test_routing_eval.py` | — |
-| Doctor | `test_doctor.py` | — |
-| Setup (cursor, undo, wizard, models) | `test_setup.py` | — |
-| **Total** | | **24 passed** (2026-06-16) |
+Per [ROADMAP](prd/ROADMAP.md): L1 semantic cache, L2 rules, L2-dev, CCS, Lt CLI, PolicyEngine, L4 medium model, `daari setup openai-compat`, eval expansion GP-01–GP-20. L6 overlap with unfinished A.1 work.
 
 ---
 
-## How to update this file
+## Deferred / user-owned
 
-1. Mark tasks `[x]` when merged to `main` with a commit hash in the table if helpful.
-2. Refresh **Last updated** and pytest count after meaningful test changes.
-3. Keep Phase B+ as preview only — detail lives in ROADMAP / phase plans.
+- Cursor smoke test on personal device (`daari setup cursor` + chat through daari)
+- L6 frontier escalation (ADR-0001) — moved to Phase B entry or finish in A.1
+- Streaming SSE for L3
+- `daari install` Typer parity with `install.sh` (optional polish)
+
+---
+
+## How to update
+
+1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
+2. Refresh **Last updated** and pytest count after test changes.
+3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
+4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md).
