@@ -25,3 +25,5 @@
 | **Frontier** | Cloud LLM providers (OpenAI, Anthropic) |
 | **Local-first** | Prefer on-machine tiers before cloud |
 | **Tracer bullet MVP** | Smallest shippable proof of cost/latency wins |
+| **L0-org / L1-org / CCS-org** | Enterprise shared cache tiers (Phase E2) — after local miss |
+| **Org control plane** | Self-hosted fleet policy, org cache, learning (Phase E1–E3) |

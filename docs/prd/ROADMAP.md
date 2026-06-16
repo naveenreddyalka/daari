@@ -270,6 +270,24 @@ Spec: [sources-integration.md](sources-integration.md) (subset of [IntegrationPr
 
 Spec: [integrations.md](integrations.md) · [ADR-0011](../adr/0011-pluggable-integration-providers.md)
 
+Corp API integrations only — fleet/cache/learning in **Phase E**: [enterprise.md](enterprise.md).
+
+---
+
+## Phase E — Enterprise platform (later)
+
+**Duration:** multi-sprint after C3  
+**Goal:** Distributed install, org-wide cache, org collective learning  
+**Prerequisite:** Phase B+ (L1, CCS); C3 optional
+
+| Sub-phase | Ships |
+|-----------|-------|
+| **E1** | `enterprise.yaml`, install bundle, org policy sync, profiles |
+| **E2** | L0-org / L1-org / CCS-org + self-hosted org cache service |
+| **E3** | Org feedback loop, shared routing profile, tier tuning |
+
+Spec: [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md)
+
 ---
 
 ## Visual timeline
@@ -288,6 +306,8 @@ gantt
     section Phase C
     MCP profiles L5             :c1, after b2, 4w
     Anthropic Claude Code       :c2, after c1, 4w
+    section Phase E
+    Enterprise E1 E2 E3         :e1, after c2, 8w
 ```
 
 ---
@@ -302,6 +322,7 @@ gantt
 | C1 | ✅ + MCP | — | ⚠️ UI optional | — |
 | C2 | ✅ + Anthropic gateway | **TS extension** | ⚠️ UI | ⚠️ IntelliJ plugin |
 | D | ✅ + ML feedback loop | — | — | Local fine-tune libs |
+| E | ✅ + org cache/learning clients | — | ⚠️ admin dashboard | — |
 
 ---
 

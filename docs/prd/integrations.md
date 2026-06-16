@@ -138,6 +138,7 @@ action: search
 | **C2** | Enterprise config validation; audit logging | **Sourcegraph**, GHE, GitLab, browser ext |
 | **C3** | Provider marketplace / `daari-provider-*` packages | Jira, Confluence, custom corp plugins |
 | **D** | Feedback loop per provider (success rates) | Auto-tune provider priority |
+| **E1–E3** | Enterprise platform | Distributed install, org cache, org learning — [enterprise.md](enterprise.md) |
 
 ---
 
