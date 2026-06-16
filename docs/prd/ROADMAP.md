@@ -262,7 +262,7 @@ gantt
 | A.1 | ✅ + setup | ✅ install.sh | — | — |
 | B | ✅ + Lt subprocess | — | — | — |
 | C1 | ✅ + MCP | — | ⚠️ UI optional | — |
-| C2 | ✅ + Anthropic gateway | — | ⚠️ UI | ⚠️ IntelliJ plugin if needed |
+| C2 | ✅ + Anthropic gateway | **TS extension** | ⚠️ UI | ⚠️ IntelliJ plugin |
 | D | ✅ + ML feedback loop | — | — | Local fine-tune libs |
 
 ---

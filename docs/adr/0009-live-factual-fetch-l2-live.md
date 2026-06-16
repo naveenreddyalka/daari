@@ -51,9 +51,13 @@ daari/tools/
 | Weather | **Structured API** (Open-Meteo — free, no key) | No |
 | Web search | Search API (Brave, SerpAPI, etc.) if user configures key | No |
 | Generic URL | HTTP GET + extract (readability) | No |
-| Browser automation | Playwright/Puppeteer | **Phase C+ only** — heavy, opt-in |
+| Browser automation | Playwright/Puppeteer | **Phase C2+** — opt-in; [ADR-0010](0010-browser-bridge-google-search.md) |
+| **Google Custom Search API** | Official JSON API | **Phase C1** — API key |
+| **Browser extension** | User's Google session | **Phase C2** — recommended Google auth path |
 
-**Default:** APIs and HTTP fetch — **not** opening Google in a browser for MVP.
+**Lt-fetch priority (user config):** structured API → Google CSE API → browser extension → L3 fallback.
+
+**Default for Phase C1:** Open-Meteo + optional Google CSE. **Browser extension** in C2 for users who want Google login without API keys.
 
 ### 3. CCS for live data
 
@@ -102,8 +106,9 @@ L0 → CCS → L1 → L2-dev → L2-live → L2 generic → Lt (shell | fetch) �
 | Component | Phase |
 |-----------|-------|
 | L2-live weather + Open-Meteo | **B.1** or **C1** |
-| Web search provider | **C1** (requires API key) |
-| Browser automation | **C2+** (opt-in, not default) |
+| Web search provider | **C1** Google CSE API; **C2** browser extension |
+| Browser extension (Google auth) | **C2** — [ADR-0010](0010-browser-bridge-google-search.md) |
+| Browser automation (Playwright) | **C2+** opt-in |
 | `.daari/sources.yaml` | **C1** |
 
 **Not in Phase A** tracer bullet.
