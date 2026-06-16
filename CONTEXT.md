@@ -14,13 +14,15 @@ Phase A tracer bullet **complete**: `daari serve`, L0 cache, L3 Ollama, OpenAI g
 
 **Last verified:** 24 pytest passing; `daari setup cursor`, `--undo`, wizard, and `setup models` shipped.
 
-**Key commits:** `cf50264` (Phase A scaffold), `6768fb8` (routing evals GP-01–GP-10).
+**Key commits:** `cf50264` (Phase A scaffold), `6768fb8` (routing evals), `aaf3f06` (Phase A.1 setup).
 
 ## What daari is
 
 Open-source **local cost optimizer** — routes work through cache → tools → local AI before frontier.
 
-**Docs:** [PRD v0.4](docs/prd/PRD.md) · [Phase A plan](docs/plans/phase-a.md) · [ROADMAP](docs/prd/ROADMAP.md) · [DEVELOPING](docs/DEVELOPING.md)
+**Tracking:** [TRACKING.md](docs/TRACKING.md)
+
+**Docs:** [PRD v0.4](docs/prd/PRD.md) · [TRACKING](docs/TRACKING.md) · [Phase A plan](docs/plans/phase-a.md) · [ROADMAP](docs/prd/ROADMAP.md) · [DEVELOPING](docs/DEVELOPING.md)
 
 ## Decisions made
 

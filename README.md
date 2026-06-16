@@ -2,7 +2,7 @@
 
 > **Open-source local execution router** — run cheaply on your machine, not in the cloud.
 
-**Status:** Phase A tracer bullet — [plan](docs/plans/phase-a.md) · [PRD v0.4](docs/prd/PRD.md)
+**Status:** Phase A complete · Phase A.1 setup shipped — [tracker](docs/TRACKING.md) · [plan](docs/plans/phase-a.md) · [PRD v0.4](docs/prd/PRD.md)
 
 Route dev agent work through local tiers (cache → IDE tools → local AI) instead of frontier APIs. **Not a proxy** — a cost optimizer you own.
 
