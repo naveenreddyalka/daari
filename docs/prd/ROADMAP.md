@@ -6,6 +6,33 @@
 
 ---
 
+## Gateway adapter architecture
+
+daari is **not tied to OpenAI's API shape**. Gateways are pluggable ([ADR-0007](../adr/0007-pluggable-gateway-adapters.md)):
+
+```
+Client → [Adapter: openai | anthropic | mcp | …] → InternalRequest
+              → Router (L0–L6, Lt) → InternalResponse → Adapter → Client
+```
+
+| Phase | Adapters shipped |
+|-------|------------------|
+| A | `openai` only |
+| C1 | `mcp`, optional `daari-native` |
+| C2 | `anthropic` (Claude Code) |
+
+Python module layout (Phase A must allow this):
+
+```
+daari/gateway/
+  base.py       # GatewayAdapter protocol
+  internal.py   # canonical request/response
+  openai.py     # Phase A
+  anthropic.py  # stub until C2
+```
+
+---
+
 ## Language strategy (overall)
 
 | Layer | Language | Why | When |

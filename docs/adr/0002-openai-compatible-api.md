@@ -9,9 +9,9 @@ daari must work with Cursor, Claude Code, arbitrary CLIs, SDKs, IDEs, and future
 
 ## Decision
 
-Expose **OpenAI-compatible HTTP API** (`POST /v1/chat/completions`, streaming, standard request/response shapes) as the **primary client integration surface** for MVP and v1.
+Expose **OpenAI-compatible HTTP API** as the **first gateway adapter** for MVP (Phase A). It is **not** daari's permanent or exclusive identity.
 
-Additional surfaces (MCP, Anthropic-compat, daari-native API) are secondary and deferred.
+Architecture is **pluggable gateways** — see [ADR-0007](0007-pluggable-gateway-adapters.md). Additional adapters (Anthropic, MCP, daari-native) attach to the same internal router without rewriting core logic.
 
 ## Rationale
 

@@ -20,4 +20,4 @@ Status: proposed | accepted | deprecated
 | ADR-0003 | Tool-native execution tier (Lt) | accepted |
 | ADR-0004 | Agent tool-call compatibility | accepted |
 | ADR-0005 | Python tech stack for MVP | accepted |
-| ADR-0006 | Local daemon security model | accepted |
+| ADR-0007 | Pluggable gateway adapters | accepted |

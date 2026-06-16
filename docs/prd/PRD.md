@@ -28,7 +28,8 @@ daari is **not** another cloud LLM proxy. It is an **open-source, local-first ex
 | **Local-first** | Default path is on-device: cache → rules → tools → local models. |
 | **Cost-minimize** | Every request takes the cheapest capable tier. Frontier (L6) is last resort. |
 | **AI is optional** | Many tasks need no model at all (Lt tool-native tier). |
-| **Not a proxy** | OpenAI-compat is a **client adapter**, not the product identity. |
+| **Not tied to one API shape** | OpenAI-compat is **adapter #1**, not identity. Add Anthropic, MCP, others as the ecosystem shifts — [ADR-0007](0007-pluggable-gateway-adapters.md). |
+| **Not a proxy** | Gateways translate wire formats; daari's job is local routing and cost optimization. |
 | **Privacy by default** | Routable work stays on your machine. No telemetry unless you opt in. |
 
 **Competitive context:** See [Competitive landscape](../discovery/04-competitive-landscape.md) and [Plan review](PLAN-REVIEW.md).
@@ -54,16 +55,26 @@ For each incoming request, daari picks the **cheapest capable path**:
 
 The name *daari* (Telugu: path) reflects routing each task to the right path: cache, existing tool, local model, or — only when needed — frontier.
 
-### Why OpenAI-compatible API?
+### Why OpenAI-compatible API first? (not forever)
 
-The primary wire format is **OpenAI-compatible HTTP** (`POST /v1/chat/completions`) because:
+OpenAI-compat is the **first pluggable gateway adapter** — not daari's identity or only interface.
 
-- **Minimal change for tools** — Cursor, Claude Code, and most CLI/SDK clients already speak this protocol; point `base_url` at daari
-- **De facto local standard** — Ollama, LiteLLM, LocalAI, vLLM all expose it; daari fits the ecosystem
-- **Not provider lock-in** — "compatible" means wire shape only; daari routes to cache, tools, Ollama, or frontier internally
-- **Fastest path to universal support** — custom APIs would require per-tool plugins; compat layer is the adapter, not the product
+| Why first | Why not forever |
+|-----------|-----------------|
+| Cursor, SDKs, Ollama ecosystem use it today | Anthropic Messages API powers Claude Code |
+| Fastest path to first working client | MCP may grow for agents |
+| Minimal config change (`base_url`) | Future formats get new adapters, same router |
 
-Routing metadata (`daari_meta`: tier, cache hit, tool invoked) is added via response extensions and logs. A daari-native API may come later for richer introspection.
+**Extensibility:** All adapters translate to a canonical internal request → router → response. Add adapters when adoption justifies it; never rewrite the router for a new wire format.
+
+| Adapter | Phase | Clients |
+|---------|-------|---------|
+| OpenAI-compat | A | Cursor, SDK, curl |
+| Anthropic-compat | C2 | Claude Code |
+| MCP | C1 | MCP agents |
+| daari-native | C1+ | Future UI, rich metadata |
+
+Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 
 ## User Stories
 
@@ -242,7 +253,7 @@ Request → normalize → L0? → L1? → L2? → Lt? (IDE/CLI) → classify →
 
 | Module | Responsibility |
 |--------|----------------|
-| **Gateway** | OpenAI-compatible HTTP API, auth (local), request normalization |
+| **Gateway** | Pluggable adapters (OpenAI first) → canonical internal model → router |
 | **Router** | Task classification, tier selection, escalation logic |
 | **Cache** | Exact + semantic stores, TTL, invalidation |
 | **Rules** | Deterministic handlers registry |
@@ -467,6 +478,6 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 - [ ] Vision approved
 - [ ] Discovery approved
-- [ ] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md)
+- [ ] ADRs accepted: [0001](../adr/0001-frontier-fallback-policy.md) · [0002](../adr/0002-openai-compatible-api.md) · [0003](../adr/0003-tool-native-tier.md) · [0004](../adr/0004-agent-tool-call-compatibility.md) · [0005](../adr/0005-python-tech-stack.md) · [0006](../adr/0006-local-daemon-security.md) · [0007](../adr/0007-pluggable-gateway-adapters.md)
 - [ ] Specs reviewed: [routing-spec](routing-spec.md) · [setup-spec](setup-spec.md)
 - [ ] PRD v0.4 approved — *date: _________*
