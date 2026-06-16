@@ -24,3 +24,6 @@ target/
 # Logs & local
 *.log
 .cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
