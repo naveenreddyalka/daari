@@ -16,12 +16,14 @@ ADR-0009 deferred browser to C2+. This ADR defines **how** Google + browser auth
 
 ## Decision
 
-Support **three Lt-fetch backends** for live facts, in priority order (configurable):
+daari **integrates both** open/structured APIs **and** Google — not one or the other.
+
+Support **three Lt-fetch backend families** (priority configurable in `sources.yaml`):
 
 ```
-1. Structured API     (Open-Meteo, etc.)     — fast, no auth
-2. Google Search API  (official JSON API)    — broad, needs API key
-3. Browser bridge     (extension + user session) — Google auth, any logged-in site
+1. Open APIs        (Open-Meteo, wttr, REST)  — fast, structured, often no auth
+2. Google CSE API   (Custom Search JSON)     — broad search, API key
+3. Browser bridge   (extension + session)    — user's Google login
 ```
 
 User picks default in `~/.daari/sources.yaml`. All paths avoid L3/L6 when successful.

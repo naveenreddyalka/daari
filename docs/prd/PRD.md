@@ -192,8 +192,9 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 65. As a developer, I want daari to use **Google Search** (official API or browser with my Google login) for live facts, so that one source covers weather, news, and general queries without an LLM.
 66. As a developer, I want a **browser extension** paired to daari that uses my existing Google session, so that I don't store Google credentials in daari but still get authenticated search results.
 67. As a developer, I want Lt-fetch to try structured APIs first and Google/browser second (configurable priority), so that I balance speed, accuracy, and auth needs.
+68. As a developer, I want **both** open API integrations (Open-Meteo, etc.) **and** Google integrations (CSE API + browser) available—not one or the other—so that I can use the best source per query type.
 
-**Design:** [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) · [ADR-0010](../adr/0010-browser-bridge-google-search.md)
+**Design:** [sources-integration.md](sources-integration.md) · [ADR-0009](../adr/0009-live-factual-fetch-l2-live.md) · [ADR-0010](../adr/0010-browser-bridge-google-search.md)
 
 ## Implementation Decisions
 
@@ -345,6 +346,17 @@ flowchart TB
 | `daari setup intellij` | Register IntelliJ CLI/API path for Lt tier |
 | `daari setup --all` | Detect installed tools, run applicable setups |
 | `daari doctor` | Verify daemon, Ollama, tool paths, sample route |
+
+### Live factual sources (open APIs + Google)
+
+daari integrates **both** provider families for L2-live / Lt-fetch:
+
+| Family | Examples | Phase |
+|--------|----------|-------|
+| **Open APIs** | Open-Meteo, wttr.in, pluggable REST | C1 |
+| **Google** | Custom Search JSON API, browser extension + user auth | C1 + C2 |
+
+User configures priority in `sources.yaml`. Full spec: [sources-integration.md](sources-integration.md).
 
 ### Client support matrix (honest)
 
@@ -510,6 +522,7 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 | Doc | Purpose |
 |-----|---------|
 | [ROADMAP.md](ROADMAP.md) | **Detailed phase plan** — languages, clients, tools per phase |
+| [sources-integration.md](sources-integration.md) | Open APIs + Google provider registry |
 | [routing-spec.md](routing-spec.md) | Classifier, confidence, golden prompts |
 | [setup-spec.md](setup-spec.md) | Install, setup recipes, undo |
 | [glossary.md](glossary.md) | Terms |
