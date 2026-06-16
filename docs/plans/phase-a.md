@@ -11,7 +11,7 @@
 
 - [x] Second identical prompt hits **L0**
 - [x] `daari stats` shows tier breakdown
-- [ ] Cursor works via [manual setup](../setup/cursor.md) — doc verified; needs user smoke test in Cursor
+- [~] Cursor works via [manual setup](../setup/cursor.md) — **deferred:** user smoke test on other device (not blocking Phase A)
 - [x] 10 eval prompts (GP-01–GP-10) pass MVP criteria (`tests/test_routing_eval.py`)
 
 ---

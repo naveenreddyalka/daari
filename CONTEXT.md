@@ -9,13 +9,18 @@
 
 ## Current phase
 
-**Phase A — Tracer bullet MVP** — Python scaffold shipped; `daari serve` + L0 + L3 Ollama path.
+**Phase A.1 — Install & setup scaffold** (in progress)  
+Phase A tracer bullet **complete**: `daari serve`, L0 cache, L3 Ollama, OpenAI gateway, routing evals.
+
+**Last verified:** pytest green; `daari doctor` + `daari setup cursor --dry-run` scaffolded; install script added.
+
+**Key commits:** `cf50264` (Phase A scaffold), `6768fb8` (routing evals GP-01–GP-10).
 
 ## What daari is
 
 Open-source **local cost optimizer** — routes work through cache → tools → local AI before frontier.
 
-**Docs:** [PRD v0.4](docs/prd/PRD.md) · [Phase A plan](docs/plans/phase-a.md) · [ROADMAP](docs/prd/ROADMAP.md)
+**Docs:** [PRD v0.4](docs/prd/PRD.md) · [Phase A plan](docs/plans/phase-a.md) · [ROADMAP](docs/prd/ROADMAP.md) · [DEVELOPING](docs/DEVELOPING.md)
 
 ## Decisions made
 
@@ -43,17 +48,26 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 | Path | What |
 |------|------|
 | `daari/` | Python core (daemon, router, CLI) |
+| `daari/clients/` | Setup recipes (Cursor, etc.) — Phase A.1+ |
+| `daari/setup/` | Doctor and setup helpers |
+| `scripts/` | `install.sh` |
 | `packages/` | TS/Kotlin surfaces later (extension, UI, IDE plugin) |
 | `docs/` | PRD, ADRs, plans |
 | `evals/` | Routing golden prompts |
 
 **Separate repo:** `agent-skills` only — reusable skills, not daari runtime.
 
-## Next step
+## Next tasks (Phase A.1)
 
-**Implement Phase A** — start with tasks A1–A7 in [phase-a.md](docs/plans/phase-a.md): scaffold Python project, L0 cache, OpenAI gateway, `daari serve`.
+1. **`daari setup cursor`** — apply patches + backup (dry-run done)
+2. **`daari setup --undo cursor`** — restore backups
+3. **`daari setup`** — interactive wizard
+4. **`daari setup models`** — Ollama model picker
+5. **L6 frontier escalation** — per ADR-0001 (deferred unless trivial)
 
-**Prerequisite:** Ollama installed locally with `llama3.2:3b`.
+**Cursor smoke test:** deferred to user's personal machine — see [cursor.md](docs/setup/cursor.md).
+
+**Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 
 ## Related repos
 
