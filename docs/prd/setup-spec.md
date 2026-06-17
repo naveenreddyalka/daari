@@ -10,8 +10,9 @@
 
 | Phase | Method | Notes |
 |-------|--------|-------|
-| **Phase A** | `./install.sh` in repo | Checks Python 3.12, venv, Ollama, pulls default model |
+| **Phase A** | `./scripts/install.sh` in repo | Checks Python 3.12, venv, Ollama, pulls default model |
 | **Phase A.1** | `daari install` CLI command | Same logic as shell script |
+| **Demo** | `./scripts/demo.sh` | One-command smoke: serve + curl + stats + setup dry-run |
 | **Future** | `brew install daari` / curl pipe | Requires domain + release artifacts — **not MVP** |
 
 **Removed from MVP claims:** `curl https://daari.dev/install` — domain does not exist yet.

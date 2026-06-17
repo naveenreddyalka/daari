@@ -10,6 +10,14 @@ Route dev agent work through local tiers (cache → IDE tools → local AI) inst
 
 Full pickup guide (clone, venv, smoke test, pytest): **[docs/DEVELOPING.md](docs/DEVELOPING.md)**
 
+**One-click demo** (install, serve, smoke curl, stats):
+
+```bash
+./scripts/demo.sh
+```
+
+Manual steps:
+
 ```bash
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"

@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-06-16  
+> Last updated: 2026-06-17  
 > Update this file when phases/tasks complete.
 
 ## Legend
@@ -42,7 +42,35 @@
 | Cursor via manual setup | [~] | doc ready; user smoke test deferred |
 | GP-01–GP-10 pass MVP criteria | [x] | `tests/test_routing_eval.py` |
 
-**Tests:** 24 pytest passing (`pytest` in project venv)
+**Tests:** see [Testing](#testing) below.
+
+---
+
+## Testing
+
+| Layer | Location | CI | Notes |
+|-------|----------|-----|-------|
+| **Unit** | `tests/unit/` | ✅ | cache keys, metrics, settings, internal models |
+| **Integration (mocked)** | `tests/integration/test_gateway_flow.py`, `tests/test_phase_a.py`, `tests/test_routing_eval.py` | ✅ | gateway + router + L0 cache; Ollama mocked |
+| **Integration (live Ollama)** | `tests/integration/test_ollama_live.py` | skipped | `@pytest.mark.integration`; run with `OLLAMA_HOST=http://127.0.0.1:11434 pytest -m integration` |
+| **Benchmark** | `tests/benchmark/` | skipped | `@pytest.mark.benchmark`; L0 vs L3 latency |
+| **Setup / doctor** | `tests/test_setup.py`, `tests/test_doctor.py` | ✅ | dry-run, backup, doctor checks |
+
+**Commands**
+
+```bash
+pytest                              # default: unit + mocked integration (no live Ollama)
+pytest -m "not integration and not benchmark"   # same as CI
+pytest -m integration               # live Ollama only (needs OLLAMA_HOST + model pulled)
+pytest -m benchmark                 # optional latency checks
+./scripts/demo.sh                   # one-click smoke (serve + curl + stats)
+```
+
+**CI:** `.github/workflows/ci.yml` — Python 3.12, `pytest -m "not integration and not benchmark"` on push/PR. No secrets.
+
+**Gaps (planned):** L6 escalation tests (needs executor); Lt/tool-native tests (Phase B); expanded golden prompts GP-11–GP-20.
+
+**Count:** 39 passed, 1 skipped (`pytest`; live Ollama test skipped without `OLLAMA_HOST`)
 
 ---
 
@@ -55,7 +83,7 @@
 | `daari setup cursor --dry-run` | [x] | |
 | `daari setup cursor` (apply + backup) | [x] | `aaf3f06` |
 | `daari setup --undo cursor` | [x] | `daari/setup/backup.py` |
-| Interactive `daari setup` wizard | [x] | `daari/setup/wizard.py` |
+| Interactive `daari setup` wizard | [x] | `daari/setup/wizard.py` — **partial vs spec** (see gaps below) |
 | `daari setup models` | [x] | `daari/setup/models.py` |
 | JSONC patch helpers | [x] | `daari/setup/jsonc.py` |
 | Setup tests | [x] | `tests/test_setup.py` |
@@ -70,6 +98,8 @@
 | `./install.sh && daari doctor` passes | [~] | run on fresh clone to confirm |
 | `daari setup cursor --dry-run` shows diff | [x] | covered by tests |
 | Low-confidence response escalates to L6 | [ ] | needs executor + API keys |
+
+**Wizard gaps (A.1 spec vs shipped):** single-choice menu (not multi-select); no post-Cursor "configure model?" prompt; no L6/frontier API key step; no `routing.prefer` / model weights; IntelliJ/Claude deferred to Phase B per setup-spec.
 
 **Key commits:** `13a2345` (scaffold), `aaf3f06` (apply, undo, wizard, models)
 

@@ -1,7 +1,7 @@
 # daari — Product Requirements Document
 
 > **Status:** Approved v0.4 — 2026-06-15  
-> **Last updated:** 2026-06-15  
+> **Last updated:** 2026-06-17  
 > **Owner:** Naveen Reddy Alka
 
 ---
@@ -161,46 +161,47 @@ Full adapter architecture: [ADR-0007](../adr/0007-pluggable-gateway-adapters.md)
 47. As a developer, I want a single config file for tiers, models, tools, thresholds, and cache settings, so that setup is reproducible.
 48. As a developer, I want sensible defaults that work with one local Ollama model, so that MVP setup is fast.
 49. As a developer, I want to disable frontier APIs entirely in config, so that no request can leak to the cloud.
+50. As a developer, I want to configure **model selection weights** and a **latency vs accuracy preference** (`routing.prefer`), so that daari picks the best local model or escalation path (L3 vs L6) for my hardware and quality needs — see [Model selection & routing preferences](#model-selection--routing-preferences).
 
 ### Future (out of MVP, in product vision)
 
-50. As a developer, I want an MCP server exposing daari routing, so that agents can query tier decisions natively.
-51. As a developer, I want per-project routing profiles, so that different repos can have different tier maps.
-52. As a developer, I want daari to learn from corrections (user rejected cache hit), so that routing improves over time.
-53. As a developer, I want Anthropic-compatible API shape as an optional second gateway, so that tools requiring Claude wire format integrate without translation layers in the client.
+51. As a developer, I want an MCP server exposing daari routing, so that agents can query tier decisions natively.
+52. As a developer, I want per-project routing profiles, so that different repos can have different tier maps.
+53. As a developer, I want daari to learn from corrections (user rejected cache hit), so that routing improves over time.
+54. As a developer, I want Anthropic-compatible API shape as an optional second gateway, so that tools requiring Claude wire format integrate without translation layers in the client.
 
 ### Local model improvement (later phases)
 
-54. As a developer, I want daari to learn from my local usage (accepted responses, corrections, tier overrides), so that routing and model selection improve on my machine over time.
-55. As a developer, I want daari to recommend or auto-select the best local Ollama model per task type based on my hardware and feedback, so that I don't manually tune tiers.
-56. As a developer, I want optional local fine-tuning or adapter training from my session data, so that a personal local model gets better for my codebase and workflow.
-57. As a developer, I want to opt in to share anonymized routing feedback, so that future daari releases improve defaults for everyone — without sharing my code or prompts by default.
+55. As a developer, I want daari to learn from my local usage (accepted responses, corrections, tier overrides), so that routing and model selection improve on my machine over time.
+56. As a developer, I want daari to recommend or auto-select the best local Ollama model per task type based on my hardware and feedback, so that I don't manually tune tiers.
+57. As a developer, I want optional local fine-tuning or adapter training from my session data, so that a personal local model gets better for my codebase and workflow.
+58. As a developer, I want to opt in to share anonymized routing feedback, so that future daari releases improve defaults for everyone — without sharing my code or prompts by default.
 
 ### Developer commands & context (L2-dev + CCS)
 
-58. As a developer, I want daari to recognize when I'm asking to run a basic command or script (not generate prose), so that it executes locally instead of calling a model.
-59. As a developer, I want executed command output stored in a **command context cache (CCS)**, so that repeat questions reuse prior results without re-running.
-60. As a developer, I want my project to define safe commands in `.daari/commands.yaml`, so that team/enterprise workflows are allowlisted and reusable.
-61. As a developer, I want daari to inject recent command context into the next agent response, so that follow-up questions ("what did lint say?") don't need a model or re-execution.
+59. As a developer, I want daari to recognize when I'm asking to run a basic command or script (not generate prose), so that it executes locally instead of calling a model.
+60. As a developer, I want executed command output stored in a **command context cache (CCS)**, so that repeat questions reuse prior results without re-running.
+61. As a developer, I want my project to define safe commands in `.daari/commands.yaml`, so that team/enterprise workflows are allowlisted and reusable.
+62. As a developer, I want daari to inject recent command context into the next agent response, so that follow-up questions ("what did lint say?") don't need a model or re-execution.
 
 **Design:** L2-dev rules detect → Lt executes → CCS remembers — [ADR-0008](../adr/0008-developer-command-rules-and-context-cache.md).
 
 ### Live factual queries (L2-live + Lt-fetch)
 
-62. As a developer, I want daari to answer live factual questions (weather, prices, news) by fetching real sources—not hallucinating via a model—when a configured provider exists.
-63. As a developer, I want live fetch results cached briefly (CCS), so that "weather today?" twice in an hour doesn't re-hit the API or a model.
-64. As a developer, I want to configure external sources in `sources.yaml` (API keys, enable/disable), so that I control what leaves my machine and when.
-65. As a developer, I want daari to use **Google Search** (official API or browser with my Google login) for live facts, so that one source covers weather, news, and general queries without an LLM.
-66. As a developer, I want a **browser extension** paired to daari that uses my existing Google session, so that I don't store Google credentials in daari but still get authenticated search results.
-67. As a developer, I want Lt-fetch to try structured APIs first and Google/browser second (configurable priority), so that I balance speed, accuracy, and auth needs.
-68. As a developer, I want **both** open API integrations (Open-Meteo, etc.) **and** Google integrations (CSE API + browser) available—not one or the other—so that I can use the best source per query type.
+63. As a developer, I want daari to answer live factual questions (weather, prices, news) by fetching real sources—not hallucinating via a model—when a configured provider exists.
+64. As a developer, I want live fetch results cached briefly (CCS), so that "weather today?" twice in an hour doesn't re-hit the API or a model.
+65. As a developer, I want to configure external sources in `sources.yaml` (API keys, enable/disable), so that I control what leaves my machine and when.
+66. As a developer, I want daari to use **Google Search** (official API or browser with my Google login) for live facts, so that one source covers weather, news, and general queries without an LLM.
+67. As a developer, I want a **browser extension** paired to daari that uses my existing Google session, so that I don't store Google credentials in daari but still get authenticated search results.
+68. As a developer, I want Lt-fetch to try structured APIs first and Google/browser second (configurable priority), so that I balance speed, accuracy, and auth needs.
+69. As a developer, I want **both** open API integrations (Open-Meteo, etc.) **and** Google integrations (CSE API + browser) available—not one or the other—so that I can use the best source per query type.
 
 ### Enterprise & local integrations (provider framework)
 
-69. As a developer, I want a **pluggable provider registry** at daari's core, so that MCP servers, enterprise APIs, and skills can be added in later phases without rewriting the router.
-70. As a developer, I want to register **local or company MCP servers** (Sourcegraph, internal git, corp tools), so that code search and internal APIs run without an LLM.
-71. As a developer, I want to configure **enterprise APIs** (Sourcegraph, GitHub Enterprise, GitLab) in `integrations.yaml`, so that company-local services are first-class backends.
-72. As a developer, I want **skills** (packaged rules + provider actions) loadable from `.daari/skills/` or a skills repo, so that teams ship integrations without forking daari.
+70. As a developer, I want a **pluggable provider registry** at daari's core, so that MCP servers, enterprise APIs, and skills can be added in later phases without rewriting the router.
+71. As a developer, I want to register **local or company MCP servers** (Sourcegraph, internal git, corp tools), so that code search and internal APIs run without an LLM.
+72. As a developer, I want to configure **enterprise APIs** (Sourcegraph, GitHub Enterprise, GitLab) in `integrations.yaml`, so that company-local services are first-class backends.
+73. As a developer, I want **skills** (packaged rules + provider actions) loadable from `.daari/skills/` or a skills repo, so that teams ship integrations without forking daari.
 
 **Design:** [integrations.md](integrations.md) · [ADR-0011](../adr/0011-pluggable-integration-providers.md)
 
@@ -427,6 +428,61 @@ User configures priority in `sources.yaml`. Full spec: [sources-integration.md](
 
 Full comparison: [04-competitive-landscape.md](../discovery/04-competitive-landscape.md)
 
+## Model selection & routing preferences
+
+**Status:** Specified — implementation Phase B (local model picker) + Phase A.1 remainder (L6 escalation per [ADR-0001](../adr/0001-frontier-fallback-policy.md)).
+
+Users tune how daari chooses among **local models** (L3–L5) and when to **escalate to frontier** (L6). This is product configuration, not hard-coded heuristics only.
+
+### Config shape (`~/.daari/config.yaml`)
+
+```yaml
+routing:
+  prefer: balanced          # latency | accuracy | balanced
+  confidence_threshold: 0.7 # below → escalate per ADR-0001
+
+models:
+  l3: llama3.2:3b
+  l4: llama3.1:8b           # Phase B
+  l5: llama3.1:70b          # Phase C1
+  weights:
+    llama3.2:3b:
+      latency: 0.9          # 0–1, higher = faster expected
+      accuracy: 0.6
+      memory_mb: 2048
+    llama3.1:8b:
+      latency: 0.5
+      accuracy: 0.8
+      memory_mb: 8192
+
+frontier:
+  enabled: true
+  confidence_threshold: 0.65
+  providers:
+    - openai:gpt-4o
+```
+
+| Field | Purpose |
+|-------|---------|
+| `routing.prefer` | **`latency`** — favor smallest/fastest local model; escalate to L6 only when confidence fails. **`accuracy`** — favor larger local models; L6 sooner on hard tasks. **`balanced`** — score = weighted blend of latency + accuracy weights. |
+| `models.weights.<name>.latency` | Expected speed score (user- or benchmark-derived). Used when multiple local models could serve a tier. |
+| `models.weights.<name>.accuracy` | Expected quality score per task type or global default. |
+| `routing.confidence_threshold` | Local answer acceptance bar before L4/L5/L6 escalation — [routing-spec](routing-spec.md#confidence-scoring). |
+| `frontier.*` | L6 last resort per ADR-0001; disable with `frontier.enabled: false` or CLI `--no-frontier`. |
+
+### Selection algorithm (target)
+
+1. Classify task → eligible tiers (L3–L5 local, or L6 if enabled).
+2. Filter models by hardware limits (`memory_mb`, concurrency).
+3. Score candidates: `score = w_lat * latency + w_acc * accuracy` where weights derive from `routing.prefer`.
+4. Execute at chosen tier; run confidence check; escalate L3 → L4 → L5 → L6 if below threshold.
+
+**Phase A today:** single L3 model only; weights and `routing.prefer` are no-ops until multi-model routing ships. Wizard will expose weights in Phase B (`daari setup models --prefer`).
+
+### One-click demo script
+
+`./scripts/demo.sh` — install editable package, start `daari serve` if needed, smoke `curl` (L3 then L0), print stats, run `daari setup cursor --dry-run`. Documented in [DEVELOPING.md](../DEVELOPING.md). Complements `scripts/install.sh` (full install + doctor).
+
 ## Testing Decisions
 
 ### Principles
@@ -435,6 +491,25 @@ Full comparison: [04-competitive-landscape.md](../discovery/04-competitive-lands
 - Golden-file tests for tier selection on a labeled prompt set (include Lt cases)
 - Integration tests against real Ollama optional; mock executors in unit tests
 - Setup recipes tested in dry-run mode
+- **CI on every push/PR** — GitHub Actions, no secrets for core tests
+
+### Test layout (repo)
+
+| Layer | Path | Marker | CI |
+|-------|------|--------|-----|
+| Unit | `tests/unit/` | — | ✅ always |
+| Integration (mocked) | `tests/integration/test_gateway_flow.py`, `tests/test_phase_a.py`, `tests/test_routing_eval.py` | — | ✅ always |
+| Integration (live Ollama) | `tests/integration/test_ollama_live.py` | `@pytest.mark.integration` | skipped; run locally with `OLLAMA_HOST` |
+| Benchmark | `tests/benchmark/` | `@pytest.mark.benchmark` | skipped; optional `pytest -m benchmark` |
+| Setup / doctor | `tests/test_setup.py`, `tests/test_doctor.py` | — | ✅ always |
+
+**CI command:** `pytest -m "not integration and not benchmark"` (see `.github/workflows/ci.yml`).
+
+### Performance benchmarks
+
+- Compare tier latency: L0 cache hit vs L3 inference (`tests/benchmark/test_tier_latency.py`)
+- Future: p50 targets from Success metrics table; regression gate in Phase B
+- Not run on CI by default (timing flakes on shared runners)
 
 ### What gets tested
 
@@ -450,8 +525,8 @@ Full comparison: [04-competitive-landscape.md](../discovery/04-competitive-lands
 
 ### Eval harness
 
-- **Phase A (MVP):** 20 golden prompts in [routing-spec](routing-spec.md#golden-prompt-eval-set) — `evals/routing/prompts.jsonl`
-- **Phase B:** Expand to full regression suite; run in CI
+- **Phase A (MVP):** 10 golden prompts shipped (GP-01–GP-10) in `evals/routing/prompts.jsonl`; target 20 in [routing-spec](routing-spec.md#golden-prompt-eval-set)
+- **Phase B:** Expand to full regression suite; GP-11–GP-20 in CI
 - Routing accuracy ≥90% on v1 eval set
 
 ## Out of Scope
@@ -505,12 +580,9 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 
 **Explicitly deferred from Phase A:** L1 semantic cache, Lt tier, L4/L5, L6 escalation, setup automation, Claude Code.
 
-### Phase A.1 — Setup + frontier escalation
+**Phase A.1:** Ship `daari setup` wizard + `daari setup cursor` + `daari setup models` + `install.sh` + `daari doctor` + `./scripts/demo.sh`.
 
-- **`daari setup`** — interactive wizard (pick Cursor, model, doctor)
-- `daari setup cursor` + `daari setup models` + `install.sh` + `daari doctor`
-- L6 auto-escalate when local fails (ADR-0001)
-- `daari setup` writes config backup (reversible)
+**Deferred from A.1:** L6 auto-escalate when local fails (ADR-0001), frontier API keys in wizard, model weight preferences.
 
 ### Phase B — v1 (full local-first stack)
 - L1 semantic cache + L2 rules
