@@ -32,6 +32,10 @@ packages = ["daari"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "integration: live Ollama or external deps (requires OLLAMA_HOST)",
+  "benchmark: optional latency tier comparisons",
+]
 
 [tool.ruff]
 line-length = 100

@@ -75,13 +75,45 @@ Checks Python version, config readability, Ollama reachability, default model pr
 
 ---
 
+## One-click demo
+
+```bash
+chmod +x scripts/demo.sh   # once
+./scripts/demo.sh
+```
+
+Installs deps (venv + editable install), starts `daari serve` if not already running, runs smoke `curl` (twice for L0), prints stats, and runs `daari setup cursor --dry-run`. Requires Python 3.12; Ollama optional for live inference (warnings only if down).
+
+---
+
 ## Tests
 
 ```bash
-pytest
+pytest                              # unit + mocked integration
+pytest -m "not integration and not benchmark"   # CI default
+pytest -m integration               # live Ollama (set OLLAMA_HOST)
+pytest -m benchmark                 # optional L0 vs L3 latency
 ```
 
-Routing evals (GP-01–GP-10) live in `tests/test_routing_eval.py`. Live Ollama integration tests are skipped unless `OLLAMA_HOST` is set.
+| Directory | Purpose |
+|-----------|---------|
+| `tests/unit/` | Cache keys, metrics, settings, internal models |
+| `tests/integration/` | End-to-end gateway flow; live Ollama optional |
+| `tests/benchmark/` | Tier latency comparisons (`@pytest.mark.benchmark`) |
+| `tests/test_*.py` (root) | Phase A routing evals, setup, doctor |
+
+Routing evals (GP-01–GP-10) live in `tests/test_routing_eval.py`. Live Ollama tests in `tests/integration/test_ollama_live.py` are skipped unless `OLLAMA_HOST` is set.
+
+---
+
+## CI
+
+GitHub Actions workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on push/PR to `main`:
+
+- Python 3.12, `pip install -e ".[dev]"`
+- `pytest -m "not integration and not benchmark"` — no secrets, no Ollama service container
+
+To run live Ollama integration locally: `OLLAMA_HOST=http://127.0.0.1:11434 pytest -m integration`.
 
 ---
 
