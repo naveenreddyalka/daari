@@ -1,7 +1,7 @@
 # daari — Architecture & project structure
 
 > Living overview of the repo layout, runtime flow, and implementation status.  
-> **Last updated:** 2026-06-20 · **Verified at:** `3c44a8e`
+> **Last updated:** 2026-06-20 · **Verified at:** `working tree`
 
 For phase tasks and exit criteria, see [TRACKING.md](TRACKING.md). For clone/run/test pickup, see [DEVELOPING.md](DEVELOPING.md).
 
@@ -18,8 +18,8 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | Phase | Status | Summary |
 |-------|--------|---------|
 | **A — Tracer bullet** | Done | `daari serve`, OpenAI gateway, L0 cache, L3 Ollama, router, metrics, routing evals GP-01–GP-10 |
-| **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; wizard partial vs spec; `daari install` Typer deferred; Cursor smoke test user-owned |
-| **B — Rules, Lt, …** | In progress | L1 semantic cache shipped; L2 rules, Lt tool-native, PolicyEngine, L4/L5 — see [ROADMAP](prd/ROADMAP.md) |
+| **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; `daari install` CLI added; wizard still lacks API-key capture |
+| **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` pending |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -35,11 +35,14 @@ daari/                              # repo root
 │   ├── cli/                        # Typer commands (serve, stats, doctor, setup)
 │   ├── server/                     # FastAPI app factory
 │   ├── gateway/                    # Wire adapters + internal request/response models
-│   ├── router/                     # Tier routing (L0 → L1 → L3 → L6)
-│   ├── cache/                      # L0 exact + L1 semantic cache (diskcache)
+│   ├── router/                     # Tier routing (L0 → CCS → L1 → L2-dev → L2 → Lt → L3/L4 → L6)
+│   ├── cache/                      # L0 exact + L1 semantic + CCS command context
 │   ├── config/                     # Settings + defaults.yaml
 │   ├── observability/              # In-process tier metrics
-│   ├── providers/                  # IntegrationProvider registry (stub for Phase B+)
+│   ├── providers/                  # IntegrationProvider registry (wired for model tiers)
+│   ├── rules/                      # L2 + L2-dev regex/template routing rules
+│   ├── tools/                      # Lt subprocess executor
+│   ├── policy/                     # Lt allow/deny/ask policy engine
 │   ├── clients/                    # Setup recipes (Cursor)
 │   └── setup/                      # doctor, wizard, backup, jsonc, models
 ├── tests/
@@ -47,7 +50,7 @@ daari/                              # repo root
 │   ├── integration/                # gateway flow; optional live Ollama
 │   ├── benchmark/                  # L0 vs L3 latency (optional)
 │   └── test_*.py                   # phase A evals, setup, doctor
-├── evals/routing/                  # Golden prompts GP-01–GP-10
+├── evals/routing/                  # Golden prompts GP-01–GP-20
 ├── docs/                           # PRD, ADRs, plans, setup guides
 ├── scripts/                        # install.sh, demo.sh
 ├── packages/                       # Placeholder for future TS/Kotlin surfaces
@@ -72,14 +75,19 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/server/app.py` | FastAPI factory, lifespan → `AppContext` | ✅ |
 | `daari/gateway/openai.py` | `POST /v1/chat/completions`, stats, health | ✅ |
 | `daari/gateway/internal.py` | `InternalRequest` / `InternalResponse` / `DaariMeta` | ✅ |
-| `daari/router/router.py` | Router: L0 → L1 → L3 Ollama → L6; tool_calls skip caches | ✅ |
+| `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L6 + no-frontier + fallback behavior | ✅ |
 | `daari/cache/exact.py` | L0 exact cache keys + diskcache store | ✅ |
 | `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
 | `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/`) | ✅ |
 | `daari/config/defaults.yaml` | Package defaults (host, port, models) | ✅ |
 | `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` | ✅ |
-| `daari/providers/base.py` | `IntegrationProvider` protocol | Spec / stub |
-| `daari/providers/registry.py` | Provider registry | Spec / stub |
+| `daari/providers/base.py` | `IntegrationProvider` protocol (`execute`, `health`) | ✅ |
+| `daari/providers/registry.py` | Provider registry used by router | ✅ |
+| `daari/rules/engine.py` | L2 deterministic transforms (JSON/YAML) | ✅ |
+| `daari/rules/dev_commands.py` | L2-dev developer command detection | ✅ |
+| `daari/cache/command_context.py` | CCS store for command output reuse | ✅ |
+| `daari/tools/shell.py` | Lt shell execution backend | ✅ |
+| `daari/policy/engine.py` | Allow/deny/ask execution policy | ✅ |
 | `daari/clients/base.py` | `ClientSetupRecipe` protocol | ✅ |
 | `daari/clients/registry.py` | Setup recipe dispatch (`cursor` only) | ✅ |
 | `daari/clients/cursor/recipe.py` | Cursor settings patch / undo / dry-run | ✅ |
@@ -89,7 +97,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/setup/jsonc.py` | JSONC read/write for Cursor config | ✅ |
 | `daari/setup/models.py` | `daari setup models` — tier → Ollama model | ✅ |
 
-**Not in tree (spec / Phase B+):** `gateway/anthropic.py`, `gateway/mcp.py`, `tools/backends/`, L2/L2-dev executors, PolicyEngine, Lt runtime.
+**Not in tree (spec / later phases):** `gateway/anthropic.py`, `gateway/mcp.py`, IntelliJ Lt B.1 backend, enterprise providers.
 
 ### Docs (`docs/`)
 
@@ -112,7 +120,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `tests/unit/` | Fast unit tests (CI) | ✅ |
 | `tests/integration/` | Mocked gateway flow; live Ollama optional | ✅ |
 | `tests/benchmark/` | Tier latency (`@pytest.mark.benchmark`) | ✅ optional |
-| `tests/test_routing_eval.py` | GP-01–GP-10 routing evals | ✅ |
+| `tests/test_routing_eval.py` | GP-01–GP-20 routing evals | ✅ |
 | `tests/test_setup.py`, `tests/test_doctor.py` | Setup / doctor coverage | ✅ |
 | `.github/workflows/ci.yml` | Python 3.12 pytest on push/PR | ✅ |
 
@@ -128,7 +136,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 
 ## Request flow
 
-Typical chat completion path (Phase B tracer): client → OpenAI-compat gateway → router → L0, L1, or L3.
+Typical chat completion path: client → OpenAI-compat gateway → router → cache/rules/tools/local models/frontier.
 
 ```mermaid
 flowchart LR
@@ -159,16 +167,14 @@ flowchart LR
 
 **Routing rules (shipped):**
 
-1. Messages with `tool_calls` in history → skip L0 and L1, go straight to L3 (ADR-0004).
-2. Otherwise try L0 (unless `X-Daari-No-Cache: true`).
-3. L0 miss → L1 semantic lookup (Ollama `/api/embeddings`, cosine ≥ `cache.l1.similarity_threshold`).
-4. L1 miss → L3 Ollama; confidence check on result.
-5. If L3 confidence below `frontier.confidence_threshold` and frontier enabled with API key → L6 OpenAI-compatible API.
-6. Otherwise return L3 (with `daari_meta.warning` when below threshold and L6 unavailable).
-7. On L3 success (cacheable): write L0 exact + L1 semantic entries.
-8. Ollama unreachable → HTTP 503; L1 embedding failure → graceful miss, fall through to L3.
-
-**Not wired yet:** tier override header handling beyond passthrough meta, L4/L5 intermediate tiers, L2 rules, Lt tool-native path.
+1. Messages with `tool_calls` in history skip caches and route directly to local model tier.
+2. Try L0 exact cache (unless `X-Daari-No-Cache: true`).
+3. Try CCS for matched dev command context before re-execution.
+4. Try L1 semantic cache (Ollama embeddings + cosine threshold).
+5. Apply L2-dev command rules (`git`, `pytest`, `eslint`) and policy gate; execute Lt when allowed.
+6. Apply L2 deterministic transforms (JSON/YAML patterns).
+7. Model path: L3 or L4 based on preference/weights/override, then confidence escalation to L6.
+8. `X-Daari-No-Frontier: true` prevents L6 escalation.
 
 ---
 
@@ -178,9 +184,10 @@ flowchart LR
 
 | Command | Purpose |
 |---------|---------|
-| `daari serve [--host] [--port]` | Start HTTP daemon (default `127.0.0.1:11435`) |
+| `daari serve [--host] [--port] [--no-frontier]` | Start HTTP daemon (default `127.0.0.1:11435`) |
 | `daari stats [--host] [--port]` | Fetch tier counters from running daemon |
 | `daari doctor` | Check Python, config, Ollama, model, optional daemon |
+| `daari install [--run-doctor/--no-run-doctor]` | Run install workflow via `scripts/install.sh` |
 | `daari setup` | Interactive setup wizard |
 | `daari setup --undo <tool>` | Restore latest backup (e.g. `cursor`) |
 | `daari setup cursor [--dry-run] [--force]` | Patch Cursor to point at daari |
@@ -192,11 +199,11 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`. No `daari insta
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/v1/chat/completions` | OpenAI-compat chat (non-streaming) |
+| `POST` | `/v1/chat/completions` | OpenAI-compat chat (supports basic SSE streaming passthrough) |
 | `GET` | `/v1/daari/stats` | Tier metrics snapshot |
 | `GET` | `/health` | Liveness |
 
-Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override` (override not fully implemented).
+Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override`, `X-Daari-No-Frontier`, `X-Daari-Confirm-Tool`, `X-Daari-ReRun-Command`.
 
 ### Scripts
 
@@ -204,6 +211,7 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override` (override 
 |--------|---------|
 | `./scripts/install.sh` | Create venv, `pip install -e ".[dev]"`, Ollama model hint |
 | `./scripts/demo.sh` | Full smoke: install, serve, double curl (L0 hit), stats, setup dry-run |
+| `./scripts/bench.sh` | Tier latency benchmark helper (L0/L1/L2/Lt/L3) |
 
 ---
 
@@ -211,11 +219,11 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override` (override 
 
 | Area | Implemented | Spec only / deferred |
 |------|-------------|------------------------|
-| Gateway | OpenAI-compat chat, health, stats | Anthropic, MCP, streaming SSE |
-| Tiers | L0 exact cache, L1 semantic cache, L3 Ollama, L6 frontier (opt-in) | L2/L2-dev rules, Lt, L4/L5 |
-| Router | L0 → L1 → L3 → L6 escalation, tool_calls bypass caches | L4/L5 intermediate tiers, PolicyEngine |
-| Setup | Cursor recipe, wizard (partial), models, backup/undo | Claude Code, openai-compat, IntelliJ; full wizard spec |
-| Providers | Registry scaffold | Live integration providers |
+| Gateway | OpenAI-compat chat, health, stats, basic SSE stream passthrough | Anthropic, MCP adapters |
+| Tiers | L0 exact, CCS, L1 semantic, L2 rules, L2-dev, Lt, L3, L4, L6 | L5 large local tier |
+| Router | Full Phase B.0 pipeline + policy + no-frontier behavior | B.1 confirmation UX polish, IntelliJ backend |
+| Setup | Cursor recipe, wizard polish, models preference, install wrapper | Claude Code, openai-compat helper, IntelliJ recipe |
+| Providers | Registry + model provider wiring | Live integration providers |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
 | Enterprise | ADR-0014, PRD sections | All runtime |
 | Packages | README placeholder | browser-extension, web-ui, intellij-plugin |

@@ -1,7 +1,7 @@
 # daari — Project Context
 
 > Handoff document for any tool or session picking up this project.  
-> **Last updated:** June 2026  
+> **Last updated:** 2026-06-20  
 > **Project location:** `~/Home/Daari`  
 > **GitHub:** https://github.com/naveenreddyalka/daari
 
@@ -10,7 +10,7 @@
 ## Current phase
 
 **Phase B — Full local-first stack** (in progress)  
-Phase A + A.1 complete. **L1 semantic cache shipped** — router L0 → L1 → L3; Ollama embeddings via `/api/embeddings` (model `nomic-embed-text` by default).
+Phase A + A.1 complete; B.0 core now shipped: **L2 rules**, **L2-dev + CCS**, **Lt B.0**, **L4 tier**, no-frontier control, basic streaming SSE passthrough, ProviderRegistry executor wiring.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -57,14 +57,13 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 **Separate repo:** `agent-skills` only — reusable skills, not daari runtime.
 
-## Next tasks (Phase B)
+## Next tasks (remaining Phase B / Phase C prep)
 
-1. **L2 rules engine** — regex/template transforms before L3
-2. **L2-dev + CCS** — developer command detection + command context store (ADR-0008)
-3. **Lt B.0** — CLI tool dispatch (git, eslint, pytest)
-4. **L4 medium model** — second Ollama model tier
-5. **`daari setup openai-compat`** — env var helper for generic SDK
-6. **Eval expansion** — GP-11–GP-20 (GP-12 expects L1 paraphrase hit)
+1. **`daari setup openai-compat`** recipe
+2. **Lt B.1** confirmation UX + IntelliJ path + `daari context clear`
+3. **L5 local tier** (Phase C1)
+4. **Anthropic/MCP gateway adapters** (Phase C)
+5. **Enterprise/provider plugins** rollout per ADR-0011
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -78,7 +77,12 @@ cache:
     embedding_model: nomic-embed-text   # ollama pull nomic-embed-text
 ```
 
-**Cursor smoke test:** run `daari setup cursor` on a machine with Cursor installed — see [cursor.md](docs/setup/cursor.md).
+**Validation baseline (2026-06-20):**
+- `pytest -m "not integration and not benchmark"`: pass
+- `OLLAMA_HOST=http://127.0.0.1:11434 pytest`: pass
+- `pytest -m benchmark`: pass
+- `./scripts/demo.sh`: pass
+- Manual tier smoke: L0/L1/L2/Lt/L3 verified; L4 override falls back to L3 when model unavailable; L6 requires API key.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 

@@ -32,7 +32,7 @@
 | Live Ollama integration test (optional) | [x] | skipped without `OLLAMA_HOST` |
 | Manual Cursor doc | [x] | [setup/cursor.md](setup/cursor.md) |
 | Dev pickup docs | [x] | [DEVELOPING.md](DEVELOPING.md) |
-| Streaming SSE | [-] | deferred per PRD |
+| Streaming SSE | [x] | basic OpenAI-style SSE passthrough for stream=true |
 
 **Exit criteria**
 
@@ -69,9 +69,9 @@ pytest -m benchmark                 # optional latency checks
 
 **CI:** `.github/workflows/ci.yml` — Python 3.12, `pytest -m "not integration and not benchmark"` on push/PR. No secrets.
 
-**Gaps (planned):** Lt/tool-native tests (Phase B); expanded golden prompts GP-11–GP-20; L6 live API integration test (optional); L1 live Ollama embedding test (optional).
+**Gaps (planned):** `daari setup openai-compat`; L6 live API integration test (optional, requires frontier key/model).
 
-**Count:** 65 passed, 1 skipped (`pytest`; live Ollama test skipped without `OLLAMA_HOST`)
+**Count:** 66 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest`)
 
 ---
 
@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 | `daari setup models` | [x] | `daari/setup/models.py` |
 | JSONC patch helpers | [x] | `daari/setup/jsonc.py` |
 | Setup tests | [x] | `tests/test_setup.py` |
-| `daari install` (Typer) | [ ] | ROADMAP item — use `install.sh` today |
+| `daari install` (Typer) | [x] | wrapper command to `scripts/install.sh` with `--run-doctor` |
 | L6 frontier executor | [x] | `daari/router/frontier.py` — OpenAI-compat httpx |
 | Confidence scoring → L6 | [x] | `daari/router/confidence.py` — binary heuristic per routing-spec |
 
@@ -100,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 | `daari setup cursor --dry-run` shows diff | [x] | covered by tests |
 | Low-confidence response escalates to L6 | [x] | when `frontier.enabled` + API key present |
 
-**Wizard gaps (A.1 spec vs shipped):** single-choice menu (not multi-select); no post-Cursor "configure model?" prompt; no L6/frontier API key step in wizard (doctor warns instead); no `routing.prefer` / model weights; IntelliJ/Claude deferred to Phase B per setup-spec.
+**Wizard gaps (A.1 spec vs shipped):** single-choice menu (not multi-select); no L6/frontier API key write step in wizard (doctor warns instead); IntelliJ/Claude deferred to Phase B per setup-spec.
 
 **Key commits:** `13a2345` (scaffold), `aaf3f06` (apply, undo, wizard, models)
 
@@ -111,14 +111,14 @@ pytest -m benchmark                 # optional latency checks
 | Task | Status | Notes |
 |------|--------|-------|
 | L1 semantic cache | [x] | Ollama embeddings + diskcache; router L0 → L1 → L3 |
-| L2 rules engine | [ ] | |
-| L2-dev developer commands | [ ] | |
-| CCS command context store | [ ] | |
-| PolicyEngine B.0 | [ ] | |
-| Lt B.0 CLI tools | [ ] | |
-| L4 medium model | [ ] | |
+| L2 rules engine | [x] | JSON/YAML deterministic transforms before model tiers |
+| L2-dev developer commands | [x] | regex rules for git/test/lint + readonly command-context prompts |
+| CCS command context store | [x] | disk-backed command output reuse with TTL |
+| PolicyEngine B.0 | [x] | allow/block + unknown deny/ask outcomes for Lt execution |
+| Lt B.0 CLI tools | [x] | `git status`, `git diff`, `pytest`, `eslint` command dispatch |
+| L4 medium model | [x] | second local model tier + L3→L4→L6 escalation path |
 | `daari setup openai-compat` | [ ] | |
-| Eval expansion GP-11–GP-20 | [ ] | |
+| Eval expansion GP-11–GP-20 | [x] | prompts + regression assertions updated |
 
 **Exit criteria (Phase B — partial)**
 
@@ -126,7 +126,7 @@ pytest -m benchmark                 # optional latency checks
 |-----------|--------|-------|
 | Paraphrased prompt hits L1 | [x] | mocked embedder tests |
 | L1 metrics in `daari stats` | [x] | tier counter `L1` |
-| L0 → L1 → L3 routing order | [x] | tool_calls skip both caches |
+| L0 → CCS → L1 → L2-dev → L2 → Lt → L3/L4 routing order | [x] | with tool_calls bypass caches retained |
 
 **Tests:** see [Testing](#testing) below.
 
@@ -135,8 +135,7 @@ pytest -m benchmark                 # optional latency checks
 ## Deferred / user-owned
 
 - Cursor smoke test on personal device (`daari setup cursor` + chat through daari)
-- Streaming SSE for L3
-- `daari install` Typer parity with `install.sh` (optional polish)
+- L4 model pull/install still user-managed (falls back to L3 when unavailable)
 - Wizard L6 API key step (doctor warns today)
 
 ---
