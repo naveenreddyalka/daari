@@ -4,6 +4,14 @@ server:
 
 models:
   l3: llama3.2:3b
+  l4: llama3.1:8b
+  weights:
+    llama3.2:3b:
+      latency: 0.9
+      accuracy: 0.6
+    llama3.1:8b:
+      latency: 0.5
+      accuracy: 0.8
 
 ollama:
   base_url: http://127.0.0.1:11434
@@ -19,9 +27,30 @@ cache:
     max_entries: 1000
     embedding_model: nomic-embed-text
 
+routing:
+  prefer: balanced
+  confidence_threshold: 0.7
+
 frontier:
   enabled: false
   provider: openai
   model: gpt-4o-mini
   confidence_threshold: 0.7
   base_url: https://api.openai.com/v1
+
+tools:
+  unknown: deny
+  allow:
+    - git status
+    - git diff
+    - pytest
+    - eslint *
+  block:
+    - rm *
+    - curl *| sh
+    - "*> /dev/*"
+  timeout_seconds: 30
+
+context:
+  enabled: true
+  path: ~/.daari/context/commands

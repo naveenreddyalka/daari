@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
@@ -43,15 +45,16 @@ class ChatCompletionResponse(BaseModel):
 def create_gateway_router() -> APIRouter:
     router = APIRouter()
 
-    @router.post("/v1/chat/completions")
+    @router.post("/v1/chat/completions", response_model=None)
     async def chat_completions(
         body: ChatCompletionRequest,
         request: Request,
         x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
         x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
-    ) -> dict[str, Any]:
-        if body.stream:
-            raise HTTPException(status_code=501, detail="Streaming not supported in Phase A")
+        x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
+        x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
+        x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
+    ) -> Any:
 
         ctx: AppContext = request.app.state.ctx
         internal = InternalRequest(
@@ -63,8 +66,22 @@ def create_gateway_router() -> APIRouter:
             meta=RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
+                no_frontier=x_daari_no_frontier == "true",
+                confirm_tool=x_daari_confirm_tool == "true",
+                rerun_command=x_daari_rerun_command == "true",
             ),
         )
+
+        if body.stream:
+            async def event_stream() -> AsyncIterator[str]:
+                try:
+                    async for chunk in ctx.router.stream_openai_chunks(internal):
+                        yield chunk
+                except Exception as exc:
+                    yield f"data: {{\"error\": \"stream failed: {str(exc)}\"}}\n\n"
+                    yield "data: [DONE]\n\n"
+
+            return StreamingResponse(event_stream(), media_type="text/event-stream")
 
         try:
             result = await ctx.router.route(internal)

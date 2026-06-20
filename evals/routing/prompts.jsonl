@@ -8,3 +8,13 @@
 {"id":"GP-08","prompt":"Explain microservices vs monolith architecture in detail with tradeoffs, examples, and when to choose each. At least 500 words.","expected_tier_mvp":"L3","expected_tier_v1":"L6"}
 {"id":"GP-09","prompt":"Add docstring to this function:\n\ndef add(a, b):\n    return a + b","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
 {"id":"GP-10","prompt":"Refactor this 500-line class for SOLID principles:\n\nclass UserService:\n    # ... large class body omitted for eval ...","expected_tier_mvp":"L3","expected_tier_v1":"L5"}
+{"id":"GP-11","prompt":"What does this regex match? ^[A-Z]{2}\\d{4}$","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-12","prompt":"Please draft a commit message for this patch: +def hello(): pass","expected_tier_mvp":"L3","expected_tier_v1":"L1/L3"}
+{"id":"GP-13","prompt":"Rename method foo to bar in UserService","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-14","prompt":"Convert this YAML to JSON: foo: 1\\nbar: baz","expected_tier_mvp":"L3","expected_tier_v1":"L2/L3"}
+{"id":"GP-15","prompt":"Summarize this 3-line error log: NameError in main.py line 42","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-16","prompt":"Generate unit tests for Calculator.add(a,b) and subtract(a,b)","expected_tier_mvp":"L3","expected_tier_v1":"L3/L4"}
+{"id":"GP-17","prompt":"hi","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-18","prompt":"Given tool definitions, choose next tool call and arguments safely.","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
+{"id":"GP-19","prompt":"run lint","expected_tier_mvp":"L3","expected_tier_v1":"Lt"}
+{"id":"GP-20","prompt":"We changed router and cache. Give a short debugging plan for next steps.","expected_tier_mvp":"L3","expected_tier_v1":"L3"}
