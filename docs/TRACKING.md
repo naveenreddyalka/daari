@@ -1,7 +1,8 @@
 # daari — Task tracking
 
 > Last updated: 2026-06-17  
-> Update this file when phases/tasks complete.
+> Update this file when phases/tasks complete.  
+> Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Legend
 

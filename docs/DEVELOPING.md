@@ -199,6 +199,7 @@ Environment overrides use prefix `DAARI_` with nested delimiter `__` (e.g. `DAAR
 
 | Doc | Purpose |
 |-----|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Repo layout, request flow, file map |
 | [TRACKING.md](TRACKING.md) | Phase A / A.1 task tracker |
 | [CONTEXT.md](../CONTEXT.md) | Agent handoff — phase, decisions, next steps |
 | [docs/plans/phase-a.md](plans/phase-a.md) | Phase A implementation plan |
