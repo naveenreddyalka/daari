@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
 > Date: 2026-06-20  
-> Scope: Phase B core features requested in implementation mandate
+> Scope: Phase B completion + Phase C bootstrap slice
 
 ## Feature checklist vs PRD
 
@@ -13,21 +13,27 @@
 | Lt B.0 dispatch | ✅ implemented | `git status`, `git diff`, `pytest`, `eslint` execution via subprocess |
 | PolicyEngine B.0 | ✅ implemented | allow/block/unknown(deny or ask) decisions before Lt |
 | L4 medium local tier | ✅ implemented | L3→L4→L6 escalation path (L4 fallback to L3 when unavailable) |
+| L5 local-large tier wiring | ✅ implemented (scaffold) | L3→L4→L5→L6 chain, model/config/provider wiring, optional pull only |
 | Model routing preferences | ✅ implemented | `routing.prefer` + `models.weights` config shape and tier picker usage |
 | `--no-frontier` / no-frontier header | ✅ implemented | CLI flag + `X-Daari-No-Frontier` request override |
-| Streaming SSE | ✅ implemented (basic) | OpenAI-style chunk stream passthrough for `stream=true` |
+| Streaming SSE | ✅ implemented (enriched) | stream chunks now include `daari_meta` tier/provider/model |
 | Wizard polish | ✅ implemented | frontier key helper + openai-compat setup flow added |
 | `daari install` Typer parity | ✅ implemented (minimal) | CLI wrapper to run `scripts/install.sh` with doctor option |
 | Eval GP-11–GP-20 | ✅ implemented | prompts expanded and regression assertions updated |
 | ProviderRegistry router wiring | ✅ implemented (minimum) | model executors registered and resolved through registry |
+| Integration providers scaffold | ✅ implemented (scaffold) | Sourcegraph/GHE deferred providers registered as placeholders |
+| Anthropic gateway adapter | ✅ implemented (minimal) | `/v1/messages` non-streaming route mapped to internal router |
+| MCP gateway stub | ✅ implemented (stub) | `/v1/mcp/query` explicit `501` for deferred Phase C1 implementation |
 | `daari setup openai-compat` | ✅ implemented | prints OPENAI_* exports + writes `~/.daari/.env.example` |
 | `daari context clear` | ✅ implemented | clears L0/L1/CCS caches via CLI |
 | Doctor L4 pull hint | ✅ implemented | optional `model_l4` check with `ollama pull` hint |
+| Doctor L5 pull hint | ✅ implemented | optional `model_l5` check with `ollama pull` hint |
+| Install optional L4/L5 pulls | ✅ implemented | `daari install --pull-l4 --pull-l5` env passthrough to script |
 
 ## Verification results
 
-- `pytest -m "not integration and not benchmark"`: **68 passed, 2 deselected**
-- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: **70 passed**
+- `pytest -m "not integration and not benchmark"`: **72 passed, 2 deselected**
+- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: **74 passed**
 - `pytest -m benchmark`: **1 passed**
 - `./scripts/demo.sh`: **pass**
 - `./scripts/bench.sh`: **pass**
@@ -39,7 +45,9 @@
   - Lt command: `Lt`
   - L4 override: fallback to `L3` with `l4_unavailable_fell_back_to_l3` warning when model not installed
   - No-frontier header: handled (`L3`, local path)
-  - Streaming SSE (basic): pass (`data: [DONE]` observed)
+  - Streaming SSE metadata: pass (`daari_meta` present in stream chunk events)
+  - Anthropic adapter (`/v1/messages`): pass (manual curl + integration test)
+  - MCP stub (`/v1/mcp/query`): covered by integration test (`501 Not Implemented`)
   - L6: implementation validated by tests; live manual call skipped because no frontier API key in environment
 
 ## Performance summary
@@ -48,12 +56,12 @@ Measured on local machine against a clean daemon instance (`scripts/bench.sh` + 
 
 | Tier/path | Observed p50 latency |
 |-----------|----------------------|
-| L0 exact cache | ~18.7 ms (manual smoke); bench run showed an L1 hit on "L0" probe |
-| L1 semantic cache | ~46.3 ms |
-| L2 rules | ~49.0 ms |
-| Lt command (`git status`) | ~56.8 ms |
-| L3 local model | ~802.3 ms |
-| L4 override (fallback path) | fallback observed to `L3` when L4 model missing |
+| L0 exact cache | bench probe returned `L3` (~450.5 ms), indicating no L0 hit in that run |
+| L1 semantic cache | bench probe returned `L3` (~833.2 ms), indicating no L1 hit in that run |
+| L2 rules | ~60.4 ms |
+| Lt command (`git status`) | ~57.9 ms |
+| L3 local model | ~812.0 ms |
+| L4/L5 override paths | covered by tests; runtime depends on local model availability |
 
 ## Benefits vs alternatives
 
@@ -69,7 +77,8 @@ Measured on local machine against a clean daemon instance (`scripts/bench.sh` + 
 | Severity | Gap | Impact | Next action |
 |----------|-----|--------|-------------|
 | Medium | L4 model not auto-installed; can fallback to L3 | Reduced quality path unless user pulls L4 model | Keep doctor/model hints; consider optional auto-pull |
-| Medium | SSE implementation is basic passthrough only | No tier-aware streaming metadata yet | Add richer streaming meta/events in Phase C |
+| Medium | Anthropic adapter does not stream yet | Claude-style streaming clients still need fallback/non-stream | Add Anthropic SSE event protocol in C2 |
+| Medium | MCP gateway is currently stubbed | MCP-native client requests return `501` | Implement C1 MCP ingress contract and handler |
 | Medium | L6 manual smoke requires configured API key | Cannot validate live frontier path in keyless env | Add optional key-aware smoke script path |
 | Low | Wizard is still single-choice flow | Slight setup friction for first-time setup | Expand wizard to multi-step/multi-select in follow-up |
 

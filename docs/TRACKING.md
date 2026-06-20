@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 70 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`)
+**Count:** 74 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`)
 
 ---
 
@@ -121,6 +121,7 @@ pytest -m benchmark                 # optional latency checks
 | Wizard frontier key helper | [x] | optional profile hint + env template (no config secret storage) |
 | `daari context clear` | [x] | clears L0/L1/CCS caches |
 | Doctor L4 pull hint | [x] | optional `model_l4` hint with pull command |
+| Install optional L4/L5 pull flags | [x] | `daari install --pull-l4 --pull-l5` + `scripts/install.sh` env knobs |
 | Eval expansion GP-11–GP-20 | [x] | prompts + regression assertions updated |
 
 **Exit criteria (Phase B — partial)**
@@ -132,6 +133,19 @@ pytest -m benchmark                 # optional latency checks
 | L0 → CCS → L1 → L2-dev → L2 → Lt → L3/L4 routing order | [x] | with tool_calls bypass caches retained |
 
 **Tests:** see [Testing](#testing) below.
+
+---
+
+## Phase C bootstrap — in progress
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Gateway adapter protocol (`daari/gateway/base.py`) | [x] | OpenAI adapter now implements protocol |
+| Anthropic gateway adapter (`/v1/messages`) | [~] | non-streaming routed path shipped; streaming still deferred |
+| MCP gateway stub | [~] | `/v1/mcp/query` returns explicit Phase C1 `501` |
+| L5 local tier wiring | [~] | config + routing/escalation support; large model remains optional |
+| Sourcegraph/GHE provider scaffolds | [~] | deferred providers registered in `ProviderRegistry` |
+| SSE metadata enrichment | [x] | stream chunks now include `daari_meta` tier/provider/model |
 
 ---
 

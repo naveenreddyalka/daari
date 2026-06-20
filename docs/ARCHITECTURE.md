@@ -20,6 +20,7 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | **A — Tracer bullet** | Done | `daari serve`, OpenAI gateway, L0 cache, L3 Ollama, router, metrics, routing evals GP-01–GP-10 |
 | **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; `daari install` CLI added; wizard now includes frontier key helper hints |
 | **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` and `context clear` added |
+| **C — Bootstrap slice** | In progress | gateway adapter protocol, Anthropic adapter (non-stream), MCP stub, L5 wiring, provider scaffolds |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -75,7 +76,10 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/server/app.py` | FastAPI factory, lifespan → `AppContext` | ✅ |
 | `daari/gateway/openai.py` | `POST /v1/chat/completions`, stats, health | ✅ |
 | `daari/gateway/internal.py` | `InternalRequest` / `InternalResponse` / `DaariMeta` | ✅ |
-| `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L6 + no-frontier + fallback behavior | ✅ |
+| `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L5/L6 + no-frontier + fallback behavior | ✅ |
+| `daari/gateway/base.py` | `GatewayAdapter` protocol | ✅ |
+| `daari/gateway/anthropic.py` | `POST /v1/messages` Anthropic-compatible adapter (minimal) | ✅ |
+| `daari/gateway/mcp.py` | MCP ingress stub (`/v1/mcp/query` → `501`) | ✅ stub |
 | `daari/cache/exact.py` | L0 exact cache keys + diskcache store | ✅ |
 | `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
 | `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/`) | ✅ |
@@ -83,6 +87,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` | ✅ |
 | `daari/providers/base.py` | `IntegrationProvider` protocol (`execute`, `health`) | ✅ |
 | `daari/providers/registry.py` | Provider registry used by router | ✅ |
+| `daari/providers/integrations.py` | Deferred Sourcegraph/GHE provider scaffolds | ✅ scaffold |
 | `daari/rules/engine.py` | L2 deterministic transforms (JSON/YAML) | ✅ |
 | `daari/rules/dev_commands.py` | L2-dev developer command detection | ✅ |
 | `daari/cache/command_context.py` | CCS store for command output reuse | ✅ |
@@ -99,7 +104,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/setup/openai_compat.py` | `setup openai-compat` + frontier env/profile hints | ✅ |
 | `daari/setup/context.py` | `daari context clear` cache invalidation helper | ✅ |
 
-**Not in tree (spec / later phases):** `gateway/anthropic.py`, `gateway/mcp.py`, IntelliJ Lt B.1 backend, enterprise providers.
+**Not in tree (spec / later phases):** IntelliJ Lt B.1 backend, Claude Code setup recipe, full MCP ingress handler, enterprise runtime providers.
 
 ### Docs (`docs/`)
 
@@ -175,7 +180,7 @@ flowchart LR
 4. Try L1 semantic cache (Ollama embeddings + cosine threshold).
 5. Apply L2-dev command rules (`git`, `pytest`, `eslint`) and policy gate; execute Lt when allowed.
 6. Apply L2 deterministic transforms (JSON/YAML patterns).
-7. Model path: L3 or L4 based on preference/weights/override, then confidence escalation to L6.
+7. Model path: L3/L4 (and optional L5 override/accuracy path), then confidence escalation toward L6.
 8. `X-Daari-No-Frontier: true` prevents L6 escalation.
 
 ---
@@ -189,7 +194,7 @@ flowchart LR
 | `daari serve [--host] [--port] [--no-frontier]` | Start HTTP daemon (default `127.0.0.1:11435`) |
 | `daari stats [--host] [--port]` | Fetch tier counters from running daemon |
 | `daari doctor` | Check Python, config, Ollama, model, optional daemon |
-| `daari install [--run-doctor/--no-run-doctor]` | Run install workflow via `scripts/install.sh` |
+| `daari install [--run-doctor/--no-run-doctor] [--pull-l4] [--pull-l5]` | Run install workflow via `scripts/install.sh` |
 | `daari setup` | Interactive setup wizard |
 | `daari setup --undo <tool>` | Restore latest backup (e.g. `cursor`) |
 | `daari setup cursor [--dry-run] [--force]` | Patch Cursor to point at daari |
@@ -205,6 +210,8 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat (supports basic SSE streaming passthrough) |
+| `POST` | `/v1/messages` | Anthropic-compatible messages adapter (non-streaming) |
+| `POST` | `/v1/mcp/query` | MCP stub endpoint (currently `501`) |
 | `GET` | `/v1/daari/stats` | Tier metrics snapshot |
 | `GET` | `/health` | Liveness |
 
@@ -224,11 +231,11 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override`, `X-Daari-
 
 | Area | Implemented | Spec only / deferred |
 |------|-------------|------------------------|
-| Gateway | OpenAI-compat chat, health, stats, basic SSE stream passthrough | Anthropic, MCP adapters |
-| Tiers | L0 exact, CCS, L1 semantic, L2 rules, L2-dev, Lt, L3, L4, L6 | L5 large local tier |
+| Gateway | OpenAI + Anthropic adapters, MCP stub, health, stats, SSE with metadata | Anthropic streaming protocol, full MCP contract |
+| Tiers | L0 exact, CCS, L1 semantic, L2 rules, L2-dev, Lt, L3, L4, L5 wiring, L6 | L5 model auto-provision and tuning |
 | Router | Full Phase B.0 pipeline + policy + no-frontier behavior | B.1 confirmation UX polish, IntelliJ backend |
 | Setup | Cursor recipe, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | Claude Code, IntelliJ recipe |
-| Providers | Registry + model provider wiring | Live integration providers |
+| Providers | Registry + model providers + Sourcegraph/GHE scaffolds | Live provider execution for enterprise APIs |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
 | Enterprise | ADR-0014, PRD sections | All runtime |
 | Packages | README placeholder | browser-extension, web-ui, intellij-plugin |

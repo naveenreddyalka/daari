@@ -18,6 +18,7 @@ class ServerSettings(BaseModel):
 class ModelsSettings(BaseModel):
     l3: str = "llama3.2:3b"
     l4: str = "llama3.1:8b"
+    l5: str = "llama3.1:70b"
     weights: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 

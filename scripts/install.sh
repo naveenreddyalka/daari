@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 VENV="${REPO_ROOT}/.venv"
 RUN_DOCTOR="${RUN_DOCTOR:-1}"
+PULL_L4="${PULL_L4:-0}"
+PULL_L5="${PULL_L5:-0}"
 
 cd "${REPO_ROOT}"
 
@@ -27,9 +29,24 @@ pip install -q -e ".[dev]"
 if command -v ollama >/dev/null 2>&1; then
   echo "==> Pulling default Ollama model (llama3.2:3b)"
   ollama pull llama3.2:3b || echo "Warning: ollama pull failed — run manually when Ollama is ready."
+  if [[ "${PULL_L4}" == "1" ]]; then
+    echo "==> Pulling optional L4 model (llama3.1:8b)"
+    ollama pull llama3.1:8b || echo "Warning: optional L4 pull failed."
+  else
+    echo "==> Skipping optional L4 pull. Enable with: PULL_L4=1 ./scripts/install.sh"
+  fi
+  if [[ "${PULL_L5}" == "1" ]]; then
+    echo "==> Pulling optional L5 model (llama3.1:70b)"
+    ollama pull llama3.1:70b || echo "Warning: optional L5 pull failed."
+  else
+    echo "==> Skipping optional L5 pull. Enable with: PULL_L5=1 ./scripts/install.sh"
+  fi
 else
   echo "==> Ollama not found."
-  echo "    Install from https://ollama.com then run: ollama pull llama3.2:3b"
+  echo "    Install from https://ollama.com then run:"
+  echo "      ollama pull llama3.2:3b"
+  echo "      ollama pull llama3.1:8b      # optional L4"
+  echo "      ollama pull llama3.1:70b     # optional L5"
 fi
 
 echo ""

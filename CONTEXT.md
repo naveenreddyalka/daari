@@ -9,8 +9,8 @@
 
 ## Current phase
 
-**Phase B — Full local-first stack** (in progress)  
-Phase A + A.1 complete; B.0 core now shipped: **L2 rules**, **L2-dev + CCS**, **Lt B.0**, **L4 tier**, no-frontier control, basic streaming SSE passthrough, ProviderRegistry executor wiring.
+**Phase B complete + Phase C bootstrap** (in progress)  
+Phase A + A.1 complete; B.0 core shipped: **L2 rules**, **L2-dev + CCS**, **Lt B.0**, **L4 tier**, no-frontier control. Current bootstrap adds **gateway adapter protocol**, **Anthropic adapter**, **MCP stub**, **L5 wiring**, and **richer SSE metadata**.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -60,10 +60,10 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 ## Next tasks (remaining Phase B / Phase C prep)
 
 1. **Lt B.1** confirmation UX + IntelliJ path/project command profiles
-2. **L5 local tier** (Phase C1)
-3. **Anthropic/MCP gateway adapters** (Phase C)
-4. **Enterprise/provider plugins** rollout per ADR-0011
-5. Optional: richer SSE metadata/events beyond basic passthrough
+2. **Anthropic streaming + Claude Code setup** (`daari setup claude-code`)
+3. **MCP ingress implementation** behind current stub endpoint
+4. **Provider execution** for Sourcegraph/GHE (move beyond scaffolds)
+5. Optional: improve bench script resilience when model path is unavailable
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -78,12 +78,12 @@ cache:
 ```
 
 **Validation baseline (2026-06-20):**
-- `pytest -m "not integration and not benchmark"`: 68 passed, 2 deselected
-- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: 70 passed
+- `pytest -m "not integration and not benchmark"`: 72 passed, 2 deselected
+- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: 74 passed
 - `pytest -m benchmark`: pass
 - `./scripts/demo.sh`: pass
-- `./scripts/bench.sh`: pass
-- Manual tier smoke: L0/L1/L2/Lt/L3 verified; L4 override falls back to L3 when model unavailable; no-frontier header + SSE basic verified; L6 requires API key.
+- `./scripts/bench.sh`: pass (script completes; some probes can return `error` tier when model path fails)
+- Manual tier smoke: L0/L1/L2/Lt/L3 verified; L4/L5 override fallback behavior covered in tests; no-frontier header + SSE metadata verified; Anthropic adapter and MCP stub covered by integration tests; L6 requires API key.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 

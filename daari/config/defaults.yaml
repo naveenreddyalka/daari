@@ -5,6 +5,7 @@ server:
 models:
   l3: llama3.2:3b
   l4: llama3.1:8b
+  l5: llama3.1:70b
   weights:
     llama3.2:3b:
       latency: 0.9
@@ -12,6 +13,9 @@ models:
     llama3.1:8b:
       latency: 0.5
       accuracy: 0.8
+    llama3.1:70b:
+      latency: 0.2
+      accuracy: 0.95
 
 ollama:
   base_url: http://127.0.0.1:11434

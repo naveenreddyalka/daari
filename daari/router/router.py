@@ -17,6 +17,7 @@ from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.policy.engine import PolicyEngine
+from daari.providers.integrations import GitHubEnterpriseProvider, SourcegraphProvider
 from daari.providers.registry import ProviderRegistry
 from daari.rules.dev_commands import DevCommandMatch, match_dev_command
 from daari.rules.engine import apply_l2_rules
@@ -96,6 +97,7 @@ class Router:
         metrics: Metrics,
         ollama_l3: OllamaExecutor | None = None,
         ollama_l4: OllamaExecutor | None = None,
+        ollama_l5: OllamaExecutor | None = None,
         ollama: OllamaExecutor | None = None,
         frontier: FrontierExecutor | None = None,
         command_context: CommandContextStore | None = None,
@@ -119,6 +121,11 @@ class Router:
             base_url=self.ollama_l3.base_url,
             default_model=self.ollama_l3.default_model,
             tier="L4",
+        )
+        self.ollama_l5 = ollama_l5 or ollama_l4 or ollama_l3 or ollama or OllamaExecutor(
+            base_url=self.ollama_l3.base_url,
+            default_model=self.ollama_l4.default_model,
+            tier="L5",
         )
         self.metrics = metrics
         self.frontier = frontier
@@ -147,7 +154,10 @@ class Router:
         dev_match = match_dev_command(last_user)
 
         if not request.meta.no_cache:
-            cached = self.cache.get(request)
+            try:
+                cached = self.cache.get(request)
+            except Exception:
+                cached = None
             if cached is not None:
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 cached.daari_meta.tier = "L0"
@@ -166,7 +176,10 @@ class Router:
             return ccs_hit
 
         if not request.meta.no_cache:
-            semantic_hit, _similarity = await self.semantic_cache.get(request)
+            try:
+                semantic_hit, _similarity = await self.semantic_cache.get(request)
+            except Exception:
+                semantic_hit = None
             if semantic_hit is not None:
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 semantic_hit.daari_meta.tier = "L1"
@@ -217,14 +230,18 @@ class Router:
 
             shell = await self.shell_executor.run(dev_match.command, cwd=os.getcwd())
             if self.command_context and not request.meta.no_cache:
-                self.command_context.put(
-                    repo_root=os.getcwd(),
-                    cwd=os.getcwd(),
-                    command=dev_match.command,
-                    output=shell.output,
-                    exit_code=shell.exit_code,
-                    ttl_seconds=dev_match.ttl_seconds,
-                )
+                try:
+                    self.command_context.put(
+                        repo_root=os.getcwd(),
+                        cwd=os.getcwd(),
+                        command=dev_match.command,
+                        output=shell.output,
+                        exit_code=shell.exit_code,
+                        ttl_seconds=dev_match.ttl_seconds,
+                    )
+                except Exception:
+                    # CCS failures should not fail the primary Lt execution path.
+                    pass
             result = InternalResponse(
                 content=shell.output or "(no output)",
                 model=request.model,
@@ -267,28 +284,66 @@ class Router:
             if initial_tier == "L4":
                 response = await self._run_model_tier("L3", request)
                 response.daari_meta.warning = "l4_unavailable_fell_back_to_l3"
+            elif initial_tier == "L5":
+                try:
+                    response = await self._run_model_tier("L4", request)
+                    response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
+                except Exception:
+                    response = await self._run_model_tier("L3", request)
+                    response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
             else:
                 raise
         response = await self._maybe_escalate(request, response, started)
-        if not request.meta.no_cache and response.daari_meta.tier in {"L3", "L4"}:
-            self.cache.put(request, response)
-            await self.semantic_cache.put(request, response)
+        if not request.meta.no_cache and response.daari_meta.tier in {"L3", "L4", "L5"}:
+            try:
+                self.cache.put(request, response)
+            except Exception:
+                pass
+            try:
+                await self.semantic_cache.put(request, response)
+            except Exception:
+                pass
         self._record(response, started)
         return response
 
     async def stream_openai_chunks(self, request: InternalRequest) -> AsyncIterator[str]:
-        """Basic SSE passthrough for streaming requests via Ollama."""
+        """SSE passthrough with daari metadata events."""
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
-        async for event in self.ollama_l3.stream(request):
+        stream_tier = self._choose_initial_tier(request)
+        stream_executor = self._executor_for_tier(stream_tier)
+        model_name = stream_executor.default_model
+        meta_payload = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model_name,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": None}],
+            "daari_meta": {
+                "tier": stream_tier,
+                "executor": "ollama",
+                "provider_id": f"ollama:{stream_tier.lower()}",
+                "model": model_name,
+                "stream": True,
+            },
+        }
+        yield f"data: {json.dumps(meta_payload)}\n\n"
+        async for event in stream_executor.stream(request):
             delta = event.get("message", {}).get("content", "")
             if delta:
                 payload = {
                     "id": chunk_id,
                     "object": "chat.completion.chunk",
                     "created": created,
-                    "model": request.model or self.ollama_l3.default_model,
+                    "model": model_name,
                     "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
+                    "daari_meta": {
+                        "tier": stream_tier,
+                        "executor": "ollama",
+                        "provider_id": f"ollama:{stream_tier.lower()}",
+                        "model": model_name,
+                        "stream": True,
+                    },
                 }
                 yield f"data: {json.dumps(payload)}\n\n"
             if event.get("done"):
@@ -297,8 +352,15 @@ class Router:
             "id": chunk_id,
             "object": "chat.completion.chunk",
             "created": created,
-            "model": request.model or self.ollama_l3.default_model,
+            "model": model_name,
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            "daari_meta": {
+                "tier": stream_tier,
+                "executor": "ollama",
+                "provider_id": f"ollama:{stream_tier.lower()}",
+                "model": model_name,
+                "stream": True,
+            },
         }
         yield f"data: {json.dumps(done_payload)}\n\n"
         yield "data: [DONE]\n\n"
@@ -313,7 +375,10 @@ class Router:
         known_commands = ["git status", "git diff", "pytest", "eslint ."]
         if dev_match.action == "ccs_read":
             for command in known_commands:
-                entry = self.command_context.get(repo_root=os.getcwd(), cwd=os.getcwd(), command=command)
+                try:
+                    entry = self.command_context.get(repo_root=os.getcwd(), cwd=os.getcwd(), command=command)
+                except Exception:
+                    return None
                 if entry is not None:
                     return InternalResponse(
                         content=entry.output or "(cached command had no output)",
@@ -331,11 +396,14 @@ class Router:
             return None
 
         if dev_match.action == "execute" and dev_match.command and not (dev_match.needs_rerun or request.meta.rerun_command):
-            entry = self.command_context.get(
-                repo_root=os.getcwd(),
-                cwd=os.getcwd(),
-                command=dev_match.command,
-            )
+            try:
+                entry = self.command_context.get(
+                    repo_root=os.getcwd(),
+                    cwd=os.getcwd(),
+                    command=dev_match.command,
+                )
+            except Exception:
+                return None
             if entry is None:
                 return None
             return InternalResponse(
@@ -361,21 +429,31 @@ class Router:
                 provider_request.model = self.ollama_l3.default_model
             elif tier == "L4":
                 provider_request.model = self.ollama_l4.default_model
+            elif tier == "L5":
+                provider_request.model = self.ollama_l5.default_model
             response = await provider.execute(provider_request)
             response.daari_meta.tier = tier
             return response
+        executor = self._executor_for_tier(tier)
+        req = request.model_copy(deep=True)
+        req.model = executor.default_model
+        return await executor.execute(req)
+
+    def _executor_for_tier(self, tier: str) -> OllamaExecutor:
         if tier == "L4":
-            req = request.model_copy(deep=True)
-            req.model = self.ollama_l4.default_model
-            return await self.ollama_l4.execute(req)
-        return await self.ollama_l3.execute(request)
+            return self.ollama_l4
+        if tier == "L5":
+            return self.ollama_l5
+        return self.ollama_l3
 
     def _choose_initial_tier(self, request: InternalRequest) -> str:
         override = (request.meta.tier_override or "").upper()
-        if override in {"L3", "L4"}:
+        if override in {"L3", "L4", "L5"}:
             return override
         text = self._last_user_text(request.messages)
         words = len(re.findall(r"\S+", text))
+        if words > 900 and self.model_preference == "accuracy":
+            return "L5"
         if words > 250:
             return "L4"
         if words <= 12:
@@ -383,18 +461,24 @@ class Router:
 
         l3_name = self.ollama_l3.default_model
         l4_name = self.ollama_l4.default_model
+        l5_name = self.ollama_l5.default_model
         l3_weight = self.model_weights.get(l3_name, {"latency": 0.8, "accuracy": 0.6})
         l4_weight = self.model_weights.get(l4_name, {"latency": 0.5, "accuracy": 0.8})
+        l5_weight = self.model_weights.get(l5_name, {"latency": 0.2, "accuracy": 0.95})
 
         if self.model_preference == "latency":
-            return "L3" if l3_weight.get("latency", 0.0) >= l4_weight.get("latency", 0.0) else "L4"
+            scores = {"L3": l3_weight.get("latency", 0.0), "L4": l4_weight.get("latency", 0.0), "L5": l5_weight.get("latency", 0.0)}
+            return max(scores, key=scores.get)
         if self.model_preference == "accuracy":
-            return "L3" if l3_weight.get("accuracy", 0.0) >= l4_weight.get("accuracy", 0.0) else "L4"
+            scores = {"L3": l3_weight.get("accuracy", 0.0), "L4": l4_weight.get("accuracy", 0.0), "L5": l5_weight.get("accuracy", 0.0)}
+            return max(scores, key=scores.get)
 
         # Balanced: blend both dimensions and pick the stronger score.
         l3_score = 0.5 * l3_weight.get("latency", 0.0) + 0.5 * l3_weight.get("accuracy", 0.0)
         l4_score = 0.5 * l4_weight.get("latency", 0.0) + 0.5 * l4_weight.get("accuracy", 0.0)
-        return "L3" if l3_score >= l4_score else "L4"
+        l5_score = 0.5 * l5_weight.get("latency", 0.0) + 0.5 * l5_weight.get("accuracy", 0.0)
+        scores = {"L3": l3_score, "L4": l4_score, "L5": l5_score}
+        return max(scores, key=scores.get)
 
     @staticmethod
     def _last_user_text(messages: list[Message]) -> str:
@@ -417,20 +501,24 @@ class Router:
         if confidence >= self.confidence_threshold:
             return response
 
-        if response.daari_meta.tier == "L3":
-            try:
-                l4_request = request.model_copy(deep=True)
-                l4_request.model = self.ollama_l4.default_model
-                l4_response = await self._run_model_tier("L4", l4_request)
-                l4_confidence = score_l3_confidence(l4_response.content)
-                l4_response.daari_meta.confidence = l4_confidence
-                if l4_confidence >= self.confidence_threshold:
-                    return l4_response
-                response = l4_response
-                confidence = l4_confidence
-            except Exception:
-                response.daari_meta.warning = "below_confidence_threshold"
-                return response
+        tier_chain = ["L3", "L4", "L5"]
+        current_tier = response.daari_meta.tier
+        if current_tier in tier_chain:
+            current_idx = tier_chain.index(current_tier)
+            for next_tier in tier_chain[current_idx + 1 :]:
+                try:
+                    next_request = request.model_copy(deep=True)
+                    next_request.model = self._executor_for_tier(next_tier).default_model
+                    next_response = await self._run_model_tier(next_tier, next_request)
+                    next_confidence = score_l3_confidence(next_response.content)
+                    next_response.daari_meta.confidence = next_confidence
+                    if next_confidence >= self.confidence_threshold:
+                        return next_response
+                    response = next_response
+                    confidence = next_confidence
+                except Exception:
+                    response.daari_meta.warning = "below_confidence_threshold"
+                    return response
 
         if request.meta.no_frontier or not self.frontier_enabled:
             response.daari_meta.warning = "below_confidence_threshold"
@@ -443,7 +531,7 @@ class Router:
         try:
             l6_response = await self.frontier.execute(
                 request,
-                escalated_from="L3",
+                escalated_from=response.daari_meta.tier,
                 local_confidence=confidence,
             )
             return l6_response
@@ -470,6 +558,7 @@ class AppContext:
     command_context: CommandContextStore
     ollama_l3: OllamaExecutor
     ollama_l4: OllamaExecutor
+    ollama_l5: OllamaExecutor
     frontier: FrontierExecutor
     shell_executor: ShellExecutor
     policy: PolicyEngine
@@ -525,6 +614,11 @@ class AppContext:
             default_model=settings.models.l4,
             tier="L4",
         )
+        ollama_l5 = OllamaExecutor(
+            base_url=settings.ollama.base_url.rstrip("/"),
+            default_model=settings.models.l5,
+            tier="L5",
+        )
         frontier = FrontierExecutor(
             base_url=settings.frontier.base_url.rstrip("/"),
             default_model=settings.frontier.model,
@@ -552,6 +646,15 @@ class AppContext:
                 execute_fn=lambda request, executor=ollama_l4: executor.execute(request),
             )
         )
+        providers.register(
+            CallableProvider(
+                id="ollama:l5",
+                tier="L5",
+                execute_fn=lambda request, executor=ollama_l5: executor.execute(request),
+            )
+        )
+        providers.register(SourcegraphProvider())
+        providers.register(GitHubEnterpriseProvider())
         metrics = Metrics()
         router = Router(
             cache=cache,
@@ -559,6 +662,7 @@ class AppContext:
             command_context=command_context,
             ollama_l3=ollama_l3,
             ollama_l4=ollama_l4,
+            ollama_l5=ollama_l5,
             metrics=metrics,
             frontier=frontier,
             shell_executor=shell_executor,
@@ -576,6 +680,7 @@ class AppContext:
             command_context=command_context,
             ollama_l3=ollama_l3,
             ollama_l4=ollama_l4,
+            ollama_l5=ollama_l5,
             frontier=frontier,
             shell_executor=shell_executor,
             policy=policy,

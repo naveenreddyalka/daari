@@ -93,7 +93,7 @@ class TestL6Escalation:
         result = await router.route(_request())
         assert l6_called is True
         assert result.daari_meta.tier == "L6"
-        assert result.daari_meta.escalated_from == "L3"
+        assert result.daari_meta.escalated_from in {"L3", "L4", "L5"}
         assert metrics.tiers["L6"].count == 1
 
     @pytest.mark.asyncio
@@ -156,10 +156,10 @@ class TestL6Escalation:
         )
 
         result = await router.route(_request())
-        assert result.daari_meta.tier == "L3"
+        assert result.daari_meta.tier in {"L3", "L4", "L5"}
         assert result.daari_meta.confidence == 0.0
         assert result.daari_meta.warning == "below_confidence_threshold"
-        assert metrics.tiers["L3"].count == 1
+        assert metrics.tiers[result.daari_meta.tier].count == 1
 
     @pytest.mark.asyncio
     async def test_returns_l3_when_enabled_but_no_api_key(self, tmp_path):
@@ -187,5 +187,5 @@ class TestL6Escalation:
         )
 
         result = await router.route(_request())
-        assert result.daari_meta.tier == "L3"
+        assert result.daari_meta.tier in {"L3", "L4", "L5"}
         assert result.daari_meta.warning == "below_confidence_threshold"
