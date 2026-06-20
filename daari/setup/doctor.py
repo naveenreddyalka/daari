@@ -69,7 +69,8 @@ def _check_ollama(
     client: httpx.Client | None,
 ) -> list[CheckResult]:
     base = settings.ollama.base_url.rstrip("/")
-    model = settings.models.l3
+    l3_model = settings.models.l3
+    l4_model = settings.models.l4
     own_client = client is None
     http = client or httpx.Client(timeout=5.0)
     try:
@@ -84,24 +85,45 @@ def _check_ollama(
                 CheckResult(
                     name="model",
                     ok=False,
-                    detail=f"{model} not checked (Ollama unreachable)",
+                    detail=f"{l3_model} not checked (Ollama unreachable)",
+                ),
+                CheckResult(
+                    name="model_l4",
+                    ok=False,
+                    detail=f"{l4_model} not checked (Ollama unreachable)",
+                    optional=True,
                 ),
             ]
         data: dict[str, Any] = response.json()
         models = [m.get("name", "") for m in data.get("models", [])]
-        present = any(name == model or name.startswith(f"{model}:") for name in models)
+        l3_present = any(name == l3_model or name.startswith(f"{l3_model}:") for name in models)
+        l4_present = any(name == l4_model or name.startswith(f"{l4_model}:") for name in models)
         return [
             CheckResult(name="ollama", ok=True, detail=f"reachable at {base}"),
             CheckResult(
                 name="model",
-                ok=present,
-                detail=f"{model} {'found' if present else 'missing — run: ollama pull ' + model}",
+                ok=l3_present,
+                detail=f"{l3_model} {'found' if l3_present else 'missing — run: ollama pull ' + l3_model}",
+            ),
+            CheckResult(
+                name="model_l4",
+                ok=l4_present,
+                detail=(
+                    f"{l4_model} {'found' if l4_present else 'missing — run: ollama pull ' + l4_model + ' (L4 falls back to L3)'}"
+                ),
+                optional=True,
             ),
         ]
     except Exception as exc:
         return [
             CheckResult(name="ollama", ok=False, detail=f"unreachable at {base}: {exc}"),
-            CheckResult(name="model", ok=False, detail=f"{model} not checked (Ollama unreachable)"),
+            CheckResult(name="model", ok=False, detail=f"{l3_model} not checked (Ollama unreachable)"),
+            CheckResult(
+                name="model_l4",
+                ok=False,
+                detail=f"{l4_model} not checked (Ollama unreachable)",
+                optional=True,
+            ),
         ]
     finally:
         if own_client:

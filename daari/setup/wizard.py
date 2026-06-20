@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import typer
 
 from daari.clients.registry import default_registry
 from daari.config.settings import Settings
 from daari.setup.doctor import doctor_exit_code, run_doctor
 from daari.setup.models import setup_models_interactive
+from daari.setup.openai_compat import setup_frontier_key_hint, setup_openai_compat
 
 
 def run_setup_wizard(settings: Settings | None = None) -> None:
@@ -38,8 +41,10 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
     typer.echo("\n  What do you want to set up?")
     typer.echo("    1. Cursor — point AI chat at daari (OpenAI-compat)")
     typer.echo("    2. Local models — choose defaults for L3/L4 and routing preference")
-    typer.echo("    3. Run health check — daari doctor")
-    typer.echo("    4. Skip for now")
+    typer.echo("    3. OpenAI SDK env helper — export OPENAI_* for daari")
+    typer.echo("    4. Frontier key helper (optional) — env template/profile hint")
+    typer.echo("    5. Run health check — daari doctor")
+    typer.echo("    6. Skip for now")
 
     choice = typer.prompt("Enter choice", default="1").strip()
 
@@ -64,6 +69,18 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
         if typer.confirm("Configure L4 model as well?", default=True):
             setup_models_interactive(cfg, tier="l4")
     elif choice == "3":
+        setup_openai_compat(cfg, write_env_example=True)
+    elif choice == "4":
+        shell_from_env = (os.environ.get("SHELL", "").split("/")[-1] or "zsh").lower()
+        shell = shell_from_env if shell_from_env in {"zsh", "bash", "fish"} else "zsh"
+        write_profile = typer.confirm("Append frontier key hint to your shell profile?", default=False)
+        setup_frontier_key_hint(
+            cfg,
+            shell=shell,
+            write_profile_snippet=write_profile,
+            write_env_example=True,
+        )
+    elif choice == "5":
         results = run_doctor(cfg)
         for result in results:
             mark = "✓" if result.ok else "✗"
@@ -72,7 +89,7 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
         code = doctor_exit_code(results)
         if code != 0:
             raise typer.Exit(code=code)
-    elif choice == "4":
+    elif choice == "6":
         typer.echo("Nothing to do.")
     else:
         typer.echo("Invalid choice.", err=True)

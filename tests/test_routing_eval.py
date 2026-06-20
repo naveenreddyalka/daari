@@ -12,6 +12,7 @@ from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.router.router import AppContext
 from daari.server.app import create_app
+from daari.tools.shell import ShellResult
 
 EVALS_PATH = Path(__file__).resolve().parent.parent / "evals" / "routing" / "prompts.jsonl"
 
@@ -65,7 +66,11 @@ async def test_routing_eval_gp01_gp20(eval_app, monkeypatch):
             ),
         )
 
+    async def fake_shell_run(command: str, *, cwd: str | None = None) -> ShellResult:
+        return ShellResult(command=command, output=f"mock shell: {command}", exit_code=0)
+
     monkeypatch.setattr(eval_app.state.ctx.router.ollama, "execute", fake_execute)
+    monkeypatch.setattr(eval_app.state.ctx.router.shell_executor, "run", fake_shell_run)
 
     evals = load_routing_evals()
     assert len(evals) == 20

@@ -18,8 +18,8 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | Phase | Status | Summary |
 |-------|--------|---------|
 | **A — Tracer bullet** | Done | `daari serve`, OpenAI gateway, L0 cache, L3 Ollama, router, metrics, routing evals GP-01–GP-10 |
-| **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; `daari install` CLI added; wizard still lacks API-key capture |
-| **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` pending |
+| **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; `daari install` CLI added; wizard now includes frontier key helper hints |
+| **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` and `context clear` added |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -44,7 +44,7 @@ daari/                              # repo root
 │   ├── tools/                      # Lt subprocess executor
 │   ├── policy/                     # Lt allow/deny/ask policy engine
 │   ├── clients/                    # Setup recipes (Cursor)
-│   └── setup/                      # doctor, wizard, backup, jsonc, models
+│   └── setup/                      # doctor, wizard, backup, jsonc, models, openai-compat/context helpers
 ├── tests/
 │   ├── unit/                       # cache, metrics, settings, internal models
 │   ├── integration/                # gateway flow; optional live Ollama
@@ -92,10 +92,12 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/clients/registry.py` | Setup recipe dispatch (`cursor` only) | ✅ |
 | `daari/clients/cursor/recipe.py` | Cursor settings patch / undo / dry-run | ✅ |
 | `daari/setup/doctor.py` | Health checks (Python, config, Ollama, daemon) | ✅ |
-| `daari/setup/wizard.py` | Interactive `daari setup` | ✅ partial |
+| `daari/setup/wizard.py` | Interactive `daari setup` | ✅ |
 | `daari/setup/backup.py` | Backup / restore for setup recipes | ✅ |
 | `daari/setup/jsonc.py` | JSONC read/write for Cursor config | ✅ |
 | `daari/setup/models.py` | `daari setup models` — tier → Ollama model | ✅ |
+| `daari/setup/openai_compat.py` | `setup openai-compat` + frontier env/profile hints | ✅ |
+| `daari/setup/context.py` | `daari context clear` cache invalidation helper | ✅ |
 
 **Not in tree (spec / later phases):** `gateway/anthropic.py`, `gateway/mcp.py`, IntelliJ Lt B.1 backend, enterprise providers.
 
@@ -192,8 +194,11 @@ flowchart LR
 | `daari setup --undo <tool>` | Restore latest backup (e.g. `cursor`) |
 | `daari setup cursor [--dry-run] [--force]` | Patch Cursor to point at daari |
 | `daari setup models [--tier] [--model] [--list]` | Map tier → Ollama model in user config |
+| `daari setup openai-compat` | Print OPENAI_* exports + write `~/.daari/.env.example` |
+| `daari setup frontier-key` | Optional shell/profile frontier key hint (no secret persistence) |
+| `daari context clear [--l0/--l1/--ccs]` | Clear L0/L1/CCS caches |
 
-Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`. No `daari install` Typer command yet — use `./scripts/install.sh`.
+Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 
 ### HTTP (daemon)
 
@@ -222,7 +227,7 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override`, `X-Daari-
 | Gateway | OpenAI-compat chat, health, stats, basic SSE stream passthrough | Anthropic, MCP adapters |
 | Tiers | L0 exact, CCS, L1 semantic, L2 rules, L2-dev, Lt, L3, L4, L6 | L5 large local tier |
 | Router | Full Phase B.0 pipeline + policy + no-frontier behavior | B.1 confirmation UX polish, IntelliJ backend |
-| Setup | Cursor recipe, wizard polish, models preference, install wrapper | Claude Code, openai-compat helper, IntelliJ recipe |
+| Setup | Cursor recipe, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | Claude Code, IntelliJ recipe |
 | Providers | Registry + model provider wiring | Live integration providers |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
 | Enterprise | ADR-0014, PRD sections | All runtime |
