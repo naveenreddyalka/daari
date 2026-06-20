@@ -51,8 +51,8 @@
 
 | Layer | Location | CI | Notes |
 |-------|----------|-----|-------|
-| **Unit** | `tests/unit/` | ✅ | cache keys, metrics, settings, internal models, confidence, L6 escalation |
-| **Integration (mocked)** | `tests/integration/test_gateway_flow.py`, `tests/integration/test_l6_escalation.py`, `tests/test_phase_a.py`, `tests/test_routing_eval.py` | ✅ | gateway + router + L0 cache + L6; Ollama mocked |
+| **Unit** | `tests/unit/` | ✅ | cache keys, semantic similarity, metrics, settings, internal models, confidence, L6 escalation |
+| **Integration (mocked)** | `tests/integration/test_gateway_flow.py`, `tests/integration/test_l1_semantic_cache.py`, `tests/integration/test_l6_escalation.py`, `tests/test_phase_a.py`, `tests/test_routing_eval.py` | ✅ | gateway + router + L0/L1 cache + L6; Ollama mocked |
 | **Integration (live Ollama)** | `tests/integration/test_ollama_live.py` | skipped | `@pytest.mark.integration`; run with `OLLAMA_HOST=http://127.0.0.1:11434 pytest -m integration` |
 | **Benchmark** | `tests/benchmark/` | skipped | `@pytest.mark.benchmark`; L0 vs L3 latency |
 | **Setup / doctor** | `tests/test_setup.py`, `tests/test_doctor.py` | ✅ | dry-run, backup, doctor checks |
@@ -69,9 +69,9 @@ pytest -m benchmark                 # optional latency checks
 
 **CI:** `.github/workflows/ci.yml` — Python 3.12, `pytest -m "not integration and not benchmark"` on push/PR. No secrets.
 
-**Gaps (planned):** Lt/tool-native tests (Phase B); expanded golden prompts GP-11–GP-20; L6 live API integration test (optional).
+**Gaps (planned):** Lt/tool-native tests (Phase B); expanded golden prompts GP-11–GP-20; L6 live API integration test (optional); L1 live Ollama embedding test (optional).
 
-**Count:** 51 passed, 1 skipped (`pytest`; live Ollama test skipped without `OLLAMA_HOST`)
+**Count:** 65 passed, 1 skipped (`pytest`; live Ollama test skipped without `OLLAMA_HOST`)
 
 ---
 
@@ -106,9 +106,29 @@ pytest -m benchmark                 # optional latency checks
 
 ---
 
-## Phase B (preview — not started)
+## Phase B — Full local-first stack
 
-Per [ROADMAP](prd/ROADMAP.md): L1 semantic cache, L2 rules, L2-dev, CCS, Lt CLI, PolicyEngine, L4 medium model, `daari setup openai-compat`, eval expansion GP-01–GP-20.
+| Task | Status | Notes |
+|------|--------|-------|
+| L1 semantic cache | [x] | Ollama embeddings + diskcache; router L0 → L1 → L3 |
+| L2 rules engine | [ ] | |
+| L2-dev developer commands | [ ] | |
+| CCS command context store | [ ] | |
+| PolicyEngine B.0 | [ ] | |
+| Lt B.0 CLI tools | [ ] | |
+| L4 medium model | [ ] | |
+| `daari setup openai-compat` | [ ] | |
+| Eval expansion GP-11–GP-20 | [ ] | |
+
+**Exit criteria (Phase B — partial)**
+
+| Criterion | Status | Notes |
+|-----------|--------|-------|
+| Paraphrased prompt hits L1 | [x] | mocked embedder tests |
+| L1 metrics in `daari stats` | [x] | tier counter `L1` |
+| L0 → L1 → L3 routing order | [x] | tool_calls skip both caches |
+
+**Tests:** see [Testing](#testing) below.
 
 ---
 

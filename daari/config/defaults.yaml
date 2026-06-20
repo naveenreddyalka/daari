@@ -12,6 +12,12 @@ cache:
   l0:
     enabled: true
     path: ~/.daari/cache/l0
+  l1:
+    enabled: true
+    path: ~/.daari/cache/l1
+    similarity_threshold: 0.92
+    max_entries: 1000
+    embedding_model: nomic-embed-text
 
 frontier:
   enabled: false

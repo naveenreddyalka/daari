@@ -7,9 +7,11 @@ import asyncio
 import pytest
 
 from daari.cache.exact import ExactCache
+from daari.cache.semantic import SemanticCache
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.router.router import OllamaExecutor, Router
+from tests.conftest import NoopEmbedder
 
 
 @pytest.mark.benchmark
@@ -33,7 +35,12 @@ async def test_l0_faster_than_l3_mock(tmp_path):
 
     ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
     ollama.execute = slow_execute  # type: ignore[method-assign]
-    router = Router(cache=cache, ollama=ollama, metrics=metrics)
+    router = Router(
+        cache=cache,
+        semantic_cache=SemanticCache(str(tmp_path / "l1"), NoopEmbedder(), enabled=False),
+        ollama=ollama,
+        metrics=metrics,
+    )
     request = InternalRequest(
         messages=[Message(role="user", content="bench")],
         model="llama3.2:3b",

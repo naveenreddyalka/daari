@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import httpx
 
 from daari.cache.exact import ExactCache
+from daari.cache.semantic import OllamaEmbedder, SemanticCache
 from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
@@ -51,6 +52,7 @@ class Router:
     def __init__(
         self,
         cache: ExactCache,
+        semantic_cache: SemanticCache,
         ollama: OllamaExecutor,
         metrics: Metrics,
         frontier: FrontierExecutor | None = None,
@@ -59,6 +61,7 @@ class Router:
         confidence_threshold: float = 0.7,
     ) -> None:
         self.cache = cache
+        self.semantic_cache = semantic_cache
         self.ollama = ollama
         self.metrics = metrics
         self.frontier = frontier
@@ -85,10 +88,23 @@ class Router:
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
                 return cached
 
+            semantic_hit, _similarity = await self.semantic_cache.get(request)
+            if semantic_hit is not None:
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                semantic_hit.daari_meta.tier = "L1"
+                semantic_hit.daari_meta.cache_hit = True
+                semantic_hit.daari_meta.executor = "cache"
+                semantic_hit.daari_meta.provider_id = "cache"
+                semantic_hit.daari_meta.latency_ms = latency_ms
+                semantic_hit.daari_meta.task_type = "cache_hit"
+                self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
+                return semantic_hit
+
         response = await self.ollama.execute(request)
         response = await self._maybe_escalate(request, response, started)
         if not request.meta.no_cache:
             self.cache.put(request, response)
+            await self.semantic_cache.put(request, response)
         self._record(response, started)
         return response
 
@@ -120,7 +136,7 @@ class Router:
         return l6_response
 
     def _record(self, response: InternalResponse, started: float) -> None:
-        if response.daari_meta.tier == "L0":
+        if response.daari_meta.tier in ("L0", "L1"):
             return
         latency_ms = response.daari_meta.latency_ms or int((time.perf_counter() - started) * 1000)
         self.metrics.record(
@@ -134,6 +150,7 @@ class Router:
 class AppContext:
     settings: Settings
     cache: ExactCache
+    semantic_cache: SemanticCache
     ollama: OllamaExecutor
     frontier: FrontierExecutor
     metrics: Metrics
@@ -144,6 +161,17 @@ class AppContext:
         cache = ExactCache(
             path=str(settings.l0_cache_path),
             enabled=settings.cache.l0.enabled,
+        )
+        embedder = OllamaEmbedder(
+            base_url=settings.ollama.base_url.rstrip("/"),
+            model=settings.cache.l1.embedding_model,
+        )
+        semantic_cache = SemanticCache(
+            path=str(settings.l1_cache_path),
+            embedder=embedder,
+            enabled=settings.cache.l1.enabled,
+            similarity_threshold=settings.cache.l1.similarity_threshold,
+            max_entries=settings.cache.l1.max_entries,
         )
         ollama = OllamaExecutor(
             base_url=settings.ollama.base_url.rstrip("/"),
@@ -158,6 +186,7 @@ class AppContext:
         metrics = Metrics()
         router = Router(
             cache=cache,
+            semantic_cache=semantic_cache,
             ollama=ollama,
             metrics=metrics,
             frontier=frontier,
@@ -167,6 +196,7 @@ class AppContext:
         return cls(
             settings=settings,
             cache=cache,
+            semantic_cache=semantic_cache,
             ollama=ollama,
             frontier=frontier,
             metrics=metrics,

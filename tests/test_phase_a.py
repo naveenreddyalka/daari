@@ -4,12 +4,14 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from daari.cache.exact import ExactCache, cache_key
+from daari.cache.semantic import SemanticCache
 from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.router.router import OllamaExecutor, Router
 from daari.router.router import AppContext
 from daari.server.app import create_app
+from tests.conftest import NoopEmbedder
 
 
 @pytest.fixture
@@ -19,7 +21,10 @@ def settings(tmp_path):
             "server": {"host": "127.0.0.1", "port": 11435},
             "models": {"l3": "llama3.2:3b"},
             "ollama": {"base_url": "http://127.0.0.1:11434"},
-            "cache": {"l0": {"enabled": True, "path": str(tmp_path / "l0")}},
+            "cache": {
+                "l0": {"enabled": True, "path": str(tmp_path / "l0")},
+                "l1": {"enabled": False, "path": str(tmp_path / "l1")},
+            },
         }
     )
 
@@ -81,7 +86,16 @@ class TestRouter:
         ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
         ollama.execute = fake_execute  # type: ignore[method-assign]
 
-        router = Router(cache=cache, ollama=ollama, metrics=metrics)
+        router = Router(
+            cache=cache,
+            semantic_cache=SemanticCache(
+                str(tmp_path / "l1"),
+                NoopEmbedder(),
+                enabled=False,
+            ),
+            ollama=ollama,
+            metrics=metrics,
+        )
         request = InternalRequest(
             messages=[Message(role="user", content="repeat me")],
             model="llama3.2:3b",
