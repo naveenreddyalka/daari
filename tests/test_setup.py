@@ -275,3 +275,24 @@ class TestSetupCLI:
         assert not (l0 / "artifact.txt").exists()
         assert not (l1 / "artifact.txt").exists()
         assert not (ccs / "artifact.txt").exists()
+
+    def test_install_forwards_optional_pull_flags(self, monkeypatch):
+        captured = {}
+
+        class Result:
+            returncode = 0
+
+        def fake_run(cmd, cwd, env, check):
+            captured["cmd"] = cmd
+            captured["cwd"] = cwd
+            captured["env"] = env
+            captured["check"] = check
+            return Result()
+
+        monkeypatch.setattr("daari.cli.app.subprocess.run", fake_run)
+        runner = CliRunner()
+        result = runner.invoke(app, ["install", "--no-run-doctor", "--pull-l4", "--pull-l5"])
+        assert result.exit_code == 0
+        assert captured["env"]["RUN_DOCTOR"] == "0"
+        assert captured["env"]["PULL_L4"] == "1"
+        assert captured["env"]["PULL_L5"] == "1"

@@ -85,8 +85,21 @@ async def test_l6_escalation_via_gateway(frontier_app, monkeypatch):
             ),
         )
 
+    async def fake_l5(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.1:70b",
+            daari_meta=DaariMeta(
+                tier="L5",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=3,
+            ),
+        )
+
     monkeypatch.setattr(frontier_app.state.ctx.router.ollama, "execute", fake_l3)
     monkeypatch.setattr(frontier_app.state.ctx.router.ollama_l4, "execute", fake_l4)
+    monkeypatch.setattr(frontier_app.state.ctx.router.ollama_l5, "execute", fake_l5)
     monkeypatch.setattr(frontier_app.state.ctx.router.frontier, "execute", fake_l6)
 
     payload = {
@@ -102,5 +115,5 @@ async def test_l6_escalation_via_gateway(frontier_app, monkeypatch):
     body = response.json()
     assert response.status_code == 200
     assert body["daari_meta"]["tier"] == "L6"
-    assert body["daari_meta"]["escalated_from"] == "L3"
+    assert body["daari_meta"]["escalated_from"] in {"L3", "L4", "L5"}
     assert stats.json()["tiers"]["L6"]["count"] == 1

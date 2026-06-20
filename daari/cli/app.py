@@ -89,6 +89,8 @@ def doctor() -> None:
 @app.command("install")
 def install(
     run_doctor: bool = typer.Option(True, "--run-doctor/--no-run-doctor", help="Run doctor at end."),
+    pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
+    pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
 ) -> None:
     """Typer wrapper for install.sh parity."""
     repo_root = Path(__file__).resolve().parents[2]
@@ -97,7 +99,13 @@ def install(
         typer.echo(f"install script not found at {script}", err=True)
         raise typer.Exit(code=1)
 
-    env = dict(**{"RUN_DOCTOR": "1" if run_doctor else "0"})
+    env = dict(
+        **{
+            "RUN_DOCTOR": "1" if run_doctor else "0",
+            "PULL_L4": "1" if pull_l4 else "0",
+            "PULL_L5": "1" if pull_l5 else "0",
+        }
+    )
     merged_env = {**os.environ, **env}
     result = subprocess.run(
         ["/bin/bash", str(script)],

@@ -54,9 +54,8 @@ async def test_routing_eval_gp01_gp20(eval_app, monkeypatch):
     """Run GP-01–GP-20 in order; assert current tier expectations."""
 
     async def fake_execute(request: InternalRequest) -> InternalResponse:
-        last = request.messages[-1].content or ""
         return InternalResponse(
-            content=f"mock:{last[:40]}",
+            content="mock local answer with enough detail.",
             model="llama3.2:3b",
             daari_meta=DaariMeta(
                 tier="L3",
@@ -70,6 +69,8 @@ async def test_routing_eval_gp01_gp20(eval_app, monkeypatch):
         return ShellResult(command=command, output=f"mock shell: {command}", exit_code=0)
 
     monkeypatch.setattr(eval_app.state.ctx.router.ollama, "execute", fake_execute)
+    monkeypatch.setattr(eval_app.state.ctx.router.ollama_l4, "execute", fake_execute)
+    monkeypatch.setattr(eval_app.state.ctx.router.ollama_l5, "execute", fake_execute)
     monkeypatch.setattr(eval_app.state.ctx.router.shell_executor, "run", fake_shell_run)
 
     evals = load_routing_evals()
@@ -86,7 +87,7 @@ async def test_routing_eval_gp01_gp20(eval_app, monkeypatch):
                     "messages": [{"role": "user", "content": row["prompt"]}],
                 },
             )
-            assert response.status_code == 200, f"{row['id']} returned {response.status_code}"
+            assert response.status_code == 200, f"{row['id']} returned {response.status_code}: {response.text}"
             tier = response.json()["daari_meta"]["tier"]
             expected = row.get("expected_tier_v1") or row["expected_tier_mvp"]
             allowed = [value.strip() for value in str(expected).split("/")]

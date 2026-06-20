@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.router.router import AppContext
 
@@ -42,75 +43,83 @@ class ChatCompletionResponse(BaseModel):
     daari_meta: dict[str, Any] = Field(default_factory=dict)
 
 
+class OpenAIGatewayAdapter(GatewayAdapter):
+    id = "openai"
+
+    def router(self) -> APIRouter:
+        router = APIRouter()
+
+        @router.post("/v1/chat/completions", response_model=None)
+        async def chat_completions(
+            body: ChatCompletionRequest,
+            request: Request,
+            x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
+            x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
+            x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
+            x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
+            x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
+        ) -> Any:
+
+            ctx: AppContext = request.app.state.ctx
+            internal = InternalRequest(
+                messages=[Message.model_validate(m.model_dump()) for m in body.messages],
+                model=body.model or ctx.settings.models.l3,
+                temperature=body.temperature,
+                tools=body.tools,
+                stream=body.stream,
+                meta=RequestMeta(
+                    no_cache=x_daari_no_cache == "true",
+                    tier_override=x_daari_tier_override,
+                    no_frontier=x_daari_no_frontier == "true",
+                    confirm_tool=x_daari_confirm_tool == "true",
+                    rerun_command=x_daari_rerun_command == "true",
+                ),
+            )
+
+            if body.stream:
+
+                async def event_stream() -> AsyncIterator[str]:
+                    try:
+                        async for chunk in ctx.router.stream_openai_chunks(internal):
+                            yield chunk
+                    except Exception as exc:
+                        yield f"data: {{\"error\": \"stream failed: {str(exc)}\"}}\n\n"
+                        yield "data: [DONE]\n\n"
+
+                return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+            try:
+                result = await ctx.router.route(internal)
+            except Exception as exc:
+                ctx.metrics.record_error()
+                raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
+
+            return ChatCompletionResponse(
+                id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
+                created=int(time.time()),
+                model=result.model,
+                choices=[
+                    ChatCompletionChoice(
+                        message=ChatMessage(role="assistant", content=result.content),
+                        finish_reason=result.finish_reason,
+                    )
+                ],
+                daari_meta=result.daari_meta.model_dump(),
+            ).model_dump()
+
+        @router.get("/health")
+        async def health() -> dict[str, str]:
+            return {"status": "ok"}
+
+        @router.get("/v1/daari/stats")
+        async def daari_stats(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            snapshot = ctx.metrics.snapshot()
+            total = sum(t["count"] for t in snapshot.values())
+            return {"total_requests": total, "errors": ctx.metrics.errors, "tiers": snapshot}
+
+        return router
+
+
 def create_gateway_router() -> APIRouter:
-    router = APIRouter()
-
-    @router.post("/v1/chat/completions", response_model=None)
-    async def chat_completions(
-        body: ChatCompletionRequest,
-        request: Request,
-        x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
-        x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
-        x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
-        x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
-        x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
-    ) -> Any:
-
-        ctx: AppContext = request.app.state.ctx
-        internal = InternalRequest(
-            messages=[Message.model_validate(m.model_dump()) for m in body.messages],
-            model=body.model or ctx.settings.models.l3,
-            temperature=body.temperature,
-            tools=body.tools,
-            stream=body.stream,
-            meta=RequestMeta(
-                no_cache=x_daari_no_cache == "true",
-                tier_override=x_daari_tier_override,
-                no_frontier=x_daari_no_frontier == "true",
-                confirm_tool=x_daari_confirm_tool == "true",
-                rerun_command=x_daari_rerun_command == "true",
-            ),
-        )
-
-        if body.stream:
-            async def event_stream() -> AsyncIterator[str]:
-                try:
-                    async for chunk in ctx.router.stream_openai_chunks(internal):
-                        yield chunk
-                except Exception as exc:
-                    yield f"data: {{\"error\": \"stream failed: {str(exc)}\"}}\n\n"
-                    yield "data: [DONE]\n\n"
-
-            return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-        try:
-            result = await ctx.router.route(internal)
-        except Exception as exc:
-            ctx.metrics.record_error()
-            raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
-
-        return ChatCompletionResponse(
-            id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
-            created=int(time.time()),
-            model=result.model,
-            choices=[
-                ChatCompletionChoice(
-                    message=ChatMessage(role="assistant", content=result.content),
-                    finish_reason=result.finish_reason,
-                )
-            ],
-            daari_meta=result.daari_meta.model_dump(),
-        ).model_dump()
-
-    @router.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
-
-    @router.get("/v1/daari/stats")
-    async def daari_stats(request: Request) -> dict[str, Any]:
-        ctx: AppContext = request.app.state.ctx
-        snapshot = ctx.metrics.snapshot()
-        total = sum(t["count"] for t in snapshot.values())
-        return {"total_requests": total, "errors": ctx.metrics.errors, "tiers": snapshot}
-
-    return router
+    return OpenAIGatewayAdapter().router()
