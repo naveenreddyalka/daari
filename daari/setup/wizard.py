@@ -30,10 +30,14 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
 
     cursor_detected = cursor.detect() if cursor else False
     typer.echo(f"    {'✓' if cursor_detected else '✗'} Cursor")
+    has_frontier_key = bool(cfg.resolve_frontier_api_key())
+    frontier_mark = "✓" if has_frontier_key else "!"
+    frontier_hint = "configured" if has_frontier_key else "not set (local-only unless provided)"
+    typer.echo(f"    {frontier_mark} Frontier API key ({frontier_hint})")
 
     typer.echo("\n  What do you want to set up?")
     typer.echo("    1. Cursor — point AI chat at daari (OpenAI-compat)")
-    typer.echo("    2. Local model — choose default model for L3 tier")
+    typer.echo("    2. Local models — choose defaults for L3/L4 and routing preference")
     typer.echo("    3. Run health check — daari doctor")
     typer.echo("    4. Skip for now")
 
@@ -56,7 +60,9 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
         if not ollama_ok:
             typer.echo("Ollama is not reachable — start Ollama first.", err=True)
             raise typer.Exit(code=1)
-        setup_models_interactive(cfg)
+        setup_models_interactive(cfg, tier="l3")
+        if typer.confirm("Configure L4 model as well?", default=True):
+            setup_models_interactive(cfg, tier="l4")
     elif choice == "3":
         results = run_doctor(cfg)
         for result in results:

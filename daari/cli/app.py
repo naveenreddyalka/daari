@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+from pathlib import Path
 
 import typer
 import uvicorn
 
 from daari.cli.setup_actions import apply_cursor_setup
 from daari.config.settings import get_settings
+from daari.server.app import create_app
 from daari.setup.doctor import doctor_exit_code, run_doctor
 from daari.setup.models import setup_models_interactive
 from daari.setup.wizard import run_setup_wizard
@@ -25,15 +29,18 @@ app.add_typer(setup_app, name="setup")
 def serve(
     host: str | None = typer.Option(None, help="Bind host"),
     port: int | None = typer.Option(None, help="Bind port"),
+    no_frontier: bool = typer.Option(False, "--no-frontier", help="Disable L6 escalation."),
 ) -> None:
     """Start the daari HTTP daemon."""
-    settings = get_settings()
+    settings = get_settings().model_copy(deep=True)
+    if no_frontier:
+        settings.frontier.enabled = False
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
     typer.echo(f"daari serving on http://{bind_host}:{bind_port}/v1")
+    app_instance = create_app(settings)
     uvicorn.run(
-        "daari.server.app:create_app",
-        factory=True,
+        app_instance,
         host=bind_host,
         port=bind_port,
         log_level="info",
@@ -73,6 +80,29 @@ def doctor() -> None:
     code = doctor_exit_code(results)
     if code != 0:
         raise typer.Exit(code=code)
+
+
+@app.command("install")
+def install(
+    run_doctor: bool = typer.Option(True, "--run-doctor/--no-run-doctor", help="Run doctor at end."),
+) -> None:
+    """Typer wrapper for install.sh parity."""
+    repo_root = Path(__file__).resolve().parents[2]
+    script = repo_root / "scripts" / "install.sh"
+    if not script.is_file():
+        typer.echo(f"install script not found at {script}", err=True)
+        raise typer.Exit(code=1)
+
+    env = dict(**{"RUN_DOCTOR": "1" if run_doctor else "0"})
+    merged_env = {**os.environ, **env}
+    result = subprocess.run(
+        ["/bin/bash", str(script)],
+        cwd=str(repo_root),
+        env=merged_env,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise typer.Exit(code=result.returncode)
 
 
 @setup_app.callback(invoke_without_command=True)
@@ -127,7 +157,7 @@ def setup_cursor(
 
 @setup_app.command("models")
 def setup_models(
-    tier: str = typer.Option("l3", "--tier", help="Model tier to configure."),
+    tier: str = typer.Option("l3", "--tier", help="Model tier to configure (l3|l4)."),
     model: str | None = typer.Option(None, "--model", help="Model name (non-interactive)."),
     list_models: bool = typer.Option(False, "--list", help="Show current tier map."),
 ) -> None:

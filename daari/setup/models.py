@@ -13,8 +13,8 @@ from daari.config.settings import Settings
 
 @dataclass
 class ModelSetupResult:
-    tier: str
-    model: str
+    tier: str | None
+    model: str | None
     config_path: Path
     changed: bool
 
@@ -35,9 +35,11 @@ def fetch_ollama_models(base_url: str, *, client: httpx.Client | None = None) ->
 
 
 def write_models_config(
-    model: str,
+    model: str | None = None,
     *,
     tier: str = "l3",
+    prefer: str | None = None,
+    weights: dict[str, dict[str, float]] | None = None,
     config_path: Path | None = None,
 ) -> ModelSetupResult:
     path = config_path or Path.home() / ".daari" / "config.yaml"
@@ -53,15 +55,34 @@ def write_models_config(
         models = {}
         current["models"] = models
 
-    previous = models.get(tier)
-    changed = previous != model
-    models[tier] = model
+    changed = False
+    if model is not None:
+        previous = models.get(tier)
+        changed = previous != model
+        models[tier] = model
+
+    routing = current.setdefault("routing", {})
+    if not isinstance(routing, dict):
+        routing = {}
+        current["routing"] = routing
+    if prefer is not None:
+        prev_prefer = routing.get("prefer")
+        changed = changed or prev_prefer != prefer
+        routing["prefer"] = prefer
+
+    if weights is not None:
+        model_weights = models.setdefault("weights", {})
+        if not isinstance(model_weights, dict):
+            model_weights = {}
+            models["weights"] = model_weights
+        changed = changed or model_weights != weights
+        models["weights"] = weights
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         yaml.safe_dump(current, handle, default_flow_style=False, sort_keys=False)
 
-    return ModelSetupResult(tier=tier, model=model, config_path=path, changed=changed)
+    return ModelSetupResult(tier=tier if model is not None else None, model=model, config_path=path, changed=changed)
 
 
 def setup_models_interactive(
@@ -77,9 +98,11 @@ def setup_models_interactive(
     path = config_path or Path.home() / ".daari" / "config.yaml"
 
     if list_only:
-        current = cfg.models.l3 if tier == "l3" else getattr(cfg.models, tier, None)
+        current = cfg.models.l3 if tier == "l3" else cfg.models.l4 if tier == "l4" else getattr(cfg.models, tier, None)
         typer.echo(f"Tier map ({path}):")
-        typer.echo(f"  {tier}: {current}")
+        typer.echo(f"  l3: {cfg.models.l3}")
+        typer.echo(f"  l4: {cfg.models.l4}")
+        typer.echo(f"  routing.prefer: {cfg.routing.prefer}")
         return None
 
     if model is not None:
@@ -104,7 +127,7 @@ def setup_models_interactive(
         typer.echo(f"  {index}. {name}")
 
     default_index = 1
-    current = cfg.models.l3 if tier == "l3" else None
+    current = cfg.models.l3 if tier == "l3" else cfg.models.l4 if tier == "l4" else None
     if current in available:
         default_index = available.index(current) + 1
 
@@ -118,6 +141,23 @@ def setup_models_interactive(
         typer.echo("Invalid selection.", err=True)
         raise typer.Exit(code=1) from exc
 
-    result = write_models_config(picked, tier=tier, config_path=path)
+    prefer = typer.prompt("Routing preference (latency|accuracy|balanced)", default=cfg.routing.prefer)
+    if prefer not in {"latency", "accuracy", "balanced"}:
+        typer.echo("Invalid preference; expected latency, accuracy, or balanced.", err=True)
+        raise typer.Exit(code=1)
+
+    existing_weights = cfg.models.weights or {}
+    if picked not in existing_weights:
+        # Lightweight default so configured models are always scoreable.
+        existing_weights[picked] = {"latency": 0.5, "accuracy": 0.5}
+
+    result = write_models_config(
+        picked,
+        tier=tier,
+        prefer=prefer,
+        weights=existing_weights,
+        config_path=path,
+    )
     typer.echo(f"Wrote models.{tier} = {picked} to {path}")
+    typer.echo(f"Wrote routing.prefer = {prefer} to {path}")
     return result

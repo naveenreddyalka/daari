@@ -15,6 +15,9 @@ class RequestMeta(BaseModel):
     no_cache: bool = False
     tier_override: str | None = None
     client_id: str | None = None
+    no_frontier: bool = False
+    confirm_tool: bool = False
+    rerun_command: bool = False
 
 
 class InternalRequest(BaseModel):
@@ -46,6 +49,8 @@ class DaariMeta(BaseModel):
     escalated_from: str | None = None
     rule_id: str | None = None
     warning: str | None = None
+    policy: str | None = None
+    pending_command: str | None = None
 
 
 class InternalResponse(BaseModel):
