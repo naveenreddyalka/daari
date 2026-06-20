@@ -4,7 +4,22 @@ from __future__ import annotations
 
 import pytest
 
+from daari.cache.semantic import SemanticCache
 from daari.config.settings import Settings
+
+
+class NoopEmbedder:
+    async def embed(self, text: str) -> list[float] | None:
+        return None
+
+
+@pytest.fixture
+def semantic_cache_disabled(tmp_path):
+    return SemanticCache(
+        path=str(tmp_path / "l1"),
+        embedder=NoopEmbedder(),
+        enabled=False,
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -25,6 +40,9 @@ def settings(tmp_path):
             "server": {"host": "127.0.0.1", "port": 11435},
             "models": {"l3": "llama3.2:3b"},
             "ollama": {"base_url": "http://127.0.0.1:11434"},
-            "cache": {"l0": {"enabled": True, "path": str(tmp_path / "l0")}},
+            "cache": {
+                "l0": {"enabled": True, "path": str(tmp_path / "l0")},
+                "l1": {"enabled": False, "path": str(tmp_path / "l1")},
+            },
         }
     )

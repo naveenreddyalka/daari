@@ -9,12 +9,10 @@
 
 ## Current phase
 
-**Phase A.1 — Install & setup** (complete)  
-Phase A tracer bullet **complete**: `daari serve`, L0 cache, L3 Ollama, OpenAI gateway, routing evals.
+**Phase B — Full local-first stack** (in progress)  
+Phase A + A.1 complete. **L1 semantic cache shipped** — router L0 → L1 → L3; Ollama embeddings via `/api/embeddings` (model `nomic-embed-text` by default).
 
-**Last verified:** 24 pytest passing; `daari setup cursor`, `--undo`, wizard, and `setup models` shipped.
-
-**Key commits:** `cf50264` (Phase A scaffold), `6768fb8` (routing evals), `aaf3f06` (Phase A.1 setup).
+**Last verified:** run `pytest` on current branch.
 
 ## What daari is
 
@@ -61,9 +59,24 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 ## Next tasks (Phase B)
 
-1. **L6 frontier escalation** — per ADR-0001
-2. **`daari setup claude-code`** — when Anthropic gateway ships
-3. **`daari setup openai-compat`** — env var helper for generic SDK
+1. **L2 rules engine** — regex/template transforms before L3
+2. **L2-dev + CCS** — developer command detection + command context store (ADR-0008)
+3. **Lt B.0** — CLI tool dispatch (git, eslint, pytest)
+4. **L4 medium model** — second Ollama model tier
+5. **`daari setup openai-compat`** — env var helper for generic SDK
+6. **Eval expansion** — GP-11–GP-20 (GP-12 expects L1 paraphrase hit)
+
+**L1 config** (`~/.daari/config.yaml`):
+
+```yaml
+cache:
+  l1:
+    enabled: true
+    path: ~/.daari/cache/l1
+    similarity_threshold: 0.92
+    max_entries: 1000
+    embedding_model: nomic-embed-text   # ollama pull nomic-embed-text
+```
 
 **Cursor smoke test:** run `daari setup cursor` on a machine with Cursor installed — see [cursor.md](docs/setup/cursor.md).
 

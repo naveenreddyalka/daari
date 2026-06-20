@@ -33,7 +33,10 @@ def eval_settings(tmp_path):
             "server": {"host": "127.0.0.1", "port": 11435},
             "models": {"l3": "llama3.2:3b"},
             "ollama": {"base_url": "http://127.0.0.1:11434"},
-            "cache": {"l0": {"enabled": True, "path": str(tmp_path / "l0")}},
+            "cache": {
+                "l0": {"enabled": True, "path": str(tmp_path / "l0")},
+                "l1": {"enabled": False, "path": str(tmp_path / "l1")},
+            },
         }
     )
 

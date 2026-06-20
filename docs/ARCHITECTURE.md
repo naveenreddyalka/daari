@@ -19,7 +19,7 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 |-------|--------|---------|
 | **A — Tracer bullet** | Done | `daari serve`, OpenAI gateway, L0 cache, L3 Ollama, router, metrics, routing evals GP-01–GP-10 |
 | **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; wizard partial vs spec; `daari install` Typer deferred; Cursor smoke test user-owned |
-| **B — Rules, Lt, …** | Deferred | L1 semantic cache, L2 rules, Lt tool-native, PolicyEngine, L4/L5 — see [ROADMAP](prd/ROADMAP.md) |
+| **B — Rules, Lt, …** | In progress | L1 semantic cache shipped; L2 rules, Lt tool-native, PolicyEngine, L4/L5 — see [ROADMAP](prd/ROADMAP.md) |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -35,8 +35,8 @@ daari/                              # repo root
 │   ├── cli/                        # Typer commands (serve, stats, doctor, setup)
 │   ├── server/                     # FastAPI app factory
 │   ├── gateway/                    # Wire adapters + internal request/response models
-│   ├── router/                     # Tier routing (L0 → L3 today)
-│   ├── cache/                      # L0 exact cache (diskcache)
+│   ├── router/                     # Tier routing (L0 → L1 → L3 → L6)
+│   ├── cache/                      # L0 exact + L1 semantic cache (diskcache)
 │   ├── config/                     # Settings + defaults.yaml
 │   ├── observability/              # In-process tier metrics
 │   ├── providers/                  # IntegrationProvider registry (stub for Phase B+)
@@ -56,7 +56,7 @@ daari/                              # repo root
 └── CONTEXT.md                      # Agent handoff
 ```
 
-User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `~/.daari/backups/<tool>/`.
+User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `~/.daari/cache/l1`, `~/.daari/backups/<tool>/`.
 
 ---
 
@@ -72,8 +72,9 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/server/app.py` | FastAPI factory, lifespan → `AppContext` | ✅ |
 | `daari/gateway/openai.py` | `POST /v1/chat/completions`, stats, health | ✅ |
 | `daari/gateway/internal.py` | `InternalRequest` / `InternalResponse` / `DaariMeta` | ✅ |
-| `daari/router/router.py` | Router: L0 cache → L3 Ollama; tool_calls skip L0 | ✅ |
+| `daari/router/router.py` | Router: L0 → L1 → L3 Ollama → L6; tool_calls skip caches | ✅ |
 | `daari/cache/exact.py` | L0 exact cache keys + diskcache store | ✅ |
+| `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
 | `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/`) | ✅ |
 | `daari/config/defaults.yaml` | Package defaults (host, port, models) | ✅ |
 | `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` | ✅ |
@@ -88,7 +89,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/setup/jsonc.py` | JSONC read/write for Cursor config | ✅ |
 | `daari/setup/models.py` | `daari setup models` — tier → Ollama model | ✅ |
 
-**Not in tree (spec / Phase B+):** `gateway/anthropic.py`, `gateway/mcp.py`, `tools/backends/`, L1/L2 executors, PolicyEngine, Lt runtime.
+**Not in tree (spec / Phase B+):** `gateway/anthropic.py`, `gateway/mcp.py`, `tools/backends/`, L2/L2-dev executors, PolicyEngine, Lt runtime.
 
 ### Docs (`docs/`)
 
@@ -127,7 +128,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 
 ## Request flow
 
-Typical chat completion path today (Phase A): client → OpenAI-compat gateway → router → L0 or L3.
+Typical chat completion path (Phase B tracer): client → OpenAI-compat gateway → router → L0, L1, or L3.
 
 ```mermaid
 flowchart LR
@@ -136,29 +137,36 @@ flowchart LR
   GW["gateway/openai.py\nPOST /v1/chat/completions"]
   Router["router/router.py"]
   L0["L0 ExactCache\ndiskcache"]
+  L1["L1 SemanticCache\nOllama embeddings"]
   L3["L3 OllamaExecutor\n/api/chat"]
   Ollama["Ollama\n:11434"]
 
   Client --> Serve
   Serve --> GW
   GW --> Router
-  Router -->|"cache miss, no tool_calls"| L3
-  Router -->|"cache hit"| L0
+  Router -->|"L0 miss"| L1
+  Router -->|"L1 miss, no tool_calls"| L3
+  Router -->|"L0 hit"| L0
+  Router -->|"L1 hit"| L1
   Router -->|"tool_calls in history"| L3
+  L1 --> Ollama
   L3 --> Ollama
   L0 --> GW
+  L1 --> GW
   L3 --> GW
   GW --> Client
 ```
 
 **Routing rules (shipped):**
 
-1. Messages with `tool_calls` in history → skip L0, go straight to L3 (ADR-0004).
+1. Messages with `tool_calls` in history → skip L0 and L1, go straight to L3 (ADR-0004).
 2. Otherwise try L0 (unless `X-Daari-No-Cache: true`).
-3. L0 miss → L3 Ollama; confidence check on result.
-4. If L3 confidence below `frontier.confidence_threshold` and frontier enabled with API key → L6 OpenAI-compatible API.
-5. Otherwise return L3 (with `daari_meta.warning` when below threshold and L6 unavailable).
-6. Ollama unreachable → HTTP 503.
+3. L0 miss → L1 semantic lookup (Ollama `/api/embeddings`, cosine ≥ `cache.l1.similarity_threshold`).
+4. L1 miss → L3 Ollama; confidence check on result.
+5. If L3 confidence below `frontier.confidence_threshold` and frontier enabled with API key → L6 OpenAI-compatible API.
+6. Otherwise return L3 (with `daari_meta.warning` when below threshold and L6 unavailable).
+7. On L3 success (cacheable): write L0 exact + L1 semantic entries.
+8. Ollama unreachable → HTTP 503; L1 embedding failure → graceful miss, fall through to L3.
 
 **Not wired yet:** tier override header handling beyond passthrough meta, L4/L5 intermediate tiers, L2 rules, Lt tool-native path.
 
@@ -204,8 +212,8 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override` (override 
 | Area | Implemented | Spec only / deferred |
 |------|-------------|------------------------|
 | Gateway | OpenAI-compat chat, health, stats | Anthropic, MCP, streaming SSE |
-| Tiers | L0 exact cache, L3 Ollama, L6 frontier (opt-in) | L1 semantic, L2/L2-dev rules, Lt, L4/L5 |
-| Router | L0 → L3 → L6 escalation, tool_calls bypass cache | L4/L5 intermediate tiers, PolicyEngine |
+| Tiers | L0 exact cache, L1 semantic cache, L3 Ollama, L6 frontier (opt-in) | L2/L2-dev rules, Lt, L4/L5 |
+| Router | L0 → L1 → L3 → L6 escalation, tool_calls bypass caches | L4/L5 intermediate tiers, PolicyEngine |
 | Setup | Cursor recipe, wizard (partial), models, backup/undo | Claude Code, openai-compat, IntelliJ; full wizard spec |
 | Providers | Registry scaffold | Live integration providers |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
@@ -226,14 +234,15 @@ Read in this order to follow a request from CLI to response, then setup and test
 4. `daari/gateway/internal.py` — internal wire models  
 5. `daari/server/app.py` — app bootstrap  
 6. `daari/gateway/openai.py` — HTTP → internal request  
-7. `daari/router/router.py` — L0 / L3 routing  
-8. `daari/cache/exact.py` — cache keys  
-9. `daari/observability/metrics.py` — stats  
-10. `daari/cli/app.py` — CLI surface  
-11. `daari/clients/cursor/recipe.py` + `daari/setup/` — Phase A.1 setup  
-12. `tests/integration/test_gateway_flow.py` — end-to-end mocked flow  
-13. `tests/test_routing_eval.py` + `evals/routing/prompts.jsonl` — routing quality  
-14. `docs/adr/0013-monorepo-structure.md` — where future code goes  
+7. `daari/router/router.py` — L0 / L1 / L3 routing  
+8. `daari/cache/exact.py` — L0 cache keys  
+9. `daari/cache/semantic.py` — L1 semantic cache  
+10. `daari/observability/metrics.py` — stats  
+11. `daari/cli/app.py` — CLI surface  
+12. `daari/clients/cursor/recipe.py` + `daari/setup/` — Phase A.1 setup  
+13. `tests/integration/test_gateway_flow.py` — end-to-end mocked flow  
+14. `tests/test_routing_eval.py` + `evals/routing/prompts.jsonl` — routing quality  
+15. `docs/adr/0013-monorepo-structure.md` — where future code goes  
 
 ---
 

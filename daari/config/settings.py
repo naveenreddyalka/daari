@@ -28,8 +28,17 @@ class L0CacheSettings(BaseModel):
     path: str = "~/.daari/cache/l0"
 
 
+class L1CacheSettings(BaseModel):
+    enabled: bool = True
+    path: str = "~/.daari/cache/l1"
+    similarity_threshold: float = 0.92
+    max_entries: int = 1000
+    embedding_model: str = "nomic-embed-text"
+
+
 class CacheSettings(BaseModel):
     l0: L0CacheSettings = Field(default_factory=L0CacheSettings)
+    l1: L1CacheSettings = Field(default_factory=L1CacheSettings)
 
 
 class FrontierSettings(BaseModel):
@@ -65,6 +74,10 @@ class Settings(BaseSettings):
     @property
     def l0_cache_path(self) -> Path:
         return Path(self.cache.l0.path).expanduser()
+
+    @property
+    def l1_cache_path(self) -> Path:
+        return Path(self.cache.l1.path).expanduser()
 
     def resolve_frontier_api_key(self) -> str | None:
         return os.environ.get("DAARI_FRONTIER_API_KEY") or os.environ.get("OPENAI_API_KEY")

@@ -3,10 +3,20 @@ from __future__ import annotations
 import pytest
 
 from daari.cache.exact import ExactCache
+from daari.cache.semantic import SemanticCache
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.router.frontier import FrontierExecutor
 from daari.router.router import OllamaExecutor, Router
+from tests.conftest import NoopEmbedder
+
+
+def _semantic_cache(tmp_path) -> SemanticCache:
+    return SemanticCache(
+        path=str(tmp_path / "l1"),
+        embedder=NoopEmbedder(),
+        enabled=False,
+    )
 
 
 def _request(content: str = "explain routing") -> InternalRequest:
@@ -72,6 +82,7 @@ class TestL6Escalation:
 
         router = Router(
             cache=cache,
+            semantic_cache=_semantic_cache(tmp_path),
             ollama=ollama,
             metrics=metrics,
             frontier=frontier,
@@ -110,6 +121,7 @@ class TestL6Escalation:
 
         router = Router(
             cache=cache,
+            semantic_cache=_semantic_cache(tmp_path),
             ollama=ollama,
             metrics=metrics,
             frontier=frontier,
@@ -136,6 +148,7 @@ class TestL6Escalation:
 
         router = Router(
             cache=cache,
+            semantic_cache=_semantic_cache(tmp_path),
             ollama=ollama,
             metrics=metrics,
             frontier_enabled=False,
@@ -165,6 +178,7 @@ class TestL6Escalation:
 
         router = Router(
             cache=cache,
+            semantic_cache=_semantic_cache(tmp_path),
             ollama=ollama,
             metrics=Metrics(),
             frontier=frontier,

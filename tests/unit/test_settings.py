@@ -21,6 +21,30 @@ class TestSettings:
         )
         assert settings.l0_cache_path == tmp_path / "cache"
 
+    def test_l1_cache_path_expands_user(self, tmp_path):
+        settings = Settings.model_validate(
+            {
+                "cache": {
+                    "l1": {
+                        "path": str(tmp_path / "l1"),
+                        "similarity_threshold": 0.95,
+                        "max_entries": 500,
+                        "embedding_model": "custom-embed",
+                    }
+                },
+            }
+        )
+        assert settings.l1_cache_path == tmp_path / "l1"
+        assert settings.cache.l1.similarity_threshold == 0.95
+        assert settings.cache.l1.max_entries == 500
+        assert settings.cache.l1.embedding_model == "custom-embed"
+
+    def test_l1_defaults(self):
+        settings = Settings.model_validate({})
+        assert settings.cache.l1.enabled is True
+        assert settings.cache.l1.similarity_threshold == 0.92
+        assert settings.cache.l1.embedding_model == "nomic-embed-text"
+
     def test_frontier_defaults(self):
         settings = Settings.model_validate({})
         assert settings.frontier.enabled is False
