@@ -16,17 +16,21 @@
 | Model routing preferences | ✅ implemented | `routing.prefer` + `models.weights` config shape and tier picker usage |
 | `--no-frontier` / no-frontier header | ✅ implemented | CLI flag + `X-Daari-No-Frontier` request override |
 | Streaming SSE | ✅ implemented (basic) | OpenAI-style chunk stream passthrough for `stream=true` |
-| Wizard polish | ✅ implemented (partial) | frontier key hint + L3/L4 preference/model setup flow |
+| Wizard polish | ✅ implemented | frontier key helper + openai-compat setup flow added |
 | `daari install` Typer parity | ✅ implemented (minimal) | CLI wrapper to run `scripts/install.sh` with doctor option |
 | Eval GP-11–GP-20 | ✅ implemented | prompts expanded and regression assertions updated |
 | ProviderRegistry router wiring | ✅ implemented (minimum) | model executors registered and resolved through registry |
+| `daari setup openai-compat` | ✅ implemented | prints OPENAI_* exports + writes `~/.daari/.env.example` |
+| `daari context clear` | ✅ implemented | clears L0/L1/CCS caches via CLI |
+| Doctor L4 pull hint | ✅ implemented | optional `model_l4` check with `ollama pull` hint |
 
 ## Verification results
 
-- `pytest -m "not integration and not benchmark"`: **64 passed**
-- `OLLAMA_HOST=http://127.0.0.1:11434 pytest`: **66 passed**
+- `pytest -m "not integration and not benchmark"`: **68 passed, 2 deselected**
+- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: **70 passed**
 - `pytest -m benchmark`: **1 passed**
 - `./scripts/demo.sh`: **pass**
+- `./scripts/bench.sh`: **pass**
 - Manual curl smoke (fresh daemon + clean cache):
   - L3-first: `L3`
   - L0 repeat: `L0`
@@ -34,7 +38,8 @@
   - L2 transform: `L2`
   - Lt command: `Lt`
   - L4 override: fallback to `L3` with `l4_unavailable_fell_back_to_l3` warning when model not installed
-  - No-frontier header: remains local (`L3`)
+  - No-frontier header: handled (`L3`, local path)
+  - Streaming SSE (basic): pass (`data: [DONE]` observed)
   - L6: implementation validated by tests; live manual call skipped because no frontier API key in environment
 
 ## Performance summary
@@ -43,12 +48,12 @@ Measured on local machine against a clean daemon instance (`scripts/bench.sh` + 
 
 | Tier/path | Observed p50 latency |
 |-----------|----------------------|
-| L0 exact cache | ~17.6 ms |
-| L1 semantic cache | ~69.5 ms |
-| L2 rules | ~19.5 ms |
-| Lt command (`git status`) | ~60.9 ms |
-| L3 local model | ~767.5 ms |
-| L4 override (fallback path) | ~2169.2 ms (fell back to L3 when L4 missing) |
+| L0 exact cache | ~18.7 ms (manual smoke); bench run showed an L1 hit on "L0" probe |
+| L1 semantic cache | ~46.3 ms |
+| L2 rules | ~49.0 ms |
+| Lt command (`git status`) | ~56.8 ms |
+| L3 local model | ~802.3 ms |
+| L4 override (fallback path) | fallback observed to `L3` when L4 model missing |
 
 ## Benefits vs alternatives
 
@@ -63,9 +68,8 @@ Measured on local machine against a clean daemon instance (`scripts/bench.sh` + 
 
 | Severity | Gap | Impact | Next action |
 |----------|-----|--------|-------------|
-| High | `daari setup openai-compat` not implemented | Generic SDK setup still manual | Add recipe + docs |
-| Medium | L4 model not auto-installed; can fallback to L3 | Reduced quality path unless user pulls L4 model | Extend install/model setup to pull configured L4 |
+| Medium | L4 model not auto-installed; can fallback to L3 | Reduced quality path unless user pulls L4 model | Keep doctor/model hints; consider optional auto-pull |
 | Medium | SSE implementation is basic passthrough only | No tier-aware streaming metadata yet | Add richer streaming meta/events in Phase C |
 | Medium | L6 manual smoke requires configured API key | Cannot validate live frontier path in keyless env | Add optional key-aware smoke script path |
-| Low | Wizard still single-choice flow | Slight setup friction | Expand wizard to multi-step/multi-select in follow-up |
+| Low | Wizard is still single-choice flow | Slight setup friction for first-time setup | Expand wizard to multi-step/multi-select in follow-up |
 

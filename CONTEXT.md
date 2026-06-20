@@ -59,11 +59,11 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 ## Next tasks (remaining Phase B / Phase C prep)
 
-1. **`daari setup openai-compat`** recipe
-2. **Lt B.1** confirmation UX + IntelliJ path + `daari context clear`
-3. **L5 local tier** (Phase C1)
-4. **Anthropic/MCP gateway adapters** (Phase C)
-5. **Enterprise/provider plugins** rollout per ADR-0011
+1. **Lt B.1** confirmation UX + IntelliJ path/project command profiles
+2. **L5 local tier** (Phase C1)
+3. **Anthropic/MCP gateway adapters** (Phase C)
+4. **Enterprise/provider plugins** rollout per ADR-0011
+5. Optional: richer SSE metadata/events beyond basic passthrough
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -78,11 +78,12 @@ cache:
 ```
 
 **Validation baseline (2026-06-20):**
-- `pytest -m "not integration and not benchmark"`: pass
-- `OLLAMA_HOST=http://127.0.0.1:11434 pytest`: pass
+- `pytest -m "not integration and not benchmark"`: 68 passed, 2 deselected
+- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: 70 passed
 - `pytest -m benchmark`: pass
 - `./scripts/demo.sh`: pass
-- Manual tier smoke: L0/L1/L2/Lt/L3 verified; L4 override falls back to L3 when model unavailable; L6 requires API key.
+- `./scripts/bench.sh`: pass
+- Manual tier smoke: L0/L1/L2/Lt/L3 verified; L4 override falls back to L3 when model unavailable; no-frontier header + SSE basic verified; L6 requires API key.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 

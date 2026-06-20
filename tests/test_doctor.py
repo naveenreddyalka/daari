@@ -41,6 +41,7 @@ class TestDoctor:
         assert by_name["config"].ok is True
         assert by_name["ollama"].ok is True
         assert by_name["model"].ok is True
+        assert by_name["model_l4"].optional is True
         assert by_name["daemon"].ok is True
         assert doctor_exit_code(results) == 0
 
@@ -53,6 +54,7 @@ class TestDoctor:
 
         assert by_name["ollama"].ok is False
         assert by_name["model"].ok is False
+        assert by_name["model_l4"].ok is False
         assert doctor_exit_code(results) == 1
 
     def test_daemon_down_does_not_fail_exit(self, settings):
@@ -73,6 +75,7 @@ class TestDoctor:
 
         assert by_name["ollama"].ok is True
         assert by_name["model"].ok is True
+        assert by_name["model_l4"].optional is True
         assert by_name["daemon"].ok is False
         assert by_name["daemon"].optional is True
         assert doctor_exit_code(results) == 0
@@ -89,6 +92,31 @@ class TestDoctor:
 
         assert by_name["model"].ok is False
         assert doctor_exit_code(results) == 1
+
+    def test_l4_model_missing_is_optional_hint(self, settings):
+        settings = Settings.model_validate(
+            {
+                **settings.model_dump(),
+                "models": {"l3": "llama3.2:3b", "l4": "llama3.1:8b"},
+            }
+        )
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+
+        assert by_name["model"].ok is True
+        assert by_name["model_l4"].ok is False
+        assert by_name["model_l4"].optional is True
+        assert "ollama pull llama3.1:8b" in by_name["model_l4"].detail
+        assert doctor_exit_code(results) == 0
 
     def test_frontier_disabled_ok(self, settings):
         mock = MagicMock(spec=httpx.Client)

@@ -11,8 +11,10 @@ import uvicorn
 from daari.cli.setup_actions import apply_cursor_setup
 from daari.config.settings import get_settings
 from daari.server.app import create_app
+from daari.setup.context import clear_context_caches
 from daari.setup.doctor import doctor_exit_code, run_doctor
 from daari.setup.models import setup_models_interactive
+from daari.setup.openai_compat import setup_frontier_key_hint, setup_openai_compat
 from daari.setup.wizard import run_setup_wizard
 
 app = typer.Typer(
@@ -22,7 +24,9 @@ app = typer.Typer(
 )
 
 setup_app = typer.Typer(help="Configure client integrations.")
+context_app = typer.Typer(help="Manage daari caches and context.")
 app.add_typer(setup_app, name="setup")
+app.add_typer(context_app, name="context")
 
 
 @app.command()
@@ -163,6 +167,63 @@ def setup_models(
 ) -> None:
     """Pick an Ollama model for a daari tier."""
     setup_models_interactive(get_settings(), tier=tier, model=model, list_only=list_models)
+
+
+@setup_app.command("openai-compat")
+def setup_openai_compat_command(
+    write_env_example: bool = typer.Option(
+        True,
+        "--write-env-example/--no-write-env-example",
+        help="Write ~/.daari/.env.example with OPENAI_* defaults.",
+    ),
+) -> None:
+    """Print env vars for generic OpenAI-compatible SDKs."""
+    setup_openai_compat(get_settings(), write_env_example=write_env_example)
+
+
+@setup_app.command("frontier-key")
+def setup_frontier_key(
+    shell: str = typer.Option("zsh", "--shell", help="Shell profile to target: zsh|bash|fish"),
+    write_profile_snippet: bool = typer.Option(
+        False,
+        "--write-profile-snippet",
+        help="Append commented export hint to your shell profile.",
+    ),
+    write_env_example: bool = typer.Option(
+        True,
+        "--write-env-example/--no-write-env-example",
+        help="Write ~/.daari/.env.example with frontier key placeholder.",
+    ),
+) -> None:
+    """Optional helper for frontier API key hints (no secret storage)."""
+    if shell not in {"zsh", "bash", "fish"}:
+        typer.echo("Invalid shell. Expected one of: zsh, bash, fish.", err=True)
+        raise typer.Exit(code=1)
+    setup_frontier_key_hint(
+        get_settings(),
+        shell=shell,
+        write_profile_snippet=write_profile_snippet,
+        write_env_example=write_env_example,
+    )
+
+
+@context_app.command("clear")
+def context_clear(
+    l0: bool = typer.Option(True, "--l0/--no-l0", help="Clear L0 exact cache."),
+    l1: bool = typer.Option(True, "--l1/--no-l1", help="Clear L1 semantic cache."),
+    ccs: bool = typer.Option(True, "--ccs/--no-ccs", help="Clear command context store (CCS)."),
+) -> None:
+    """Clear local caches: L0, L1, and CCS."""
+    if not any((l0, l1, ccs)):
+        typer.echo("Nothing selected; choose at least one cache to clear.", err=True)
+        raise typer.Exit(code=1)
+    cleared = clear_context_caches(get_settings(), clear_l0=l0, clear_l1=l1, clear_ccs=ccs)
+    for row in cleared:
+        if row.error:
+            action = f"skipped ({row.error})"
+        else:
+            action = "cleared" if row.existed else "already empty"
+        typer.echo(f"{row.name}: {action} ({row.path})")
 
 
 if __name__ == "__main__":

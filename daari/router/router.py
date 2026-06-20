@@ -158,6 +158,14 @@ class Router:
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
                 return cached
 
+        ccs_hit = self._resolve_ccs_hit(dev_match, request)
+        if ccs_hit is not None:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            ccs_hit.daari_meta.latency_ms = latency_ms
+            self.metrics.record("CCS", cache_hit=True, latency_ms=latency_ms)
+            return ccs_hit
+
+        if not request.meta.no_cache:
             semantic_hit, _similarity = await self.semantic_cache.get(request)
             if semantic_hit is not None:
                 latency_ms = int((time.perf_counter() - started) * 1000)
@@ -169,13 +177,6 @@ class Router:
                 semantic_hit.daari_meta.task_type = "cache_hit"
                 self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
                 return semantic_hit
-
-        ccs_hit = self._resolve_ccs_hit(dev_match, request)
-        if ccs_hit is not None:
-            latency_ms = int((time.perf_counter() - started) * 1000)
-            ccs_hit.daari_meta.latency_ms = latency_ms
-            self.metrics.record("CCS", cache_hit=True, latency_ms=latency_ms)
-            return ccs_hit
 
         if dev_match is not None and dev_match.action == "execute" and dev_match.command:
             policy = self.policy.evaluate(dev_match.command, confirmed=request.meta.confirm_tool)
@@ -397,6 +398,8 @@ class Router:
 
     @staticmethod
     def _last_user_text(messages: list[Message]) -> str:
+        if not messages:
+            return ""
         for message in reversed(messages):
             if message.role == "user":
                 return message.content or ""

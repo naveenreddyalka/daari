@@ -69,9 +69,9 @@ pytest -m benchmark                 # optional latency checks
 
 **CI:** `.github/workflows/ci.yml` — Python 3.12, `pytest -m "not integration and not benchmark"` on push/PR. No secrets.
 
-**Gaps (planned):** `daari setup openai-compat`; L6 live API integration test (optional, requires frontier key/model).
+**Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 66 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest`)
+**Count:** 70 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`)
 
 ---
 
@@ -100,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 | `daari setup cursor --dry-run` shows diff | [x] | covered by tests |
 | Low-confidence response escalates to L6 | [x] | when `frontier.enabled` + API key present |
 
-**Wizard gaps (A.1 spec vs shipped):** single-choice menu (not multi-select); no L6/frontier API key write step in wizard (doctor warns instead); IntelliJ/Claude deferred to Phase B per setup-spec.
+**Wizard gaps (A.1 spec vs shipped):** single-choice menu (not multi-select); frontier helper writes hints/templates only (no secret capture by design); IntelliJ/Claude deferred to Phase B per setup-spec.
 
 **Key commits:** `13a2345` (scaffold), `aaf3f06` (apply, undo, wizard, models)
 
@@ -117,7 +117,10 @@ pytest -m benchmark                 # optional latency checks
 | PolicyEngine B.0 | [x] | allow/block + unknown deny/ask outcomes for Lt execution |
 | Lt B.0 CLI tools | [x] | `git status`, `git diff`, `pytest`, `eslint` command dispatch |
 | L4 medium model | [x] | second local model tier + L3→L4→L6 escalation path |
-| `daari setup openai-compat` | [ ] | |
+| `daari setup openai-compat` | [x] | prints OPENAI_* exports + writes `~/.daari/.env.example` |
+| Wizard frontier key helper | [x] | optional profile hint + env template (no config secret storage) |
+| `daari context clear` | [x] | clears L0/L1/CCS caches |
+| Doctor L4 pull hint | [x] | optional `model_l4` hint with pull command |
 | Eval expansion GP-11–GP-20 | [x] | prompts + regression assertions updated |
 
 **Exit criteria (Phase B — partial)**
@@ -136,7 +139,7 @@ pytest -m benchmark                 # optional latency checks
 
 - Cursor smoke test on personal device (`daari setup cursor` + chat through daari)
 - L4 model pull/install still user-managed (falls back to L3 when unavailable)
-- Wizard L6 API key step (doctor warns today)
+- L6 live frontier smoke depends on API key presence
 
 ---
 

@@ -204,3 +204,74 @@ class TestSetupCLI:
         runner = CliRunner()
         result = runner.invoke(app, ["setup", "--undo", "cursor"])
         assert result.exit_code == 1
+
+    def test_setup_openai_compat_writes_env_template(self, tmp_path, monkeypatch):
+        env_path = tmp_path / ".daari" / ".env.example"
+        monkeypatch.setattr("daari.setup.openai_compat.OPENAI_COMPAT_ENV_PATH", env_path)
+        monkeypatch.setattr(
+            "daari.cli.app.get_settings",
+            lambda: Settings.model_validate(
+                {
+                    "server": {"host": "127.0.0.1", "port": 11435},
+                    "models": {"l3": "llama3.2:3b", "l4": "llama3.1:8b"},
+                    "ollama": {"base_url": "http://127.0.0.1:11434"},
+                }
+            ),
+        )
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "openai-compat"])
+        assert result.exit_code == 0
+        assert "OPENAI_BASE_URL" in result.stdout
+        assert env_path.is_file()
+        assert "DAARI_FRONTIER_API_KEY" in env_path.read_text(encoding="utf-8")
+
+    def test_setup_frontier_key_snippet(self, tmp_path, monkeypatch):
+        env_path = tmp_path / ".daari" / ".env.example"
+        monkeypatch.setattr("daari.setup.openai_compat.OPENAI_COMPAT_ENV_PATH", env_path)
+        monkeypatch.setattr("daari.setup.openai_compat.Path.home", lambda: tmp_path)
+        monkeypatch.setattr(
+            "daari.cli.app.get_settings",
+            lambda: Settings.model_validate(
+                {
+                    "server": {"host": "127.0.0.1", "port": 11435},
+                    "models": {"l3": "llama3.2:3b", "l4": "llama3.1:8b"},
+                    "ollama": {"base_url": "http://127.0.0.1:11434"},
+                }
+            ),
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["setup", "frontier-key", "--shell", "zsh", "--write-profile-snippet"],
+        )
+        assert result.exit_code == 0
+        profile = tmp_path / ".zshrc"
+        assert profile.is_file()
+        assert "DAARI_FRONTIER_API_KEY" in profile.read_text(encoding="utf-8")
+
+    def test_context_clear(self, tmp_path, monkeypatch):
+        l0 = tmp_path / "cache" / "l0"
+        l1 = tmp_path / "cache" / "l1"
+        ccs = tmp_path / "context" / "commands"
+        for root in (l0, l1, ccs):
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "artifact.txt").write_text("x", encoding="utf-8")
+
+        monkeypatch.setattr(
+            "daari.cli.app.get_settings",
+            lambda: Settings.model_validate(
+                {
+                    "cache": {
+                        "l0": {"enabled": True, "path": str(l0)},
+                        "l1": {"enabled": True, "path": str(l1)},
+                    },
+                    "context": {"enabled": True, "path": str(ccs)},
+                }
+            ),
+        )
+        runner = CliRunner()
+        result = runner.invoke(app, ["context", "clear"])
+        assert result.exit_code == 0
+        assert not (l0 / "artifact.txt").exists()
+        assert not (l1 / "artifact.txt").exists()
+        assert not (ccs / "artifact.txt").exists()
