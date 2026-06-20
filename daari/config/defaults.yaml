@@ -12,3 +12,10 @@ cache:
   l0:
     enabled: true
     path: ~/.daari/cache/l0
+
+frontier:
+  enabled: false
+  provider: openai
+  model: gpt-4o-mini
+  confidence_threshold: 0.7
+  base_url: https://api.openai.com/v1
