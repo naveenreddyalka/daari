@@ -90,6 +90,48 @@ class TestDoctor:
         assert by_name["model"].ok is False
         assert doctor_exit_code(results) == 1
 
+    def test_frontier_disabled_ok(self, settings):
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+
+        assert by_name["frontier"].ok is True
+        assert "disabled" in by_name["frontier"].detail
+
+    def test_frontier_enabled_without_key_warns(self, settings, monkeypatch):
+        settings = Settings.model_validate(
+            {
+                **settings.model_dump(),
+                "frontier": {"enabled": True, "model": "gpt-4o-mini"},
+            }
+        )
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("DAARI_FRONTIER_API_KEY", raising=False)
+
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+
+        assert by_name["frontier"].ok is False
+        assert by_name["frontier"].optional is True
+        assert doctor_exit_code(results) == 0
+
 
 class TestCursorSetupDryRun:
     def test_dry_run_returns_plan(self):

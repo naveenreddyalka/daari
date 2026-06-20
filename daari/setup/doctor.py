@@ -29,6 +29,7 @@ def run_doctor(
     results.append(_check_python())
     results.append(_check_config(cfg))
     results.extend(_check_ollama(cfg, httpx_client))
+    results.append(_check_frontier(cfg))
     results.append(_check_daemon(cfg, httpx_client))
 
     return results
@@ -105,6 +106,34 @@ def _check_ollama(
     finally:
         if own_client:
             http.close()
+
+
+def _check_frontier(settings: Settings) -> CheckResult:
+    frontier = settings.frontier
+    if not frontier.enabled:
+        return CheckResult(
+            name="frontier",
+            ok=True,
+            detail="disabled (set frontier.enabled: true to enable L6 escalation)",
+            optional=True,
+        )
+    key = settings.resolve_frontier_api_key()
+    if key:
+        return CheckResult(
+            name="frontier",
+            ok=True,
+            detail=f"enabled ({frontier.provider}/{frontier.model}), API key present",
+            optional=True,
+        )
+    return CheckResult(
+        name="frontier",
+        ok=False,
+        detail=(
+            "enabled but no API key — set DAARI_FRONTIER_API_KEY or OPENAI_API_KEY "
+            "for L6 escalation"
+        ),
+        optional=True,
+    )
 
 
 def _check_daemon(

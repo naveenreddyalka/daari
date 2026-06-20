@@ -9,6 +9,8 @@ from daari.cache.exact import ExactCache
 from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
+from daari.router.confidence import score_l3_confidence
+from daari.router.frontier import FrontierExecutor
 
 
 @dataclass
@@ -51,10 +53,17 @@ class Router:
         cache: ExactCache,
         ollama: OllamaExecutor,
         metrics: Metrics,
+        frontier: FrontierExecutor | None = None,
+        *,
+        frontier_enabled: bool = False,
+        confidence_threshold: float = 0.7,
     ) -> None:
         self.cache = cache
         self.ollama = ollama
         self.metrics = metrics
+        self.frontier = frontier
+        self.frontier_enabled = frontier_enabled
+        self.confidence_threshold = confidence_threshold
 
     async def route(self, request: InternalRequest) -> InternalResponse:
         started = time.perf_counter()
@@ -77,10 +86,38 @@ class Router:
                 return cached
 
         response = await self.ollama.execute(request)
+        response = await self._maybe_escalate(request, response, started)
         if not request.meta.no_cache:
             self.cache.put(request, response)
         self._record(response, started)
         return response
+
+    async def _maybe_escalate(
+        self,
+        request: InternalRequest,
+        response: InternalResponse,
+        started: float,
+    ) -> InternalResponse:
+        confidence = score_l3_confidence(response.content)
+        response.daari_meta.confidence = confidence
+
+        if confidence >= self.confidence_threshold:
+            return response
+
+        if not self.frontier_enabled:
+            response.daari_meta.warning = "below_confidence_threshold"
+            return response
+
+        if self.frontier is None or not self.frontier.api_key:
+            response.daari_meta.warning = "below_confidence_threshold"
+            return response
+
+        l6_response = await self.frontier.execute(
+            request,
+            escalated_from="L3",
+            local_confidence=confidence,
+        )
+        return l6_response
 
     def _record(self, response: InternalResponse, started: float) -> None:
         if response.daari_meta.tier == "L0":
@@ -98,6 +135,7 @@ class AppContext:
     settings: Settings
     cache: ExactCache
     ollama: OllamaExecutor
+    frontier: FrontierExecutor
     metrics: Metrics
     router: Router
 
@@ -111,12 +149,26 @@ class AppContext:
             base_url=settings.ollama.base_url.rstrip("/"),
             default_model=settings.models.l3,
         )
+        frontier = FrontierExecutor(
+            base_url=settings.frontier.base_url.rstrip("/"),
+            default_model=settings.frontier.model,
+            api_key=settings.resolve_frontier_api_key(),
+            provider=settings.frontier.provider,
+        )
         metrics = Metrics()
-        router = Router(cache=cache, ollama=ollama, metrics=metrics)
+        router = Router(
+            cache=cache,
+            ollama=ollama,
+            metrics=metrics,
+            frontier=frontier,
+            frontier_enabled=settings.frontier.enabled,
+            confidence_threshold=settings.frontier.confidence_threshold,
+        )
         return cls(
             settings=settings,
             cache=cache,
             ollama=ollama,
+            frontier=frontier,
             metrics=metrics,
             router=router,
         )

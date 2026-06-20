@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,14 @@ class CacheSettings(BaseModel):
     l0: L0CacheSettings = Field(default_factory=L0CacheSettings)
 
 
+class FrontierSettings(BaseModel):
+    enabled: bool = False
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+    confidence_threshold: float = 0.7
+    base_url: str = "https://api.openai.com/v1"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAARI_", env_nested_delimiter="__")
 
@@ -38,6 +47,7 @@ class Settings(BaseSettings):
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
+    frontier: FrontierSettings = Field(default_factory=FrontierSettings)
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> Settings:
@@ -55,6 +65,9 @@ class Settings(BaseSettings):
     @property
     def l0_cache_path(self) -> Path:
         return Path(self.cache.l0.path).expanduser()
+
+    def resolve_frontier_api_key(self) -> str | None:
+        return os.environ.get("DAARI_FRONTIER_API_KEY") or os.environ.get("OPENAI_API_KEY")
 
 
 def _load_defaults_yaml() -> dict[str, Any]:

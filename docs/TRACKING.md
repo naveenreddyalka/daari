@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-06-17  
+> Last updated: 2026-06-20  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -51,8 +51,8 @@
 
 | Layer | Location | CI | Notes |
 |-------|----------|-----|-------|
-| **Unit** | `tests/unit/` | ✅ | cache keys, metrics, settings, internal models |
-| **Integration (mocked)** | `tests/integration/test_gateway_flow.py`, `tests/test_phase_a.py`, `tests/test_routing_eval.py` | ✅ | gateway + router + L0 cache; Ollama mocked |
+| **Unit** | `tests/unit/` | ✅ | cache keys, metrics, settings, internal models, confidence, L6 escalation |
+| **Integration (mocked)** | `tests/integration/test_gateway_flow.py`, `tests/integration/test_l6_escalation.py`, `tests/test_phase_a.py`, `tests/test_routing_eval.py` | ✅ | gateway + router + L0 cache + L6; Ollama mocked |
 | **Integration (live Ollama)** | `tests/integration/test_ollama_live.py` | skipped | `@pytest.mark.integration`; run with `OLLAMA_HOST=http://127.0.0.1:11434 pytest -m integration` |
 | **Benchmark** | `tests/benchmark/` | skipped | `@pytest.mark.benchmark`; L0 vs L3 latency |
 | **Setup / doctor** | `tests/test_setup.py`, `tests/test_doctor.py` | ✅ | dry-run, backup, doctor checks |
@@ -69,9 +69,9 @@ pytest -m benchmark                 # optional latency checks
 
 **CI:** `.github/workflows/ci.yml` — Python 3.12, `pytest -m "not integration and not benchmark"` on push/PR. No secrets.
 
-**Gaps (planned):** L6 escalation tests (needs executor); Lt/tool-native tests (Phase B); expanded golden prompts GP-11–GP-20.
+**Gaps (planned):** Lt/tool-native tests (Phase B); expanded golden prompts GP-11–GP-20; L6 live API integration test (optional).
 
-**Count:** 39 passed, 1 skipped (`pytest`; live Ollama test skipped without `OLLAMA_HOST`)
+**Count:** 51 passed, 1 skipped (`pytest`; live Ollama test skipped without `OLLAMA_HOST`)
 
 ---
 
@@ -89,8 +89,8 @@ pytest -m benchmark                 # optional latency checks
 | JSONC patch helpers | [x] | `daari/setup/jsonc.py` |
 | Setup tests | [x] | `tests/test_setup.py` |
 | `daari install` (Typer) | [ ] | ROADMAP item — use `install.sh` today |
-| L6 frontier executor | [ ] | not in tree |
-| Confidence scoring → L6 | [ ] | per [routing-spec](prd/routing-spec.md) |
+| L6 frontier executor | [x] | `daari/router/frontier.py` — OpenAI-compat httpx |
+| Confidence scoring → L6 | [x] | `daari/router/confidence.py` — binary heuristic per routing-spec |
 
 **Exit criteria**
 
@@ -98,9 +98,9 @@ pytest -m benchmark                 # optional latency checks
 |-----------|--------|-------|
 | `./install.sh && daari doctor` passes | [~] | run on fresh clone to confirm |
 | `daari setup cursor --dry-run` shows diff | [x] | covered by tests |
-| Low-confidence response escalates to L6 | [ ] | needs executor + API keys |
+| Low-confidence response escalates to L6 | [x] | when `frontier.enabled` + API key present |
 
-**Wizard gaps (A.1 spec vs shipped):** single-choice menu (not multi-select); no post-Cursor "configure model?" prompt; no L6/frontier API key step; no `routing.prefer` / model weights; IntelliJ/Claude deferred to Phase B per setup-spec.
+**Wizard gaps (A.1 spec vs shipped):** single-choice menu (not multi-select); no post-Cursor "configure model?" prompt; no L6/frontier API key step in wizard (doctor warns instead); no `routing.prefer` / model weights; IntelliJ/Claude deferred to Phase B per setup-spec.
 
 **Key commits:** `13a2345` (scaffold), `aaf3f06` (apply, undo, wizard, models)
 
@@ -108,16 +108,16 @@ pytest -m benchmark                 # optional latency checks
 
 ## Phase B (preview — not started)
 
-Per [ROADMAP](prd/ROADMAP.md): L1 semantic cache, L2 rules, L2-dev, CCS, Lt CLI, PolicyEngine, L4 medium model, `daari setup openai-compat`, eval expansion GP-01–GP-20. L6 overlap with unfinished A.1 work.
+Per [ROADMAP](prd/ROADMAP.md): L1 semantic cache, L2 rules, L2-dev, CCS, Lt CLI, PolicyEngine, L4 medium model, `daari setup openai-compat`, eval expansion GP-01–GP-20.
 
 ---
 
 ## Deferred / user-owned
 
 - Cursor smoke test on personal device (`daari setup cursor` + chat through daari)
-- L6 frontier escalation (ADR-0001) — moved to Phase B entry or finish in A.1
 - Streaming SSE for L3
 - `daari install` Typer parity with `install.sh` (optional polish)
+- Wizard L6 API key step (doctor warns today)
 
 ---
 

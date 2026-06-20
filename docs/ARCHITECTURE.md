@@ -18,8 +18,8 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | Phase | Status | Summary |
 |-------|--------|---------|
 | **A — Tracer bullet** | Done | `daari serve`, OpenAI gateway, L0 cache, L3 Ollama, router, metrics, routing evals GP-01–GP-10 |
-| **A.1 — Install & setup** | Done (gaps) | `install.sh`, `doctor`, `setup cursor` (+ undo), wizard, `setup models`; wizard partial vs spec; no L6; Cursor smoke test user-owned |
-| **B — Rules, Lt, L6, …** | Deferred | L1 semantic cache, L2 rules, Lt tool-native, PolicyEngine, L6 frontier — see [ROADMAP](prd/ROADMAP.md) |
+| **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; wizard partial vs spec; `daari install` Typer deferred; Cursor smoke test user-owned |
+| **B — Rules, Lt, …** | Deferred | L1 semantic cache, L2 rules, Lt tool-native, PolicyEngine, L4/L5 — see [ROADMAP](prd/ROADMAP.md) |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -88,7 +88,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/setup/jsonc.py` | JSONC read/write for Cursor config | ✅ |
 | `daari/setup/models.py` | `daari setup models` — tier → Ollama model | ✅ |
 
-**Not in tree (spec / Phase B+):** `gateway/anthropic.py`, `gateway/mcp.py`, `tools/backends/`, L1/L2/L6 executors, PolicyEngine, Lt runtime.
+**Not in tree (spec / Phase B+):** `gateway/anthropic.py`, `gateway/mcp.py`, `tools/backends/`, L1/L2 executors, PolicyEngine, Lt runtime.
 
 ### Docs (`docs/`)
 
@@ -155,10 +155,12 @@ flowchart LR
 
 1. Messages with `tool_calls` in history → skip L0, go straight to L3 (ADR-0004).
 2. Otherwise try L0 (unless `X-Daari-No-Cache: true`).
-3. L0 miss → L3 Ollama; store response in L0 on success.
-4. Ollama unreachable → HTTP 503.
+3. L0 miss → L3 Ollama; confidence check on result.
+4. If L3 confidence below `frontier.confidence_threshold` and frontier enabled with API key → L6 OpenAI-compatible API.
+5. Otherwise return L3 (with `daari_meta.warning` when below threshold and L6 unavailable).
+6. Ollama unreachable → HTTP 503.
 
-**Not wired yet:** tier override header handling beyond passthrough meta, L6 escalation, L2 rules, Lt tool-native path.
+**Not wired yet:** tier override header handling beyond passthrough meta, L4/L5 intermediate tiers, L2 rules, Lt tool-native path.
 
 ---
 
@@ -202,8 +204,8 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override` (override 
 | Area | Implemented | Spec only / deferred |
 |------|-------------|------------------------|
 | Gateway | OpenAI-compat chat, health, stats | Anthropic, MCP, streaming SSE |
-| Tiers | L0 exact cache, L3 Ollama | L1 semantic, L2/L2-dev rules, Lt, L4, L6 frontier |
-| Router | L0 → L3, tool_calls bypass cache | Confidence scoring, escalation, PolicyEngine |
+| Tiers | L0 exact cache, L3 Ollama, L6 frontier (opt-in) | L1 semantic, L2/L2-dev rules, Lt, L4/L5 |
+| Router | L0 → L3 → L6 escalation, tool_calls bypass cache | L4/L5 intermediate tiers, PolicyEngine |
 | Setup | Cursor recipe, wizard (partial), models, backup/undo | Claude Code, openai-compat, IntelliJ; full wizard spec |
 | Providers | Registry scaffold | Live integration providers |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |

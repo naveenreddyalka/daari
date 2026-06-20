@@ -45,6 +45,7 @@ class DaariMeta(BaseModel):
     confidence: float | None = None
     escalated_from: str | None = None
     rule_id: str | None = None
+    warning: str | None = None
 
 
 class InternalResponse(BaseModel):
