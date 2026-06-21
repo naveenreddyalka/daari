@@ -8,7 +8,7 @@ from pathlib import Path
 import typer
 import uvicorn
 
-from daari.cli.setup_actions import apply_cursor_setup
+from daari.cli.setup_actions import apply_all_setups, apply_cursor_setup, apply_intellij_setup
 from daari.config.settings import get_settings
 from daari.server.app import create_app
 from daari.setup.context import clear_context_caches
@@ -165,6 +165,40 @@ def setup_cursor(
 ) -> None:
     """Configure Cursor to use the daari OpenAI-compat gateway."""
     apply_cursor_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("intellij")
+def setup_intellij(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show planned changes without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-apply even when already configured.",
+    ),
+) -> None:
+    """Configure IntelliJ helpers for daari OpenAI-compatible setup."""
+    apply_intellij_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("all")
+def setup_all(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show planned changes without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-apply even when already configured.",
+    ),
+) -> None:
+    """Detect installed clients and apply all relevant setup recipes."""
+    apply_all_setups(dry_run=dry_run, force=force)
 
 
 @setup_app.command("models")

@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
 > Date: 2026-06-20  
-> Scope: Phase B completion + Phase C bootstrap slice
+> Scope: Phase B.1 + Phase C1 depth slice
 
 ## Feature checklist vs PRD
 
@@ -21,20 +21,24 @@
 | `daari install` Typer parity | ✅ implemented (minimal) | CLI wrapper to run `scripts/install.sh` with doctor option |
 | Eval GP-11–GP-20 | ✅ implemented | prompts expanded and regression assertions updated |
 | ProviderRegistry router wiring | ✅ implemented (minimum) | model executors registered and resolved through registry |
-| Integration providers scaffold | ✅ implemented (scaffold) | Sourcegraph/GHE deferred providers registered as placeholders |
+| Integration providers scaffold | ✅ upgraded (minimal live path) | Sourcegraph/GHE token-gated httpx path with graceful skip |
 | Anthropic gateway adapter | ✅ implemented (minimal) | `/v1/messages` non-streaming route mapped to internal router |
-| MCP gateway stub | ✅ implemented (stub) | `/v1/mcp/query` explicit `501` for deferred Phase C1 implementation |
+| MCP gateway ingress | ✅ implemented (minimal) | `/v1/mcp/query` supports `health`/`stats`/`route` and provider passthrough |
 | `daari setup openai-compat` | ✅ implemented | prints OPENAI_* exports + writes `~/.daari/.env.example` |
 | `daari context clear` | ✅ implemented | clears L0/L1/CCS caches via CLI |
+| `daari setup all` | ✅ implemented | runs setup recipes for detected clients |
+| `daari setup intellij` | ✅ implemented (minimal) | dry-run/apply/undo with helper config file + docs |
+| Lt ask/confirm UX | ✅ implemented | `daari_meta.confirmation_prompt` + `X-Daari-Confirm: yes` + `--yes` prompt support |
+| L2-live URL fetch | ✅ implemented (minimal) | fetch/read/summarize URL trigger using httpx + L3 summary |
 | Doctor L4 pull hint | ✅ implemented | optional `model_l4` check with `ollama pull` hint |
 | Doctor L5 pull hint | ✅ implemented | optional `model_l5` check with `ollama pull` hint |
 | Install optional L4/L5 pulls | ✅ implemented | `daari install --pull-l4 --pull-l5` env passthrough to script |
 
 ## Verification results
 
-- `pytest -m "not integration and not benchmark"`: **72 passed, 2 deselected**
-- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: **74 passed**
-- `pytest -m benchmark`: **1 passed**
+- `.venv/bin/python -m pytest`: **78 passed, 1 skipped**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: **79 passed**
+- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 78 deselected**
 - `./scripts/demo.sh`: **pass**
 - `./scripts/bench.sh`: **pass**
 - Manual curl smoke (fresh daemon + clean cache):
@@ -47,7 +51,7 @@
   - No-frontier header: handled (`L3`, local path)
   - Streaming SSE metadata: pass (`daari_meta` present in stream chunk events)
   - Anthropic adapter (`/v1/messages`): pass (manual curl + integration test)
-  - MCP stub (`/v1/mcp/query`): covered by integration test (`501 Not Implemented`)
+  - MCP ingress (`/v1/mcp/query`): pass (`health` + routed query)
   - L6: implementation validated by tests; live manual call skipped because no frontier API key in environment
 
 ## Performance summary

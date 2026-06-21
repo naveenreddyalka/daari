@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 74 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`)
+**Count:** 79 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`)
 
 ---
 
@@ -120,6 +120,10 @@ pytest -m benchmark                 # optional latency checks
 | `daari setup openai-compat` | [x] | prints OPENAI_* exports + writes `~/.daari/.env.example` |
 | Wizard frontier key helper | [x] | optional profile hint + env template (no config secret storage) |
 | `daari context clear` | [x] | clears L0/L1/CCS caches |
+| `daari setup all` auto-detect run | [x] | detects registered clients and runs applicable recipes |
+| `daari setup intellij` | [x] | minimal IntelliJ helper config + dry-run + undo path |
+| Lt ask/confirm UX | [x] | `daari_meta.confirmation_prompt` + `X-Daari-Confirm: yes` |
+| Lt `--yes` support | [x] | `--yes` in prompt text now confirms unknown-policy commands |
 | Doctor L4 pull hint | [x] | optional `model_l4` hint with pull command |
 | Install optional L4/L5 pull flags | [x] | `daari install --pull-l4 --pull-l5` + `scripts/install.sh` env knobs |
 | Eval expansion GP-11–GP-20 | [x] | prompts + regression assertions updated |
@@ -142,9 +146,10 @@ pytest -m benchmark                 # optional latency checks
 |------|--------|-------|
 | Gateway adapter protocol (`daari/gateway/base.py`) | [x] | OpenAI adapter now implements protocol |
 | Anthropic gateway adapter (`/v1/messages`) | [~] | non-streaming routed path shipped; streaming still deferred |
-| MCP gateway stub | [~] | `/v1/mcp/query` returns explicit Phase C1 `501` |
+| MCP gateway ingress | [x] | `/v1/mcp/query` handles `health`/`stats`/`route` + provider passthrough |
 | L5 local tier wiring | [~] | config + routing/escalation support; large model remains optional |
-| Sourcegraph/GHE provider scaffolds | [~] | deferred providers registered in `ProviderRegistry` |
+| Sourcegraph/GHE provider minimal path | [x] | token-gated httpx call path (`DAARI_SOURCEGRAPH_TOKEN`, `DAARI_GHE_TOKEN`) |
+| L2-live URL fetch | [x] | simple fetch trigger (`fetch/read/summarize/get <url>`) + L3 summarization |
 | SSE metadata enrichment | [x] | stream chunks now include `daari_meta` tier/provider/model |
 
 ---

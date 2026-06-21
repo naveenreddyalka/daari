@@ -7,7 +7,8 @@ from daari.config.settings import Settings, get_settings
 
 
 def _print_setup_plan(plan) -> None:
-    typer.echo(f"Cursor detected: {'yes' if plan.detected else 'no'}")
+    label = plan.client_id.capitalize()
+    typer.echo(f"{label} detected: {'yes' if plan.detected else 'no'}")
     typer.echo("Settings paths:")
     for path in plan.settings_paths:
         typer.echo(f"  - {path}")
@@ -24,17 +25,19 @@ def _print_setup_plan(plan) -> None:
             typer.echo(f"  - {note}")
 
 
-def apply_cursor_setup(
+def apply_setup_recipe(
+    recipe_id: str,
     *,
     dry_run: bool = False,
     force: bool = False,
     settings: Settings | None = None,
+    fail_on_missing: bool = True,
 ) -> None:
     cfg = settings or get_settings()
     registry = default_registry()
-    recipe = registry.get("cursor")
+    recipe = registry.get(recipe_id)
     if recipe is None:
-        typer.echo("Cursor setup recipe not found.", err=True)
+        typer.echo(f"{recipe_id.capitalize()} setup recipe not found.", err=True)
         raise typer.Exit(code=1)
 
     base_url = f"http://{cfg.server.host}:{cfg.server.port}/v1"
@@ -53,7 +56,7 @@ def apply_cursor_setup(
     )
     typer.echo(f"\n{result.message}")
     if not result.changed:
-        if "not detected" in result.message or "not found" in result.message:
+        if fail_on_missing and ("not detected" in result.message or "not found" in result.message):
             raise typer.Exit(code=1)
         return
 
@@ -62,5 +65,42 @@ def apply_cursor_setup(
         typer.echo(f"  - {path}")
     if result.backup_dir is not None:
         typer.echo(f"Backup: {result.backup_dir}")
-        typer.echo("Undo with: daari setup --undo cursor")
+        typer.echo(f"Undo with: daari setup --undo {recipe_id}")
     typer.echo("\nNext: daari serve")
+
+
+def apply_cursor_setup(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    apply_setup_recipe("cursor", dry_run=dry_run, force=force, settings=settings)
+
+
+def apply_intellij_setup(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    apply_setup_recipe("intellij", dry_run=dry_run, force=force, settings=settings)
+
+
+def apply_all_setups(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    cfg = settings or get_settings()
+    registry = default_registry()
+    for recipe_id in registry.list_ids():
+        typer.echo(f"\n== {recipe_id} ==")
+        apply_setup_recipe(
+            recipe_id,
+            dry_run=dry_run,
+            force=force,
+            settings=cfg,
+            fail_on_missing=False,
+        )

@@ -15,6 +15,7 @@ from daari.clients.cursor.recipe import (
     DAARI_MARKER_KEY,
     CursorSetupRecipe,
 )
+from daari.clients.intellij.recipe import IntelliJSetupRecipe
 from daari.config.settings import Settings
 from daari.setup.backup import create_backup, latest_backup, restore_latest_backup
 from daari.setup.models import fetch_ollama_models, write_models_config
@@ -64,6 +65,24 @@ def recipe(cursor_home, monkeypatch):
 @pytest.fixture
 def backup_root(tmp_path):
     return tmp_path / "backups"
+
+
+@pytest.fixture
+def intellij_home(tmp_path):
+    options = tmp_path / "JetBrains" / "IntelliJIdea2025.1" / "options"
+    options.mkdir(parents=True)
+    return tmp_path
+
+
+@pytest.fixture
+def intellij_recipe(intellij_home, monkeypatch):
+    recipe = IntelliJSetupRecipe()
+
+    def fake_roots(self):
+        return [intellij_home / "JetBrains"]
+
+    monkeypatch.setattr(IntelliJSetupRecipe, "_jetbrains_roots", fake_roots)
+    return recipe
 
 
 class TestBackup:
@@ -196,6 +215,33 @@ class TestSetupCLI:
         assert result.exit_code == 0
         assert "llama3.2:3b" in result.stdout
 
+    def test_setup_intellij_dry_run(self, intellij_recipe, monkeypatch):
+        from daari.clients.registry import ClientRegistry
+
+        registry = ClientRegistry()
+        registry.register(intellij_recipe)
+        monkeypatch.setattr("daari.cli.setup_actions.default_registry", lambda: registry)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "intellij", "--dry-run"])
+        assert result.exit_code == 0
+        assert "Intellij detected: yes" in result.stdout
+        assert "Dry-run complete" in result.stdout
+
+    def test_setup_all_runs_known_recipes(self, recipe, intellij_recipe, monkeypatch):
+        from daari.clients.registry import ClientRegistry
+
+        registry = ClientRegistry()
+        registry.register(recipe)
+        registry.register(intellij_recipe)
+        monkeypatch.setattr("daari.cli.setup_actions.default_registry", lambda: registry)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "all", "--dry-run"])
+        assert result.exit_code == 0
+        assert "== cursor ==" in result.stdout
+        assert "== intellij ==" in result.stdout
+
     def test_setup_undo_missing_backup(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
             "daari.setup.backup.backups_root",
@@ -296,3 +342,19 @@ class TestSetupCLI:
         assert captured["env"]["RUN_DOCTOR"] == "0"
         assert captured["env"]["PULL_L4"] == "1"
         assert captured["env"]["PULL_L5"] == "1"
+
+
+class TestIntelliJSetupApply:
+    def test_apply_writes_helper_file(self, intellij_recipe, backup_root):
+        result = intellij_recipe.apply(backup_root=backup_root)
+        assert result.changed is True
+        assert len(result.files_changed) == 1
+        payload = json.loads(Path(result.files_changed[0]).read_text(encoding="utf-8"))
+        assert payload["managed_by"] == "daari"
+        assert payload["model"] == "daari"
+
+    def test_apply_idempotent(self, intellij_recipe, backup_root):
+        intellij_recipe.apply(backup_root=backup_root)
+        second = intellij_recipe.apply(backup_root=backup_root)
+        assert second.changed is False
+        assert "already configured" in second.message

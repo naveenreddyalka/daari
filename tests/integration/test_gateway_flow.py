@@ -8,8 +8,10 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.policy.engine import PolicyResult
 from daari.router.router import AppContext
 from daari.server.app import create_app
+from daari.tools.shell import ShellResult
 
 
 @pytest.fixture
@@ -147,8 +149,50 @@ async def test_stream_chunks_include_daari_meta(app, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_mcp_gateway_stub_is_explicit(app):
+async def test_mcp_gateway_query_routes(app, monkeypatch):
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="mcp-routed",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fake_execute)
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/v1/mcp/query", json={})
-    assert response.status_code == 501
+        response = await client.post("/v1/mcp/query", json={"tool": "route", "input": "hello"})
+    assert response.status_code == 200
+    assert response.json()["result"]["content"] == "mcp-routed"
+
+
+@pytest.mark.asyncio
+async def test_lt_ask_response_includes_confirmation_prompt(app, monkeypatch):
+    def fake_policy(command: str, *, confirmed: bool = False) -> PolicyResult:
+        if confirmed:
+            return PolicyResult(outcome="allow", reason="confirmed")
+        return PolicyResult(outcome="ask", reason="needs confirmation")
+
+    async def fake_shell(command: str, *, cwd: str | None = None) -> ShellResult:
+        return ShellResult(command=command, output="confirmed-output", exit_code=0)
+
+    monkeypatch.setattr(app.state.ctx.router.policy, "evaluate", fake_policy)
+    monkeypatch.setattr(app.state.ctx.router.shell_executor, "run", fake_shell)
+
+    payload = {"model": "llama3.2:3b", "messages": [{"role": "user", "content": "run git status"}]}
+    headers = {"X-Daari-No-Cache": "true"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=payload, headers=headers)
+        second = await client.post(
+            "/v1/chat/completions",
+            json=payload,
+            headers={**headers, "X-Daari-Confirm": "yes"},
+        )
+
+    first_body = first.json()
+    second_body = second.json()
+    assert first.status_code == 200
+    assert first_body["daari_meta"]["policy"] == "ask"
+    assert "X-Daari-Confirm: yes" in first_body["daari_meta"]["confirmation_prompt"]
+    assert second_body["daari_meta"]["policy"] == "allow"
