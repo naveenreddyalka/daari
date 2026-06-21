@@ -1,7 +1,7 @@
 # daari — Architecture & project structure
 
 > Living overview of the repo layout, runtime flow, and implementation status.  
-> **Last updated:** 2026-06-20 · **Verified at:** `working tree`
+> **Last updated:** 2026-06-21 · **Verified at:** `working tree`
 
 For phase tasks and exit criteria, see [TRACKING.md](TRACKING.md). For clone/run/test pickup, see [DEVELOPING.md](DEVELOPING.md).
 
@@ -20,7 +20,7 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | **A — Tracer bullet** | Done | `daari serve`, OpenAI gateway, L0 cache, L3 Ollama, router, metrics, routing evals GP-01–GP-10 |
 | **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; `daari install` CLI added; wizard now includes frontier key helper hints |
 | **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` and `context clear` added |
-| **C — Bootstrap slice** | In progress | gateway adapter protocol, Anthropic adapter (+stream), MCP minimal ingress, L5 wiring, provider minimal paths |
+| **C — Bootstrap slice** | In progress | gateway adapter protocol, Anthropic adapter (+stream fallback), MCP tool schemas, integration provider depth, profile/skills loader stubs |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -41,6 +41,7 @@ daari/                              # repo root
 │   ├── config/                     # Settings + defaults.yaml
 │   ├── observability/              # In-process tier metrics
 │   ├── providers/                  # IntegrationProvider registry (wired for model tiers)
+│   ├── enterprise/                 # Enterprise schema scaffolds (Phase E starter)
 │   ├── rules/                      # L2 + L2-dev regex/template routing rules
 │   ├── tools/                      # Lt subprocess executor
 │   ├── policy/                     # Lt allow/deny/ask policy engine
@@ -79,15 +80,16 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L5/L6 + no-frontier + fallback behavior | ✅ |
 | `daari/gateway/base.py` | `GatewayAdapter` protocol | ✅ |
 | `daari/gateway/anthropic.py` | `POST /v1/messages` Anthropic-compatible adapter (minimal) | ✅ |
-| `daari/gateway/mcp.py` | MCP ingress (`health`/`stats`/`route` + provider passthrough) | ✅ minimal |
+| `daari/gateway/mcp.py` | MCP ingress (`health`/`stats`/`route`, `tools/list`, `tools/call`) | ✅ expanded |
 | `daari/cache/exact.py` | L0 exact cache keys + diskcache store | ✅ |
 | `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
-| `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/`) | ✅ |
+| `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/` + profile overlays + skills prefix) | ✅ |
 | `daari/config/defaults.yaml` | Package defaults (host, port, models) | ✅ |
 | `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` | ✅ |
 | `daari/providers/base.py` | `IntegrationProvider` protocol (`execute`, `health`) | ✅ |
 | `daari/providers/registry.py` | Provider registry used by router | ✅ |
-| `daari/providers/integrations.py` | Sourcegraph/GHE token-gated minimal integration providers | ✅ minimal |
+| `daari/providers/integrations.py` | Sourcegraph GraphQL + GHE repo/issue search providers | ✅ |
+| `daari/enterprise/config.py` | Minimal Enterprise org settings schema (`OrgSettings`) | ✅ scaffold |
 | `daari/rules/engine.py` | L2 deterministic transforms (JSON/YAML) | ✅ |
 | `daari/rules/dev_commands.py` | L2-dev developer command detection | ✅ |
 | `daari/cache/command_context.py` | CCS store for command output reuse | ✅ |
@@ -142,8 +144,9 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | Path | Purpose | Status |
 |------|---------|--------|
 | `evals/routing/prompts.jsonl` | Golden prompt fixtures for routing evals | ✅ |
-| `packages/README.md` | Placeholder for future browser ext / web UI | Spec only |
+| `packages/README.md` | Placeholder for future browser ext / web UI | ✅ |
 | `packages/browser-extension/` | Browser extension scaffold with MV3 placeholder manifest | ✅ scaffold |
+| `packages/web-ui/README.md` | Minimal web UI scaffold placeholder | ✅ scaffold |
 | `CONTEXT.md` | Agent/session handoff | ✅ |
 
 ---
@@ -222,7 +225,7 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 |--------|------|---------|
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat (supports basic SSE streaming passthrough) |
 | `POST` | `/v1/messages` | Anthropic-compatible messages adapter (non-stream + SSE `stream: true`) |
-| `POST` | `/v1/mcp/query` | MCP ingress endpoint (`health`, `stats`, route passthrough) |
+| `POST` | `/v1/mcp/query` | MCP ingress endpoint (`health`, `stats`, `route`, `sourcegraph`, `ghe`, `tools/list`, `tools/call`) |
 | `GET` | `/v1/daari/stats` | Tier metrics snapshot |
 | `GET` | `/health` | Liveness |
 
@@ -242,13 +245,13 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override`, `X-Daari-
 
 | Area | Implemented | Spec only / deferred |
 |------|-------------|------------------------|
-| Gateway | OpenAI + Anthropic adapters, MCP minimal ingress, health, stats, SSE with metadata | richer MCP tool schemas |
+| Gateway | OpenAI + Anthropic adapters, Anthropic stream fallback, MCP typed ingress + tool schemas | deeper MCP auth/session semantics |
 | Tiers | L0 exact, CCS, L1 semantic, L2 rules, L2-dev, Lt, L3, L4, L5 wiring, L6 | L5 model auto-provision and tuning |
 | Router | Full Phase B.0 pipeline + policy + no-frontier behavior + ask/confirm metadata + minimal L2-live fetch | broader B.1 command profiles |
 | Setup | Cursor + IntelliJ + VS Code + claude-code recipes, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | deeper IDE-native integrations |
-| Providers | Registry + model providers + Sourcegraph/GHE token-gated minimal calls | deeper enterprise provider execution paths |
+| Providers | Registry + model providers + Sourcegraph GraphQL/GHE REST integration calls | GitLab provider and richer corp plugin surfaces |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
-| Enterprise | ADR-0014, PRD sections | All runtime |
+| Enterprise | ADR-0014, PRD sections + `daari/enterprise/OrgSettings` scaffold | distributed runtime, org cache, learning services |
 | Packages | README + browser-extension scaffold | web-ui, intellij-plugin, extension runtime code |
 
 Source of truth for “done”: [TRACKING.md](TRACKING.md) task tables + `daari/` tree + pytest.

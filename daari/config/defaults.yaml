@@ -58,3 +58,13 @@ tools:
 context:
   enabled: true
   path: ~/.daari/context/commands
+
+integrations:
+  sourcegraph:
+    url: https://sourcegraph.com
+    triggers:
+      - "@sourcegraph"
+  ghe:
+    url: https://api.github.com
+    triggers:
+      - "@ghe"

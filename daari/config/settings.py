@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -82,6 +84,26 @@ class ContextSettings(BaseModel):
     path: str = "~/.daari/context/commands"
 
 
+class IntegrationEndpointSettings(BaseModel):
+    url: str
+    triggers: list[str] = Field(default_factory=list)
+
+
+class IntegrationsSettings(BaseModel):
+    sourcegraph: IntegrationEndpointSettings = Field(
+        default_factory=lambda: IntegrationEndpointSettings(
+            url="https://sourcegraph.com",
+            triggers=["@sourcegraph"],
+        )
+    )
+    ghe: IntegrationEndpointSettings = Field(
+        default_factory=lambda: IntegrationEndpointSettings(
+            url="https://api.github.com",
+            triggers=["@ghe"],
+        )
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAARI_", env_nested_delimiter="__")
 
@@ -93,6 +115,8 @@ class Settings(BaseSettings):
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
+    integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
+    skills_system_prefix: str = ""
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> Settings:
@@ -104,8 +128,10 @@ class Settings(BaseSettings):
                 loaded = yaml.safe_load(f) or {}
                 if isinstance(loaded, dict):
                     file_data = loaded
+        profile_data = _load_profile_overrides()
         env_data = _load_env_overrides()
-        merged = _deep_merge(_deep_merge(defaults, file_data), env_data)
+        merged = _deep_merge(_deep_merge(_deep_merge(defaults, file_data), profile_data), env_data)
+        merged["skills_system_prefix"] = _load_skills_system_prefix()
         return cls.model_validate(merged)
 
     @property
@@ -148,6 +174,8 @@ def _load_env_overrides() -> dict[str, Any]:
     for key, value in os.environ.items():
         if not key.startswith(prefix):
             continue
+        if "__" not in key:
+            continue
         path = key[len(prefix) :].lower().split("__")
         cursor: dict[str, Any] = data
         for segment in path[:-1]:
@@ -156,6 +184,56 @@ def _load_env_overrides() -> dict[str, Any]:
             cursor = cursor[segment]
         cursor[path[-1]] = _coerce_env_value(value)
     return data
+
+
+def _load_profile_overrides() -> dict[str, Any]:
+    profile_env = (os.environ.get("DAARI_PROFILE") or "").strip()
+    profile_path = _resolve_profile_path(profile_env)
+    if profile_path is None or not profile_path.is_file():
+        return {}
+    with profile_path.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    return data if isinstance(data, dict) else {}
+
+
+def _resolve_profile_path(profile_env: str) -> Path | None:
+    profile_root = Path.home() / ".daari" / "profiles"
+    if profile_env:
+        env_path = Path(profile_env).expanduser()
+        if env_path.is_absolute() or "/" in profile_env:
+            return env_path
+        if env_path.suffix in {".yaml", ".yml"}:
+            return profile_root / env_path
+        return profile_root / f"{profile_env}.yaml"
+
+    cwd = Path.cwd().resolve()
+    cwd_hash = hashlib.sha1(str(cwd).encode("utf-8")).hexdigest()[:12]
+    cwd_slug = re.sub(r"[^a-zA-Z0-9_.-]+", "-", cwd.name).strip("-").lower() or "project"
+    hash_candidate = profile_root / f"{cwd_hash}.yaml"
+    slug_candidate = profile_root / f"{cwd_slug}.yaml"
+    if hash_candidate.is_file():
+        return hash_candidate
+    if slug_candidate.is_file():
+        return slug_candidate
+    return None
+
+
+def _load_skills_system_prefix() -> str:
+    skills_dir = Path.home() / ".daari" / "skills"
+    if not skills_dir.is_dir():
+        return ""
+    sections: list[str] = []
+    for path in sorted(skills_dir.glob("*.md")):
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+        except Exception:
+            continue
+        if not content:
+            continue
+        sections.append(f"## Skill: {path.stem}\n{content}")
+    if not sections:
+        return ""
+    return "# Local daari skills\n\n" + "\n\n".join(sections)
 
 
 def _coerce_env_value(raw: str) -> Any:
