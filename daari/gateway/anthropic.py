@@ -100,8 +100,49 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         async for event in ctx.router.stream_anthropic_events(internal):
                             yield event
                     except Exception as exc:
-                        error_payload = {"type": "error", "error": {"type": "stream_error", "message": str(exc)}}
+                        error_payload = {
+                            "type": "error",
+                            "error": {"type": "stream_error", "message": str(exc)},
+                        }
                         yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+                        # Gracefully fall back to a non-streamed route and re-emit as a single SSE message.
+                        fallback = internal.model_copy(deep=True)
+                        fallback.stream = False
+                        fallback_result = await ctx.router.route(fallback)
+                        fallback_meta = fallback_result.daari_meta.model_dump()
+                        fallback_meta["warning"] = "stream_failed_fell_back_to_non_stream"
+                        message_start = {
+                            "type": "message_start",
+                            "message": {
+                                "id": f"msg_{uuid.uuid4().hex[:12]}",
+                                "type": "message",
+                                "role": "assistant",
+                                "model": fallback_result.model,
+                                "content": [],
+                                "stop_reason": None,
+                                "stop_sequence": None,
+                                "usage": {"input_tokens": 0, "output_tokens": 0},
+                            },
+                            "daari_meta": fallback_meta,
+                        }
+                        yield f"event: message_start\ndata: {json.dumps(message_start)}\n\n"
+                        block_start = {
+                            "type": "content_block_start",
+                            "index": 0,
+                            "content_block": {"type": "text", "text": ""},
+                            "daari_meta": fallback_meta,
+                        }
+                        yield f"event: content_block_start\ndata: {json.dumps(block_start)}\n\n"
+                        block_delta = {
+                            "type": "content_block_delta",
+                            "index": 0,
+                            "delta": {"type": "text_delta", "text": fallback_result.content},
+                            "daari_meta": fallback_meta,
+                        }
+                        yield f"event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n"
+                        yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0, 'daari_meta': fallback_meta})}\n\n"
+                        yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0}, 'daari_meta': fallback_meta})}\n\n"
+                        yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop', 'daari_meta': fallback_meta})}\n\n"
 
                 return StreamingResponse(event_stream(), media_type="text/event-stream")
 

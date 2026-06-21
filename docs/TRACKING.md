@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-06-20  
+> Last updated: 2026-06-21  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 79 passed (`OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`)
+**Count:** 94 passed (`OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`)
 
 ---
 
@@ -148,12 +148,18 @@ pytest -m benchmark                 # optional latency checks
 |------|--------|-------|
 | Gateway adapter protocol (`daari/gateway/base.py`) | [x] | OpenAI adapter now implements protocol |
 | Anthropic gateway adapter (`/v1/messages`) | [x] | non-stream + SSE event streaming (`stream: true`) |
-| MCP gateway ingress | [x] | `/v1/mcp/query` handles `health`/`stats`/`route` + provider passthrough |
+| MCP gateway ingress | [x] | `/v1/mcp/query` now supports `tools/list`, `tools/call`, and JSON-schema tool catalog |
 | L5 local tier wiring | [~] | config + routing/escalation support; large model remains optional |
-| Sourcegraph/GHE provider minimal path | [x] | token-gated httpx call path (`DAARI_SOURCEGRAPH_TOKEN`, `DAARI_GHE_TOKEN`) |
+| Sourcegraph/GHE provider depth (C3) | [x] | Sourcegraph GraphQL + GHE repo/issue search with configurable base URLs and token envs |
 | L2-live URL fetch | [x] | simple fetch trigger (`fetch/read/summarize/get <url>`) + L3 summarization |
 | SSE metadata enrichment | [x] | stream chunks now include `daari_meta` tier/provider/model |
 | Browser extension scaffold | [x] | `packages/browser-extension/README.md` + MV3 manifest placeholder |
+| Router integration prefixes | [x] | `@sourcegraph` / `@ghe` now route to integration providers before L3 |
+| Per-project profiles | [x] | `~/.daari/profiles/<hash|slug>.yaml` + `DAARI_PROFILE` support |
+| Skills loader stub | [x] | `~/.daari/skills/*.md` merged into system prompt prefix |
+| Anthropic stream fallback | [x] | stream error now emits SSE error and falls back to non-stream response events |
+| Web UI scaffold | [x] | `packages/web-ui/README.md` placeholder added |
+| Enterprise scaffold | [x] | `daari/enterprise/` added with minimal `OrgSettings` models |
 
 ---
 

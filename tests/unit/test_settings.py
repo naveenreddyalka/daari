@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 from daari.config.settings import Settings
@@ -67,3 +69,33 @@ class TestSettings:
     def test_invalid_config_rejected(self):
         with pytest.raises(Exception):
             Settings.model_validate({"server": {"port": "not-a-number"}})
+
+    def test_load_merges_project_profile_by_cwd_hash(self, tmp_path, monkeypatch):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        profile_root = tmp_path / ".daari" / "profiles"
+        profile_root.mkdir(parents=True)
+        digest = hashlib.sha1(str(repo.resolve()).encode("utf-8")).hexdigest()[:12]
+        (profile_root / f"{digest}.yaml").write_text("models:\n  l3: profile-hash:7b\n", encoding="utf-8")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.chdir(repo)
+        settings = Settings.load(config_path=tmp_path / "missing.yaml")
+        assert settings.models.l3 == "profile-hash:7b"
+
+    def test_load_merges_named_profile_from_env(self, tmp_path, monkeypatch):
+        profile_root = tmp_path / ".daari" / "profiles"
+        profile_root.mkdir(parents=True)
+        (profile_root / "work.yaml").write_text("routing:\n  prefer: accuracy\n", encoding="utf-8")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("DAARI_PROFILE", "work")
+        settings = Settings.load(config_path=tmp_path / "missing.yaml")
+        assert settings.routing.prefer == "accuracy"
+
+    def test_load_skills_system_prefix(self, tmp_path, monkeypatch):
+        skills = tmp_path / ".daari" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "policy.md").write_text("Always prefer local execution.", encoding="utf-8")
+        monkeypatch.setenv("HOME", str(tmp_path))
+        settings = Settings.load(config_path=tmp_path / "missing.yaml")
+        assert "Local daari skills" in settings.skills_system_prefix
+        assert "Always prefer local execution." in settings.skills_system_prefix

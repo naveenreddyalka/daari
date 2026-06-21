@@ -197,6 +197,95 @@ async def test_mcp_gateway_query_routes(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mcp_tools_list_and_tools_call(app, monkeypatch):
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="from-tools-call",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fake_execute)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tools_list = await client.post("/v1/mcp/query", json={"tool": "tools/list"})
+        tools_call = await client.post(
+            "/v1/mcp/query",
+            json={"tool": "tools/call", "args": {"name": "route", "arguments": {"input": "hello"}}},
+        )
+
+    assert tools_list.status_code == 200
+    assert any(tool["name"] == "route" for tool in tools_list.json()["result"]["tools"])
+    assert tools_call.status_code == 200
+    assert tools_call.json()["result"]["name"] == "route"
+    assert tools_call.json()["result"]["result"]["content"] == "from-tools-call"
+
+
+@pytest.mark.asyncio
+async def test_router_integration_prefix_routes_before_l3(app, monkeypatch):
+    async def fail_if_model_called(_request: InternalRequest) -> InternalResponse:
+        raise AssertionError("model tier should not execute for integration-prefixed request")
+
+    async def fake_sourcegraph(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="sourcegraph-result",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="Lt", executor="integration", provider_id="integration:sourcegraph"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fail_if_model_called)
+    sourcegraph_provider = app.state.ctx.providers.get("integration:sourcegraph")
+    assert sourcegraph_provider is not None
+    monkeypatch.setattr(sourcegraph_provider, "execute", fake_sourcegraph)
+
+    payload = {
+        "model": "llama3.2:3b",
+        "messages": [{"role": "user", "content": "@sourcegraph search auth middleware"}],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=payload, headers={"X-Daari-No-Cache": "true"})
+
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["message"]["content"] == "sourcegraph-result"
+    assert response.json()["daari_meta"]["provider_id"] == "integration:sourcegraph"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_falls_back_to_non_stream(app, monkeypatch):
+    async def broken_stream(_request: InternalRequest):
+        raise RuntimeError("stream broke")
+        yield
+
+    async def fallback_route(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="fallback-non-stream",
+            model="claude-sonnet-4-20250514",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "stream_anthropic_events", broken_stream)
+    monkeypatch.setattr(app.state.ctx.router, "route", fallback_route)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "stream this"}],
+                "stream": True,
+            },
+        )
+
+    assert response.status_code == 200
+    text = response.text
+    assert "event: error" in text
+    assert "stream_failed_fell_back_to_non_stream" in text
+    assert "fallback-non-stream" in text
+
+
+@pytest.mark.asyncio
 async def test_lt_ask_response_includes_confirmation_prompt(app, monkeypatch):
     def fake_policy(command: str, *, confirmed: bool = False) -> PolicyResult:
         if confirmed:

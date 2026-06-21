@@ -106,6 +106,8 @@ class Router:
         provider_registry: ProviderRegistry | None = None,
         model_preference: str = "balanced",
         model_weights: dict[str, dict[str, float]] | None = None,
+        integration_triggers: dict[str, list[str]] | None = None,
+        skills_system_prefix: str = "",
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -135,6 +137,8 @@ class Router:
         self.provider_registry = provider_registry or ProviderRegistry()
         self.model_preference = model_preference
         self.model_weights = model_weights or {}
+        self.integration_triggers = integration_triggers or {}
+        self.skills_system_prefix = skills_system_prefix.strip()
         self.frontier_enabled = frontier_enabled
         self.confidence_threshold = confidence_threshold
 
@@ -144,6 +148,7 @@ class Router:
 
     async def route(self, request: InternalRequest) -> InternalResponse:
         started = time.perf_counter()
+        request = self._with_skills_prefix(request)
         last_user = self._last_user_text(request.messages)
 
         if request.has_tool_calls_in_history:
@@ -287,6 +292,14 @@ class Router:
             self._record(out, started)
             return out
 
+        integration_provider_id = self._match_integration_provider(last_user)
+        if integration_provider_id:
+            provider = self.provider_registry.get(integration_provider_id)
+            if provider is not None:
+                integrated = await provider.execute(request)
+                self._record(integrated, started)
+                return integrated
+
         initial_tier = self._choose_initial_tier(request)
         try:
             response = await self._run_model_tier(initial_tier, request)
@@ -315,6 +328,30 @@ class Router:
                 pass
         self._record(response, started)
         return response
+
+    def _with_skills_prefix(self, request: InternalRequest) -> InternalRequest:
+        if not self.skills_system_prefix:
+            return request
+        if request.messages and request.messages[0].role == "system" and request.messages[0].content == self.skills_system_prefix:
+            return request
+        req = request.model_copy(deep=True)
+        req.messages = [Message(role="system", content=self.skills_system_prefix), *req.messages]
+        return req
+
+    def _match_integration_provider(self, text: str) -> str | None:
+        text_lower = text.strip().lower()
+        trigger_map = {
+            "integration:sourcegraph": self.integration_triggers.get("integration:sourcegraph", ["@sourcegraph"]),
+            "integration:ghe": self.integration_triggers.get("integration:ghe", ["@ghe"]),
+        }
+        for provider_id, triggers in trigger_map.items():
+            for trigger in triggers:
+                normalized = trigger.strip().lower()
+                if not normalized:
+                    continue
+                if text_lower.startswith(normalized):
+                    return provider_id
+        return None
 
     async def stream_openai_chunks(self, request: InternalRequest) -> AsyncIterator[str]:
         """SSE passthrough with daari metadata events."""
@@ -799,8 +836,8 @@ class AppContext:
                 execute_fn=lambda request, executor=ollama_l5: executor.execute(request),
             )
         )
-        providers.register(SourcegraphProvider())
-        providers.register(GitHubEnterpriseProvider())
+        providers.register(SourcegraphProvider(base_url=settings.integrations.sourcegraph.url))
+        providers.register(GitHubEnterpriseProvider(base_url=settings.integrations.ghe.url))
         metrics = Metrics()
         router = Router(
             cache=cache,
@@ -816,6 +853,11 @@ class AppContext:
             provider_registry=providers,
             model_preference=settings.routing.prefer,
             model_weights=settings.models.weights,
+            integration_triggers={
+                "integration:sourcegraph": settings.integrations.sourcegraph.triggers,
+                "integration:ghe": settings.integrations.ghe.triggers,
+            },
+            skills_system_prefix=settings.skills_system_prefix,
             frontier_enabled=settings.frontier.enabled,
             confidence_threshold=settings.routing.confidence_threshold,
         )

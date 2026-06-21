@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
-> Date: 2026-06-20  
-> Scope: Phase B.1/C1 completion + Phase C2 slice
+> Date: 2026-06-21  
+> Scope: Phase C3 integration depth + hardening slice
 
 ## Feature checklist vs PRD
 
@@ -21,9 +21,9 @@
 | `daari install` Typer parity | ✅ implemented (minimal) | CLI wrapper to run `scripts/install.sh` with doctor option |
 | Eval GP-11–GP-20 | ✅ implemented | prompts expanded and regression assertions updated |
 | ProviderRegistry router wiring | ✅ implemented (minimum) | model executors registered and resolved through registry |
-| Integration providers scaffold | ✅ upgraded (minimal live path) | Sourcegraph/GHE token-gated httpx path with graceful skip |
+| Integration providers (C3) | ✅ implemented | Sourcegraph GraphQL + GHE repo/issue REST search with token-gated fallback |
 | Anthropic gateway adapter | ✅ implemented (minimal) | `/v1/messages` non-streaming route mapped to internal router |
-| MCP gateway ingress | ✅ implemented (minimal) | `/v1/mcp/query` supports `health`/`stats`/`route` and provider passthrough |
+| MCP gateway ingress | ✅ expanded | `/v1/mcp/query` now supports `tools/list` + `tools/call` and tool JSON schemas |
 | `daari setup openai-compat` | ✅ implemented | prints OPENAI_* exports + writes `~/.daari/.env.example` |
 | `daari context clear` | ✅ implemented | clears L0/L1/CCS caches via CLI |
 | `daari setup all` | ✅ implemented | runs setup recipes for detected clients |
@@ -36,29 +36,27 @@
 | Doctor L5 pull hint | ✅ implemented | optional `model_l5` check with `ollama pull` hint |
 | Install optional L4/L5 pulls | ✅ implemented | `daari install --pull-l4 --pull-l5` env passthrough to script |
 | Anthropic streaming | ✅ implemented | `/v1/messages` now supports `stream: true` SSE event protocol |
+| Anthropic stream fallback | ✅ implemented | stream errors now emit `event:error` and fall back to non-stream SSE response |
 | Browser extension scaffold | ✅ implemented | `packages/browser-extension` README + manifest placeholder |
+| Web UI scaffold | ✅ implemented | `packages/web-ui/README.md` placeholder scaffold added |
+| Per-project profiles | ✅ implemented | `~/.daari/profiles/<hash|slug>.yaml` + `DAARI_PROFILE` merge support |
+| Skills loader stub | ✅ implemented | `~/.daari/skills/*.md` merged into model system prompt prefix |
+| Enterprise scaffold | ✅ implemented (minimal) | `daari/enterprise/OrgSettings` pydantic model scaffold |
 
 ## Verification results
 
-- `.venv/bin/python -m pytest`: **85 passed, 1 skipped**
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: **86 passed**
-- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 85 deselected**
+- `.venv/bin/python -m pytest -m "not integration and not benchmark"`: **92 passed, 2 deselected**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: **94 passed**
+- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 93 deselected**
 - `./scripts/demo.sh`: **pass**
 - `./scripts/bench.sh`: **pass**
-- Manual curl smoke (fresh daemon + clean cache):
-  - L3-first: `L3`
-  - L0 repeat: `L0`
-  - L1 paraphrase: `L1`
-  - L2 transform: `L2`
-  - Lt command: `Lt`
-  - L4 override: fallback to `L3` with `l4_unavailable_fell_back_to_l3` warning when model not installed
-  - No-frontier header: handled (`L3`, local path)
-  - Streaming SSE metadata: pass (`daari_meta` present in stream chunk events)
-  - Anthropic adapter (`/v1/messages`): pass (manual curl + integration test)
-  - Anthropic stream (`/v1/messages`, `stream: true`): endpoint emits SSE events; local model stream depends on Ollama `/api/chat` availability
-  - MCP ingress (`/v1/mcp/query`): pass (`health` + routed query)
-  - Setup CLI: `daari setup claude-code --dry-run` + `daari setup vscode --dry-run`: pass
-  - L6: implementation validated by tests; live manual call skipped because no frontier API key in environment
+- Manual smoke (temporary daemon on :11535 + integration tests):
+  - `tools/list`: pass (`5` tools returned with schemas)
+  - `tools/call`: pass (`route` invocation returns structured result)
+  - `@sourcegraph` trigger: pass (`provider_id=integration:sourcegraph`, token-missing warning without env token)
+  - `@ghe` trigger: pass (`provider_id=integration:ghe`, token-missing warning without env token)
+  - Anthropic stream (`/v1/messages`, `stream: true`): pass (`message_start`/`message_stop` present)
+  - Profile merge: pass (`DAARI_PROFILE=smoke` merged `routing.prefer=accuracy`)
 
 ## Performance summary
 
@@ -66,11 +64,11 @@ Measured on local machine against a clean daemon instance (`scripts/bench.sh` + 
 
 | Tier/path | Observed p50 latency |
 |-----------|----------------------|
-| L0 exact cache | bench probe returned `L3` (~450.5 ms), indicating no L0 hit in that run |
-| L1 semantic cache | bench probe returned `L3` (~833.2 ms), indicating no L1 hit in that run |
-| L2 rules | ~60.4 ms |
-| Lt command (`git status`) | ~57.9 ms |
-| L3 local model | ~812.0 ms |
+| L0 exact cache | ~33.7 ms (observed tier: `L1` in this run) |
+| L1 semantic cache | ~46.6 ms |
+| L2 rules | ~31.5 ms |
+| Lt command (`git status`) | ~61.2 ms |
+| L3 local model | ~816.2 ms |
 | L4/L5 override paths | covered by tests; runtime depends on local model availability |
 
 ## Benefits vs alternatives
@@ -87,7 +85,7 @@ Measured on local machine against a clean daemon instance (`scripts/bench.sh` + 
 | Severity | Gap | Impact | Next action |
 |----------|-----|--------|-------------|
 | Medium | L4 model not auto-installed; can fallback to L3 | Reduced quality path unless user pulls L4 model | Keep doctor/model hints; consider optional auto-pull |
-| Medium | MCP gateway is currently stubbed | MCP-native client requests return `501` | Implement C1 MCP ingress contract and handler |
+| Medium | Sourcegraph/GHE live queries require user tokens | Integration calls degrade to skip messages without env tokens | Document env setup and add setup helper in follow-up |
 | Medium | L6 manual smoke requires configured API key | Cannot validate live frontier path in keyless env | Add optional key-aware smoke script path |
 | Low | Anthropic stream runtime requires Ollama chat endpoint | stream can emit error event if local model endpoint unavailable | Improve preflight health check and fallback messaging |
 | Low | Wizard is still single-choice flow | Slight setup friction for first-time setup | Expand wizard to multi-step/multi-select in follow-up |

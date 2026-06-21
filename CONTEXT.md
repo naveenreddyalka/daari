@@ -1,7 +1,7 @@
 # daari — Project Context
 
 > Handoff document for any tool or session picking up this project.  
-> **Last updated:** 2026-06-20  
+> **Last updated:** 2026-06-21  
 > **Project location:** `~/Home/Daari`  
 > **GitHub:** https://github.com/naveenreddyalka/daari
 
@@ -9,8 +9,8 @@
 
 ## Current phase
 
-**Phase C2 slice** (in progress)  
-Phase A/A.1 complete and B.1/C1 depth landed. Current slice adds **Anthropic SSE streaming**, **`daari setup claude-code`**, **`daari setup vscode`**, and a **browser-extension scaffold** while keeping MCP ingress and provider depth as follow-up.
+**Phase C3 slice** (in progress)  
+Phase A/A.1 complete and B.1/C1/C2 depth landed. Current slice adds **Sourcegraph/GHE provider depth**, **router integration prefixes**, **MCP `tools/list` + `tools/call`**, **profile + skills stubs**, **Anthropic stream fallback**, and **web UI / enterprise scaffolds**.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -59,11 +59,11 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 ## Next tasks (remaining Phase C / follow-up)
 
-1. **MCP ingress expansion** (tool schemas + richer typed responses)
-2. **Provider depth** for Sourcegraph/GHE beyond token-gated minimal paths
-3. **Lt B.1 profiles** (project/path command templates + richer confirmations)
-4. Optional: improve bench script resilience when model path is unavailable
-5. Optional: enrich Anthropic stream preflight checks and usage accounting
+1. **GitLab provider** parity for C3 enterprise integrations
+2. **Lt B.1 profiles** (project/path command templates + richer confirmations)
+3. Optional: improve bench script resilience when model path is unavailable
+4. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
+5. Enterprise E1 bootstrap command + config docs
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -77,13 +77,13 @@ cache:
     embedding_model: nomic-embed-text   # ollama pull nomic-embed-text
 ```
 
-**Validation baseline (2026-06-20):**
-- `.venv/bin/python -m pytest`: 85 passed, 1 skipped
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: 86 passed
-- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 85 deselected
+**Validation baseline (2026-06-21):**
+- `.venv/bin/python -m pytest -m "not integration and not benchmark"`: 92 passed, 2 deselected
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: 94 passed
+- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 93 deselected
 - `./scripts/demo.sh`: pass
 - `./scripts/bench.sh`: pass
-- Manual tier smoke: setup `all`/`intellij`/`vscode`/`claude-code` dry-runs, Lt ask/confirm flow, MCP endpoint, Anthropic adapter (+stream event emission), and L0/L1/L2/Lt/L3 routes verified; L4/L5 override fallback behavior covered in tests; L6 requires API key.
+- Manual smoke: MCP `tools/list`/`tools/call`, `@sourcegraph`/`@ghe` prefix routing, Anthropic stream events, and `DAARI_PROFILE` merge path verified; integration tests cover token-mocked provider behavior and stream fallback.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 
