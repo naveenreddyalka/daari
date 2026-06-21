@@ -82,7 +82,7 @@ def _normalize_openai_base_url(base_url: str) -> str:
 def _start_cloudflared_tunnel(
     *,
     target_url: str = "http://127.0.0.1:11435",
-    timeout_seconds: float = 20.0,
+    timeout_seconds: float = 45.0,
 ) -> tuple[subprocess.Popen[str], str]:
     process: subprocess.Popen[str] = subprocess.Popen(
         ["cloudflared", "tunnel", "--url", target_url],
@@ -119,6 +119,23 @@ def _start_cloudflared_tunnel(
         "Could not discover cloudflared tunnel URL. "
         + (f"Last output:\n{preview}" if preview else "No cloudflared output captured.")
     )
+
+
+def _tunnel_health_ok(tunnel_url: str, timeout: float = 3.0) -> bool:
+    try:
+        response = httpx.get(f"{tunnel_url.rstrip('/')}/health", timeout=timeout)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def _wait_for_tunnel_health(tunnel_url: str, timeout_seconds: float = 45.0) -> bool:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if _tunnel_health_ok(tunnel_url):
+            return True
+        time.sleep(0.25)
+    return False
 
 
 @app.command()
@@ -303,10 +320,31 @@ def serve_web_ui(
 
 
 @app.command()
-def doctor() -> None:
+def doctor(
+    tunnel: bool = typer.Option(
+        False,
+        "--tunnel",
+        help="Also verify a public tunnel health endpoint.",
+    ),
+    tunnel_url: str | None = typer.Option(
+        None,
+        "--tunnel-url",
+        help="Tunnel URL to check (defaults to DAARI_TUNNEL_URL when --tunnel is set).",
+    ),
+) -> None:
     """Verify Python, config, Ollama, model, and optional daemon."""
     settings = get_settings()
-    results = run_doctor(settings)
+    resolved_tunnel_url = tunnel_url
+    if tunnel and not resolved_tunnel_url:
+        resolved_tunnel_url = os.environ.get("DAARI_TUNNEL_URL")
+        if not resolved_tunnel_url:
+            typer.echo(
+                "Tunnel check requested but no tunnel URL provided. "
+                "Pass --tunnel-url or set DAARI_TUNNEL_URL.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+    results = run_doctor(settings, tunnel_url=resolved_tunnel_url)
     for result in results:
         mark = "✓" if result.ok else "✗"
         suffix = " (optional)" if result.optional else ""
@@ -429,6 +467,11 @@ def setup_cursor(
             except RuntimeError as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from exc
+            if not _wait_for_tunnel_health(tunnel_url):
+                typer.echo(f"Tunnel URL discovered but health probe failed: {tunnel_url}/health", err=True)
+                if tunnel_process.poll() is None:
+                    tunnel_process.terminate()
+                raise typer.Exit(code=1)
             resolved_base_url = _normalize_openai_base_url(tunnel_url)
             typer.echo(f"Tunnel ready: {resolved_base_url}")
 

@@ -22,6 +22,7 @@ def run_doctor(
     settings: Settings | None = None,
     *,
     httpx_client: httpx.Client | None = None,
+    tunnel_url: str | None = None,
 ) -> list[CheckResult]:
     """Run health checks. Returns list of results (required + optional)."""
     results: list[CheckResult] = []
@@ -34,6 +35,8 @@ def run_doctor(
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_daemon(cfg, httpx_client))
+    if tunnel_url:
+        results.append(_check_tunnel(tunnel_url, httpx_client))
 
     return results
 
@@ -313,6 +316,39 @@ def _check_org_cache(
             ok=False,
             detail=f"unreachable at {org.shared_cache_url}: {exc}",
             optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_tunnel(
+    tunnel_url: str,
+    client: httpx.Client | None,
+) -> CheckResult:
+    normalized = tunnel_url.rstrip("/")
+    if not normalized.startswith(("https://", "http://")):
+        normalized = f"https://{normalized}"
+    own_client = client is None
+    http = client or httpx.Client(timeout=8.0)
+    try:
+        response = http.get(f"{normalized}/health")
+        if response.status_code != 200:
+            return CheckResult(
+                name="tunnel",
+                ok=False,
+                detail=f"{normalized}/health returned HTTP {response.status_code}",
+            )
+        return CheckResult(
+            name="tunnel",
+            ok=True,
+            detail=f"reachable at {normalized}",
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="tunnel",
+            ok=False,
+            detail=f"unreachable at {normalized}: {exc}",
         )
     finally:
         if own_client:

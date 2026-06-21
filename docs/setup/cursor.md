@@ -12,6 +12,7 @@ scripts/tunnel.sh --setup-cursor
 ```
 
 This command:
+
 - starts `daari serve` if needed
 - opens a `cloudflared` quick tunnel to `http://127.0.0.1:11435`
 - configures Cursor with the tunnel URL (`https://...trycloudflare.com/v1`)
@@ -51,9 +52,10 @@ If `DAARI_TUNNEL_URL` is set, it is used directly.
 
 ## Troubleshooting
 
-| Problem | Check |
-|---------|-------|
-| `Access to private networks is forbidden` | You are still using localhost in Cursor; switch to tunnel HTTPS URL |
-| `cloudflared: command not found` | Install: `brew install cloudflared` |
-| Tunnel command exits quickly | Inspect tunnel logs in terminal; restart with `scripts/tunnel.sh` |
-| Slow every request | Cache miss — verify with `daari stats` |
+|Problem|Check|
+|---|---|
+|`Access to private networks is forbidden`|You are still using localhost in Cursor; switch to tunnel HTTPS URL|
+|Cursor shows `Reconnecting...` + `Network Error - trouble connecting to model provider`|Verify your tunnel URL is a random `https://<name>.trycloudflare.com` hostname (not `https://api.trycloudflare.com`), then test `curl https://<name>.trycloudflare.com/health` and `daari doctor --tunnel --tunnel-url https://<name>.trycloudflare.com`|
+|`cloudflared: command not found`|Install: `brew install cloudflared`|
+|Tunnel command exits quickly|Restart with `scripts/tunnel.sh`; it now validates `/health` before printing ready and shows copy/paste curl checks|
+|Slow every request|Cache miss — verify with `daari stats`|

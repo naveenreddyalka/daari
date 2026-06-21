@@ -84,10 +84,18 @@ for _ in $(seq 1 120); do
 import pathlib
 import re
 import sys
+from urllib.parse import urlparse
 
 text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
-match = re.search(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com", text)
-print(match.group(0) if match else "")
+for match in re.finditer(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com", text):
+    candidate = match.group(0)
+    host = urlparse(candidate).hostname or ""
+    if host == "api.trycloudflare.com":
+        continue
+    print(candidate)
+    break
+else:
+    print("")
 PY
   )"
   if [[ -n "${TUNNEL_URL}" ]]; then
@@ -103,9 +111,31 @@ if [[ -z "${TUNNEL_URL}" ]]; then
 fi
 
 OPENAI_BASE_URL="${TUNNEL_URL}/v1"
+
+verify_tunnel_health() {
+  curl -fsS "${TUNNEL_URL}/health" >/dev/null 2>&1
+}
+
+for _ in $(seq 1 200); do
+  if verify_tunnel_health; then
+    break
+  fi
+  sleep 0.25
+done
+
+if ! verify_tunnel_health; then
+  echo "Tunnel URL discovered but health probe failed: ${TUNNEL_URL}/health" >&2
+  echo "Last tunnel logs:" >&2
+  tail -n 80 "${TUNNEL_LOG}" >&2 || true
+  exit 1
+fi
+
 echo ""
 echo "Tunnel ready: ${TUNNEL_URL}"
 echo "Cursor Override OpenAI Base URL: ${OPENAI_BASE_URL}"
+echo "Verify now:"
+echo "  curl -sS \"${TUNNEL_URL}/health\""
+echo "  curl -sS \"${OPENAI_BASE_URL}/chat/completions\" -H \"Content-Type: application/json\" -d '{\"model\":\"daari\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}'"
 echo "Inference stays local in daari; only Cursor's HTTP hop is public."
 echo ""
 
