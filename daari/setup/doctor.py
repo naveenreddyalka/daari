@@ -32,6 +32,7 @@ def run_doctor(
     results.extend(_check_ollama(cfg, httpx_client))
     results.append(_check_frontier(cfg))
     results.append(_check_org(cfg))
+    results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_daemon(cfg, httpx_client))
 
     return results
@@ -245,3 +246,49 @@ def _check_org(settings: Settings) -> CheckResult:
         detail=f"enabled for {org_id} (cache root: {cache_root})",
         optional=True,
     )
+
+
+def _check_org_cache(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult:
+    org = settings.enterprise
+    if not org.shared_cache_url:
+        return CheckResult(
+            name="org_cache",
+            ok=True,
+            detail="disabled (no shared_cache_url configured)",
+            optional=True,
+        )
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    headers: dict[str, str] = {}
+    if org.shared_cache_token:
+        headers["Authorization"] = f"Bearer {org.shared_cache_token}"
+    url = f"{org.shared_cache_url.rstrip('/')}/v1/org-cache/stats"
+    try:
+        response = http.get(url, headers=headers)
+        if response.status_code == 200:
+            entries = response.json().get("entries", "unknown")
+            return CheckResult(
+                name="org_cache",
+                ok=True,
+                detail=f"reachable at {org.shared_cache_url} ({entries} entries)",
+                optional=True,
+            )
+        return CheckResult(
+            name="org_cache",
+            ok=False,
+            detail=f"unreachable at {org.shared_cache_url} (HTTP {response.status_code})",
+            optional=True,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="org_cache",
+            ok=False,
+            detail=f"unreachable at {org.shared_cache_url}: {exc}",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()

@@ -444,6 +444,35 @@ class TestSetupCLI:
         assert captured["settings"].enterprise.org_id == "acme"
         assert captured["port"] == 11501
 
+    def test_org_cache_serve_uses_org_and_port(self, monkeypatch):
+        captured = {}
+
+        def fake_load():
+            return Settings.model_validate(
+                {
+                    "enterprise": {"shared_cache_require_token": False},
+                }
+            )
+
+        def fake_create_org_cache_app(org):
+            captured["org"] = org
+            return object()
+
+        def fake_run(_app, host, port, log_level):
+            captured["host"] = host
+            captured["port"] = port
+            captured["log_level"] = log_level
+
+        monkeypatch.setattr("daari.cli.app.Settings.load", fake_load)
+        monkeypatch.setattr("daari.cli.app.create_org_cache_app", fake_create_org_cache_app)
+        monkeypatch.setattr("daari.cli.app.uvicorn.run", fake_run)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["org-cache", "serve", "--org", "acme", "--port", "11439"])
+        assert result.exit_code == 0
+        assert captured["org"].org_id == "acme"
+        assert captured["port"] == 11439
+
 
 class TestIntelliJSetupApply:
     def test_apply_writes_helper_file(self, intellij_recipe, backup_root):

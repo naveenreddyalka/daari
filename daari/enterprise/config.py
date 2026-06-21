@@ -19,10 +19,15 @@ class EnterpriseLearningSettings(BaseModel):
 
 class OrgSettings(BaseModel):
     enabled: bool = False
+    id: str | None = None
     org_id: str | None = None
     tenant_id: str | None = None  # Backward-compatible alias while docs migrate.
     control_plane_url: str | None = None
     org_token: str | None = None
+    shared_cache_url: str | None = None
+    shared_cache_token: str | None = None
+    shared_cache_require_token: bool = False
+    shared_cache_timeout_seconds: float = 1.0
     shared_cache_path: str | None = None
     policy_overrides: dict[str, Any] = Field(default_factory=dict)
     profile: str = "developer"
@@ -31,4 +36,4 @@ class OrgSettings(BaseModel):
 
     @property
     def resolved_org_id(self) -> str | None:
-        return self.org_id or self.tenant_id
+        return self.org_id or self.id or self.tenant_id

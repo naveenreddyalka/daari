@@ -16,6 +16,7 @@ from daari.cli.setup_actions import (
     apply_vscode_setup,
 )
 from daari.config.settings import Settings, get_settings
+from daari.enterprise.service import create_org_cache_app
 from daari.server.app import create_app
 from daari.setup.context import clear_context_caches
 from daari.setup.doctor import doctor_exit_code, run_doctor
@@ -31,8 +32,10 @@ app = typer.Typer(
 
 setup_app = typer.Typer(help="Configure client integrations.")
 context_app = typer.Typer(help="Manage daari caches and context.")
+org_cache_app = typer.Typer(help="Run org shared-cache service.")
 app.add_typer(setup_app, name="setup")
 app.add_typer(context_app, name="context")
+app.add_typer(org_cache_app, name="org-cache")
 
 
 @app.command()
@@ -58,6 +61,33 @@ def serve(
         app_instance,
         host=bind_host,
         port=bind_port,
+        log_level="info",
+    )
+
+
+@org_cache_app.command("serve")
+def serve_org_cache(
+    host: str = typer.Option("127.0.0.1", help="Bind host"),
+    port: int = typer.Option(11436, help="Bind port"),
+    org: str | None = typer.Option(None, "--org", help="Org ID for shared cache namespace."),
+    require_token: bool = typer.Option(False, "--require-token", help="Require bearer token auth."),
+) -> None:
+    """Start the lightweight org shared-cache HTTP service."""
+    settings = Settings.load().model_copy(deep=True)
+    resolved_org = org or settings.enterprise.resolved_org_id or os.environ.get("DAARI_ORG_ID")
+    if not resolved_org:
+        typer.echo("org-cache requires an org id (--org or DAARI_ORG_ID).", err=True)
+        raise typer.Exit(code=1)
+    settings.enterprise.enabled = True
+    settings.enterprise.org_id = resolved_org
+    if require_token:
+        settings.enterprise.shared_cache_require_token = True
+    app_instance = create_org_cache_app(settings.enterprise)
+    typer.echo(f"daari org-cache serving on http://{host}:{port}/v1/org-cache")
+    uvicorn.run(
+        app_instance,
+        host=host,
+        port=port,
         log_level="info",
     )
 

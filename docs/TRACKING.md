@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 103 passed, 1 skipped (`.venv/bin/python -m pytest`)
+**Count:** 114 passed, 1 skipped (`.venv/bin/python -m pytest`)
 
 ---
 
@@ -162,6 +162,22 @@ pytest -m benchmark                 # optional latency checks
 | Web UI scaffold | [x] | `packages/web-ui/README.md` placeholder added |
 | Enterprise scaffold | [x] | `daari/enterprise/` added with minimal `OrgSettings` models |
 | Enterprise E1 runtime scaffold | [x] | org cache path resolver + `daari serve --org` + `DAARI_ORG_ID` + doctor org check |
+| Enterprise E2 org shared cache service | [x] | `daari org-cache serve` + org cache client + router `L0-org/L1-org` lookup + write-through |
+
+---
+
+## Phase E2 — Org shared cache (tracer bullet)
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Org cache HTTP service (`/get`, `/put`, `/stats`) | [x] | `daari/enterprise/service.py` |
+| Router shared-cache lookup order (`L0-org`, `L1-org`) | [x] | local L0 -> org L0 -> local L1 -> org L1 |
+| Shared write-through from local model responses | [x] | pushes L0 + L1 keys to org cache when configured |
+| Config expansion (`org.id`, `shared_cache_url`, token, timeout) | [x] | `Settings.load` maps `org` block into `enterprise` |
+| `daari serve --org` org-cache client wiring | [x] | `AppContext.from_settings` instantiates `OrgCacheClient` when URL set |
+| Doctor org-cache reachability check | [x] | optional `org_cache` check (`/v1/org-cache/stats`) |
+| Tests (service/client/router/config/cli) | [x] | no real network required in CI |
+| E3 collective learning | [-] | deferred by design |
 
 ---
 

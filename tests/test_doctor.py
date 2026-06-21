@@ -44,6 +44,7 @@ class TestDoctor:
         assert by_name["model_l4"].optional is True
         assert by_name["model_l5"].optional is True
         assert by_name["daemon"].ok is True
+        assert by_name["org_cache"].ok is True
         assert doctor_exit_code(results) == 0
 
     def test_ollama_down_fails_required(self, settings):
@@ -198,6 +199,34 @@ class TestDoctor:
         assert by_name["org"].ok is False
         assert by_name["org"].optional is False
         assert doctor_exit_code(results) == 1
+
+    def test_org_cache_reachability_check(self, settings):
+        settings = Settings.model_validate(
+            {
+                **settings.model_dump(),
+                "enterprise": {
+                    "enabled": True,
+                    "org_id": "acme",
+                    "shared_cache_url": "http://127.0.0.1:11436",
+                },
+            }
+        )
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        org_cache_response = MagicMock()
+        org_cache_response.status_code = 200
+        org_cache_response.json.return_value = {"entries": 4}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, org_cache_response, stats_response]
+
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+        assert by_name["org_cache"].ok is True
+        assert "reachable" in by_name["org_cache"].detail
 
 
 class TestCursorSetupDryRun:

@@ -131,3 +131,22 @@ class TestSettings:
         assert settings.enterprise.org_id == "eng"
         assert settings.enterprise.policy_overrides["tools.unknown"] == "ask"
         assert str(settings.org_cache_root) == "/tmp/daari-shared"
+
+    def test_org_alias_block_maps_to_enterprise(self, tmp_path):
+        config = tmp_path / "config.yaml"
+        config.write_text(
+            (
+                "org:\n"
+                "  id: acme\n"
+                "  shared_cache_url: http://127.0.0.1:11436\n"
+                "  shared_cache_timeout_seconds: 2.5\n"
+                "  cache:\n"
+                "    enabled: true\n"
+            ),
+            encoding="utf-8",
+        )
+        settings = Settings.load(config_path=config)
+        assert settings.enterprise.resolved_org_id == "acme"
+        assert settings.enterprise.shared_cache_url == "http://127.0.0.1:11436"
+        assert settings.enterprise.shared_cache_timeout_seconds == 2.5
+        assert settings.enterprise.cache.enabled is True

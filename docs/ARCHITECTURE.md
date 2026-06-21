@@ -21,6 +21,7 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; `daari install` CLI added; wizard now includes frontier key helper hints |
 | **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` and `context clear` added |
 | **C — Bootstrap slice** | In progress | gateway adapter protocol, Anthropic adapter (+stream fallback), MCP tool schemas, integration provider depth, profile/skills loader stubs |
+| **E2 — Org shared cache (MVP)** | Done | `daari org-cache serve`, org cache client, router `L0-org`/`L1-org` lookup + write-through |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -41,7 +42,7 @@ daari/                              # repo root
 │   ├── config/                     # Settings + defaults.yaml
 │   ├── observability/              # In-process tier metrics
 │   ├── providers/                  # IntegrationProvider registry (wired for model tiers)
-│   ├── enterprise/                 # Enterprise schema scaffolds (Phase E starter)
+│   ├── enterprise/                 # Enterprise config + org shared-cache service/client
 │   ├── rules/                      # L2 + L2-dev regex/template routing rules
 │   ├── tools/                      # Lt subprocess executor
 │   ├── policy/                     # Lt allow/deny/ask policy engine
@@ -89,7 +90,9 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/providers/base.py` | `IntegrationProvider` protocol (`execute`, `health`) | ✅ |
 | `daari/providers/registry.py` | Provider registry used by router | ✅ |
 | `daari/providers/integrations.py` | Sourcegraph GraphQL + GHE repo/issue search providers | ✅ |
-| `daari/enterprise/config.py` | Minimal Enterprise org settings schema (`OrgSettings`) | ✅ scaffold |
+| `daari/enterprise/config.py` | Enterprise org settings schema (`OrgSettings`) including shared-cache URL/token fields | ✅ |
+| `daari/enterprise/client.py` | Org shared-cache HTTP client used by router (`L0-org`, `L1-org`) | ✅ |
+| `daari/enterprise/service.py` | Lightweight shared-cache FastAPI service (`/v1/org-cache/*`) | ✅ |
 | `daari/rules/engine.py` | L2 deterministic transforms (JSON/YAML) | ✅ |
 | `daari/rules/dev_commands.py` | L2-dev developer command detection | ✅ |
 | `daari/cache/command_context.py` | CCS store for command output reuse | ✅ |
@@ -101,7 +104,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/clients/intellij/recipe.py` | IntelliJ helper config patch / undo / dry-run | ✅ minimal |
 | `daari/clients/vscode/recipe.py` | VS Code settings patch / undo / dry-run | ✅ minimal |
 | `daari/clients/claude_code/recipe.py` | claude-code env helper + config pointer dry-run/apply/undo | ✅ minimal |
-| `daari/setup/doctor.py` | Health checks (Python, config, Ollama, daemon) | ✅ |
+| `daari/setup/doctor.py` | Health checks (Python, config, Ollama, org cache, daemon) | ✅ |
 | `daari/setup/wizard.py` | Interactive `daari setup` | ✅ |
 | `daari/setup/backup.py` | Backup / restore for setup recipes | ✅ |
 | `daari/setup/jsonc.py` | JSONC read/write for Cursor config | ✅ |
@@ -201,7 +204,8 @@ flowchart LR
 
 | Command | Purpose |
 |---------|---------|
-| `daari serve [--host] [--port] [--no-frontier]` | Start HTTP daemon (default `127.0.0.1:11435`) |
+| `daari serve [--host] [--port] [--no-frontier] [--org]` | Start HTTP daemon (default `127.0.0.1:11435`) |
+| `daari org-cache serve [--org] [--port] [--require-token]` | Start org shared-cache service (default `127.0.0.1:11436`) |
 | `daari stats [--host] [--port]` | Fetch tier counters from running daemon |
 | `daari doctor` | Check Python, config, Ollama, model, optional daemon |
 | `daari install [--run-doctor/--no-run-doctor] [--pull-l4] [--pull-l5]` | Run install workflow via `scripts/install.sh` |
@@ -231,6 +235,14 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 
 Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override`, `X-Daari-No-Frontier`, `X-Daari-Confirm`, `X-Daari-Confirm-Tool`, `X-Daari-ReRun-Command`.
 
+Org shared-cache service (`daari org-cache serve`):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/v1/org-cache/get?key=...&tier=...` | Read org cache entry |
+| `PUT` | `/v1/org-cache/put` | Write org cache entry |
+| `GET` | `/v1/org-cache/stats` | Show entries and hit/miss/write counters |
+
 ### Scripts
 
 | Script | Purpose |
@@ -251,7 +263,7 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override`, `X-Daari-
 | Setup | Cursor + IntelliJ + VS Code + claude-code recipes, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | deeper IDE-native integrations |
 | Providers | Registry + model providers + Sourcegraph GraphQL/GHE REST integration calls | GitLab provider and richer corp plugin surfaces |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
-| Enterprise | ADR-0014, PRD sections + `daari/enterprise/OrgSettings` scaffold | distributed runtime, org cache, learning services |
+| Enterprise | ADR-0014 + org shared-cache service/client + shared lookup/write-through | E3 collective learning control plane |
 | Packages | README + browser-extension scaffold | web-ui, intellij-plugin, extension runtime code |
 
 Source of truth for “done”: [TRACKING.md](TRACKING.md) task tables + `daari/` tree + pytest.

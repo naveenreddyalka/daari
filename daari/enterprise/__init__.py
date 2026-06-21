@@ -1,10 +1,13 @@
 from daari.enterprise.config import EnterpriseCacheSettings, EnterpriseLearningSettings, OrgSettings
-from daari.enterprise.cache import resolve_org_cache_root, resolve_org_scoped_path
+from daari.enterprise.cache import resolve_org_cache_root, resolve_org_scoped_path, resolve_org_shared_cache_root
+from daari.enterprise.client import OrgCacheClient
 
 __all__ = [
     "EnterpriseCacheSettings",
     "EnterpriseLearningSettings",
+    "OrgCacheClient",
     "OrgSettings",
     "resolve_org_cache_root",
     "resolve_org_scoped_path",
+    "resolve_org_shared_cache_root",
 ]

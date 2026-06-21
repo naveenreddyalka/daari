@@ -139,6 +139,9 @@ class Settings(BaseSettings):
         profile_data = _load_profile_overrides()
         env_data = _load_env_overrides()
         merged = _deep_merge(_deep_merge(_deep_merge(defaults, file_data), profile_data), env_data)
+        if isinstance(merged.get("org"), dict):
+            merged["enterprise"] = _deep_merge(merged.get("enterprise", {}), merged["org"])
+            merged.pop("org", None)
         merged["skills_system_prefix"] = _load_skills_system_prefix()
         return cls.model_validate(merged)
 
@@ -162,6 +165,15 @@ class Settings(BaseSettings):
         if self.enterprise.shared_cache_path:
             return Path(self.enterprise.shared_cache_path).expanduser()
         return Path.home() / ".daari" / "org" / org_id / "cache"
+
+    @property
+    def org_shared_cache_root(self) -> Path | None:
+        org_id = self.enterprise.resolved_org_id
+        if not org_id:
+            return None
+        if self.enterprise.shared_cache_path:
+            return Path(self.enterprise.shared_cache_path).expanduser()
+        return Path.home() / ".daari" / "org" / org_id / "shared-cache"
 
     def resolve_frontier_api_key(self) -> str | None:
         return os.environ.get("DAARI_FRONTIER_API_KEY") or os.environ.get("OPENAI_API_KEY")
