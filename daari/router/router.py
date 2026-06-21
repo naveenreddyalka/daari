@@ -15,6 +15,7 @@ from daari.cache.exact import ExactCache
 from daari.cache.semantic import OllamaEmbedder, SemanticCache
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
+from daari.enterprise.client import OrgCacheClient
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.policy.engine import PolicyEngine
@@ -109,6 +110,7 @@ class Router:
         model_weights: dict[str, dict[str, float]] | None = None,
         integration_triggers: dict[str, list[str]] | None = None,
         skills_system_prefix: str = "",
+        org_cache_client: OrgCacheClient | None = None,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -140,6 +142,7 @@ class Router:
         self.model_weights = model_weights or {}
         self.integration_triggers = integration_triggers or {}
         self.skills_system_prefix = skills_system_prefix.strip()
+        self.org_cache_client = org_cache_client
         self.frontier_enabled = frontier_enabled
         self.confidence_threshold = confidence_threshold
 
@@ -173,6 +176,17 @@ class Router:
                 cached.daari_meta.latency_ms = latency_ms
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
                 return cached
+            if self.org_cache_client is not None:
+                org_l0_hit = await self.org_cache_client.get_l0(request)
+                if org_l0_hit is not None:
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    org_l0_hit.daari_meta.tier = "L0-org"
+                    org_l0_hit.daari_meta.cache_hit = True
+                    org_l0_hit.daari_meta.executor = "cache"
+                    org_l0_hit.daari_meta.provider_id = "org-cache"
+                    org_l0_hit.daari_meta.latency_ms = latency_ms
+                    self.metrics.record("L0-org", cache_hit=True, latency_ms=latency_ms)
+                    return org_l0_hit
 
         ccs_hit = self._resolve_ccs_hit(dev_match, request)
         if ccs_hit is not None:
@@ -196,6 +210,18 @@ class Router:
                 semantic_hit.daari_meta.task_type = "cache_hit"
                 self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
                 return semantic_hit
+            if self.org_cache_client is not None:
+                org_l1_hit = await self.org_cache_client.get_l1(request)
+                if org_l1_hit is not None:
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    org_l1_hit.daari_meta.tier = "L1-org"
+                    org_l1_hit.daari_meta.cache_hit = True
+                    org_l1_hit.daari_meta.executor = "cache"
+                    org_l1_hit.daari_meta.provider_id = "org-cache"
+                    org_l1_hit.daari_meta.latency_ms = latency_ms
+                    org_l1_hit.daari_meta.task_type = "cache_hit"
+                    self.metrics.record("L1-org", cache_hit=True, latency_ms=latency_ms)
+                    return org_l1_hit
 
         if dev_match is not None and dev_match.action == "execute" and dev_match.command:
             confirmed = request.meta.confirm_tool or bool(re.search(r"(?i)(?:^|\s)--yes(?:\s|$)", last_user))
@@ -323,10 +349,20 @@ class Router:
                 self.cache.put(request, response)
             except Exception:
                 pass
+            if self.org_cache_client is not None:
+                try:
+                    await self.org_cache_client.put_l0(request, response)
+                except Exception:
+                    pass
             try:
                 await self.semantic_cache.put(request, response)
             except Exception:
                 pass
+            if self.org_cache_client is not None:
+                try:
+                    await self.org_cache_client.put_l1(request, response)
+                except Exception:
+                    pass
         self._record(response, started)
         return response
 
@@ -750,6 +786,7 @@ class AppContext:
     providers: ProviderRegistry
     metrics: Metrics
     router: Router
+    org_cache_client: OrgCacheClient | None = None
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -764,6 +801,14 @@ class AppContext:
             l0_path = resolve_org_scoped_path(l0_path, settings.enterprise, leaf="l0")
             l1_path = resolve_org_scoped_path(l1_path, settings.enterprise, leaf="l1")
             context_path = resolve_org_scoped_path(context_path, settings.enterprise, leaf="ccs")
+        org_cache_client: OrgCacheClient | None = None
+        if settings.enterprise.shared_cache_url:
+            org_cache_client = OrgCacheClient(
+                base_url=settings.enterprise.shared_cache_url,
+                token=settings.enterprise.shared_cache_token,
+                timeout_seconds=settings.enterprise.shared_cache_timeout_seconds,
+                enabled=True,
+            )
 
         cache = ExactCache(
             path=str(l0_path),
@@ -870,6 +915,7 @@ class AppContext:
                 "integration:gitlab": settings.integrations.gitlab.triggers,
             },
             skills_system_prefix=settings.skills_system_prefix,
+            org_cache_client=org_cache_client,
             frontier_enabled=settings.frontier.enabled,
             confidence_threshold=settings.routing.confidence_threshold,
         )
@@ -887,4 +933,5 @@ class AppContext:
             providers=providers,
             metrics=metrics,
             router=router,
+            org_cache_client=org_cache_client,
         )

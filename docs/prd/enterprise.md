@@ -1,6 +1,6 @@
 # Enterprise — distributed install, org cache, collective learning
 
-> **Status:** Draft — **later phases (E1–E3)**  
+> **Status:** E1 shipped, **E2 MVP tracer bullet shipped**, E3 deferred  
 > **Related:** [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · [integrations.md](integrations.md) · [PRD](PRD.md)
 
 ---
@@ -75,6 +75,14 @@ L0 (local) → L0-org → L1 (local) → L1-org → CCS (local) → CCS-org → 
 - Admin-controlled TTL and revocation
 
 **Effect:** When one engineer asks a common internal question or runs an allowlisted command, others in the **same tenant** hit org cache — higher $0 tier rate for the whole company.
+
+**Implementation status (v1.0.1-dev):**
+
+- `daari org-cache serve` runs a lightweight FastAPI cache API (`/v1/org-cache/get`, `/put`, `/stats`)
+- Router now checks `L0-org` and `L1-org` via `org.shared_cache_url` after local misses
+- Router write-through uploads local model responses to org cache (`L0` + key-based `L1`)
+- Bearer auth supported via `DAARI_ORG_CACHE_TOKEN`; token enforcement is configurable (`shared_cache_require_token`)
+- Storage defaults to `~/.daari/org/<org_id>/shared-cache/`
 
 ---
 
