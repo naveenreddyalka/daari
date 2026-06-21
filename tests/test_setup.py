@@ -24,6 +24,7 @@ from daari.config.settings import Settings
 from daari.setup.backup import create_backup, latest_backup, restore_latest_backup
 from daari.setup.jsonc import load_jsonc
 from daari.setup.models import fetch_ollama_models, write_models_config
+from daari.setup.tunnel import find_cloudflared_tunnel_url, parse_cloudflared_tunnel_url
 
 
 @pytest.fixture
@@ -279,6 +280,25 @@ class TestSetupCLI:
         assert result.exit_code == 0
         assert "Dry-run complete" not in result.stdout
         assert "Dry-run only" not in result.stdout
+
+    def test_setup_cursor_accepts_base_url(self, monkeypatch):
+        captured = {}
+
+        def fake_apply_cursor_setup(*, dry_run=False, force=False, settings=None, base_url=None):
+            captured["dry_run"] = dry_run
+            captured["force"] = force
+            captured["base_url"] = base_url
+
+        monkeypatch.setattr("daari.cli.app.apply_cursor_setup", fake_apply_cursor_setup)
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            ["setup", "cursor", "--base-url", "https://demo.trycloudflare.com/v1"],
+        )
+        assert result.exit_code == 0
+        assert captured["dry_run"] is False
+        assert captured["force"] is False
+        assert captured["base_url"] == "https://demo.trycloudflare.com/v1"
 
     def test_setup_models_list(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.yaml"
@@ -712,3 +732,17 @@ class TestClaudeCodeSetupApply:
         second = claude_recipe.apply(backup_root=backup_root)
         assert second.changed is False
         assert "already configured" in second.message
+
+
+class TestTunnelHelpers:
+    def test_parse_cloudflared_tunnel_url(self):
+        line = "INF +------------------------------------------------------------+ https://demo.trycloudflare.com"
+        assert parse_cloudflared_tunnel_url(line) == "https://demo.trycloudflare.com"
+
+    def test_find_cloudflared_tunnel_url(self):
+        lines = [
+            "starting cloudflared",
+            "waiting for connection",
+            "Visit this URL: https://abc123.trycloudflare.com",
+        ]
+        assert find_cloudflared_tunnel_url(lines) == "https://abc123.trycloudflare.com"

@@ -40,7 +40,7 @@
 |-----------|--------|-------|
 | Second identical prompt hits L0 | [x] | |
 | `daari stats` shows tier breakdown | [x] | |
-| Cursor via manual setup | [~] | doc ready; user smoke test deferred |
+| Cursor via tunnel setup | [x] | `scripts/tunnel.sh --setup-cursor` + `daari setup cursor --base-url/--tunnel` |
 | GP-01–GP-10 pass MVP criteria | [x] | `tests/test_routing_eval.py` |
 
 **Tests:** see [Testing](#testing) below.
@@ -174,6 +174,7 @@ pytest -m benchmark                 # optional latency checks
 | Doctor embedding-model check | [x] | `daari doctor` now validates `cache.l1.embedding_model` (`nomic-embed-text`) |
 | PyPI publish prep | [x] | enriched `pyproject.toml` metadata + `.github/workflows/publish.yml` for PyPI/TestPyPI |
 | Cursor setup smoke script | [x] | `scripts/smoke-cursor-dry-run.sh` for CI/local setup dry-run validation |
+| Cursor tunnel setup script | [x] | `scripts/tunnel.sh` starts local daemon + cloudflared and prints `/v1` URL |
 
 ---
 
