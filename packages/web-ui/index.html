@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>daari stats dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>daari stats dashboard</h1>
+      <p class="subtle">Live view of local daemon counters and org learning profile.</p>
+
+      <section class="row">
+        <article class="card">
+          <h2>Total requests</h2>
+          <p id="total-requests" class="metric">-</p>
+        </article>
+        <article class="card">
+          <h2>Errors</h2>
+          <p id="errors" class="metric">-</p>
+        </article>
+      </section>
+
+      <section class="card">
+        <div class="card-heading">
+          <h2>Tier breakdown</h2>
+          <button id="refresh" type="button">Refresh</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Count</th>
+              <th>p50 (ms)</th>
+              <th>p95 (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="tiers-table"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Org learning (optional)</h2>
+        <pre id="org-learning">Not available</pre>
+      </section>
+
+      <p id="status" class="subtle">Loading...</p>
+    </main>
+
+    <script src="/web-ui-config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

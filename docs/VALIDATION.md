@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
 > Date: 2026-06-21  
-> Scope: v1.0 readiness + E2/E3 tracer bullets (org shared-cache + org learning)
+> Scope: v1.1.0 readiness (v1.0 baseline + E2/E3 org runtime + web-ui MVP)
 
 ## v1.0 readiness score
 
@@ -15,11 +15,11 @@
 | Eval coverage GP-01–GP-20 | ✅ | 10 / 10 |
 | Performance smoke and scripts (`demo`, `bench`) | ✅ | 10 / 10 |
 
-**Overall readiness:** **100 / 100 (Ready for v1.0 tag)**.
+**Overall readiness:** **100 / 100 (Ready for v1.1.0 tag)**.
 
 ## Verification results
 
-- `.venv/bin/python -m pytest`: **121 passed, 1 skipped**
+- `.venv/bin/python -m pytest`: **122 passed, 1 skipped**
 - `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: **1 passed, 121 deselected**
 - `.venv/bin/python -m pytest -m benchmark`: **1 passed, 121 deselected**
 - `./scripts/demo.sh`: **pass**
@@ -36,6 +36,7 @@
 - Manual feedback-to-profile check: **pass** (high-latency feedback flipped profile `prefer` to `latency`, router consumed merged profile)
 - Cross-instance shared cache hit: **pass** (instance A `L3` write-through, instance B `L0-org` hit for same prompt)
 - MCP validation error path: **pass** (`tools/call` invalid schema input returns `MCP_ERR_SCHEMA_VALIDATION`)
+- Web UI serve + index route: **pass** (`daari web-ui serve`, dashboard returns HTTP 200)
 
 ## Performance summary
 
@@ -55,5 +56,5 @@ From `./scripts/bench.sh`:
 | Medium | Periodic profile polling beyond startup | Current MVP syncs profile at startup; periodic refresh remains future work |
 | Medium | Org L1 semantic matching in shared service | Current E2 tracer bullet uses key-based L1 reuse, not vector similarity search |
 | Medium | Live CI smoke for tokenized C3 integrations | Requires org credentials not available in CI by default |
-| Low | Web UI + browser extension | Currently scaffolds only |
+| Low | Browser extension | Currently scaffold only |
 

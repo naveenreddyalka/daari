@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 121 passed, 1 skipped (`.venv/bin/python -m pytest`)
+**Count:** 122 passed, 1 skipped (`.venv/bin/python -m pytest`)
 
 ---
 
@@ -159,7 +159,7 @@ pytest -m benchmark                 # optional latency checks
 | Per-project profiles | [x] | `~/.daari/profiles/<hash|slug>.yaml` + `DAARI_PROFILE` support |
 | Skills loader stub | [x] | `~/.daari/skills/*.md` merged into system prompt prefix |
 | Anthropic stream fallback | [x] | stream error now emits SSE error and falls back to non-stream response events |
-| Web UI scaffold | [x] | `packages/web-ui/README.md` placeholder added |
+| Web UI MVP dashboard | [x] | `daari web-ui serve` + static dashboard (`packages/web-ui/`) |
 | Enterprise scaffold | [x] | `daari/enterprise/` added with minimal `OrgSettings` models |
 | Enterprise E1 runtime scaffold | [x] | org cache path resolver + `daari serve --org` + `DAARI_ORG_ID` + doctor org check |
 | Enterprise E2 org shared cache service | [x] | `daari org-cache serve` + org cache client + router `L0-org/L1-org` lookup + write-through |
@@ -178,6 +178,7 @@ pytest -m benchmark                 # optional latency checks
 | Doctor org-cache reachability check | [x] | optional `org_cache` check (`/v1/org-cache/stats`) |
 | Tests (service/client/router/config/cli) | [x] | no real network required in CI |
 | E3 collective learning | [x] | metadata-only feedback API + profile sync + CLI stats/export |
+| Web UI serve CLI smoke test | [x] | `tests/test_setup.py::test_web_ui_serve_mounts_static_assets` |
 
 ---
 

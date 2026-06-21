@@ -1,13 +1,31 @@
-# daari web-ui (scaffold)
+# daari web-ui
 
-Phase C placeholder for an optional local dashboard UI.
+Minimal static dashboard for local daari runtime metrics.
 
-## Scope (minimal)
+## Start
 
-- Display `/v1/daari/stats` counters.
-- Show cache hit rate and per-tier latency summaries.
-- Keep routing logic in Python (`daari/`); web UI is read-only.
+```bash
+daari web-ui serve
+```
 
-## Status
+Default URL: `http://127.0.0.1:11437`  
+Default API source: `http://127.0.0.1:11435/v1`
 
-Scaffold only. No runtime UI code is shipped yet.
+Use custom API base:
+
+```bash
+daari web-ui serve --api-base-url http://127.0.0.1:11535
+```
+
+## What it shows
+
+- `GET /v1/daari/stats` summary (`total_requests`, `errors`)
+- Tier breakdown table (`count`, `p50_ms`, `p95_ms`)
+- Optional org-learning metrics from `GET /v1/org-learning/profile` when reachable
+
+## Files
+
+- `index.html` layout shell
+- `app.js` stats fetching and rendering logic
+- `styles.css` lightweight styling
+- `ARCHITECTURE.md` design notes

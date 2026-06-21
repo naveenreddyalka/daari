@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from daari.cli.app import app
@@ -516,6 +517,26 @@ class TestSetupCLI:
         assert result.exit_code == 0
         assert output.is_file()
         assert '"org_id": "acme"' in output.read_text(encoding="utf-8")
+
+    def test_web_ui_serve_mounts_static_assets(self, monkeypatch):
+        captured = {}
+
+        def fake_run(app_instance, host, port, log_level):
+            captured["app"] = app_instance
+            captured["host"] = host
+            captured["port"] = port
+            captured["log_level"] = log_level
+
+        monkeypatch.setattr("daari.cli.app.uvicorn.run", fake_run)
+        runner = CliRunner()
+        result = runner.invoke(app, ["web-ui", "serve", "--port", "11439"])
+        assert result.exit_code == 0
+        assert captured["port"] == 11439
+        assert captured["host"] == "127.0.0.1"
+        client = TestClient(captured["app"])
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "daari stats dashboard" in response.text
 
 
 class TestIntelliJSetupApply:

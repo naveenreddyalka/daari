@@ -7,6 +7,9 @@ from pathlib import Path
 
 import typer
 import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from daari.cli.setup_actions import (
     apply_all_setups,
@@ -35,10 +38,12 @@ setup_app = typer.Typer(help="Configure client integrations.")
 context_app = typer.Typer(help="Manage daari caches and context.")
 org_cache_app = typer.Typer(help="Run org shared-cache service.")
 org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.")
+web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 app.add_typer(setup_app, name="setup")
 app.add_typer(context_app, name="context")
 app.add_typer(org_cache_app, name="org-cache")
 app.add_typer(org_learning_app, name="org-learning")
+app.add_typer(web_ui_app, name="web-ui")
 
 
 @app.command()
@@ -166,6 +171,41 @@ def stats(
     except Exception as exc:
         typer.echo(f"Could not reach daari at {url}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+@web_ui_app.command("serve")
+def serve_web_ui(
+    host: str = typer.Option("127.0.0.1", help="Bind host"),
+    port: int = typer.Option(11437, help="Bind port"),
+    api_base_url: str = typer.Option(
+        "http://127.0.0.1:11435",
+        "--api-base-url",
+        help="Base URL for daari daemon (without /v1).",
+    ),
+) -> None:
+    """Serve static local dashboard for daari stats."""
+    ui_root = Path(__file__).resolve().parents[2] / "packages" / "web-ui"
+    if not (ui_root / "index.html").is_file():
+        typer.echo(f"web-ui bundle missing at {ui_root}", err=True)
+        raise typer.Exit(code=1)
+
+    ui_server = FastAPI(title="daari-web-ui", version="0.1.0")
+    normalized_api_base = api_base_url.rstrip("/")
+
+    @ui_server.get("/web-ui-config.js")
+    async def web_ui_config() -> PlainTextResponse:
+        payload = f"window.__DAARI_WEB_UI_CONFIG__ = {{ apiBaseUrl: {json.dumps(normalized_api_base)} }};\n"
+        return PlainTextResponse(payload, media_type="application/javascript")
+
+    ui_server.mount("/", StaticFiles(directory=str(ui_root), html=True), name="web-ui")
+
+    typer.echo(f"daari web-ui serving on http://{host}:{port} (api: {normalized_api_base})")
+    uvicorn.run(
+        ui_server,
+        host=host,
+        port=port,
+        log_level="info",
+    )
 
 
 @app.command()
