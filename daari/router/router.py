@@ -834,6 +834,62 @@ class AppContext:
     def ollama(self) -> OllamaExecutor:
         return self.ollama_l3
 
+    def _resolve_runtime_paths(self) -> tuple[Path, Path, Path]:
+        l0_path = self.settings.l0_cache_path
+        l1_path = self.settings.l1_cache_path
+        context_path = self.settings.context_store_path
+        if self.settings.enterprise.enabled and self.settings.enterprise.resolved_org_id:
+            l0_path = resolve_org_scoped_path(l0_path, self.settings.enterprise, leaf="l0")
+            l1_path = resolve_org_scoped_path(l1_path, self.settings.enterprise, leaf="l1")
+            context_path = resolve_org_scoped_path(context_path, self.settings.enterprise, leaf="ccs")
+        return l0_path, l1_path, context_path
+
+    @staticmethod
+    def _build_command_context_store(settings: Settings, context_path: Path) -> CommandContextStore:
+        try:
+            return CommandContextStore(
+                root=context_path,
+                enabled=settings.context.enabled,
+            )
+        except PermissionError:
+            try:
+                fallback_root = settings.l0_cache_path.parent / "context" / "commands"
+                return CommandContextStore(
+                    root=fallback_root,
+                    enabled=settings.context.enabled,
+                )
+            except PermissionError:
+                return CommandContextStore(
+                    root=Path(os.getcwd()) / ".daari" / "context" / "commands",
+                    enabled=settings.context.enabled,
+                )
+
+    def reload_cache_handles(self) -> dict[str, str | bool]:
+        l0_path, l1_path, context_path = self._resolve_runtime_paths()
+        self.cache = ExactCache(path=str(l0_path), enabled=self.settings.cache.l0.enabled)
+        self.semantic_cache = SemanticCache(
+            path=str(l1_path),
+            embedder=OllamaEmbedder(
+                base_url=self.settings.ollama.base_url.rstrip("/"),
+                model=self.settings.cache.l1.embedding_model,
+            ),
+            enabled=self.settings.cache.l1.enabled,
+            similarity_threshold=self.settings.cache.l1.similarity_threshold,
+            max_entries=self.settings.cache.l1.max_entries,
+        )
+        self.command_context = self._build_command_context_store(self.settings, context_path)
+
+        self.router.cache = self.cache
+        self.router.semantic_cache = self.semantic_cache
+        self.router.command_context = self.command_context
+
+        return {
+            "reloaded": True,
+            "l0_path": str(l0_path),
+            "l1_path": str(l1_path),
+            "ccs_path": str(context_path),
+        }
+
     @classmethod
     def from_settings(cls, settings: Settings) -> AppContext:
         l0_path = settings.l0_cache_path
@@ -889,23 +945,7 @@ class AppContext:
             similarity_threshold=settings.cache.l1.similarity_threshold,
             max_entries=settings.cache.l1.max_entries,
         )
-        try:
-            command_context = CommandContextStore(
-                root=context_path,
-                enabled=settings.context.enabled,
-            )
-        except PermissionError:
-            try:
-                fallback_root = settings.l0_cache_path.parent / "context" / "commands"
-                command_context = CommandContextStore(
-                    root=fallback_root,
-                    enabled=settings.context.enabled,
-                )
-            except PermissionError:
-                command_context = CommandContextStore(
-                    root=Path(os.getcwd()) / ".daari" / "context" / "commands",
-                    enabled=settings.context.enabled,
-                )
+        command_context = cls._build_command_context_store(settings, context_path)
         ollama_l3 = OllamaExecutor(
             base_url=settings.ollama.base_url.rstrip("/"),
             default_model=settings.models.l3,

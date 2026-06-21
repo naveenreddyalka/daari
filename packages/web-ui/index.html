@@ -25,7 +25,18 @@
       <section class="card">
         <div class="card-heading">
           <h2>Tier breakdown</h2>
-          <button id="refresh" type="button">Refresh</button>
+          <div class="controls">
+            <label class="autorefresh">
+              <input id="auto-refresh" type="checkbox" checked />
+              Auto-refresh
+            </label>
+            <select id="refresh-interval" aria-label="Auto-refresh interval">
+              <option value="5000">5s</option>
+              <option value="10000">10s</option>
+              <option value="15000">15s</option>
+            </select>
+            <button id="refresh" type="button">Refresh</button>
+          </div>
         </div>
         <table>
           <thead>
@@ -38,6 +49,7 @@
           </thead>
           <tbody id="tiers-table"></tbody>
         </table>
+        <div id="tiers-chart" class="tier-chart"></div>
       </section>
 
       <section class="card">

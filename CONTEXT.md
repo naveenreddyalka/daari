@@ -9,8 +9,8 @@
 
 ## Current phase
 
-**v1.1.0 release candidate**  
-Phase A/A.1/B/C3 baseline is complete, with enterprise E2/E3 delivered and a working web UI MVP (`daari web-ui serve`) for runtime stats.
+**v1.1.1 released, post-release continuation landed**  
+Phase A/A.1/B/C3 baseline is complete with enterprise E2/E3, plus hot cache reload (`POST /v1/daari/reload-caches`), browser extension MVP, and web UI refresh/chart enhancements.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -62,8 +62,7 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 1. **Periodic org profile refresh** after startup (currently startup-sync only)
 2. **Org L1 semantic matching depth** in shared service (current tracer bullet is key-based)
 3. **Lt B.1 profiles** (project/path command templates + richer confirmations)
-4. Optional: browser extension runtime MVP beyond scaffold (`packages/browser-extension/`)
-5. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
+4. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -78,12 +77,12 @@ cache:
 ```
 
 **Validation baseline (2026-06-21):**
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: 125 passed
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: 127 passed
 - `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: 1 passed, 124 deselected
 - `.venv/bin/python -m pytest -m benchmark`: 1 passed, 124 deselected
 - `./scripts/demo.sh`: pass
 - `./scripts/bench.sh`: pass
-- Manual smoke: org shared-cache cross-instance hit, org-learning feedback/profile roundtrip, and `daari web-ui serve` dashboard load verified.
+- Manual smoke: org shared-cache cross-instance hit, org-learning feedback/profile roundtrip, `POST /v1/daari/reload-caches`, and `daari web-ui serve` dashboard load verified.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 

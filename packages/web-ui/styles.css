@@ -43,6 +43,22 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.autorefresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 button {
@@ -52,6 +68,14 @@ button {
   border-radius: 8px;
   padding: 8px 12px;
   cursor: pointer;
+}
+
+select {
+  border: 1px solid #334155;
+  background: #0b1225;
+  color: #e5e7eb;
+  border-radius: 8px;
+  padding: 7px 8px;
 }
 
 table {
@@ -64,6 +88,37 @@ td {
   text-align: left;
   border-bottom: 1px solid #253353;
   padding: 8px;
+}
+
+.tier-chart {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.tier-bar-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 50px;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-track {
+  width: 100%;
+  height: 10px;
+  background: #0b1225;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tier-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #22c55e);
+}
+
+.tier-count {
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 pre {

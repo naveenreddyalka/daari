@@ -1,9 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "daari (placeholder)",
-  "version": "0.0.1",
-  "description": "Placeholder manifest for future daari browser extension.",
+  "name": "daari prompt bridge",
+  "version": "0.1.0",
+  "description": "Send quick prompts to local daari (localhost:11435).",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:11435/*",
+    "http://localhost:11435/*"
+  ],
   "action": {
-    "default_title": "daari"
+    "default_title": "daari",
+    "default_popup": "popup.html"
   }
 }

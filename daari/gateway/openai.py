@@ -121,6 +121,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             total = sum(t["count"] for t in snapshot.values())
             return {"total_requests": total, "errors": ctx.metrics.errors, "tiers": snapshot}
 
+        @router.post("/v1/daari/reload-caches")
+        async def daari_reload_caches(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            payload = ctx.reload_cache_handles()
+            return {"status": "ok", **payload}
+
         return router
 
 
