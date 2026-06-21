@@ -32,6 +32,7 @@ def apply_setup_recipe(
     force: bool = False,
     settings: Settings | None = None,
     fail_on_missing: bool = True,
+    base_url: str | None = None,
 ) -> None:
     cfg = settings or get_settings()
     registry = default_registry()
@@ -40,8 +41,8 @@ def apply_setup_recipe(
         typer.echo(f"{recipe_id.capitalize()} setup recipe not found.", err=True)
         raise typer.Exit(code=1)
 
-    base_url = f"http://{cfg.server.host}:{cfg.server.port}/v1"
-    plan = recipe.dry_run(base_url=base_url, api_key="daari-local", model_name="daari")
+    resolved_base_url = base_url or f"http://{cfg.server.host}:{cfg.server.port}/v1"
+    plan = recipe.dry_run(base_url=resolved_base_url, api_key="daari-local", model_name="daari")
     if not dry_run:
         plan.notes = [note for note in plan.notes if "Dry-run only" not in note]
     _print_setup_plan(plan)
@@ -51,7 +52,7 @@ def apply_setup_recipe(
         return
 
     result = recipe.apply(
-        base_url=base_url,
+        base_url=resolved_base_url,
         api_key="daari-local",
         model_name="daari",
         force=force,
@@ -76,8 +77,9 @@ def apply_cursor_setup(
     dry_run: bool = False,
     force: bool = False,
     settings: Settings | None = None,
+    base_url: str | None = None,
 ) -> None:
-    apply_setup_recipe("cursor", dry_run=dry_run, force=force, settings=settings)
+    apply_setup_recipe("cursor", dry_run=dry_run, force=force, settings=settings, base_url=base_url)
 
 
 def apply_intellij_setup(

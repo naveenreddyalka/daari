@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import typer
@@ -27,6 +29,7 @@ from daari.setup.context import clear_context_caches
 from daari.setup.doctor import doctor_exit_code, run_doctor
 from daari.setup.models import setup_models_interactive
 from daari.setup.openai_compat import setup_frontier_key_hint, setup_openai_compat
+from daari.setup.tunnel import parse_cloudflared_tunnel_url
 from daari.setup.wizard import run_setup_wizard
 
 app = typer.Typer(
@@ -67,6 +70,55 @@ def _daemon_reload_caches(settings: Settings) -> tuple[bool, str]:
         return False, "daemon returned unexpected response payload"
     except Exception as exc:
         return False, str(exc)
+
+
+def _normalize_openai_base_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith("/v1"):
+        return normalized
+    return f"{normalized}/v1"
+
+
+def _start_cloudflared_tunnel(
+    *,
+    target_url: str = "http://127.0.0.1:11435",
+    timeout_seconds: float = 20.0,
+) -> tuple[subprocess.Popen[str], str]:
+    process: subprocess.Popen[str] = subprocess.Popen(
+        ["cloudflared", "tunnel", "--url", target_url],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    if process.stdout is None:
+        raise RuntimeError("cloudflared did not expose a readable output stream.")
+
+    deadline = time.monotonic() + timeout_seconds
+    captured_lines: list[str] = []
+    while time.monotonic() < deadline:
+        line = process.stdout.readline()
+        if line:
+            captured_lines.append(line.rstrip())
+            tunnel_url = parse_cloudflared_tunnel_url(line)
+            if tunnel_url:
+                return process, tunnel_url
+        elif process.poll() is not None:
+            break
+
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+
+    preview = "\n".join(captured_lines[-5:])
+    raise RuntimeError(
+        "Could not discover cloudflared tunnel URL. "
+        + (f"Last output:\n{preview}" if preview else "No cloudflared output captured.")
+    )
 
 
 @app.command()
@@ -340,9 +392,73 @@ def setup_cursor(
         "--force",
         help="Re-apply even when already configured.",
     ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="Override OpenAI-compatible base URL (defaults to local daari /v1).",
+    ),
+    tunnel: bool = typer.Option(
+        False,
+        "--tunnel",
+        help="Use an HTTPS cloudflared tunnel for Cursor E2E (required for Cursor cloud BYOK).",
+    ),
 ) -> None:
     """Configure Cursor to use the daari OpenAI-compat gateway."""
-    apply_cursor_setup(dry_run=dry_run, force=force)
+    if tunnel and base_url:
+        typer.echo("Use either --tunnel or --base-url, not both.", err=True)
+        raise typer.Exit(code=1)
+
+    resolved_base_url = _normalize_openai_base_url(base_url) if base_url else None
+    tunnel_process: subprocess.Popen[str] | None = None
+
+    if tunnel:
+        tunnel_from_env = os.environ.get("DAARI_TUNNEL_URL")
+        if tunnel_from_env:
+            resolved_base_url = _normalize_openai_base_url(tunnel_from_env)
+            typer.echo(f"Using DAARI_TUNNEL_URL: {resolved_base_url}")
+        else:
+            if shutil.which("cloudflared") is None:
+                typer.echo(
+                    "cloudflared is required for --tunnel. Install it with: brew install cloudflared",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            typer.echo("Starting cloudflared tunnel for http://127.0.0.1:11435 ...")
+            try:
+                tunnel_process, tunnel_url = _start_cloudflared_tunnel()
+            except RuntimeError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=1) from exc
+            resolved_base_url = _normalize_openai_base_url(tunnel_url)
+            typer.echo(f"Tunnel ready: {resolved_base_url}")
+
+    apply_cursor_setup(dry_run=dry_run, force=force, base_url=resolved_base_url)
+
+    if tunnel_process is None:
+        return
+    if dry_run:
+        tunnel_process.terminate()
+        return
+
+    typer.echo("\nCursor now points to the HTTPS tunnel URL.")
+    typer.echo("Inference remains local in your daari daemon; Cursor's HTTP hop is public.")
+    typer.echo("Keep this command running while using Cursor. Press Ctrl+C to stop the tunnel.")
+
+    try:
+        exit_code = tunnel_process.wait()
+        if exit_code != 0:
+            typer.echo(f"cloudflared exited with code {exit_code}", err=True)
+            raise typer.Exit(code=exit_code)
+    except KeyboardInterrupt:
+        typer.echo("\nStopping cloudflared tunnel...")
+    finally:
+        if tunnel_process.poll() is None:
+            tunnel_process.terminate()
+            try:
+                tunnel_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                tunnel_process.kill()
+                tunnel_process.wait(timeout=2)
 
 
 @setup_app.command("intellij")

@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
 > Date: 2026-06-21  
-> Scope: v1.1.1 continuation (enterprise profile sync hardening, browser extension options UX, web-ui export/theme, cursor setup smoke script)
+> Scope: v1.1.1 continuation (enterprise profile sync hardening, browser extension options UX, web-ui export/theme, cursor tunnel E2E path)
 
 ## v1.0 readiness score
 
@@ -43,6 +43,8 @@
 - Web UI serve + index route: **pass** (`daari web-ui serve`, dashboard returns HTTP 200; auto-refresh, export JSON, and theme toggle rendered)
 - Browser extension runtime assets: **pass** (MV3 manifest + popup + options page assets loadable from `packages/browser-extension/`)
 - Cursor setup smoke script: **pass** (`./scripts/smoke-cursor-dry-run.sh`)
+- Cursor tunnel script path: **covered by unit/CLI changes** (`scripts/tunnel.sh --setup-cursor`, requires `cloudflared` for local run)
+- Cursor E2E note updated: localhost blocked by Cursor cloud SSRF policy, tunnel required
 
 ## Performance summary
 

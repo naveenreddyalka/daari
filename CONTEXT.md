@@ -10,7 +10,7 @@
 ## Current phase
 
 **v1.1.1 released, post-release continuation landed**  
-Phase A/A.1/B/C3 baseline is complete with enterprise E2/E3, plus hot cache reload (`POST /v1/daari/reload-caches`), enterprise periodic profile sync (`org.learning_sync_seconds`), browser extension options UX, and web UI export/theme controls.
+Phase A/A.1/B/C3 baseline is complete with enterprise E2/E3, plus hot cache reload (`POST /v1/daari/reload-caches`), enterprise periodic profile sync (`org.learning_sync_seconds`), browser extension options UX, web UI export/theme controls, and Cursor tunnel-based E2E setup for BYOK/private-network restrictions.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -83,6 +83,7 @@ cache:
 - `./scripts/demo.sh`: pass
 - `./scripts/bench.sh`: pass
 - `./scripts/smoke-cursor-dry-run.sh`: pass
+- `scripts/tunnel.sh --setup-cursor`: manual smoke path (requires `cloudflared`)
 - Manual smoke: org shared-cache cross-instance hit, org-learning feedback/profile sync (`daari org-learning sync`), `POST /v1/daari/reload-caches`, and `daari web-ui serve` dashboard load verified.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)

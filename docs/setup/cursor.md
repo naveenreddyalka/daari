@@ -1,30 +1,59 @@
-# Manual Cursor setup — Phase A fallback
+# Cursor setup (E2E with tunnel)
 
-> Prefer automated setup: `daari setup cursor` (see [DEVELOPING.md](../DEVELOPING.md)).
+## Important: Cursor cannot call localhost directly
 
-## Prerequisites
+Cursor BYOK traffic is proxied through Cursor cloud, so private addresses like `http://127.0.0.1:11435/v1` are blocked (`Access to private networks is forbidden`).  
+For Cursor E2E, use an HTTPS tunnel that forwards to local daari.
 
-- daari daemon running: `daari serve` (default `http://127.0.0.1:11435/v1`)
-- Ollama running with default model (e.g. `llama3.2:3b`)
+## Fast path (recommended)
 
-## Steps
+```bash
+scripts/tunnel.sh --setup-cursor
+```
 
-1. Open **Cursor Settings** → **Models**
-2. Add a **custom OpenAI-compatible** model:
-   - **Base URL:** `http://127.0.0.1:11435/v1`
-   - **API key:** `daari-local` (any string unless you set `DAARI_API_KEY`)
-   - **Model name:** `daari` (or match your `config.yaml`)
-3. Select the custom model for chat/agent
-4. Verify: send a prompt twice — second should hit L0 cache (`daari stats`)
+This command:
+- starts `daari serve` if needed
+- opens a `cloudflared` quick tunnel to `http://127.0.0.1:11435`
+- configures Cursor with the tunnel URL (`https://...trycloudflare.com/v1`)
+- keeps running until you stop it (`Ctrl+C`)
+
+Inference still runs locally in daari/Ollama. Only the Cursor HTTP hop is public.
+
+## Manual setup options
+
+### Option A: Use the tunnel script without auto-setup
+
+```bash
+scripts/tunnel.sh
+```
+
+Then paste the printed URL (`https://.../v1`) into Cursor **Override OpenAI Base URL**.
+
+### Option B: Setup Cursor with explicit base URL
+
+```bash
+daari setup cursor --base-url "https://<your-tunnel-host>/v1"
+```
+
+### Option C: Let setup command start tunnel
+
+```bash
+daari setup cursor --tunnel
+```
+
+If `DAARI_TUNNEL_URL` is set, it is used directly.
+
+## Alternatives for true-local E2E (no public tunnel)
+
+- Browser extension: `packages/browser-extension/` (direct localhost usage)
+- `curl` against local daemon: `http://127.0.0.1:11435/v1`
+- VS Code local setup: `daari setup vscode` (same machine, no Cursor cloud hop)
 
 ## Troubleshooting
 
 | Problem | Check |
 |---------|-------|
-| Connection refused | `daari serve` running? Port 11435? |
-| Slow every request | Cache miss — check `daari stats` for L0 hits |
-| Agent mode errors | Expected in MVP — see [ADR-0004](../adr/0004-agent-tool-call-compatibility.md) |
-
-## Revert
-
-Remove custom model from Cursor settings. No daari files are modified in manual setup.
+| `Access to private networks is forbidden` | You are still using localhost in Cursor; switch to tunnel HTTPS URL |
+| `cloudflared: command not found` | Install: `brew install cloudflared` |
+| Tunnel command exits quickly | Inspect tunnel logs in terminal; restart with `scripts/tunnel.sh` |
+| Slow every request | Cache miss — verify with `daari stats` |
