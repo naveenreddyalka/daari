@@ -82,6 +82,11 @@ enterprise:
   shared_cache_require_token: false
   shared_cache_timeout_seconds: 1.0
   shared_cache_path:
+  learning_enabled: false
+  learning_url:
+  learning_token:
+  learning_timeout_seconds: 0.5
+  learning_path:
   policy_overrides: {}
   cache:
     enabled: false

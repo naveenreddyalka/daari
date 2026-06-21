@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -15,7 +16,7 @@ from daari.cache.exact import ExactCache
 from daari.cache.semantic import OllamaEmbedder, SemanticCache
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
-from daari.enterprise.client import OrgCacheClient
+from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.policy.engine import PolicyEngine
@@ -111,6 +112,8 @@ class Router:
         integration_triggers: dict[str, list[str]] | None = None,
         skills_system_prefix: str = "",
         org_cache_client: OrgCacheClient | None = None,
+        org_learning_client: OrgLearningClient | None = None,
+        org_learning_enabled: bool = False,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -143,6 +146,8 @@ class Router:
         self.integration_triggers = integration_triggers or {}
         self.skills_system_prefix = skills_system_prefix.strip()
         self.org_cache_client = org_cache_client
+        self.org_learning_client = org_learning_client
+        self.org_learning_enabled = org_learning_enabled
         self.frontier_enabled = frontier_enabled
         self.confidence_threshold = confidence_threshold
 
@@ -175,6 +180,7 @@ class Router:
                 cached.daari_meta.provider_id = "cache"
                 cached.daari_meta.latency_ms = latency_ms
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
+                self._emit_org_feedback(last_user, cached)
                 return cached
             if self.org_cache_client is not None:
                 org_l0_hit = await self.org_cache_client.get_l0(request)
@@ -186,6 +192,7 @@ class Router:
                     org_l0_hit.daari_meta.provider_id = "org-cache"
                     org_l0_hit.daari_meta.latency_ms = latency_ms
                     self.metrics.record("L0-org", cache_hit=True, latency_ms=latency_ms)
+                    self._emit_org_feedback(last_user, org_l0_hit)
                     return org_l0_hit
 
         ccs_hit = self._resolve_ccs_hit(dev_match, request)
@@ -193,6 +200,7 @@ class Router:
             latency_ms = int((time.perf_counter() - started) * 1000)
             ccs_hit.daari_meta.latency_ms = latency_ms
             self.metrics.record("CCS", cache_hit=True, latency_ms=latency_ms)
+            self._emit_org_feedback(last_user, ccs_hit)
             return ccs_hit
 
         if not request.meta.no_cache:
@@ -209,6 +217,7 @@ class Router:
                 semantic_hit.daari_meta.latency_ms = latency_ms
                 semantic_hit.daari_meta.task_type = "cache_hit"
                 self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
+                self._emit_org_feedback(last_user, semantic_hit)
                 return semantic_hit
             if self.org_cache_client is not None:
                 org_l1_hit = await self.org_cache_client.get_l1(request)
@@ -221,6 +230,7 @@ class Router:
                     org_l1_hit.daari_meta.latency_ms = latency_ms
                     org_l1_hit.daari_meta.task_type = "cache_hit"
                     self.metrics.record("L1-org", cache_hit=True, latency_ms=latency_ms)
+                    self._emit_org_feedback(last_user, org_l1_hit)
                     return org_l1_hit
 
         if dev_match is not None and dev_match.action == "execute" and dev_match.command:
@@ -691,6 +701,7 @@ class Router:
             return response
 
     def _record(self, response: InternalResponse, started: float) -> None:
+        self._emit_org_feedback("", response)
         if response.daari_meta.tier in ("L0", "L1"):
             return
         latency_ms = response.daari_meta.latency_ms or int((time.perf_counter() - started) * 1000)
@@ -699,6 +710,36 @@ class Router:
             cache_hit=response.daari_meta.cache_hit,
             latency_ms=latency_ms,
         )
+
+    def _emit_org_feedback(self, last_user: str, response: InternalResponse) -> None:
+        if not self.org_learning_enabled or self.org_learning_client is None:
+            return
+        task_class = response.daari_meta.task_type or self._classify_task(last_user)
+        feedback = OrgLearningFeedback(
+            tier=response.daari_meta.tier,
+            cache_hit=response.daari_meta.cache_hit,
+            latency_ms=max(0, int(response.daari_meta.latency_ms or 0)),
+            task_class=task_class,
+        )
+        try:
+            asyncio.create_task(self.org_learning_client.post_feedback(feedback))
+        except Exception:
+            return
+
+    @staticmethod
+    def _classify_task(text: str) -> str:
+        normalized = text.lower()
+        if any(token in normalized for token in ("pytest", "test", "unit test")):
+            return "test"
+        if any(token in normalized for token in ("git ", "commit", "branch", "merge", "rebase")):
+            return "git"
+        if any(token in normalized for token in ("lint", "eslint", "ruff", "flake8")):
+            return "lint"
+        if any(token in normalized for token in ("http://", "https://", "fetch ", "api ")):
+            return "fetch"
+        if any(token in normalized for token in ("refactor", "function", "class", "code", "bug")):
+            return "code"
+        return "general"
 
     @staticmethod
     def _match_live_fetch_url(text: str) -> str | None:
@@ -787,6 +828,7 @@ class AppContext:
     metrics: Metrics
     router: Router
     org_cache_client: OrgCacheClient | None = None
+    org_learning_client: OrgLearningClient | None = None
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -802,6 +844,7 @@ class AppContext:
             l1_path = resolve_org_scoped_path(l1_path, settings.enterprise, leaf="l1")
             context_path = resolve_org_scoped_path(context_path, settings.enterprise, leaf="ccs")
         org_cache_client: OrgCacheClient | None = None
+        org_learning_client: OrgLearningClient | None = None
         if settings.enterprise.shared_cache_url:
             org_cache_client = OrgCacheClient(
                 base_url=settings.enterprise.shared_cache_url,
@@ -809,6 +852,27 @@ class AppContext:
                 timeout_seconds=settings.enterprise.shared_cache_timeout_seconds,
                 enabled=True,
             )
+        learning_enabled = settings.enterprise.learning_enabled or settings.enterprise.learning.enabled
+        if learning_enabled and settings.enterprise.learning_url:
+            org_learning_client = OrgLearningClient(
+                base_url=settings.enterprise.learning_url,
+                token=settings.enterprise.learning_token or settings.enterprise.org_token,
+                timeout_seconds=settings.enterprise.learning_timeout_seconds,
+                enabled=True,
+            )
+        routing_prefer = settings.routing.prefer
+        confidence_threshold = settings.routing.confidence_threshold
+        if org_learning_client is not None:
+            profile = org_learning_client.get_profile_sync()
+            if isinstance(profile, dict):
+                routing_block = profile.get("routing")
+                if isinstance(routing_block, dict):
+                    prefer = routing_block.get("prefer")
+                    threshold = routing_block.get("confidence_threshold")
+                    if isinstance(prefer, str):
+                        routing_prefer = prefer
+                    if isinstance(threshold, (int, float)):
+                        confidence_threshold = float(threshold)
 
         cache = ExactCache(
             path=str(l0_path),
@@ -907,7 +971,7 @@ class AppContext:
             shell_executor=shell_executor,
             policy=policy,
             provider_registry=providers,
-            model_preference=settings.routing.prefer,
+            model_preference=routing_prefer,
             model_weights=settings.models.weights,
             integration_triggers={
                 "integration:sourcegraph": settings.integrations.sourcegraph.triggers,
@@ -916,8 +980,10 @@ class AppContext:
             },
             skills_system_prefix=settings.skills_system_prefix,
             org_cache_client=org_cache_client,
+            org_learning_client=org_learning_client,
+            org_learning_enabled=learning_enabled,
             frontier_enabled=settings.frontier.enabled,
-            confidence_threshold=settings.routing.confidence_threshold,
+            confidence_threshold=confidence_threshold,
         )
         return cls(
             settings=settings,
@@ -934,4 +1000,5 @@ class AppContext:
             metrics=metrics,
             router=router,
             org_cache_client=org_cache_client,
+            org_learning_client=org_learning_client,
         )

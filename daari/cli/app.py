@@ -16,6 +16,7 @@ from daari.cli.setup_actions import (
     apply_vscode_setup,
 )
 from daari.config.settings import Settings, get_settings
+from daari.enterprise.client import OrgLearningClient
 from daari.enterprise.service import create_org_cache_app
 from daari.server.app import create_app
 from daari.setup.context import clear_context_caches
@@ -33,9 +34,11 @@ app = typer.Typer(
 setup_app = typer.Typer(help="Configure client integrations.")
 context_app = typer.Typer(help="Manage daari caches and context.")
 org_cache_app = typer.Typer(help="Run org shared-cache service.")
+org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.")
 app.add_typer(setup_app, name="setup")
 app.add_typer(context_app, name="context")
 app.add_typer(org_cache_app, name="org-cache")
+app.add_typer(org_learning_app, name="org-learning")
 
 
 @app.command()
@@ -90,6 +93,58 @@ def serve_org_cache(
         port=port,
         log_level="info",
     )
+
+
+def _build_org_learning_client(settings: Settings) -> OrgLearningClient:
+    url = settings.enterprise.learning_url or settings.enterprise.shared_cache_url
+    if not url:
+        raise typer.BadParameter(
+            "org learning URL is not configured (set org.learning_url or enterprise.learning_url)."
+        )
+    token = settings.enterprise.learning_token or settings.enterprise.org_token or settings.enterprise.shared_cache_token
+    return OrgLearningClient(
+        base_url=url,
+        token=token,
+        timeout_seconds=settings.enterprise.learning_timeout_seconds,
+        enabled=True,
+    )
+
+
+@org_learning_app.command("stats")
+def org_learning_stats() -> None:
+    """Show aggregated org learning stats."""
+    settings = Settings.load()
+    client = _build_org_learning_client(settings)
+    metrics = client.get_stats_sync()
+    if metrics is None:
+        typer.echo("Could not fetch org learning stats.", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(metrics, indent=2))
+
+
+@org_learning_app.command("export")
+def org_learning_export(
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Optional output path for exported anonymized summary JSON.",
+    ),
+) -> None:
+    """Export anonymized org learning summary."""
+    settings = Settings.load()
+    client = _build_org_learning_client(settings)
+    payload = client.export_sync()
+    if payload is None:
+        typer.echo("Could not export org learning summary.", err=True)
+        raise typer.Exit(code=1)
+    serialized = json.dumps(payload, indent=2)
+    if output is None:
+        typer.echo(serialized)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(serialized + "\n", encoding="utf-8")
+    typer.echo(f"Exported org learning summary to {output}")
 
 
 @app.command()

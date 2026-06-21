@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import pytest
 
 from daari.cache.exact import ExactCache
@@ -32,6 +33,14 @@ class FakeOrgCacheClient:
 
     async def put_l1(self, _request: InternalRequest, _response: InternalResponse) -> None:
         self.l1_put_calls += 1
+
+
+class FakeOrgLearningClient:
+    def __init__(self) -> None:
+        self.feedback_payloads: list[object] = []
+
+    async def post_feedback(self, payload: object) -> None:
+        self.feedback_payloads.append(payload)
 
 
 def _request() -> InternalRequest:
@@ -116,3 +125,25 @@ async def test_router_write_throughs_to_org_cache(tmp_path):
     assert result.daari_meta.tier == "L3"
     assert org_cache.l0_put_calls == 1
     assert org_cache.l1_put_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_router_posts_org_learning_feedback_non_blocking(tmp_path):
+    learning_client = FakeOrgLearningClient()
+
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return _response("from-model")
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(
+        cache=ExactCache(str(tmp_path / "l0"), enabled=True),
+        semantic_cache=SemanticCache(str(tmp_path / "l1"), NoopEmbedder(), enabled=False),
+        metrics=Metrics(),
+        ollama=ollama,
+        org_learning_client=learning_client,  # type: ignore[arg-type]
+        org_learning_enabled=True,
+    )
+    await router.route(_request())
+    await asyncio.sleep(0)
+    assert len(learning_client.feedback_payloads) == 1

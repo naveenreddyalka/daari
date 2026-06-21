@@ -150,3 +150,19 @@ class TestSettings:
         assert settings.enterprise.shared_cache_url == "http://127.0.0.1:11436"
         assert settings.enterprise.shared_cache_timeout_seconds == 2.5
         assert settings.enterprise.cache.enabled is True
+
+    def test_org_alias_learning_fields_map_to_enterprise(self, tmp_path):
+        config = tmp_path / "config.yaml"
+        config.write_text(
+            (
+                "org:\n"
+                "  id: acme\n"
+                "  learning_enabled: true\n"
+                "  learning_url: http://127.0.0.1:11436\n"
+            ),
+            encoding="utf-8",
+        )
+        settings = Settings.load(config_path=config)
+        assert settings.enterprise.resolved_org_id == "acme"
+        assert settings.enterprise.learning_enabled is True
+        assert settings.enterprise.learning_url == "http://127.0.0.1:11436"

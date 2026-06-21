@@ -22,6 +22,7 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` and `context clear` added |
 | **C — Bootstrap slice** | In progress | gateway adapter protocol, Anthropic adapter (+stream fallback), MCP tool schemas, integration provider depth, profile/skills loader stubs |
 | **E2 — Org shared cache (MVP)** | Done | `daari org-cache serve`, org cache client, router `L0-org`/`L1-org` lookup + write-through |
+| **E3 — Org collective learning (MVP)** | Done | metadata feedback ingestion, org routing profile aggregation, startup profile merge |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -91,8 +92,8 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/providers/registry.py` | Provider registry used by router | ✅ |
 | `daari/providers/integrations.py` | Sourcegraph GraphQL + GHE repo/issue search providers | ✅ |
 | `daari/enterprise/config.py` | Enterprise org settings schema (`OrgSettings`) including shared-cache URL/token fields | ✅ |
-| `daari/enterprise/client.py` | Org shared-cache HTTP client used by router (`L0-org`, `L1-org`) | ✅ |
-| `daari/enterprise/service.py` | Lightweight shared-cache FastAPI service (`/v1/org-cache/*`) | ✅ |
+| `daari/enterprise/client.py` | Org shared-cache + learning HTTP clients used by router/CLI (`L0-org`, `L1-org`, feedback/profile) | ✅ |
+| `daari/enterprise/service.py` | Lightweight shared-cache + learning FastAPI service (`/v1/org-cache/*`, `/v1/org-learning/*`) | ✅ |
 | `daari/rules/engine.py` | L2 deterministic transforms (JSON/YAML) | ✅ |
 | `daari/rules/dev_commands.py` | L2-dev developer command detection | ✅ |
 | `daari/cache/command_context.py` | CCS store for command output reuse | ✅ |
@@ -205,7 +206,9 @@ flowchart LR
 | Command | Purpose |
 |---------|---------|
 | `daari serve [--host] [--port] [--no-frontier] [--org]` | Start HTTP daemon (default `127.0.0.1:11435`) |
-| `daari org-cache serve [--org] [--port] [--require-token]` | Start org shared-cache service (default `127.0.0.1:11436`) |
+| `daari org-cache serve [--org] [--port] [--require-token]` | Start org shared-cache + learning service (default `127.0.0.1:11436`) |
+| `daari org-learning stats` | Show aggregated org learning metrics |
+| `daari org-learning export [-o FILE]` | Export anonymized org learning summary |
 | `daari stats [--host] [--port]` | Fetch tier counters from running daemon |
 | `daari doctor` | Check Python, config, Ollama, model, optional daemon |
 | `daari install [--run-doctor/--no-run-doctor] [--pull-l4] [--pull-l5]` | Run install workflow via `scripts/install.sh` |
@@ -243,6 +246,14 @@ Org shared-cache service (`daari org-cache serve`):
 | `PUT` | `/v1/org-cache/put` | Write org cache entry |
 | `GET` | `/v1/org-cache/stats` | Show entries and hit/miss/write counters |
 
+Org learning endpoints (same service host):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/v1/org-learning/feedback` | Ingest anonymized routing feedback metadata |
+| `GET` | `/v1/org-learning/profile` | Read aggregated org routing profile |
+| `PUT` | `/v1/org-learning/profile` | Admin override for org routing profile (token-gated) |
+
 ### Scripts
 
 | Script | Purpose |
@@ -263,7 +274,7 @@ Org shared-cache service (`daari org-cache serve`):
 | Setup | Cursor + IntelliJ + VS Code + claude-code recipes, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | deeper IDE-native integrations |
 | Providers | Registry + model providers + Sourcegraph GraphQL/GHE REST integration calls | GitLab provider and richer corp plugin surfaces |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
-| Enterprise | ADR-0014 + org shared-cache service/client + shared lookup/write-through | E3 collective learning control plane |
+| Enterprise | ADR-0014 + org shared-cache + org learning feedback/profile sync | periodic profile refresh and advanced E4+ controls |
 | Packages | README + browser-extension scaffold | web-ui, intellij-plugin, extension runtime code |
 
 Source of truth for “done”: [TRACKING.md](TRACKING.md) task tables + `daari/` tree + pytest.
