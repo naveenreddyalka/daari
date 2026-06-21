@@ -22,6 +22,7 @@ from daari.clients.vscode.recipe import DAARI_MARKER_KEY as VSCODE_MARKER_KEY
 from daari.clients.vscode.recipe import VSCodeSetupRecipe
 from daari.config.settings import Settings
 from daari.setup.backup import create_backup, latest_backup, restore_latest_backup
+from daari.setup.jsonc import load_jsonc
 from daari.setup.models import fetch_ollama_models, write_models_config
 
 
@@ -192,6 +193,28 @@ class TestCursorSetupApply:
         assert latest_backup("cursor", root=backup_root) is not None
         assert undo.files_restored
 
+    def test_apply_handles_cursor_jsonc_with_comments_trailing_commas_and_controls(self, recipe, backup_root):
+        settings_path = Path(recipe.settings_paths()[0])
+        settings_path.write_text(
+            (
+                "{\n"
+                '  // Cursor-specific comments are valid in JSONC\n'
+                '  "http.proxy": "http://localhost:8080",\n'
+                '  "editor.quickSuggestions": { "other": true, },\n'
+                '  "weird.value": "bad\x0bcontrol",\n'
+                "}\n"
+            ),
+            encoding="utf-8",
+        )
+
+        result = recipe.apply(backup_root=backup_root)
+        assert result.changed is True
+        settings = load_jsonc(settings_path)
+        assert settings["openai.baseUrl"] == "http://127.0.0.1:11435/v1"
+        assert settings["http.proxy"] == "http://localhost:8080"
+        assert settings["editor.quickSuggestions"]["other"] is True
+        assert settings["weird.value"] == "bad\x0bcontrol"
+
 
 class TestCursorSetupDryRun:
     def test_dry_run_does_not_write(self, recipe, backup_root):
@@ -239,6 +262,23 @@ class TestSetupCLI:
         result = runner.invoke(app, ["setup", "cursor", "--dry-run"])
         assert result.exit_code == 0
         assert "Dry-run complete" in result.stdout
+
+    def test_setup_cursor_apply_omits_dry_run_messages(self, recipe, monkeypatch, tmp_path):
+        from daari.clients.registry import ClientRegistry
+
+        registry = ClientRegistry()
+        registry.register(recipe)
+        monkeypatch.setattr("daari.cli.setup_actions.default_registry", lambda: registry)
+        monkeypatch.setattr(
+            "daari.setup.backup.backups_root",
+            lambda root=None: tmp_path / "backups",
+        )
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "cursor"])
+        assert result.exit_code == 0
+        assert "Dry-run complete" not in result.stdout
+        assert "Dry-run only" not in result.stdout
 
     def test_setup_models_list(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.yaml"

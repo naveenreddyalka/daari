@@ -42,6 +42,8 @@ def apply_setup_recipe(
 
     base_url = f"http://{cfg.server.host}:{cfg.server.port}/v1"
     plan = recipe.dry_run(base_url=base_url, api_key="daari-local", model_name="daari")
+    if not dry_run:
+        plan.notes = [note for note in plan.notes if "Dry-run only" not in note]
     _print_setup_plan(plan)
 
     if dry_run:
