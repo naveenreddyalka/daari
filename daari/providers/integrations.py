@@ -25,7 +25,7 @@ class HttpIntegrationProvider:
         for message in reversed(request.messages):
             if message.role != "user" or not message.content:
                 continue
-            cleaned = re.sub(r"(?i)^@(sourcegraph|ghe)\s*", "", message.content.strip(), count=1)
+            cleaned = re.sub(r"(?i)^@(sourcegraph|ghe|gitlab)\s*", "", message.content.strip(), count=1)
             match = re.search(r"(?i)\b(query|search|find)\s*:?\s*(.+)$", message.content.strip())
             if match:
                 return match.group(2).strip()
@@ -177,4 +177,52 @@ class GitHubEnterpriseProvider(HttpIntegrationProvider):
         lines.append(f"Issue matches: {issues.get('total_count', 0)}")
         for item in (issues.get("items") or [])[:5]:
             lines.append(f"- issue: {item.get('title', '?')} ({item.get('html_url', '')})")
+        return "\n".join(lines)
+
+
+class GitLabProvider(HttpIntegrationProvider):
+    def __init__(self, base_url: str) -> None:
+        super().__init__(
+            id="integration:gitlab",
+            base_url=base_url.rstrip("/"),
+            token_env_var="DAARI_GITLAB_TOKEN",
+        )
+
+    async def execute(self, request: InternalRequest) -> InternalResponse:
+        token, skipped = self._token_or_skip(request)
+        if skipped is not None:
+            return skipped
+
+        query = self._extract_query(request) or "daari"
+        headers = {"PRIVATE-TOKEN": token}
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=10.0) as client:
+                projects = await client.get(
+                    "/projects",
+                    headers=headers,
+                    params={"search": query, "per_page": 5},
+                )
+                projects.raise_for_status()
+                issues = await client.get(
+                    "/issues",
+                    headers=headers,
+                    params={"search": query, "per_page": 5},
+                )
+                issues.raise_for_status()
+            formatted = self._format_results(query, projects.json(), issues.json())
+            return self._ok_response(request, self.id, formatted)
+        except Exception as exc:
+            return self._failure(request, exc)
+
+    @staticmethod
+    def _format_results(query: str, projects: list[dict[str, Any]], issues: list[dict[str, Any]]) -> str:
+        lines = [
+            f"GitLab search query: {query}",
+            f"Project matches: {len(projects)}",
+        ]
+        for item in projects[:5]:
+            lines.append(f"- project: {item.get('path_with_namespace', '?')} ({item.get('web_url', '')})")
+        lines.append(f"Issue matches: {len(issues)}")
+        for item in issues[:5]:
+            lines.append(f"- issue: {item.get('title', '?')} ({item.get('web_url', '')})")
         return "\n".join(lines)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -30,6 +31,7 @@ def run_doctor(
     results.append(_check_config(cfg))
     results.extend(_check_ollama(cfg, httpx_client))
     results.append(_check_frontier(cfg))
+    results.append(_check_org(cfg))
     results.append(_check_daemon(cfg, httpx_client))
 
     return results
@@ -215,3 +217,31 @@ def _check_daemon(
     finally:
         if own_client:
             http.close()
+
+
+def _check_org(settings: Settings) -> CheckResult:
+    org = settings.enterprise
+    org_id = org.resolved_org_id
+    if not org.enabled and not org_id:
+        return CheckResult(
+            name="org",
+            ok=True,
+            detail="disabled",
+            optional=True,
+        )
+    if not org_id:
+        return CheckResult(
+            name="org",
+            ok=False,
+            detail="org mode enabled but org_id missing (use --org or DAARI_ORG_ID)",
+        )
+    if org.shared_cache_path:
+        cache_root = Path(org.shared_cache_path).expanduser()
+    else:
+        cache_root = Path.home() / ".daari" / "org" / org_id / "cache"
+    return CheckResult(
+        name="org",
+        ok=True,
+        detail=f"enabled for {org_id} (cache root: {cache_root})",
+        optional=True,
+    )

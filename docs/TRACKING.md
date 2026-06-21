@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 94 passed (`OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`)
+**Count:** 103 passed, 1 skipped (`.venv/bin/python -m pytest`)
 
 ---
 
@@ -151,6 +151,7 @@ pytest -m benchmark                 # optional latency checks
 | MCP gateway ingress | [x] | `/v1/mcp/query` now supports `tools/list`, `tools/call`, and JSON-schema tool catalog |
 | L5 local tier wiring | [~] | config + routing/escalation support; large model remains optional |
 | Sourcegraph/GHE provider depth (C3) | [x] | Sourcegraph GraphQL + GHE repo/issue search with configurable base URLs and token envs |
+| GitLab self-hosted provider depth (C3) | [x] | REST project/issue search + `@gitlab` trigger + MCP tool support |
 | L2-live URL fetch | [x] | simple fetch trigger (`fetch/read/summarize/get <url>`) + L3 summarization |
 | SSE metadata enrichment | [x] | stream chunks now include `daari_meta` tier/provider/model |
 | Browser extension scaffold | [x] | `packages/browser-extension/README.md` + MV3 manifest placeholder |
@@ -160,6 +161,7 @@ pytest -m benchmark                 # optional latency checks
 | Anthropic stream fallback | [x] | stream error now emits SSE error and falls back to non-stream response events |
 | Web UI scaffold | [x] | `packages/web-ui/README.md` placeholder added |
 | Enterprise scaffold | [x] | `daari/enterprise/` added with minimal `OrgSettings` models |
+| Enterprise E1 runtime scaffold | [x] | org cache path resolver + `daari serve --org` + `DAARI_ORG_ID` + doctor org check |
 
 ---
 

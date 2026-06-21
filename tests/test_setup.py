@@ -412,6 +412,38 @@ class TestSetupCLI:
         assert captured["env"]["PULL_L4"] == "1"
         assert captured["env"]["PULL_L5"] == "1"
 
+    def test_serve_org_flag_enables_org_mode(self, monkeypatch):
+        captured = {}
+
+        def fake_load():
+            return Settings.model_validate(
+                {
+                    "server": {"host": "127.0.0.1", "port": 11435},
+                    "models": {"l3": "llama3.2:3b"},
+                    "ollama": {"base_url": "http://127.0.0.1:11434"},
+                }
+            )
+
+        def fake_create_app(settings):
+            captured["settings"] = settings
+            return object()
+
+        def fake_run(_app, host, port, log_level):
+            captured["host"] = host
+            captured["port"] = port
+            captured["log_level"] = log_level
+
+        monkeypatch.setattr("daari.cli.app.Settings.load", fake_load)
+        monkeypatch.setattr("daari.cli.app.create_app", fake_create_app)
+        monkeypatch.setattr("daari.cli.app.uvicorn.run", fake_run)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["serve", "--org", "acme", "--port", "11501"])
+        assert result.exit_code == 0
+        assert captured["settings"].enterprise.enabled is True
+        assert captured["settings"].enterprise.org_id == "acme"
+        assert captured["port"] == 11501
+
 
 class TestIntelliJSetupApply:
     def test_apply_writes_helper_file(self, intellij_recipe, backup_root):

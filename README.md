@@ -2,11 +2,11 @@
 
 > **Open-source local execution router** — run cheaply on your machine, not in the cloud.
 
-**Status:** Phase A complete · Phase A.1 setup shipped — [tracker](docs/TRACKING.md) · [plan](docs/plans/phase-a.md) · [PRD v0.4](docs/prd/PRD.md)
+**Status:** v1.0 prep complete (local-first core + C3 integrations + E1 org scaffold) — [tracker](docs/TRACKING.md) · [validation](docs/VALIDATION.md) · [release checklist](docs/RELEASE-v1.0.md)
 
 Route dev agent work through local tiers (cache → IDE tools → local AI) instead of frontier APIs. **Not a proxy** — a cost optimizer you own.
 
-## Quick start (dev)
+## Quick start
 
 Full pickup guide (clone, venv, smoke test, pytest): **[docs/DEVELOPING.md](docs/DEVELOPING.md)**
 
@@ -32,6 +32,15 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 ```
 
 Run the same curl twice — the second response should show `"tier": "L0"` in `daari_meta`.
+
+## Feature snapshot (v1.0)
+
+- Local-first routing chain with cache/rules/tooling/model tiers (`L0`, `L1`, `CCS`, `L2`, `Lt`, `L3-L6`)
+- OpenAI-compatible and Anthropic-compatible gateways with SSE streaming support
+- MCP ingress with `tools/list` + `tools/call`, schema-aware input validation, and structured errors
+- C3 integration providers: Sourcegraph, GitHub Enterprise, and GitLab self-hosted trigger routing
+- Enterprise E1 runtime scaffold: org-aware cache paths via `DAARI_ORG_ID` or `daari serve --org <id>`
+- Setup and health tooling: `daari setup ...`, `daari doctor`, `daari install`, demo + bench scripts
 
 ## Docs
 

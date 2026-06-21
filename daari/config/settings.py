@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from daari.enterprise.config import OrgSettings
 
 
 class ServerSettings(BaseModel):
@@ -102,6 +103,12 @@ class IntegrationsSettings(BaseModel):
             triggers=["@ghe"],
         )
     )
+    gitlab: IntegrationEndpointSettings = Field(
+        default_factory=lambda: IntegrationEndpointSettings(
+            url="https://gitlab.com/api/v4",
+            triggers=["@gitlab"],
+        )
+    )
 
 
 class Settings(BaseSettings):
@@ -116,6 +123,7 @@ class Settings(BaseSettings):
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
+    enterprise: OrgSettings = Field(default_factory=OrgSettings)
     skills_system_prefix: str = ""
 
     @classmethod
@@ -145,6 +153,15 @@ class Settings(BaseSettings):
     @property
     def context_store_path(self) -> Path:
         return Path(self.context.path).expanduser()
+
+    @property
+    def org_cache_root(self) -> Path | None:
+        org_id = self.enterprise.resolved_org_id
+        if not self.enterprise.enabled or not org_id:
+            return None
+        if self.enterprise.shared_cache_path:
+            return Path(self.enterprise.shared_cache_path).expanduser()
+        return Path.home() / ".daari" / "org" / org_id / "cache"
 
     def resolve_frontier_api_key(self) -> str | None:
         return os.environ.get("DAARI_FRONTIER_API_KEY") or os.environ.get("OPENAI_API_KEY")
@@ -183,6 +200,12 @@ def _load_env_overrides() -> dict[str, Any]:
                 cursor[segment] = {}
             cursor = cursor[segment]
         cursor[path[-1]] = _coerce_env_value(value)
+    org_id = os.environ.get("DAARI_ORG_ID")
+    if org_id:
+        enterprise = data.setdefault("enterprise", {})
+        if isinstance(enterprise, dict):
+            enterprise.setdefault("enabled", True)
+            enterprise["org_id"] = org_id
     return data
 
 

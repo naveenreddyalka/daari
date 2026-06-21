@@ -164,6 +164,41 @@ class TestDoctor:
         assert by_name["frontier"].optional is True
         assert doctor_exit_code(results) == 0
 
+    def test_org_disabled_is_optional_ok(self, settings):
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+        assert by_name["org"].ok is True
+        assert by_name["org"].optional is True
+
+    def test_org_enabled_without_id_fails_required(self, settings):
+        settings = Settings.model_validate(
+            {
+                **settings.model_dump(),
+                "enterprise": {"enabled": True},
+            }
+        )
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+        assert by_name["org"].ok is False
+        assert by_name["org"].optional is False
+        assert doctor_exit_code(results) == 1
+
 
 class TestCursorSetupDryRun:
     def test_dry_run_returns_plan(self):
