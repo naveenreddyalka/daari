@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 114 passed, 1 skipped (`.venv/bin/python -m pytest`)
+**Count:** 121 passed, 1 skipped (`.venv/bin/python -m pytest`)
 
 ---
 
@@ -177,7 +177,7 @@ pytest -m benchmark                 # optional latency checks
 | `daari serve --org` org-cache client wiring | [x] | `AppContext.from_settings` instantiates `OrgCacheClient` when URL set |
 | Doctor org-cache reachability check | [x] | optional `org_cache` check (`/v1/org-cache/stats`) |
 | Tests (service/client/router/config/cli) | [x] | no real network required in CI |
-| E3 collective learning | [-] | deferred by design |
+| E3 collective learning | [x] | metadata-only feedback API + profile sync + CLI stats/export |
 
 ---
 

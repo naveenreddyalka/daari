@@ -1,6 +1,6 @@
 # Enterprise — distributed install, org cache, collective learning
 
-> **Status:** E1 shipped, **E2 MVP tracer bullet shipped**, E3 deferred  
+> **Status:** E1 shipped, **E2 MVP tracer bullet shipped**, **E3 MVP tracer bullet shipped**  
 > **Related:** [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · [integrations.md](integrations.md) · [PRD](PRD.md)
 
 ---
@@ -109,6 +109,20 @@ L0 (local) → L0-org → L1 (local) → L1-org → CCS (local) → CCS-org → 
 - Push shared **org routing profile** to all agents
 
 **Not default:** uploading prompts, code, or full CCS stdout — requires explicit org policy + user notice.
+
+**Implementation status (v1.0.1-dev):**
+
+- `daari org-cache serve` now also exposes org learning API endpoints:
+  - `POST /v1/org-learning/feedback`
+  - `GET /v1/org-learning/profile`
+  - `PUT /v1/org-learning/profile` (admin token required)
+- Feedback is metadata-only (`tier`, `cache_hit`, `latency_ms`, optional `rating`, optional `task_class`)
+- Learning store persists under `~/.daari/org/<org_id>/learning/feedback.sqlite3`
+- Router now submits fire-and-forget feedback after each response when org learning is enabled
+- Startup profile sync merges org routing preferences into local `routing.prefer` and `routing.confidence_threshold`
+- CLI includes:
+  - `daari org-learning stats`
+  - `daari org-learning export`
 
 ---
 

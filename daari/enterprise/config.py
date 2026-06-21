@@ -29,6 +29,11 @@ class OrgSettings(BaseModel):
     shared_cache_require_token: bool = False
     shared_cache_timeout_seconds: float = 1.0
     shared_cache_path: str | None = None
+    learning_enabled: bool = False
+    learning_url: str | None = None
+    learning_token: str | None = None
+    learning_timeout_seconds: float = 0.5
+    learning_path: str | None = None
     policy_overrides: dict[str, Any] = Field(default_factory=dict)
     profile: str = "developer"
     cache: EnterpriseCacheSettings = Field(default_factory=EnterpriseCacheSettings)

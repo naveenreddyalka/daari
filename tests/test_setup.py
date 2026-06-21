@@ -473,6 +473,50 @@ class TestSetupCLI:
         assert captured["org"].org_id == "acme"
         assert captured["port"] == 11439
 
+    def test_org_learning_stats_command(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "daari.cli.app.Settings.load",
+            lambda: Settings.model_validate(
+                {
+                    "enterprise": {
+                        "learning_url": "http://127.0.0.1:11436",
+                        "learning_enabled": True,
+                    }
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            "daari.enterprise.client.OrgLearningClient.get_stats_sync",
+            lambda self: {"feedback_count": 4, "cache_hit_rate": 0.5},
+        )
+        runner = CliRunner()
+        result = runner.invoke(app, ["org-learning", "stats"])
+        assert result.exit_code == 0
+        assert '"feedback_count": 4' in result.stdout
+
+    def test_org_learning_export_command_writes_output(self, monkeypatch, tmp_path):
+        output = tmp_path / "learning.json"
+        monkeypatch.setattr(
+            "daari.cli.app.Settings.load",
+            lambda: Settings.model_validate(
+                {
+                    "enterprise": {
+                        "learning_url": "http://127.0.0.1:11436",
+                        "learning_enabled": True,
+                    }
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            "daari.enterprise.client.OrgLearningClient.export_sync",
+            lambda self: {"org_id": "acme", "metrics": {"feedback_count": 1}},
+        )
+        runner = CliRunner()
+        result = runner.invoke(app, ["org-learning", "export", "--output", str(output)])
+        assert result.exit_code == 0
+        assert output.is_file()
+        assert '"org_id": "acme"' in output.read_text(encoding="utf-8")
+
 
 class TestIntelliJSetupApply:
     def test_apply_writes_helper_file(self, intellij_recipe, backup_root):

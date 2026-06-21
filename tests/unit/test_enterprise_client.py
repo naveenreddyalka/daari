@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from daari.enterprise.client import OrgCacheClient
+from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 
 
@@ -74,3 +74,37 @@ async def test_org_cache_client_sends_bearer_token():
     stats = await client.stats()
     assert stats is not None
     assert stats["entries"] == 0
+
+
+@pytest.mark.asyncio
+async def test_org_learning_client_feedback_and_profile():
+    seen_payloads: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/org-learning/feedback":
+            body = json.loads(request.content.decode("utf-8"))
+            seen_payloads.append(body)
+            return httpx.Response(200, json={"ok": True})
+        if request.url.path == "/v1/org-learning/profile":
+            return httpx.Response(
+                200,
+                json={
+                    "org_id": "acme",
+                    "routing": {"prefer": "latency", "confidence_threshold": 0.75},
+                    "metrics": {"feedback_count": 1},
+                },
+            )
+        return httpx.Response(404)
+
+    client = OrgLearningClient(
+        base_url="http://org-learning.test",
+        token="t",
+        transport=httpx.MockTransport(handler),
+    )
+    await client.post_feedback(
+        OrgLearningFeedback(tier="L3", cache_hit=False, latency_ms=320, rating=1, task_class="test")
+    )
+    profile = await client.get_profile()
+    assert profile is not None
+    assert profile["routing"]["prefer"] == "latency"
+    assert seen_payloads[0]["task_class"] == "test"
