@@ -44,7 +44,7 @@ class TestSettings:
     def test_l1_defaults(self):
         settings = Settings.model_validate({})
         assert settings.cache.l1.enabled is True
-        assert settings.cache.l1.similarity_threshold == 0.92
+        assert settings.cache.l1.similarity_threshold == 0.88
         assert settings.cache.l1.embedding_model == "nomic-embed-text"
 
     def test_frontier_defaults(self):

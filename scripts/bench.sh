@@ -43,16 +43,29 @@ l3_ms, l3_tier = call(prompt, headers={"X-Daari-No-Cache": "true"})
 rows.append(("L3", l3_ms, l3_tier))
 
 # L0 sample from explicit warm + repeat.
-l0_prompt = f"bench-l0-{uuid.uuid4().hex}"
-_, _ = call(l0_prompt)
-l0_ms, l0_tier = call(l0_prompt)
+l0_prompt = f"Count the characters in token {uuid.uuid4().hex} and return only the number."
+l0_headers = {"X-Daari-Tier-Override": "L3"}
+_, _ = call(l0_prompt, headers=l0_headers)
+l0_ms, l0_tier = call(l0_prompt, headers=l0_headers)
 rows.append(("L0", l0_ms, l0_tier))
 
 # L1 pair.
-token = uuid.uuid4().hex[:10]
-seed = f"Write commit message for diff: +def bench_{token}(): pass"
-para = f"Please draft a commit message for this patch: +def bench_{token}(): pass"
-_, _ = call(seed, headers={"X-Daari-No-Cache": "true"})
+seed = ""
+para = ""
+for _ in range(8):
+    token = uuid.uuid4().hex[:10]
+    candidate_seed = f"Write a commit message for this diff: +def bench_{token}(): pass"
+    candidate_para = f"Draft a commit message for this diff: +def bench_{token}(): pass"
+    _, first_tier = call(candidate_seed)
+    if first_tier == "L3":
+        seed = candidate_seed
+        para = candidate_para
+        break
+if not seed:
+    token = uuid.uuid4().hex[:10]
+    seed = f"Write a commit message for this diff: +def bench_{token}(): pass"
+    para = f"Draft a commit message for this diff: +def bench_{token}(): pass"
+    _, _ = call(seed)
 l1_ms, l1_tier = call(para)
 rows.append(("L1", l1_ms, l1_tier))
 

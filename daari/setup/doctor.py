@@ -75,6 +75,7 @@ def _check_ollama(
     l3_model = settings.models.l3
     l4_model = settings.models.l4
     l5_model = settings.models.l5
+    embedding_model = settings.cache.l1.embedding_model
     own_client = client is None
     http = client or httpx.Client(timeout=5.0)
     try:
@@ -103,12 +104,21 @@ def _check_ollama(
                     detail=f"{l5_model} not checked (Ollama unreachable)",
                     optional=True,
                 ),
+                CheckResult(
+                    name="embedding_model",
+                    ok=False,
+                    detail=f"{embedding_model} not checked (Ollama unreachable)",
+                    optional=True,
+                ),
             ]
         data: dict[str, Any] = response.json()
         models = [m.get("name", "") for m in data.get("models", [])]
         l3_present = any(name == l3_model or name.startswith(f"{l3_model}:") for name in models)
         l4_present = any(name == l4_model or name.startswith(f"{l4_model}:") for name in models)
         l5_present = any(name == l5_model or name.startswith(f"{l5_model}:") for name in models)
+        embedding_present = any(
+            name == embedding_model or name.startswith(f"{embedding_model}:") for name in models
+        )
         return [
             CheckResult(name="ollama", ok=True, detail=f"reachable at {base}"),
             CheckResult(
@@ -132,6 +142,15 @@ def _check_ollama(
                 ),
                 optional=True,
             ),
+            CheckResult(
+                name="embedding_model",
+                ok=embedding_present,
+                detail=(
+                    f"{embedding_model} "
+                    f"{'found' if embedding_present else 'missing — run: ollama pull ' + embedding_model + ' (required for L1 semantic cache)'}"
+                ),
+                optional=True,
+            ),
         ]
     except Exception as exc:
         return [
@@ -147,6 +166,12 @@ def _check_ollama(
                 name="model_l5",
                 ok=False,
                 detail=f"{l5_model} not checked (Ollama unreachable)",
+                optional=True,
+            ),
+            CheckResult(
+                name="embedding_model",
+                ok=False,
+                detail=f"{embedding_model} not checked (Ollama unreachable)",
                 optional=True,
             ),
         ]

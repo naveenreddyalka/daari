@@ -62,7 +62,7 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 1. **Periodic org profile refresh** after startup (currently startup-sync only)
 2. **Org L1 semantic matching depth** in shared service (current tracer bullet is key-based)
 3. **Lt B.1 profiles** (project/path command templates + richer confirmations)
-4. Optional: improve bench script resilience when model path is unavailable
+4. Optional: browser extension runtime MVP beyond scaffold (`packages/browser-extension/`)
 5. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
 
 **L1 config** (`~/.daari/config.yaml`):
@@ -72,15 +72,15 @@ cache:
   l1:
     enabled: true
     path: ~/.daari/cache/l1
-    similarity_threshold: 0.92
+    similarity_threshold: 0.88
     max_entries: 1000
     embedding_model: nomic-embed-text   # ollama pull nomic-embed-text
 ```
 
 **Validation baseline (2026-06-21):**
-- `.venv/bin/python -m pytest`: 122 passed, 1 skipped
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: 1 passed, 121 deselected
-- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 121 deselected
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: 125 passed
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: 1 passed, 124 deselected
+- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 124 deselected
 - `./scripts/demo.sh`: pass
 - `./scripts/bench.sh`: pass
 - Manual smoke: org shared-cache cross-instance hit, org-learning feedback/profile roundtrip, and `daari web-ui serve` dashboard load verified.

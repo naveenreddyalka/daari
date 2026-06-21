@@ -28,7 +28,9 @@ class TestDoctor:
         mock = MagicMock(spec=httpx.Client)
         tags_response = MagicMock()
         tags_response.status_code = 200
-        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        tags_response.json.return_value = {
+            "models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]
+        }
         stats_response = MagicMock()
         stats_response.status_code = 200
         stats_response.json.return_value = {"total_requests": 3}
@@ -43,6 +45,7 @@ class TestDoctor:
         assert by_name["model"].ok is True
         assert by_name["model_l4"].optional is True
         assert by_name["model_l5"].optional is True
+        assert by_name["embedding_model"].ok is True
         assert by_name["daemon"].ok is True
         assert by_name["org_cache"].ok is True
         assert doctor_exit_code(results) == 0
@@ -58,13 +61,16 @@ class TestDoctor:
         assert by_name["model"].ok is False
         assert by_name["model_l4"].ok is False
         assert by_name["model_l5"].ok is False
+        assert by_name["embedding_model"].ok is False
         assert doctor_exit_code(results) == 1
 
     def test_daemon_down_does_not_fail_exit(self, settings):
         mock = MagicMock(spec=httpx.Client)
         tags_response = MagicMock()
         tags_response.status_code = 200
-        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        tags_response.json.return_value = {
+            "models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]
+        }
 
         def get_side_effect(url):
             if url.endswith("/api/tags"):
@@ -80,6 +86,7 @@ class TestDoctor:
         assert by_name["model"].ok is True
         assert by_name["model_l4"].optional is True
         assert by_name["model_l5"].optional is True
+        assert by_name["embedding_model"].ok is True
         assert by_name["daemon"].ok is False
         assert by_name["daemon"].optional is True
         assert doctor_exit_code(results) == 0
@@ -97,6 +104,24 @@ class TestDoctor:
         assert by_name["model"].ok is False
         assert doctor_exit_code(results) == 1
 
+    def test_embedding_model_missing_is_optional_hint(self, settings):
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+
+        assert by_name["embedding_model"].ok is False
+        assert by_name["embedding_model"].optional is True
+        assert "required for L1 semantic cache" in by_name["embedding_model"].detail
+        assert doctor_exit_code(results) == 0
+
     def test_l4_model_missing_is_optional_hint(self, settings):
         settings = Settings.model_validate(
             {
@@ -107,7 +132,9 @@ class TestDoctor:
         mock = MagicMock(spec=httpx.Client)
         tags_response = MagicMock()
         tags_response.status_code = 200
-        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        tags_response.json.return_value = {
+            "models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]
+        }
         stats_response = MagicMock()
         stats_response.status_code = 200
         stats_response.json.return_value = {"total_requests": 0}
@@ -127,7 +154,9 @@ class TestDoctor:
         mock = MagicMock(spec=httpx.Client)
         tags_response = MagicMock()
         tags_response.status_code = 200
-        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        tags_response.json.return_value = {
+            "models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]
+        }
         stats_response = MagicMock()
         stats_response.status_code = 200
         stats_response.json.return_value = {"total_requests": 0}
@@ -152,7 +181,9 @@ class TestDoctor:
         mock = MagicMock(spec=httpx.Client)
         tags_response = MagicMock()
         tags_response.status_code = 200
-        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        tags_response.json.return_value = {
+            "models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]
+        }
         stats_response = MagicMock()
         stats_response.status_code = 200
         stats_response.json.return_value = {"total_requests": 0}
@@ -169,7 +200,9 @@ class TestDoctor:
         mock = MagicMock(spec=httpx.Client)
         tags_response = MagicMock()
         tags_response.status_code = 200
-        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        tags_response.json.return_value = {
+            "models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]
+        }
         stats_response = MagicMock()
         stats_response.status_code = 200
         stats_response.json.return_value = {"total_requests": 0}

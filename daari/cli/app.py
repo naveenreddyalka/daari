@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 import uvicorn
+import httpx
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,6 +45,15 @@ app.add_typer(context_app, name="context")
 app.add_typer(org_cache_app, name="org-cache")
 app.add_typer(org_learning_app, name="org-learning")
 app.add_typer(web_ui_app, name="web-ui")
+
+
+def _daemon_is_running(settings: Settings) -> bool:
+    url = f"http://{settings.server.host}:{settings.server.port}/health"
+    try:
+        response = httpx.get(url, timeout=1.0)
+    except Exception:
+        return False
+    return response.status_code == 200
 
 
 @app.command()
@@ -429,13 +439,19 @@ def context_clear(
     if not any((l0, l1, ccs)):
         typer.echo("Nothing selected; choose at least one cache to clear.", err=True)
         raise typer.Exit(code=1)
-    cleared = clear_context_caches(get_settings(), clear_l0=l0, clear_l1=l1, clear_ccs=ccs)
+    settings = get_settings()
+    daemon_running = _daemon_is_running(settings)
+    cleared = clear_context_caches(settings, clear_l0=l0, clear_l1=l1, clear_ccs=ccs)
     for row in cleared:
         if row.error:
             action = f"skipped ({row.error})"
         else:
             action = "cleared" if row.existed else "already empty"
         typer.echo(f"{row.name}: {action} ({row.path})")
+    if daemon_running:
+        typer.echo(
+            "Note: daari serve is running. Restart it now to ensure in-memory cache handles are refreshed."
+        )
 
 
 if __name__ == "__main__":
