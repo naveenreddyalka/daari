@@ -27,7 +27,7 @@ cache:
   l1:
     enabled: true
     path: ~/.daari/cache/l1
-    similarity_threshold: 0.92
+    similarity_threshold: 0.88
     max_entries: 1000
     embedding_model: nomic-embed-text
 

@@ -84,7 +84,7 @@ class SemanticCache:
         embedder: Embedder,
         *,
         enabled: bool = True,
-        similarity_threshold: float = 0.92,
+        similarity_threshold: float = 0.88,
         max_entries: int = 1000,
     ) -> None:
         self.enabled = enabled

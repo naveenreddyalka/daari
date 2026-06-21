@@ -37,7 +37,7 @@ class L0CacheSettings(BaseModel):
 class L1CacheSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/cache/l1"
-    similarity_threshold: float = 0.92
+    similarity_threshold: float = 0.88
     max_entries: int = 1000
     embedding_model: str = "nomic-embed-text"
 

@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 122 passed, 1 skipped (`.venv/bin/python -m pytest`)
+**Count:** 125 passed (`OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`)
 
 ---
 
@@ -163,6 +163,10 @@ pytest -m benchmark                 # optional latency checks
 | Enterprise scaffold | [x] | `daari/enterprise/` added with minimal `OrgSettings` models |
 | Enterprise E1 runtime scaffold | [x] | org cache path resolver + `daari serve --org` + `DAARI_ORG_ID` + doctor org check |
 | Enterprise E2 org shared cache service | [x] | `daari org-cache serve` + org cache client + router `L0-org/L1-org` lookup + write-through |
+| `context clear` stale-cache warning | [x] | prints restart note when daemon is running to avoid stale in-memory cache handles |
+| L1 semantic threshold + bench hardening | [x] | default threshold tuned to `0.88`; `scripts/bench.sh` now deterministically checks L0 and L1 |
+| Doctor embedding-model check | [x] | `daari doctor` now validates `cache.l1.embedding_model` (`nomic-embed-text`) |
+| PyPI publish prep | [x] | enriched `pyproject.toml` metadata + `.github/workflows/publish.yml` for PyPI/TestPyPI |
 
 ---
 

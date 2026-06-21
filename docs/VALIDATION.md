@@ -19,15 +19,17 @@
 
 ## Verification results
 
-- `.venv/bin/python -m pytest`: **122 passed, 1 skipped**
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: **1 passed, 121 deselected**
-- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 121 deselected**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: **125 passed**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: **1 passed, 124 deselected**
+- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 124 deselected**
 - `./scripts/demo.sh`: **pass**
 - `./scripts/bench.sh`: **pass**
 
 ## Manual smoke (local)
 
 - `@gitlab` trigger: **pass** (`provider_id=integration:gitlab`, token-missing warning when key absent)
+- `daari context clear`: **pass** (prints restart warning when daemon is active to avoid stale in-memory cache handles)
+- `daari doctor`: **pass** (now includes optional embedding-model check for `nomic-embed-text`)
 - Org mode serve: **pass** (`daari serve --org acme --port 11535`, org cache root resolved and used)
 - Org cache service: **pass** (`daari org-cache serve --org acme --port 11436`, `GET/PUT/stats` happy path + auth checks)
 - Org learning service: **pass** (`POST /v1/org-learning/feedback`, `GET/PUT /v1/org-learning/profile`, admin token gate verified)

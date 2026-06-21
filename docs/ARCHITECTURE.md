@@ -105,7 +105,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/clients/intellij/recipe.py` | IntelliJ helper config patch / undo / dry-run | ✅ minimal |
 | `daari/clients/vscode/recipe.py` | VS Code settings patch / undo / dry-run | ✅ minimal |
 | `daari/clients/claude_code/recipe.py` | claude-code env helper + config pointer dry-run/apply/undo | ✅ minimal |
-| `daari/setup/doctor.py` | Health checks (Python, config, Ollama, org cache, daemon) | ✅ |
+| `daari/setup/doctor.py` | Health checks (Python, config, Ollama models including embedding model, org cache, daemon) | ✅ |
 | `daari/setup/wizard.py` | Interactive `daari setup` | ✅ |
 | `daari/setup/backup.py` | Backup / restore for setup recipes | ✅ |
 | `daari/setup/jsonc.py` | JSONC read/write for Cursor config | ✅ |
@@ -222,7 +222,7 @@ flowchart LR
 | `daari setup models [--tier] [--model] [--list]` | Map tier → Ollama model in user config |
 | `daari setup openai-compat` | Print OPENAI_* exports + write `~/.daari/.env.example` |
 | `daari setup frontier-key` | Optional shell/profile frontier key hint (no secret persistence) |
-| `daari context clear [--l0/--l1/--ccs]` | Clear L0/L1/CCS caches |
+| `daari context clear [--l0/--l1/--ccs]` | Clear L0/L1/CCS caches and warn to restart daemon when running |
 
 Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 
@@ -260,7 +260,7 @@ Org learning endpoints (same service host):
 |--------|---------|
 | `./scripts/install.sh` | Create venv, `pip install -e ".[dev]"`, Ollama model hint |
 | `./scripts/demo.sh` | Full smoke: install, serve, double curl (L0 hit), stats, setup dry-run |
-| `./scripts/bench.sh` | Tier latency benchmark helper (L0/L1/L2/Lt/L3) |
+| `./scripts/bench.sh` | Tier latency benchmark helper (L0/L1/L2/Lt/L3) with robust uncached prompt seeding |
 
 ---
 
