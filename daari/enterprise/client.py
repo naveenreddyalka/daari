@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,8 @@ class OrgCacheClient:
     base_url: str
     token: str | None = None
     timeout_seconds: float = 1.0
+    max_retries: int = 2
+    backoff_seconds: float = 0.2
     enabled: bool = True
     transport: httpx.AsyncBaseTransport | None = None
 
@@ -34,18 +37,43 @@ class OrgCacheClient:
             return {}
         return {"Authorization": f"Bearer {self.token}"}
 
+    async def _request_with_retries(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, str] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> httpx.Response | None:
+        attempts = max(1, self.max_retries + 1)
+        for attempt in range(attempts):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
+                    return await client.request(
+                        method,
+                        url,
+                        params=params,
+                        json=json_body,
+                        headers=self._auth_headers(),
+                    )
+            except Exception:
+                if attempt + 1 >= attempts:
+                    return None
+                wait_seconds = self.backoff_seconds * (2**attempt)
+                if wait_seconds > 0:
+                    await asyncio.sleep(wait_seconds)
+        return None
+
     async def _get(self, key: str, *, tier: str) -> str | None:
         if not self.enabled:
             return None
         url = f"{self.base_url.rstrip('/')}/v1/org-cache/get"
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
-                response = await client.get(
-                    url,
-                    params={"key": key, "tier": tier},
-                    headers=self._auth_headers(),
-                )
-        except Exception:
+        response = await self._request_with_retries(
+            "GET",
+            url,
+            params={"key": key, "tier": tier},
+        )
+        if response is None:
             return None
         if response.status_code != 200:
             return None
@@ -65,11 +93,7 @@ class OrgCacheClient:
             "tier": tier,
             "metadata": metadata or {},
         }
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
-                await client.put(url, json=body, headers=self._auth_headers())
-        except Exception:
-            return
+        _ = await self._request_with_retries("PUT", url, json_body=body)
 
     async def get_l0(self, request: InternalRequest) -> InternalResponse | None:
         raw = await self._get(org_l0_key(request), tier="L0")
@@ -109,15 +133,11 @@ class OrgCacheClient:
         if not self.enabled:
             return None
         url = f"{self.base_url.rstrip('/')}/v1/org-cache/stats"
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds, transport=self.transport) as client:
-                response = await client.get(url, headers=self._auth_headers())
-                if response.status_code != 200:
-                    return None
-                payload = response.json()
-                return payload if isinstance(payload, dict) else None
-        except Exception:
+        response = await self._request_with_retries("GET", url)
+        if response is None or response.status_code != 200:
             return None
+        payload = response.json()
+        return payload if isinstance(payload, dict) else None
 
 
 class OrgLearningFeedback(BaseModel):

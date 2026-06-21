@@ -17,7 +17,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.ctx = AppContext.from_settings(resolved)
-        yield
+        app.state.ctx.start_org_learning_sync()
+        try:
+            yield
+        finally:
+            await app.state.ctx.stop_org_learning_sync()
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.include_router(create_gateway_router())

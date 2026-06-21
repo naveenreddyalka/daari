@@ -5,7 +5,7 @@ import json
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable
 
@@ -829,6 +829,7 @@ class AppContext:
     router: Router
     org_cache_client: OrgCacheClient | None = None
     org_learning_client: OrgLearningClient | None = None
+    org_learning_sync_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -890,6 +891,66 @@ class AppContext:
             "ccs_path": str(context_path),
         }
 
+    def _apply_org_learning_profile(self, profile: dict[str, object] | None) -> bool:
+        if not isinstance(profile, dict):
+            return False
+        routing_block = profile.get("routing")
+        if not isinstance(routing_block, dict):
+            return False
+        changed = False
+        prefer = routing_block.get("prefer")
+        threshold = routing_block.get("confidence_threshold")
+        if isinstance(prefer, str) and prefer != self.router.model_preference:
+            self.router.model_preference = prefer
+            changed = True
+        if isinstance(threshold, (int, float)):
+            threshold_value = float(threshold)
+            if threshold_value != self.router.confidence_threshold:
+                self.router.confidence_threshold = threshold_value
+                changed = True
+        return changed
+
+    def sync_org_learning_profile_startup(self) -> bool:
+        if self.org_learning_client is None:
+            return False
+        profile = self.org_learning_client.get_profile_sync()
+        return self._apply_org_learning_profile(profile)
+
+    async def sync_org_learning_profile_once(self) -> bool:
+        if self.org_learning_client is None:
+            return False
+        profile = await self.org_learning_client.get_profile()
+        return self._apply_org_learning_profile(profile)
+
+    def start_org_learning_sync(self) -> None:
+        if self.org_learning_client is None:
+            return
+        interval = float(self.settings.enterprise.learning_sync_seconds)
+        if interval <= 0:
+            return
+        if self.org_learning_sync_task is not None and not self.org_learning_sync_task.done():
+            return
+
+        async def _sync_loop() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(interval)
+                    await self.sync_org_learning_profile_once()
+            except asyncio.CancelledError:
+                return
+
+        self.org_learning_sync_task = asyncio.create_task(_sync_loop())
+
+    async def stop_org_learning_sync(self) -> None:
+        if self.org_learning_sync_task is None:
+            return
+        self.org_learning_sync_task.cancel()
+        try:
+            await self.org_learning_sync_task
+        except asyncio.CancelledError:
+            pass
+        self.org_learning_sync_task = None
+
     @classmethod
     def from_settings(cls, settings: Settings) -> AppContext:
         l0_path = settings.l0_cache_path
@@ -916,20 +977,6 @@ class AppContext:
                 timeout_seconds=settings.enterprise.learning_timeout_seconds,
                 enabled=True,
             )
-        routing_prefer = settings.routing.prefer
-        confidence_threshold = settings.routing.confidence_threshold
-        if org_learning_client is not None:
-            profile = org_learning_client.get_profile_sync()
-            if isinstance(profile, dict):
-                routing_block = profile.get("routing")
-                if isinstance(routing_block, dict):
-                    prefer = routing_block.get("prefer")
-                    threshold = routing_block.get("confidence_threshold")
-                    if isinstance(prefer, str):
-                        routing_prefer = prefer
-                    if isinstance(threshold, (int, float)):
-                        confidence_threshold = float(threshold)
-
         cache = ExactCache(
             path=str(l0_path),
             enabled=settings.cache.l0.enabled,
@@ -1011,7 +1058,7 @@ class AppContext:
             shell_executor=shell_executor,
             policy=policy,
             provider_registry=providers,
-            model_preference=routing_prefer,
+            model_preference=settings.routing.prefer,
             model_weights=settings.models.weights,
             integration_triggers={
                 "integration:sourcegraph": settings.integrations.sourcegraph.triggers,
@@ -1023,9 +1070,9 @@ class AppContext:
             org_learning_client=org_learning_client,
             org_learning_enabled=learning_enabled,
             frontier_enabled=settings.frontier.enabled,
-            confidence_threshold=confidence_threshold,
+            confidence_threshold=settings.routing.confidence_threshold,
         )
-        return cls(
+        context = cls(
             settings=settings,
             cache=cache,
             semantic_cache=semantic_cache,
@@ -1042,3 +1089,5 @@ class AppContext:
             org_cache_client=org_cache_client,
             org_learning_client=org_learning_client,
         )
+        context.sync_org_learning_profile_startup()
+        return context

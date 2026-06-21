@@ -107,6 +107,27 @@ async def test_reload_caches_endpoint_refreshes_app_context_handles(app, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_org_learning_sync_endpoint_refreshes_profile(app, monkeypatch):
+    async def fake_sync() -> bool:
+        app.state.ctx.router.model_preference = "accuracy"
+        app.state.ctx.router.confidence_threshold = 0.81
+        return True
+
+    monkeypatch.setattr(app.state.ctx, "sync_org_learning_profile_once", fake_sync)
+    app.state.ctx.org_learning_client = object()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/org-learning/sync")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["changed"] is True
+    assert payload["routing"]["prefer"] == "accuracy"
+    assert payload["routing"]["confidence_threshold"] == 0.81
+
+
+@pytest.mark.asyncio
 async def test_anthropic_messages_adapter_routes_to_daari(app, monkeypatch):
     async def fake_execute(request: InternalRequest) -> InternalResponse:
         return InternalResponse(

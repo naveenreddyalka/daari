@@ -149,7 +149,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 |------|---------|--------|
 | `evals/routing/prompts.jsonl` | Golden prompt fixtures for routing evals | ✅ |
 | `packages/README.md` | Placeholder for future browser ext / web UI | ✅ |
-| `packages/browser-extension/` | Browser extension MVP popup bridge to local daemon (`:11435`) | ✅ MVP |
+| `packages/browser-extension/` | Browser extension popup bridge + options page for daemon URL (`:11435` default) | ✅ |
 | `packages/web-ui/README.md` | Web UI runtime docs (table + chart + auto-refresh controls) | ✅ |
 | `CONTEXT.md` | Agent/session handoff | ✅ |
 
@@ -208,6 +208,7 @@ flowchart LR
 | `daari serve [--host] [--port] [--no-frontier] [--org]` | Start HTTP daemon (default `127.0.0.1:11435`) |
 | `daari org-cache serve [--org] [--port] [--require-token]` | Start org shared-cache + learning service (default `127.0.0.1:11436`) |
 | `daari org-learning stats` | Show aggregated org learning metrics |
+| `daari org-learning sync` | Force the running daemon to refresh org-learning routing profile |
 | `daari org-learning export [-o FILE]` | Export anonymized org learning summary |
 | `daari stats [--host] [--port]` | Fetch tier counters from running daemon |
 | `daari doctor` | Check Python, config, Ollama, model, optional daemon |
@@ -254,6 +255,7 @@ Org learning endpoints (same service host):
 | `POST` | `/v1/org-learning/feedback` | Ingest anonymized routing feedback metadata |
 | `GET` | `/v1/org-learning/profile` | Read aggregated org routing profile |
 | `PUT` | `/v1/org-learning/profile` | Admin override for org routing profile (token-gated) |
+| `POST` | `/v1/org-learning/sync` | Force profile refresh in running daemon app context |
 
 ### Scripts
 
@@ -262,6 +264,7 @@ Org learning endpoints (same service host):
 | `./scripts/install.sh` | Create venv, `pip install -e ".[dev]"`, Ollama model hint |
 | `./scripts/demo.sh` | Full smoke: install, serve, double curl (L0 hit), stats, setup dry-run |
 | `./scripts/bench.sh` | Tier latency benchmark helper (L0/L1/L2/Lt/L3) with robust uncached prompt seeding |
+| `./scripts/smoke-cursor-dry-run.sh` | CI-friendly `daari setup cursor --dry-run` smoke command |
 
 ---
 
@@ -273,9 +276,9 @@ Org learning endpoints (same service host):
 | Tiers | L0 exact, CCS, L1 semantic, L2 rules, L2-dev, Lt, L3, L4, L5 wiring, L6 | L5 model auto-provision and tuning |
 | Router | Full Phase B.0 pipeline + policy + no-frontier behavior + ask/confirm metadata + minimal L2-live fetch | broader B.1 command profiles |
 | Setup | Cursor + IntelliJ + VS Code + claude-code recipes, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | deeper IDE-native integrations |
-| Providers | Registry + model providers + Sourcegraph GraphQL/GHE REST integration calls | GitLab provider and richer corp plugin surfaces |
+| Providers | Registry + model providers + Sourcegraph/GHE/GitLab integration calls | richer corp plugin surfaces |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
-| Enterprise | ADR-0014 + org shared-cache + org learning feedback/profile sync | periodic profile refresh and advanced E4+ controls |
+| Enterprise | ADR-0014 + org shared-cache + startup/periodic org profile sync + force-sync endpoint/CLI | advanced E4+ controls |
 | Packages | README + browser-extension scaffold | web-ui, intellij-plugin, extension runtime code |
 
 Source of truth for “done”: [TRACKING.md](TRACKING.md) task tables + `daari/` tree + pytest.

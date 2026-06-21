@@ -28,11 +28,14 @@ class OrgSettings(BaseModel):
     shared_cache_token: str | None = None
     shared_cache_require_token: bool = False
     shared_cache_timeout_seconds: float = 1.0
+    shared_cache_max_retries: int = 2
+    shared_cache_backoff_seconds: float = 0.2
     shared_cache_path: str | None = None
     learning_enabled: bool = False
     learning_url: str | None = None
     learning_token: str | None = None
     learning_timeout_seconds: float = 0.5
+    learning_sync_seconds: float = 300.0
     learning_path: str | None = None
     policy_overrides: dict[str, Any] = Field(default_factory=dict)
     profile: str = "developer"
