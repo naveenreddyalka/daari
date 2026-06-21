@@ -2,7 +2,7 @@
 
 > **Open-source local execution router** — run cheaply on your machine, not in the cloud.
 
-**Status:** v1.0 prep complete (local-first core + C3 integrations + E1 org scaffold) — [tracker](docs/TRACKING.md) · [validation](docs/VALIDATION.md) · [release checklist](docs/RELEASE-v1.0.md)
+**Status:** v1.1.0 ready (local-first core + C3 integrations + enterprise E2/E3 + web UI MVP) — [tracker](docs/TRACKING.md) · [validation](docs/VALIDATION.md) · [release notes](docs/RELEASE-v1.1.md)
 
 Route dev agent work through local tiers (cache → IDE tools → local AI) instead of frontier APIs. **Not a proxy** — a cost optimizer you own.
 
@@ -33,13 +33,14 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 
 Run the same curl twice — the second response should show `"tier": "L0"` in `daari_meta`.
 
-## Feature snapshot (v1.0)
+## Feature snapshot (v1.1.0)
 
 - Local-first routing chain with cache/rules/tooling/model tiers (`L0`, `L1`, `CCS`, `L2`, `Lt`, `L3-L6`)
 - OpenAI-compatible and Anthropic-compatible gateways with SSE streaming support
 - MCP ingress with `tools/list` + `tools/call`, schema-aware input validation, and structured errors
 - C3 integration providers: Sourcegraph, GitHub Enterprise, and GitLab self-hosted trigger routing
-- Enterprise E1 runtime scaffold: org-aware cache paths via `DAARI_ORG_ID` or `daari serve --org <id>`
+- Enterprise E1/E2/E3 runtime: org mode, shared-cache service, learning feedback/profile APIs, CLI stats/export
+- Local stats dashboard: `daari web-ui serve` (`packages/web-ui/`)
 - Setup and health tooling: `daari setup ...`, `daari doctor`, `daari install`, demo + bench scripts
 
 ## Docs

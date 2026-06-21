@@ -9,8 +9,8 @@
 
 ## Current phase
 
-**Phase C3 slice** (in progress)  
-Phase A/A.1 complete and B.1/C1/C2 depth landed. Current slice adds **Sourcegraph/GHE provider depth**, **router integration prefixes**, **MCP `tools/list` + `tools/call`**, **profile + skills stubs**, **Anthropic stream fallback**, and **web UI / enterprise scaffolds**.
+**v1.1.0 release candidate**  
+Phase A/A.1/B/C3 baseline is complete, with enterprise E2/E3 delivered and a working web UI MVP (`daari web-ui serve`) for runtime stats.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -57,13 +57,13 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 **Separate repo:** `agent-skills` only — reusable skills, not daari runtime.
 
-## Next tasks (remaining Phase C / follow-up)
+## Next tasks (post-v1.1.0)
 
-1. **GitLab provider** parity for C3 enterprise integrations
-2. **Lt B.1 profiles** (project/path command templates + richer confirmations)
-3. Optional: improve bench script resilience when model path is unavailable
-4. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
-5. Enterprise E1 bootstrap command + config docs
+1. **Periodic org profile refresh** after startup (currently startup-sync only)
+2. **Org L1 semantic matching depth** in shared service (current tracer bullet is key-based)
+3. **Lt B.1 profiles** (project/path command templates + richer confirmations)
+4. Optional: improve bench script resilience when model path is unavailable
+5. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -78,12 +78,12 @@ cache:
 ```
 
 **Validation baseline (2026-06-21):**
-- `.venv/bin/python -m pytest -m "not integration and not benchmark"`: 92 passed, 2 deselected
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: 94 passed
-- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 93 deselected
+- `.venv/bin/python -m pytest`: 122 passed, 1 skipped
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: 1 passed, 121 deselected
+- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 121 deselected
 - `./scripts/demo.sh`: pass
 - `./scripts/bench.sh`: pass
-- Manual smoke: MCP `tools/list`/`tools/call`, `@sourcegraph`/`@ghe` prefix routing, Anthropic stream events, and `DAARI_PROFILE` merge path verified; integration tests cover token-mocked provider behavior and stream fallback.
+- Manual smoke: org shared-cache cross-instance hit, org-learning feedback/profile roundtrip, and `daari web-ui serve` dashboard load verified.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 
