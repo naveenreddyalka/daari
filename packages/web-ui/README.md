@@ -21,6 +21,8 @@ daari web-ui serve --api-base-url http://127.0.0.1:11535
 
 - `GET /v1/daari/stats` summary (`total_requests`, `errors`)
 - Tier breakdown table (`count`, `p50_ms`, `p95_ms`)
+- Tier count bar chart for quick visual distribution
+- Auto-refresh controls (on/off + refresh interval)
 - Optional org-learning metrics from `GET /v1/org-learning/profile` when reachable
 
 ## Files

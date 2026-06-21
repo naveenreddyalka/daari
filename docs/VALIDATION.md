@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
-> Date: 2026-06-21  
-> Scope: v1.1.0 readiness (v1.0 baseline + E2/E3 org runtime + web-ui MVP)
+> Date: 2026-06-20  
+> Scope: v1.1.1 release + post-release phase continuations (hot cache reload, browser extension MVP, web-ui refresh/chart)
 
 ## v1.0 readiness score
 
@@ -19,16 +19,18 @@
 
 ## Verification results
 
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: **125 passed**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: **127 passed**
 - `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: **1 passed, 124 deselected**
 - `.venv/bin/python -m pytest -m benchmark`: **1 passed, 124 deselected**
 - `./scripts/demo.sh`: **pass**
-- `./scripts/bench.sh`: **pass**
+- `./scripts/bench.sh`: **pass** (daemon-backed run)
 
 ## Manual smoke (local)
 
 - `@gitlab` trigger: **pass** (`provider_id=integration:gitlab`, token-missing warning when key absent)
 - `daari context clear`: **pass** (prints restart warning when daemon is active to avoid stale in-memory cache handles)
+- `POST /v1/daari/reload-caches`: **pass** (refreshes in-memory cache handles on running daemon)
+- `daari context clear` with daemon running: **pass** (invokes reload endpoint, falls back to restart note when reload fails)
 - `daari doctor`: **pass** (now includes optional embedding-model check for `nomic-embed-text`)
 - Org mode serve: **pass** (`daari serve --org acme --port 11535`, org cache root resolved and used)
 - Org cache service: **pass** (`daari org-cache serve --org acme --port 11436`, `GET/PUT/stats` happy path + auth checks)
@@ -38,7 +40,8 @@
 - Manual feedback-to-profile check: **pass** (high-latency feedback flipped profile `prefer` to `latency`, router consumed merged profile)
 - Cross-instance shared cache hit: **pass** (instance A `L3` write-through, instance B `L0-org` hit for same prompt)
 - MCP validation error path: **pass** (`tools/call` invalid schema input returns `MCP_ERR_SCHEMA_VALIDATION`)
-- Web UI serve + index route: **pass** (`daari web-ui serve`, dashboard returns HTTP 200)
+- Web UI serve + index route: **pass** (`daari web-ui serve`, dashboard returns HTTP 200; auto-refresh and tier chart rendered)
+- Browser extension MVP files: **pass** (MV3 manifest + popup runtime assets loadable from `packages/browser-extension/`)
 
 ## Performance summary
 
@@ -46,10 +49,10 @@ From `./scripts/bench.sh`:
 
 | Tier/path | Observed p50 latency |
 |-----------|----------------------|
-| L3 local model | ~4148.6 ms |
-| L0/L1 cache path | ~43-44 ms |
-| L2 rules | ~36.1 ms |
-| Lt command | ~66.7 ms |
+| L3 local model | ~865.9 ms |
+| L0/L1 cache path | ~278-831 ms (environment resolved to L3 in this run) |
+| L2 rules | ~52.3 ms |
+| Lt command | ~60.6 ms |
 
 ## Deferred post-v1.0
 

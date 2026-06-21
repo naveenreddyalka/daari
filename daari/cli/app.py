@@ -56,6 +56,19 @@ def _daemon_is_running(settings: Settings) -> bool:
     return response.status_code == 200
 
 
+def _daemon_reload_caches(settings: Settings) -> tuple[bool, str]:
+    url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/reload-caches"
+    try:
+        response = httpx.post(url, timeout=2.0)
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, dict) and payload.get("status") == "ok":
+            return True, "in-memory cache handles refreshed"
+        return False, "daemon returned unexpected response payload"
+    except Exception as exc:
+        return False, str(exc)
+
+
 @app.command()
 def serve(
     host: str | None = typer.Option(None, help="Bind host"),
@@ -449,9 +462,14 @@ def context_clear(
             action = "cleared" if row.existed else "already empty"
         typer.echo(f"{row.name}: {action} ({row.path})")
     if daemon_running:
-        typer.echo(
-            "Note: daari serve is running. Restart it now to ensure in-memory cache handles are refreshed."
-        )
+        reloaded, detail = _daemon_reload_caches(settings)
+        if reloaded:
+            typer.echo("Daemon cache handles refreshed via /v1/daari/reload-caches.")
+        else:
+            typer.echo(f"Cache reload endpoint failed: {detail}")
+            typer.echo(
+                "Note: daari serve is running. Restart it now to ensure in-memory cache handles are refreshed."
+            )
 
 
 if __name__ == "__main__":

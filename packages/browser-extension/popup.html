@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>daari prompt bridge</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>daari</h1>
+      <p class="subtle">Send a prompt to local daari (`:11435`).</p>
+      <textarea id="prompt" rows="7" placeholder="Ask daari..."></textarea>
+      <button id="send" type="button">Send</button>
+      <p id="status" class="subtle">Idle</p>
+      <section>
+        <h2>Response</h2>
+        <pre id="response">-</pre>
+      </section>
+      <section>
+        <h2>Tier metadata</h2>
+        <pre id="meta">-</pre>
+      </section>
+    </main>
+    <script src="./popup.js"></script>
+  </body>
+</html>

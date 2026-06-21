@@ -413,11 +413,41 @@ class TestSetupCLI:
             ),
         )
         monkeypatch.setattr("daari.cli.app._daemon_is_running", lambda _settings: True)
+        monkeypatch.setattr("daari.cli.app._daemon_reload_caches", lambda _settings: (False, "boom"))
 
         runner = CliRunner()
         result = runner.invoke(app, ["context", "clear"])
         assert result.exit_code == 0
+        assert "Cache reload endpoint failed" in result.stdout
         assert "Restart it now" in result.stdout
+
+    def test_context_clear_refreshes_running_daemon_cache_handles(self, tmp_path, monkeypatch):
+        l0 = tmp_path / "cache" / "l0"
+        l1 = tmp_path / "cache" / "l1"
+        ccs = tmp_path / "context" / "commands"
+        for root in (l0, l1, ccs):
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "artifact.txt").write_text("x", encoding="utf-8")
+
+        monkeypatch.setattr(
+            "daari.cli.app.get_settings",
+            lambda: Settings.model_validate(
+                {
+                    "cache": {
+                        "l0": {"enabled": True, "path": str(l0)},
+                        "l1": {"enabled": True, "path": str(l1)},
+                    },
+                    "context": {"enabled": True, "path": str(ccs)},
+                }
+            ),
+        )
+        monkeypatch.setattr("daari.cli.app._daemon_is_running", lambda _settings: True)
+        monkeypatch.setattr("daari.cli.app._daemon_reload_caches", lambda _settings: (True, "ok"))
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["context", "clear"])
+        assert result.exit_code == 0
+        assert "Daemon cache handles refreshed via /v1/daari/reload-caches." in result.stdout
 
     def test_install_forwards_optional_pull_flags(self, monkeypatch):
         captured = {}

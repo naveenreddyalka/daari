@@ -89,6 +89,24 @@ async def test_no_cache_header_skips_l0(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_reload_caches_endpoint_refreshes_app_context_handles(app, monkeypatch):
+    monkeypatch.setattr(
+        app.state.ctx,
+        "reload_cache_handles",
+        lambda: {"reloaded": True, "l0_path": "/tmp/l0", "l1_path": "/tmp/l1", "ccs_path": "/tmp/ccs"},
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/daari/reload-caches")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["reloaded"] is True
+    assert payload["l0_path"] == "/tmp/l0"
+
+
+@pytest.mark.asyncio
 async def test_anthropic_messages_adapter_routes_to_daari(app, monkeypatch):
     async def fake_execute(request: InternalRequest) -> InternalResponse:
         return InternalResponse(

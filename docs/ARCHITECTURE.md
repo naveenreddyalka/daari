@@ -111,7 +111,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/setup/jsonc.py` | JSONC read/write for Cursor config | ✅ |
 | `daari/setup/models.py` | `daari setup models` — tier → Ollama model | ✅ |
 | `daari/setup/openai_compat.py` | `setup openai-compat` + frontier env/profile hints | ✅ |
-| `daari/setup/context.py` | `daari context clear` cache invalidation helper | ✅ |
+| `daari/setup/context.py` | `daari context clear` cache invalidation helper + daemon cache-handle reload support | ✅ |
 
 **Not in tree (spec / later phases):** IntelliJ plugin backend, enterprise runtime providers.
 
@@ -149,8 +149,8 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 |------|---------|--------|
 | `evals/routing/prompts.jsonl` | Golden prompt fixtures for routing evals | ✅ |
 | `packages/README.md` | Placeholder for future browser ext / web UI | ✅ |
-| `packages/browser-extension/` | Browser extension scaffold with MV3 placeholder manifest | ✅ scaffold |
-| `packages/web-ui/README.md` | Minimal web UI scaffold placeholder | ✅ scaffold |
+| `packages/browser-extension/` | Browser extension MVP popup bridge to local daemon (`:11435`) | ✅ MVP |
+| `packages/web-ui/README.md` | Web UI runtime docs (table + chart + auto-refresh controls) | ✅ |
 | `CONTEXT.md` | Agent/session handoff | ✅ |
 
 ---
@@ -222,7 +222,7 @@ flowchart LR
 | `daari setup models [--tier] [--model] [--list]` | Map tier → Ollama model in user config |
 | `daari setup openai-compat` | Print OPENAI_* exports + write `~/.daari/.env.example` |
 | `daari setup frontier-key` | Optional shell/profile frontier key hint (no secret persistence) |
-| `daari context clear [--l0/--l1/--ccs]` | Clear L0/L1/CCS caches and warn to restart daemon when running |
+| `daari context clear [--l0/--l1/--ccs]` | Clear L0/L1/CCS caches and auto-refresh running daemon cache handles |
 
 Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 
@@ -233,6 +233,7 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat (supports basic SSE streaming passthrough) |
 | `POST` | `/v1/messages` | Anthropic-compatible messages adapter (non-stream + SSE `stream: true`) |
 | `POST` | `/v1/mcp/query` | MCP ingress endpoint (`health`, `stats`, `route`, `sourcegraph`, `ghe`, `tools/list`, `tools/call`) |
+| `POST` | `/v1/daari/reload-caches` | Reload in-memory L0/L1/CCS handles from current settings |
 | `GET` | `/v1/daari/stats` | Tier metrics snapshot |
 | `GET` | `/health` | Liveness |
 
