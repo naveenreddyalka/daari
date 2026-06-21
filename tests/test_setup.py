@@ -15,7 +15,10 @@ from daari.clients.cursor.recipe import (
     DAARI_MARKER_KEY,
     CursorSetupRecipe,
 )
+from daari.clients.claude_code.recipe import ClaudeCodeSetupRecipe
 from daari.clients.intellij.recipe import IntelliJSetupRecipe
+from daari.clients.vscode.recipe import DAARI_MARKER_KEY as VSCODE_MARKER_KEY
+from daari.clients.vscode.recipe import VSCodeSetupRecipe
 from daari.config.settings import Settings
 from daari.setup.backup import create_backup, latest_backup, restore_latest_backup
 from daari.setup.models import fetch_ollama_models, write_models_config
@@ -82,6 +85,42 @@ def intellij_recipe(intellij_home, monkeypatch):
         return [intellij_home / "JetBrains"]
 
     monkeypatch.setattr(IntelliJSetupRecipe, "_jetbrains_roots", fake_roots)
+    return recipe
+
+
+@pytest.fixture
+def vscode_home(tmp_path):
+    user_dir = tmp_path / "Code" / "User"
+    user_dir.mkdir(parents=True)
+    settings = user_dir / "settings.json"
+    settings.write_text('{"editor.formatOnSave": true}\n', encoding="utf-8")
+    return tmp_path
+
+
+@pytest.fixture
+def vscode_recipe(vscode_home, monkeypatch):
+    recipe = VSCodeSetupRecipe()
+
+    def fake_candidate_paths(self):
+        return [vscode_home / "Code" / "User" / "settings.json"]
+
+    monkeypatch.setattr(VSCodeSetupRecipe, "_candidate_paths", fake_candidate_paths)
+    monkeypatch.setattr(VSCodeSetupRecipe, "detect", lambda self: True)
+    return recipe
+
+
+@pytest.fixture
+def claude_home(tmp_path):
+    home = tmp_path / ".claude"
+    home.mkdir(parents=True)
+    return tmp_path
+
+
+@pytest.fixture
+def claude_recipe(claude_home, monkeypatch):
+    recipe = ClaudeCodeSetupRecipe()
+    monkeypatch.setattr("daari.clients.claude_code.recipe.Path.home", lambda: claude_home)
+    monkeypatch.setattr("daari.clients.claude_code.recipe.shutil.which", lambda _: "/usr/local/bin/claude")
     return recipe
 
 
@@ -228,19 +267,49 @@ class TestSetupCLI:
         assert "Intellij detected: yes" in result.stdout
         assert "Dry-run complete" in result.stdout
 
-    def test_setup_all_runs_known_recipes(self, recipe, intellij_recipe, monkeypatch):
+    def test_setup_vscode_dry_run(self, vscode_recipe, monkeypatch):
         from daari.clients.registry import ClientRegistry
 
         registry = ClientRegistry()
+        registry.register(vscode_recipe)
+        monkeypatch.setattr("daari.cli.setup_actions.default_registry", lambda: registry)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "vscode", "--dry-run"])
+        assert result.exit_code == 0
+        assert "Vscode detected: yes" in result.stdout
+        assert "Dry-run complete" in result.stdout
+
+    def test_setup_claude_code_dry_run(self, claude_recipe, monkeypatch):
+        from daari.clients.registry import ClientRegistry
+
+        registry = ClientRegistry()
+        registry.register(claude_recipe)
+        monkeypatch.setattr("daari.cli.setup_actions.default_registry", lambda: registry)
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "claude-code", "--dry-run"])
+        assert result.exit_code == 0
+        assert "Claude-code detected: yes" in result.stdout
+        assert "Dry-run complete" in result.stdout
+
+    def test_setup_all_runs_known_recipes(self, recipe, intellij_recipe, vscode_recipe, claude_recipe, monkeypatch):
+        from daari.clients.registry import ClientRegistry
+
+        registry = ClientRegistry()
+        registry.register(claude_recipe)
         registry.register(recipe)
         registry.register(intellij_recipe)
+        registry.register(vscode_recipe)
         monkeypatch.setattr("daari.cli.setup_actions.default_registry", lambda: registry)
 
         runner = CliRunner()
         result = runner.invoke(app, ["setup", "all", "--dry-run"])
         assert result.exit_code == 0
+        assert "== claude-code ==" in result.stdout
         assert "== cursor ==" in result.stdout
         assert "== intellij ==" in result.stdout
+        assert "== vscode ==" in result.stdout
 
     def test_setup_undo_missing_backup(self, tmp_path, monkeypatch):
         monkeypatch.setattr(
@@ -356,5 +425,36 @@ class TestIntelliJSetupApply:
     def test_apply_idempotent(self, intellij_recipe, backup_root):
         intellij_recipe.apply(backup_root=backup_root)
         second = intellij_recipe.apply(backup_root=backup_root)
+        assert second.changed is False
+        assert "already configured" in second.message
+
+
+class TestVSCodeSetupApply:
+    def test_apply_writes_settings(self, vscode_recipe, backup_root):
+        result = vscode_recipe.apply(backup_root=backup_root)
+        assert result.changed is True
+        payload = json.loads(Path(result.files_changed[0]).read_text(encoding="utf-8"))
+        assert payload["openai.baseUrl"] == "http://127.0.0.1:11435/v1"
+        assert payload[VSCODE_MARKER_KEY]["model"] == "daari"
+
+    def test_apply_idempotent(self, vscode_recipe, backup_root):
+        vscode_recipe.apply(backup_root=backup_root)
+        second = vscode_recipe.apply(backup_root=backup_root)
+        assert second.changed is False
+        assert "already configured" in second.message
+
+
+class TestClaudeCodeSetupApply:
+    def test_apply_writes_env_and_pointer(self, claude_recipe, backup_root):
+        result = claude_recipe.apply(backup_root=backup_root)
+        assert result.changed is True
+        env_file = Path(result.files_changed[0])
+        pointer = Path(result.files_changed[1])
+        assert "OPENAI_BASE_URL=http://127.0.0.1:11435/v1" in env_file.read_text(encoding="utf-8")
+        assert "env_file=" in pointer.read_text(encoding="utf-8")
+
+    def test_apply_idempotent(self, claude_recipe, backup_root):
+        claude_recipe.apply(backup_root=backup_root)
+        second = claude_recipe.apply(backup_root=backup_root)
         assert second.changed is False
         assert "already configured" in second.message

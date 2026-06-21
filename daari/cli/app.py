@@ -8,7 +8,13 @@ from pathlib import Path
 import typer
 import uvicorn
 
-from daari.cli.setup_actions import apply_all_setups, apply_cursor_setup, apply_intellij_setup
+from daari.cli.setup_actions import (
+    apply_all_setups,
+    apply_claude_code_setup,
+    apply_cursor_setup,
+    apply_intellij_setup,
+    apply_vscode_setup,
+)
 from daari.config.settings import get_settings
 from daari.server.app import create_app
 from daari.setup.context import clear_context_caches
@@ -182,6 +188,40 @@ def setup_intellij(
 ) -> None:
     """Configure IntelliJ helpers for daari OpenAI-compatible setup."""
     apply_intellij_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("vscode")
+def setup_vscode(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show planned changes without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-apply even when already configured.",
+    ),
+) -> None:
+    """Configure VS Code settings for daari OpenAI-compatible setup."""
+    apply_vscode_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("claude-code")
+def setup_claude_code(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show planned changes without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-apply even when already configured.",
+    ),
+) -> None:
+    """Write minimal OPENAI_* env helper files for claude-code."""
+    apply_claude_code_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("all")

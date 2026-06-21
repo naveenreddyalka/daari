@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from daari.gateway.base import GatewayAdapter
@@ -68,10 +70,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
-        ) -> dict[str, Any]:
-            if body.stream:
-                raise HTTPException(status_code=501, detail="Anthropic streaming is not implemented yet.")
-
+        ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
 
@@ -92,6 +91,19 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     rerun_command=x_daari_rerun_command == "true",
                 ),
             )
+
+            if body.stream:
+                internal.stream = True
+
+                async def event_stream():
+                    try:
+                        async for event in ctx.router.stream_anthropic_events(internal):
+                            yield event
+                    except Exception as exc:
+                        error_payload = {"type": "error", "error": {"type": "stream_error", "message": str(exc)}}
+                        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+
+                return StreamingResponse(event_stream(), media_type="text/event-stream")
 
             try:
                 result = await ctx.router.route(internal)

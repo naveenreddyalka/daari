@@ -20,7 +20,7 @@ daari is an open-source **local execution router** — a cost optimizer you run 
 | **A — Tracer bullet** | Done | `daari serve`, OpenAI gateway, L0 cache, L3 Ollama, router, metrics, routing evals GP-01–GP-10 |
 | **A.1 — Install & setup** | Mostly done | L6 frontier escalation shipped; `daari install` CLI added; wizard now includes frontier key helper hints |
 | **B — Rules, Lt, …** | In progress | L1, L2, L2-dev, CCS, Lt B.0, PolicyEngine B.0, L4 routing shipped; `setup openai-compat` and `context clear` added |
-| **C — Bootstrap slice** | In progress | gateway adapter protocol, Anthropic adapter (non-stream), MCP minimal ingress, L5 wiring, provider minimal paths |
+| **C — Bootstrap slice** | In progress | gateway adapter protocol, Anthropic adapter (+stream), MCP minimal ingress, L5 wiring, provider minimal paths |
 
 Detail and task checklists: [TRACKING.md](TRACKING.md).
 
@@ -94,9 +94,11 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/tools/shell.py` | Lt shell execution backend | ✅ |
 | `daari/policy/engine.py` | Allow/deny/ask execution policy | ✅ |
 | `daari/clients/base.py` | `ClientSetupRecipe` protocol | ✅ |
-| `daari/clients/registry.py` | Setup recipe dispatch (`cursor`, `intellij`) | ✅ |
+| `daari/clients/registry.py` | Setup recipe dispatch (`cursor`, `intellij`, `vscode`, `claude-code`) | ✅ |
 | `daari/clients/cursor/recipe.py` | Cursor settings patch / undo / dry-run | ✅ |
 | `daari/clients/intellij/recipe.py` | IntelliJ helper config patch / undo / dry-run | ✅ minimal |
+| `daari/clients/vscode/recipe.py` | VS Code settings patch / undo / dry-run | ✅ minimal |
+| `daari/clients/claude_code/recipe.py` | claude-code env helper + config pointer dry-run/apply/undo | ✅ minimal |
 | `daari/setup/doctor.py` | Health checks (Python, config, Ollama, daemon) | ✅ |
 | `daari/setup/wizard.py` | Interactive `daari setup` | ✅ |
 | `daari/setup/backup.py` | Backup / restore for setup recipes | ✅ |
@@ -105,7 +107,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `daari/setup/openai_compat.py` | `setup openai-compat` + frontier env/profile hints | ✅ |
 | `daari/setup/context.py` | `daari context clear` cache invalidation helper | ✅ |
 
-**Not in tree (spec / later phases):** IntelliJ plugin backend, Claude Code setup recipe, Anthropic streaming, enterprise runtime providers.
+**Not in tree (spec / later phases):** IntelliJ plugin backend, enterprise runtime providers.
 
 ### Docs (`docs/`)
 
@@ -116,6 +118,8 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 | `docs/plans/phase-a.md` | Phase A implementation plan | Historical + reference |
 | `docs/setup/cursor.md` | Manual Cursor fallback | ✅ |
 | `docs/setup/intellij.md` | IntelliJ setup + helper config behavior | ✅ |
+| `docs/setup/vscode.md` | VS Code setup helper behavior | ✅ |
+| `docs/setup/claude-code.md` | claude-code env helper setup | ✅ |
 | `docs/DEVELOPING.md` | Clone, run, test pickup | ✅ |
 | `docs/TRACKING.md` | Phase task tracker | ✅ |
 | `docs/ARCHITECTURE.md` | This file | ✅ |
@@ -139,6 +143,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/l0`, `
 |------|---------|--------|
 | `evals/routing/prompts.jsonl` | Golden prompt fixtures for routing evals | ✅ |
 | `packages/README.md` | Placeholder for future browser ext / web UI | Spec only |
+| `packages/browser-extension/` | Browser extension scaffold with MV3 placeholder manifest | ✅ scaffold |
 | `CONTEXT.md` | Agent/session handoff | ✅ |
 
 ---
@@ -201,6 +206,8 @@ flowchart LR
 | `daari setup --undo <tool>` | Restore latest backup (e.g. `cursor`) |
 | `daari setup cursor [--dry-run] [--force]` | Patch Cursor to point at daari |
 | `daari setup intellij [--dry-run] [--force]` | Write IntelliJ helper OpenAI-compatible config |
+| `daari setup vscode [--dry-run] [--force]` | Patch VS Code settings with daari OpenAI-compatible marker |
+| `daari setup claude-code [--dry-run] [--force]` | Write claude-code OPENAI_* env helper + config pointer |
 | `daari setup all [--dry-run] [--force]` | Run setup recipes for all detected clients |
 | `daari setup models [--tier] [--model] [--list]` | Map tier → Ollama model in user config |
 | `daari setup openai-compat` | Print OPENAI_* exports + write `~/.daari/.env.example` |
@@ -214,7 +221,7 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat (supports basic SSE streaming passthrough) |
-| `POST` | `/v1/messages` | Anthropic-compatible messages adapter (non-streaming) |
+| `POST` | `/v1/messages` | Anthropic-compatible messages adapter (non-stream + SSE `stream: true`) |
 | `POST` | `/v1/mcp/query` | MCP ingress endpoint (`health`, `stats`, route passthrough) |
 | `GET` | `/v1/daari/stats` | Tier metrics snapshot |
 | `GET` | `/health` | Liveness |
@@ -235,14 +242,14 @@ Optional headers on chat: `X-Daari-No-Cache`, `X-Daari-Tier-Override`, `X-Daari-
 
 | Area | Implemented | Spec only / deferred |
 |------|-------------|------------------------|
-| Gateway | OpenAI + Anthropic adapters, MCP minimal ingress, health, stats, SSE with metadata | Anthropic streaming protocol, richer MCP tool schemas |
+| Gateway | OpenAI + Anthropic adapters, MCP minimal ingress, health, stats, SSE with metadata | richer MCP tool schemas |
 | Tiers | L0 exact, CCS, L1 semantic, L2 rules, L2-dev, Lt, L3, L4, L5 wiring, L6 | L5 model auto-provision and tuning |
 | Router | Full Phase B.0 pipeline + policy + no-frontier behavior + ask/confirm metadata + minimal L2-live fetch | broader B.1 command profiles |
-| Setup | Cursor + IntelliJ recipes, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | Claude Code recipe |
+| Setup | Cursor + IntelliJ + VS Code + claude-code recipes, wizard polish, models preference, install wrapper, openai-compat helper, frontier key hint, context clear | deeper IDE-native integrations |
 | Providers | Registry + model providers + Sourcegraph/GHE token-gated minimal calls | deeper enterprise provider execution paths |
 | Observability | In-process tier counters | External dashboards, web UI (`packages/web-ui`) |
 | Enterprise | ADR-0014, PRD sections | All runtime |
-| Packages | README placeholder | browser-extension, web-ui, intellij-plugin |
+| Packages | README + browser-extension scaffold | web-ui, intellij-plugin, extension runtime code |
 
 Source of truth for “done”: [TRACKING.md](TRACKING.md) task tables + `daari/` tree + pytest.
 

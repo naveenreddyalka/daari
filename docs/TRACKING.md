@@ -122,6 +122,8 @@ pytest -m benchmark                 # optional latency checks
 | `daari context clear` | [x] | clears L0/L1/CCS caches |
 | `daari setup all` auto-detect run | [x] | detects registered clients and runs applicable recipes |
 | `daari setup intellij` | [x] | minimal IntelliJ helper config + dry-run + undo path |
+| `daari setup vscode` | [x] | VS Code dry-run/apply/undo recipe with marker + docs |
+| `daari setup claude-code` | [x] | minimal env helper + config pointer recipe with dry-run/apply |
 | Lt ask/confirm UX | [x] | `daari_meta.confirmation_prompt` + `X-Daari-Confirm: yes` |
 | Lt `--yes` support | [x] | `--yes` in prompt text now confirms unknown-policy commands |
 | Doctor L4 pull hint | [x] | optional `model_l4` hint with pull command |
@@ -145,12 +147,13 @@ pytest -m benchmark                 # optional latency checks
 | Task | Status | Notes |
 |------|--------|-------|
 | Gateway adapter protocol (`daari/gateway/base.py`) | [x] | OpenAI adapter now implements protocol |
-| Anthropic gateway adapter (`/v1/messages`) | [~] | non-streaming routed path shipped; streaming still deferred |
+| Anthropic gateway adapter (`/v1/messages`) | [x] | non-stream + SSE event streaming (`stream: true`) |
 | MCP gateway ingress | [x] | `/v1/mcp/query` handles `health`/`stats`/`route` + provider passthrough |
 | L5 local tier wiring | [~] | config + routing/escalation support; large model remains optional |
 | Sourcegraph/GHE provider minimal path | [x] | token-gated httpx call path (`DAARI_SOURCEGRAPH_TOKEN`, `DAARI_GHE_TOKEN`) |
 | L2-live URL fetch | [x] | simple fetch trigger (`fetch/read/summarize/get <url>`) + L3 summarization |
 | SSE metadata enrichment | [x] | stream chunks now include `daari_meta` tier/provider/model |
+| Browser extension scaffold | [x] | `packages/browser-extension/README.md` + MV3 manifest placeholder |
 
 ---
 

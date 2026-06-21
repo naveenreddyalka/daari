@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "daari (placeholder)",
+  "version": "0.0.1",
+  "description": "Placeholder manifest for future daari browser extension.",
+  "action": {
+    "default_title": "daari"
+  }
+}

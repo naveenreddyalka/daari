@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
 > Date: 2026-06-20  
-> Scope: Phase B.1 + Phase C1 depth slice
+> Scope: Phase B.1/C1 completion + Phase C2 slice
 
 ## Feature checklist vs PRD
 
@@ -28,17 +28,21 @@
 | `daari context clear` | ✅ implemented | clears L0/L1/CCS caches via CLI |
 | `daari setup all` | ✅ implemented | runs setup recipes for detected clients |
 | `daari setup intellij` | ✅ implemented (minimal) | dry-run/apply/undo with helper config file + docs |
+| `daari setup vscode` | ✅ implemented (minimal) | dry-run/apply/undo with VS Code settings marker |
+| `daari setup claude-code` | ✅ implemented (minimal) | writes OPENAI_* env helper + config pointer file |
 | Lt ask/confirm UX | ✅ implemented | `daari_meta.confirmation_prompt` + `X-Daari-Confirm: yes` + `--yes` prompt support |
 | L2-live URL fetch | ✅ implemented (minimal) | fetch/read/summarize URL trigger using httpx + L3 summary |
 | Doctor L4 pull hint | ✅ implemented | optional `model_l4` check with `ollama pull` hint |
 | Doctor L5 pull hint | ✅ implemented | optional `model_l5` check with `ollama pull` hint |
 | Install optional L4/L5 pulls | ✅ implemented | `daari install --pull-l4 --pull-l5` env passthrough to script |
+| Anthropic streaming | ✅ implemented | `/v1/messages` now supports `stream: true` SSE event protocol |
+| Browser extension scaffold | ✅ implemented | `packages/browser-extension` README + manifest placeholder |
 
 ## Verification results
 
-- `.venv/bin/python -m pytest`: **78 passed, 1 skipped**
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: **79 passed**
-- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 78 deselected**
+- `.venv/bin/python -m pytest`: **85 passed, 1 skipped**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: **86 passed**
+- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 85 deselected**
 - `./scripts/demo.sh`: **pass**
 - `./scripts/bench.sh`: **pass**
 - Manual curl smoke (fresh daemon + clean cache):
@@ -51,7 +55,9 @@
   - No-frontier header: handled (`L3`, local path)
   - Streaming SSE metadata: pass (`daari_meta` present in stream chunk events)
   - Anthropic adapter (`/v1/messages`): pass (manual curl + integration test)
+  - Anthropic stream (`/v1/messages`, `stream: true`): endpoint emits SSE events; local model stream depends on Ollama `/api/chat` availability
   - MCP ingress (`/v1/mcp/query`): pass (`health` + routed query)
+  - Setup CLI: `daari setup claude-code --dry-run` + `daari setup vscode --dry-run`: pass
   - L6: implementation validated by tests; live manual call skipped because no frontier API key in environment
 
 ## Performance summary
@@ -81,8 +87,8 @@ Measured on local machine against a clean daemon instance (`scripts/bench.sh` + 
 | Severity | Gap | Impact | Next action |
 |----------|-----|--------|-------------|
 | Medium | L4 model not auto-installed; can fallback to L3 | Reduced quality path unless user pulls L4 model | Keep doctor/model hints; consider optional auto-pull |
-| Medium | Anthropic adapter does not stream yet | Claude-style streaming clients still need fallback/non-stream | Add Anthropic SSE event protocol in C2 |
 | Medium | MCP gateway is currently stubbed | MCP-native client requests return `501` | Implement C1 MCP ingress contract and handler |
 | Medium | L6 manual smoke requires configured API key | Cannot validate live frontier path in keyless env | Add optional key-aware smoke script path |
+| Low | Anthropic stream runtime requires Ollama chat endpoint | stream can emit error event if local model endpoint unavailable | Improve preflight health check and fallback messaging |
 | Low | Wizard is still single-choice flow | Slight setup friction for first-time setup | Expand wizard to multi-step/multi-select in follow-up |
 

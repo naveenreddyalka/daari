@@ -149,6 +149,36 @@ async def test_stream_chunks_include_daari_meta(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_anthropic_streaming_events(app, monkeypatch):
+    async def fake_stream(_request: InternalRequest):
+        yield {"message": {"content": "Hello "}}
+        yield {"message": {"content": "world"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "stream this"}],
+                "stream": True,
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert "event: message_start" in body
+    assert "event: content_block_start" in body
+    assert "event: content_block_delta" in body
+    assert "Hello " in body
+    assert "world" in body
+    assert "event: message_stop" in body
+
+
+@pytest.mark.asyncio
 async def test_mcp_gateway_query_routes(app, monkeypatch):
     async def fake_execute(_request: InternalRequest) -> InternalResponse:
         return InternalResponse(
