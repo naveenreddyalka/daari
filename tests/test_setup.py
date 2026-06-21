@@ -739,10 +739,36 @@ class TestTunnelHelpers:
         line = "INF +------------------------------------------------------------+ https://demo.trycloudflare.com"
         assert parse_cloudflared_tunnel_url(line) == "https://demo.trycloudflare.com"
 
+    def test_parse_cloudflared_tunnel_url_ignores_api_host(self):
+        line = "INF requesting quick tunnel via https://api.trycloudflare.com"
+        assert parse_cloudflared_tunnel_url(line) is None
+
     def test_find_cloudflared_tunnel_url(self):
         lines = [
             "starting cloudflared",
+            "requesting endpoint https://api.trycloudflare.com",
             "waiting for connection",
             "Visit this URL: https://abc123.trycloudflare.com",
         ]
         assert find_cloudflared_tunnel_url(lines) == "https://abc123.trycloudflare.com"
+
+
+class TestDoctorCLI:
+    def test_doctor_tunnel_requires_url_or_env(self, monkeypatch):
+        monkeypatch.delenv("DAARI_TUNNEL_URL", raising=False)
+        runner = CliRunner()
+        result = runner.invoke(app, ["doctor", "--tunnel"])
+        assert result.exit_code == 1
+
+    def test_doctor_tunnel_url_passed_to_run_doctor(self, monkeypatch):
+        captured: dict[str, str | None] = {}
+
+        def fake_run_doctor(settings, *, httpx_client=None, tunnel_url=None):
+            captured["tunnel_url"] = tunnel_url
+            return []
+
+        monkeypatch.setattr("daari.cli.app.run_doctor", fake_run_doctor)
+        runner = CliRunner()
+        result = runner.invoke(app, ["doctor", "--tunnel-url", "https://demo.trycloudflare.com"])
+        assert result.exit_code == 0
+        assert captured["tunnel_url"] == "https://demo.trycloudflare.com"
