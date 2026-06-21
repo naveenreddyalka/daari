@@ -9,8 +9,8 @@
 
 ## Current phase
 
-**Phase B complete + Phase C bootstrap** (in progress)  
-Phase A + A.1 complete; B.0 core shipped: **L2 rules**, **L2-dev + CCS**, **Lt B.0**, **L4 tier**, no-frontier control. Current bootstrap adds **gateway adapter protocol**, **Anthropic adapter**, **MCP stub**, **L5 wiring**, and **richer SSE metadata**.
+**Phase B.1 + Phase C1 depth** (in progress)  
+Phase A + A.1 complete; B.0 core shipped: **L2 rules**, **L2-dev + CCS**, **Lt B.0**, **L4 tier**, no-frontier control. Current slice adds **setup all + IntelliJ setup**, **Lt ask/confirm UX**, **MCP minimal ingress**, **Sourcegraph/GHE token-gated minimal providers**, **L2-live URL fetch**, and **richer SSE metadata**.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -48,7 +48,7 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 | Path | What |
 |------|------|
 | `daari/` | Python core (daemon, router, CLI) |
-| `daari/clients/` | Setup recipes (Cursor, etc.) — Phase A.1+ |
+| `daari/clients/` | Setup recipes (Cursor, IntelliJ, etc.) — Phase A.1+ |
 | `daari/setup/` | Doctor and setup helpers |
 | `scripts/` | `install.sh` |
 | `packages/` | TS/Kotlin surfaces later (extension, UI, IDE plugin) |
@@ -59,10 +59,10 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 ## Next tasks (remaining Phase B / Phase C prep)
 
-1. **Lt B.1** confirmation UX + IntelliJ path/project command profiles
-2. **Anthropic streaming + Claude Code setup** (`daari setup claude-code`)
-3. **MCP ingress implementation** behind current stub endpoint
-4. **Provider execution** for Sourcegraph/GHE (move beyond scaffolds)
+1. **Anthropic streaming + Claude Code setup** (`daari setup claude-code`)
+2. **MCP ingress expansion** (tool schemas + richer typed responses)
+3. **Provider depth** for Sourcegraph/GHE beyond token-gated minimal paths
+4. **Lt B.1 profiles** (project/path command templates + richer confirmations)
 5. Optional: improve bench script resilience when model path is unavailable
 
 **L1 config** (`~/.daari/config.yaml`):
@@ -78,12 +78,12 @@ cache:
 ```
 
 **Validation baseline (2026-06-20):**
-- `pytest -m "not integration and not benchmark"`: 72 passed, 2 deselected
-- `OLLAMA_HOST=http://127.0.0.1:11434 pytest -v`: 74 passed
-- `pytest -m benchmark`: pass
+- `.venv/bin/python -m pytest`: 78 passed, 1 skipped
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: 79 passed
+- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 78 deselected
 - `./scripts/demo.sh`: pass
-- `./scripts/bench.sh`: pass (script completes; some probes can return `error` tier when model path fails)
-- Manual tier smoke: L0/L1/L2/Lt/L3 verified; L4/L5 override fallback behavior covered in tests; no-frontier header + SSE metadata verified; Anthropic adapter and MCP stub covered by integration tests; L6 requires API key.
+- `./scripts/bench.sh`: pass
+- Manual tier smoke: setup `all`/`intellij` dry-runs, Lt ask/confirm flow, MCP endpoint, Anthropic adapter, and L0/L1/L2/Lt/L3 routes verified; L4/L5 override fallback behavior covered in tests; L6 requires API key.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 

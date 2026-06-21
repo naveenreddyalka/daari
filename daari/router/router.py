@@ -192,7 +192,8 @@ class Router:
                 return semantic_hit
 
         if dev_match is not None and dev_match.action == "execute" and dev_match.command:
-            policy = self.policy.evaluate(dev_match.command, confirmed=request.meta.confirm_tool)
+            confirmed = request.meta.confirm_tool or bool(re.search(r"(?i)(?:^|\s)--yes(?:\s|$)", last_user))
+            policy = self.policy.evaluate(dev_match.command, confirmed=confirmed)
             if policy.outcome == "deny":
                 denial = InternalResponse(
                     content=f"Command denied by policy: {policy.reason}",
@@ -209,11 +210,12 @@ class Router:
                 self._record(denial, started)
                 return denial
             if policy.outcome == "ask":
+                prompt = (
+                    "Command requires confirmation. Re-send the same request with "
+                    "header X-Daari-Confirm: yes (or X-Daari-Confirm-Tool: true)."
+                )
                 ask = InternalResponse(
-                    content=(
-                        "Command requires confirmation. Re-send the same request with "
-                        "header X-Daari-Confirm-Tool: true."
-                    ),
+                    content=prompt,
                     model=request.model,
                     daari_meta=DaariMeta(
                         tier="Lt",
@@ -223,6 +225,8 @@ class Router:
                         rule_id=dev_match.rule_id,
                         policy="ask",
                         pending_command=dev_match.command,
+                        confirmation_prompt=prompt,
+                        confirmation_header="X-Daari-Confirm: yes",
                     ),
                 )
                 self._record(ask, started)
@@ -258,6 +262,12 @@ class Router:
             )
             self._record(result, started)
             return result
+
+        fetch_url = self._match_live_fetch_url(last_user)
+        if fetch_url:
+            fetched = await self._run_live_fetch(request, fetch_url, started)
+            self._record(fetched, started)
+            return fetched
 
         l2_result = apply_l2_rules(last_user)
         if l2_result is not None:
@@ -547,6 +557,76 @@ class Router:
             response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
             latency_ms=latency_ms,
+        )
+
+    @staticmethod
+    def _match_live_fetch_url(text: str) -> str | None:
+        if not text:
+            return None
+        if not re.search(r"(?i)\b(fetch|read|summarize|get)\b", text):
+            return None
+        match = re.search(r"(https?://[^\s)]+)", text)
+        if match is None:
+            return None
+        return match.group(1).rstrip(".,")
+
+    async def _run_live_fetch(self, request: InternalRequest, url: str, started: float) -> InternalResponse:
+        try:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+        except Exception as exc:
+            return InternalResponse(
+                content=f"Unable to fetch {url}: {exc}",
+                model=request.model,
+                daari_meta=DaariMeta(
+                    tier="Lt-fetch",
+                    executor="fetch",
+                    provider_id="httpx",
+                    task_type="tool",
+                    tool=f"GET {url}",
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    warning="fetch_failed",
+                ),
+            )
+
+        page = re.sub(r"\s+", " ", response.text)[:4000]
+        summary_request = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content=(
+                        f"Summarize this fetched page for the user in <=8 bullets.\n"
+                        f"URL: {url}\n"
+                        f"Original request: {self._last_user_text(request.messages)}\n"
+                        f"Page content snippet:\n{page}"
+                    ),
+                )
+            ],
+            model=self.ollama_l3.default_model,
+            temperature=0.2,
+            stream=False,
+            meta=request.meta.model_copy(deep=True),
+        )
+        try:
+            summary = await self._run_model_tier("L3", summary_request)
+            content = summary.content
+            model = summary.model
+        except Exception:
+            content = f"Fetched {url} ({len(response.text)} bytes). Could not summarize with L3."
+            model = request.model
+
+        return InternalResponse(
+            content=content,
+            model=model,
+            daari_meta=DaariMeta(
+                tier="Lt-fetch",
+                executor="fetch+summarize",
+                provider_id="httpx",
+                task_type="tool",
+                tool=f"GET {url}",
+                latency_ms=int((time.perf_counter() - started) * 1000),
+            ),
         )
 
 

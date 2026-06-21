@@ -51,6 +51,8 @@ class DaariMeta(BaseModel):
     warning: str | None = None
     policy: str | None = None
     pending_command: str | None = None
+    confirmation_prompt: str | None = None
+    confirmation_header: str | None = None
 
 
 class InternalResponse(BaseModel):

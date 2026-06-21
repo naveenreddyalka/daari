@@ -19,7 +19,9 @@ class ClientRegistry:
 
 def default_registry() -> ClientRegistry:
     from daari.clients.cursor.recipe import CursorSetupRecipe
+    from daari.clients.intellij.recipe import IntelliJSetupRecipe
 
     registry = ClientRegistry()
     registry.register(CursorSetupRecipe())
+    registry.register(IntelliJSetupRecipe())
     return registry

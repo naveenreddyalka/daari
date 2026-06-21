@@ -15,6 +15,7 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
     cfg = settings or Settings.load()
     registry = default_registry()
     cursor = registry.get("cursor")
+    intellij = registry.get("intellij")
 
     typer.echo("\n  daari setup — configure your local stack\n")
     typer.echo("  Detected on this machine:")
@@ -33,6 +34,8 @@ def run_setup_wizard(settings: Settings | None = None) -> None:
 
     cursor_detected = cursor.detect() if cursor else False
     typer.echo(f"    {'✓' if cursor_detected else '✗'} Cursor")
+    intellij_detected = intellij.detect() if intellij else False
+    typer.echo(f"    {'✓' if intellij_detected else '✗'} IntelliJ")
     has_frontier_key = bool(cfg.resolve_frontier_api_key())
     frontier_mark = "✓" if has_frontier_key else "!"
     frontier_hint = "configured" if has_frontier_key else "not set (local-only unless provided)"

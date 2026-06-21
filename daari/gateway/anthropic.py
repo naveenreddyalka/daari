@@ -66,10 +66,14 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
+            x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
         ) -> dict[str, Any]:
             if body.stream:
                 raise HTTPException(status_code=501, detail="Anthropic streaming is not implemented yet.")
+
+            confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
+            confirm_tool = confirm_value in {"1", "true", "yes"}
 
             ctx: AppContext = request.app.state.ctx
             internal = InternalRequest(
@@ -84,7 +88,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     no_cache=x_daari_no_cache == "true",
                     tier_override=x_daari_tier_override,
                     no_frontier=x_daari_no_frontier == "true",
-                    confirm_tool=x_daari_confirm_tool == "true",
+                    confirm_tool=confirm_tool,
                     rerun_command=x_daari_rerun_command == "true",
                 ),
             )
