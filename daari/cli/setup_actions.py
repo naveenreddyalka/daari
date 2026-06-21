@@ -87,6 +87,24 @@ def apply_intellij_setup(
     apply_setup_recipe("intellij", dry_run=dry_run, force=force, settings=settings)
 
 
+def apply_vscode_setup(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    apply_setup_recipe("vscode", dry_run=dry_run, force=force, settings=settings)
+
+
+def apply_claude_code_setup(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    apply_setup_recipe("claude-code", dry_run=dry_run, force=force, settings=settings)
+
+
 def apply_all_setups(
     *,
     dry_run: bool = False,

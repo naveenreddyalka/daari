@@ -18,10 +18,14 @@ class ClientRegistry:
 
 
 def default_registry() -> ClientRegistry:
+    from daari.clients.claude_code.recipe import ClaudeCodeSetupRecipe
     from daari.clients.cursor.recipe import CursorSetupRecipe
     from daari.clients.intellij.recipe import IntelliJSetupRecipe
+    from daari.clients.vscode.recipe import VSCodeSetupRecipe
 
     registry = ClientRegistry()
+    registry.register(ClaudeCodeSetupRecipe())
     registry.register(CursorSetupRecipe())
     registry.register(IntelliJSetupRecipe())
+    registry.register(VSCodeSetupRecipe())
     return registry

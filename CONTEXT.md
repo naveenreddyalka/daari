@@ -9,8 +9,8 @@
 
 ## Current phase
 
-**Phase B.1 + Phase C1 depth** (in progress)  
-Phase A + A.1 complete; B.0 core shipped: **L2 rules**, **L2-dev + CCS**, **Lt B.0**, **L4 tier**, no-frontier control. Current slice adds **setup all + IntelliJ setup**, **Lt ask/confirm UX**, **MCP minimal ingress**, **Sourcegraph/GHE token-gated minimal providers**, **L2-live URL fetch**, and **richer SSE metadata**.
+**Phase C2 slice** (in progress)  
+Phase A/A.1 complete and B.1/C1 depth landed. Current slice adds **Anthropic SSE streaming**, **`daari setup claude-code`**, **`daari setup vscode`**, and a **browser-extension scaffold** while keeping MCP ingress and provider depth as follow-up.
 
 **Last verified:** run `pytest` on current branch.
 
@@ -57,13 +57,13 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 **Separate repo:** `agent-skills` only — reusable skills, not daari runtime.
 
-## Next tasks (remaining Phase B / Phase C prep)
+## Next tasks (remaining Phase C / follow-up)
 
-1. **Anthropic streaming + Claude Code setup** (`daari setup claude-code`)
-2. **MCP ingress expansion** (tool schemas + richer typed responses)
-3. **Provider depth** for Sourcegraph/GHE beyond token-gated minimal paths
-4. **Lt B.1 profiles** (project/path command templates + richer confirmations)
-5. Optional: improve bench script resilience when model path is unavailable
+1. **MCP ingress expansion** (tool schemas + richer typed responses)
+2. **Provider depth** for Sourcegraph/GHE beyond token-gated minimal paths
+3. **Lt B.1 profiles** (project/path command templates + richer confirmations)
+4. Optional: improve bench script resilience when model path is unavailable
+5. Optional: enrich Anthropic stream preflight checks and usage accounting
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -78,12 +78,12 @@ cache:
 ```
 
 **Validation baseline (2026-06-20):**
-- `.venv/bin/python -m pytest`: 78 passed, 1 skipped
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: 79 passed
-- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 78 deselected
+- `.venv/bin/python -m pytest`: 85 passed, 1 skipped
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -v`: 86 passed
+- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 85 deselected
 - `./scripts/demo.sh`: pass
 - `./scripts/bench.sh`: pass
-- Manual tier smoke: setup `all`/`intellij` dry-runs, Lt ask/confirm flow, MCP endpoint, Anthropic adapter, and L0/L1/L2/Lt/L3 routes verified; L4/L5 override fallback behavior covered in tests; L6 requires API key.
+- Manual tier smoke: setup `all`/`intellij`/`vscode`/`claude-code` dry-runs, Lt ask/confirm flow, MCP endpoint, Anthropic adapter (+stream event emission), and L0/L1/L2/Lt/L3 routes verified; L4/L5 override fallback behavior covered in tests; L6 requires API key.
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 
