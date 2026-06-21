@@ -68,3 +68,21 @@ integrations:
     url: https://api.github.com
     triggers:
       - "@ghe"
+  gitlab:
+    url: https://gitlab.com/api/v4
+    triggers:
+      - "@gitlab"
+
+enterprise:
+  enabled: false
+  org_id:
+  shared_cache_path:
+  policy_overrides: {}
+  cache:
+    enabled: false
+    share_classes: []
+    no_org_cache_default: false
+  learning:
+    enabled: false
+    upload_prompts: false
+    upload_code: false

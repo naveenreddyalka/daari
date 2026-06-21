@@ -15,7 +15,7 @@ from daari.cli.setup_actions import (
     apply_intellij_setup,
     apply_vscode_setup,
 )
-from daari.config.settings import get_settings
+from daari.config.settings import Settings, get_settings
 from daari.server.app import create_app
 from daari.setup.context import clear_context_caches
 from daari.setup.doctor import doctor_exit_code, run_doctor
@@ -40,11 +40,16 @@ def serve(
     host: str | None = typer.Option(None, help="Bind host"),
     port: int | None = typer.Option(None, help="Bind port"),
     no_frontier: bool = typer.Option(False, "--no-frontier", help="Disable L6 escalation."),
+    org: str | None = typer.Option(None, "--org", help="Enable enterprise org mode with org ID."),
 ) -> None:
     """Start the daari HTTP daemon."""
-    settings = get_settings().model_copy(deep=True)
+    settings = Settings.load().model_copy(deep=True)
     if no_frontier:
         settings.frontier.enabled = False
+    resolved_org = org or os.environ.get("DAARI_ORG_ID")
+    if resolved_org:
+        settings.enterprise.enabled = True
+        settings.enterprise.org_id = resolved_org
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
     typer.echo(f"daari serving on http://{bind_host}:{bind_port}/v1")

@@ -222,6 +222,31 @@ async def test_mcp_tools_list_and_tools_call(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_mcp_tools_call_schema_validation_error(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/mcp/query",
+            json={"tool": "tools/call", "args": {"name": "route", "arguments": {"input": 123}}},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["result"]["error"]["code"] == "MCP_ERR_SCHEMA_VALIDATION"
+    assert payload["result"]["error"]["details"][0]["code"] == "MCP_ERR_INVALID_ARGUMENT_TYPE"
+
+
+@pytest.mark.asyncio
+async def test_mcp_tools_call_missing_name_has_structured_error(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/mcp/query", json={"tool": "tools/call", "args": {}})
+    assert response.status_code == 200
+    assert response.json()["result"]["error"]["code"] == "MCP_ERR_MISSING_TOOL_NAME"
+
+
+@pytest.mark.asyncio
 async def test_router_integration_prefix_routes_before_l3(app, monkeypatch):
     async def fail_if_model_called(_request: InternalRequest) -> InternalResponse:
         raise AssertionError("model tier should not execute for integration-prefixed request")
@@ -249,6 +274,36 @@ async def test_router_integration_prefix_routes_before_l3(app, monkeypatch):
     assert response.status_code == 200
     assert response.json()["choices"][0]["message"]["content"] == "sourcegraph-result"
     assert response.json()["daari_meta"]["provider_id"] == "integration:sourcegraph"
+
+
+@pytest.mark.asyncio
+async def test_router_gitlab_prefix_routes_before_l3(app, monkeypatch):
+    async def fail_if_model_called(_request: InternalRequest) -> InternalResponse:
+        raise AssertionError("model tier should not execute for integration-prefixed request")
+
+    async def fake_gitlab(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="gitlab-result",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="Lt", executor="integration", provider_id="integration:gitlab"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fail_if_model_called)
+    gitlab_provider = app.state.ctx.providers.get("integration:gitlab")
+    assert gitlab_provider is not None
+    monkeypatch.setattr(gitlab_provider, "execute", fake_gitlab)
+
+    payload = {
+        "model": "llama3.2:3b",
+        "messages": [{"role": "user", "content": "@gitlab search auth middleware"}],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=payload, headers={"X-Daari-No-Cache": "true"})
+
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["message"]["content"] == "gitlab-result"
+    assert response.json()["daari_meta"]["provider_id"] == "integration:gitlab"
 
 
 @pytest.mark.asyncio

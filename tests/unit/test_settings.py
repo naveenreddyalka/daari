@@ -99,3 +99,35 @@ class TestSettings:
         settings = Settings.load(config_path=tmp_path / "missing.yaml")
         assert "Local daari skills" in settings.skills_system_prefix
         assert "Always prefer local execution." in settings.skills_system_prefix
+
+    def test_integrations_defaults_include_gitlab(self):
+        settings = Settings.model_validate({})
+        assert settings.integrations.gitlab.url == "https://gitlab.com/api/v4"
+        assert "@gitlab" in settings.integrations.gitlab.triggers
+
+    def test_load_org_id_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("DAARI_ORG_ID", "acme")
+        settings = Settings.load(config_path=tmp_path / "missing.yaml")
+        assert settings.enterprise.enabled is True
+        assert settings.enterprise.org_id == "acme"
+        assert settings.org_cache_root == tmp_path / ".daari" / "org" / "acme" / "cache"
+
+    def test_org_settings_merge_with_shared_cache(self, tmp_path):
+        config = tmp_path / "config.yaml"
+        config.write_text(
+            (
+                "enterprise:\n"
+                "  enabled: true\n"
+                "  org_id: eng\n"
+                "  shared_cache_path: /tmp/daari-shared\n"
+                "  policy_overrides:\n"
+                "    tools.unknown: ask\n"
+            ),
+            encoding="utf-8",
+        )
+        settings = Settings.load(config_path=config)
+        assert settings.enterprise.enabled is True
+        assert settings.enterprise.org_id == "eng"
+        assert settings.enterprise.policy_overrides["tools.unknown"] == "ask"
+        assert str(settings.org_cache_root) == "/tmp/daari-shared"

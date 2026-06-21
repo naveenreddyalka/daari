@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import httpx
 import pytest
 
 from daari.gateway.internal import InternalRequest, Message
-from daari.providers.integrations import GitHubEnterpriseProvider, SourcegraphProvider
+from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
 
 
 def _request(prompt: str = "search auth") -> InternalRequest:
@@ -16,7 +17,7 @@ async def test_sourcegraph_provider_graphql_query(monkeypatch):
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/.api/graphql"
         assert request.headers.get("authorization") == "token sg-token"
-        body = __import__("json").loads(request.content.decode("utf-8"))
+        body = json.loads(request.content.decode("utf-8"))
         assert "search(query: $query" in body["query"]
         assert body["variables"]["query"] == "repo:daari auth"
         return httpx.Response(
@@ -92,4 +93,55 @@ async def test_ghe_provider_searches_repos_and_issues(monkeypatch):
     response = await provider.execute(_request("@ghe search: daari router"))
     assert seen_paths == ["/api/v3/search/repositories", "/api/v3/search/issues"]
     assert "Repository matches: 1" in response.content
+    assert "Issue matches: 1" in response.content
+
+
+@pytest.mark.asyncio
+async def test_gitlab_provider_searches_projects_and_issues(monkeypatch):
+    seen_paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        assert request.headers.get("PRIVATE-TOKEN") == "gl-token"
+        if request.url.path == "/api/v4/projects":
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "path_with_namespace": "acme/daari",
+                        "web_url": "https://gitlab.example.com/acme/daari",
+                    }
+                ],
+            )
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "title": "Fix router branch",
+                    "web_url": "https://gitlab.example.com/acme/daari/-/issues/12",
+                }
+            ],
+        )
+
+    transport = httpx.MockTransport(handler)
+
+    class TestProvider(GitLabProvider):
+        async def execute(self, request):  # type: ignore[override]
+            token, skipped = self._token_or_skip(request)
+            if skipped:
+                return skipped
+            query = self._extract_query(request) or ""
+            headers = {"PRIVATE-TOKEN": token}
+            async with httpx.AsyncClient(base_url=self.base_url, transport=transport, timeout=10.0) as client:
+                projects = await client.get("/projects", headers=headers, params={"search": query, "per_page": 5})
+                projects.raise_for_status()
+                issues = await client.get("/issues", headers=headers, params={"search": query, "per_page": 5})
+                issues.raise_for_status()
+            return self._ok_response(request, self.id, self._format_results(query, projects.json(), issues.json()))
+
+    monkeypatch.setenv("DAARI_GITLAB_TOKEN", "gl-token")
+    provider = TestProvider(base_url="https://gitlab.example.com/api/v4")
+    response = await provider.execute(_request("@gitlab search: daari router"))
+    assert seen_paths == ["/api/v4/projects", "/api/v4/issues"]
+    assert "Project matches: 1" in response.content
     assert "Issue matches: 1" in response.content

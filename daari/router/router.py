@@ -14,10 +14,11 @@ from daari.cache.command_context import CommandContextStore
 from daari.cache.exact import ExactCache
 from daari.cache.semantic import OllamaEmbedder, SemanticCache
 from daari.config.settings import Settings
+from daari.enterprise.cache import resolve_org_scoped_path
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.policy.engine import PolicyEngine
-from daari.providers.integrations import GitHubEnterpriseProvider, SourcegraphProvider
+from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
 from daari.providers.registry import ProviderRegistry
 from daari.rules.dev_commands import DevCommandMatch, match_dev_command
 from daari.rules.engine import apply_l2_rules
@@ -343,6 +344,7 @@ class Router:
         trigger_map = {
             "integration:sourcegraph": self.integration_triggers.get("integration:sourcegraph", ["@sourcegraph"]),
             "integration:ghe": self.integration_triggers.get("integration:ghe", ["@ghe"]),
+            "integration:gitlab": self.integration_triggers.get("integration:gitlab", ["@gitlab"]),
         }
         for provider_id, triggers in trigger_map.items():
             for trigger in triggers:
@@ -755,8 +757,16 @@ class AppContext:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> AppContext:
+        l0_path = settings.l0_cache_path
+        l1_path = settings.l1_cache_path
+        context_path = settings.context_store_path
+        if settings.enterprise.enabled and settings.enterprise.resolved_org_id:
+            l0_path = resolve_org_scoped_path(l0_path, settings.enterprise, leaf="l0")
+            l1_path = resolve_org_scoped_path(l1_path, settings.enterprise, leaf="l1")
+            context_path = resolve_org_scoped_path(context_path, settings.enterprise, leaf="ccs")
+
         cache = ExactCache(
-            path=str(settings.l0_cache_path),
+            path=str(l0_path),
             enabled=settings.cache.l0.enabled,
         )
         embedder = OllamaEmbedder(
@@ -764,7 +774,7 @@ class AppContext:
             model=settings.cache.l1.embedding_model,
         )
         semantic_cache = SemanticCache(
-            path=str(settings.l1_cache_path),
+            path=str(l1_path),
             embedder=embedder,
             enabled=settings.cache.l1.enabled,
             similarity_threshold=settings.cache.l1.similarity_threshold,
@@ -772,7 +782,7 @@ class AppContext:
         )
         try:
             command_context = CommandContextStore(
-                root=settings.context_store_path,
+                root=context_path,
                 enabled=settings.context.enabled,
             )
         except PermissionError:
@@ -838,6 +848,7 @@ class AppContext:
         )
         providers.register(SourcegraphProvider(base_url=settings.integrations.sourcegraph.url))
         providers.register(GitHubEnterpriseProvider(base_url=settings.integrations.ghe.url))
+        providers.register(GitLabProvider(base_url=settings.integrations.gitlab.url))
         metrics = Metrics()
         router = Router(
             cache=cache,
@@ -856,6 +867,7 @@ class AppContext:
             integration_triggers={
                 "integration:sourcegraph": settings.integrations.sourcegraph.triggers,
                 "integration:ghe": settings.integrations.ghe.triggers,
+                "integration:gitlab": settings.integrations.gitlab.triggers,
             },
             skills_system_prefix=settings.skills_system_prefix,
             frontier_enabled=settings.frontier.enabled,
