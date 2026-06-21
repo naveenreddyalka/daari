@@ -150,6 +150,25 @@ def org_learning_stats() -> None:
     typer.echo(json.dumps(metrics, indent=2))
 
 
+@org_learning_app.command("sync")
+def org_learning_sync(
+    host: str | None = typer.Option(None, help="Daemon host"),
+    port: int | None = typer.Option(None, help="Daemon port"),
+) -> None:
+    """Force the running daemon to refresh org-learning routing profile."""
+    settings = get_settings()
+    bind_host = host or settings.server.host
+    bind_port = port or settings.server.port
+    url = f"http://{bind_host}:{bind_port}/v1/org-learning/sync"
+    try:
+        response = httpx.post(url, timeout=5.0, headers={"Accept": "application/json"})
+        response.raise_for_status()
+        typer.echo(json.dumps(response.json(), indent=2))
+    except Exception as exc:
+        typer.echo(f"Could not trigger org-learning sync at {url}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
 @org_learning_app.command("export")
 def org_learning_export(
     output: Path | None = typer.Option(

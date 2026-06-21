@@ -127,6 +127,21 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload = ctx.reload_cache_handles()
             return {"status": "ok", **payload}
 
+        @router.post("/v1/org-learning/sync")
+        async def org_learning_sync(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            if ctx.org_learning_client is None:
+                raise HTTPException(status_code=404, detail="org learning is not configured")
+            changed = await ctx.sync_org_learning_profile_once()
+            return {
+                "status": "ok",
+                "changed": changed,
+                "routing": {
+                    "prefer": ctx.router.model_preference,
+                    "confidence_threshold": ctx.router.confidence_threshold,
+                },
+            }
+
         return router
 
 

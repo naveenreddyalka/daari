@@ -223,6 +223,11 @@ class TestSetupModels:
 
 
 class TestSetupCLI:
+    def test_smoke_cursor_dry_run_script_exists(self):
+        script = Path(__file__).resolve().parents[1] / "scripts" / "smoke-cursor-dry-run.sh"
+        assert script.is_file()
+        assert script.read_text(encoding="utf-8").startswith("#!/usr/bin/env bash")
+
     def test_setup_cursor_dry_run(self, recipe, monkeypatch):
         from daari.clients.registry import ClientRegistry
 
@@ -574,6 +579,32 @@ class TestSetupCLI:
         assert result.exit_code == 0
         assert output.is_file()
         assert '"org_id": "acme"' in output.read_text(encoding="utf-8")
+
+    def test_org_learning_sync_command(self, monkeypatch):
+        class Response:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {
+                    "status": "ok",
+                    "changed": True,
+                    "routing": {"prefer": "accuracy", "confidence_threshold": 0.82},
+                }
+
+        monkeypatch.setattr(
+            "daari.cli.app.get_settings",
+            lambda: Settings.model_validate({"server": {"host": "127.0.0.1", "port": 11435}}),
+        )
+        monkeypatch.setattr("daari.cli.app.httpx.post", lambda *args, **kwargs: Response())
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["org-learning", "sync"])
+        assert result.exit_code == 0
+        assert '"status": "ok"' in result.stdout
+        assert '"changed": true' in result.stdout
 
     def test_web_ui_serve_mounts_static_assets(self, monkeypatch):
         captured = {}

@@ -10,6 +10,10 @@
     <main class="container">
       <h1>daari stats dashboard</h1>
       <p class="subtle">Live view of local daemon counters and org learning profile.</p>
+      <section class="toolbar">
+        <button id="theme-toggle" type="button">Switch to light</button>
+        <button id="export-stats" type="button">Export stats JSON</button>
+      </section>
 
       <section class="row">
         <article class="card">
@@ -54,6 +58,7 @@
 
       <section class="card">
         <h2>Org learning (optional)</h2>
+        <p id="org-summary" class="subtle">Not configured</p>
         <pre id="org-learning">Not available</pre>
       </section>
 

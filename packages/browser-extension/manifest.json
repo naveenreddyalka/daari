@@ -7,9 +7,10 @@
     "storage"
   ],
   "host_permissions": [
-    "http://127.0.0.1:11435/*",
-    "http://localhost:11435/*"
+    "http://127.0.0.1/*",
+    "http://localhost/*"
   ],
+  "options_page": "options.html",
   "action": {
     "default_title": "daari",
     "default_popup": "popup.html"

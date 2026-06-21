@@ -77,6 +77,28 @@ async def test_org_cache_client_sends_bearer_token():
 
 
 @pytest.mark.asyncio
+async def test_org_cache_client_retries_on_transient_failure():
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise httpx.ConnectError("temporary network issue", request=request)
+        return httpx.Response(200, json={"entries": 0})
+
+    client = OrgCacheClient(
+        base_url="http://org-cache.test",
+        transport=httpx.MockTransport(handler),
+        max_retries=2,
+        backoff_seconds=0.0,
+    )
+    stats = await client.stats()
+    assert stats is not None
+    assert stats["entries"] == 0
+    assert calls["count"] == 2
+
+
+@pytest.mark.asyncio
 async def test_org_learning_client_feedback_and_profile():
     seen_payloads: list[dict[str, object]] = []
 

@@ -9,6 +9,11 @@ body {
   color: #e5e7eb;
 }
 
+body[data-theme="light"] {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
 .container {
   max-width: 900px;
   margin: 0 auto;
@@ -31,6 +36,17 @@ body {
   border-radius: 10px;
   padding: 14px;
   margin: 12px 0;
+}
+
+body[data-theme="light"] .card {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 12px;
 }
 
 .metric {
@@ -70,12 +86,22 @@ button {
   cursor: pointer;
 }
 
+body[data-theme="light"] button {
+  background: #2563eb;
+}
+
 select {
   border: 1px solid #334155;
   background: #0b1225;
   color: #e5e7eb;
   border-radius: 8px;
   padding: 7px 8px;
+}
+
+body[data-theme="light"] select {
+  border-color: #94a3b8;
+  background: #ffffff;
+  color: #0f172a;
 }
 
 table {
@@ -88,6 +114,11 @@ td {
   text-align: left;
   border-bottom: 1px solid #253353;
   padding: 8px;
+}
+
+body[data-theme="light"] th,
+body[data-theme="light"] td {
+  border-bottom-color: #cbd5e1;
 }
 
 .tier-chart {
@@ -111,6 +142,10 @@ td {
   overflow: hidden;
 }
 
+body[data-theme="light"] .tier-track {
+  background: #e2e8f0;
+}
+
 .tier-fill {
   height: 100%;
   background: linear-gradient(90deg, #2563eb, #22c55e);
@@ -125,4 +160,9 @@ pre {
   overflow-x: auto;
   white-space: pre-wrap;
   margin: 0;
+}
+
+body[data-theme="light"] .subtle,
+body[data-theme="light"] .tier-count {
+  color: #475569;
 }

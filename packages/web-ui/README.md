@@ -23,7 +23,9 @@ daari web-ui serve --api-base-url http://127.0.0.1:11535
 - Tier breakdown table (`count`, `p50_ms`, `p95_ms`)
 - Tier count bar chart for quick visual distribution
 - Auto-refresh controls (on/off + refresh interval)
-- Optional org-learning metrics from `GET /v1/org-learning/profile` when reachable
+- Optional org-learning summary + metrics from `GET /v1/org-learning/profile` when reachable
+- Export current stats snapshot as JSON
+- Dark/light theme toggle (persisted locally)
 
 ## Files
 

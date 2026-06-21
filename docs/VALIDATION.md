@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
-> Date: 2026-06-20  
-> Scope: v1.1.1 release + post-release phase continuations (hot cache reload, browser extension MVP, web-ui refresh/chart)
+> Date: 2026-06-21  
+> Scope: v1.1.1 continuation (enterprise profile sync hardening, browser extension options UX, web-ui export/theme, cursor setup smoke script)
 
 ## v1.0 readiness score
 
@@ -19,9 +19,9 @@
 
 ## Verification results
 
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: **127 passed**
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: **1 passed, 124 deselected**
-- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 124 deselected**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: **133 passed**
+- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: **1 passed, 132 deselected**
+- `.venv/bin/python -m pytest -m benchmark`: **1 passed, 132 deselected**
 - `./scripts/demo.sh`: **pass**
 - `./scripts/bench.sh`: **pass** (daemon-backed run)
 
@@ -35,13 +35,14 @@
 - Org mode serve: **pass** (`daari serve --org acme --port 11535`, org cache root resolved and used)
 - Org cache service: **pass** (`daari org-cache serve --org acme --port 11436`, `GET/PUT/stats` happy path + auth checks)
 - Org learning service: **pass** (`POST /v1/org-learning/feedback`, `GET/PUT /v1/org-learning/profile`, admin token gate verified)
-- Org-learning CLI: **pass** (`daari org-learning stats`, `daari org-learning export`)
-- Startup profile merge: **pass** (org profile `routing.prefer/confidence_threshold` applied to router)
+- Org-learning CLI: **pass** (`daari org-learning stats`, `daari org-learning export`, `daari org-learning sync`)
+- Startup + periodic profile sync: **pass** (startup merge plus background polling via `org.learning_sync_seconds`)
 - Manual feedback-to-profile check: **pass** (high-latency feedback flipped profile `prefer` to `latency`, router consumed merged profile)
 - Cross-instance shared cache hit: **pass** (instance A `L3` write-through, instance B `L0-org` hit for same prompt)
 - MCP validation error path: **pass** (`tools/call` invalid schema input returns `MCP_ERR_SCHEMA_VALIDATION`)
-- Web UI serve + index route: **pass** (`daari web-ui serve`, dashboard returns HTTP 200; auto-refresh and tier chart rendered)
-- Browser extension MVP files: **pass** (MV3 manifest + popup runtime assets loadable from `packages/browser-extension/`)
+- Web UI serve + index route: **pass** (`daari web-ui serve`, dashboard returns HTTP 200; auto-refresh, export JSON, and theme toggle rendered)
+- Browser extension runtime assets: **pass** (MV3 manifest + popup + options page assets loadable from `packages/browser-extension/`)
+- Cursor setup smoke script: **pass** (`./scripts/smoke-cursor-dry-run.sh`)
 
 ## Performance summary
 
@@ -58,8 +59,7 @@ From `./scripts/bench.sh`:
 
 | Severity | Gap | Impact |
 |----------|-----|--------|
-| Medium | Periodic profile polling beyond startup | Current MVP syncs profile at startup; periodic refresh remains future work |
 | Medium | Org L1 semantic matching in shared service | Current E2 tracer bullet uses key-based L1 reuse, not vector similarity search |
 | Medium | Live CI smoke for tokenized C3 integrations | Requires org credentials not available in CI by default |
-| Low | Browser extension | Currently scaffold only |
+| Low | Browser extension end-to-end UI tests | Runtime works locally, but automated browser-level tests are still pending |
 

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>daari extension options</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>daari options</h1>
+      <p class="subtle">Configure the API base URL used by the popup.</p>
+      <label for="api-base-url">API base URL</label>
+      <input id="api-base-url" type="text" placeholder="http://127.0.0.1:11435" />
+      <button id="save" type="button">Save</button>
+      <p id="status" class="subtle">Idle</p>
+    </main>
+    <script src="./options.js"></script>
+  </body>
+</html>

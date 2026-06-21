@@ -1,11 +1,13 @@
 const promptNode = document.getElementById("prompt");
 const sendButton = document.getElementById("send");
+const optionsButton = document.getElementById("open-options");
 const responseNode = document.getElementById("response");
 const metaNode = document.getElementById("meta");
 const statusNode = document.getElementById("status");
 
-const API_URL = "http://127.0.0.1:11435/v1/chat/completions";
 const STORAGE_KEY = "daari_extension.prompt";
+const API_BASE_KEY = "daari_extension.api_base_url";
+const DEFAULT_API_BASE = "http://127.0.0.1:11435";
 
 function setStatus(text) {
   statusNode.textContent = text;
@@ -16,6 +18,12 @@ async function loadDraft() {
   if (typeof state[STORAGE_KEY] === "string") {
     promptNode.value = state[STORAGE_KEY];
   }
+}
+
+async function getApiBaseUrl() {
+  const state = await chrome.storage.local.get([API_BASE_KEY]);
+  const raw = typeof state[API_BASE_KEY] === "string" ? state[API_BASE_KEY].trim() : "";
+  return (raw || DEFAULT_API_BASE).replace(/\/$/, "");
 }
 
 async function saveDraft() {
@@ -33,7 +41,9 @@ async function sendPrompt() {
   responseNode.textContent = "...";
   metaNode.textContent = "...";
   try {
-    const response = await fetch(API_URL, {
+    const apiBase = await getApiBaseUrl();
+    const apiUrl = `${apiBase}/v1/chat/completions`;
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -55,9 +65,14 @@ async function sendPrompt() {
     setStatus(`Done at ${new Date().toLocaleTimeString()}`);
     await saveDraft();
   } catch (error) {
-    responseNode.textContent = `Request failed: ${error.message}`;
+    const message = error?.message || "unknown error";
+    responseNode.textContent = `Request failed: ${message}`;
     metaNode.textContent = "-";
-    setStatus("Failed. Is daari serve running on :11435?");
+    if (error instanceof TypeError) {
+      setStatus("Could not reach daari. Check API URL in extension options and verify daemon is running.");
+    } else {
+      setStatus("Request failed. Review response details and extension options.");
+    }
   } finally {
     sendButton.disabled = false;
   }
@@ -68,6 +83,9 @@ promptNode.addEventListener("input", () => {
 });
 sendButton.addEventListener("click", () => {
   void sendPrompt();
+});
+optionsButton.addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
 });
 
 void loadDraft();
