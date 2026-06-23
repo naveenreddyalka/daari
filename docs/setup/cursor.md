@@ -56,6 +56,26 @@ If `DAARI_TUNNEL_URL` is set, it is used directly.
 |---|---|
 |`Access to private networks is forbidden`|You are still using localhost in Cursor; switch to tunnel HTTPS URL|
 |Cursor shows `Reconnecting...` + `Network Error - trouble connecting to model provider`|Verify your tunnel URL is a random `https://<name>.trycloudflare.com` hostname (not `https://api.trycloudflare.com`), then test `curl https://<name>.trycloudflare.com/health` and `daari doctor --tunnel --tunnel-url https://<name>.trycloudflare.com`|
+|Empty response in Cursor (no text)|Check `~/.daari/cursor-requests.log` — look for `content_chunks: 0`. Common causes (fixed in recent builds): unrecognized `input_text` content blocks, IDE tools causing Ollama `tool_calls`, L4 model not pulled (404 then fallback). Restart `daari serve` from venv after updates.|
+|Slow first reply on long prompts|Cursor context may route to L4 (`llama3.1:8b`). If not pulled, daari retries L3 after 404 — run `ollama pull llama3.1:8b` or expect ~15s L3 fallback latency.|
+|Reply mentions shell/tools but didn't use them|Expected POC limitation: daari strips Cursor's 18 IDE tools for Ask, but Cursor's system prompt still describes tools; small local models may hallucinate tool narration in plain text. See [TRACKING.md](../TRACKING.md#cursor-e2e-byok--poc-2026-06-23).|
 |`cloudflared: command not found`|Install: `brew install cloudflared`|
 |Tunnel command exits quickly|Restart with `scripts/tunnel.sh`; it now validates `/health` before printing ready and shows copy/paste curl checks|
 |Slow every request|Cache miss — verify with `daari stats`|
+
+## Verify routing (debug log)
+
+After a Cursor chat message:
+
+```bash
+tail -10 ~/.daari/cursor-requests.log
+```
+
+Healthy Ask flow:
+
+- `chat_completions_request` with `user_agent: Cursor/1.0`
+- `tools_stripped` with `count: 18` (Ask mode)
+- `stream_attempt` → optionally `stream_fallback_ok` if L4 missing
+- `chat_completions_stream_done` with **`content_chunks` > 0**
+
+Answer source: **local Ollama** (`llama3.2:3b` or `llama3.1:8b`), not Cursor built-in or frontier APIs — unless L6 escalation is configured and triggered (not used in standard Ask POC).

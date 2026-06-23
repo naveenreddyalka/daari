@@ -24,7 +24,14 @@ from daari.config.settings import Settings
 from daari.setup.backup import create_backup, latest_backup, restore_latest_backup
 from daari.setup.jsonc import load_jsonc
 from daari.setup.models import fetch_ollama_models, write_models_config
-from daari.setup.tunnel import find_cloudflared_tunnel_url, parse_cloudflared_tunnel_url
+from daari.setup.tunnel import (
+    cloudflared_tunnel_ready_from_logs,
+    find_cloudflared_metrics_port,
+    find_cloudflared_tunnel_url,
+    parse_cloudflared_metrics_port,
+    parse_cloudflared_tunnel_url,
+    wait_for_tunnel_health,
+)
 
 
 @pytest.fixture
@@ -751,6 +758,41 @@ class TestTunnelHelpers:
             "Visit this URL: https://abc123.trycloudflare.com",
         ]
         assert find_cloudflared_tunnel_url(lines) == "https://abc123.trycloudflare.com"
+
+    def test_cloudflared_tunnel_ready_from_logs(self):
+        partial = (
+            "INF |  https://demo.trycloudflare.com\n"
+            "INF Registered tunnel connection connIndex=0\n"
+        )
+        assert cloudflared_tunnel_ready_from_logs(partial) is True
+
+        precheck = "INF precheck complete hard_fail=false suggested_protocol=quic\n"
+        assert cloudflared_tunnel_ready_from_logs(precheck) is True
+
+        waiting = "INF Requesting new quick Tunnel on trycloudflare.com...\n"
+        assert cloudflared_tunnel_ready_from_logs(waiting) is False
+
+    def test_parse_cloudflared_metrics_port(self):
+        line = "INF Starting metrics server on 127.0.0.1:20241/metrics"
+        assert parse_cloudflared_metrics_port(line) == 20241
+        assert find_cloudflared_metrics_port([line]) == 20241
+
+    def test_wait_for_tunnel_health_retries_with_backoff(self, monkeypatch):
+        attempts: list[float] = []
+
+        def fake_sleep(seconds: float) -> None:
+            attempts.append(seconds)
+
+        def probe(_url: str) -> bool:
+            return len(attempts) >= 2
+
+        monkeypatch.setattr("daari.setup.tunnel.time.sleep", fake_sleep)
+        assert wait_for_tunnel_health(
+            "https://demo.trycloudflare.com",
+            timeout_seconds=10,
+            probe=probe,
+        )
+        assert attempts[:2] == [0.5, 1.0]
 
 
 class TestDoctorCLI:

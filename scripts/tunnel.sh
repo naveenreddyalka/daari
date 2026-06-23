@@ -12,6 +12,12 @@ elif [[ "${1:-}" != "" ]]; then
   exit 1
 fi
 
+if [[ -x ".venv/bin/python" ]]; then
+  PYTHON_BIN=".venv/bin/python"
+else
+  PYTHON_BIN="python3"
+fi
+
 if [[ -x ".venv/bin/daari" ]]; then
   DAARI_BIN=".venv/bin/daari"
 else
@@ -21,6 +27,11 @@ fi
 if ! command -v cloudflared >/dev/null 2>&1; then
   echo "cloudflared is required. Install it with: brew install cloudflared" >&2
   exit 1
+fi
+
+if pgrep -f "cloudflared tunnel --url http://127.0.0.1:11435" >/dev/null 2>&1; then
+  echo "Warning: another cloudflared tunnel to 127.0.0.1:11435 is already running." >&2
+  echo "Stop it first to avoid metrics-port conflicts (e.g. 20241)." >&2
 fi
 
 DAARI_PID=""
@@ -80,22 +91,14 @@ for _ in $(seq 1 120); do
     exit 1
   fi
   TUNNEL_URL="$(
-    python - "${TUNNEL_LOG}" <<'PY'
+    "${PYTHON_BIN}" - "${TUNNEL_LOG}" <<'PY'
 import pathlib
-import re
 import sys
-from urllib.parse import urlparse
+
+from daari.setup.tunnel import find_cloudflared_tunnel_url
 
 text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
-for match in re.finditer(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com", text):
-    candidate = match.group(0)
-    host = urlparse(candidate).hostname or ""
-    if host == "api.trycloudflare.com":
-        continue
-    print(candidate)
-    break
-else:
-    print("")
+print(find_cloudflared_tunnel_url(text.splitlines()) or "")
 PY
   )"
   if [[ -n "${TUNNEL_URL}" ]]; then
@@ -112,18 +115,38 @@ fi
 
 OPENAI_BASE_URL="${TUNNEL_URL}/v1"
 
-verify_tunnel_health() {
-  curl -fsS "${TUNNEL_URL}/health" >/dev/null 2>&1
-}
+echo "Waiting for cloudflared connectivity checks..."
+if ! "${PYTHON_BIN}" - "${TUNNEL_LOG}" <<'PY'
+import pathlib
+import sys
+import time
 
-for _ in $(seq 1 200); do
-  if verify_tunnel_health; then
-    break
-  fi
-  sleep 0.25
-done
+from daari.setup.tunnel import cloudflared_tunnel_ready_from_logs
 
-if ! verify_tunnel_health; then
+log_path = pathlib.Path(sys.argv[1])
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline:
+    text = log_path.read_text(encoding="utf-8", errors="ignore")
+    if cloudflared_tunnel_ready_from_logs(text):
+        raise SystemExit(0)
+    time.sleep(0.5)
+raise SystemExit(1)
+PY
+then
+  echo "Timed out waiting for cloudflared readiness. Last tunnel logs:" >&2
+  tail -n 80 "${TUNNEL_LOG}" >&2 || true
+  exit 1
+fi
+
+echo "Probing tunnel health endpoint (up to 60s with backoff)..."
+if ! "${PYTHON_BIN}" - "${TUNNEL_URL}" <<'PY'
+import sys
+
+from daari.setup.tunnel import wait_for_tunnel_health
+
+raise SystemExit(0 if wait_for_tunnel_health(sys.argv[1]) else 1)
+PY
+then
   echo "Tunnel URL discovered but health probe failed: ${TUNNEL_URL}/health" >&2
   echo "Last tunnel logs:" >&2
   tail -n 80 "${TUNNEL_LOG}" >&2 || true

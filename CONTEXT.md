@@ -1,7 +1,7 @@
 # daari — Project Context
 
 > Handoff document for any tool or session picking up this project.  
-> **Last updated:** 2026-06-21  
+> **Last updated:** 2026-06-23  
 > **Project location:** `~/Home/Daari`  
 > **GitHub:** https://github.com/naveenreddyalka/daari
 
@@ -9,8 +9,10 @@
 
 ## Current phase
 
-**v1.1.1 released, post-release continuation landed**  
+**v1.1.1 released; Cursor Ask E2E POC verified (2026-06-23)**  
 Phase A/A.1/B/C3 baseline is complete with enterprise E2/E3, plus hot cache reload (`POST /v1/daari/reload-caches`), enterprise periodic profile sync (`org.learning_sync_seconds`), browser extension options UX, web UI export/theme controls, and Cursor tunnel-based E2E setup for BYOK/private-network restrictions.
+
+**Cursor BYOK:** Ask + `daari` model works via cloudflared → local Ollama. Open items (tool hallucination on follow-ups, commit compat fixes, Ask vs Agent split) tracked in [TRACKING.md — Cursor E2E POC](docs/TRACKING.md#cursor-e2e-byok--poc-2026-06-23).
 
 **Last verified:** run `pytest` on current branch.
 
@@ -59,10 +61,13 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 ## Next tasks (post-v1.1.0)
 
-1. **Org L1 semantic matching depth** in shared service (current tracer bullet is key-based)
-2. **Lt B.1 profiles** (project/path command templates + richer confirmations)
-3. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
-4. Browser extension E2E automation coverage (popup + options flow)
+1. **Commit Cursor BYOK compat fixes** (content normalization, tools strip, stream L4 fallback, sanitization, tests) — see [TRACKING.md — Cursor E2E](docs/TRACKING.md#cursor-e2e-byok--poc-2026-06-23)
+2. **Cursor follow-up quality** — reduce tool hallucination when IDE tools stripped but system prompt still describes tools
+3. **Ask vs Agent BYOK split** — strip tools for Ask only; preserve tool round-trip for Agent per ADR-0004
+4. **Org L1 semantic matching depth** in shared service (current tracer bullet is key-based)
+5. **Lt B.1 profiles** (project/path command templates + richer confirmations)
+6. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
+7. Browser extension E2E automation coverage (popup + options flow)
 
 **L1 config** (`~/.daari/config.yaml`):
 
@@ -76,8 +81,9 @@ cache:
     embedding_model: nomic-embed-text   # ollama pull nomic-embed-text
 ```
 
-**Validation baseline (2026-06-21):**
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: 133 passed
+**Validation baseline (2026-06-23):**
+- `pytest -m "not integration and not benchmark"`: 162 passed, 1 skipped
+- Cursor Ask E2E (tunnel + daari model): verified — see [RELEASE-v1.1.2-cursor-e2e.md](docs/RELEASE-v1.1.2-cursor-e2e.md)
 - `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: 1 passed, 132 deselected
 - `.venv/bin/python -m pytest -m benchmark`: 1 passed, 132 deselected
 - `./scripts/demo.sh`: pass

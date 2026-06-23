@@ -46,3 +46,19 @@ def settings(tmp_path):
             },
         }
     )
+
+
+META_HEADERS = {"X-Daari-Meta": "true"}
+
+# Confidence heuristic skips escalation when content length > 10 chars.
+MOCK_MODEL_CONTENT = "mock model response with enough length"
+
+
+def mock_all_ollama_executors(monkeypatch, router, fake_execute) -> None:
+    seen: set[int] = set()
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5", "ollama"):
+        executor = getattr(router, attr, None)
+        if executor is None or id(executor) in seen:
+            continue
+        seen.add(id(executor))
+        monkeypatch.setattr(executor, "execute", fake_execute)
