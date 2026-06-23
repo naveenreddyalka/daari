@@ -1,7 +1,7 @@
 # daari — Validation Summary
 
-> Date: 2026-06-21  
-> Scope: v1.1.1 continuation (enterprise profile sync hardening, browser extension options UX, web-ui export/theme, cursor tunnel E2E path)
+> Date: 2026-06-23  
+> Scope: v1.1.2 Cursor BYOK E2E + prior v1.1.1 continuation
 
 ## v1.0 readiness score
 
@@ -19,7 +19,7 @@
 
 ## Verification results
 
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`: **133 passed**
+- `pytest -m "not integration and not benchmark"`: **162 passed**, 1 skipped (2026-06-23)
 - `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: **1 passed, 132 deselected**
 - `.venv/bin/python -m pytest -m benchmark`: **1 passed, 132 deselected**
 - `./scripts/demo.sh`: **pass**
@@ -42,9 +42,9 @@
 - MCP validation error path: **pass** (`tools/call` invalid schema input returns `MCP_ERR_SCHEMA_VALIDATION`)
 - Web UI serve + index route: **pass** (`daari web-ui serve`, dashboard returns HTTP 200; auto-refresh, export JSON, and theme toggle rendered)
 - Browser extension runtime assets: **pass** (MV3 manifest + popup + options page assets loadable from `packages/browser-extension/`)
-- Cursor setup smoke script: **pass** (`./scripts/smoke-cursor-dry-run.sh`)
+- Cursor Ask E2E via tunnel: **pass** (2026-06-23) — `content_chunks` > 0, local Ollama routing confirmed; see [RELEASE-v1.1.2-cursor-e2e.md](RELEASE-v1.1.2-cursor-e2e.md)
 - Cursor tunnel script path: **covered by unit/CLI changes** (`scripts/tunnel.sh --setup-cursor`, requires `cloudflared` for local run)
-- Cursor E2E note updated: localhost blocked by Cursor cloud SSRF policy, tunnel required
+- Cursor E2E note: localhost blocked by Cursor cloud SSRF policy, tunnel required
 
 ## Performance summary
 
@@ -63,5 +63,8 @@ From `./scripts/bench.sh`:
 |----------|-----|--------|
 | Medium | Org L1 semantic matching in shared service | Current E2 tracer bullet uses key-based L1 reuse, not vector similarity search |
 | Medium | Live CI smoke for tokenized C3 integrations | Requires org credentials not available in CI by default |
+| Medium | Cursor tool hallucination on follow-ups (tools stripped) | Local model narrates IDE tool use in plain text; needs stronger prompt policy — [TRACKING.md](TRACKING.md#cursor-e2e-byok--poc-2026-06-23) |
+| Medium | Ask vs Agent BYOK tool handling | Ask strips tools (working); Agent needs tool round-trip per ADR-0004 |
 | Low | Browser extension end-to-end UI tests | Runtime works locally, but automated browser-level tests are still pending |
+| Low | Automated Cursor cloud E2E in CI | Requires tunnel + Cursor cloud; manual verification only (2026-06-23 pass) |
 

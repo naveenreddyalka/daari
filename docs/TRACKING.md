@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-06-21  
+> Last updated: 2026-06-23  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 133 passed (`OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest`)
+**Count:** 162 passed (`pytest -m "not integration and not benchmark"`, 2026-06-23)
 
 ---
 
@@ -178,6 +178,51 @@ pytest -m benchmark                 # optional latency checks
 
 ---
 
+## Cursor E2E BYOK — POC (2026-06-23)
+
+Manual validation: **Cursor Ask + daari model via cloudflared tunnel → local Ollama**.  
+Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `content_chunks`).
+
+### Issues found & fixed (shipped 2026-06-23)
+
+| Issue | Symptom | Fix | Status |
+|-------|---------|-----|--------|
+| Cursor blocks localhost | `Access to private networks is forbidden` | HTTPS tunnel (`scripts/tunnel.sh`) | [x] |
+| Array message content (`[{"type":"text",...}]`) | 422 Unprocessable Entity | `content_to_text()` in gateway | [x] |
+| Cursor `input_text` content blocks | Empty stream (~20ms), 0 `content_chunks` | `content_to_text()` handles `input_text`, `output_text`, dict blocks | [x] |
+| Cursor sends 18 IDE tools on Ask | Ollama returns `tool_calls`, 0 text chunks | Strip `tools` in `_prepare_internal_request()` + plain-text system hint | [x] |
+| `tool_calls` left in message history | Ollama 400, empty stream | `sanitize_messages_for_ollama()` when tools stripped | [x] |
+| Stream path missing L4→L3 fallback | L4 404 when `llama3.1:8b` not pulled; empty or slow retry | `stream_openai_chunks()` tier chain + fallback (matches non-stream `route()`) | [x] |
+| Stream error JSON malformed | Cursor freeze / parse errors | `json.dumps()` for stream errors; initial `role: assistant` chunk | [x] |
+| Missing `/v1/models` | Cursor model picker issues | `GET /v1/models`, `GET /v1/models/{id}` | [x] |
+| Gateway request logging | Hard to debug Cursor payloads | `~/.daari/cursor-requests.log` via `log_gateway_event()` | [x] |
+| Integration tests for above | — | `tests/integration/test_gateway_flow.py`, `tests/unit/test_gateway_content.py` | [x] |
+
+**Verified E2E:** Cursor `user_agent: Cursor/1.0` → daari → Ollama `llama3.2:3b` (L3 fallback) or `llama3.1:8b` (L4 when pulled); `content_chunks` > 0. Release notes: [RELEASE-v1.1.2-cursor-e2e.md](RELEASE-v1.1.2-cursor-e2e.md).
+
+### Testing summary (2026-06-23)
+
+| Layer | Result |
+|-------|--------|
+| `pytest` (default, mocked) | **162 passed**, 1 skipped |
+| Manual Cursor Ask E2E | ✅ math question + follow-up |
+| Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
+
+### Next steps (Cursor / BYOK)
+
+| Task | Priority | Status |
+|------|----------|--------|
+| ~~Commit Cursor compat fixes to `main`~~ | High | [x] |
+| ~~Document `cursor-requests.log` in setup/cursor.md~~ | Medium | [x] |
+| **Tool hallucination after tools stripped** | Medium | [ ] Follow-up replies mimic IDE tools in plain text; strengthen prompt or Cursor-specific override |
+| **Ask vs Agent mode split** | Medium | [ ] Strip tools for Ask only; preserve tool round-trip for Agent (ADR-0004) |
+| Cursor-specific tier policy | Low | [ ] Optional L3 cap for latency on long Cursor context |
+| Pull L4 in install by default | Low | [ ] `daari install --pull-l4` exists; consider making default for Cursor users |
+| Automated Cursor E2E test | Low | [ ] Manual only; cloudflared + Cursor cloud not CI-friendly |
+| Tag v1.1.2 release | Low | [ ] After soak period |
+
+---
+
 ## Phase E2 — Org shared cache (tracer bullet)
 
 | Task | Status | Notes |
@@ -196,9 +241,10 @@ pytest -m benchmark                 # optional latency checks
 
 ## Deferred / user-owned
 
-- Cursor smoke test on personal device (`daari setup cursor` + chat through daari)
-- L4 model pull/install still user-managed (falls back to L3 when unavailable)
+- Cursor smoke test on personal device (`daari setup cursor` + chat through daari) — **Ask E2E verified 2026-06-23**; see [Cursor E2E BYOK POC](#cursor-e2e-byok--poc-2026-06-23)
+- L4 model pull/install still user-managed (falls back to L3 when unavailable; pull `llama3.1:8b` to use L4 without retry)
 - L6 live frontier smoke depends on API key presence
+- Cursor follow-up quality / tool hallucination when tools stripped (tracked in open todos above)
 
 ---
 

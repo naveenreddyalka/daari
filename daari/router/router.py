@@ -7,7 +7,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 import httpx
 
@@ -354,7 +354,7 @@ class Router:
             else:
                 raise
         response = await self._maybe_escalate(request, response, started)
-        if not request.meta.no_cache and response.daari_meta.tier in {"L3", "L4", "L5"}:
+        if not request.meta.no_cache and response.daari_meta.tier in {"L3", "L4", "L5"} and response.content.strip():
             try:
                 self.cache.put(request, response)
             except Exception:
@@ -402,63 +402,121 @@ class Router:
         return None
 
     async def stream_openai_chunks(self, request: InternalRequest) -> AsyncIterator[str]:
-        """SSE passthrough with daari metadata events."""
+        """Emit OpenAI-compatible SSE chunks (strict shape for Cursor and other clients)."""
+        from daari.gateway.content import sanitize_messages_for_ollama
+        from daari.gateway.request_log import log_gateway_event
+
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
-        stream_tier = self._choose_initial_tier(request)
-        stream_executor = self._executor_for_tier(stream_tier)
-        model_name = stream_executor.default_model
-        meta_payload = {
-            "id": chunk_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model_name,
-            "choices": [{"index": 0, "delta": {}, "finish_reason": None}],
-            "daari_meta": {
-                "tier": stream_tier,
-                "executor": "ollama",
-                "provider_id": f"ollama:{stream_tier.lower()}",
-                "model": model_name,
-                "stream": True,
-            },
-        }
-        yield f"data: {json.dumps(meta_payload)}\n\n"
-        async for event in stream_executor.stream(request):
-            delta = event.get("message", {}).get("content", "")
-            if delta:
-                payload = {
-                    "id": chunk_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": model_name,
-                    "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
-                    "daari_meta": {
-                        "tier": stream_tier,
-                        "executor": "ollama",
-                        "provider_id": f"ollama:{stream_tier.lower()}",
-                        "model": model_name,
-                        "stream": True,
-                    },
-                }
-                yield f"data: {json.dumps(payload)}\n\n"
-            if event.get("done"):
-                break
-        done_payload = {
-            "id": chunk_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model_name,
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            "daari_meta": {
-                "tier": stream_tier,
-                "executor": "ollama",
-                "provider_id": f"ollama:{stream_tier.lower()}",
-                "model": model_name,
-                "stream": True,
-            },
-        }
-        yield f"data: {json.dumps(done_payload)}\n\n"
-        yield "data: [DONE]\n\n"
+        client_model = request.model or self.ollama_l3.default_model
+        tier_chain = self._stream_tier_chain(request)
+        stream_request = request.model_copy(deep=True)
+        stream_request.tools = None
+        stream_request.messages = sanitize_messages_for_ollama(stream_request.messages)
+        prompt_chars = sum(len(message.content or "") for message in stream_request.messages)
+        completion_chars = 0
+
+        log_gateway_event(
+            "stream_tier_chain",
+            {"tiers": tier_chain, "model": client_model, "message_count": len(stream_request.messages)},
+        )
+
+        def chunk_payload(*, delta: dict[str, Any], finish_reason: str | None = None) -> dict[str, Any]:
+            choice: dict[str, Any] = {"index": 0, "delta": delta}
+            if finish_reason is not None:
+                choice["finish_reason"] = finish_reason
+            return {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": client_model,
+                "choices": [choice],
+            }
+
+        last_error: Exception | None = None
+        for tier_index, tier in enumerate(tier_chain):
+            stream_executor = self._executor_for_tier(tier)
+            ollama_model = stream_executor.default_model
+            stream_request.model = ollama_model
+            log_gateway_event("stream_attempt", {"tier": tier, "ollama_model": ollama_model})
+
+            role_chunk = f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+            pending_chunks: list[str] = []
+            content_sent = False
+            tier_completion_chars = 0
+            try:
+                async for event in stream_executor.stream(stream_request):
+                    message = event.get("message", {})
+                    delta = message.get("content", "")
+                    if not delta and message.get("tool_calls"):
+                        delta = json.dumps(message["tool_calls"])
+                    if delta:
+                        if not content_sent:
+                            pending_chunks.append(role_chunk)
+                            content_sent = True
+                        tier_completion_chars += len(delta)
+                        pending_chunks.append(
+                            f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+                        )
+                    if event.get("done"):
+                        break
+            except Exception as exc:
+                last_error = exc
+                log_gateway_event(
+                    "stream_attempt_failed",
+                    {"tier": tier, "ollama_model": ollama_model, "error": str(exc)[:300]},
+                )
+                if tier_index < len(tier_chain) - 1:
+                    continue
+                yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            if not content_sent and tier_index < len(tier_chain) - 1:
+                log_gateway_event("stream_empty_retry", {"tier": tier, "ollama_model": ollama_model})
+                continue
+
+            if tier_index > 0 and content_sent:
+                log_gateway_event("stream_fallback_ok", {"tier": tier, "ollama_model": ollama_model})
+
+            completion_chars = tier_completion_chars
+            if content_sent:
+                for chunk in pending_chunks:
+                    yield chunk
+            else:
+                yield role_chunk
+            yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+            usage_payload = {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": client_model,
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": max(1, prompt_chars // 4),
+                    "completion_tokens": max(0, completion_chars // 4),
+                    "total_tokens": max(1, (prompt_chars + completion_chars) // 4),
+                },
+            }
+            yield f"data: {json.dumps(usage_payload)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        if last_error is not None:
+            raise last_error
+
+    def _stream_tier_chain(self, request: InternalRequest) -> list[str]:
+        initial = self._choose_initial_tier(request)
+        chain = [initial]
+        if initial == "L5":
+            chain.extend(["L4", "L3"])
+        elif initial == "L4":
+            chain.append("L3")
+        deduped: list[str] = []
+        for tier in chain:
+            if tier not in deduped:
+                deduped.append(tier)
+        return deduped
 
     async def stream_anthropic_events(self, request: InternalRequest) -> AsyncIterator[str]:
         """Emit Anthropic-compatible SSE events with daari metadata."""

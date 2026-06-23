@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 
 from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from tests.conftest import META_HEADERS
 from daari.router.router import AppContext
 from daari.server.app import create_app
 
@@ -109,7 +110,7 @@ async def test_l6_escalation_via_gateway(frontier_app, monkeypatch):
 
     transport = ASGITransport(app=frontier_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/v1/chat/completions", json=payload)
+        response = await client.post("/v1/chat/completions", json=payload, headers=META_HEADERS)
         stats = await client.get("/v1/daari/stats")
 
     body = response.json()

@@ -18,6 +18,7 @@ class RequestMeta(BaseModel):
     no_frontier: bool = False
     confirm_tool: bool = False
     rerun_command: bool = False
+    stream_include_usage: bool = False
 
 
 class InternalRequest(BaseModel):

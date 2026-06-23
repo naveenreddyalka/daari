@@ -11,7 +11,7 @@ from daari.observability.metrics import Metrics
 from daari.router.router import OllamaExecutor, Router
 from daari.router.router import AppContext
 from daari.server.app import create_app
-from tests.conftest import NoopEmbedder
+from tests.conftest import META_HEADERS, MOCK_MODEL_CONTENT, NoopEmbedder, mock_all_ollama_executors
 
 
 @pytest.fixture
@@ -115,7 +115,7 @@ class TestOpenAIGateway:
     async def test_chat_completions_mocked(self, app, monkeypatch):
         async def fake_execute(request: InternalRequest) -> InternalResponse:
             return InternalResponse(
-                content="pong",
+                content=MOCK_MODEL_CONTENT,
                 model="llama3.2:3b",
                 daari_meta=DaariMeta(
                     tier="L3",
@@ -128,19 +128,19 @@ class TestOpenAIGateway:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             ctx = app.state.ctx
-            monkeypatch.setattr(ctx.router.ollama, "execute", fake_execute)
+            mock_all_ollama_executors(monkeypatch, ctx.router, fake_execute)
 
             payload = {
                 "model": "llama3.2:3b",
                 "messages": [{"role": "user", "content": "ping"}],
             }
-            first = await client.post("/v1/chat/completions", json=payload)
+            first = await client.post("/v1/chat/completions", json=payload, headers=META_HEADERS)
             assert first.status_code == 200
             body = first.json()
-            assert body["choices"][0]["message"]["content"] == "pong"
+            assert body["choices"][0]["message"]["content"] == MOCK_MODEL_CONTENT
             assert body["daari_meta"]["tier"] == "L3"
 
-            second = await client.post("/v1/chat/completions", json=payload)
+            second = await client.post("/v1/chat/completions", json=payload, headers=META_HEADERS)
             assert second.status_code == 200
             assert second.json()["daari_meta"]["tier"] == "L0"
 

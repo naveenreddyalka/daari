@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.content import content_to_text
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.router.router import AppContext
 
@@ -44,16 +45,6 @@ class AnthropicMessageResponse(BaseModel):
     daari_meta: dict[str, Any] = Field(default_factory=dict)
 
 
-def _content_to_text(content: str | list[dict[str, Any]]) -> str:
-    if isinstance(content, str):
-        return content
-    text_parts: list[str] = []
-    for block in content:
-        if block.get("type") == "text" and isinstance(block.get("text"), str):
-            text_parts.append(block["text"])
-    return "\n".join(part for part in text_parts if part)
-
-
 class AnthropicGatewayAdapter(GatewayAdapter):
     id = "anthropic"
 
@@ -77,7 +68,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             internal = InternalRequest(
                 messages=[
-                    Message(role=message.role, content=_content_to_text(message.content))
+                    Message(role=message.role, content=content_to_text(message.content))
                     for message in body.messages
                 ],
                 model=body.model or ctx.settings.models.l3,

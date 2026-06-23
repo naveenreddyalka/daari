@@ -29,7 +29,10 @@ from daari.setup.context import clear_context_caches
 from daari.setup.doctor import doctor_exit_code, run_doctor
 from daari.setup.models import setup_models_interactive
 from daari.setup.openai_compat import setup_frontier_key_hint, setup_openai_compat
-from daari.setup.tunnel import parse_cloudflared_tunnel_url
+from daari.setup.tunnel import (
+    parse_cloudflared_tunnel_url,
+    wait_for_tunnel_health,
+)
 from daari.setup.wizard import run_setup_wizard
 
 app = typer.Typer(
@@ -119,23 +122,6 @@ def _start_cloudflared_tunnel(
         "Could not discover cloudflared tunnel URL. "
         + (f"Last output:\n{preview}" if preview else "No cloudflared output captured.")
     )
-
-
-def _tunnel_health_ok(tunnel_url: str, timeout: float = 3.0) -> bool:
-    try:
-        response = httpx.get(f"{tunnel_url.rstrip('/')}/health", timeout=timeout)
-        return response.status_code == 200
-    except Exception:
-        return False
-
-
-def _wait_for_tunnel_health(tunnel_url: str, timeout_seconds: float = 45.0) -> bool:
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        if _tunnel_health_ok(tunnel_url):
-            return True
-        time.sleep(0.25)
-    return False
 
 
 @app.command()
@@ -467,7 +453,7 @@ def setup_cursor(
             except RuntimeError as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from exc
-            if not _wait_for_tunnel_health(tunnel_url):
+            if not wait_for_tunnel_health(tunnel_url):
                 typer.echo(f"Tunnel URL discovered but health probe failed: {tunnel_url}/health", err=True)
                 if tunnel_process.poll() is None:
                     tunnel_process.terminate()
