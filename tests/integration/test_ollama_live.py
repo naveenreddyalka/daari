@@ -43,15 +43,19 @@ def live_app(live_settings):
 @pytest.mark.skipif(not OLLAMA_HOST, reason="Set OLLAMA_HOST to run live Ollama tests")
 @pytest.mark.asyncio
 async def test_live_ollama_chat_and_cache(live_app):
+    # Prompt must elicit a >10-char answer: shorter replies fail the confidence
+    # heuristic (score_l3_confidence) and escalate past L3.
     payload = {
         "model": "llama3.2:3b",
-        "messages": [{"role": "user", "content": "Reply with exactly: pong"}],
+        "messages": [{"role": "user", "content": "In one short sentence, what is a cache?"}],
     }
 
+    # daari_meta is opt-in since the Cursor BYOK compat work (strict OpenAI shape by default)
+    headers = {"X-Daari-Meta": "true"}
     transport = ASGITransport(app=live_app)
     async with AsyncClient(transport=transport, base_url="http://test", timeout=120.0) as client:
-        first = await client.post("/v1/chat/completions", json=payload)
-        second = await client.post("/v1/chat/completions", json=payload)
+        first = await client.post("/v1/chat/completions", json=payload, headers=headers)
+        second = await client.post("/v1/chat/completions", json=payload, headers=headers)
 
     assert first.status_code == 200, first.text
     assert first.json()["daari_meta"]["tier"] == "L3"
