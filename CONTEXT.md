@@ -1,7 +1,7 @@
 # daari — Project Context
 
 > Handoff document for any tool or session picking up this project.  
-> **Last updated:** 2026-06-23  
+> **Last updated:** 2026-07-10  
 > **Project location:** `~/Home/Daari`  
 > **GitHub:** https://github.com/naveenreddyalka/daari
 
@@ -12,7 +12,9 @@
 **v1.1.1 released; Cursor Ask E2E POC verified (2026-06-23)**  
 Phase A/A.1/B/C3 baseline is complete with enterprise E2/E3, plus hot cache reload (`POST /v1/daari/reload-caches`), enterprise periodic profile sync (`org.learning_sync_seconds`), browser extension options UX, web UI export/theme controls, and Cursor tunnel-based E2E setup for BYOK/private-network restrictions.
 
-**Cursor BYOK:** Ask + `daari` model works via cloudflared → local Ollama. Open items (tool hallucination on follow-ups, commit compat fixes, Ask vs Agent split) tracked in [TRACKING.md — Cursor E2E POC](docs/TRACKING.md#cursor-e2e-byok--poc-2026-06-23).
+**Cursor BYOK:** Ask + `daari` model works via cloudflared → local Ollama. Open items (tool hallucination on follow-ups, Ask vs Agent split) now live as GitHub issues labeled `auto-dev`.
+
+**Autonomous dev loop (2026-07-10):** the project develops itself — backlog is GitHub issues `auto-dev` (#1–#8), agents follow [AGENTS.md](AGENTS.md), `main` is protected (CI required, auto-merge on green), a local launchd watchdog redeploys + runs live E2E every 2h and files regression issues. Runbook: [docs/AUTOMATION.md](docs/AUTOMATION.md). Repo is now **public**.
 
 **Last verified:** run `pytest` on current branch.
 

@@ -208,18 +208,37 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
-### Next steps (Cursor / BYOK)
+### Next steps (Cursor / BYOK) — migrated to GitHub issues (2026-07-10)
 
-| Task | Priority | Status |
-|------|----------|--------|
-| ~~Commit Cursor compat fixes to `main`~~ | High | [x] |
-| ~~Document `cursor-requests.log` in setup/cursor.md~~ | Medium | [x] |
-| **Tool hallucination after tools stripped** | Medium | [ ] Follow-up replies mimic IDE tools in plain text; strengthen prompt or Cursor-specific override |
-| **Ask vs Agent mode split** | Medium | [ ] Strip tools for Ask only; preserve tool round-trip for Agent (ADR-0004) |
-| Cursor-specific tier policy | Low | [ ] Optional L3 cap for latency on long Cursor context |
-| Pull L4 in install by default | Low | [ ] `daari install --pull-l4` exists; consider making default for Cursor users |
-| Automated Cursor E2E test | Low | [ ] Manual only; cloudflared + Cursor cloud not CI-friendly |
-| Tag v1.1.2 release | Low | [ ] After soak period |
+The open rows below moved to the `auto-dev` backlog worked by the autonomous dev loop ([AUTOMATION.md](AUTOMATION.md)):
+
+| Task | Issue |
+|------|-------|
+| ~~Commit Cursor compat fixes to `main`~~ | done (commit `1d651c6`) |
+| ~~Document `cursor-requests.log` in setup/cursor.md~~ | done |
+| Tool hallucination after tools stripped | [#1](https://github.com/naveenreddyalka/daari/issues/1) (P1) |
+| Ask vs Agent mode split (ADR-0004) | [#2](https://github.com/naveenreddyalka/daari/issues/2) (P1) |
+| Cursor-specific tier policy | [#3](https://github.com/naveenreddyalka/daari/issues/3) (P2) |
+| Pull L4 in install by default | [#4](https://github.com/naveenreddyalka/daari/issues/4) (P3) |
+| Anthropic stream usage + fallback parity | [#5](https://github.com/naveenreddyalka/daari/issues/5) (P2) |
+| Org L1 semantic matching depth | [#6](https://github.com/naveenreddyalka/daari/issues/6) (P2) |
+| Browser extension E2E coverage | [#7](https://github.com/naveenreddyalka/daari/issues/7) (P3) |
+| Tag v1.1.2 release prep | [#8](https://github.com/naveenreddyalka/daari/issues/8) (P3) |
+| Automated Cursor E2E test | covered by local watchdog (`scripts/autodev-local.sh`, Cursor-shaped smoke every 2h) |
+
+---
+
+## Autonomous dev loop (2026-07-10)
+
+| Piece | Status | Notes |
+|-------|--------|-------|
+| Backlog seeded as `auto-dev` issues #1–#8 | [x] | priorities P1–P3, acceptance criteria per issue |
+| AGENTS.md agent contract | [x] | repo root |
+| Repo public + auto-merge + branch protection on main (CI `test` required) | [x] | via `gh api` |
+| Local watchdog (`scripts/autodev-local.sh` + launchd) | [x] | validated live: filed issue #9 on first cycle (caught real live-test regression), Cursor smoke PASS |
+| Cloud automation drafts (dev-cycle / pr-review / scout) | [x] | [docs/automations/](automations/) — create in Agents Window or enable Bugbot |
+| CI fallback dev-cycle workflow | [x] | `.github/workflows/autodev.yml`; activates when `CURSOR_API_KEY` secret is set |
+| Runbook | [x] | [AUTOMATION.md](AUTOMATION.md) |
 
 ---
 
