@@ -240,6 +240,16 @@ The open rows below moved to the `auto-dev` backlog worked by the autonomous dev
 | CI fallback dev-cycle workflow | [x] | `.github/workflows/autodev.yml`; activates when `CURSOR_API_KEY` secret is set |
 | Runbook | [x] | [AUTOMATION.md](AUTOMATION.md) |
 
+### Demo cycle (2026-07-10) — loop verified end-to-end
+
+The first full autonomous cycle ran the same day the loop was built:
+
+1. **Detect** — local watchdog's first run caught a real regression on `main` (live Ollama test asserting removed `daari_meta` default + a prompt failing the confidence heuristic) and filed [#9](https://github.com/naveenreddyalka/daari/issues/9) with logs, labels `auto-dev,regression`.
+2. **Fix** — agent picked up #9 per AGENTS.md: branch `autodev/9-live-test-meta-headers`, fix + test runs (live: 1 passed; default: 161 passed), conventional commit.
+3. **Gate** — PR [#10](https://github.com/naveenreddyalka/daari/pull/10) opened with `Closes #9`, auto-merge armed; branch protection held it until CI `test` went green.
+4. **Merge** — auto-merged as `f12889a`; branch auto-deleted; issue #9 auto-closed.
+5. **Validate** — next watchdog cycle on updated `main`: daemon healthy, integration tests PASS, Cursor smoke PASS (8 content chunks). `cycle result: PASS`.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
