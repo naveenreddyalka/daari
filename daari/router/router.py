@@ -28,6 +28,7 @@ from daari.rules.dev_commands import DevCommandMatch, match_dev_command
 from daari.rules.engine import apply_l2_rules
 from daari.router.confidence import score_l3_confidence
 from daari.router.frontier import FrontierExecutor
+from daari.router.profile import PromptProfile, build_prompt_profile, categorize
 from daari.tools.shell import ShellExecutor
 
 
@@ -142,6 +143,7 @@ class Router:
         org_learning_client: OrgLearningClient | None = None,
         org_learning_enabled: bool = False,
         usage_ledger: UsageLedger | None = None,
+        category_policies: dict[str, Any] | None = None,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -181,6 +183,7 @@ class Router:
         self.frontier_enabled = frontier_enabled
         self.confidence_threshold = confidence_threshold
         self.usage_ledger = usage_ledger
+        self.category_policies = category_policies or {}
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
 
@@ -189,9 +192,23 @@ class Router:
         return self.ollama_l3
 
     async def route(self, request: InternalRequest) -> InternalResponse:
-        response = await self._route_impl(request)
+        profile = build_prompt_profile(request)
+        response = await self._route_impl(request, profile)
+        if response.daari_meta.task_type is None:
+            response.daari_meta.task_type = profile.category
+        if response.daari_meta.complexity is None:
+            response.daari_meta.complexity = profile.complexity
         self._ledger_record(request, response)
         return response
+
+    def _policy_for(self, profile: PromptProfile | None) -> Any | None:
+        if profile is None:
+            return None
+        return self.category_policies.get(profile.category)
+
+    def _category_cache_skip(self, profile: PromptProfile | None) -> bool:
+        policy = self._policy_for(profile)
+        return policy is not None and getattr(policy, "cache", "default") == "skip"
 
     def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
         if self.usage_ledger is None:
@@ -204,10 +221,13 @@ class Router:
             completion_chars=len(response.content or ""),
         )
 
-    async def _route_impl(self, request: InternalRequest) -> InternalResponse:
+    async def _route_impl(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> InternalResponse:
         started = time.perf_counter()
         request = self._with_skills_prefix(request)
         last_user = self._last_user_text(request.messages)
+        cache_skip = self._category_cache_skip(profile)
 
         if request.has_tool_calls_in_history:
             response = await self._run_model_tier("L3", request)
@@ -216,7 +236,7 @@ class Router:
 
         dev_match = match_dev_command(last_user)
 
-        if not request.meta.no_cache:
+        if not request.meta.no_cache and not cache_skip:
             try:
                 cached = self.cache.get(request)
             except Exception:
@@ -252,7 +272,7 @@ class Router:
             self._emit_org_feedback(last_user, ccs_hit)
             return ccs_hit
 
-        if not request.meta.no_cache:
+        if not request.meta.no_cache and not cache_skip:
             try:
                 semantic_hit, _similarity = await self.semantic_cache.get(request)
             except Exception:
@@ -403,7 +423,12 @@ class Router:
             else:
                 raise
         response = await self._maybe_escalate(request, response, started)
-        if not request.meta.no_cache and response.daari_meta.tier in {"L3", "L4", "L5"} and response.content.strip():
+        if (
+            not request.meta.no_cache
+            and not cache_skip
+            and response.daari_meta.tier in {"L3", "L4", "L5"}
+            and response.content.strip()
+        ):
             try:
                 self.cache.put(request, response)
             except Exception:
@@ -463,8 +488,13 @@ class Router:
         # Agent flows (tools passed through by the gateway, or tool history)
         # keep the full tool protocol; Ask flows get plain-text sanitization.
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
-        # ADR-0004: agent turns skip L0 entirely; explicit no-cache also bypasses.
-        cacheable = not agent_flow and not request.meta.no_cache
+        # ADR-0004: agent turns skip L0 entirely; explicit no-cache and
+        # category cache-skip policies also bypass.
+        cacheable = (
+            not agent_flow
+            and not request.meta.no_cache
+            and not self._category_cache_skip(build_prompt_profile(request))
+        )
         stream_request = request.model_copy(deep=True)
         if not agent_flow:
             stream_request.tools = None
@@ -796,6 +826,10 @@ class Router:
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             return override
+        policy = self._policy_for(build_prompt_profile(request))
+        policy_tier = getattr(policy, "tier", None) if policy is not None else None
+        if policy_tier in {"L3", "L4", "L5"}:
+            return policy_tier
         text = self._last_user_text(request.messages)
         words = len(re.findall(r"\S+", text))
         if words > 900 and self.model_preference == "accuracy":
@@ -928,18 +962,7 @@ class Router:
 
     @staticmethod
     def _classify_task(text: str) -> str:
-        normalized = text.lower()
-        if any(token in normalized for token in ("pytest", "test", "unit test")):
-            return "test"
-        if any(token in normalized for token in ("git ", "commit", "branch", "merge", "rebase")):
-            return "git"
-        if any(token in normalized for token in ("lint", "eslint", "ruff", "flake8")):
-            return "lint"
-        if any(token in normalized for token in ("http://", "https://", "fetch ", "api ")):
-            return "fetch"
-        if any(token in normalized for token in ("refactor", "function", "class", "code", "bug")):
-            return "code"
-        return "general"
+        return categorize(text)
 
     @staticmethod
     def _match_live_fetch_url(text: str) -> str | None:
@@ -1274,6 +1297,7 @@ class AppContext:
             org_learning_client=org_learning_client,
             org_learning_enabled=learning_enabled,
             usage_ledger=usage_ledger,
+            category_policies=dict(settings.routing.category_policies),
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_enabled=settings.frontier.enabled,

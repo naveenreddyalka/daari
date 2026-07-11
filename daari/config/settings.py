@@ -59,9 +59,15 @@ class FrontierSettings(BaseModel):
     price_per_1k_tokens: float = 0.002
 
 
+class CategoryPolicy(BaseModel):
+    tier: str | None = None  # L3 | L4 | L5; None keeps weight-based choice
+    cache: str = "default"  # default | skip
+
+
 class RoutingSettings(BaseModel):
     prefer: str = "balanced"  # latency | accuracy | balanced
     confidence_threshold: float = 0.7
+    category_policies: dict[str, CategoryPolicy] = Field(default_factory=dict)
 
 
 class ToolsSettings(BaseModel):

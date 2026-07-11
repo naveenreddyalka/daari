@@ -46,6 +46,7 @@ class DaariMeta(BaseModel):
     latency_ms: int = 0
     model: str | None = None
     task_type: str | None = None
+    complexity: str | None = None
     confidence: float | None = None
     escalated_from: str | None = None
     rule_id: str | None = None
