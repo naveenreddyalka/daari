@@ -63,6 +63,18 @@ If `DAARI_TUNNEL_URL` is set, it is used directly.
 |Tunnel command exits quickly|Restart with `scripts/tunnel.sh`; it now validates `/health` before printing ready and shows copy/paste curl checks|
 |Slow every request|Cache miss — verify with `daari stats`|
 
+## Prefer latency? Cap the local tier
+
+Cursor's Ask context is usually >250 words, which routes to L4 (`llama3.1:8b`) and pays its latency even for trivial questions. To keep chat on the fast L3 model:
+
+```yaml
+# ~/.daari/config.yaml
+routing:
+  max_tier_for_chat: L3
+```
+
+Or per request with the `X-Daari-Tier-Cap: L3` header (wins over config). The cap bounds both the initial tier and local confidence escalation; an explicit `X-Daari-Tier-Override` still wins over the cap.
+
 ## Verify routing (debug log)
 
 After a Cursor chat message:

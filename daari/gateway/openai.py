@@ -200,6 +200,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             request: Request,
             x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
+            x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
@@ -235,6 +236,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 meta=RequestMeta(
                     no_cache=x_daari_no_cache == "true",
                     tier_override=x_daari_tier_override,
+                    tier_cap=x_daari_tier_cap,
                     no_frontier=x_daari_no_frontier == "true",
                     confirm_tool=confirm_tool,
                     rerun_command=x_daari_rerun_command == "true",
