@@ -295,6 +295,19 @@ The remaining seeded issues from the first backlog, implemented TDD-style, auto-
 
 Default suite now at 250 tests (226 → 250). Remaining open backlog: #7 (browser-extension E2E), #8 (v1.1.2 release prep — tagging stays human-approved).
 
+### Loop cycles: extension coverage + scouted improvements (#7, #34–#36) (2026-07-10)
+
+After clearing the original backlog, the loop scouted and filed three fresh improvement issues (#34–#36), then implemented all of them plus #7. Each cycle E2E-validated by `autodev-local.sh` (final deploy `984bc99`); markdown export and cache prune also verified live against the running daemon:
+
+| Issue | Feature | PR | Merge |
+|-------|---------|----|-------|
+| [#7](https://github.com/naveenreddyalka/daari/issues/7) | Browser extension DOM tests (jsdom + node --test, 12 tests: send flow, error UX, draft persistence, options); new `extension` CI job | [#33](https://github.com/naveenreddyalka/daari/pull/33) | `aa6602d` |
+| [#34](https://github.com/naveenreddyalka/daari/issues/34) | Frontier prompt slimming before L6: strip internal hints, collapse duplicate system prompts, trim history; ledger records actual chars sent (`frontier.slim_prompts`) | [#37](https://github.com/naveenreddyalka/daari/pull/37) | `e27e930` |
+| [#35](https://github.com/naveenreddyalka/daari/issues/35) | Client-shareable markdown export: `daari report`/`daari trace` gain `--format markdown` + `--out FILE` | [#38](https://github.com/naveenreddyalka/daari/pull/38) | `78a0066` |
+| [#36](https://github.com/naveenreddyalka/daari/issues/36) | Cache TTLs (`cache.l0/l1.ttl_seconds`, category `ttl_seconds` overrides) + `daari cache prune` | [#39](https://github.com/naveenreddyalka/daari/pull/39) | `984bc99` |
+
+Default suite now at 272 pytest tests (250 → 272) + 12 extension tests. Open backlog: #8 (release prep, human-gated).
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
