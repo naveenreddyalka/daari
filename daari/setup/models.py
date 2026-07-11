@@ -34,6 +34,29 @@ def fetch_ollama_models(base_url: str, *, client: httpx.Client | None = None) ->
             http.close()
 
 
+def model_present(model: str, available: list[str]) -> bool:
+    return any(name == model or name.startswith(f"{model}:") for name in available)
+
+
+def l4_model_present(base_url: str, model: str, *, client: httpx.Client | None = None) -> bool | None:
+    """True/False if we could check, None when Ollama is unreachable."""
+    try:
+        available = fetch_ollama_models(base_url, client=client)
+    except Exception:
+        return None
+    return model_present(model, available)
+
+
+def pull_ollama_model(model: str) -> bool:
+    """Run `ollama pull <model>` (streams progress to the terminal)."""
+    import subprocess
+
+    try:
+        return subprocess.run(["ollama", "pull", model], check=False).returncode == 0
+    except OSError:
+        return False
+
+
 def write_models_config(
     model: str | None = None,
     *,

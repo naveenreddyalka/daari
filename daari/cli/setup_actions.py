@@ -4,6 +4,7 @@ import typer
 
 from daari.clients.registry import default_registry
 from daari.config.settings import Settings, get_settings
+from daari.setup.models import l4_model_present, pull_ollama_model
 
 
 def _print_setup_plan(plan) -> None:
@@ -72,14 +73,45 @@ def apply_setup_recipe(
     typer.echo("\nNext: daari serve")
 
 
+def ensure_cursor_l4_model(settings: Settings, *, assume_yes: bool = False) -> None:
+    """Cursor's long Ask context routes to L4; offer to pull it if missing (issue #4)."""
+    l4 = settings.models.l4
+    present = l4_model_present(settings.ollama.base_url, l4)
+    if present is None:
+        typer.echo(
+            f"\nNote: Ollama unreachable — could not verify the L4 model. Cursor long "
+            f"prompts route to L4; pull it later with: ollama pull {l4}"
+        )
+        return
+    if present:
+        typer.echo(f"\nL4 model {l4} is available — long Cursor prompts will use it.")
+        return
+    typer.echo(
+        f"\nCursor long prompts route to L4 ({l4}), which is not pulled yet "
+        "(they would fall back to L3 with a retry delay)."
+    )
+    if assume_yes or typer.confirm(f"Pull {l4} now?", default=True):
+        typer.echo(f"Pulling {l4} (this may take a few minutes)...")
+        if pull_ollama_model(l4):
+            typer.echo(f"Pulled {l4}.")
+        else:
+            typer.echo(f"Pull failed — run manually: ollama pull {l4}", err=True)
+    else:
+        typer.echo(f"Skipped. Later: ollama pull {l4} (until then L4 requests fall back to L3).")
+
+
 def apply_cursor_setup(
     *,
     dry_run: bool = False,
     force: bool = False,
     settings: Settings | None = None,
     base_url: str | None = None,
+    yes: bool = False,
 ) -> None:
-    apply_setup_recipe("cursor", dry_run=dry_run, force=force, settings=settings, base_url=base_url)
+    cfg = settings or get_settings()
+    apply_setup_recipe("cursor", dry_run=dry_run, force=force, settings=cfg, base_url=base_url)
+    if not dry_run:
+        ensure_cursor_l4_model(cfg, assume_yes=yes)
 
 
 def apply_intellij_setup(

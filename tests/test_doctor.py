@@ -140,7 +140,7 @@ class TestDoctor:
         stats_response.json.return_value = {"total_requests": 0}
         mock.get.side_effect = [tags_response, stats_response]
 
-        results = run_doctor(settings, httpx_client=mock)
+        results = run_doctor(settings, httpx_client=mock, cursor_configured=False)
         by_name = {r.name: r for r in results}
 
         assert by_name["model"].ok is True
@@ -149,6 +149,48 @@ class TestDoctor:
         assert by_name["model_l4"].optional is True
         assert "ollama pull llama3.1:8b" in by_name["model_l4"].detail
         assert doctor_exit_code(results) == 0
+
+    def _l4_missing_mock(self):
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {
+            "models": [{"name": "llama3.2:3b"}, {"name": "nomic-embed-text:latest"}]
+        }
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+        return mock
+
+    def test_l4_missing_required_when_cursor_configured(self, settings):
+        """Issue #4: Cursor users route long prompts to L4, so it becomes required."""
+        settings = Settings.model_validate(
+            {
+                **settings.model_dump(),
+                "models": {"l3": "llama3.2:3b", "l4": "llama3.1:8b"},
+            }
+        )
+        results = run_doctor(settings, httpx_client=self._l4_missing_mock(), cursor_configured=True)
+        by_name = {r.name: r for r in results}
+
+        assert by_name["model_l4"].ok is False
+        assert by_name["model_l4"].optional is False
+        assert "Cursor" in by_name["model_l4"].detail
+        assert doctor_exit_code(results) == 1
+
+    def test_cursor_configured_auto_detected_from_recipe(self, settings, monkeypatch):
+        settings = Settings.model_validate(
+            {
+                **settings.model_dump(),
+                "models": {"l3": "llama3.2:3b", "l4": "llama3.1:8b"},
+            }
+        )
+        monkeypatch.setattr(CursorSetupRecipe, "is_configured", lambda self, **kwargs: True)
+        results = run_doctor(settings, httpx_client=self._l4_missing_mock())
+        by_name = {r.name: r for r in results}
+
+        assert by_name["model_l4"].optional is False
 
     def test_frontier_disabled_ok(self, settings):
         mock = MagicMock(spec=httpx.Client)

@@ -164,7 +164,7 @@ echo ""
 
 if [[ "${SETUP_CURSOR}" == "1" ]]; then
   echo "Applying Cursor setup with tunnel base URL..."
-  "${DAARI_BIN}" setup cursor --base-url "${OPENAI_BASE_URL}"
+  "${DAARI_BIN}" setup cursor --base-url "${OPENAI_BASE_URL}" --yes
   echo ""
 fi
 

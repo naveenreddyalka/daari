@@ -18,19 +18,31 @@ class CheckResult:
     optional: bool = False
 
 
+def _detect_cursor_configured() -> bool:
+    try:
+        from daari.clients.cursor.recipe import CursorSetupRecipe
+
+        return CursorSetupRecipe().is_configured()
+    except Exception:
+        return False
+
+
 def run_doctor(
     settings: Settings | None = None,
     *,
     httpx_client: httpx.Client | None = None,
     tunnel_url: str | None = None,
+    cursor_configured: bool | None = None,
 ) -> list[CheckResult]:
     """Run health checks. Returns list of results (required + optional)."""
     results: list[CheckResult] = []
     cfg = settings or Settings.load()
+    if cursor_configured is None:
+        cursor_configured = _detect_cursor_configured()
 
     results.append(_check_python())
     results.append(_check_config(cfg))
-    results.extend(_check_ollama(cfg, httpx_client))
+    results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_frontier(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
@@ -73,6 +85,8 @@ def _check_config(settings: Settings) -> CheckResult:
 def _check_ollama(
     settings: Settings,
     client: httpx.Client | None,
+    *,
+    l4_required: bool = False,
 ) -> list[CheckResult]:
     base = settings.ollama.base_url.rstrip("/")
     l3_model = settings.models.l3
@@ -133,9 +147,18 @@ def _check_ollama(
                 name="model_l4",
                 ok=l4_present,
                 detail=(
-                    f"{l4_model} {'found' if l4_present else 'missing — run: ollama pull ' + l4_model + ' (L4 falls back to L3)'}"
+                    f"{l4_model} found"
+                    if l4_present
+                    else (
+                        f"{l4_model} missing — run: ollama pull {l4_model} "
+                        + (
+                            "(required: Cursor is configured and long prompts route to L4)"
+                            if l4_required
+                            else "(L4 falls back to L3)"
+                        )
+                    )
                 ),
-                optional=True,
+                optional=not l4_required,
             ),
             CheckResult(
                 name="model_l5",

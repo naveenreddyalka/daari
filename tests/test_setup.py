@@ -291,10 +291,11 @@ class TestSetupCLI:
     def test_setup_cursor_accepts_base_url(self, monkeypatch):
         captured = {}
 
-        def fake_apply_cursor_setup(*, dry_run=False, force=False, settings=None, base_url=None):
+        def fake_apply_cursor_setup(*, dry_run=False, force=False, settings=None, base_url=None, yes=False):
             captured["dry_run"] = dry_run
             captured["force"] = force
             captured["base_url"] = base_url
+            captured["yes"] = yes
 
         monkeypatch.setattr("daari.cli.app.apply_cursor_setup", fake_apply_cursor_setup)
         runner = CliRunner()
@@ -306,6 +307,64 @@ class TestSetupCLI:
         assert captured["dry_run"] is False
         assert captured["force"] is False
         assert captured["base_url"] == "https://demo.trycloudflare.com/v1"
+        assert captured["yes"] is False
+
+    def _l4_registry(self, recipe, monkeypatch, tmp_path, *, present):
+        from daari.clients.registry import ClientRegistry
+
+        registry = ClientRegistry()
+        registry.register(recipe)
+        monkeypatch.setattr("daari.cli.setup_actions.default_registry", lambda: registry)
+        monkeypatch.setattr(
+            "daari.setup.backup.backups_root",
+            lambda root=None: tmp_path / "backups",
+        )
+        monkeypatch.setattr(
+            "daari.cli.setup_actions.l4_model_present", lambda *args, **kwargs: present
+        )
+        pulled: list[str] = []
+        monkeypatch.setattr(
+            "daari.cli.setup_actions.pull_ollama_model",
+            lambda model: pulled.append(model) or True,
+        )
+        return pulled
+
+    def test_setup_cursor_prompts_and_pulls_missing_l4(self, recipe, monkeypatch, tmp_path):
+        pulled = self._l4_registry(recipe, monkeypatch, tmp_path, present=False)
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "cursor"], input="y\n")
+        assert result.exit_code == 0
+        assert pulled == ["llama3.1:8b"]
+
+    def test_setup_cursor_yes_pulls_without_prompt(self, recipe, monkeypatch, tmp_path):
+        pulled = self._l4_registry(recipe, monkeypatch, tmp_path, present=False)
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "cursor", "--yes"])
+        assert result.exit_code == 0
+        assert pulled == ["llama3.1:8b"]
+
+    def test_setup_cursor_declined_pull_prints_hint(self, recipe, monkeypatch, tmp_path):
+        pulled = self._l4_registry(recipe, monkeypatch, tmp_path, present=False)
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "cursor"], input="n\n")
+        assert result.exit_code == 0
+        assert pulled == []
+        assert "ollama pull llama3.1:8b" in result.stdout
+
+    def test_setup_cursor_l4_present_skips_prompt(self, recipe, monkeypatch, tmp_path):
+        pulled = self._l4_registry(recipe, monkeypatch, tmp_path, present=True)
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "cursor"])
+        assert result.exit_code == 0
+        assert pulled == []
+
+    def test_setup_cursor_ollama_unreachable_notes_only(self, recipe, monkeypatch, tmp_path):
+        pulled = self._l4_registry(recipe, monkeypatch, tmp_path, present=None)
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup", "cursor"])
+        assert result.exit_code == 0
+        assert pulled == []
+        assert "ollama pull llama3.1:8b" in result.stdout
 
     def test_setup_models_list(self, tmp_path, monkeypatch):
         config_path = tmp_path / "config.yaml"
