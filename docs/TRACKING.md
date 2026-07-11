@@ -250,6 +250,25 @@ The first full autonomous cycle ran the same day the loop was built:
 4. **Merge** — auto-merged as `f12889a`; branch auto-deleted; issue #9 auto-closed.
 5. **Validate** — next watchdog cycle on updated `main`: daemon healthy, integration tests PASS, Cursor smoke PASS (8 content chunks). `cycle result: PASS`.
 
+### Loop cycles 2–3: P1 backlog cleared (2026-07-10)
+
+| Issue | Fix | PR | Merge |
+|-------|-----|----|-------|
+| [#1](https://github.com/naveenreddyalka/daari/issues/1) tool hallucination | strengthened `NO_TOOLS_HINT` leads message list, idempotent | [#11](https://github.com/naveenreddyalka/daari/pull/11) | `4b35cfa` |
+| [#2](https://github.com/naveenreddyalka/daari/issues/2) Ask vs Agent split | tool-history detection, `X-Daari-Tools` override, OpenAI `tool_calls` stream deltas | [#12](https://github.com/naveenreddyalka/daari/pull/12) | `f080150` |
+
+### Feature cycle: v1.2 candidate set (2026-07-10)
+
+Scouted against LiteLLM/RouteLLM feature sets; filed as issues #13–#15, implemented TDD-style, all auto-merged the same evening:
+
+| Issue | Feature | PR | Merge |
+|-------|---------|----|-------|
+| [#13](https://github.com/naveenreddyalka/daari/issues/13) | Streaming L0 exact cache read/write + stream metrics (Cursor BYOK is stream-only; the cache never served it before) | [#16](https://github.com/naveenreddyalka/daari/pull/16) | `d4fe1ee` |
+| [#14](https://github.com/naveenreddyalka/daari/issues/14) | Persistent usage ledger (`~/.daari/usage/ledger.sqlite3`) + `GET /v1/daari/report` + `daari report` CLI with `estimated_saved_usd` | [#17](https://github.com/naveenreddyalka/daari/pull/17) | `d9736f1` |
+| [#15](https://github.com/naveenreddyalka/daari/issues/15) | Frontier daily budget guard (`frontier.daily_budget_usd`, warning `frontier_budget_exceeded`, spend surfaced in report) | [#18](https://github.com/naveenreddyalka/daari/pull/18) | `2e7ec56` |
+
+Default suite grew 162 → 180 tests across these five cycles.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
