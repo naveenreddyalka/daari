@@ -1395,6 +1395,11 @@ class AppContext:
                 token=settings.enterprise.shared_cache_token,
                 timeout_seconds=settings.enterprise.shared_cache_timeout_seconds,
                 enabled=True,
+                embedder=OllamaEmbedder(
+                    settings.ollama.base_url,
+                    settings.cache.l1.embedding_model,
+                ),
+                similarity_threshold=settings.cache.l1.similarity_threshold,
             )
         learning_enabled = settings.enterprise.learning_enabled or settings.enterprise.learning.enabled
         if learning_enabled and settings.enterprise.learning_url:
