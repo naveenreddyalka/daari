@@ -1406,6 +1406,7 @@ class AppContext:
             embedder=OllamaEmbedder(
                 base_url=self.settings.ollama.base_url.rstrip("/"),
                 model=self.settings.cache.l1.embedding_model,
+                cache_size=self.settings.cache.l1.embed_cache_size,
             ),
             enabled=self.settings.cache.l1.enabled,
             similarity_threshold=self.settings.cache.l1.similarity_threshold,
@@ -1505,6 +1506,7 @@ class AppContext:
                 embedder=OllamaEmbedder(
                     settings.ollama.base_url,
                     settings.cache.l1.embedding_model,
+                    cache_size=settings.cache.l1.embed_cache_size,
                 ),
                 similarity_threshold=settings.cache.l1.similarity_threshold,
             )
@@ -1524,6 +1526,7 @@ class AppContext:
         embedder = OllamaEmbedder(
             base_url=settings.ollama.base_url.rstrip("/"),
             model=settings.cache.l1.embedding_model,
+            cache_size=settings.cache.l1.embed_cache_size,
         )
         semantic_cache = SemanticCache(
             path=str(l1_path),
