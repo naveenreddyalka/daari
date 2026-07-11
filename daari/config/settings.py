@@ -60,6 +60,10 @@ class FrontierSettings(BaseModel):
     # escalating to L6 and serves the best local answer instead.
     daily_budget_usd: float = 0.0
     price_per_1k_tokens: float = 0.002
+    # Strip daari-internal system hints, collapse duplicate system prompts,
+    # and trim history before escalating to L6 (frontier tokens cost money).
+    slim_prompts: bool = True
+    max_history_messages: int = 8
 
 
 class CategoryPolicy(BaseModel):
