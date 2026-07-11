@@ -8,11 +8,16 @@ from daari.config.settings import Settings
 from daari.gateway.anthropic import AnthropicGatewayAdapter
 from daari.gateway.mcp import MCPGatewayAdapter
 from daari.gateway.openai import create_gateway_router
+from daari.gateway.request_log import configure_request_log
 from daari.router.router import AppContext
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or Settings.load()
+    configure_request_log(
+        max_bytes=resolved.observability.request_log_max_bytes,
+        backups=resolved.observability.request_log_backups,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

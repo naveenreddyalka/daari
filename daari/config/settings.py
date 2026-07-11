@@ -125,6 +125,12 @@ class TraceSettings(BaseModel):
     max_entries: int = 200
 
 
+class ObservabilitySettings(BaseModel):
+    # Gateway request log rotation; 0 max bytes disables rotation.
+    request_log_max_bytes: int = 5 * 1024 * 1024
+    request_log_backups: int = 3
+
+
 class ContextOptimizerSettings(BaseModel):
     enabled: bool = True
     max_history_messages: int = 20
@@ -170,6 +176,7 @@ class Settings(BaseSettings):
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
+    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     context_optimizer: ContextOptimizerSettings = Field(default_factory=ContextOptimizerSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
