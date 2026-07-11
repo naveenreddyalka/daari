@@ -326,6 +326,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             total = sum(t["count"] for t in snapshot.values())
             return {"total_requests": total, "errors": ctx.metrics.errors, "tiers": snapshot}
 
+        @router.get("/v1/daari/report")
+        async def daari_report(request: Request, days: int = 7) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            ledger = ctx.router.usage_ledger
+            if ledger is None:
+                raise HTTPException(status_code=404, detail="usage ledger is not configured")
+            return ledger.report(
+                days=max(1, days),
+                frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+            )
+
         @router.post("/v1/daari/reload-caches")
         async def daari_reload_caches(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx

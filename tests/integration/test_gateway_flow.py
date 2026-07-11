@@ -491,6 +491,48 @@ async def test_agent_flow_stream_skips_l0(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_report_endpoint_tracks_route_and_stream_usage(app, monkeypatch):
+    """Issue #14: /v1/daari/report aggregates persisted usage with savings estimate."""
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="a response with enough characters to count",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=5),
+        )
+
+    async def fake_stream(request: InternalRequest):
+        yield {"message": {"content": "streamed answer body"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fake_execute)
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "usage ledger check"}]},
+        )
+        await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [{"role": "user", "content": "usage ledger stream check"}],
+            },
+        )
+        report = (await client.get("/v1/daari/report?days=7")).json()
+
+    assert report["enabled"] is True
+    assert report["totals"]["requests"] == 2
+    assert report["totals"]["local_requests"] == 2
+    assert report["totals"]["estimated_saved_usd"] > 0
+    assert len(report["days"]) == 1
+    assert report["days"][0]["tiers"]["L3"]["requests"] == 2
+
+
+@pytest.mark.asyncio
 async def test_cursor_input_text_content_returns_text(app, monkeypatch):
     async def fake_stream(request: InternalRequest):
         assert any(message.role == "user" for message in request.messages)
