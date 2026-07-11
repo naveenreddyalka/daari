@@ -29,6 +29,7 @@ from daari.rules.dev_commands import DevCommandMatch, match_dev_command
 from daari.rules.engine import apply_l2_rules
 from daari.router.confidence import score_l3_confidence
 from daari.router.frontier import FrontierExecutor
+from daari.router.context_optimizer import optimize_messages
 from daari.router.profile import PromptProfile, build_prompt_profile, categorize
 from daari.tools.shell import ShellExecutor
 
@@ -158,6 +159,9 @@ class Router:
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
         l1_draft_threshold: float = 0.75,
+        context_optimizer_enabled: bool = True,
+        context_max_history: int = 20,
+        context_squeeze_whitespace: bool = True,
         frontier_daily_budget_usd: float = 0.0,
         frontier_price_per_1k_tokens: float = 0.002,
     ) -> None:
@@ -197,6 +201,9 @@ class Router:
         self.category_policies = category_policies or {}
         self.trace_store = trace_store
         self.l1_draft_threshold = l1_draft_threshold
+        self.context_optimizer_enabled = context_optimizer_enabled
+        self.context_max_history = context_max_history
+        self.context_squeeze_whitespace = context_squeeze_whitespace
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
 
@@ -577,6 +584,7 @@ class Router:
         if not agent_flow:
             stream_request.tools = None
             stream_request.messages = sanitize_messages_for_ollama(stream_request.messages)
+            stream_request = self._optimize_context(stream_request)
         prompt_chars = sum(len(message.content or "") for message in stream_request.messages)
         completion_chars = 0
 
@@ -886,8 +894,26 @@ class Router:
             )
         return None
 
+    def _optimize_context(self, request: InternalRequest) -> InternalRequest:
+        if not self.context_optimizer_enabled:
+            return request
+        if request.tools or request.has_tool_calls_in_history:
+            return request
+        optimized, chars_before, chars_after = optimize_messages(
+            request.messages,
+            max_history_messages=self.context_max_history,
+            squeeze_whitespace=self.context_squeeze_whitespace,
+        )
+        if chars_after >= chars_before and len(optimized) == len(request.messages):
+            return request
+        trimmed = request.model_copy(deep=True)
+        trimmed.messages = optimized
+        add_step("context_optimized", chars_before=chars_before, chars_after=chars_after)
+        return trimmed
+
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
         add_step("tier_attempt", tier=tier)
+        request = self._optimize_context(request)
         provider = self.provider_registry.get(f"ollama:{tier.lower()}")
         if provider is not None:
             provider_request = request.model_copy(deep=True)
@@ -1401,6 +1427,9 @@ class AppContext:
             frontier_enabled=settings.frontier.enabled,
             confidence_threshold=settings.routing.confidence_threshold,
             l1_draft_threshold=settings.cache.l1.draft_threshold,
+            context_optimizer_enabled=settings.context_optimizer.enabled,
+            context_max_history=settings.context_optimizer.max_history_messages,
+            context_squeeze_whitespace=settings.context_optimizer.squeeze_whitespace,
         )
         context = cls(
             settings=settings,
