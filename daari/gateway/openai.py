@@ -81,8 +81,15 @@ def _prepare_internal_request(
     *,
     default_model: str,
     meta: RequestMeta,
+    tools_mode: str | None = None,
 ) -> InternalRequest:
-    """Normalize Cursor/BYOK payloads for local text chat."""
+    """Normalize Cursor/BYOK payloads for local text chat.
+
+    Ask vs Agent split (issue #2 / ADR-0004): a request with tool_calls or tool
+    role messages in history is an active agent loop — tools pass through
+    untouched. Fresh tool-bearing requests (Cursor Ask) keep the strip + hint
+    behavior. `X-Daari-Tools: passthrough|strip` overrides the detection.
+    """
     messages = _to_internal_messages(body.messages)
     user_messages = sum(1 for message in messages if message.role == "user")
     if user_messages == 0:
@@ -100,8 +107,23 @@ def _prepare_internal_request(
         ]
         log_gateway_event("no_user_messages_after_normalize", {"raw": raw_types, "model": body.model})
     tools = body.tools
-    if tools:
-        log_gateway_event("tools_stripped", {"count": len(tools), "model": body.model})
+    mode = (tools_mode or "").strip().lower()
+    has_tool_history = any(
+        message.tool_calls or message.role == "tool" for message in body.messages
+    )
+    passthrough = mode == "passthrough" or (mode != "strip" and has_tool_history)
+    if tools and passthrough:
+        log_gateway_event(
+            "tools_passthrough",
+            {
+                "count": len(tools),
+                "model": body.model,
+                "reason": mode if mode == "passthrough" else "tool_history",
+            },
+        )
+    elif tools or (has_tool_history and mode == "strip"):
+        if tools:
+            log_gateway_event("tools_stripped", {"count": len(tools), "model": body.model})
         tools = None
         already_hinted = any(
             message.role == "system" and NO_TOOLS_HINT in (message.content or "")
@@ -183,6 +205,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
+            x_daari_tools: str | None = Header(default=None, alias="X-Daari-Tools"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -208,6 +231,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             internal = _prepare_internal_request(
                 body,
                 default_model=ctx.settings.models.l3,
+                tools_mode=x_daari_tools,
                 meta=RequestMeta(
                     no_cache=x_daari_no_cache == "true",
                     tier_override=x_daari_tier_override,
