@@ -505,6 +505,11 @@ def setup_cursor(
         "--tunnel",
         help="Use an HTTPS cloudflared tunnel for Cursor E2E (required for Cursor cloud BYOK).",
     ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        help="Non-interactive: pull the L4 model automatically when missing.",
+    ),
 ) -> None:
     """Configure Cursor to use the daari OpenAI-compat gateway."""
     if tunnel and base_url:
@@ -540,7 +545,7 @@ def setup_cursor(
             resolved_base_url = _normalize_openai_base_url(tunnel_url)
             typer.echo(f"Tunnel ready: {resolved_base_url}")
 
-    apply_cursor_setup(dry_run=dry_run, force=force, base_url=resolved_base_url)
+    apply_cursor_setup(dry_run=dry_run, force=force, base_url=resolved_base_url, yes=yes)
 
     if tunnel_process is None:
         return
