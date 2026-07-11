@@ -332,10 +332,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ledger = ctx.router.usage_ledger
             if ledger is None:
                 raise HTTPException(status_code=404, detail="usage ledger is not configured")
-            return ledger.report(
+            payload = ledger.report(
                 days=max(1, days),
                 frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
             )
+            payload["frontier"] = {
+                "today_spend_usd": round(
+                    ledger.frontier_spend_usd(
+                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens
+                    ),
+                    4,
+                ),
+                "daily_budget_usd": ctx.settings.frontier.daily_budget_usd,
+            }
+            return payload
 
         @router.post("/v1/daari/reload-caches")
         async def daari_reload_caches(request: Request) -> dict[str, Any]:
