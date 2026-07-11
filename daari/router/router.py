@@ -775,70 +775,129 @@ class Router:
         return deduped
 
     async def stream_anthropic_events(self, request: InternalRequest) -> AsyncIterator[str]:
-        """Emit Anthropic-compatible SSE events with daari metadata."""
-        created = int(time.time())
+        """Emit Anthropic-compatible SSE events with daari metadata.
+
+        Parity with the OpenAI stream path (issue #5): tier fallback via
+        _stream_tier_chain, message sanitization before Ollama, and chars/4
+        usage estimates instead of hardcoded zeros.
+        """
+        from daari.gateway.content import sanitize_messages_for_ollama
+        from daari.gateway.request_log import log_gateway_event
+
         message_id = f"msg_{int(time.time() * 1000)}"
-        stream_tier = self._choose_initial_tier(request)
-        stream_executor = self._executor_for_tier(stream_tier)
-        model_name = stream_executor.default_model
-        meta = {
-            "tier": stream_tier,
-            "executor": "ollama",
-            "provider_id": f"ollama:{stream_tier.lower()}",
-            "model": model_name,
-            "stream": True,
-        }
+        tier_chain = self._stream_tier_chain(request)
+        stream_request = request.model_copy(deep=True)
+        stream_request.tools = None
+        stream_request.messages = sanitize_messages_for_ollama(stream_request.messages)
+        stream_request = self._optimize_context(stream_request)
+        prompt_chars = sum(len(message.content or "") for message in stream_request.messages)
+        input_tokens = max(1, prompt_chars // 4)
 
-        message_start = {
-            "type": "message_start",
-            "message": {
-                "id": message_id,
-                "type": "message",
-                "role": "assistant",
+        def sse(event_type: str, payload: dict[str, Any]) -> str:
+            return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
+
+        last_error: Exception | None = None
+        for tier_index, tier in enumerate(tier_chain):
+            stream_executor = self._executor_for_tier(tier)
+            model_name = stream_executor.default_model
+            stream_request.model = model_name
+            meta = {
+                "tier": tier,
+                "executor": "ollama",
+                "provider_id": f"ollama:{tier.lower()}",
                 "model": model_name,
-                "content": [],
-                "stop_reason": None,
-                "stop_sequence": None,
-                "usage": {"input_tokens": 0, "output_tokens": 0},
-            },
-            "daari_meta": meta,
-        }
-        yield f"event: message_start\ndata: {json.dumps(message_start)}\n\n"
+                "stream": True,
+            }
+            header_events = [
+                sse(
+                    "message_start",
+                    {
+                        "type": "message_start",
+                        "message": {
+                            "id": message_id,
+                            "type": "message",
+                            "role": "assistant",
+                            "model": model_name,
+                            "content": [],
+                            "stop_reason": None,
+                            "stop_sequence": None,
+                            "usage": {"input_tokens": input_tokens, "output_tokens": 0},
+                        },
+                        "daari_meta": meta,
+                    },
+                ),
+                sse(
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {"type": "text", "text": ""},
+                        "daari_meta": meta,
+                    },
+                ),
+            ]
+            pending: list[str] = []
+            content_sent = False
+            completion_chars = 0
+            try:
+                async for event in stream_executor.stream(stream_request):
+                    delta = event.get("message", {}).get("content", "")
+                    if delta:
+                        if not content_sent:
+                            pending.extend(header_events)
+                            content_sent = True
+                        completion_chars += len(delta)
+                        pending.append(
+                            sse(
+                                "content_block_delta",
+                                {
+                                    "type": "content_block_delta",
+                                    "index": 0,
+                                    "delta": {"type": "text_delta", "text": delta},
+                                    "daari_meta": meta,
+                                },
+                            )
+                        )
+                    if event.get("done"):
+                        break
+            except Exception as exc:
+                last_error = exc
+                log_gateway_event(
+                    "anthropic_stream_attempt_failed",
+                    {"tier": tier, "ollama_model": model_name, "error": str(exc)[:300]},
+                )
+                if tier_index < len(tier_chain) - 1:
+                    continue
+                raise
 
-        block_start = {
-            "type": "content_block_start",
-            "index": 0,
-            "content_block": {"type": "text", "text": ""},
-            "daari_meta": meta,
-        }
-        yield f"event: content_block_start\ndata: {json.dumps(block_start)}\n\n"
+            if not content_sent and tier_index < len(tier_chain) - 1:
+                log_gateway_event(
+                    "anthropic_stream_empty_retry", {"tier": tier, "ollama_model": model_name}
+                )
+                continue
 
-        async for event in stream_executor.stream(request):
-            delta = event.get("message", {}).get("content", "")
-            if delta:
-                block_delta = {
-                    "type": "content_block_delta",
-                    "index": 0,
-                    "delta": {"type": "text_delta", "text": delta},
+            if not content_sent:
+                pending.extend(header_events)
+            for chunk in pending:
+                yield chunk
+            yield sse(
+                "content_block_stop",
+                {"type": "content_block_stop", "index": 0, "daari_meta": meta},
+            )
+            yield sse(
+                "message_delta",
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                    "usage": {"output_tokens": max(0, completion_chars // 4)},
                     "daari_meta": meta,
-                }
-                yield f"event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n"
-            if event.get("done"):
-                break
+                },
+            )
+            yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
+            return
 
-        block_stop = {"type": "content_block_stop", "index": 0, "daari_meta": meta}
-        yield f"event: content_block_stop\ndata: {json.dumps(block_stop)}\n\n"
-
-        message_delta = {
-            "type": "message_delta",
-            "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-            "usage": {"output_tokens": 0},
-            "daari_meta": meta,
-        }
-        yield f"event: message_delta\ndata: {json.dumps(message_delta)}\n\n"
-
-        message_stop = {"type": "message_stop", "daari_meta": meta}
-        yield f"event: message_stop\ndata: {json.dumps(message_stop)}\n\n"
+        if last_error is not None:
+            raise last_error
 
     def _resolve_ccs_hit(self, dev_match: DevCommandMatch | None, request: InternalRequest) -> InternalResponse | None:
         if self.command_context is None or request.meta.no_cache:
