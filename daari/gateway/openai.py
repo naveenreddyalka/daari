@@ -22,9 +22,18 @@ OPENAI_SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 
-PLAIN_TEXT_HINT = (
-    "Respond in plain natural language only. Do not call tools and do not return JSON tool calls."
+# Leads the message list when tools are stripped (issue #1). Must be the first
+# system instruction so small local models don't mimic tool use described later
+# in the client's own system prompt.
+NO_TOOLS_HINT = (
+    "IMPORTANT: You have NO tools available. Any tool, function, or capability "
+    "descriptions elsewhere in this conversation are inactive and must be ignored. "
+    "Respond in plain natural language only. Do not call tools, do not return JSON "
+    "tool calls, and do not narrate or pretend to use tools."
 )
+
+# Backward-compat alias (pre-issue-#1 name).
+PLAIN_TEXT_HINT = NO_TOOLS_HINT
 
 
 class ChatMessage(BaseModel):
@@ -94,12 +103,12 @@ def _prepare_internal_request(
     if tools:
         log_gateway_event("tools_stripped", {"count": len(tools), "model": body.model})
         tools = None
-        if messages and messages[0].role == "system":
-            prefix = messages[0].content or ""
-            if PLAIN_TEXT_HINT not in prefix:
-                messages[0] = Message(role="system", content=f"{prefix}\n\n{PLAIN_TEXT_HINT}".strip())
-        else:
-            messages.insert(0, Message(role="system", content=PLAIN_TEXT_HINT))
+        already_hinted = any(
+            message.role == "system" and NO_TOOLS_HINT in (message.content or "")
+            for message in messages
+        )
+        if not already_hinted:
+            messages.insert(0, Message(role="system", content=NO_TOOLS_HINT))
         messages = sanitize_messages_for_ollama(messages)
     return InternalRequest(
         messages=messages,
