@@ -269,6 +269,19 @@ Scouted against LiteLLM/RouteLLM feature sets; filed as issues #13–#15, implem
 
 Default suite grew 162 → 180 tests across these five cycles.
 
+### Feature cycle: prompt intelligence & transparency (2026-07-10, PRD [docs/prd/intelligence.md](prd/intelligence.md))
+
+Filed as issues #19–#22 from the new PRD, implemented TDD-style, all auto-merged, then validated end-to-end by a full `autodev-local.sh` cycle (deploy `ae3b01f`, live Ollama integration tests PASS, Cursor-shaped streaming smoke PASS) plus a live trace fetch (`daari trace` showed profile → l0_lookup → l1_lookup → tier_attempt → served for a real daemon request):
+
+| Issue | Feature | PR | Merge |
+|-------|---------|----|-------|
+| [#19](https://github.com/naveenreddyalka/daari/issues/19) | Prompt profile (category/complexity/token est) + `routing.category_policies` action policies; category in `daari_meta.task_type`, new `complexity` | [#23](https://github.com/naveenreddyalka/daari/pull/23) | `ed43d21` |
+| [#20](https://github.com/naveenreddyalka/daari/issues/20) | Per-request decision trace: `TraceStore` sqlite, `daari_meta.trace_id`, `GET /v1/daari/traces[/id]`, `daari trace` CLI (client-facing audit trail) | [#24](https://github.com/naveenreddyalka/daari/pull/24) | `cb80d4a` |
+| [#21](https://github.com/naveenreddyalka/daari/issues/21) | Cached-draft injection: L1 near-misses (`cache.l1.draft_threshold`=0.75) seed local and L6 generation as reuse/reformat drafts | [#25](https://github.com/naveenreddyalka/daari/pull/25) | `e4126d4` |
+| [#22](https://github.com/naveenreddyalka/daari/issues/22) | Context optimizer: system + last-N history trimming and whitespace squeeze for local models (`context_optimizer.*`), savings traced per prompt | [#26](https://github.com/naveenreddyalka/daari/pull/26) | `ae3b01f` |
+
+Default suite now at 226 tests (180 → 226).
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
