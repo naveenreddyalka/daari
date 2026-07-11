@@ -165,6 +165,8 @@ class Router:
         max_tier_for_chat: str | None = None,
         frontier_daily_budget_usd: float = 0.0,
         frontier_price_per_1k_tokens: float = 0.002,
+        frontier_slim_prompts: bool = True,
+        frontier_max_history: int = 8,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -208,6 +210,8 @@ class Router:
         self.max_tier_for_chat = max_tier_for_chat
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
+        self.frontier_slim_prompts = frontier_slim_prompts
+        self.frontier_max_history = frontier_max_history
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -256,7 +260,10 @@ class Router:
     def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
         if self.usage_ledger is None:
             return
-        prompt_chars = sum(len(message.content or "") for message in request.messages)
+        if response.daari_meta.prompt_chars is not None:
+            prompt_chars = response.daari_meta.prompt_chars
+        else:
+            prompt_chars = sum(len(message.content or "") for message in request.messages)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -1117,15 +1124,48 @@ class Router:
 
         add_step("escalate", to="L6", local_confidence=confidence)
         try:
+            l6_request = self._slim_for_frontier(request)
             l6_response = await self.frontier.execute(
-                request,
+                l6_request,
                 escalated_from=response.daari_meta.tier,
                 local_confidence=confidence,
+            )
+            l6_response.daari_meta.prompt_chars = sum(
+                len(message.content or "") for message in l6_request.messages
             )
             return l6_response
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
+
+    def _slim_for_frontier(self, request: InternalRequest) -> InternalRequest:
+        """Cut frontier token spend: drop daari-internal hints, collapse
+        duplicate system prompts, and trim history (issue #34)."""
+        if not self.frontier_slim_prompts or request.tools or request.has_tool_calls_in_history:
+            return request
+        # Lazy import: gateway.openai imports this module at load time.
+        from daari.gateway.openai import NO_TOOLS_HINT
+
+        chars_before = sum(len(message.content or "") for message in request.messages)
+        slimmed = request.model_copy(deep=True)
+        kept = []
+        seen_system: set[str] = set()
+        for message in slimmed.messages:
+            if message.role == "system":
+                content = (message.content or "").strip()
+                if content == NO_TOOLS_HINT.strip():
+                    continue
+                if content in seen_system:
+                    continue
+                seen_system.add(content)
+            kept.append(message)
+        slimmed.messages, _, chars_after = optimize_messages(
+            kept,
+            max_history_messages=self.frontier_max_history,
+            squeeze_whitespace=True,
+        )
+        add_step("frontier_slimmed", chars_before=chars_before, chars_after=chars_after)
+        return slimmed
 
     def _frontier_budget_exceeded(self) -> bool:
         if self.frontier_daily_budget_usd <= 0 or self.usage_ledger is None:
@@ -1515,6 +1555,8 @@ class AppContext:
             trace_store=trace_store,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
+            frontier_slim_prompts=settings.frontier.slim_prompts,
+            frontier_max_history=settings.frontier.max_history_messages,
             frontier_enabled=settings.frontier.enabled,
             confidence_threshold=settings.routing.confidence_threshold,
             l1_draft_threshold=settings.cache.l1.draft_threshold,

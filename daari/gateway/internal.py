@@ -50,6 +50,9 @@ class DaariMeta(BaseModel):
     complexity: str | None = None
     trace_id: str | None = None
     confidence: float | None = None
+    # Chars actually sent to the provider when it differs from the client
+    # request (e.g. frontier prompt slimming); used for ledger accounting.
+    prompt_chars: int | None = None
     escalated_from: str | None = None
     rule_id: str | None = None
     warning: str | None = None
