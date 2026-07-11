@@ -20,6 +20,7 @@ from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
+from daari.observability.usage import UsageLedger
 from daari.policy.engine import PolicyEngine
 from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
 from daari.providers.registry import ProviderRegistry
@@ -140,6 +141,7 @@ class Router:
         org_cache_client: OrgCacheClient | None = None,
         org_learning_client: OrgLearningClient | None = None,
         org_learning_enabled: bool = False,
+        usage_ledger: UsageLedger | None = None,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -176,12 +178,29 @@ class Router:
         self.org_learning_enabled = org_learning_enabled
         self.frontier_enabled = frontier_enabled
         self.confidence_threshold = confidence_threshold
+        self.usage_ledger = usage_ledger
 
     @property
     def ollama(self) -> OllamaExecutor:
         return self.ollama_l3
 
     async def route(self, request: InternalRequest) -> InternalResponse:
+        response = await self._route_impl(request)
+        self._ledger_record(request, response)
+        return response
+
+    def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
+        if self.usage_ledger is None:
+            return
+        prompt_chars = sum(len(message.content or "") for message in request.messages)
+        self.usage_ledger.record(
+            tier=response.daari_meta.tier,
+            cache_hit=response.daari_meta.cache_hit,
+            prompt_chars=prompt_chars,
+            completion_chars=len(response.content or ""),
+        )
+
+    async def _route_impl(self, request: InternalRequest) -> InternalResponse:
         started = time.perf_counter()
         request = self._with_skills_prefix(request)
         last_user = self._last_user_text(request.messages)
@@ -489,6 +508,13 @@ class Router:
             if cached is not None and cached.content.strip():
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
+                if self.usage_ledger is not None:
+                    self.usage_ledger.record(
+                        tier="L0",
+                        cache_hit=True,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(cached.content),
+                    )
                 log_gateway_event("stream_cache_hit", {"tier": "L0", "model": client_model})
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={'content': cached.content}))}\n\n"
@@ -571,6 +597,13 @@ class Router:
             latency_ms = int((time.perf_counter() - started) * 1000)
             self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
             streamed_text = "".join(tier_text_parts)
+            if self.usage_ledger is not None:
+                self.usage_ledger.record(
+                    tier=tier,
+                    cache_hit=False,
+                    prompt_chars=prompt_chars,
+                    completion_chars=completion_chars,
+                )
             if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
                 try:
                     self.cache.put(
@@ -1194,6 +1227,10 @@ class AppContext:
         providers.register(GitHubEnterpriseProvider(base_url=settings.integrations.ghe.url))
         providers.register(GitLabProvider(base_url=settings.integrations.gitlab.url))
         metrics = Metrics()
+        usage_ledger = UsageLedger(
+            path=settings.usage_ledger_path,
+            enabled=settings.usage.enabled,
+        )
         router = Router(
             cache=cache,
             semantic_cache=semantic_cache,
@@ -1217,6 +1254,7 @@ class AppContext:
             org_cache_client=org_cache_client,
             org_learning_client=org_learning_client,
             org_learning_enabled=learning_enabled,
+            usage_ledger=usage_ledger,
             frontier_enabled=settings.frontier.enabled,
             confidence_threshold=settings.routing.confidence_threshold,
         )

@@ -85,6 +85,13 @@ class ContextSettings(BaseModel):
     path: str = "~/.daari/context/commands"
 
 
+class UsageSettings(BaseModel):
+    enabled: bool = True
+    path: str = "~/.daari/usage/ledger.sqlite3"
+    # Frontier rate used to estimate what locally-served tokens would have cost.
+    frontier_price_per_1k_tokens: float = 0.002
+
+
 class IntegrationEndpointSettings(BaseModel):
     url: str
     triggers: list[str] = Field(default_factory=list)
@@ -122,6 +129,7 @@ class Settings(BaseSettings):
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
+    usage: UsageSettings = Field(default_factory=UsageSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     skills_system_prefix: str = ""
@@ -156,6 +164,10 @@ class Settings(BaseSettings):
     @property
     def context_store_path(self) -> Path:
         return Path(self.context.path).expanduser()
+
+    @property
+    def usage_ledger_path(self) -> Path:
+        return Path(self.usage.path).expanduser()
 
     @property
     def org_cache_root(self) -> Path | None:
