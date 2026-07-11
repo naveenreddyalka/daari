@@ -108,17 +108,18 @@ class SemanticCache:
     def _save_entries(self, entries: list[dict[str, Any]]) -> None:
         self._store().set(self._entries_key, entries)
 
-    async def get(self, request: InternalRequest) -> tuple[InternalResponse | None, float | None]:
+    async def nearest(self, request: InternalRequest) -> tuple[InternalResponse | None, float]:
+        """Best entry regardless of threshold — shared by the hit path and draft injection."""
         if not self.enabled:
-            return None, None
+            return None, 0.0
 
         text = extract_embed_text(request)
         if not text.strip():
-            return None, None
+            return None, 0.0
 
         embedding = await self.embedder.embed(text)
         if embedding is None:
-            return None, None
+            return None, 0.0
 
         context_key = semantic_context_key(request)
         best_score = 0.0
@@ -135,10 +136,14 @@ class SemanticCache:
                 best_score = score
                 best_entry = entry
 
-        if best_entry is None or best_score < self.similarity_threshold:
-            return None, best_score if best_score > 0 else None
+        if best_entry is None:
+            return None, 0.0
+        return InternalResponse.model_validate_json(best_entry["response_json"]), best_score
 
-        response = InternalResponse.model_validate_json(best_entry["response_json"])
+    async def get(self, request: InternalRequest) -> tuple[InternalResponse | None, float | None]:
+        response, best_score = await self.nearest(request)
+        if response is None or best_score < self.similarity_threshold:
+            return None, best_score if best_score > 0 else None
         return response, best_score
 
     async def put(self, request: InternalRequest, response: InternalResponse) -> None:

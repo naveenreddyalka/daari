@@ -38,6 +38,9 @@ class L1CacheSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/cache/l1"
     similarity_threshold: float = 0.88
+    # Near-miss band [draft_threshold, similarity_threshold): the prior answer
+    # is injected as a draft for the serving model instead of being discarded.
+    draft_threshold: float = 0.75
     max_entries: int = 1000
     embedding_model: str = "nomic-embed-text"
 
