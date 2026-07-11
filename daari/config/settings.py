@@ -32,6 +32,8 @@ class OllamaSettings(BaseModel):
 class L0CacheSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/cache/l0"
+    # 0 = never expire (default, preserves prior behavior).
+    ttl_seconds: float = 0.0
 
 
 class L1CacheSettings(BaseModel):
@@ -43,6 +45,8 @@ class L1CacheSettings(BaseModel):
     draft_threshold: float = 0.75
     max_entries: int = 1000
     embedding_model: str = "nomic-embed-text"
+    # 0 = never expire (default, preserves prior behavior).
+    ttl_seconds: float = 0.0
 
 
 class CacheSettings(BaseModel):
@@ -69,6 +73,9 @@ class FrontierSettings(BaseModel):
 class CategoryPolicy(BaseModel):
     tier: str | None = None  # L3 | L4 | L5; None keeps weight-based choice
     cache: str = "default"  # default | skip
+    # Per-category cache max age in seconds (e.g. shorter for doc_qa).
+    # None inherits the global cache.l0/l1 ttl_seconds.
+    ttl_seconds: float | None = None
 
 
 class RoutingSettings(BaseModel):

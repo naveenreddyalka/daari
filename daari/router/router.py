@@ -257,6 +257,13 @@ class Router:
         policy = self._policy_for(profile)
         return policy is not None and getattr(policy, "cache", "default") == "skip"
 
+    def _category_cache_max_age(self, profile: PromptProfile | None) -> float | None:
+        policy = self._policy_for(profile)
+        if policy is None:
+            return None
+        ttl = getattr(policy, "ttl_seconds", None)
+        return float(ttl) if isinstance(ttl, (int, float)) else None
+
     def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
         if self.usage_ledger is None:
             return
@@ -278,6 +285,7 @@ class Router:
         request = self._with_skills_prefix(request)
         last_user = self._last_user_text(request.messages)
         cache_skip = self._category_cache_skip(profile)
+        cache_max_age = self._category_cache_max_age(profile)
 
         if request.has_tool_calls_in_history:
             response = await self._run_model_tier("L3", request)
@@ -288,7 +296,7 @@ class Router:
 
         if not request.meta.no_cache and not cache_skip:
             try:
-                cached = self.cache.get(request)
+                cached = self.cache.get(request, max_age=cache_max_age)
             except Exception:
                 cached = None
             add_step("l0_lookup", hit=cached is not None)
@@ -327,7 +335,9 @@ class Router:
         draft_similarity = 0.0
         if not request.meta.no_cache and not cache_skip:
             try:
-                nearest_response, nearest_similarity = await self.semantic_cache.nearest(request)
+                nearest_response, nearest_similarity = await self.semantic_cache.nearest(
+                    request, max_age=cache_max_age
+                )
             except Exception:
                 nearest_response, nearest_similarity = None, 0.0
             semantic_hit = (
@@ -631,7 +641,7 @@ class Router:
 
         if cacheable:
             try:
-                cached = self.cache.get(request)
+                cached = self.cache.get(request, max_age=self._category_cache_max_age(profile))
             except Exception:
                 cached = None
             add_step("l0_lookup", hit=cached is not None)
@@ -1334,7 +1344,11 @@ class AppContext:
 
     def reload_cache_handles(self) -> dict[str, str | bool]:
         l0_path, l1_path, context_path = self._resolve_runtime_paths()
-        self.cache = ExactCache(path=str(l0_path), enabled=self.settings.cache.l0.enabled)
+        self.cache = ExactCache(
+            path=str(l0_path),
+            enabled=self.settings.cache.l0.enabled,
+            ttl_seconds=self.settings.cache.l0.ttl_seconds,
+        )
         self.semantic_cache = SemanticCache(
             path=str(l1_path),
             embedder=OllamaEmbedder(
@@ -1344,6 +1358,7 @@ class AppContext:
             enabled=self.settings.cache.l1.enabled,
             similarity_threshold=self.settings.cache.l1.similarity_threshold,
             max_entries=self.settings.cache.l1.max_entries,
+            ttl_seconds=self.settings.cache.l1.ttl_seconds,
         )
         self.command_context = self._build_command_context_store(self.settings, context_path)
 
@@ -1452,6 +1467,7 @@ class AppContext:
         cache = ExactCache(
             path=str(l0_path),
             enabled=settings.cache.l0.enabled,
+            ttl_seconds=settings.cache.l0.ttl_seconds,
         )
         embedder = OllamaEmbedder(
             base_url=settings.ollama.base_url.rstrip("/"),
@@ -1463,6 +1479,7 @@ class AppContext:
             enabled=settings.cache.l1.enabled,
             similarity_threshold=settings.cache.l1.similarity_threshold,
             max_entries=settings.cache.l1.max_entries,
+            ttl_seconds=settings.cache.l1.ttl_seconds,
         )
         command_context = cls._build_command_context_store(settings, context_path)
         ollama_l3 = OllamaExecutor(

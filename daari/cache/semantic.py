@@ -86,11 +86,15 @@ class SemanticCache:
         enabled: bool = True,
         similarity_threshold: float = 0.88,
         max_entries: int = 1000,
+        ttl_seconds: float = 0.0,
+        clock: Any = None,
     ) -> None:
         self.enabled = enabled
         self.embedder = embedder
         self.similarity_threshold = similarity_threshold
         self.max_entries = max_entries
+        self.ttl_seconds = ttl_seconds
+        self._clock = clock or time.time
         self._path = path
         self._cache: Any = None
 
@@ -108,7 +112,18 @@ class SemanticCache:
     def _save_entries(self, entries: list[dict[str, Any]]) -> None:
         self._store().set(self._entries_key, entries)
 
-    async def nearest(self, request: InternalRequest) -> tuple[InternalResponse | None, float]:
+    def _entry_expired(self, entry: dict[str, Any], max_age: float | None = None) -> bool:
+        ttl = max_age if max_age is not None else self.ttl_seconds
+        if ttl <= 0:
+            return False
+        created_at = entry.get("created_at")
+        if not isinstance(created_at, (int, float)):
+            return False
+        return (self._clock() - created_at) > ttl
+
+    async def nearest(
+        self, request: InternalRequest, *, max_age: float | None = None
+    ) -> tuple[InternalResponse | None, float]:
         """Best entry regardless of threshold — shared by the hit path and draft injection."""
         if not self.enabled:
             return None, 0.0
@@ -128,6 +143,8 @@ class SemanticCache:
         for entry in self._load_entries():
             if entry.get("context_key") != context_key:
                 continue
+            if self._entry_expired(entry, max_age):
+                continue
             stored = entry.get("embedding")
             if not isinstance(stored, list):
                 continue
@@ -140,11 +157,24 @@ class SemanticCache:
             return None, 0.0
         return InternalResponse.model_validate_json(best_entry["response_json"]), best_score
 
-    async def get(self, request: InternalRequest) -> tuple[InternalResponse | None, float | None]:
-        response, best_score = await self.nearest(request)
+    async def get(
+        self, request: InternalRequest, *, max_age: float | None = None
+    ) -> tuple[InternalResponse | None, float | None]:
+        response, best_score = await self.nearest(request, max_age=max_age)
         if response is None or best_score < self.similarity_threshold:
             return None, best_score if best_score > 0 else None
         return response, best_score
+
+    def prune(self) -> int:
+        """Remove expired entries; returns how many were removed."""
+        if self.ttl_seconds <= 0:
+            return 0
+        entries = self._load_entries()
+        kept = [entry for entry in entries if not self._entry_expired(entry)]
+        removed = len(entries) - len(kept)
+        if removed:
+            self._save_entries(kept)
+        return removed
 
     async def put(self, request: InternalRequest, response: InternalResponse) -> None:
         if not self.enabled:
@@ -164,7 +194,7 @@ class SemanticCache:
                 "context_key": semantic_context_key(request),
                 "embedding": embedding,
                 "response_json": response.model_dump_json(),
-                "created_at": time.time(),
+                "created_at": self._clock(),
             }
         )
         if len(entries) > self.max_entries:

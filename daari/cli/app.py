@@ -745,5 +745,35 @@ def context_clear(
             )
 
 
+cache_app = typer.Typer(help="Manage response caches.")
+app.add_typer(cache_app, name="cache")
+
+
+@cache_app.command("prune")
+def cache_prune() -> None:
+    """Remove expired L0/L1 entries (requires cache.*.ttl_seconds > 0)."""
+    from daari.cache.exact import ExactCache
+    from daari.cache.semantic import OllamaEmbedder, SemanticCache
+
+    settings = get_settings()
+    l0 = ExactCache(
+        str(settings.l0_cache_path),
+        enabled=settings.cache.l0.enabled,
+        ttl_seconds=settings.cache.l0.ttl_seconds,
+    )
+    l1 = SemanticCache(
+        str(settings.l1_cache_path),
+        OllamaEmbedder(settings.ollama.base_url, settings.cache.l1.embedding_model),
+        enabled=settings.cache.l1.enabled,
+        ttl_seconds=settings.cache.l1.ttl_seconds,
+    )
+    l0_removed = l0.prune()
+    l1_removed = l1.prune()
+    l0_note = "" if settings.cache.l0.ttl_seconds > 0 else " (ttl disabled — nothing expires)"
+    l1_note = "" if settings.cache.l1.ttl_seconds > 0 else " (ttl disabled — nothing expires)"
+    typer.echo(f"L0: removed {l0_removed} expired entries{l0_note}")
+    typer.echo(f"L1: removed {l1_removed} expired entries{l1_note}")
+
+
 if __name__ == "__main__":
     app()
