@@ -111,6 +111,12 @@ class TraceSettings(BaseModel):
     max_entries: int = 200
 
 
+class ContextOptimizerSettings(BaseModel):
+    enabled: bool = True
+    max_history_messages: int = 20
+    squeeze_whitespace: bool = True
+
+
 class IntegrationEndpointSettings(BaseModel):
     url: str
     triggers: list[str] = Field(default_factory=list)
@@ -150,6 +156,7 @@ class Settings(BaseSettings):
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
+    context_optimizer: ContextOptimizerSettings = Field(default_factory=ContextOptimizerSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     skills_system_prefix: str = ""
