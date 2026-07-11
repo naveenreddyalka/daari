@@ -93,6 +93,22 @@ class UsageLedger:
         except Exception:
             pass
 
+    def frontier_spend_usd(self, *, price_per_1k_tokens: float, day: str | None = None) -> float:
+        """Estimated USD spent on the frontier tier for the given UTC day."""
+        if not self.enabled:
+            return 0.0
+        try:
+            with self._lock, self._connect() as conn:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
+                    " FROM usage WHERE day = ? AND tier = ?",
+                    (day or _today(), FRONTIER_TIER),
+                ).fetchone()
+        except Exception:
+            return 0.0
+        chars = row[0] if row else 0
+        return (chars / 4) / 1000 * price_per_1k_tokens
+
     def report(self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002) -> dict[str, Any]:
         if not self.enabled:
             return {"enabled": False, "days": [], "totals": _empty_totals()}
