@@ -7,7 +7,7 @@ import json
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.policy.engine import PolicyResult
 from daari.router.router import AppContext
 from daari.server.app import create_app
@@ -1031,6 +1031,112 @@ async def test_anthropic_streaming_events(app, monkeypatch):
     assert "Hello " in body
     assert "world" in body
     assert "event: message_stop" in body
+
+
+def _anthropic_events(body: str) -> list[dict]:
+    events = []
+    for line in body.splitlines():
+        if line.startswith("data: "):
+            events.append(json.loads(line[len("data: ") :]))
+    return events
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_reports_estimated_usage(app, monkeypatch):
+    """Issue #5: usage must use the chars/4 estimate, not hardcoded zeros."""
+
+    async def fake_stream(_request: InternalRequest):
+        yield {"message": {"content": "Hello "}}
+        yield {"message": {"content": "world"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": "stream this"}],
+                "stream": True,
+            },
+        )
+
+    events = _anthropic_events(response.text)
+    message_start = next(e for e in events if e.get("type") == "message_start")
+    message_delta = next(e for e in events if e.get("type") == "message_delta")
+    # "stream this" = 11 chars -> 2 input tokens; "Hello world" = 11 chars -> 2 output tokens
+    assert message_start["message"]["usage"]["input_tokens"] == 2
+    assert message_delta["usage"]["output_tokens"] == 2
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_falls_back_l4_to_l3(app, monkeypatch):
+    """Issue #5: Anthropic stream gets the same tier fallback as the OpenAI path."""
+
+    async def broken_l4(_request: InternalRequest):
+        raise RuntimeError("L4 model not pulled")
+        yield  # pragma: no cover
+
+    async def fake_l3(_request: InternalRequest):
+        yield {"message": {"content": "fallback answer"}}
+        yield {"done": True}
+
+    router = app.state.ctx.router
+    monkeypatch.setattr(router.ollama_l4, "stream", broken_l4)
+    monkeypatch.setattr(router.ollama, "stream", fake_l3)
+
+    long_prompt = "word " * 300  # >250 words -> L4 first
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "messages": [{"role": "user", "content": long_prompt}],
+                "stream": True,
+            },
+        )
+
+    assert response.status_code == 200
+    assert "fallback answer" in response.text
+    events = _anthropic_events(response.text)
+    deltas = [e for e in events if e.get("type") == "content_block_delta"]
+    assert deltas and deltas[0]["daari_meta"]["tier"] == "L3"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_sanitizes_tool_history(app, monkeypatch):
+    """Issue #5: tool-call history must be sanitized before hitting Ollama."""
+    seen: dict = {}
+
+    async def fake_stream(request: InternalRequest):
+        seen["messages"] = [message.model_dump() for message in request.messages]
+        yield {"message": {"content": "clean"}}
+        yield {"done": True}
+
+    router = app.state.ctx.router
+    monkeypatch.setattr(router.ollama, "stream", fake_stream)
+
+    request = InternalRequest(
+        model="llama3.2:3b",
+        messages=[
+            Message(
+                role="assistant",
+                content=None,
+                tool_calls=[{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}],
+            ),
+            Message(role="tool", content="result", tool_call_id="c1"),
+            Message(role="user", content="continue please"),
+        ],
+    )
+    chunks = [chunk async for chunk in router.stream_anthropic_events(request)]
+
+    assert any("clean" in chunk for chunk in chunks)
+    assert all(not message.get("tool_calls") for message in seen["messages"])
+    assert all(message.get("role") != "tool" for message in seen["messages"])
 
 
 @pytest.mark.asyncio
