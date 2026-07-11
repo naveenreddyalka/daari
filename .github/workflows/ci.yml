@@ -21,3 +21,20 @@ jobs:
 
       - name: Run unit and integration tests (mocked)
         run: pytest -m "not integration and not benchmark" -q
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install extension test deps
+        working-directory: packages/browser-extension
+        run: npm ci --no-audit --no-fund
+
+      - name: Run extension DOM tests
+        working-directory: packages/browser-extension
+        run: npm test

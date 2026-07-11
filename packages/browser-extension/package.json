@@ -1,0 +1,13 @@
+{
+  "name": "daari-browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DOM-level tests for the daari MV3 popup + options pages",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}
