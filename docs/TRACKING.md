@@ -308,6 +308,24 @@ After clearing the original backlog, the loop scouted and filed three fresh impr
 
 Default suite now at 272 pytest tests (250 → 272) + 12 extension tests. Open backlog: #8 (release prep, human-gated).
 
+### v1.1.2 released + CI hardening (2026-07-11)
+
+- CI expanded to four required checks on `main`: `test`, `extension`, `lint` (ruff), `sanity` (runtime-deps install, imports, settings load, CLI entrypoint, app build) — [#41](https://github.com/naveenreddyalka/daari/pull/41), `97cb5e1`.
+- **v1.1.2 shipped** (issue [#8](https://github.com/naveenreddyalka/daari/issues/8), user-approved tag): version bump (pyproject + stale `daari.__version__`), consolidated release notes addendum, `python -m build` + `twine check` PASSED (no PyPI upload) — [#42](https://github.com/naveenreddyalka/daari/pull/42), tag [`v1.1.2`](https://github.com/naveenreddyalka/daari/releases/tag/v1.1.2).
+
+### Loop cycles: streaming L1 + scouted improvements (#43–#46) (2026-07-11)
+
+Scout pass filed four issues; all implemented TDD-style, auto-merged, and E2E-validated by `autodev-local.sh` on the final deploy `531e407` (live Ollama integration tests PASS, Cursor streaming smoke PASS; daemon restarted on the new build and `/v1/daari/report` verified live):
+
+| Issue | Feature | PR | Merge |
+|-------|---------|----|-------|
+| [#43](https://github.com/naveenreddyalka/daari/issues/43) | Streaming path L1 parity: semantic hits served as SSE, draft-band injection, post-`[DONE]` L1 write-back — Cursor (all-streaming) finally benefits from the semantic cache | [#47](https://github.com/naveenreddyalka/daari/pull/47) | `1f3d963` |
+| [#44](https://github.com/naveenreddyalka/daari/issues/44) | Gateway request log rotation: size-based with numbered backups (`observability.request_log_max_bytes`, default 5 MB / 3 backups) | [#48](https://github.com/naveenreddyalka/daari/pull/48) | `121aa43` |
+| [#45](https://github.com/naveenreddyalka/daari/issues/45) | Embedding memoization: in-process LRU in `OllamaEmbedder` keyed by (model, sha256) — repeat L1 lookups skip the Ollama HTTP call (`cache.l1.embed_cache_size`) | [#49](https://github.com/naveenreddyalka/daari/pull/49) | `b3e4596` |
+| [#46](https://github.com/naveenreddyalka/daari/issues/46) | Web UI usage & savings dashboard: report totals, per-day tier table, recent traces with step-timeline click-through; jsdom DOM suite added to CI | [#50](https://github.com/naveenreddyalka/daari/pull/50) | `531e407` |
+
+Default suite now at 291 pytest tests (272 → 291) + 12 extension tests + 7 web-ui tests. Open backlog: empty — scout refills it.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
