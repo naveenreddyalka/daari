@@ -19,6 +19,18 @@ Minimal MV3 extension that sends prompts to local daari.
 - `options.html` — extension options page.
 - `options.js` — API base URL persistence.
 
+## Tests
+
+DOM-level tests (jsdom + Node's built-in test runner, no real Chrome host needed) cover the popup send flow, error UX when the daemon is unreachable, draft persistence, and options save/load:
+
+```bash
+cd packages/browser-extension
+npm install
+npm test
+```
+
+The suite runs in CI as the `extension` job. The `chrome.*` and `fetch` APIs are faked in `test/harness.js`.
+
 ## Load in browser
 
 1. Open browser extension page (`chrome://extensions` or Edge equivalent).
