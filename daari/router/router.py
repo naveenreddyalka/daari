@@ -145,6 +145,8 @@ class Router:
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
+        frontier_daily_budget_usd: float = 0.0,
+        frontier_price_per_1k_tokens: float = 0.002,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -179,6 +181,8 @@ class Router:
         self.frontier_enabled = frontier_enabled
         self.confidence_threshold = confidence_threshold
         self.usage_ledger = usage_ledger
+        self.frontier_daily_budget_usd = frontier_daily_budget_usd
+        self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -870,6 +874,10 @@ class Router:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
 
+        if self._frontier_budget_exceeded():
+            response.daari_meta.warning = "frontier_budget_exceeded"
+            return response
+
         try:
             l6_response = await self.frontier.execute(
                 request,
@@ -880,6 +888,17 @@ class Router:
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
+
+    def _frontier_budget_exceeded(self) -> bool:
+        if self.frontier_daily_budget_usd <= 0 or self.usage_ledger is None:
+            return False
+        try:
+            spend = self.usage_ledger.frontier_spend_usd(
+                price_per_1k_tokens=self.frontier_price_per_1k_tokens
+            )
+        except Exception:
+            return False
+        return spend >= self.frontier_daily_budget_usd
 
     def _record(self, response: InternalResponse, started: float) -> None:
         self._emit_org_feedback("", response)
@@ -1255,6 +1274,8 @@ class AppContext:
             org_learning_client=org_learning_client,
             org_learning_enabled=learning_enabled,
             usage_ledger=usage_ledger,
+            frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
+            frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_enabled=settings.frontier.enabled,
             confidence_threshold=settings.routing.confidence_threshold,
         )

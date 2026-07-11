@@ -53,6 +53,10 @@ class FrontierSettings(BaseModel):
     model: str = "gpt-4o-mini"
     confidence_threshold: float = 0.7
     base_url: str = "https://api.openai.com/v1"
+    # 0 = unlimited. When today's estimated spend reaches the cap, daari stops
+    # escalating to L6 and serves the best local answer instead.
+    daily_budget_usd: float = 0.0
+    price_per_1k_tokens: float = 0.002
 
 
 class RoutingSettings(BaseModel):
