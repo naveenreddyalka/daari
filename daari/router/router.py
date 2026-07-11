@@ -432,6 +432,7 @@ class Router:
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
 
+        started = time.perf_counter()
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
         client_model = request.model or self.ollama_l3.default_model
@@ -439,6 +440,8 @@ class Router:
         # Agent flows (tools passed through by the gateway, or tool history)
         # keep the full tool protocol; Ask flows get plain-text sanitization.
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
+        # ADR-0004: agent turns skip L0 entirely; explicit no-cache also bypasses.
+        cacheable = not agent_flow and not request.meta.no_cache
         stream_request = request.model_copy(deep=True)
         if not agent_flow:
             stream_request.tools = None
@@ -463,6 +466,37 @@ class Router:
                 "choices": [choice],
             }
 
+        def usage_chunk(completion_len: int) -> str:
+            payload = {
+                "id": chunk_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": client_model,
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": max(1, prompt_chars // 4),
+                    "completion_tokens": max(0, completion_len // 4),
+                    "total_tokens": max(1, (prompt_chars + completion_len) // 4),
+                },
+            }
+            return f"data: {json.dumps(payload)}\n\n"
+
+        if cacheable:
+            try:
+                cached = self.cache.get(request)
+            except Exception:
+                cached = None
+            if cached is not None and cached.content.strip():
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
+                log_gateway_event("stream_cache_hit", {"tier": "L0", "model": client_model})
+                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                yield f"data: {json.dumps(chunk_payload(delta={'content': cached.content}))}\n\n"
+                yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                yield usage_chunk(len(cached.content))
+                yield "data: [DONE]\n\n"
+                return
+
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
             stream_executor = self._executor_for_tier(tier)
@@ -472,6 +506,7 @@ class Router:
 
             role_chunk = f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
             pending_chunks: list[str] = []
+            tier_text_parts: list[str] = []
             content_sent = False
             tool_calls_sent = False
             tier_completion_chars = 0
@@ -497,6 +532,7 @@ class Router:
                             pending_chunks.append(role_chunk)
                             content_sent = True
                         tier_completion_chars += len(delta)
+                        tier_text_parts.append(delta)
                         pending_chunks.append(
                             f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
                         )
@@ -529,20 +565,31 @@ class Router:
                 yield role_chunk
             finish_reason = "tool_calls" if tool_calls_sent else "stop"
             yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
-            usage_payload = {
-                "id": chunk_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": client_model,
-                "choices": [],
-                "usage": {
-                    "prompt_tokens": max(1, prompt_chars // 4),
-                    "completion_tokens": max(0, completion_chars // 4),
-                    "total_tokens": max(1, (prompt_chars + completion_chars) // 4),
-                },
-            }
-            yield f"data: {json.dumps(usage_payload)}\n\n"
+            yield usage_chunk(completion_chars)
             yield "data: [DONE]\n\n"
+
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
+            streamed_text = "".join(tier_text_parts)
+            if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
+                try:
+                    self.cache.put(
+                        request,
+                        InternalResponse(
+                            content=streamed_text,
+                            model=ollama_model,
+                            daari_meta=DaariMeta(
+                                tier=tier,
+                                cache_hit=False,
+                                executor="ollama",
+                                provider_id=f"ollama:{tier.lower()}",
+                                latency_ms=latency_ms,
+                                model=ollama_model,
+                            ),
+                        ),
+                    )
+                except Exception:
+                    pass
             return
 
         if last_error is not None:
