@@ -665,6 +665,54 @@ class Router:
                 finish_trace("L0")
                 return
 
+            # L1 semantic lookup (issue #43): parity with the non-stream path.
+            # One nearest() call serves both the hit path and the draft band.
+            try:
+                nearest_response, nearest_similarity = await self.semantic_cache.nearest(
+                    request, max_age=self._category_cache_max_age(profile)
+                )
+            except Exception:
+                nearest_response, nearest_similarity = None, 0.0
+            l1_hit = (
+                nearest_response is not None
+                and nearest_similarity >= self.semantic_cache.similarity_threshold
+                and bool(nearest_response.content.strip())
+            )
+            add_step("l1_lookup", hit=l1_hit, similarity=round(nearest_similarity, 4))
+            if l1_hit:
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
+                if self.usage_ledger is not None:
+                    self.usage_ledger.record(
+                        tier="L1",
+                        cache_hit=True,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(nearest_response.content),
+                    )
+                log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
+                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                yield f"data: {json.dumps(chunk_payload(delta={'content': nearest_response.content}))}\n\n"
+                yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                yield usage_chunk(len(nearest_response.content))
+                yield "data: [DONE]\n\n"
+                add_step("served", tier="L1", cache_hit=True, latency_ms=latency_ms)
+                finish_trace("L1")
+                return
+            if (
+                nearest_response is not None
+                and nearest_similarity >= self.l1_draft_threshold
+                and nearest_response.content.strip()
+            ):
+                # Draft only affects generation; cache keys use the original request.
+                stream_request.messages = [
+                    *stream_request.messages,
+                    Message(
+                        role="system",
+                        content=_draft_hint(nearest_response.content, nearest_similarity),
+                    ),
+                ]
+                add_step("draft_injected", similarity=round(nearest_similarity, 4))
+
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
             stream_executor = self._executor_for_tier(tier)
@@ -752,22 +800,26 @@ class Router:
                     completion_chars=completion_chars,
                 )
             if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
+                streamed_response = InternalResponse(
+                    content=streamed_text,
+                    model=ollama_model,
+                    daari_meta=DaariMeta(
+                        tier=tier,
+                        cache_hit=False,
+                        executor="ollama",
+                        provider_id=f"ollama:{tier.lower()}",
+                        latency_ms=latency_ms,
+                        model=ollama_model,
+                    ),
+                )
                 try:
-                    self.cache.put(
-                        request,
-                        InternalResponse(
-                            content=streamed_text,
-                            model=ollama_model,
-                            daari_meta=DaariMeta(
-                                tier=tier,
-                                cache_hit=False,
-                                executor="ollama",
-                                provider_id=f"ollama:{tier.lower()}",
-                                latency_ms=latency_ms,
-                                model=ollama_model,
-                            ),
-                        ),
-                    )
+                    self.cache.put(request, streamed_response)
+                except Exception:
+                    pass
+                # L1 write-back happens after [DONE] was yielded, so it never
+                # delays chunk delivery to the client.
+                try:
+                    await self.semantic_cache.put(request, streamed_response)
                 except Exception:
                     pass
             add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
