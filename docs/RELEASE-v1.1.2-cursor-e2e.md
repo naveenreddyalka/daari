@@ -60,14 +60,49 @@ Example healthy log tail:
 3. **Long context → L4** — Cursor context user message (>250 words) routes to L4; pull `llama3.1:8b` or accept L3 fallback latency.
 4. **Tunnel required** — Cursor cloud blocks private IPs; localhost only works for curl/extension, not Cursor BYOK.
 
-## Next steps (planned)
+## Addendum — everything else in v1.1.2 (2026-07-11)
 
-| Priority | Task |
-|----------|------|
-| High | Ask vs Agent BYOK split — strip tools for Ask only |
-| Medium | Stronger anti-tool-hallucination system prompt for Cursor BYOK |
-| Medium | Cursor-specific tier cap or profile (optional L3-only for latency) |
-| Low | Tag v1.1.2 on PyPI after soak period |
-| Low | Automated Cursor cloud E2E (manual only today) |
+Between the Cursor E2E fix above and the tag, the autonomous dev loop shipped
+20+ additional changes. All were TDD'd, CI-gated, auto-merged, and validated
+E2E by the local watchdog against live Ollama.
 
-See [TRACKING.md](TRACKING.md#cursor-e2e-byok--poc-2026-06-23) for full tracker.
+### Routing and intelligence
+
+- Ask vs Agent BYOK split with real tool round-trip passthrough (#12, ADR-0004)
+- Prompt profile: category + complexity heuristics with per-category action
+  policies (`routing.category_policies`) (#23)
+- Tier cap via `routing.max_tier_for_chat` config or `X-Daari-Tier-Cap` header (#28)
+- Context optimizer: history trimming + whitespace squeeze for local models (#26)
+- Frontier prompt slimming before L6 escalation (#37)
+- Frontier daily budget guard with local-only fallback (#18)
+
+### Caching
+
+- L0 exact cache on the streaming path (#16)
+- L1 near-miss answers injected as drafts for generation (#25)
+- L0/L1 TTLs, category TTL overrides, `daari cache prune` (#39)
+- Org shared cache: paraphrase matching by vector similarity (#31)
+
+### Observability
+
+- Persistent usage ledger with savings report (`daari report`) (#17)
+- Per-request decision traces, retrievable by id (`daari trace`) (#24)
+- Markdown export for reports and traces (`--format markdown --out`) (#38)
+
+### Gateway and setup
+
+- Anthropic stream parity: tier fallback, sanitization, usage estimates (#30)
+- Explicit no-tools hint leads stripped-tools requests (#11)
+- `daari setup cursor` pulls the L4 model; doctor severity upgrades (#29)
+
+### Automation and CI
+
+- Autonomous dev loop: agent contract (AGENTS.md), local watchdog, cloud
+  automations — see [AUTOMATION.md](AUTOMATION.md)
+- Browser extension DOM test suite in CI (#33)
+- CI expanded to four required checks: test, extension, lint, sanity (#41)
+
+## Next steps
+
+Backlog is tracked as GitHub issues labeled `auto-dev`; the scout automation
+files new ones. See [TRACKING.md](TRACKING.md) for full history.
