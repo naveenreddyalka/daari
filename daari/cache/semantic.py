@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import time
+from collections import OrderedDict
 from typing import Any, Protocol
 
 import httpx
@@ -51,16 +53,40 @@ class OllamaEmbedder:
         model: str,
         *,
         timeout: float = 30.0,
+        cache_size: int = 512,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.cache_size = max(0, cache_size)
+        self._transport = transport
+        # LRU keyed by (model, text hash); embeddings for identical text are
+        # deterministic, so memoizing skips an HTTP round-trip per L1 lookup.
+        self._memo: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
+
+    def _cache_key(self, text: str) -> tuple[str, str]:
+        return (self.model, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
     async def embed(self, text: str) -> list[float] | None:
         if not text.strip():
             return None
+        key = self._cache_key(text)
+        if self.cache_size > 0 and key in self._memo:
+            self._memo.move_to_end(key)
+            return list(self._memo[key])
+        embedding = await self._embed_http(text)
+        if embedding is not None and self.cache_size > 0:
+            self._memo[key] = list(embedding)
+            while len(self._memo) > self.cache_size:
+                self._memo.popitem(last=False)
+        return embedding
+
+    async def _embed_http(self, text: str) -> list[float] | None:
         try:
-            async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+            async with httpx.AsyncClient(
+                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+            ) as client:
                 response = await client.post(
                     "/api/embeddings",
                     json={"model": self.model, "prompt": text},

@@ -47,6 +47,8 @@ class L1CacheSettings(BaseModel):
     embedding_model: str = "nomic-embed-text"
     # 0 = never expire (default, preserves prior behavior).
     ttl_seconds: float = 0.0
+    # In-memory LRU for embeddings; 0 disables memoization.
+    embed_cache_size: int = 512
 
 
 class CacheSettings(BaseModel):
