@@ -270,6 +270,47 @@ def stats(
         raise typer.Exit(code=1) from exc
 
 
+@app.command()
+def report(
+    days: int = typer.Option(7, help="Number of days to include"),
+    host: str | None = typer.Option(None, help="Daemon host"),
+    port: int | None = typer.Option(None, help="Daemon port"),
+) -> None:
+    """Show persisted usage and estimated frontier savings."""
+    settings = get_settings()
+    bind_host = host or settings.server.host
+    bind_port = port or settings.server.port
+    url = f"http://{bind_host}:{bind_port}/v1/daari/report?days={days}"
+    try:
+        import httpx
+
+        response = httpx.get(url, timeout=5.0)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        typer.echo(f"Could not reach daari at {url}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not payload.get("enabled", False):
+        typer.echo("Usage ledger is disabled (settings: usage.enabled).")
+        return
+    totals = payload.get("totals", {})
+    typer.echo(f"daari usage report (last {days} days)")
+    typer.echo("")
+    typer.echo(f"{'day':<12} {'requests':>9} {'cache hits':>11} {'prompt ch':>10} {'compl ch':>9}")
+    for entry in payload.get("days", []):
+        typer.echo(
+            f"{entry['day']:<12} {entry['requests']:>9} {entry['cache_hits']:>11}"
+            f" {entry['prompt_chars']:>10} {entry['completion_chars']:>9}"
+        )
+    typer.echo("")
+    typer.echo(f"total requests:    {totals.get('requests', 0)}")
+    typer.echo(f"cache hits:        {totals.get('cache_hits', 0)}")
+    typer.echo(f"local requests:    {totals.get('local_requests', 0)}")
+    typer.echo(f"frontier requests: {totals.get('frontier_requests', 0)}")
+    typer.echo(f"estimated saved:   ${totals.get('estimated_saved_usd', 0.0):.4f}")
+
+
 @web_ui_app.command("serve")
 def serve_web_ui(
     host: str = typer.Option("127.0.0.1", help="Bind host"),
