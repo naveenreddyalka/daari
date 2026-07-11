@@ -20,6 +20,7 @@ from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
+from daari.observability.trace import TraceStore, add_step, end_trace, start_trace
 from daari.observability.usage import UsageLedger
 from daari.policy.engine import PolicyEngine
 from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
@@ -144,6 +145,7 @@ class Router:
         org_learning_enabled: bool = False,
         usage_ledger: UsageLedger | None = None,
         category_policies: dict[str, Any] | None = None,
+        trace_store: TraceStore | None = None,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -184,6 +186,7 @@ class Router:
         self.confidence_threshold = confidence_threshold
         self.usage_ledger = usage_ledger
         self.category_policies = category_policies or {}
+        self.trace_store = trace_store
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
 
@@ -193,11 +196,32 @@ class Router:
 
     async def route(self, request: InternalRequest) -> InternalResponse:
         profile = build_prompt_profile(request)
-        response = await self._route_impl(request, profile)
+        trace = start_trace() if self.trace_store is not None else None
+        add_step(
+            "profile",
+            category=profile.category,
+            complexity=profile.complexity,
+            prompt_tokens_est=profile.prompt_tokens_est,
+        )
+        try:
+            response = await self._route_impl(request, profile)
+        except Exception:
+            end_trace()
+            raise
         if response.daari_meta.task_type is None:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:
             response.daari_meta.complexity = profile.complexity
+        add_step(
+            "served",
+            tier=response.daari_meta.tier,
+            cache_hit=response.daari_meta.cache_hit,
+            latency_ms=response.daari_meta.latency_ms,
+        )
+        if trace is not None:
+            response.daari_meta.trace_id = trace.trace_id
+            self.trace_store.save(trace, tier=response.daari_meta.tier, category=profile.category)
+        end_trace()
         self._ledger_record(request, response)
         return response
 
@@ -241,6 +265,7 @@ class Router:
                 cached = self.cache.get(request)
             except Exception:
                 cached = None
+            add_step("l0_lookup", hit=cached is not None)
             if cached is not None:
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 cached.daari_meta.tier = "L0"
@@ -277,6 +302,8 @@ class Router:
                 semantic_hit, _similarity = await self.semantic_cache.get(request)
             except Exception:
                 semantic_hit = None
+                _similarity = 0.0
+            add_step("l1_lookup", hit=semantic_hit is not None, similarity=round(_similarity or 0.0, 4))
             if semantic_hit is not None:
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 semantic_hit.daari_meta.tier = "L1"
@@ -484,6 +511,21 @@ class Router:
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
         client_model = request.model or self.ollama_l3.default_model
+        profile = build_prompt_profile(request)
+        trace = start_trace() if self.trace_store is not None else None
+        add_step(
+            "profile",
+            category=profile.category,
+            complexity=profile.complexity,
+            prompt_tokens_est=profile.prompt_tokens_est,
+            stream=True,
+        )
+
+        def finish_trace(tier: str | None) -> None:
+            if trace is not None:
+                self.trace_store.save(trace, tier=tier, category=profile.category)
+            end_trace()
+
         tier_chain = self._stream_tier_chain(request)
         # Agent flows (tools passed through by the gateway, or tool history)
         # keep the full tool protocol; Ask flows get plain-text sanitization.
@@ -493,7 +535,7 @@ class Router:
         cacheable = (
             not agent_flow
             and not request.meta.no_cache
-            and not self._category_cache_skip(build_prompt_profile(request))
+            and not self._category_cache_skip(profile)
         )
         stream_request = request.model_copy(deep=True)
         if not agent_flow:
@@ -539,6 +581,7 @@ class Router:
                 cached = self.cache.get(request)
             except Exception:
                 cached = None
+            add_step("l0_lookup", hit=cached is not None)
             if cached is not None and cached.content.strip():
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
@@ -555,6 +598,8 @@ class Router:
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
                 yield usage_chunk(len(cached.content))
                 yield "data: [DONE]\n\n"
+                add_step("served", tier="L0", cache_hit=True, latency_ms=latency_ms)
+                finish_trace("L0")
                 return
 
         last_error: Exception | None = None
@@ -562,6 +607,7 @@ class Router:
             stream_executor = self._executor_for_tier(tier)
             ollama_model = stream_executor.default_model
             stream_request.model = ollama_model
+            add_step("tier_attempt", tier=tier, stream=True)
             log_gateway_event("stream_attempt", {"tier": tier, "ollama_model": ollama_model})
 
             role_chunk = f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
@@ -605,12 +651,16 @@ class Router:
                     {"tier": tier, "ollama_model": ollama_model, "error": str(exc)[:300]},
                 )
                 if tier_index < len(tier_chain) - 1:
+                    add_step("fallback", from_tier=tier, error=str(exc)[:120])
                     continue
                 yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
                 yield "data: [DONE]\n\n"
+                add_step("served", tier=None, error=str(exc)[:120])
+                finish_trace(None)
                 return
 
             if not content_sent and tier_index < len(tier_chain) - 1:
+                add_step("fallback", from_tier=tier, error="empty_response")
                 log_gateway_event("stream_empty_retry", {"tier": tier, "ollama_model": ollama_model})
                 continue
 
@@ -657,8 +707,11 @@ class Router:
                     )
                 except Exception:
                     pass
+            add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
+            finish_trace(tier)
             return
 
+        end_trace()
         if last_error is not None:
             raise last_error
 
@@ -798,6 +851,7 @@ class Router:
         return None
 
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
+        add_step("tier_attempt", tier=tier)
         provider = self.provider_registry.get(f"ollama:{tier.lower()}")
         if provider is not None:
             provider_request = request.model_copy(deep=True)
@@ -909,9 +963,11 @@ class Router:
             return response
 
         if self._frontier_budget_exceeded():
+            add_step("budget_check", exceeded=True)
             response.daari_meta.warning = "frontier_budget_exceeded"
             return response
 
+        add_step("escalate", to="L6", local_confidence=confidence)
         try:
             l6_response = await self.frontier.execute(
                 request,
@@ -1273,6 +1329,11 @@ class AppContext:
             path=settings.usage_ledger_path,
             enabled=settings.usage.enabled,
         )
+        trace_store = TraceStore(
+            path=settings.trace_store_path,
+            enabled=settings.trace.enabled,
+            max_entries=settings.trace.max_entries,
+        )
         router = Router(
             cache=cache,
             semantic_cache=semantic_cache,
@@ -1298,6 +1359,7 @@ class AppContext:
             org_learning_enabled=learning_enabled,
             usage_ledger=usage_ledger,
             category_policies=dict(settings.routing.category_policies),
+            trace_store=trace_store,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_enabled=settings.frontier.enabled,
