@@ -54,6 +54,14 @@ def _openai_tool_call_deltas(tool_calls: list[Any]) -> list[dict[str, Any]]:
     return deltas
 
 
+def _draft_hint(draft: str, similarity: float) -> str:
+    return (
+        f"A previous answer to a similar question (similarity {similarity:.2f}) is provided "
+        "below. Reuse whatever is still correct; reformat or correct it as needed rather "
+        f"than writing from scratch.\n\n---\n{draft}"
+    )
+
+
 @dataclass
 class OllamaExecutor:
     base_url: str
@@ -149,6 +157,7 @@ class Router:
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
+        l1_draft_threshold: float = 0.75,
         frontier_daily_budget_usd: float = 0.0,
         frontier_price_per_1k_tokens: float = 0.002,
     ) -> None:
@@ -187,6 +196,7 @@ class Router:
         self.usage_ledger = usage_ledger
         self.category_policies = category_policies or {}
         self.trace_store = trace_store
+        self.l1_draft_threshold = l1_draft_threshold
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
 
@@ -297,13 +307,28 @@ class Router:
             self._emit_org_feedback(last_user, ccs_hit)
             return ccs_hit
 
+        draft_response: InternalResponse | None = None
+        draft_similarity = 0.0
         if not request.meta.no_cache and not cache_skip:
             try:
-                semantic_hit, _similarity = await self.semantic_cache.get(request)
+                nearest_response, nearest_similarity = await self.semantic_cache.nearest(request)
             except Exception:
-                semantic_hit = None
-                _similarity = 0.0
-            add_step("l1_lookup", hit=semantic_hit is not None, similarity=round(_similarity or 0.0, 4))
+                nearest_response, nearest_similarity = None, 0.0
+            semantic_hit = (
+                nearest_response
+                if nearest_response is not None
+                and nearest_similarity >= self.semantic_cache.similarity_threshold
+                else None
+            )
+            add_step("l1_lookup", hit=semantic_hit is not None, similarity=round(nearest_similarity, 4))
+            if (
+                semantic_hit is None
+                and nearest_response is not None
+                and nearest_similarity >= self.l1_draft_threshold
+                and nearest_response.content.strip()
+            ):
+                draft_response = nearest_response
+                draft_similarity = nearest_similarity
             if semantic_hit is not None:
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 semantic_hit.daari_meta.tier = "L1"
@@ -433,23 +458,34 @@ class Router:
                 self._record(integrated, started)
                 return integrated
 
+        # The draft only affects generation (local and frontier); cache reads
+        # and writes keep using the original request so keys are unaffected.
+        gen_request = request
+        if draft_response is not None:
+            gen_request = request.model_copy(deep=True)
+            gen_request.messages = [
+                *gen_request.messages,
+                Message(role="system", content=_draft_hint(draft_response.content, draft_similarity)),
+            ]
+            add_step("draft_injected", similarity=round(draft_similarity, 4))
+
         initial_tier = self._choose_initial_tier(request)
         try:
-            response = await self._run_model_tier(initial_tier, request)
+            response = await self._run_model_tier(initial_tier, gen_request)
         except Exception:
             if initial_tier == "L4":
-                response = await self._run_model_tier("L3", request)
+                response = await self._run_model_tier("L3", gen_request)
                 response.daari_meta.warning = "l4_unavailable_fell_back_to_l3"
             elif initial_tier == "L5":
                 try:
-                    response = await self._run_model_tier("L4", request)
+                    response = await self._run_model_tier("L4", gen_request)
                     response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
                 except Exception:
-                    response = await self._run_model_tier("L3", request)
+                    response = await self._run_model_tier("L3", gen_request)
                     response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
             else:
                 raise
-        response = await self._maybe_escalate(request, response, started)
+        response = await self._maybe_escalate(gen_request, response, started)
         if (
             not request.meta.no_cache
             and not cache_skip
@@ -1364,6 +1400,7 @@ class AppContext:
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_enabled=settings.frontier.enabled,
             confidence_threshold=settings.routing.confidence_threshold,
+            l1_draft_threshold=settings.cache.l1.draft_threshold,
         )
         context = cls(
             settings=settings,
