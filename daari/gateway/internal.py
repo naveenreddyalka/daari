@@ -14,6 +14,7 @@ class Message(BaseModel):
 class RequestMeta(BaseModel):
     no_cache: bool = False
     tier_override: str | None = None
+    tier_cap: str | None = None
     client_id: str | None = None
     no_frontier: bool = False
     confirm_tool: bool = False

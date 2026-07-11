@@ -34,6 +34,10 @@ cache:
 routing:
   prefer: balanced
   confidence_threshold: 0.7
+  # Cap the local tier for chat/Ask requests (L3|L4|L5). Unset keeps current
+  # behavior (long prompts may route to L4/L5). Per-request X-Daari-Tier-Cap
+  # header wins over this value. Cursor users who prefer latency can set L3.
+  max_tier_for_chat:
 
 frontier:
   enabled: false

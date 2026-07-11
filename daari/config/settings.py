@@ -71,6 +71,9 @@ class RoutingSettings(BaseModel):
     prefer: str = "balanced"  # latency | accuracy | balanced
     confidence_threshold: float = 0.7
     category_policies: dict[str, CategoryPolicy] = Field(default_factory=dict)
+    # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps
+    # the weight/length heuristics unbounded. X-Daari-Tier-Cap header wins.
+    max_tier_for_chat: str | None = None
 
 
 class ToolsSettings(BaseModel):
