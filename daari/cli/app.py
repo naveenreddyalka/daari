@@ -270,12 +270,22 @@ def stats(
         raise typer.Exit(code=1) from exc
 
 
+def _emit_or_write(text: str, out: str | None) -> None:
+    if out is None:
+        typer.echo(text)
+        return
+    Path(out).expanduser().write_text(text, encoding="utf-8")
+    typer.echo(f"Wrote {out}")
+
+
 @app.command()
 def trace(
     trace_id: str | None = typer.Argument(None, help="Trace id; omit to list recent traces"),
     limit: int = typer.Option(10, help="How many recent traces to list"),
     host: str | None = typer.Option(None, help="Daemon host"),
     port: int | None = typer.Option(None, help="Daemon port"),
+    output_format: str = typer.Option("text", "--format", help="Output format: text | markdown"),
+    out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
 ) -> None:
     """Show what daari did for a request (client-facing decision trace)."""
     settings = get_settings()
@@ -301,6 +311,13 @@ def trace(
                 f" {str(item.get('category')):<12} {item.get('ts', '')}"
             )
         return
+
+    if output_format == "markdown" or out is not None:
+        from daari.observability.render import trace_markdown
+
+        _emit_or_write(trace_markdown(payload), out)
+        return
+
     typer.echo(f"trace {payload['trace_id']}  tier={payload.get('tier')}  category={payload.get('category')}")
     for step in payload.get("steps", []):
         detail = step.get("detail") or {}
@@ -313,6 +330,8 @@ def report(
     days: int = typer.Option(7, help="Number of days to include"),
     host: str | None = typer.Option(None, help="Daemon host"),
     port: int | None = typer.Option(None, help="Daemon port"),
+    output_format: str = typer.Option("text", "--format", help="Output format: text | markdown"),
+    out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
 ) -> None:
     """Show persisted usage and estimated frontier savings."""
     settings = get_settings()
@@ -328,6 +347,12 @@ def report(
     except Exception as exc:
         typer.echo(f"Could not reach daari at {url}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+    if output_format == "markdown" or out is not None:
+        from daari.observability.render import report_markdown
+
+        _emit_or_write(report_markdown(payload, days=days), out)
+        return
 
     if not payload.get("enabled", False):
         typer.echo("Usage ledger is disabled (settings: usage.enabled).")
