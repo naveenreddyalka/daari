@@ -1339,3 +1339,55 @@ async def test_lt_ask_response_includes_confirmation_prompt(app, monkeypatch):
     assert first_body["daari_meta"]["policy"] == "ask"
     assert "X-Daari-Confirm: yes" in first_body["daari_meta"]["confirmation_prompt"]
     assert second_body["daari_meta"]["policy"] == "allow"
+
+
+@pytest.mark.asyncio
+async def test_stream_serves_l1_hit_for_paraphrase(app, monkeypatch):
+    """Issue #43: streaming requests get L1 semantic hits through the gateway."""
+    from daari.cache.semantic import SemanticCache
+
+    class KeywordEmbedder:
+        async def embed(self, text: str) -> list[float] | None:
+            if "capital of France" in text:
+                return [1.0, 0.0]
+            if "France's capital" in text:
+                return [0.96, 0.28]  # cosine vs seed ≈ 0.96 — above hit threshold
+            return [0.0, 1.0]
+
+    router = app.state.ctx.router
+    router.semantic_cache = SemanticCache(
+        path=str(router.semantic_cache._path) + "-stream",
+        embedder=KeywordEmbedder(),
+        enabled=True,
+        similarity_threshold=0.88,
+    )
+    await router.semantic_cache.put(
+        InternalRequest(
+            messages=[Message(role="user", content="What is the capital of France?")],
+            model="daari",
+        ),
+        InternalResponse(
+            content="Paris is the capital of France.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=2),
+        ),
+    )
+
+    async def fail_stream(request: InternalRequest):
+        raise AssertionError("L1 hit should never reach the model")
+        yield
+
+    monkeypatch.setattr(router.ollama, "stream", fail_stream)
+
+    payload = {
+        "model": "daari",
+        "stream": True,
+        "messages": [{"role": "user", "content": "Tell me France's capital"}],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=payload)
+
+    assert response.status_code == 200
+    assert "Paris is the capital of France." in response.text
+    assert "data: [DONE]" in response.text
