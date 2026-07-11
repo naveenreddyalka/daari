@@ -162,6 +162,7 @@ class Router:
         context_optimizer_enabled: bool = True,
         context_max_history: int = 20,
         context_squeeze_whitespace: bool = True,
+        max_tier_for_chat: str | None = None,
         frontier_daily_budget_usd: float = 0.0,
         frontier_price_per_1k_tokens: float = 0.002,
     ) -> None:
@@ -204,6 +205,7 @@ class Router:
         self.context_optimizer_enabled = context_optimizer_enabled
         self.context_max_history = context_max_history
         self.context_squeeze_whitespace = context_squeeze_whitespace
+        self.max_tier_for_chat = max_tier_for_chat
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
 
@@ -938,10 +940,32 @@ class Router:
             return self.ollama_l5
         return self.ollama_l3
 
+    _TIER_ORDER = ("L3", "L4", "L5")
+
+    def _effective_tier_cap(self, request: InternalRequest) -> str | None:
+        header_cap = (request.meta.tier_cap or "").upper()
+        if header_cap in self._TIER_ORDER:
+            return header_cap
+        config_cap = (self.max_tier_for_chat or "").upper()
+        if config_cap in self._TIER_ORDER:
+            return config_cap
+        return None
+
+    def _cap_tier(self, tier: str, cap: str | None) -> str:
+        if cap is None or tier not in self._TIER_ORDER:
+            return tier
+        if self._TIER_ORDER.index(tier) > self._TIER_ORDER.index(cap):
+            return cap
+        return tier
+
     def _choose_initial_tier(self, request: InternalRequest) -> str:
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             return override
+        tier = self._choose_uncapped_tier(request)
+        return self._cap_tier(tier, self._effective_tier_cap(request))
+
+    def _choose_uncapped_tier(self, request: InternalRequest) -> str:
         policy = self._policy_for(build_prompt_profile(request))
         policy_tier = getattr(policy, "tier", None) if policy is not None else None
         if policy_tier in {"L3", "L4", "L5"}:
@@ -998,6 +1022,9 @@ class Router:
             return response
 
         tier_chain = ["L3", "L4", "L5"]
+        cap = self._effective_tier_cap(request)
+        if cap in tier_chain:
+            tier_chain = tier_chain[: tier_chain.index(cap) + 1]
         current_tier = response.daari_meta.tier
         if current_tier in tier_chain:
             current_idx = tier_chain.index(current_tier)
@@ -1430,6 +1457,7 @@ class AppContext:
             context_optimizer_enabled=settings.context_optimizer.enabled,
             context_max_history=settings.context_optimizer.max_history_messages,
             context_squeeze_whitespace=settings.context_optimizer.squeeze_whitespace,
+            max_tier_for_chat=settings.routing.max_tier_for_chat,
         )
         context = cls(
             settings=settings,

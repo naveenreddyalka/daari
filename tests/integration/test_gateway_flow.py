@@ -533,6 +533,42 @@ async def test_report_endpoint_tracks_route_and_stream_usage(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_tier_cap_header_caps_long_prompt_at_l3(app, monkeypatch):
+    """Issue #3: X-Daari-Tier-Cap keeps long-context Ask requests on L3."""
+    seen_tiers: list[str] = []
+
+    def make_fake(tier: str):
+        async def fake_execute(request: InternalRequest) -> InternalResponse:
+            seen_tiers.append(tier)
+            return InternalResponse(
+                content="a confident answer that is long enough to avoid escalation",
+                model=f"model-{tier.lower()}",
+                daari_meta=DaariMeta(tier=tier, executor="ollama", provider_id="ollama", latency_ms=5),
+            )
+
+        return fake_execute
+
+    router = app.state.ctx.router
+    monkeypatch.setattr(router.ollama, "execute", make_fake("L3"))
+    monkeypatch.setattr(router.ollama_l4, "execute", make_fake("L4"))
+    monkeypatch.setattr(router.ollama_l5, "execute", make_fake("L5"))
+
+    long_prompt = "please explain this " + "word " * 300
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": long_prompt}]},
+            headers={**META_HEADERS, "X-Daari-Tier-Cap": "L3"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["tier"] == "L3"
+    assert seen_tiers == ["L3"]
+
+
+@pytest.mark.asyncio
 async def test_trace_recorded_and_retrievable_by_id(app, monkeypatch):
     """Issue #20: every request carries a trace_id whose steps are retrievable."""
 
