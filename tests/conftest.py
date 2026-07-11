@@ -45,6 +45,7 @@ def settings(tmp_path):
                 "l1": {"enabled": False, "path": str(tmp_path / "l1")},
             },
             "usage": {"path": str(tmp_path / "usage" / "ledger.sqlite3")},
+            "trace": {"path": str(tmp_path / "traces" / "traces.sqlite3")},
         }
     )
 

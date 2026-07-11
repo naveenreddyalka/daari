@@ -271,6 +271,44 @@ def stats(
 
 
 @app.command()
+def trace(
+    trace_id: str | None = typer.Argument(None, help="Trace id; omit to list recent traces"),
+    limit: int = typer.Option(10, help="How many recent traces to list"),
+    host: str | None = typer.Option(None, help="Daemon host"),
+    port: int | None = typer.Option(None, help="Daemon port"),
+) -> None:
+    """Show what daari did for a request (client-facing decision trace)."""
+    settings = get_settings()
+    bind_host = host or settings.server.host
+    bind_port = port or settings.server.port
+    base = f"http://{bind_host}:{bind_port}/v1/daari/traces"
+    url = f"{base}/{trace_id}" if trace_id else f"{base}?limit={limit}"
+    try:
+        import httpx
+
+        response = httpx.get(url, timeout=5.0)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        typer.echo(f"Could not reach daari at {url}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if trace_id is None:
+        typer.echo(f"{'trace_id':<18} {'tier':<6} {'category':<12} ts")
+        for item in payload.get("traces", []):
+            typer.echo(
+                f"{item['trace_id']:<18} {str(item.get('tier')):<6}"
+                f" {str(item.get('category')):<12} {item.get('ts', '')}"
+            )
+        return
+    typer.echo(f"trace {payload['trace_id']}  tier={payload.get('tier')}  category={payload.get('category')}")
+    for step in payload.get("steps", []):
+        detail = step.get("detail") or {}
+        detail_text = "  ".join(f"{key}={value}" for key, value in detail.items())
+        typer.echo(f"  +{step['elapsed_ms']:>5}ms  {step['step']:<14} {detail_text}")
+
+
+@app.command()
 def report(
     days: int = typer.Option(7, help="Number of days to include"),
     host: str | None = typer.Option(None, help="Daemon host"),

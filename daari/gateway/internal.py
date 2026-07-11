@@ -47,6 +47,7 @@ class DaariMeta(BaseModel):
     model: str | None = None
     task_type: str | None = None
     complexity: str | None = None
+    trace_id: str | None = None
     confidence: float | None = None
     escalated_from: str | None = None
     rule_id: str | None = None

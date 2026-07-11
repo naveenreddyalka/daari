@@ -102,6 +102,12 @@ class UsageSettings(BaseModel):
     frontier_price_per_1k_tokens: float = 0.002
 
 
+class TraceSettings(BaseModel):
+    enabled: bool = True
+    path: str = "~/.daari/traces/traces.sqlite3"
+    max_entries: int = 200
+
+
 class IntegrationEndpointSettings(BaseModel):
     url: str
     triggers: list[str] = Field(default_factory=list)
@@ -140,6 +146,7 @@ class Settings(BaseSettings):
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
+    trace: TraceSettings = Field(default_factory=TraceSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     skills_system_prefix: str = ""
@@ -178,6 +185,10 @@ class Settings(BaseSettings):
     @property
     def usage_ledger_path(self) -> Path:
         return Path(self.usage.path).expanduser()
+
+    @property
+    def trace_store_path(self) -> Path:
+        return Path(self.trace.path).expanduser()
 
     @property
     def org_cache_root(self) -> Path | None:

@@ -326,6 +326,25 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             total = sum(t["count"] for t in snapshot.values())
             return {"total_requests": total, "errors": ctx.metrics.errors, "tiers": snapshot}
 
+        @router.get("/v1/daari/traces")
+        async def daari_traces(request: Request, limit: int = 20) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.router.trace_store
+            if store is None:
+                raise HTTPException(status_code=404, detail="trace store is not configured")
+            return {"traces": store.list(limit=max(1, min(limit, 200)))}
+
+        @router.get("/v1/daari/traces/{trace_id}")
+        async def daari_trace_detail(trace_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.router.trace_store
+            if store is None:
+                raise HTTPException(status_code=404, detail="trace store is not configured")
+            trace = store.get(trace_id)
+            if trace is None:
+                raise HTTPException(status_code=404, detail=f"trace {trace_id} not found")
+            return trace
+
         @router.get("/v1/daari/report")
         async def daari_report(request: Request, days: int = 7) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx

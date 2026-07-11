@@ -533,6 +533,68 @@ async def test_report_endpoint_tracks_route_and_stream_usage(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_trace_recorded_and_retrievable_by_id(app, monkeypatch):
+    """Issue #20: every request carries a trace_id whose steps are retrievable."""
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="a confident answer that is long enough",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=5),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fake_execute)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "what is a trace?"}]},
+            headers=META_HEADERS,
+        )
+        trace_id = response.json()["daari_meta"]["trace_id"]
+        detail = (await client.get(f"/v1/daari/traces/{trace_id}")).json()
+        listing = (await client.get("/v1/daari/traces?limit=5")).json()
+
+    assert trace_id
+    steps = [s["step"] for s in detail["steps"]]
+    assert "profile" in steps
+    assert "l0_lookup" in steps
+    assert "served" in steps
+    assert detail["tier"] == "L3"
+    assert any(item["trace_id"] == trace_id for item in listing["traces"])
+
+
+@pytest.mark.asyncio
+async def test_stream_requests_record_traces(app, monkeypatch):
+    async def fake_stream(request: InternalRequest):
+        yield {"message": {"content": "streamed trace answer"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [{"role": "user", "content": "trace my stream"}],
+            },
+        )
+        listing = (await client.get("/v1/daari/traces?limit=5")).json()
+
+    assert listing["traces"], "stream request should have recorded a trace"
+    detail_id = listing["traces"][0]["trace_id"]
+    transport2 = ASGITransport(app=app)
+    async with AsyncClient(transport=transport2, base_url="http://test") as client:
+        detail = (await client.get(f"/v1/daari/traces/{detail_id}")).json()
+    steps = [s["step"] for s in detail["steps"]]
+    assert "served" in steps
+
+
+@pytest.mark.asyncio
 async def test_cursor_input_text_content_returns_text(app, monkeypatch):
     async def fake_stream(request: InternalRequest):
         assert any(message.role == "user" for message in request.messages)
