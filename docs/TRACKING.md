@@ -282,6 +282,19 @@ Filed as issues #19–#22 from the new PRD, implemented TDD-style, all auto-merg
 
 Default suite now at 226 tests (180 → 226).
 
+### Loop cycles: original backlog cleared (#3–#6) (2026-07-10)
+
+The remaining seeded issues from the first backlog, implemented TDD-style, auto-merged, and each validated live by a full `autodev-local.sh` cycle (final deploy `a8600cc`, live Ollama integration tests PASS, Cursor-shaped streaming smoke PASS):
+
+| Issue | Feature | PR | Merge |
+|-------|---------|----|-------|
+| [#3](https://github.com/naveenreddyalka/daari/issues/3) | Tier cap for chat: `routing.max_tier_for_chat` + `X-Daari-Tier-Cap` header clamp initial tier, stream chain, and local escalation (latency recipe in docs/setup/cursor.md) | [#28](https://github.com/naveenreddyalka/daari/pull/28) | `9da32c4` |
+| [#4](https://github.com/naveenreddyalka/daari/issues/4) | `daari setup cursor` verifies/pulls the L4 model (`--yes` for non-interactive; tunnel.sh passes it); `daari doctor` upgrades `model_l4` to required when Cursor is configured | [#29](https://github.com/naveenreddyalka/daari/pull/29) | `79b3221` |
+| [#5](https://github.com/naveenreddyalka/daari/issues/5) | Anthropic stream parity: tier fallback chain, message sanitization, chars/4 usage estimates in `message_start`/`message_delta` | [#30](https://github.com/naveenreddyalka/daari/pull/30) | `a956d33` |
+| [#6](https://github.com/naveenreddyalka/daari/issues/6) | Org L1 semantic matching: embeddings stored with entries, `POST /v1/org-cache/similar`, client similarity fallback on key miss (paraphrases now hit `L1-org`) | [#31](https://github.com/naveenreddyalka/daari/pull/31) | `a8600cc` |
+
+Default suite now at 250 tests (226 → 250). Remaining open backlog: #7 (browser-extension E2E), #8 (v1.1.2 release prep — tagging stays human-approved).
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
