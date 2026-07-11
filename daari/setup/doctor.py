@@ -263,7 +263,7 @@ def _check_daemon(
         return CheckResult(
             name="daemon",
             ok=False,
-            detail=f"not running (start with: daari serve)",
+            detail="not running (start with: daari serve)",
             optional=True,
         )
     finally:
