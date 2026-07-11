@@ -219,6 +219,189 @@ async def test_no_tools_hint_leads_and_neutralizes_tool_prompt(app, monkeypatch)
         assert any("read_file" in (m.content or "") for m in request.messages if m.role == "system")
 
 
+def _demo_tools(count: int = 1) -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": f"read_file_{index}" if count > 1 else "read_file",
+                "description": "demo",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+        for index in range(count)
+    ]
+
+
+def _agent_history_messages() -> list[dict]:
+    return [
+        {"role": "system", "content": "You are a coding agent with tools."},
+        {"role": "user", "content": "read a.py"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_abc123",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": '{"path": "a.py"}'},
+                }
+            ],
+        },
+        {"role": "tool", "content": "print('hello')"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_flow_with_tool_history_passes_tools_through(app, monkeypatch):
+    """Issue #2: tool history means agent mode — tools reach the executor untouched."""
+    from daari.gateway.openai import NO_TOOLS_HINT
+
+    seen: list[InternalRequest] = []
+
+    async def fake_stream(request: InternalRequest):
+        seen.append(request)
+        yield {"message": {"content": "the file prints hello"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    tools = _demo_tools()
+    body = {
+        "model": "daari",
+        "stream": True,
+        "messages": _agent_history_messages(),
+        "tools": tools,
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=body)
+
+    assert response.status_code == 200
+    request = seen[0]
+    assert request.tools == tools
+    assert all(NO_TOOLS_HINT not in (m.content or "") for m in request.messages)
+    assert any(m.role == "tool" for m in request.messages)
+    assert any(m.tool_calls for m in request.messages)
+
+
+@pytest.mark.asyncio
+async def test_tools_header_passthrough_overrides_fresh_request(app, monkeypatch):
+    """Issue #2: X-Daari-Tools: passthrough forces agent mode without tool history."""
+    seen: list[InternalRequest] = []
+
+    async def fake_stream(request: InternalRequest):
+        seen.append(request)
+        yield {"message": {"content": "ok"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    tools = _demo_tools()
+    body = {
+        "model": "daari",
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": "Agent."},
+            {"role": "user", "content": "read a.py"},
+        ],
+        "tools": tools,
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions", json=body, headers={"X-Daari-Tools": "passthrough"}
+        )
+
+    assert response.status_code == 200
+    assert seen[0].tools == tools
+
+
+@pytest.mark.asyncio
+async def test_tools_header_strip_overrides_agent_history(app, monkeypatch):
+    """Issue #2: X-Daari-Tools: strip forces Ask mode even with tool history."""
+    from daari.gateway.openai import NO_TOOLS_HINT
+
+    seen: list[InternalRequest] = []
+
+    async def fake_stream(request: InternalRequest):
+        seen.append(request)
+        yield {"message": {"content": "plain text"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    body = {
+        "model": "daari",
+        "stream": True,
+        "messages": _agent_history_messages(),
+        "tools": _demo_tools(),
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions", json=body, headers={"X-Daari-Tools": "strip"}
+        )
+
+    assert response.status_code == 200
+    request = seen[0]
+    assert request.tools is None
+    assert NO_TOOLS_HINT in (request.messages[0].content or "")
+    # Tool protocol fields sanitized away for the local model.
+    assert all(not m.tool_calls for m in request.messages)
+    assert all(m.role != "tool" for m in request.messages)
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_openai_tool_call_deltas(app, monkeypatch):
+    """Issue #2: agent-mode streams emit OpenAI tool_calls deltas, not JSON text dumps."""
+
+    async def fake_stream(request: InternalRequest):
+        # Ollama-native tool call shape: arguments as a dict, no id.
+        yield {
+            "message": {
+                "content": "",
+                "tool_calls": [{"function": {"name": "read_file", "arguments": {"path": "a.py"}}}],
+            }
+        }
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    body = {
+        "model": "daari",
+        "stream": True,
+        "messages": _agent_history_messages(),
+        "tools": _demo_tools(),
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=body)
+
+    assert response.status_code == 200
+    tool_call_delta = None
+    finish_reasons = []
+    for line in response.text.splitlines():
+        if not line.startswith("data: ") or line == "data: [DONE]":
+            continue
+        chunk = json.loads(line[len("data: "):])
+        for choice in chunk.get("choices", []):
+            if choice.get("finish_reason"):
+                finish_reasons.append(choice["finish_reason"])
+            delta = choice.get("delta", {})
+            if delta.get("tool_calls"):
+                tool_call_delta = delta["tool_calls"]
+
+    assert tool_call_delta is not None, f"no tool_calls delta in stream: {response.text}"
+    call = tool_call_delta[0]
+    assert call["index"] == 0
+    assert call["type"] == "function"
+    assert call["id"].startswith("call_")
+    assert call["function"]["name"] == "read_file"
+    assert json.loads(call["function"]["arguments"]) == {"path": "a.py"}
+    assert "tool_calls" in finish_reasons
+
+
 @pytest.mark.asyncio
 async def test_cursor_input_text_content_returns_text(app, monkeypatch):
     async def fake_stream(request: InternalRequest):
@@ -297,6 +480,11 @@ async def test_stream_falls_back_to_l3_when_l4_unavailable(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_stream_sanitizes_assistant_tool_calls(app, monkeypatch):
+    """With an explicit strip override, tool protocol is flattened to plain text.
+
+    (Without the header this payload is an agent flow since issue #2 — see
+    test_agent_flow_with_tool_history_passes_tools_through.)
+    """
     seen_messages: list[InternalRequest] = []
 
     async def fake_stream(request: InternalRequest):
@@ -340,6 +528,7 @@ async def test_stream_sanitizes_assistant_tool_calls(app, monkeypatch):
                 ],
                 "tools": tools,
             },
+            headers={"X-Daari-Tools": "strip"},
         )
 
     assert response.status_code == 200
