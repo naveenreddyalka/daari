@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable
@@ -29,6 +30,27 @@ from daari.router.frontier import FrontierExecutor
 from daari.tools.shell import ShellExecutor
 
 
+def _openai_tool_call_deltas(tool_calls: list[Any]) -> list[dict[str, Any]]:
+    """Convert Ollama-native tool calls (dict arguments, no id) to OpenAI delta shape."""
+    deltas: list[dict[str, Any]] = []
+    for index, call in enumerate(tool_calls):
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function") or {}
+        arguments = function.get("arguments")
+        if not isinstance(arguments, str):
+            arguments = json.dumps(arguments or {})
+        deltas.append(
+            {
+                "index": index,
+                "id": call.get("id") or f"call_{uuid.uuid4().hex[:24]}",
+                "type": "function",
+                "function": {"name": function.get("name", ""), "arguments": arguments},
+            }
+        )
+    return deltas
+
+
 @dataclass
 class OllamaExecutor:
     base_url: str
@@ -44,6 +66,8 @@ class OllamaExecutor:
             "messages": [m.model_dump(exclude_none=True) for m in request.messages],
             "stream": False,
         }
+        if request.tools:
+            payload["tools"] = request.tools
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
             response = await client.post("/api/chat", json=payload)
             response.raise_for_status()
@@ -70,6 +94,8 @@ class OllamaExecutor:
             "messages": [m.model_dump(exclude_none=True) for m in request.messages],
             "stream": True,
         }
+        if request.tools:
+            payload["tools"] = request.tools
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
             async with client.stream("POST", "/api/chat", json=payload) as response:
                 response.raise_for_status()
@@ -410,9 +436,13 @@ class Router:
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
         client_model = request.model or self.ollama_l3.default_model
         tier_chain = self._stream_tier_chain(request)
+        # Agent flows (tools passed through by the gateway, or tool history)
+        # keep the full tool protocol; Ask flows get plain-text sanitization.
+        agent_flow = bool(request.tools) or request.has_tool_calls_in_history
         stream_request = request.model_copy(deep=True)
-        stream_request.tools = None
-        stream_request.messages = sanitize_messages_for_ollama(stream_request.messages)
+        if not agent_flow:
+            stream_request.tools = None
+            stream_request.messages = sanitize_messages_for_ollama(stream_request.messages)
         prompt_chars = sum(len(message.content or "") for message in stream_request.messages)
         completion_chars = 0
 
@@ -443,13 +473,25 @@ class Router:
             role_chunk = f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
             pending_chunks: list[str] = []
             content_sent = False
+            tool_calls_sent = False
             tier_completion_chars = 0
             try:
                 async for event in stream_executor.stream(stream_request):
                     message = event.get("message", {})
                     delta = message.get("content", "")
-                    if not delta and message.get("tool_calls"):
-                        delta = json.dumps(message["tool_calls"])
+                    raw_tool_calls = message.get("tool_calls")
+                    if raw_tool_calls and agent_flow:
+                        if not content_sent:
+                            pending_chunks.append(role_chunk)
+                            content_sent = True
+                        tool_calls_sent = True
+                        deltas = _openai_tool_call_deltas(raw_tool_calls)
+                        pending_chunks.append(
+                            f"data: {json.dumps(chunk_payload(delta={'tool_calls': deltas}))}\n\n"
+                        )
+                    elif not delta and raw_tool_calls:
+                        # Ask mode: model ignored the no-tools hint; degrade to text.
+                        delta = json.dumps(raw_tool_calls)
                     if delta:
                         if not content_sent:
                             pending_chunks.append(role_chunk)
@@ -485,7 +527,8 @@ class Router:
                     yield chunk
             else:
                 yield role_chunk
-            yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+            finish_reason = "tool_calls" if tool_calls_sent else "stop"
+            yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
             usage_payload = {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
