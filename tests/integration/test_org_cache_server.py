@@ -38,6 +38,54 @@ def test_org_cache_put_get_and_stats(tmp_path):
     assert stats_payload["tiers"]["L0"] == 1
 
 
+def test_org_cache_similarity_endpoint(tmp_path):
+    """Issue #6: L1 entries with embeddings are matched by cosine similarity."""
+    app = create_org_cache_app(
+        OrgSettings.model_validate(
+            {
+                "enabled": True,
+                "org_id": "acme",
+                "shared_cache_path": str(tmp_path / "shared-cache"),
+            }
+        )
+    )
+    client = TestClient(app)
+
+    put = client.put(
+        "/v1/org-cache/put",
+        json={
+            "key": "k1",
+            "value": '{"content":"semantic answer"}',
+            "tier": "L1",
+            "embedding": [1.0, 0.0],
+            "context_key": "ctx-a",
+        },
+    )
+    assert put.status_code == 200
+
+    close = client.post(
+        "/v1/org-cache/similar",
+        json={"embedding": [0.96, 0.28], "context_key": "ctx-a", "threshold": 0.88},
+    )
+    assert close.status_code == 200
+    payload = close.json()
+    assert payload["hit"] is True
+    assert payload["value"] == '{"content":"semantic answer"}'
+    assert payload["similarity"] >= 0.88
+
+    far = client.post(
+        "/v1/org-cache/similar",
+        json={"embedding": [0.6, 0.8], "context_key": "ctx-a", "threshold": 0.88},
+    )
+    assert far.json()["hit"] is False
+
+    wrong_ctx = client.post(
+        "/v1/org-cache/similar",
+        json={"embedding": [1.0, 0.0], "context_key": "ctx-b", "threshold": 0.88},
+    )
+    assert wrong_ctx.json()["hit"] is False
+
+
 def test_org_cache_token_auth(tmp_path):
     app = create_org_cache_app(
         OrgSettings.model_validate(

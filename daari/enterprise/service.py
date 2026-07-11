@@ -19,6 +19,15 @@ class OrgCachePutRequest(BaseModel):
     value: str
     tier: str = "L0"
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Issue #6: L1 entries may carry an embedding for similarity lookups.
+    embedding: list[float] | None = None
+    context_key: str | None = None
+
+
+class OrgCacheSimilarRequest(BaseModel):
+    embedding: list[float]
+    context_key: str
+    threshold: float = 0.88
 
 
 class OrgCacheStore:
@@ -50,17 +59,46 @@ class OrgCacheStore:
         return entry if isinstance(entry, dict) else None
 
     def put(self, payload: OrgCachePutRequest) -> None:
-        self._store().set(
-            self._entry_key(payload.key, payload.tier),
-            {
-                "key": payload.key,
-                "value": payload.value,
-                "tier": payload.tier,
-                "metadata": payload.metadata,
-                "stored_at": time.time(),
-            },
-        )
+        entry: dict[str, Any] = {
+            "key": payload.key,
+            "value": payload.value,
+            "tier": payload.tier,
+            "metadata": payload.metadata,
+            "stored_at": time.time(),
+        }
+        if payload.embedding:
+            entry["embedding"] = payload.embedding
+            entry["context_key"] = payload.context_key
+        self._store().set(self._entry_key(payload.key, payload.tier), entry)
         self.writes += 1
+
+    def similar(
+        self, embedding: list[float], *, context_key: str, threshold: float
+    ) -> dict[str, Any] | None:
+        """Best L1 entry by cosine similarity within the same context key."""
+        from daari.cache.semantic import cosine_similarity
+
+        store = self._store()
+        best: dict[str, Any] | None = None
+        best_score = 0.0
+        for entry_key in store.iterkeys():
+            if not isinstance(entry_key, str) or not entry_key.startswith("L1:"):
+                continue
+            entry = store.get(entry_key)
+            if not isinstance(entry, dict):
+                continue
+            stored = entry.get("embedding")
+            if not isinstance(stored, list) or entry.get("context_key") != context_key:
+                continue
+            score = cosine_similarity(embedding, stored)
+            if score > best_score:
+                best_score = score
+                best = entry
+        if best is None or best_score < threshold:
+            self.misses += 1
+            return None
+        self.hits += 1
+        return {**best, "similarity": best_score}
 
     def stats(self) -> dict[str, Any]:
         tiers: dict[str, int] = {"L0": 0, "L1": 0}
@@ -342,6 +380,16 @@ def create_org_cache_app(org: OrgSettings) -> FastAPI:
     ) -> dict[str, Any]:
         store.put(body)
         return {"ok": True, "key": body.key, "tier": body.tier}
+
+    @app.post("/v1/org-cache/similar")
+    async def similar_entry(
+        body: OrgCacheSimilarRequest,
+        _: None = Depends(_require_auth),
+    ) -> dict[str, Any]:
+        entry = store.similar(body.embedding, context_key=body.context_key, threshold=body.threshold)
+        if entry is None:
+            return {"hit": False}
+        return {"hit": True, "value": entry["value"], "similarity": entry["similarity"]}
 
     @app.get("/v1/org-cache/stats")
     async def get_stats(_: None = Depends(_require_auth)) -> dict[str, Any]:

@@ -31,6 +31,10 @@ class OrgCacheClient:
     backoff_seconds: float = 0.2
     enabled: bool = True
     transport: httpx.AsyncBaseTransport | None = None
+    # Issue #6: with an embedder configured, L1 lookups fall back to vector
+    # similarity when the exact semantic key misses (paraphrased prompts).
+    embedder: Any | None = None
+    similarity_threshold: float = 0.88
 
     def _auth_headers(self) -> dict[str, str]:
         if not self.token:
@@ -83,16 +87,28 @@ class OrgCacheClient:
         value = payload.get("value")
         return value if isinstance(value, str) else None
 
-    async def _put(self, key: str, *, value: str, tier: str, metadata: dict[str, Any] | None = None) -> None:
+    async def _put(
+        self,
+        key: str,
+        *,
+        value: str,
+        tier: str,
+        metadata: dict[str, Any] | None = None,
+        embedding: list[float] | None = None,
+        context_key: str | None = None,
+    ) -> None:
         if not self.enabled:
             return
         url = f"{self.base_url.rstrip('/')}/v1/org-cache/put"
-        body = {
+        body: dict[str, Any] = {
             "key": key,
             "value": value,
             "tier": tier,
             "metadata": metadata or {},
         }
+        if embedding:
+            body["embedding"] = embedding
+            body["context_key"] = context_key
         _ = await self._request_with_retries("PUT", url, json_body=body)
 
     async def get_l0(self, request: InternalRequest) -> InternalResponse | None:
@@ -104,8 +120,40 @@ class OrgCacheClient:
         except Exception:
             return None
 
+    async def _embed(self, request: InternalRequest) -> list[float] | None:
+        if self.embedder is None:
+            return None
+        try:
+            return await self.embedder.embed(extract_embed_text(request))
+        except Exception:
+            return None
+
+    async def _get_l1_similar(self, request: InternalRequest) -> str | None:
+        embedding = await self._embed(request)
+        if not embedding:
+            return None
+        url = f"{self.base_url.rstrip('/')}/v1/org-cache/similar"
+        response = await self._request_with_retries(
+            "POST",
+            url,
+            json_body={
+                "embedding": embedding,
+                "context_key": semantic_context_key(request),
+                "threshold": self.similarity_threshold,
+            },
+        )
+        if response is None or response.status_code != 200:
+            return None
+        payload = response.json()
+        if not payload.get("hit"):
+            return None
+        value = payload.get("value")
+        return value if isinstance(value, str) else None
+
     async def get_l1(self, request: InternalRequest) -> InternalResponse | None:
         raw = await self._get(org_l1_key(request), tier="L1")
+        if raw is None:
+            raw = await self._get_l1_similar(request)
         if raw is None:
             return None
         try:
@@ -122,11 +170,14 @@ class OrgCacheClient:
         )
 
     async def put_l1(self, request: InternalRequest, response: InternalResponse) -> None:
+        embedding = await self._embed(request)
         await self._put(
             org_l1_key(request),
             value=response.model_dump_json(),
             tier="L1",
-            metadata={"cache_kind": "semantic-keyed"},
+            metadata={"cache_kind": "semantic" if embedding else "semantic-keyed"},
+            embedding=embedding,
+            context_key=semantic_context_key(request) if embedding else None,
         )
 
     async def stats(self) -> dict[str, Any] | None:
