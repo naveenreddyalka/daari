@@ -162,6 +162,55 @@ pre {
   margin: 0;
 }
 
+.card.inner {
+  margin: 0;
+  padding: 10px;
+}
+
+.card.inner h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.card.inner .metric {
+  font-size: 22px;
+}
+
+.tier-summary {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+button.trace-link {
+  background: transparent;
+  color: #60a5fa;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.trace-detail {
+  margin-top: 12px;
+  padding: 10px;
+  background: #0b1225;
+  border-radius: 8px;
+  font-size: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+body[data-theme="light"] .trace-detail {
+  background: #f1f5f9;
+}
+
+body[data-theme="light"] .card.inner h3,
+body[data-theme="light"] .tier-summary {
+  color: #475569;
+}
+
 body[data-theme="light"] .subtle,
 body[data-theme="light"] .tier-count {
   color: #475569;

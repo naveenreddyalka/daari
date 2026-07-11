@@ -79,3 +79,11 @@ jobs:
       - name: Run extension DOM tests
         working-directory: packages/browser-extension
         run: npm test
+
+      - name: Install web-ui test deps
+        working-directory: packages/web-ui
+        run: npm ci --no-audit --no-fund
+
+      - name: Run web-ui dashboard DOM tests
+        working-directory: packages/web-ui
+        run: npm test
