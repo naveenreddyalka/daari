@@ -33,3 +33,13 @@ daari web-ui serve --api-base-url http://127.0.0.1:11535
 - `app.js` stats fetching and rendering logic
 - `styles.css` lightweight styling
 - `ARCHITECTURE.md` design notes
+
+## Tests
+
+DOM-level tests run with Node's test runner + jsdom:
+
+```bash
+cd packages/web-ui
+npm install
+npm test
+```

@@ -13,6 +13,16 @@ const exportButton = document.getElementById("export-stats");
 const themeToggleButton = document.getElementById("theme-toggle");
 const autoRefreshNode = document.getElementById("auto-refresh");
 const refreshIntervalNode = document.getElementById("refresh-interval");
+const reportDaysNode = document.getElementById("report-days");
+const reportRequestsNode = document.getElementById("report-requests");
+const reportHitRateNode = document.getElementById("report-hit-rate");
+const reportLocalNode = document.getElementById("report-local");
+const reportSavingsNode = document.getElementById("report-savings");
+const reportTableNode = document.getElementById("report-table");
+const reportStatusNode = document.getElementById("report-status");
+const tracesTableNode = document.getElementById("traces-table");
+const traceDetailNode = document.getElementById("trace-detail");
+const tracesStatusNode = document.getElementById("traces-status");
 const THEME_KEY = "daari.webui.theme";
 let refreshTimerId = null;
 let latestStats = null;
@@ -78,6 +88,88 @@ async function fetchJson(url) {
   return response.json();
 }
 
+function renderReport(report) {
+  const totals = report.totals || {};
+  const requests = totals.requests || 0;
+  const cacheHits = totals.cache_hits || 0;
+  reportRequestsNode.textContent = formatNumber(requests);
+  reportHitRateNode.textContent = requests > 0 ? `${((cacheHits / requests) * 100).toFixed(1)}%` : "-";
+  reportLocalNode.textContent =
+    requests > 0 ? `${(((totals.local_requests || 0) / requests) * 100).toFixed(1)}%` : "-";
+  const savings = totals.estimated_saved_usd;
+  reportSavingsNode.textContent = typeof savings === "number" ? `$${savings.toFixed(4)}` : "-";
+
+  reportTableNode.innerHTML = "";
+  const days = Array.isArray(report.days) ? [...report.days].reverse() : [];
+  if (days.length === 0) {
+    reportTableNode.innerHTML = '<tr><td colspan="4">No usage recorded in this window.</td></tr>';
+    return;
+  }
+  for (const day of days) {
+    const tierSummary = Object.entries(day.tiers || {})
+      .map(([tier, stats]) => `${tier}:${formatNumber(stats.requests)}`)
+      .join(" ");
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${day.day}</td><td>${formatNumber(day.requests)}</td><td>${formatNumber(
+      day.cache_hits
+    )}</td><td class="tier-summary">${tierSummary}</td>`;
+    reportTableNode.appendChild(row);
+  }
+}
+
+async function loadReport() {
+  const days = Number(reportDaysNode.value) || 7;
+  try {
+    const report = await fetchJson(`${apiBaseUrl}/v1/daari/report?days=${days}`);
+    if (report.enabled === false) {
+      reportStatusNode.textContent = "Usage ledger is disabled on the daemon.";
+      renderReport({ totals: {}, days: [] });
+      return;
+    }
+    renderReport(report);
+    reportStatusNode.textContent = `Window: last ${days} days.`;
+  } catch (error) {
+    renderReport({ totals: {}, days: [] });
+    reportStatusNode.textContent = `Report unavailable (${error.message}).`;
+  }
+}
+
+async function showTraceDetail(traceId) {
+  try {
+    const detail = await fetchJson(`${apiBaseUrl}/v1/daari/traces/${encodeURIComponent(traceId)}`);
+    traceDetailNode.hidden = false;
+    traceDetailNode.textContent = JSON.stringify(detail, null, 2);
+  } catch (error) {
+    traceDetailNode.hidden = false;
+    traceDetailNode.textContent = `Trace detail unavailable (${error.message}).`;
+  }
+}
+
+async function loadTraces() {
+  try {
+    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/traces?limit=10`);
+    const traces = Array.isArray(payload.traces) ? payload.traces : [];
+    tracesTableNode.innerHTML = "";
+    if (traces.length === 0) {
+      tracesTableNode.innerHTML = '<tr><td colspan="4">No traces recorded yet.</td></tr>';
+      tracesStatusNode.textContent = "";
+      return;
+    }
+    for (const trace of traces) {
+      const row = document.createElement("tr");
+      const shortId = String(trace.trace_id || "").slice(0, 8);
+      row.innerHTML = `<td>${trace.ts || "-"}</td><td>${trace.tier || "-"}</td><td>${
+        trace.category || "-"
+      }</td><td><button type="button" class="trace-link" data-trace-id="${trace.trace_id}">${shortId}</button></td>`;
+      tracesTableNode.appendChild(row);
+    }
+    tracesStatusNode.textContent = "Click a trace id for the step timeline.";
+  } catch (error) {
+    tracesTableNode.innerHTML = "";
+    tracesStatusNode.textContent = `Traces unavailable (${error.message}).`;
+  }
+}
+
 async function loadStats() {
   statusNode.textContent = "Refreshing...";
   try {
@@ -105,6 +197,8 @@ async function loadStats() {
     }
 
     statusNode.textContent = `Last refreshed: ${new Date().toLocaleTimeString()}`;
+    void loadReport();
+    void loadTraces();
   } catch (error) {
     latestStats = null;
     latestOrgProfile = null;
@@ -174,6 +268,13 @@ function configureAutoRefresh() {
 }
 
 refreshButton.addEventListener("click", loadStats);
+reportDaysNode.addEventListener("change", loadReport);
+tracesTableNode.addEventListener("click", (event) => {
+  const target = event.target.closest("button.trace-link");
+  if (target) {
+    void showTraceDetail(target.dataset.traceId);
+  }
+});
 exportButton.addEventListener("click", exportStats);
 themeToggleButton.addEventListener("click", toggleTheme);
 autoRefreshNode.addEventListener("change", configureAutoRefresh);
