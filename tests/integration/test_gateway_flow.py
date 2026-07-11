@@ -403,6 +403,94 @@ async def test_stream_emits_openai_tool_call_deltas(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_l0_cache_hit_on_repeat(app, monkeypatch):
+    """Issue #13: identical non-agent streams are served from L0 on repeat."""
+    calls = 0
+
+    async def fake_stream(request: InternalRequest):
+        nonlocal calls
+        calls += 1
+        yield {"message": {"content": "a cache stores answers "}}
+        yield {"message": {"content": "for reuse"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    body = {
+        "model": "daari",
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "messages": [{"role": "user", "content": "what is a cache?"}],
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=body)
+        second = await client.post("/v1/chat/completions", json=body)
+        stats = (await client.get("/v1/daari/stats")).json()
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert calls == 1, "second stream should be served from L0 without hitting the executor"
+    assert "a cache stores answers" in second.text
+    assert "data: [DONE]" in second.text
+    assert '"finish_reason": "stop"' in second.text or '"finish_reason":"stop"' in second.text
+    assert stats["tiers"].get("L0", {}).get("cache_hits") == 1
+    assert stats["tiers"].get("L3", {}).get("count") == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_no_cache_header_bypasses_l0(app, monkeypatch):
+    calls = 0
+
+    async def fake_stream(request: InternalRequest):
+        nonlocal calls
+        calls += 1
+        yield {"message": {"content": "fresh answer every time"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    body = {
+        "model": "daari",
+        "stream": True,
+        "messages": [{"role": "user", "content": "no cache stream"}],
+    }
+    headers = {"X-Daari-No-Cache": "true"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/v1/chat/completions", json=body, headers=headers)
+        await client.post("/v1/chat/completions", json=body, headers=headers)
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_agent_flow_stream_skips_l0(app, monkeypatch):
+    """ADR-0004: agent turns skip L0 read and write."""
+    calls = 0
+
+    async def fake_stream(request: InternalRequest):
+        nonlocal calls
+        calls += 1
+        yield {"message": {"content": "agent step"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    body = {
+        "model": "daari",
+        "stream": True,
+        "messages": _agent_history_messages(),
+        "tools": _demo_tools(),
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/v1/chat/completions", json=body)
+        await client.post("/v1/chat/completions", json=body)
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
 async def test_cursor_input_text_content_returns_text(app, monkeypatch):
     async def fake_stream(request: InternalRequest):
         assert any(message.role == "user" for message in request.messages)
