@@ -164,6 +164,62 @@ async def test_cursor_tools_stripped_returns_text(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_no_tools_hint_leads_and_neutralizes_tool_prompt(app, monkeypatch):
+    """Issue #1: stripped-tools requests must lead with an explicit no-tools system message."""
+    from daari.gateway.openai import NO_TOOLS_HINT
+
+    seen_requests: list[InternalRequest] = []
+
+    async def fake_stream(request: InternalRequest):
+        seen_requests.append(request)
+        yield {"message": {"content": "plain text answer"}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": f"tool_{index}",
+                "description": "demo",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+        for index in range(18)
+    ]
+    # Multi-turn Cursor-style payload whose system prompt advertises tools.
+    body = {
+        "model": "daari",
+        "stream": True,
+        "messages": [
+            {"role": "system", "content": "You are a coding agent. Use the read_file and shell tools when needed."},
+            {"role": "user", "content": [{"type": "text", "text": "what is two plus two?"}]},
+            {"role": "assistant", "content": "Four."},
+            {"role": "user", "content": [{"type": "text", "text": "yes go ahead"}]},
+        ],
+        "tools": tools,
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=body)
+        second = await client.post("/v1/chat/completions", json=body)
+
+    assert first.status_code == 200 and second.status_code == 200
+    for request in seen_requests:
+        assert request.tools is None
+        # The hint must be the FIRST system instruction the model sees.
+        assert request.messages[0].role == "system"
+        assert NO_TOOLS_HINT in (request.messages[0].content or "")
+        assert "NO tools available" in request.messages[0].content
+        # Idempotent: exactly one message carries the hint even on repeat requests.
+        hint_count = sum(1 for m in request.messages if NO_TOOLS_HINT in (m.content or ""))
+        assert hint_count == 1
+        # Original client system prompt is preserved after the hint.
+        assert any("read_file" in (m.content or "") for m in request.messages if m.role == "system")
+
+
+@pytest.mark.asyncio
 async def test_cursor_input_text_content_returns_text(app, monkeypatch):
     async def fake_stream(request: InternalRequest):
         assert any(message.role == "user" for message in request.messages)
