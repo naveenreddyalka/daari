@@ -845,6 +845,51 @@ def learn_stats(days: int = typer.Option(7, help="Evidence window in days")) -> 
             )
 
 
+def _example_store():
+    from daari.learning.examples import ExampleStore
+
+    settings = get_settings()
+    return ExampleStore(
+        settings.example_store_path,
+        max_rows=settings.learning.examples_max_rows,
+    )
+
+
+@learn_app.command("examples")
+def learn_examples(
+    limit: int = typer.Option(20, help="How many recent examples to list"),
+    clear: bool = typer.Option(False, "--clear", help="Delete all captured examples"),
+) -> None:
+    """List (or wipe) captured training examples (D2a, opt-in)."""
+    store = _example_store()
+    if clear:
+        removed = store.clear()
+        typer.echo(f"Removed {removed} captured examples.")
+        return
+    rows = store.examples(limit=limit)
+    settings = get_settings()
+    if not rows:
+        hint = (
+            ""
+            if settings.learning.capture_examples
+            else " (capture is off — set learning.capture_examples: true)"
+        )
+        typer.echo(f"No training examples captured{hint}.")
+        return
+    total = store.count()
+    accepted = store.count(only_accepted=True)
+    typer.echo(f"{total} examples captured, {accepted} accepted\n")
+    typer.echo(f"{'trace_id':<18} {'tier':<5} {'category':<13} {'accepted':<9} completion")
+    for row in rows:
+        preview = (row["completion"][:47] + "...") if len(row["completion"]) > 50 else row["completion"]
+        preview = preview.replace("\n", " ")
+        accepted_mark = "yes" if row["accepted"] else "-"
+        typer.echo(
+            f"{(row['trace_id'] or '-'):<18} {row['tier']:<5} "
+            f"{(row['category'] or '-'):<13} {accepted_mark:<9} {preview}"
+        )
+
+
 @learn_app.command("recommend")
 def learn_recommend(
     days: int = typer.Option(7, help="Evidence window in days"),
