@@ -133,6 +133,14 @@ class ObservabilitySettings(BaseModel):
     request_log_backups: int = 3
 
 
+class LearningSettings(BaseModel):
+    """Phase D: on-device outcome capture — metadata only, never prompt text."""
+
+    enabled: bool = True
+    path: str = "~/.daari/feedback/feedback.sqlite3"
+    max_rows: int = 20000
+
+
 class ContextOptimizerSettings(BaseModel):
     enabled: bool = True
     max_history_messages: int = 20
@@ -179,6 +187,7 @@ class Settings(BaseSettings):
     usage: UsageSettings = Field(default_factory=UsageSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    learning: LearningSettings = Field(default_factory=LearningSettings)
     context_optimizer: ContextOptimizerSettings = Field(default_factory=ContextOptimizerSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
@@ -222,6 +231,10 @@ class Settings(BaseSettings):
     @property
     def trace_store_path(self) -> Path:
         return Path(self.trace.path).expanduser()
+
+    @property
+    def feedback_store_path(self) -> Path:
+        return Path(self.learning.path).expanduser()
 
     @property
     def org_cache_root(self) -> Path | None:

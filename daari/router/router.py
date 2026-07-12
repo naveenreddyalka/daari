@@ -155,6 +155,7 @@ class Router:
         usage_ledger: UsageLedger | None = None,
         category_policies: dict[str, Any] | None = None,
         trace_store: TraceStore | None = None,
+        feedback_store: Any | None = None,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -203,6 +204,7 @@ class Router:
         self.usage_ledger = usage_ledger
         self.category_policies = category_policies or {}
         self.trace_store = trace_store
+        self.feedback_store = feedback_store
         self.l1_draft_threshold = l1_draft_threshold
         self.context_optimizer_enabled = context_optimizer_enabled
         self.context_max_history = context_max_history
@@ -246,7 +248,30 @@ class Router:
             self.trace_store.save(trace, tier=response.daari_meta.tier, category=profile.category)
         end_trace()
         self._ledger_record(request, response)
+        self._feedback_record(profile, response)
         return response
+
+    _MODEL_TIERS = {"L3", "L4", "L5", "L6"}
+
+    def _feedback_record(self, profile: PromptProfile | None, response: InternalResponse) -> None:
+        """Implicit D1 outcome capture — metadata only, best-effort."""
+        if self.feedback_store is None:
+            return
+        meta = response.daari_meta
+        if meta.tier not in self._MODEL_TIERS or meta.cache_hit:
+            return
+        try:
+            self.feedback_store.record_outcome(
+                trace_id=meta.trace_id,
+                category=profile.category if profile is not None else meta.task_type,
+                complexity=profile.complexity if profile is not None else meta.complexity,
+                tier=meta.tier,
+                confidence=meta.confidence,
+                escalated=meta.tier == "L6" or meta.escalated_from is not None,
+                latency_ms=meta.latency_ms,
+            )
+        except Exception:
+            pass
 
     def _policy_for(self, profile: PromptProfile | None) -> Any | None:
         if profile is None:
@@ -799,6 +824,19 @@ class Router:
                     prompt_chars=prompt_chars,
                     completion_chars=completion_chars,
                 )
+            if self.feedback_store is not None:
+                try:
+                    self.feedback_store.record_outcome(
+                        trace_id=trace.trace_id if trace is not None else None,
+                        category=profile.category,
+                        complexity=profile.complexity,
+                        tier=tier,
+                        confidence=None,
+                        escalated=False,
+                        latency_ms=latency_ms,
+                    )
+                except Exception:
+                    pass
             if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
                 streamed_response = InternalResponse(
                     content=streamed_text,
@@ -1599,6 +1637,13 @@ class AppContext:
             enabled=settings.trace.enabled,
             max_entries=settings.trace.max_entries,
         )
+        from daari.learning.feedback import FeedbackStore
+
+        feedback_store = FeedbackStore(
+            settings.feedback_store_path,
+            enabled=settings.learning.enabled,
+            max_rows=settings.learning.max_rows,
+        )
         router = Router(
             cache=cache,
             semantic_cache=semantic_cache,
@@ -1625,6 +1670,7 @@ class AppContext:
             usage_ledger=usage_ledger,
             category_policies=dict(settings.routing.category_policies),
             trace_store=trace_store,
+            feedback_store=feedback_store,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_slim_prompts=settings.frontier.slim_prompts,

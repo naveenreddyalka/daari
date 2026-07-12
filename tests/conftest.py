@@ -46,6 +46,7 @@ def settings(tmp_path):
             },
             "usage": {"path": str(tmp_path / "usage" / "ledger.sqlite3")},
             "trace": {"path": str(tmp_path / "traces" / "traces.sqlite3")},
+            "learning": {"path": str(tmp_path / "feedback" / "feedback.sqlite3")},
         }
     )
 
