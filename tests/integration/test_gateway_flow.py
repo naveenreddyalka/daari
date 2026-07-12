@@ -1391,3 +1391,45 @@ async def test_stream_serves_l1_hit_for_paraphrase(app, monkeypatch):
     assert response.status_code == 200
     assert "Paris is the capital of France." in response.text
     assert "data: [DONE]" in response.text
+
+
+@pytest.mark.asyncio
+async def test_feedback_endpoint_joins_by_trace_id(app, monkeypatch):
+    """Issue #53: explicit accept/reject feedback lands on the recorded outcome."""
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content=MOCK_MODEL_CONTENT,
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=3),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+    payload = {
+        "model": "llama3.2:3b",
+        "messages": [{"role": "user", "content": "rate this answer"}],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=payload, headers=META_HEADERS)
+        trace_id = first.json()["daari_meta"]["trace_id"]
+        assert trace_id
+
+        ok = await client.post(
+            "/v1/daari/feedback", json={"trace_id": trace_id, "signal": "accept"}
+        )
+        unknown = await client.post(
+            "/v1/daari/feedback", json={"trace_id": "does-not-exist", "signal": "accept"}
+        )
+        invalid = await client.post(
+            "/v1/daari/feedback", json={"trace_id": trace_id, "signal": "maybe"}
+        )
+
+    assert ok.status_code == 200
+    assert ok.json()["recorded"] is True
+    assert unknown.status_code == 404
+    assert invalid.status_code == 422
+
+    rows = app.state.ctx.router.feedback_store.outcomes(limit=5)
+    assert rows[0]["trace_id"] == trace_id
+    assert rows[0]["signal"] == "accept"

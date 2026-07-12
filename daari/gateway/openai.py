@@ -158,6 +158,11 @@ class ChatCompletionResponse(BaseModel):
     daari_meta: dict[str, Any] | None = None
 
 
+class FeedbackBody(BaseModel):
+    trace_id: str
+    signal: str
+
+
 def _openai_completion_body(
     *,
     body: ChatCompletionRequest,
@@ -367,6 +372,22 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "daily_budget_usd": ctx.settings.frontier.daily_budget_usd,
             }
             return payload
+
+        @router.post("/v1/daari/feedback")
+        async def daari_feedback(request: Request, body: FeedbackBody) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.router.feedback_store
+            if store is None:
+                raise HTTPException(status_code=404, detail="feedback store is not configured")
+            try:
+                recorded = store.record_signal(body.trace_id, body.signal)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if not recorded:
+                raise HTTPException(
+                    status_code=404, detail=f"no outcome recorded for trace {body.trace_id}"
+                )
+            return {"trace_id": body.trace_id, "signal": body.signal, "recorded": True}
 
         @router.post("/v1/daari/reload-caches")
         async def daari_reload_caches(request: Request) -> dict[str, Any]:
