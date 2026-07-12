@@ -279,6 +279,37 @@ def _emit_or_write(text: str, out: str | None) -> None:
 
 
 @app.command()
+def feedback(
+    trace_id: str = typer.Argument(..., help="Trace id from daari_meta.trace_id"),
+    accept: bool = typer.Option(False, "--accept", help="Mark the response as good"),
+    reject: bool = typer.Option(False, "--reject", help="Mark the response as bad"),
+    host: str | None = typer.Option(None, help="Daemon host"),
+    port: int | None = typer.Option(None, help="Daemon port"),
+) -> None:
+    """Attach accept/reject feedback to a response (Phase D personal learning)."""
+    if accept == reject:
+        typer.echo("Pass exactly one of --accept or --reject.", err=True)
+        raise typer.Exit(code=2)
+    signal = "accept" if accept else "reject"
+    settings = get_settings()
+    bind_host = host or settings.server.host
+    bind_port = port or settings.server.port
+    url = f"http://{bind_host}:{bind_port}/v1/daari/feedback"
+    try:
+        import httpx
+
+        response = httpx.post(url, json={"trace_id": trace_id, "signal": signal}, timeout=5.0)
+    except Exception as exc:
+        typer.echo(f"Could not reach daari at {url}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if response.status_code == 404:
+        typer.echo(f"No outcome recorded for trace {trace_id}.", err=True)
+        raise typer.Exit(code=1)
+    response.raise_for_status()
+    typer.echo(f"Recorded {signal} for trace {trace_id}.")
+
+
+@app.command()
 def trace(
     trace_id: str | None = typer.Argument(None, help="Trace id; omit to list recent traces"),
     limit: int = typer.Option(10, help="How many recent traces to list"),
