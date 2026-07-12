@@ -916,6 +916,58 @@ def learn_export_dataset(
     typer.echo(f"Wrote {counts['train']} train / {counts['valid']} valid examples to {out}")
 
 
+@learn_app.command("finetune")
+def learn_finetune(
+    model: str | None = typer.Option(None, help="MLX model to fine-tune"),
+    iters: int = typer.Option(100, help="Training iterations"),
+    only_accepted: bool = typer.Option(
+        False, "--only-accepted", help="Train only on explicitly accepted examples"
+    ),
+    min_examples: int = typer.Option(8, help="Refuse to train below this many examples"),
+    runs_root: str | None = typer.Option(
+        None, "--runs-root", help="Run directory root (default ~/.daari/training/runs)"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the training command without running it"
+    ),
+) -> None:
+    """LoRA fine-tune the local model on captured examples via mlx-lm (D2c)."""
+    from daari.learning.dataset import DatasetError
+    from daari.learning.finetune import (
+        DEFAULT_MODEL,
+        DEFAULT_RUNS_ROOT,
+        FinetuneError,
+        plan_finetune,
+        run_finetune,
+    )
+
+    try:
+        plan = plan_finetune(
+            _example_store(),
+            runs_root=runs_root or DEFAULT_RUNS_ROOT,
+            model=model or DEFAULT_MODEL,
+            iters=iters,
+            only_accepted=only_accepted,
+            min_examples=min_examples,
+        )
+    except DatasetError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"Run dir: {plan.run_dir}")
+    typer.echo(f"Dataset: {plan.counts['train']} train / {plan.counts['valid']} valid examples")
+    typer.echo(f"Command: {' '.join(plan.command)}")
+    if dry_run:
+        typer.echo("Dry run — nothing executed. Re-run without --dry-run to train.")
+        return
+    try:
+        run_finetune(plan)
+    except FinetuneError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Adapters written to {plan.run_dir / 'adapters'}")
+
+
 @learn_app.command("recommend")
 def learn_recommend(
     days: int = typer.Option(7, help="Evidence window in days"),
