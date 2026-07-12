@@ -890,6 +890,32 @@ def learn_examples(
         )
 
 
+@learn_app.command("export-dataset")
+def learn_export_dataset(
+    out: str = typer.Option(..., "--out", help="Directory for train.jsonl/valid.jsonl"),
+    only_accepted: bool = typer.Option(
+        False, "--only-accepted", help="Export only explicitly accepted examples"
+    ),
+    split: float = typer.Option(0.9, help="Train fraction (rest goes to valid)"),
+    min_examples: int = typer.Option(8, help="Refuse to export below this many examples"),
+) -> None:
+    """Export captured examples as an mlx-lm chat dataset (D2b)."""
+    from daari.learning.dataset import DatasetError, export_dataset
+
+    try:
+        counts = export_dataset(
+            _example_store(),
+            out,
+            only_accepted=only_accepted,
+            split=split,
+            min_examples=min_examples,
+        )
+    except DatasetError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {counts['train']} train / {counts['valid']} valid examples to {out}")
+
+
 @learn_app.command("recommend")
 def learn_recommend(
     days: int = typer.Option(7, help="Evidence window in days"),
