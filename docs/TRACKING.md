@@ -345,6 +345,30 @@ emitted a valid policy block from live evidence. Default suite now at 329
 pytest tests (291 → 329). Remaining Phase D scope (D2 local fine-tuning,
 D3 opt-in collective stats) stays on the roadmap.
 
+### Phase D2 — local fine-tuning train (2026-07-12, PRD [docs/prd/learning.md](prd/learning.md))
+
+The models themselves can now improve. Accepted answers — especially L6
+frontier answers — become local training data (distillation). Capture is
+strictly **opt-in** (`learning.capture_examples`, default off) because unlike
+the D1 outcome store it keeps full prompt/completion text; everything stays
+under `~/.daari/training/` and is wipeable. PRD merged as [#60](https://github.com/naveenreddyalka/daari/pull/60).
+
+| Issue | Feature | PR | Merge |
+|-------|---------|----|-------|
+| [#61](https://github.com/naveenreddyalka/daari/issues/61) | `ExampleStore` + router capture (both paths, L3–L6, never cache hits/tool flows); accept promotes to training data, reject deletes; `daari learn examples [--clear]` | [#64](https://github.com/naveenreddyalka/daari/pull/64) | `0144b17` |
+| [#62](https://github.com/naveenreddyalka/daari/issues/62) | `daari learn export-dataset`: mlx-lm chat-format train/valid JSONL, deterministic trace_id-hash split, min-examples gate, `--only-accepted` | [#65](https://github.com/naveenreddyalka/daari/pull/65) | `eb7104d` |
+| [#63](https://github.com/naveenreddyalka/daari/issues/63) | `daari learn finetune`: plans + runs `mlx_lm lora --train` (LoRA on `mlx-community/Llama-3.2-3B-Instruct-4bit`), auditable run.json, `--dry-run`, clean optional-dep gating | [#66](https://github.com/naveenreddyalka/daari/pull/66) | `1d4cdb5` |
+
+Live E2E validated 2026-07-12 on an isolated temp instance (capture on,
+throwaway stores — user config untouched): 10 live Ollama requests captured,
+2 accepted + 1 rejected via `/v1/daari/feedback` (reject confirmed deleted),
+`export-dataset` produced 8 train / 1 valid chat-format examples, and
+`plan_finetune` emitted the exact `mlx_lm lora` command + run.json. Default
+suite now at 359 pytest tests (329 → 359). Actual training runs are
+user-invoked (`daari learn finetune`, needs `pip install mlx-lm`); serving
+MLX adapters through Ollama (fuse/convert to GGUF) is the documented manual
+follow-up. Remaining Phase D scope: D3 opt-in collective stats.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
