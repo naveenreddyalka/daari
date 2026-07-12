@@ -139,6 +139,11 @@ class LearningSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/feedback/feedback.sqlite3"
     max_rows: int = 20000
+    # D1c routing tuner: derive per-category confidence thresholds from
+    # outcomes. Off by default — behavior is identical to the global
+    # routing.confidence_threshold until explicitly enabled.
+    auto_tune: bool = False
+    tuner_min_samples: int = 50
 
 
 class ContextOptimizerSettings(BaseModel):
