@@ -156,6 +156,7 @@ class Router:
         category_policies: dict[str, Any] | None = None,
         trace_store: TraceStore | None = None,
         feedback_store: Any | None = None,
+        tuner: Any | None = None,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -205,6 +206,7 @@ class Router:
         self.category_policies = category_policies or {}
         self.trace_store = trace_store
         self.feedback_store = feedback_store
+        self.tuner = tuner
         self.l1_draft_threshold = l1_draft_threshold
         self.context_optimizer_enabled = context_optimizer_enabled
         self.context_max_history = context_max_history
@@ -536,7 +538,7 @@ class Router:
                     response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
             else:
                 raise
-        response = await self._maybe_escalate(gen_request, response, started)
+        response = await self._maybe_escalate(gen_request, response, started, profile=profile)
         if (
             not request.meta.no_cache
             and not cache_skip
@@ -1175,16 +1177,33 @@ class Router:
                 return message.content or ""
         return messages[-1].content or ""
 
+    def _confidence_threshold_for(
+        self, request: InternalRequest, profile: PromptProfile | None
+    ) -> float:
+        """Tuned per-category threshold (D1c); base for overrides or no tuner."""
+        base = self.confidence_threshold
+        if self.tuner is None or profile is None or request.meta.tier_override:
+            return base
+        try:
+            tuned = self.tuner.threshold_for(profile.category)
+        except Exception:
+            return base
+        if tuned != base:
+            add_step("tuner", category=profile.category, base=base, tuned=tuned)
+        return tuned
+
     async def _maybe_escalate(
         self,
         request: InternalRequest,
         response: InternalResponse,
         started: float,
+        profile: PromptProfile | None = None,
     ) -> InternalResponse:
+        threshold = self._confidence_threshold_for(request, profile)
         confidence = score_l3_confidence(response.content)
         response.daari_meta.confidence = confidence
 
-        if confidence >= self.confidence_threshold:
+        if confidence >= threshold:
             return response
 
         tier_chain = ["L3", "L4", "L5"]
@@ -1201,7 +1220,7 @@ class Router:
                     next_response = await self._run_model_tier(next_tier, next_request)
                     next_confidence = score_l3_confidence(next_response.content)
                     next_response.daari_meta.confidence = next_confidence
-                    if next_confidence >= self.confidence_threshold:
+                    if next_confidence >= threshold:
                         return next_response
                     response = next_response
                     confidence = next_confidence
@@ -1644,6 +1663,15 @@ class AppContext:
             enabled=settings.learning.enabled,
             max_rows=settings.learning.max_rows,
         )
+        tuner = None
+        if settings.learning.auto_tune and settings.learning.enabled:
+            from daari.learning.tuner import RoutingTuner
+
+            tuner = RoutingTuner(
+                feedback_store,
+                base_threshold=settings.routing.confidence_threshold,
+                min_samples=settings.learning.tuner_min_samples,
+            )
         router = Router(
             cache=cache,
             semantic_cache=semantic_cache,
@@ -1671,6 +1699,7 @@ class AppContext:
             category_policies=dict(settings.routing.category_policies),
             trace_store=trace_store,
             feedback_store=feedback_store,
+            tuner=tuner,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_slim_prompts=settings.frontier.slim_prompts,
