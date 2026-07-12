@@ -326,6 +326,25 @@ Scout pass filed four issues; all implemented TDD-style, auto-merged, and E2E-va
 
 Default suite now at 291 pytest tests (272 → 291) + 12 extension tests + 7 web-ui tests. Open backlog: empty — scout refills it.
 
+### Phase D1 — personal feedback loop (2026-07-11, PRD [docs/prd/learning.md](prd/learning.md))
+
+daari starts learning from outcomes. Everything stays on-device
+(`~/.daari/feedback/feedback.sqlite3`) and stores outcome metadata only —
+never prompt or completion text. PRD merged as [#52](https://github.com/naveenreddyalka/daari/pull/52).
+
+| Issue | Feature | PR | Merge |
+|-------|---------|----|-------|
+| [#53](https://github.com/naveenreddyalka/daari/issues/53) | Outcome store + implicit capture (every model-tier response, stream + non-stream, not cache hits) + explicit `POST /v1/daari/feedback` / `daari feedback <trace_id> --accept\|--reject` | [#56](https://github.com/naveenreddyalka/daari/pull/56) | `b272153` |
+| [#54](https://github.com/naveenreddyalka/daari/issues/54) | `daari learn stats` per-category × tier evidence + `daari learn recommend` (cheapest tier with escalation ≤ 15%, rejects ≤ 10%, min 20 samples) emitting a Settings-valid `routing.category_policies` YAML block; `GET /v1/daari/learn/stats` | [#57](https://github.com/naveenreddyalka/daari/pull/57) | `62dbf24` |
+| [#55](https://github.com/naveenreddyalka/daari/issues/55) | Routing tuner: per-category confidence thresholds ±0.05 from outcome evidence, bounded [0.5, 0.9], `learning.tuner_min_samples` gate, `tuner` trace step; off by default (`learning.auto_tune`) | [#58](https://github.com/naveenreddyalka/daari/pull/58) | `518e8ae` |
+
+Live E2E validated 2026-07-11: daemon restarted on `518e8ae`; live doc_qa
+request through the gateway → `daari feedback <trace_id> --accept` →
+outcome + accept visible in `daari learn stats`; `daari learn recommend`
+emitted a valid policy block from live evidence. Default suite now at 329
+pytest tests (291 → 329). Remaining Phase D scope (D2 local fine-tuning,
+D3 opt-in collective stats) stays on the roadmap.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
