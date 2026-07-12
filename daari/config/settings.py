@@ -144,6 +144,11 @@ class LearningSettings(BaseModel):
     # routing.confidence_threshold until explicitly enabled.
     auto_tune: bool = False
     tuner_min_samples: int = 50
+    # D2a: opt-in capture of (prompt, completion) training examples. Unlike
+    # the outcome store this keeps full text, so it is off by default.
+    capture_examples: bool = False
+    examples_path: str = "~/.daari/training/examples.sqlite3"
+    examples_max_rows: int = 5000
 
 
 class ContextOptimizerSettings(BaseModel):
@@ -240,6 +245,10 @@ class Settings(BaseSettings):
     @property
     def feedback_store_path(self) -> Path:
         return Path(self.learning.path).expanduser()
+
+    @property
+    def example_store_path(self) -> Path:
+        return Path(self.learning.examples_path).expanduser()
 
     @property
     def org_cache_root(self) -> Path | None:

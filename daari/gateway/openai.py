@@ -395,6 +395,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 raise HTTPException(
                     status_code=404, detail=f"no outcome recorded for trace {body.trace_id}"
                 )
+            # D2a: accepted examples become training data; rejected ones are
+            # deleted so they can never be trained on.
+            example_store = getattr(ctx.router, "example_store", None)
+            if example_store is not None:
+                try:
+                    if body.signal == "accept":
+                        example_store.mark_accepted(body.trace_id)
+                    else:
+                        example_store.delete(body.trace_id)
+                except Exception:
+                    pass
             return {"trace_id": body.trace_id, "signal": body.signal, "recorded": True}
 
         @router.post("/v1/daari/reload-caches")

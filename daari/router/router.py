@@ -157,6 +157,7 @@ class Router:
         trace_store: TraceStore | None = None,
         feedback_store: Any | None = None,
         tuner: Any | None = None,
+        example_store: Any | None = None,
         *,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -207,6 +208,7 @@ class Router:
         self.trace_store = trace_store
         self.feedback_store = feedback_store
         self.tuner = tuner
+        self.example_store = example_store
         self.l1_draft_threshold = l1_draft_threshold
         self.context_optimizer_enabled = context_optimizer_enabled
         self.context_max_history = context_max_history
@@ -251,6 +253,7 @@ class Router:
         end_trace()
         self._ledger_record(request, response)
         self._feedback_record(profile, response)
+        self._example_record(request, profile, response)
         return response
 
     _MODEL_TIERS = {"L3", "L4", "L5", "L6"}
@@ -304,6 +307,41 @@ class Router:
             prompt_chars=prompt_chars,
             completion_chars=len(response.content or ""),
         )
+
+    def _example_record(
+        self,
+        request: InternalRequest,
+        profile: PromptProfile | None,
+        response: InternalResponse,
+    ) -> None:
+        """Opt-in D2a training-example capture — full text, never tool flows."""
+        if self.example_store is None:
+            return
+        meta = response.daari_meta
+        if (
+            meta.tier not in self._MODEL_TIERS
+            or meta.cache_hit
+            or request.tools
+            or request.has_tool_calls_in_history
+            or not response.content.strip()
+        ):
+            return
+        try:
+            self.example_store.record(
+                trace_id=meta.trace_id,
+                category=profile.category if profile is not None else meta.task_type,
+                complexity=profile.complexity if profile is not None else meta.complexity,
+                tier=meta.tier,
+                model=meta.model or response.model,
+                messages=[
+                    {"role": message.role, "content": message.content}
+                    for message in request.messages
+                    if message.content
+                ],
+                completion=response.content,
+            )
+        except Exception:
+            pass
 
     async def _route_impl(
         self, request: InternalRequest, profile: PromptProfile | None = None
@@ -836,6 +874,29 @@ class Router:
                         confidence=None,
                         escalated=False,
                         latency_ms=latency_ms,
+                    )
+                except Exception:
+                    pass
+            if (
+                self.example_store is not None
+                and not tool_calls_sent
+                and not request.tools
+                and not request.has_tool_calls_in_history
+                and streamed_text.strip()
+            ):
+                try:
+                    self.example_store.record(
+                        trace_id=trace.trace_id if trace is not None else None,
+                        category=profile.category,
+                        complexity=profile.complexity,
+                        tier=tier,
+                        model=ollama_model,
+                        messages=[
+                            {"role": message.role, "content": message.content}
+                            for message in request.messages
+                            if message.content
+                        ],
+                        completion=streamed_text,
                     )
                 except Exception:
                     pass
@@ -1663,6 +1724,14 @@ class AppContext:
             enabled=settings.learning.enabled,
             max_rows=settings.learning.max_rows,
         )
+        example_store = None
+        if settings.learning.capture_examples:
+            from daari.learning.examples import ExampleStore
+
+            example_store = ExampleStore(
+                settings.example_store_path,
+                max_rows=settings.learning.examples_max_rows,
+            )
         tuner = None
         if settings.learning.auto_tune and settings.learning.enabled:
             from daari.learning.tuner import RoutingTuner
@@ -1700,6 +1769,7 @@ class AppContext:
             trace_store=trace_store,
             feedback_store=feedback_store,
             tuner=tuner,
+            example_store=example_store,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_slim_prompts=settings.frontier.slim_prompts,

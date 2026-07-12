@@ -1433,3 +1433,44 @@ async def test_feedback_endpoint_joins_by_trace_id(app, monkeypatch):
     rows = app.state.ctx.router.feedback_store.outcomes(limit=5)
     assert rows[0]["trace_id"] == trace_id
     assert rows[0]["signal"] == "accept"
+
+
+@pytest.mark.asyncio
+async def test_feedback_promotes_or_deletes_examples(app, monkeypatch, tmp_path):
+    """Issue #61: accept marks the captured example; reject deletes it."""
+    from daari.learning.examples import ExampleStore
+
+    router = app.state.ctx.router
+    router.example_store = ExampleStore(str(tmp_path / "examples.sqlite3"))
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content=MOCK_MODEL_CONTENT,
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=3),
+        )
+
+    mock_all_ollama_executors(monkeypatch, router, fake_execute)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        headers = {"X-Daari-No-Cache": "true", **META_HEADERS}
+        first = await client.post(
+            "/v1/chat/completions",
+            json={"model": "llama3.2:3b", "messages": [{"role": "user", "content": "q one"}]},
+            headers=headers,
+        )
+        second = await client.post(
+            "/v1/chat/completions",
+            json={"model": "llama3.2:3b", "messages": [{"role": "user", "content": "q two"}]},
+            headers=headers,
+        )
+        accept_id = first.json()["daari_meta"]["trace_id"]
+        reject_id = second.json()["daari_meta"]["trace_id"]
+
+        await client.post("/v1/daari/feedback", json={"trace_id": accept_id, "signal": "accept"})
+        await client.post("/v1/daari/feedback", json={"trace_id": reject_id, "signal": "reject"})
+
+    rows = router.example_store.examples(limit=10)
+    assert len(rows) == 1, "rejected example must be deleted"
+    assert rows[0]["trace_id"] == accept_id
+    assert rows[0]["accepted"] is True
