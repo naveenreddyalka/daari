@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +101,39 @@ class FeedbackStore:
                 return cursor.rowcount > 0
         except Exception:
             return False
+
+    def stats(self, days: int = 7) -> dict[str, dict[str, dict[str, Any]]]:
+        """Per (category, tier) outcome evidence for the learning loop."""
+        if not self.enabled:
+            return {}
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days))).isoformat()
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT category, tier, COUNT(*), SUM(escalated),"
+                    " SUM(CASE WHEN signal = 'accept' THEN 1 ELSE 0 END),"
+                    " SUM(CASE WHEN signal = 'reject' THEN 1 ELSE 0 END),"
+                    " AVG(confidence), AVG(latency_ms)"
+                    " FROM outcomes WHERE ts >= ?"
+                    " GROUP BY category, tier",
+                    (cutoff,),
+                ).fetchall()
+        except Exception:
+            return {}
+        stats: dict[str, dict[str, dict[str, Any]]] = {}
+        for category, tier, outcomes, escalated, accepts, rejects, avg_conf, avg_latency in rows:
+            entry = {
+                "outcomes": outcomes,
+                "escalated": escalated or 0,
+                "escalation_rate": round((escalated or 0) / outcomes, 4) if outcomes else 0.0,
+                "accepts": accepts or 0,
+                "rejects": rejects or 0,
+                "reject_rate": round((rejects or 0) / outcomes, 4) if outcomes else 0.0,
+                "avg_confidence": round(avg_conf, 4) if avg_conf is not None else None,
+                "avg_latency_ms": round(avg_latency, 1) if avg_latency is not None else None,
+            }
+            stats.setdefault(category or "unknown", {})[tier] = entry
+        return stats
 
     def outcomes(self, limit: int = 50) -> list[dict[str, Any]]:
         if not self.enabled:
