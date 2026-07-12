@@ -806,5 +806,57 @@ def cache_prune() -> None:
     typer.echo(f"L1: removed {l1_removed} expired entries{l1_note}")
 
 
+learn_app = typer.Typer(help="Personal learning loop: outcome stats and recommendations.")
+app.add_typer(learn_app, name="learn")
+
+
+def _feedback_store():
+    from daari.learning.feedback import FeedbackStore
+
+    settings = get_settings()
+    return FeedbackStore(
+        settings.feedback_store_path,
+        enabled=settings.learning.enabled,
+        max_rows=settings.learning.max_rows,
+    )
+
+
+@learn_app.command("stats")
+def learn_stats(days: int = typer.Option(7, help="Evidence window in days")) -> None:
+    """Per-category × tier outcome evidence (escalations, accepts/rejects)."""
+    stats = _feedback_store().stats(days=days)
+    if not stats:
+        typer.echo("No outcomes recorded yet. Route some requests, then rerun.")
+        return
+    header = (
+        f"{'category':<14} {'tier':<5} {'outcomes':>8} {'escal%':>7} "
+        f"{'accepts':>7} {'rejects':>7} {'conf':>6} {'lat ms':>8}"
+    )
+    typer.echo(header)
+    for category in sorted(stats):
+        for tier in sorted(stats[category]):
+            row = stats[category][tier]
+            conf = f"{row['avg_confidence']:.2f}" if row["avg_confidence"] is not None else "-"
+            lat = f"{row['avg_latency_ms']:.0f}" if row["avg_latency_ms"] is not None else "-"
+            typer.echo(
+                f"{category:<14} {tier:<5} {row['outcomes']:>8} "
+                f"{row['escalation_rate'] * 100:>6.1f}% {row['accepts']:>7} "
+                f"{row['rejects']:>7} {conf:>6} {lat:>8}"
+            )
+
+
+@learn_app.command("recommend")
+def learn_recommend(
+    days: int = typer.Option(7, help="Evidence window in days"),
+    min_samples: int = typer.Option(20, help="Minimum outcomes per category to recommend"),
+) -> None:
+    """Emit a routing.category_policies block derived from outcome evidence."""
+    from daari.learning.recommend import recommend_policies, recommendation_yaml
+
+    stats = _feedback_store().stats(days=days)
+    recommendations = recommend_policies(stats, min_samples=min_samples)
+    typer.echo(recommendation_yaml(recommendations), nl=False)
+
+
 if __name__ == "__main__":
     app()

@@ -373,6 +373,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             }
             return payload
 
+        @router.get("/v1/daari/learn/stats")
+        async def daari_learn_stats(request: Request, days: int = 7) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.router.feedback_store
+            if store is None:
+                raise HTTPException(status_code=404, detail="feedback store is not configured")
+            return {"days": max(1, days), "categories": store.stats(days=max(1, days))}
+
         @router.post("/v1/daari/feedback")
         async def daari_feedback(request: Request, body: FeedbackBody) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
