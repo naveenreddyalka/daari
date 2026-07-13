@@ -177,7 +177,10 @@ class Router:
         frontier_compress_ratio: float = 0.6,
         max_tier_for_chat: str | None = None,
         frontier_daily_budget_usd: float = 0.0,
+        frontier_monthly_budget_usd: float = 0.0,
+        frontier_soft_budget_ratio: float = 0.8,
         frontier_price_per_1k_tokens: float = 0.002,
+        frontier_scrub_pii: bool = False,
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
     ) -> None:
@@ -239,7 +242,10 @@ class Router:
         self._compaction_cache: dict[str, str] = {}
         self.max_tier_for_chat = max_tier_for_chat
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
+        self.frontier_monthly_budget_usd = frontier_monthly_budget_usd
+        self.frontier_soft_budget_ratio = frontier_soft_budget_ratio
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
+        self.frontier_scrub_pii = frontier_scrub_pii
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
 
@@ -331,6 +337,7 @@ class Router:
             cache_hit=response.daari_meta.cache_hit,
             prompt_chars=prompt_chars,
             completion_chars=len(response.content or ""),
+            client_id=request.meta.client_id,
         )
 
     def _example_record(
@@ -875,6 +882,7 @@ class Router:
                         cache_hit=True,
                         prompt_chars=prompt_chars,
                         completion_chars=len(cached.content),
+                        client_id=request.meta.client_id,
                     )
                 log_gateway_event("stream_cache_hit", {"tier": "L0", "model": client_model})
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
@@ -912,6 +920,7 @@ class Router:
                         cache_hit=True,
                         prompt_chars=prompt_chars,
                         completion_chars=len(nearest_response.content),
+                        client_id=request.meta.client_id,
                     )
                 log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
@@ -1023,6 +1032,7 @@ class Router:
                     cache_hit=False,
                     prompt_chars=prompt_chars,
                     completion_chars=completion_chars,
+                    client_id=request.meta.client_id,
                 )
             if self.feedback_store is not None:
                 try:
@@ -1625,15 +1635,19 @@ class Router:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
 
-        if self._frontier_budget_exceeded():
+        budget_state = self._frontier_budget_state()
+        if budget_state == "exceeded":
             add_step("budget_check", exceeded=True)
             response.daari_meta.warning = "frontier_budget_exceeded"
             return response
+        if budget_state == "soft":
+            add_step("budget_check", exceeded=False, soft=True)
 
         add_step("escalate", to="L6", local_confidence=confidence)
         try:
             l6_request = self._slim_for_frontier(request)
             l6_request = await self._compress_for_frontier(l6_request)
+            l6_request = self._scrub_for_frontier(l6_request)
             l6_response = await self.frontier.execute(
                 l6_request,
                 escalated_from=response.daari_meta.tier,
@@ -1642,6 +1656,8 @@ class Router:
             l6_response.daari_meta.prompt_chars = sum(
                 len(message.content or "") for message in l6_request.messages
             )
+            if budget_state == "soft":
+                l6_response.daari_meta.warning = "frontier_budget_warning"
             return l6_response
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
@@ -1697,16 +1713,55 @@ class Router:
         add_step("frontier_compressed", chars_before=chars_before, chars_after=chars_after)
         return result
 
-    def _frontier_budget_exceeded(self) -> bool:
-        if self.frontier_daily_budget_usd <= 0 or self.usage_ledger is None:
-            return False
+    def _scrub_for_frontier(self, request: InternalRequest) -> InternalRequest:
+        """Trust PRD T5c: PII never leaves the device unless opted out."""
+        if not self.frontier_scrub_pii:
+            return request
         try:
-            spend = self.usage_ledger.frontier_spend_usd(
-                price_per_1k_tokens=self.frontier_price_per_1k_tokens
-            )
+            from daari.gateway.pii import scrub_messages
+
+            scrubbed, counts = scrub_messages(request.messages)
         except Exception:
-            return False
-        return spend >= self.frontier_daily_budget_usd
+            return request
+        if not counts:
+            return request
+        result = request.model_copy(deep=True)
+        result.messages = scrubbed
+        add_step("pii_scrub", **counts)
+        return result
+
+    def _frontier_budget_state(self) -> str:
+        """'ok' | 'soft' | 'exceeded' across daily and monthly caps (T5a)."""
+        if self.usage_ledger is None:
+            return "ok"
+        state = "ok"
+        windows: list[tuple[float, Any]] = []
+        if self.frontier_daily_budget_usd > 0:
+            windows.append(
+                (self.frontier_daily_budget_usd, self.usage_ledger.frontier_spend_usd)
+            )
+        if self.frontier_monthly_budget_usd > 0:
+            windows.append(
+                (
+                    self.frontier_monthly_budget_usd,
+                    getattr(self.usage_ledger, "frontier_spend_usd_month", None),
+                )
+            )
+        for budget, spend_fn in windows:
+            if spend_fn is None:
+                continue
+            try:
+                spend = spend_fn(price_per_1k_tokens=self.frontier_price_per_1k_tokens)
+            except Exception:
+                continue
+            if spend >= budget:
+                return "exceeded"
+            if spend >= budget * self.frontier_soft_budget_ratio:
+                state = "soft"
+        return state
+
+    def _frontier_budget_exceeded(self) -> bool:
+        return self._frontier_budget_state() == "exceeded"
 
     def _record(self, response: InternalResponse, started: float) -> None:
         self._emit_org_feedback("", response)
@@ -2145,7 +2200,10 @@ class AppContext:
             learned_router=learned_router,
             latency_budget_ms=settings.routing.latency_budget_ms,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
+            frontier_monthly_budget_usd=settings.frontier.monthly_budget_usd,
+            frontier_soft_budget_ratio=settings.frontier.soft_budget_ratio,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
+            frontier_scrub_pii=settings.frontier.scrub_pii,
             frontier_slim_prompts=settings.frontier.slim_prompts,
             frontier_max_history=settings.frontier.max_history_messages,
             frontier_enabled=settings.frontier.enabled,

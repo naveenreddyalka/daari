@@ -363,6 +363,7 @@ def report(
     port: int | None = typer.Option(None, help="Daemon port"),
     output_format: str = typer.Option("text", "--format", help="Output format: text | markdown"),
     out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
+    by_client: bool = typer.Option(False, "--by-client", help="Break usage down per client id"),
 ) -> None:
     """Show persisted usage and estimated frontier savings."""
     settings = get_settings()
@@ -403,6 +404,34 @@ def report(
     typer.echo(f"local requests:    {totals.get('local_requests', 0)}")
     typer.echo(f"frontier requests: {totals.get('frontier_requests', 0)}")
     typer.echo(f"estimated saved:   ${totals.get('estimated_saved_usd', 0.0):.4f}")
+
+    frontier = payload.get("frontier") or {}
+    if frontier.get("daily_budget_usd") or frontier.get("monthly_budget_usd"):
+        typer.echo("")
+        typer.echo(
+            f"frontier budget:   state={frontier.get('budget_state', 'ok')}"
+            f" today=${frontier.get('today_spend_usd', 0.0):.4f}"
+            f"/{frontier.get('daily_budget_usd', 0.0) or '∞'}"
+            f" month=${frontier.get('month_spend_usd', 0.0):.4f}"
+            f"/{frontier.get('monthly_budget_usd', 0.0) or '∞'}"
+        )
+
+    if by_client:
+        clients = payload.get("clients") or []
+        typer.echo("")
+        if not clients:
+            typer.echo("No per-client usage recorded yet.")
+        else:
+            typer.echo(
+                f"{'client':<14} {'requests':>9} {'cache hits':>11} "
+                f"{'frontier':>9} {'saved $':>9}"
+            )
+            for entry in clients:
+                typer.echo(
+                    f"{entry['client_id']:<14} {entry['requests']:>9} "
+                    f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
+                    f"{entry['estimated_saved_usd']:>9.4f}"
+                )
 
     trust = payload.get("cache_trust") or {}
     false_hits = trust.get("false_hit_rates") or {}
