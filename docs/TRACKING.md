@@ -396,6 +396,18 @@ detected). Default suite 430 pytest tests (359 → 430); web-ui at 9 DOM tests.
 All new behaviors default-safe: normalization + shadow sampling on (read-only
 additions), compaction/compression/learned-router/PII-scrub opt-in.
 
+### One-click client setup (2026-07-13, issue [#81](https://github.com/naveenreddyalka/daari/issues/81))
+
+| Item | PR | Merge |
+|------|----|-------|
+| **Claude Code one-click**: `daari setup claude-code` merges `ANTHROPIC_BASE_URL`/`ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_MODEL` into the `env` block of `~/.claude/settings.json` (existing keys preserved, backup + undo); Anthropic gateway now honors the top-level `system` field (string or blocks) that Claude Code sends. **Ollama-compatible facade**: `/api/tags`, `/api/chat` (stream NDJSON + non-stream), `/api/version`, `/api/show`, `/api/ps` — JetBrains AI Assistant, Zed, Continue etc. connect by pasting `http://127.0.0.1:11435`, full router semantics + per-client attribution (`X-Daari-Client-Id`). IntelliJ recipe/docs updated with exact AI Assistant steps; native IntelliJ plugin deferred in favor of the facade. | [#82](https://github.com/naveenreddyalka/daari/pull/82) | `bbe233e` |
+
+Live-verified 2026-07-13 on the running daemon: `/api/tags` lists `daari` +
+tier models, non-stream `/api/chat` answered from L3 with `daari_meta`, and the
+`intellij` client id landed in the ledger. Claude Code agent/tool turns still
+need Anthropic tool passthrough (known limit, documented in
+[setup/claude-code.md](setup/claude-code.md)). Suite: 442 pytest tests.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
