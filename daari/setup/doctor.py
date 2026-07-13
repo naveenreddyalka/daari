@@ -44,6 +44,7 @@ def run_doctor(
     results.append(_check_config(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_frontier(cfg))
+    results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_daemon(cfg, httpx_client))
@@ -230,6 +231,44 @@ def _check_frontier(settings: Settings) -> CheckResult:
             "enabled but no API key — set DAARI_FRONTIER_API_KEY or OPENAI_API_KEY "
             "for L6 escalation"
         ),
+        optional=True,
+    )
+
+
+def _check_l1_diversity(settings: Settings) -> CheckResult:
+    """Trust PRD T1b: warn when a category serves few unique answers."""
+    try:
+        from daari.cache.semantic import SemanticCache
+
+        cache = SemanticCache(
+            path=str(settings.l1_cache_path),
+            embedder=None,  # type: ignore[arg-type] — diversity_stats never embeds
+            enabled=settings.cache.l1.enabled,
+        )
+        stats = cache.diversity_stats()
+    except Exception as exc:
+        return CheckResult(
+            name="l1-diversity", ok=True, detail=f"not checked ({exc})", optional=True
+        )
+    suspicious = [
+        f"{category} ({data['unique_answers']}/{data['entries']} unique)"
+        for category, data in stats.items()
+        if data["entries"] >= 10 and data["ratio"] < 0.5
+    ]
+    if suspicious:
+        return CheckResult(
+            name="l1-diversity",
+            ok=False,
+            detail=(
+                "low answer diversity — possible cache false positives in: "
+                + ", ".join(sorted(suspicious))
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="l1-diversity",
+        ok=True,
+        detail=f"healthy ({len(stats)} categories tracked)",
         optional=True,
     )
 

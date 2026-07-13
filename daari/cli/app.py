@@ -404,6 +404,18 @@ def report(
     typer.echo(f"frontier requests: {totals.get('frontier_requests', 0)}")
     typer.echo(f"estimated saved:   ${totals.get('estimated_saved_usd', 0.0):.4f}")
 
+    trust = payload.get("cache_trust") or {}
+    false_hits = trust.get("false_hit_rates") or {}
+    if false_hits:
+        typer.echo("")
+        typer.echo("cache trust (shadow-sampled L1 false-hit rate):")
+        for category in sorted(false_hits):
+            row = false_hits[category]
+            typer.echo(
+                f"  {category:<14} {row['false_hit_rate'] * 100:>5.1f}%"
+                f" ({row['disagreements']}/{row['samples']} sampled hits)"
+            )
+
 
 @web_ui_app.command("serve")
 def serve_web_ui(
@@ -824,24 +836,36 @@ def _feedback_store():
 @learn_app.command("stats")
 def learn_stats(days: int = typer.Option(7, help="Evidence window in days")) -> None:
     """Per-category × tier outcome evidence (escalations, accepts/rejects)."""
-    stats = _feedback_store().stats(days=days)
+    store = _feedback_store()
+    stats = store.stats(days=days)
     if not stats:
         typer.echo("No outcomes recorded yet. Route some requests, then rerun.")
-        return
-    header = (
-        f"{'category':<14} {'tier':<5} {'outcomes':>8} {'escal%':>7} "
-        f"{'accepts':>7} {'rejects':>7} {'conf':>6} {'lat ms':>8}"
-    )
-    typer.echo(header)
-    for category in sorted(stats):
-        for tier in sorted(stats[category]):
-            row = stats[category][tier]
-            conf = f"{row['avg_confidence']:.2f}" if row["avg_confidence"] is not None else "-"
-            lat = f"{row['avg_latency_ms']:.0f}" if row["avg_latency_ms"] is not None else "-"
+    else:
+        header = (
+            f"{'category':<14} {'tier':<5} {'outcomes':>8} {'escal%':>7} "
+            f"{'accepts':>7} {'rejects':>7} {'conf':>6} {'lat ms':>8}"
+        )
+        typer.echo(header)
+        for category in sorted(stats):
+            for tier in sorted(stats[category]):
+                row = stats[category][tier]
+                conf = f"{row['avg_confidence']:.2f}" if row["avg_confidence"] is not None else "-"
+                lat = f"{row['avg_latency_ms']:.0f}" if row["avg_latency_ms"] is not None else "-"
+                typer.echo(
+                    f"{category:<14} {tier:<5} {row['outcomes']:>8} "
+                    f"{row['escalation_rate'] * 100:>6.1f}% {row['accepts']:>7} "
+                    f"{row['rejects']:>7} {conf:>6} {lat:>8}"
+                )
+    shadow = store.shadow_stats(days=days)
+    if shadow:
+        typer.echo("")
+        typer.echo("Cache trust (shadow-sampled L1 hits):")
+        typer.echo(f"{'category':<14} {'samples':>8} {'disagree':>9} {'false-hit%':>11}")
+        for category in sorted(shadow):
+            row = shadow[category]
             typer.echo(
-                f"{category:<14} {tier:<5} {row['outcomes']:>8} "
-                f"{row['escalation_rate'] * 100:>6.1f}% {row['accepts']:>7} "
-                f"{row['rejects']:>7} {conf:>6} {lat:>8}"
+                f"{category:<14} {row['samples']:>8} {row['disagreements']:>9} "
+                f"{row['false_hit_rate'] * 100:>10.1f}%"
             )
 
 

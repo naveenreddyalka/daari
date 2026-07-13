@@ -19,6 +19,7 @@ const reportHitRateNode = document.getElementById("report-hit-rate");
 const reportLocalNode = document.getElementById("report-local");
 const reportSavingsNode = document.getElementById("report-savings");
 const reportTableNode = document.getElementById("report-table");
+const cacheTrustTableNode = document.getElementById("cache-trust-table");
 const reportStatusNode = document.getElementById("report-status");
 const tracesTableNode = document.getElementById("traces-table");
 const traceDetailNode = document.getElementById("trace-detail");
@@ -117,6 +118,34 @@ function renderReport(report) {
   }
 }
 
+function renderCacheTrust(trust) {
+  cacheTrustTableNode.innerHTML = "";
+  const falseHits = (trust && trust.false_hit_rates) || {};
+  const diversity = (trust && trust.diversity) || {};
+  const categories = [...new Set([...Object.keys(falseHits), ...Object.keys(diversity)])].sort();
+  if (categories.length === 0) {
+    cacheTrustTableNode.innerHTML =
+      '<tr><td colspan="4">No shadow samples yet — cache trust data appears after L1 hits are sampled.</td></tr>';
+    return;
+  }
+  for (const category of categories) {
+    const shadow = falseHits[category];
+    const div = diversity[category];
+    const rate =
+      shadow && typeof shadow.false_hit_rate === "number"
+        ? `${(shadow.false_hit_rate * 100).toFixed(1)}%`
+        : "-";
+    const samples = shadow ? formatNumber(shadow.samples) : "-";
+    const ratio =
+      div && typeof div.ratio === "number"
+        ? `${div.unique_answers}/${div.entries} (${(div.ratio * 100).toFixed(0)}%)`
+        : "-";
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${category}</td><td>${samples}</td><td>${rate}</td><td>${ratio}</td>`;
+    cacheTrustTableNode.appendChild(row);
+  }
+}
+
 async function loadReport() {
   const days = Number(reportDaysNode.value) || 7;
   try {
@@ -124,12 +153,15 @@ async function loadReport() {
     if (report.enabled === false) {
       reportStatusNode.textContent = "Usage ledger is disabled on the daemon.";
       renderReport({ totals: {}, days: [] });
+      renderCacheTrust(report.cache_trust || null);
       return;
     }
     renderReport(report);
+    renderCacheTrust(report.cache_trust || null);
     reportStatusNode.textContent = `Window: last ${days} days.`;
   } catch (error) {
     renderReport({ totals: {}, days: [] });
+    renderCacheTrust(null);
     reportStatusNode.textContent = `Report unavailable (${error.message}).`;
   }
 }
