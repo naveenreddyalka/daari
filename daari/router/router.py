@@ -160,8 +160,12 @@ class Router:
         tuner: Any | None = None,
         example_store: Any | None = None,
         shadow_rng: Any | None = None,
+        model_profile_store: Any | None = None,
+        warm_tracker: Any | None = None,
+        learned_router: Any | None = None,
         *,
         l1_shadow_sample_rate: float = 0.0,
+        latency_budget_ms: int = 0,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
         l1_draft_threshold: float = 0.75,
@@ -173,7 +177,10 @@ class Router:
         frontier_compress_ratio: float = 0.6,
         max_tier_for_chat: str | None = None,
         frontier_daily_budget_usd: float = 0.0,
+        frontier_monthly_budget_usd: float = 0.0,
+        frontier_soft_budget_ratio: float = 0.8,
         frontier_price_per_1k_tokens: float = 0.002,
+        frontier_scrub_pii: bool = False,
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
     ) -> None:
@@ -215,6 +222,11 @@ class Router:
         self.feedback_store = feedback_store
         self.tuner = tuner
         self.example_store = example_store
+        self.model_profile_store = model_profile_store
+        self.warm_tracker = warm_tracker
+        self.learned_router = learned_router
+        self.latency_budget_ms = latency_budget_ms
+        self._warm_models: set[str] = set()
         self.l1_shadow_sample_rate = max(0.0, min(1.0, l1_shadow_sample_rate))
         self._shadow_rng = shadow_rng or random.random
         self._shadow_tasks: set[Any] = set()
@@ -230,7 +242,10 @@ class Router:
         self._compaction_cache: dict[str, str] = {}
         self.max_tier_for_chat = max_tier_for_chat
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
+        self.frontier_monthly_budget_usd = frontier_monthly_budget_usd
+        self.frontier_soft_budget_ratio = frontier_soft_budget_ratio
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
+        self.frontier_scrub_pii = frontier_scrub_pii
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
 
@@ -247,6 +262,7 @@ class Router:
             complexity=profile.complexity,
             prompt_tokens_est=profile.prompt_tokens_est,
         )
+        profile = await self._apply_learned_route(request, profile)
         try:
             response = await self._route_impl(request, profile)
         except Exception:
@@ -321,6 +337,7 @@ class Router:
             cache_hit=response.daari_meta.cache_hit,
             prompt_chars=prompt_chars,
             completion_chars=len(response.content or ""),
+            client_id=request.meta.client_id,
         )
 
     def _example_record(
@@ -364,6 +381,44 @@ class Router:
     _SHADOW_FALSE_HIT_LIMIT = 0.10
     _L1_THRESHOLD_STEP = 0.02
     _SHADOW_STATS_TTL = 60.0
+
+    async def _apply_learned_route(
+        self, request: InternalRequest, profile: PromptProfile
+    ) -> PromptProfile:
+        """Trust PRD Train 4: confident learned category beats the heuristic."""
+        if self.learned_router is None:
+            return profile
+        try:
+            if not self.learned_router.available:
+                return profile
+            text = self._last_user_text(request.messages)
+            if not text.strip():
+                return profile
+            embedding = await self.semantic_cache.embedder.embed(text)
+            if embedding is None:
+                return profile
+            prediction = self.learned_router.predict(embedding)
+        except Exception:
+            return profile
+        if prediction is None or prediction[0] == profile.category:
+            return profile
+        category, confidence = prediction
+        add_step(
+            "learned_route",
+            category=category,
+            confidence=confidence,
+            heuristic=profile.category,
+        )
+        return profile.model_copy(update={"category": category})
+
+    async def _refresh_warm_models(self) -> None:
+        """Trust PRD T3c: keep the /api/ps warm set fresh (TTL-cached)."""
+        if self.warm_tracker is None:
+            return
+        try:
+            await self.warm_tracker.refresh()
+        except Exception:
+            pass
 
     def _shadow_stats(self) -> dict[str, Any]:
         if self.feedback_store is None:
@@ -665,7 +720,8 @@ class Router:
             ]
             add_step("draft_injected", similarity=round(draft_similarity, 4))
 
-        initial_tier = self._choose_initial_tier(request)
+        await self._refresh_warm_models()
+        initial_tier = self._choose_initial_tier(request, profile)
         try:
             response = await self._run_model_tier(initial_tier, gen_request)
         except Exception:
@@ -752,13 +808,15 @@ class Router:
             prompt_tokens_est=profile.prompt_tokens_est,
             stream=True,
         )
+        profile = await self._apply_learned_route(request, profile)
 
         def finish_trace(tier: str | None) -> None:
             if trace is not None:
                 self.trace_store.save(trace, tier=tier, category=profile.category)
             end_trace()
 
-        tier_chain = self._stream_tier_chain(request)
+        await self._refresh_warm_models()
+        tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (tools passed through by the gateway, or tool history)
         # keep the full tool protocol; Ask flows get plain-text sanitization.
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
@@ -824,6 +882,7 @@ class Router:
                         cache_hit=True,
                         prompt_chars=prompt_chars,
                         completion_chars=len(cached.content),
+                        client_id=request.meta.client_id,
                     )
                 log_gateway_event("stream_cache_hit", {"tier": "L0", "model": client_model})
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
@@ -861,6 +920,7 @@ class Router:
                         cache_hit=True,
                         prompt_chars=prompt_chars,
                         completion_chars=len(nearest_response.content),
+                        client_id=request.meta.client_id,
                     )
                 log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
@@ -972,6 +1032,7 @@ class Router:
                     cache_hit=False,
                     prompt_chars=prompt_chars,
                     completion_chars=completion_chars,
+                    client_id=request.meta.client_id,
                 )
             if self.feedback_store is not None:
                 try:
@@ -1040,8 +1101,10 @@ class Router:
         if last_error is not None:
             raise last_error
 
-    def _stream_tier_chain(self, request: InternalRequest) -> list[str]:
-        initial = self._choose_initial_tier(request)
+    def _stream_tier_chain(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> list[str]:
+        initial = self._choose_initial_tier(request, profile)
         chain = [initial]
         if initial == "L5":
             chain.extend(["L4", "L3"])
@@ -1064,6 +1127,7 @@ class Router:
         from daari.gateway.request_log import log_gateway_event
 
         message_id = f"msg_{int(time.time() * 1000)}"
+        await self._refresh_warm_models()
         tier_chain = self._stream_tier_chain(request)
         stream_request = request.model_copy(deep=True)
         stream_request.tools = None
@@ -1376,15 +1440,78 @@ class Router:
             return cap
         return tier
 
-    def _choose_initial_tier(self, request: InternalRequest) -> str:
+    def _choose_initial_tier(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> str:
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             return override
-        tier = self._choose_uncapped_tier(request)
-        return self._cap_tier(tier, self._effective_tier_cap(request))
+        tier = self._choose_uncapped_tier(request, profile)
+        tier = self._cap_tier(tier, self._effective_tier_cap(request))
+        return self._apply_latency_budget(tier, request, profile)
 
-    def _choose_uncapped_tier(self, request: InternalRequest) -> str:
-        policy = self._policy_for(build_prompt_profile(request))
+    @staticmethod
+    def _policy_attr(policy: Any, name: str) -> Any:
+        if policy is None:
+            return None
+        if isinstance(policy, dict):
+            return policy.get(name)
+        return getattr(policy, name, None)
+
+    def _effective_latency_budget(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> int:
+        """Header > category policy > global setting. 0 disables."""
+        header_budget = request.meta.latency_budget_ms
+        if isinstance(header_budget, int) and header_budget > 0:
+            return header_budget
+        policy = self._policy_for(profile or build_prompt_profile(request))
+        policy_budget = self._policy_attr(policy, "latency_budget_ms")
+        if isinstance(policy_budget, (int, float)) and policy_budget > 0:
+            return int(policy_budget)
+        return self.latency_budget_ms
+
+    _TIER_SPEED_ORDER = ["L3", "L4", "L5"]  # fastest first
+
+    def _apply_latency_budget(
+        self, tier: str, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> str:
+        """Trust PRD T3b: step down to a faster tier when the profiled model
+        would blow the latency budget."""
+        if self.model_profile_store is None:
+            return tier
+        budget = self._effective_latency_budget(request, profile)
+        if budget <= 0:
+            return tier
+        try:
+            expected = self.model_profile_store.latency_ms_for(
+                self._executor_for_tier(tier).default_model
+            )
+        except Exception:
+            return tier
+        if expected is None or expected <= budget:
+            return tier
+        # Walk faster tiers below the current one; pick the first that fits.
+        candidates = self._TIER_SPEED_ORDER[: self._TIER_SPEED_ORDER.index(tier)]
+        for faster in reversed(candidates):
+            faster_expected = self.model_profile_store.latency_ms_for(
+                self._executor_for_tier(faster).default_model
+            )
+            if faster_expected is None or faster_expected <= budget:
+                add_step(
+                    "latency_budget",
+                    budget_ms=budget,
+                    expected_ms=expected,
+                    downgraded_from=tier,
+                    tier=faster,
+                )
+                return faster
+        return tier
+
+    def _choose_uncapped_tier(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> str:
+        policy = self._policy_for(profile or build_prompt_profile(request))
         policy_tier = getattr(policy, "tier", None) if policy is not None else None
         if policy_tier in {"L3", "L4", "L5"}:
             return policy_tier
@@ -1406,16 +1533,38 @@ class Router:
 
         if self.model_preference == "latency":
             scores = {"L3": l3_weight.get("latency", 0.0), "L4": l4_weight.get("latency", 0.0), "L5": l5_weight.get("latency", 0.0)}
-            return max(scores, key=scores.get)
-        if self.model_preference == "accuracy":
+        elif self.model_preference == "accuracy":
             scores = {"L3": l3_weight.get("accuracy", 0.0), "L4": l4_weight.get("accuracy", 0.0), "L5": l5_weight.get("accuracy", 0.0)}
-            return max(scores, key=scores.get)
+        else:
+            # Balanced: blend both dimensions and pick the stronger score.
+            scores = {
+                "L3": 0.5 * l3_weight.get("latency", 0.0) + 0.5 * l3_weight.get("accuracy", 0.0),
+                "L4": 0.5 * l4_weight.get("latency", 0.0) + 0.5 * l4_weight.get("accuracy", 0.0),
+                "L5": 0.5 * l5_weight.get("latency", 0.0) + 0.5 * l5_weight.get("accuracy", 0.0),
+            }
+        return self._pick_with_warm_preference(scores)
 
-        # Balanced: blend both dimensions and pick the stronger score.
-        l3_score = 0.5 * l3_weight.get("latency", 0.0) + 0.5 * l3_weight.get("accuracy", 0.0)
-        l4_score = 0.5 * l4_weight.get("latency", 0.0) + 0.5 * l4_weight.get("accuracy", 0.0)
-        l5_score = 0.5 * l5_weight.get("latency", 0.0) + 0.5 * l5_weight.get("accuracy", 0.0)
-        scores = {"L3": l3_score, "L4": l4_score, "L5": l5_score}
+    # Small enough to only decide otherwise-tied choices (Trust PRD T3c).
+    _WARM_BONUS = 0.001
+
+    def _pick_with_warm_preference(self, scores: dict[str, float]) -> str:
+        warm = self._warm_models
+        if self.warm_tracker is not None:
+            warm = warm | self.warm_tracker.get()
+        if warm:
+            names = {
+                "L3": self.ollama_l3.default_model,
+                "L4": self.ollama_l4.default_model,
+                "L5": self.ollama_l5.default_model,
+            }
+            boosted = {
+                tier: score + (self._WARM_BONUS if names[tier] in warm else 0.0)
+                for tier, score in scores.items()
+            }
+            choice = max(boosted, key=boosted.get)
+            if names[choice] in warm and choice != max(scores, key=scores.get):
+                add_step("warm_preference", tier=choice, model=names[choice])
+            return choice
         return max(scores, key=scores.get)
 
     @staticmethod
@@ -1486,15 +1635,19 @@ class Router:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
 
-        if self._frontier_budget_exceeded():
+        budget_state = self._frontier_budget_state()
+        if budget_state == "exceeded":
             add_step("budget_check", exceeded=True)
             response.daari_meta.warning = "frontier_budget_exceeded"
             return response
+        if budget_state == "soft":
+            add_step("budget_check", exceeded=False, soft=True)
 
         add_step("escalate", to="L6", local_confidence=confidence)
         try:
             l6_request = self._slim_for_frontier(request)
             l6_request = await self._compress_for_frontier(l6_request)
+            l6_request = self._scrub_for_frontier(l6_request)
             l6_response = await self.frontier.execute(
                 l6_request,
                 escalated_from=response.daari_meta.tier,
@@ -1503,6 +1656,8 @@ class Router:
             l6_response.daari_meta.prompt_chars = sum(
                 len(message.content or "") for message in l6_request.messages
             )
+            if budget_state == "soft":
+                l6_response.daari_meta.warning = "frontier_budget_warning"
             return l6_response
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
@@ -1558,16 +1713,55 @@ class Router:
         add_step("frontier_compressed", chars_before=chars_before, chars_after=chars_after)
         return result
 
-    def _frontier_budget_exceeded(self) -> bool:
-        if self.frontier_daily_budget_usd <= 0 or self.usage_ledger is None:
-            return False
+    def _scrub_for_frontier(self, request: InternalRequest) -> InternalRequest:
+        """Trust PRD T5c: PII never leaves the device unless opted out."""
+        if not self.frontier_scrub_pii:
+            return request
         try:
-            spend = self.usage_ledger.frontier_spend_usd(
-                price_per_1k_tokens=self.frontier_price_per_1k_tokens
-            )
+            from daari.gateway.pii import scrub_messages
+
+            scrubbed, counts = scrub_messages(request.messages)
         except Exception:
-            return False
-        return spend >= self.frontier_daily_budget_usd
+            return request
+        if not counts:
+            return request
+        result = request.model_copy(deep=True)
+        result.messages = scrubbed
+        add_step("pii_scrub", **counts)
+        return result
+
+    def _frontier_budget_state(self) -> str:
+        """'ok' | 'soft' | 'exceeded' across daily and monthly caps (T5a)."""
+        if self.usage_ledger is None:
+            return "ok"
+        state = "ok"
+        windows: list[tuple[float, Any]] = []
+        if self.frontier_daily_budget_usd > 0:
+            windows.append(
+                (self.frontier_daily_budget_usd, self.usage_ledger.frontier_spend_usd)
+            )
+        if self.frontier_monthly_budget_usd > 0:
+            windows.append(
+                (
+                    self.frontier_monthly_budget_usd,
+                    getattr(self.usage_ledger, "frontier_spend_usd_month", None),
+                )
+            )
+        for budget, spend_fn in windows:
+            if spend_fn is None:
+                continue
+            try:
+                spend = spend_fn(price_per_1k_tokens=self.frontier_price_per_1k_tokens)
+            except Exception:
+                continue
+            if spend >= budget:
+                return "exceeded"
+            if spend >= budget * self.frontier_soft_budget_ratio:
+                state = "soft"
+        return state
+
+    def _frontier_budget_exceeded(self) -> bool:
+        return self._frontier_budget_state() == "exceeded"
 
     def _record(self, response: InternalResponse, started: float) -> None:
         self._emit_org_feedback("", response)
@@ -1946,6 +2140,22 @@ class AppContext:
                 settings.example_store_path,
                 max_rows=settings.learning.examples_max_rows,
             )
+        from daari.router.model_profile import ModelProfileStore, WarmModelTracker
+
+        model_profile_store = ModelProfileStore()
+        warm_tracker = (
+            WarmModelTracker(settings.ollama.base_url.rstrip("/"))
+            if settings.routing.warm_model_preference
+            else None
+        )
+        learned_router = None
+        if settings.routing.learned_router:
+            from daari.learning.router_model import LearnedRouter
+
+            learned_router = LearnedRouter(
+                settings.learning.router_model_path,
+                min_samples=settings.learning.router_min_samples,
+            )
         tuner = None
         if settings.learning.auto_tune and settings.learning.enabled:
             from daari.learning.tuner import RoutingTuner
@@ -1985,8 +2195,15 @@ class AppContext:
             tuner=tuner,
             example_store=example_store,
             l1_shadow_sample_rate=settings.cache.l1.shadow_sample_rate,
+            model_profile_store=model_profile_store,
+            warm_tracker=warm_tracker,
+            learned_router=learned_router,
+            latency_budget_ms=settings.routing.latency_budget_ms,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
+            frontier_monthly_budget_usd=settings.frontier.monthly_budget_usd,
+            frontier_soft_budget_ratio=settings.frontier.soft_budget_ratio,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
+            frontier_scrub_pii=settings.frontier.scrub_pii,
             frontier_slim_prompts=settings.frontier.slim_prompts,
             frontier_max_history=settings.frontier.max_history_messages,
             frontier_enabled=settings.frontier.enabled,

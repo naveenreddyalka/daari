@@ -25,7 +25,17 @@ CREATE TABLE IF NOT EXISTS usage (
     prompt_chars INTEGER NOT NULL DEFAULT 0,
     completion_chars INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, tier)
-)
+);
+CREATE TABLE IF NOT EXISTS client_usage (
+    day TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    tier TEXT NOT NULL,
+    requests INTEGER NOT NULL DEFAULT 0,
+    cache_hits INTEGER NOT NULL DEFAULT 0,
+    prompt_chars INTEGER NOT NULL DEFAULT 0,
+    completion_chars INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, client_id, tier)
+);
 """
 
 
@@ -52,7 +62,7 @@ class UsageLedger:
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self._connect() as conn:
-                    conn.execute(_SCHEMA)
+                    conn.executescript(_SCHEMA)
             except Exception:
                 self.enabled = False
 
@@ -67,6 +77,7 @@ class UsageLedger:
         prompt_chars: int = 0,
         completion_chars: int = 0,
         day: str | None = None,
+        client_id: str | None = None,
     ) -> None:
         if not self.enabled:
             return
@@ -90,8 +101,71 @@ class UsageLedger:
                         max(0, completion_chars),
                     ),
                 )
+                conn.execute(
+                    """
+                    INSERT INTO client_usage (day, client_id, tier, requests, cache_hits, prompt_chars, completion_chars)
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
+                    ON CONFLICT(day, client_id, tier) DO UPDATE SET
+                        requests = requests + 1,
+                        cache_hits = cache_hits + excluded.cache_hits,
+                        prompt_chars = prompt_chars + excluded.prompt_chars,
+                        completion_chars = completion_chars + excluded.completion_chars
+                    """,
+                    (
+                        day or _today(),
+                        client_id or "unknown",
+                        tier,
+                        1 if cache_hit else 0,
+                        max(0, prompt_chars),
+                        max(0, completion_chars),
+                    ),
+                )
         except Exception:
             pass
+
+    def by_client(
+        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+    ) -> list[dict[str, Any]]:
+        """Per-client usage and savings attribution (Trust PRD T5b)."""
+        if not self.enabled:
+            return []
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT client_id, tier, SUM(requests), SUM(cache_hits),"
+                    " SUM(prompt_chars), SUM(completion_chars)"
+                    " FROM client_usage WHERE day >= ? GROUP BY client_id, tier",
+                    (cutoff,),
+                ).fetchall()
+        except Exception:
+            return []
+        clients: dict[str, dict[str, Any]] = {}
+        for client_id, tier, requests, cache_hits, prompt_chars, completion_chars in rows:
+            entry = clients.setdefault(
+                client_id,
+                {
+                    "client_id": client_id,
+                    "requests": 0,
+                    "cache_hits": 0,
+                    "local_requests": 0,
+                    "frontier_requests": 0,
+                    "estimated_saved_usd": 0.0,
+                },
+            )
+            entry["requests"] += requests
+            entry["cache_hits"] += cache_hits
+            if tier == FRONTIER_TIER:
+                entry["frontier_requests"] += requests
+            else:
+                entry["local_requests"] += requests
+                tokens = (prompt_chars + completion_chars) / 4
+                entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
+        for entry in clients.values():
+            entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
+        return sorted(clients.values(), key=lambda entry: -entry["requests"])
 
     def frontier_spend_usd(self, *, price_per_1k_tokens: float, day: str | None = None) -> float:
         """Estimated USD spent on the frontier tier for the given UTC day."""
@@ -103,6 +177,25 @@ class UsageLedger:
                     "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
                     " FROM usage WHERE day = ? AND tier = ?",
                     (day or _today(), FRONTIER_TIER),
+                ).fetchone()
+        except Exception:
+            return 0.0
+        chars = row[0] if row else 0
+        return (chars / 4) / 1000 * price_per_1k_tokens
+
+    def frontier_spend_usd_month(
+        self, *, price_per_1k_tokens: float, month: str | None = None
+    ) -> float:
+        """Estimated USD spent on L6 for the given UTC month (Trust PRD T5a)."""
+        if not self.enabled:
+            return 0.0
+        prefix = (month or _today()[:7]) + "-%"
+        try:
+            with self._lock, self._connect() as conn:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
+                    " FROM usage WHERE day LIKE ? AND tier = ?",
+                    (prefix, FRONTIER_TIER),
                 ).fetchone()
         except Exception:
             return 0.0

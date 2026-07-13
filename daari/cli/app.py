@@ -363,6 +363,7 @@ def report(
     port: int | None = typer.Option(None, help="Daemon port"),
     output_format: str = typer.Option("text", "--format", help="Output format: text | markdown"),
     out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
+    by_client: bool = typer.Option(False, "--by-client", help="Break usage down per client id"),
 ) -> None:
     """Show persisted usage and estimated frontier savings."""
     settings = get_settings()
@@ -403,6 +404,34 @@ def report(
     typer.echo(f"local requests:    {totals.get('local_requests', 0)}")
     typer.echo(f"frontier requests: {totals.get('frontier_requests', 0)}")
     typer.echo(f"estimated saved:   ${totals.get('estimated_saved_usd', 0.0):.4f}")
+
+    frontier = payload.get("frontier") or {}
+    if frontier.get("daily_budget_usd") or frontier.get("monthly_budget_usd"):
+        typer.echo("")
+        typer.echo(
+            f"frontier budget:   state={frontier.get('budget_state', 'ok')}"
+            f" today=${frontier.get('today_spend_usd', 0.0):.4f}"
+            f"/{frontier.get('daily_budget_usd', 0.0) or '∞'}"
+            f" month=${frontier.get('month_spend_usd', 0.0):.4f}"
+            f"/{frontier.get('monthly_budget_usd', 0.0) or '∞'}"
+        )
+
+    if by_client:
+        clients = payload.get("clients") or []
+        typer.echo("")
+        if not clients:
+            typer.echo("No per-client usage recorded yet.")
+        else:
+            typer.echo(
+                f"{'client':<14} {'requests':>9} {'cache hits':>11} "
+                f"{'frontier':>9} {'saved $':>9}"
+            )
+            for entry in clients:
+                typer.echo(
+                    f"{entry['client_id']:<14} {entry['requests']:>9} "
+                    f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
+                    f"{entry['estimated_saved_usd']:>9.4f}"
+                )
 
     trust = payload.get("cache_trust") or {}
     false_hits = trust.get("false_hit_rates") or {}
@@ -450,6 +479,59 @@ def serve_web_ui(
         port=port,
         log_level="info",
     )
+
+
+@app.command()
+def profile(
+    show: bool = typer.Option(False, "--show", help="Print the stored profile without re-benchmarking"),
+    models: str | None = typer.Option(
+        None, help="Comma-separated models to benchmark (default: configured L3/L4/L5)"
+    ),
+) -> None:
+    """Benchmark local models on this hardware (tokens/sec, latency, load)."""
+    import asyncio as _asyncio
+
+    from daari.router.model_profile import ModelProfileStore, benchmark_models
+
+    store = ModelProfileStore()
+    if show:
+        data = store.load()
+        if not data:
+            typer.echo("No profile stored yet. Run `daari profile` to benchmark.")
+            return
+        typer.echo(f"{'model':<24} {'latency ms':>10} {'load ms':>9} {'tok/s':>7}")
+        for model in sorted(data):
+            entry = data[model]
+            tps = entry.get("tokens_per_second")
+            typer.echo(
+                f"{model:<24} {entry.get('latency_ms', 0):>10.0f} "
+                f"{entry.get('load_ms', 0):>9.0f} {tps if tps is not None else '-':>7}"
+            )
+        return
+
+    settings = get_settings()
+    if models:
+        target_models = [m.strip() for m in models.split(",") if m.strip()]
+    else:
+        target_models = list(
+            dict.fromkeys([settings.models.l3, settings.models.l4, settings.models.l5])
+        )
+    typer.echo(f"Benchmarking {len(target_models)} model(s) — one short generation each...")
+    results = _asyncio.run(
+        benchmark_models(settings.ollama.base_url.rstrip("/"), target_models)
+    )
+    if not results:
+        typer.echo("No models could be benchmarked. Is Ollama running?", err=True)
+        raise typer.Exit(code=1)
+    merged = {**store.load(), **results}
+    store.save(merged)
+    for model, entry in results.items():
+        tps = entry.get("tokens_per_second")
+        typer.echo(
+            f"{model}: {entry['latency_ms']:.0f} ms wall, "
+            f"load {entry['load_ms']:.0f} ms, {tps if tps is not None else '-'} tok/s"
+        )
+    typer.echo(f"Saved to {store.path}")
 
 
 @app.command()
@@ -938,6 +1020,45 @@ def learn_export_dataset(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote {counts['train']} train / {counts['valid']} valid examples to {out}")
+
+
+@learn_app.command("train-router")
+def learn_train_router(
+    min_samples: int = typer.Option(
+        None, help="Minimum labeled examples required (default: learning.router_min_samples)"
+    ),
+    out: str | None = typer.Option(None, "--out", help="Model output path"),
+) -> None:
+    """Train the personal routing classifier from captured examples."""
+    import asyncio as _asyncio
+
+    from daari.cache.semantic import OllamaEmbedder
+    from daari.learning.router_model import RouterTrainingError, train_router
+
+    settings = get_settings()
+    store = _example_store()
+    embedder = OllamaEmbedder(
+        base_url=settings.ollama.base_url.rstrip("/"),
+        model=settings.cache.l1.embedding_model,
+        cache_size=settings.cache.l1.embed_cache_size,
+    )
+    floor = min_samples if min_samples is not None else settings.learning.router_min_samples
+    out_path = out or settings.learning.router_model_path
+    try:
+        result = _asyncio.run(
+            train_router(store, embedder, out_path=out_path, min_samples=floor)
+        )
+    except RouterTrainingError as exc:
+        typer.echo(f"Cannot train: {exc}", err=True)
+        typer.echo(
+            "Enable learning.capture_examples and route more requests first.", err=True
+        )
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Trained on {result['samples']} examples:")
+    for category, count in sorted(result["categories"].items()):
+        typer.echo(f"  {category:<14} {count}")
+    typer.echo(f"Saved to {result['path']}")
+    typer.echo("Enable with routing.learned_router: true in settings.")
 
 
 @learn_app.command("finetune")
