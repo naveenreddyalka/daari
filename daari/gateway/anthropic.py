@@ -23,6 +23,9 @@ class AnthropicMessageIn(BaseModel):
 class AnthropicRequest(BaseModel):
     model: str
     messages: list[AnthropicMessageIn]
+    # Anthropic clients (e.g. Claude Code) send the system prompt as a
+    # top-level field rather than a system-role message.
+    system: str | list[dict[str, Any]] | None = None
     max_tokens: int | None = None
     stream: bool = False
     temperature: float = 0.7
@@ -66,11 +69,16 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             confirm_tool = confirm_value in {"1", "true", "yes"}
 
             ctx: AppContext = request.app.state.ctx
+            internal_messages: list[Message] = []
+            system_text = content_to_text(body.system)
+            if system_text:
+                internal_messages.append(Message(role="system", content=system_text))
+            internal_messages.extend(
+                Message(role=message.role, content=content_to_text(message.content))
+                for message in body.messages
+            )
             internal = InternalRequest(
-                messages=[
-                    Message(role=message.role, content=content_to_text(message.content))
-                    for message in body.messages
-                ],
+                messages=internal_messages,
                 model=body.model or ctx.settings.models.l3,
                 temperature=body.temperature,
                 stream=False,

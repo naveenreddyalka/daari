@@ -49,6 +49,9 @@ class IntelliJSetupRecipe:
         notes = [
             "Dry-run only - no files will be modified.",
             "Manual fallback: docs/setup/intellij.md",
+            f"One-click path: daari exposes an Ollama-compatible API. In IntelliJ open "
+            f"Settings > Tools > AI Assistant > Models, enable Ollama, and set the URL to "
+            f"{self._ollama_facade_url(base_url)} — the 'daari' model appears automatically.",
         ]
         changes: list[SetupChange] = []
         if not installs:
@@ -71,7 +74,8 @@ class IntelliJSetupRecipe:
                     )
                 )
             notes.append(
-                "IntelliJ AI Assistant currently requires manual model/provider selection in the IDE UI."
+                "JetBrains AI Assistant requires selecting the provider in the IDE UI once; "
+                "after that daari handles routing."
             )
 
         return SetupPlan(
@@ -134,6 +138,14 @@ class IntelliJSetupRecipe:
     def undo(self, *, backup_root: Path | None = None) -> UndoResult:
         result = restore_latest_backup(self.id, root=backup_root)
         return UndoResult(backup_dir=result.backup_dir, files_restored=result.files_restored)
+
+    @staticmethod
+    def _ollama_facade_url(base_url: str) -> str:
+        """The Ollama facade lives at the server root (no /v1 suffix)."""
+        trimmed = base_url.rstrip("/")
+        if trimmed.endswith("/v1"):
+            trimmed = trimmed[: -len("/v1")]
+        return trimmed
 
     def _settings_files(self) -> list[Path]:
         return [install / "options" / "daari-openai-compat.json" for install in self._installation_dirs()]

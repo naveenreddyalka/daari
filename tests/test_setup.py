@@ -785,19 +785,56 @@ class TestVSCodeSetupApply:
 
 
 class TestClaudeCodeSetupApply:
-    def test_apply_writes_env_and_pointer(self, claude_recipe, backup_root):
+    def test_apply_writes_settings_env_block(self, claude_recipe, backup_root):
         result = claude_recipe.apply(backup_root=backup_root)
         assert result.changed is True
-        env_file = Path(result.files_changed[0])
-        pointer = Path(result.files_changed[1])
-        assert "OPENAI_BASE_URL=http://127.0.0.1:11435/v1" in env_file.read_text(encoding="utf-8")
-        assert "env_file=" in pointer.read_text(encoding="utf-8")
+        settings_file = Path(result.files_changed[0])
+        assert settings_file.name == "settings.json"
+        data = json.loads(settings_file.read_text(encoding="utf-8"))
+        # Claude Code appends /v1/messages itself, so the /v1 suffix is stripped.
+        assert data["env"]["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:11435"
+        assert data["env"]["ANTHROPIC_AUTH_TOKEN"] == "daari-local"
+        assert data["env"]["ANTHROPIC_MODEL"] == "daari"
+
+    def test_apply_merges_existing_settings(self, claude_recipe, claude_home, backup_root):
+        settings_file = claude_home / ".claude" / "settings.json"
+        settings_file.parent.mkdir(parents=True, exist_ok=True)
+        settings_file.write_text(
+            json.dumps({"theme": "dark", "env": {"CUSTOM": "keep-me"}}), encoding="utf-8"
+        )
+        result = claude_recipe.apply(backup_root=backup_root)
+        assert result.changed is True
+        assert result.backup_dir is not None
+        data = json.loads(settings_file.read_text(encoding="utf-8"))
+        assert data["theme"] == "dark"
+        assert data["env"]["CUSTOM"] == "keep-me"
+        assert data["env"]["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:11435"
 
     def test_apply_idempotent(self, claude_recipe, backup_root):
         claude_recipe.apply(backup_root=backup_root)
         second = claude_recipe.apply(backup_root=backup_root)
         assert second.changed is False
         assert "already configured" in second.message
+
+    def test_apply_recovers_from_corrupt_settings(self, claude_recipe, claude_home, backup_root):
+        settings_file = claude_home / ".claude" / "settings.json"
+        settings_file.parent.mkdir(parents=True, exist_ok=True)
+        settings_file.write_text("{not json", encoding="utf-8")
+        result = claude_recipe.apply(backup_root=backup_root)
+        assert result.changed is True
+        assert result.backup_dir is not None
+        data = json.loads(settings_file.read_text(encoding="utf-8"))
+        assert data["env"]["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:11435"
+
+    def test_undo_restores_previous_settings(self, claude_recipe, claude_home, backup_root):
+        settings_file = claude_home / ".claude" / "settings.json"
+        settings_file.parent.mkdir(parents=True, exist_ok=True)
+        original = json.dumps({"theme": "light"})
+        settings_file.write_text(original, encoding="utf-8")
+        claude_recipe.apply(backup_root=backup_root)
+        result = claude_recipe.undo(backup_root=backup_root)
+        assert str(settings_file) in result.files_restored
+        assert settings_file.read_text(encoding="utf-8") == original
 
 
 class TestTunnelHelpers:

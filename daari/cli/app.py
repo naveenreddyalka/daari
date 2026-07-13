@@ -771,7 +771,7 @@ def setup_claude_code(
         help="Re-apply even when already configured.",
     ),
 ) -> None:
-    """Write minimal OPENAI_* env helper files for claude-code."""
+    """One-click: merge ANTHROPIC_BASE_URL env into ~/.claude/settings.json."""
     apply_claude_code_setup(dry_run=dry_run, force=force)
 
 
