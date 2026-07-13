@@ -1,7 +1,7 @@
 # daari — Trust & Efficiency PRD
 
-> **Status:** Active — Train 1 in progress
-> **Last updated:** 2026-07-12
+> **Status:** Shipped — all five trains merged (#70, #75, #79); live E2E validated
+> **Last updated:** 2026-07-13
 > **Companion to:** [PRD v0.4](PRD.md), [intelligence PRD](intelligence.md), [learning PRD](learning.md)
 > **Tracking:** GitHub issues labeled `auto-dev`; progress in [TRACKING.md](../TRACKING.md)
 
