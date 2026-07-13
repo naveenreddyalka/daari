@@ -453,6 +453,59 @@ def serve_web_ui(
 
 
 @app.command()
+def profile(
+    show: bool = typer.Option(False, "--show", help="Print the stored profile without re-benchmarking"),
+    models: str | None = typer.Option(
+        None, help="Comma-separated models to benchmark (default: configured L3/L4/L5)"
+    ),
+) -> None:
+    """Benchmark local models on this hardware (tokens/sec, latency, load)."""
+    import asyncio as _asyncio
+
+    from daari.router.model_profile import ModelProfileStore, benchmark_models
+
+    store = ModelProfileStore()
+    if show:
+        data = store.load()
+        if not data:
+            typer.echo("No profile stored yet. Run `daari profile` to benchmark.")
+            return
+        typer.echo(f"{'model':<24} {'latency ms':>10} {'load ms':>9} {'tok/s':>7}")
+        for model in sorted(data):
+            entry = data[model]
+            tps = entry.get("tokens_per_second")
+            typer.echo(
+                f"{model:<24} {entry.get('latency_ms', 0):>10.0f} "
+                f"{entry.get('load_ms', 0):>9.0f} {tps if tps is not None else '-':>7}"
+            )
+        return
+
+    settings = get_settings()
+    if models:
+        target_models = [m.strip() for m in models.split(",") if m.strip()]
+    else:
+        target_models = list(
+            dict.fromkeys([settings.models.l3, settings.models.l4, settings.models.l5])
+        )
+    typer.echo(f"Benchmarking {len(target_models)} model(s) — one short generation each...")
+    results = _asyncio.run(
+        benchmark_models(settings.ollama.base_url.rstrip("/"), target_models)
+    )
+    if not results:
+        typer.echo("No models could be benchmarked. Is Ollama running?", err=True)
+        raise typer.Exit(code=1)
+    merged = {**store.load(), **results}
+    store.save(merged)
+    for model, entry in results.items():
+        tps = entry.get("tokens_per_second")
+        typer.echo(
+            f"{model}: {entry['latency_ms']:.0f} ms wall, "
+            f"load {entry['load_ms']:.0f} ms, {tps if tps is not None else '-'} tok/s"
+        )
+    typer.echo(f"Saved to {store.path}")
+
+
+@app.command()
 def doctor(
     tunnel: bool = typer.Option(
         False,

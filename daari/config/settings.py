@@ -89,6 +89,9 @@ class CategoryPolicy(BaseModel):
     # Per-category cache max age in seconds (e.g. shorter for doc_qa).
     # None inherits the global cache.l0/l1 ttl_seconds.
     ttl_seconds: float | None = None
+    # Per-category latency budget in ms (Trust PRD T3b). None inherits
+    # routing.latency_budget_ms.
+    latency_budget_ms: int | None = None
 
 
 class RoutingSettings(BaseModel):
@@ -98,6 +101,11 @@ class RoutingSettings(BaseModel):
     # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps
     # the weight/length heuristics unbounded. X-Daari-Tier-Cap header wins.
     max_tier_for_chat: str | None = None
+    # Global latency budget in ms enforced against `daari profile` data
+    # (Trust PRD T3b). 0 disables. X-Daari-Latency-Budget header wins.
+    latency_budget_ms: int = 0
+    # Prefer already-loaded Ollama models on weight ties (Trust PRD T3c).
+    warm_model_preference: bool = True
 
 
 class ToolsSettings(BaseModel):

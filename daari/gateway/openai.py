@@ -207,6 +207,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
+            x_daari_latency_budget: str | None = Header(default=None, alias="X-Daari-Latency-Budget"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
@@ -215,6 +216,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
+            try:
+                latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
+            except ValueError:
+                latency_budget_ms = None
             include_daari_meta = (x_daari_meta or "").strip().lower() in {"1", "true", "yes"}
             include_usage = bool(body.stream_options and body.stream_options.get("include_usage"))
             client_host = request.client.host if request.client else "unknown"
@@ -242,6 +247,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     no_cache=x_daari_no_cache == "true",
                     tier_override=x_daari_tier_override,
                     tier_cap=x_daari_tier_cap,
+                    latency_budget_ms=latency_budget_ms,
                     no_frontier=x_daari_no_frontier == "true",
                     confirm_tool=confirm_tool,
                     rerun_command=x_daari_rerun_command == "true",
