@@ -168,6 +168,9 @@ class Router:
         context_optimizer_enabled: bool = True,
         context_max_history: int = 20,
         context_squeeze_whitespace: bool = True,
+        context_compact: bool = False,
+        frontier_compress: bool = False,
+        frontier_compress_ratio: float = 0.6,
         max_tier_for_chat: str | None = None,
         frontier_daily_budget_usd: float = 0.0,
         frontier_price_per_1k_tokens: float = 0.002,
@@ -220,6 +223,11 @@ class Router:
         self.context_optimizer_enabled = context_optimizer_enabled
         self.context_max_history = context_max_history
         self.context_squeeze_whitespace = context_squeeze_whitespace
+        self.context_compact = context_compact
+        self.frontier_compress = frontier_compress
+        self.frontier_compress_ratio = frontier_compress_ratio
+        # Compaction summaries keyed by prefix hash (Trust PRD T2b).
+        self._compaction_cache: dict[str, str] = {}
         self.max_tier_for_chat = max_tier_for_chat
         self.frontier_daily_budget_usd = frontier_daily_budget_usd
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
@@ -1243,8 +1251,88 @@ class Router:
         add_step("context_optimized", chars_before=chars_before, chars_after=chars_after)
         return trimmed
 
+    _COMPACTION_PROMPT = (
+        "Summarize the following conversation history in at most 150 words. "
+        "Preserve decisions, facts, names, and code identifiers. Output only "
+        "the summary.\n\n{history}"
+    )
+    _COMPACTION_CACHE_MAX = 64
+
+    async def _compact_context(self, request: InternalRequest) -> InternalRequest:
+        """Trust PRD T2b: summarize over-limit history instead of dropping it."""
+        if (
+            not self.context_compact
+            or request.tools
+            or request.has_tool_calls_in_history
+        ):
+            return request
+        non_system = [(i, m) for i, m in enumerate(request.messages) if m.role != "system"]
+        if len(non_system) <= self.context_max_history:
+            return request
+
+        old = non_system[: -self.context_max_history]
+        old_indices = {index for index, _ in old}
+        history_text = "\n".join(
+            f"{message.role}: {message.content}" for _, message in old if message.content
+        )
+        if not history_text.strip():
+            return request
+
+        import hashlib as _hashlib
+
+        prefix_key = _hashlib.sha256(history_text.encode("utf-8")).hexdigest()
+        summary = self._compaction_cache.get(prefix_key)
+        if summary is None:
+            try:
+                summary_request = InternalRequest(
+                    messages=[
+                        Message(
+                            role="user",
+                            content=self._COMPACTION_PROMPT.format(history=history_text),
+                        )
+                    ],
+                    model=self.ollama_l3.default_model,
+                    temperature=0.0,
+                )
+                summary_response = await self.ollama_l3.execute(summary_request)
+                summary = summary_response.content.strip()
+            except Exception:
+                return request
+            if not summary:
+                return request
+            self._compaction_cache[prefix_key] = summary
+            while len(self._compaction_cache) > self._COMPACTION_CACHE_MAX:
+                self._compaction_cache.pop(next(iter(self._compaction_cache)))
+
+        chars_before = sum(len(m.content or "") for m in request.messages)
+        compacted = request.model_copy(deep=True)
+        kept: list[Message] = []
+        summary_inserted = False
+        for index, message in enumerate(compacted.messages):
+            if index in old_indices:
+                if not summary_inserted:
+                    kept.append(
+                        Message(
+                            role="system",
+                            content=f"[Earlier conversation summary] {summary}",
+                        )
+                    )
+                    summary_inserted = True
+                continue
+            kept.append(message)
+        compacted.messages = kept
+        chars_after = sum(len(m.content or "") for m in kept)
+        add_step(
+            "context_compacted",
+            turns_summarized=len(old),
+            chars_before=chars_before,
+            chars_after=chars_after,
+        )
+        return compacted
+
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
         add_step("tier_attempt", tier=tier)
+        request = await self._compact_context(request)
         request = self._optimize_context(request)
         provider = self.provider_registry.get(f"ollama:{tier.lower()}")
         if provider is not None:
@@ -1406,6 +1494,7 @@ class Router:
         add_step("escalate", to="L6", local_confidence=confidence)
         try:
             l6_request = self._slim_for_frontier(request)
+            l6_request = await self._compress_for_frontier(l6_request)
             l6_response = await self.frontier.execute(
                 l6_request,
                 escalated_from=response.daari_meta.tier,
@@ -1447,6 +1536,27 @@ class Router:
         )
         add_step("frontier_slimmed", chars_before=chars_before, chars_after=chars_after)
         return slimmed
+
+    async def _compress_for_frontier(self, request: InternalRequest) -> InternalRequest:
+        """Trust PRD T2c: relevance-prune long context before paying L6 rates."""
+        if not self.frontier_compress or request.tools or request.has_tool_calls_in_history:
+            return request
+        try:
+            from daari.router.compress import compress_messages
+
+            compressed, chars_before, chars_after = await compress_messages(
+                request.messages,
+                embedder=self.semantic_cache.embedder,
+                target_ratio=self.frontier_compress_ratio,
+            )
+        except Exception:
+            return request
+        if chars_after >= chars_before:
+            return request
+        result = request.model_copy(deep=True)
+        result.messages = compressed
+        add_step("frontier_compressed", chars_before=chars_before, chars_after=chars_after)
+        return result
 
     def _frontier_budget_exceeded(self) -> bool:
         if self.frontier_daily_budget_usd <= 0 or self.usage_ledger is None:
@@ -1778,6 +1888,7 @@ class AppContext:
             default_model=settings.frontier.model,
             api_key=settings.resolve_frontier_api_key(),
             provider=settings.frontier.provider,
+            prompt_cache=settings.frontier.prompt_cache,
         )
         shell_executor = ShellExecutor(timeout_seconds=settings.tools.timeout_seconds)
         policy = PolicyEngine(
@@ -1884,6 +1995,9 @@ class AppContext:
             context_optimizer_enabled=settings.context_optimizer.enabled,
             context_max_history=settings.context_optimizer.max_history_messages,
             context_squeeze_whitespace=settings.context_optimizer.squeeze_whitespace,
+            context_compact=settings.context_optimizer.compact,
+            frontier_compress=settings.frontier.compress_context,
+            frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
         )
         context = cls(
