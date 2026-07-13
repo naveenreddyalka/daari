@@ -64,6 +64,29 @@ def _draft_hint(draft: str, similarity: float) -> str:
     )
 
 
+def estimate_num_ctx(prompt_chars: int, *, floor: int = 4096, ceiling: int = 32768) -> int:
+    """Pick an Ollama num_ctx large enough for the prompt plus completion headroom.
+
+    Ollama's default context silently truncates big prompts (issue #88 —
+    Claude Code system prompts alone are >10k tokens), which manifests as
+    empty streams. chars/4 approximates tokens; 2048 headroom for output.
+    """
+    estimated_tokens = max(0, prompt_chars) // 4 + 2048
+    num_ctx = floor
+    while num_ctx < estimated_tokens and num_ctx < ceiling:
+        num_ctx *= 2
+    return min(num_ctx, ceiling)
+
+
+class OllamaRequestError(RuntimeError):
+    """Ollama HTTP error with the response body preserved for diagnosis."""
+
+    def __init__(self, status_code: int, url: str, body: str):
+        self.status_code = status_code
+        self.body = body[:500]
+        super().__init__(f"Ollama {status_code} at {url}: {self.body}")
+
+
 @dataclass
 class OllamaExecutor:
     base_url: str
@@ -71,19 +94,47 @@ class OllamaExecutor:
     tier: str = "L3"
     timeout: float = 120.0
 
+    def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
+        messages: list[dict[str, Any]] = []
+        for m in request.messages:
+            data = m.model_dump(exclude_none=True)
+            tool_calls = data.get("tool_calls")
+            if tool_calls:
+                # Ollama requires function.arguments as an object; OpenAI/Anthropic
+                # conversions carry JSON strings (issue #88).
+                for call in tool_calls:
+                    function = call.get("function") if isinstance(call, dict) else None
+                    if isinstance(function, dict) and isinstance(function.get("arguments"), str):
+                        try:
+                            function["arguments"] = json.loads(function["arguments"] or "{}")
+                        except json.JSONDecodeError:
+                            function["arguments"] = {}
+            elif not data.get("content"):
+                # Content-less non-tool-call messages make Ollama reject the batch.
+                continue
+            messages.append(data)
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+        }
+        prompt_chars = sum(len(m.content or "") for m in request.messages)
+        if request.tools:
+            payload["tools"] = request.tools
+            prompt_chars += len(json.dumps(request.tools))
+        payload["options"] = {"num_ctx": estimate_num_ctx(prompt_chars)}
+        return payload
+
     async def execute(self, request: InternalRequest) -> InternalResponse:
         model = request.model or self.default_model
         started = time.perf_counter()
-        payload = {
-            "model": model,
-            "messages": [m.model_dump(exclude_none=True) for m in request.messages],
-            "stream": False,
-        }
-        if request.tools:
-            payload["tools"] = request.tools
+        payload = self._payload(request, model, stream=False)
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
             response = await client.post("/api/chat", json=payload)
-            response.raise_for_status()
+            if response.status_code >= 400:
+                raise OllamaRequestError(
+                    response.status_code, str(response.request.url), response.text
+                )
             data = response.json()
         content = data.get("message", {}).get("content", "")
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -102,16 +153,14 @@ class OllamaExecutor:
 
     async def stream(self, request: InternalRequest) -> AsyncIterator[dict]:
         model = request.model or self.default_model
-        payload = {
-            "model": model,
-            "messages": [m.model_dump(exclude_none=True) for m in request.messages],
-            "stream": True,
-        }
-        if request.tools:
-            payload["tools"] = request.tools
+        payload = self._payload(request, model, stream=True)
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
             async with client.stream("POST", "/api/chat", json=payload) as response:
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    body = (await response.aread()).decode("utf-8", errors="replace")
+                    raise OllamaRequestError(
+                        response.status_code, str(response.request.url), body
+                    )
                 async for line in response.aiter_lines():
                     if not line:
                         continue
@@ -1279,7 +1328,14 @@ class Router:
 
             if not any_output and tier_index < len(tier_chain) - 1:
                 log_gateway_event(
-                    "anthropic_stream_empty_retry", {"tier": tier, "ollama_model": model_name}
+                    "anthropic_stream_empty_retry",
+                    {
+                        "tier": tier,
+                        "ollama_model": model_name,
+                        "prompt_chars": prompt_chars,
+                        "num_ctx": estimate_num_ctx(prompt_chars),
+                        "agent_flow": agent_flow,
+                    },
                 )
                 continue
 
