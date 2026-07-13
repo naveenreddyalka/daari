@@ -836,6 +836,36 @@ class TestClaudeCodeSetupApply:
         assert str(settings_file) in result.files_restored
         assert settings_file.read_text(encoding="utf-8") == original
 
+    def test_undo_without_backup_strips_daari_keys(self, claude_recipe, claude_home, backup_root):
+        """Issue #84: fresh installs (no prior settings.json) still uninstall cleanly."""
+        settings_file = claude_home / ".claude" / "settings.json"
+        claude_recipe.apply(backup_root=backup_root)
+        assert settings_file.is_file()
+        result = claude_recipe.undo(backup_root=backup_root)
+        assert result.backup_dir is None
+        assert str(settings_file) in result.files_restored
+        # The recipe created the file, so undo removes it entirely.
+        assert not settings_file.exists()
+
+    def test_undo_without_backup_keeps_user_keys(self, claude_recipe, claude_home, backup_root):
+        settings_file = claude_home / ".claude" / "settings.json"
+        claude_recipe.apply(backup_root=backup_root)
+        # Simulate the user adding their own settings after daari setup, then
+        # losing the backup directory.
+        data = json.loads(settings_file.read_text(encoding="utf-8"))
+        data["theme"] = "dark"
+        data["env"]["MY_VAR"] = "mine"
+        settings_file.write_text(json.dumps(data), encoding="utf-8")
+        import shutil as _shutil
+
+        _shutil.rmtree(backup_root, ignore_errors=True)
+        result = claude_recipe.undo(backup_root=backup_root)
+        assert result.backup_dir is None
+        remaining = json.loads(settings_file.read_text(encoding="utf-8"))
+        assert remaining["theme"] == "dark"
+        assert remaining["env"] == {"MY_VAR": "mine"}
+        assert "ANTHROPIC_BASE_URL" not in remaining.get("env", {})
+
 
 class TestTunnelHelpers:
     def test_parse_cloudflared_tunnel_url(self):
