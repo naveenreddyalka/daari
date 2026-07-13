@@ -1,10 +1,46 @@
 from __future__ import annotations
 
+import secrets
+from pathlib import Path
+
 import typer
+import yaml
 
 from daari.clients.registry import default_registry
 from daari.config.settings import Settings, get_settings
 from daari.setup.models import l4_model_present, pull_ollama_model
+
+
+def ensure_server_api_key(
+    cfg: Settings, *, config_path: Path | None = None
+) -> tuple[str, bool]:
+    """Return the gateway API key, generating and persisting one when unset.
+
+    Used by tunnel setup (issue #86): a public HTTPS endpoint must not expose
+    an unauthenticated gateway.
+    """
+    key = cfg.server.api_key.strip()
+    if key:
+        return key, False
+
+    key = secrets.token_urlsafe(24)
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    current: dict = {}
+    if path.is_file():
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if isinstance(loaded, dict):
+            current = loaded
+    server = current.setdefault("server", {})
+    if not isinstance(server, dict):
+        server = {}
+        current["server"] = server
+    server["api_key"] = key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(current, default_flow_style=False, sort_keys=False), encoding="utf-8"
+    )
+    cfg.server.api_key = key
+    return key, True
 
 
 def _print_setup_plan(plan) -> None:
@@ -43,7 +79,8 @@ def apply_setup_recipe(
         raise typer.Exit(code=1)
 
     resolved_base_url = base_url or f"http://{cfg.server.host}:{cfg.server.port}/v1"
-    plan = recipe.dry_run(base_url=resolved_base_url, api_key="daari-local", model_name="daari")
+    resolved_api_key = cfg.server.api_key.strip() or "daari-local"
+    plan = recipe.dry_run(base_url=resolved_base_url, api_key=resolved_api_key, model_name="daari")
     if not dry_run:
         plan.notes = [note for note in plan.notes if "Dry-run only" not in note]
     _print_setup_plan(plan)
@@ -54,7 +91,7 @@ def apply_setup_recipe(
 
     result = recipe.apply(
         base_url=resolved_base_url,
-        api_key="daari-local",
+        api_key=resolved_api_key,
         model_name="daari",
         force=force,
     )
@@ -107,8 +144,19 @@ def apply_cursor_setup(
     settings: Settings | None = None,
     base_url: str | None = None,
     yes: bool = False,
+    secure: bool = False,
 ) -> None:
     cfg = settings or get_settings()
+    if secure and not dry_run:
+        key, generated = ensure_server_api_key(cfg)
+        if generated:
+            typer.echo(
+                "Generated a gateway API key (server.api_key in ~/.daari/config.yaml) — "
+                "the public tunnel now requires it. Restart the daemon to enforce: "
+                "launchctl kickstart -k gui/$(id -u)/com.daari.serve"
+            )
+        else:
+            typer.echo("Gateway API key already configured — Cursor will send it.")
     apply_setup_recipe("cursor", dry_run=dry_run, force=force, settings=cfg, base_url=base_url)
     if not dry_run:
         ensure_cursor_l4_model(cfg, assume_yes=yes)

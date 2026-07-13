@@ -291,11 +291,14 @@ class TestSetupCLI:
     def test_setup_cursor_accepts_base_url(self, monkeypatch):
         captured = {}
 
-        def fake_apply_cursor_setup(*, dry_run=False, force=False, settings=None, base_url=None, yes=False):
+        def fake_apply_cursor_setup(
+            *, dry_run=False, force=False, settings=None, base_url=None, yes=False, secure=False
+        ):
             captured["dry_run"] = dry_run
             captured["force"] = force
             captured["base_url"] = base_url
             captured["yes"] = yes
+            captured["secure"] = secure
 
         monkeypatch.setattr("daari.cli.app.apply_cursor_setup", fake_apply_cursor_setup)
         runner = CliRunner()
@@ -308,6 +311,7 @@ class TestSetupCLI:
         assert captured["force"] is False
         assert captured["base_url"] == "https://demo.trycloudflare.com/v1"
         assert captured["yes"] is False
+        assert captured["secure"] is False
 
     def _l4_registry(self, recipe, monkeypatch, tmp_path, *, present):
         from daari.clients.registry import ClientRegistry

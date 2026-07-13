@@ -16,6 +16,9 @@ from daari.enterprise.config import OrgSettings
 class ServerSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 11435
+    # When set, all endpoints except health checks require this key via
+    # Authorization: Bearer or x-api-key (issue #86 — tunnel exposure).
+    api_key: str = ""
 
 
 class ModelsSettings(BaseModel):

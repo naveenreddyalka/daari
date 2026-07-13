@@ -698,7 +698,13 @@ def setup_cursor(
             resolved_base_url = _normalize_openai_base_url(tunnel_url)
             typer.echo(f"Tunnel ready: {resolved_base_url}")
 
-    apply_cursor_setup(dry_run=dry_run, force=force, base_url=resolved_base_url, yes=yes)
+    apply_cursor_setup(
+        dry_run=dry_run,
+        force=force,
+        base_url=resolved_base_url,
+        yes=yes,
+        secure=tunnel,
+    )
 
     if tunnel_process is None:
         return
