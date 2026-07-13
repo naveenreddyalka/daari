@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.request_log import log_gateway_event
 from daari.router.router import AppContext
 
 
@@ -142,6 +143,24 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             confirm_tool = confirm_value in {"1", "true", "yes"}
 
             ctx: AppContext = request.app.state.ctx
+            # Request-shape log (issue #88): mirrors chat_completions_request so
+            # live failures are diagnosable from cursor-requests.log.
+            log_gateway_event(
+                "anthropic_messages_request",
+                {
+                    "client": request.client.host if request.client else None,
+                    "user_agent": request.headers.get("user-agent"),
+                    "model": body.model,
+                    "stream": body.stream,
+                    "message_count": len(body.messages),
+                    "roles": [message.role for message in body.messages],
+                    "tools": len(body.tools or []),
+                    "system_chars": len(content_to_text(body.system) or ""),
+                    "prompt_chars": sum(
+                        len(content_to_text(message.content) or "") for message in body.messages
+                    ),
+                },
+            )
             internal_messages: list[Message] = []
             system_text = content_to_text(body.system)
             if system_text:
