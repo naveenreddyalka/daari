@@ -75,6 +75,12 @@ class FrontierSettings(BaseModel):
     # and trim history before escalating to L6 (frontier tokens cost money).
     slim_prompts: bool = True
     max_history_messages: int = 8
+    # Mark the stable system prefix for provider-side prompt caching
+    # (Anthropic cache_control; OpenAI caches automatically). Trust PRD T2a.
+    prompt_cache: bool = True
+    # Relevance-prune long context before L6 (Trust PRD T2c). Opt-in.
+    compress_context: bool = False
+    compress_target_ratio: float = 0.6
 
 
 class CategoryPolicy(BaseModel):
@@ -160,6 +166,9 @@ class ContextOptimizerSettings(BaseModel):
     enabled: bool = True
     max_history_messages: int = 20
     squeeze_whitespace: bool = True
+    # Summarize over-limit history into a pinned recap instead of dropping
+    # it (Trust PRD T2b). Opt-in.
+    compact: bool = False
 
 
 class IntegrationEndpointSettings(BaseModel):
