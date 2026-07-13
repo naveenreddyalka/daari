@@ -70,6 +70,14 @@ class FrontierSettings(BaseModel):
     # 0 = unlimited. When today's estimated spend reaches the cap, daari stops
     # escalating to L6 and serves the best local answer instead.
     daily_budget_usd: float = 0.0
+    # 0 = unlimited. Same hard-cap behavior over the calendar month (T5a).
+    monthly_budget_usd: float = 0.0
+    # Crossing this fraction of any budget still serves L6 but attaches
+    # daari_meta.warning = "frontier_budget_warning" (T5a).
+    soft_budget_ratio: float = 0.8
+    # Regex-scrub emails/phones/SSNs/cards/IPs from the outbound L6 copy
+    # only; local processing sees the original text (T5c).
+    scrub_pii: bool = False
     price_per_1k_tokens: float = 0.002
     # Strip daari-internal system hints, collapse duplicate system prompts,
     # and trim history before escalating to L6 (frontier tokens cost money).
