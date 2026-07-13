@@ -1129,10 +1129,14 @@ class Router:
         message_id = f"msg_{int(time.time() * 1000)}"
         await self._refresh_warm_models()
         tier_chain = self._stream_tier_chain(request)
+        # Agent flows (issue #84: Claude Code tool turns) keep the full tool
+        # protocol; plain chat gets sanitization + context optimization.
+        agent_flow = bool(request.tools) or request.has_tool_calls_in_history
         stream_request = request.model_copy(deep=True)
-        stream_request.tools = None
-        stream_request.messages = sanitize_messages_for_ollama(stream_request.messages)
-        stream_request = self._optimize_context(stream_request)
+        if not agent_flow:
+            stream_request.tools = None
+            stream_request.messages = sanitize_messages_for_ollama(stream_request.messages)
+            stream_request = self._optimize_context(stream_request)
         prompt_chars = sum(len(message.content or "") for message in stream_request.messages)
         input_tokens = max(1, prompt_chars // 4)
 
@@ -1151,51 +1155,111 @@ class Router:
                 "model": model_name,
                 "stream": True,
             }
-            header_events = [
-                sse(
-                    "message_start",
-                    {
-                        "type": "message_start",
-                        "message": {
-                            "id": message_id,
-                            "type": "message",
-                            "role": "assistant",
-                            "model": model_name,
-                            "content": [],
-                            "stop_reason": None,
-                            "stop_sequence": None,
-                            "usage": {"input_tokens": input_tokens, "output_tokens": 0},
-                        },
-                        "daari_meta": meta,
+            message_start = sse(
+                "message_start",
+                {
+                    "type": "message_start",
+                    "message": {
+                        "id": message_id,
+                        "type": "message",
+                        "role": "assistant",
+                        "model": model_name,
+                        "content": [],
+                        "stop_reason": None,
+                        "stop_sequence": None,
+                        "usage": {"input_tokens": input_tokens, "output_tokens": 0},
                     },
-                ),
-                sse(
+                    "daari_meta": meta,
+                },
+            )
+
+            def text_block_start(index: int) -> str:
+                return sse(
                     "content_block_start",
                     {
                         "type": "content_block_start",
-                        "index": 0,
+                        "index": index,
                         "content_block": {"type": "text", "text": ""},
                         "daari_meta": meta,
                     },
-                ),
-            ]
+                )
+
+            def block_stop(index: int) -> str:
+                return sse(
+                    "content_block_stop",
+                    {"type": "content_block_stop", "index": index, "daari_meta": meta},
+                )
+
             pending: list[str] = []
-            content_sent = False
+            any_output = False
+            text_block_open = False
+            block_index = 0
+            tool_use_sent = False
             completion_chars = 0
             try:
                 async for event in stream_executor.stream(stream_request):
-                    delta = event.get("message", {}).get("content", "")
+                    message = event.get("message", {})
+                    delta = message.get("content", "")
+                    raw_tool_calls = message.get("tool_calls")
+                    if raw_tool_calls and agent_flow:
+                        if not any_output:
+                            pending.append(message_start)
+                            any_output = True
+                        if text_block_open:
+                            pending.append(block_stop(block_index))
+                            text_block_open = False
+                            block_index += 1
+                        for call in _openai_tool_call_deltas(raw_tool_calls):
+                            pending.append(
+                                sse(
+                                    "content_block_start",
+                                    {
+                                        "type": "content_block_start",
+                                        "index": block_index,
+                                        "content_block": {
+                                            "type": "tool_use",
+                                            "id": call["id"],
+                                            "name": call["function"]["name"],
+                                            "input": {},
+                                        },
+                                        "daari_meta": meta,
+                                    },
+                                )
+                            )
+                            pending.append(
+                                sse(
+                                    "content_block_delta",
+                                    {
+                                        "type": "content_block_delta",
+                                        "index": block_index,
+                                        "delta": {
+                                            "type": "input_json_delta",
+                                            "partial_json": call["function"]["arguments"],
+                                        },
+                                        "daari_meta": meta,
+                                    },
+                                )
+                            )
+                            pending.append(block_stop(block_index))
+                            block_index += 1
+                        tool_use_sent = True
+                    elif not delta and raw_tool_calls:
+                        # Plain chat: model ignored the no-tools hint; degrade to text.
+                        delta = json.dumps(raw_tool_calls)
                     if delta:
-                        if not content_sent:
-                            pending.extend(header_events)
-                            content_sent = True
+                        if not any_output:
+                            pending.append(message_start)
+                            any_output = True
+                        if not text_block_open:
+                            pending.append(text_block_start(block_index))
+                            text_block_open = True
                         completion_chars += len(delta)
                         pending.append(
                             sse(
                                 "content_block_delta",
                                 {
                                     "type": "content_block_delta",
-                                    "index": 0,
+                                    "index": block_index,
                                     "delta": {"type": "text_delta", "text": delta},
                                     "daari_meta": meta,
                                 },
@@ -1213,25 +1277,28 @@ class Router:
                     continue
                 raise
 
-            if not content_sent and tier_index < len(tier_chain) - 1:
+            if not any_output and tier_index < len(tier_chain) - 1:
                 log_gateway_event(
                     "anthropic_stream_empty_retry", {"tier": tier, "ollama_model": model_name}
                 )
                 continue
 
-            if not content_sent:
-                pending.extend(header_events)
+            if not any_output:
+                pending.append(message_start)
+                pending.append(text_block_start(block_index))
+                text_block_open = True
             for chunk in pending:
                 yield chunk
-            yield sse(
-                "content_block_stop",
-                {"type": "content_block_stop", "index": 0, "daari_meta": meta},
-            )
+            if text_block_open:
+                yield block_stop(block_index)
             yield sse(
                 "message_delta",
                 {
                     "type": "message_delta",
-                    "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                    "delta": {
+                        "stop_reason": "tool_use" if tool_use_sent else "end_turn",
+                        "stop_sequence": None,
+                    },
                     "usage": {"output_tokens": max(0, completion_chars // 4)},
                     "daari_meta": meta,
                 },
