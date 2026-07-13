@@ -20,12 +20,84 @@ class AnthropicMessageIn(BaseModel):
     content: str | list[dict[str, Any]]
 
 
+def anthropic_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Anthropic {name, description, input_schema} -> OpenAI function-tool shape.
+
+    The Ollama executor (and frontier providers) speak the OpenAI tools format.
+    """
+    converted: list[dict[str, Any]] = []
+    for tool in tools:
+        if not isinstance(tool, dict) or not tool.get("name"):
+            continue
+        converted.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool.get("description") or "",
+                    "parameters": tool.get("input_schema") or {"type": "object", "properties": {}},
+                },
+            }
+        )
+    return converted
+
+
+def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
+    """Expand one Anthropic message into internal messages.
+
+    Assistant `tool_use` blocks become OpenAI-style tool_calls; user
+    `tool_result` blocks become role=tool messages (issue #84). Plain text
+    stays a single message.
+    """
+    if isinstance(message.content, str):
+        text = content_to_text(message.content)
+        return [Message(role=message.role, content=text)] if text else []
+
+    text_parts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+    tool_results: list[Message] = []
+    for block in message.content:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "tool_use":
+            arguments = block.get("input")
+            tool_calls.append(
+                {
+                    "id": block.get("id") or f"toolu_{uuid.uuid4().hex[:24]}",
+                    "type": "function",
+                    "function": {
+                        "name": block.get("name", ""),
+                        "arguments": json.dumps(arguments if isinstance(arguments, dict) else {}),
+                    },
+                }
+            )
+        elif block_type == "tool_result":
+            result_text = content_to_text(block.get("content")) or ""
+            tool_results.append(Message(role="tool", content=result_text))
+        else:
+            text = content_to_text([block])
+            if text:
+                text_parts.append(text)
+
+    expanded: list[Message] = []
+    joined = "\n".join(text_parts) or None
+    if tool_calls:
+        expanded.append(Message(role=message.role, content=joined, tool_calls=tool_calls))
+    elif joined:
+        expanded.append(Message(role=message.role, content=joined))
+    expanded.extend(tool_results)
+    return expanded
+
+
 class AnthropicRequest(BaseModel):
     model: str
     messages: list[AnthropicMessageIn]
     # Anthropic clients (e.g. Claude Code) send the system prompt as a
     # top-level field rather than a system-role message.
     system: str | list[dict[str, Any]] | None = None
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: dict[str, Any] | None = None
     max_tokens: int | None = None
     stream: bool = False
     temperature: float = 0.7
@@ -64,6 +136,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
+            x_daari_tools: str | None = Header(default=None, alias="X-Daari-Tools"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -73,12 +146,20 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             system_text = content_to_text(body.system)
             if system_text:
                 internal_messages.append(Message(role="system", content=system_text))
-            internal_messages.extend(
-                Message(role=message.role, content=content_to_text(message.content))
-                for message in body.messages
-            )
+            for message in body.messages:
+                internal_messages.extend(anthropic_message_to_internal(message))
+
+            # Tool passthrough (issue #84): Claude Code agent turns carry tools;
+            # X-Daari-Tools: strip forces plain-chat handling for parity with
+            # the OpenAI gateway.
+            tools_mode = (x_daari_tools or "").strip().lower()
+            internal_tools = None
+            if body.tools and tools_mode != "strip":
+                internal_tools = anthropic_tools_to_openai(body.tools) or None
+
             internal = InternalRequest(
                 messages=internal_messages,
+                tools=internal_tools,
                 model=body.model or ctx.settings.models.l3,
                 temperature=body.temperature,
                 stream=False,

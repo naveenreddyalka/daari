@@ -28,7 +28,7 @@ class ApplyResult:
 
 @dataclass
 class UndoResult:
-    backup_dir: Path
+    backup_dir: Path | None
     files_restored: list[str]
 
 
@@ -148,8 +148,38 @@ class ClaudeCodeSetupRecipe:
         )
 
     def undo(self, *, backup_root: Path | None = None) -> UndoResult:
-        result = restore_latest_backup(self.id, root=backup_root)
+        try:
+            result = restore_latest_backup(self.id, root=backup_root)
+        except FileNotFoundError:
+            # settings.json did not exist before setup, so there is no backup.
+            # One-click uninstall still works: strip the daari-managed keys.
+            return self._strip_daari_env()
         return UndoResult(backup_dir=result.backup_dir, files_restored=result.files_restored)
+
+    def _strip_daari_env(self) -> UndoResult:
+        settings_file = self._settings_file()
+        if not settings_file.is_file():
+            raise FileNotFoundError(f"No backups and no settings file to clean for {self.id}")
+        try:
+            data = json.loads(settings_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FileNotFoundError(
+                f"No backups for {self.id} and settings.json is unreadable; remove daari env keys manually."
+            ) from exc
+        env = data.get("env")
+        if not isinstance(env, dict):
+            raise FileNotFoundError(f"No backups and no daari env keys found for {self.id}")
+        for key in (_ENV_BASE_URL, _ENV_AUTH_TOKEN, _ENV_MODEL):
+            env.pop(key, None)
+        if env:
+            data["env"] = env
+        else:
+            data.pop("env", None)
+        if data:
+            settings_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        else:
+            settings_file.unlink()
+        return UndoResult(backup_dir=None, files_restored=[str(settings_file)])
 
     @staticmethod
     def _settings_file() -> Path:

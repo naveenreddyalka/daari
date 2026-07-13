@@ -1108,8 +1108,8 @@ async def test_anthropic_stream_falls_back_l4_to_l3(app, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_anthropic_stream_sanitizes_tool_history(app, monkeypatch):
-    """Issue #5: tool-call history must be sanitized before hitting Ollama."""
+async def test_anthropic_stream_passes_tool_history_through(app, monkeypatch):
+    """ADR-0004 / issue #84: tool history marks an agent loop — protocol preserved."""
     seen: dict = {}
 
     async def fake_stream(request: InternalRequest):
@@ -1128,15 +1128,38 @@ async def test_anthropic_stream_sanitizes_tool_history(app, monkeypatch):
                 content=None,
                 tool_calls=[{"id": "c1", "type": "function", "function": {"name": "f", "arguments": "{}"}}],
             ),
-            Message(role="tool", content="result", tool_call_id="c1"),
+            Message(role="tool", content="result"),
             Message(role="user", content="continue please"),
         ],
     )
     chunks = [chunk async for chunk in router.stream_anthropic_events(request)]
 
     assert any("clean" in chunk for chunk in chunks)
+    assert any(message.get("tool_calls") for message in seen["messages"])
+    assert any(message.get("role") == "tool" for message in seen["messages"])
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_sanitizes_plain_chat(app, monkeypatch):
+    """Plain chat (no tools, no tool history) still gets sanitized messages."""
+    seen: dict = {}
+
+    async def fake_stream(request: InternalRequest):
+        seen["messages"] = [message.model_dump() for message in request.messages]
+        yield {"message": {"content": "plain"}}
+        yield {"done": True}
+
+    router = app.state.ctx.router
+    monkeypatch.setattr(router.ollama, "stream", fake_stream)
+
+    request = InternalRequest(
+        model="llama3.2:3b",
+        messages=[Message(role="user", content="hello there")],
+    )
+    chunks = [chunk async for chunk in router.stream_anthropic_events(request)]
+
+    assert any("plain" in chunk for chunk in chunks)
     assert all(not message.get("tool_calls") for message in seen["messages"])
-    assert all(message.get("role") != "tool" for message in seen["messages"])
 
 
 @pytest.mark.asyncio

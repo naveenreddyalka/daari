@@ -624,7 +624,10 @@ def setup_main(
         except FileNotFoundError as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1) from exc
-        typer.echo(f"Restored backup from {result.backup_dir}")
+        if getattr(result, "backup_dir", None) is None:
+            typer.echo("No backup existed — removed daari-managed settings instead.")
+        else:
+            typer.echo(f"Restored backup from {result.backup_dir}")
         for path in result.files_restored:
             typer.echo(f"  - {path}")
         raise typer.Exit()
