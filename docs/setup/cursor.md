@@ -44,6 +44,30 @@ daari setup cursor --tunnel
 
 If `DAARI_TUNNEL_URL` is set, it is used directly.
 
+## Securing the tunnel (issue #86)
+
+A public tunnel means anyone with the URL could reach the gateway. Mitigations:
+
+- `daari setup cursor --tunnel` now auto-generates `server.api_key` in
+  `~/.daari/config.yaml` (when unset) and configures Cursor to send it.
+  With the key set, all endpoints except `/health` return 401 without a
+  matching `Authorization: Bearer` or `x-api-key` header. Restart the daemon
+  after the key is first generated:
+  `launchctl kickstart -k gui/$(id -u)/com.daari.serve`.
+- Quick tunnels get a fresh random URL each start, which limits exposure but
+  breaks Cursor config on every restart. For a stable, lower-profile setup use
+  a **named Cloudflare tunnel** on your own domain (free; requires a Cloudflare
+  account) — the URL never changes and you can add Cloudflare Access policies
+  in front.
+- Alternatives in the same category: ngrok (ephemeral free URLs) or Tailscale
+  Funnel (stable URL tied to your tailnet identity). All of them are public
+  HTTPS endpoints — the API key is what actually gates access.
+
+Note: the tunnel requirement is Cursor's architecture, not daari's. Cursor
+builds prompts on its servers and SSRF-blocks private IPs, so no BYOK setup
+can call localhost directly. Claude Code, IntelliJ, VS Code, and the browser
+extension all talk to `http://127.0.0.1:11435` with no tunnel.
+
 ## Alternatives for true-local E2E (no public tunnel)
 
 - Browser extension: `packages/browser-extension/` (direct localhost usage)
