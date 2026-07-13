@@ -70,6 +70,14 @@ class FrontierSettings(BaseModel):
     # 0 = unlimited. When today's estimated spend reaches the cap, daari stops
     # escalating to L6 and serves the best local answer instead.
     daily_budget_usd: float = 0.0
+    # 0 = unlimited. Same hard-cap behavior over the calendar month (T5a).
+    monthly_budget_usd: float = 0.0
+    # Crossing this fraction of any budget still serves L6 but attaches
+    # daari_meta.warning = "frontier_budget_warning" (T5a).
+    soft_budget_ratio: float = 0.8
+    # Regex-scrub emails/phones/SSNs/cards/IPs from the outbound L6 copy
+    # only; local processing sees the original text (T5c).
+    scrub_pii: bool = False
     price_per_1k_tokens: float = 0.002
     # Strip daari-internal system hints, collapse duplicate system prompts,
     # and trim history before escalating to L6 (frontier tokens cost money).
@@ -89,6 +97,9 @@ class CategoryPolicy(BaseModel):
     # Per-category cache max age in seconds (e.g. shorter for doc_qa).
     # None inherits the global cache.l0/l1 ttl_seconds.
     ttl_seconds: float | None = None
+    # Per-category latency budget in ms (Trust PRD T3b). None inherits
+    # routing.latency_budget_ms.
+    latency_budget_ms: int | None = None
 
 
 class RoutingSettings(BaseModel):
@@ -98,6 +109,14 @@ class RoutingSettings(BaseModel):
     # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps
     # the weight/length heuristics unbounded. X-Daari-Tier-Cap header wins.
     max_tier_for_chat: str | None = None
+    # Global latency budget in ms enforced against `daari profile` data
+    # (Trust PRD T3b). 0 disables. X-Daari-Latency-Budget header wins.
+    latency_budget_ms: int = 0
+    # Prefer already-loaded Ollama models on weight ties (Trust PRD T3c).
+    warm_model_preference: bool = True
+    # Use the trained personal classifier (`daari learn train-router`) to
+    # override heuristic categorization when confident (Trust PRD Train 4).
+    learned_router: bool = False
 
 
 class ToolsSettings(BaseModel):
@@ -160,6 +179,9 @@ class LearningSettings(BaseModel):
     capture_examples: bool = False
     examples_path: str = "~/.daari/training/examples.sqlite3"
     examples_max_rows: int = 5000
+    # Learned router (Trust PRD Train 4): never predict from fewer samples.
+    router_min_samples: int = 200
+    router_model_path: str = "~/.daari/learning/router-model.json"
 
 
 class ContextOptimizerSettings(BaseModel):
