@@ -371,7 +371,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 "daily_budget_usd": ctx.settings.frontier.daily_budget_usd,
             }
+            # Trust PRD T1d: false-hit rates + answer diversity per category.
+            trust: dict[str, Any] = {}
+            feedback = ctx.router.feedback_store
+            if feedback is not None:
+                try:
+                    trust["false_hit_rates"] = feedback.shadow_stats(days=max(1, days))
+                except Exception:
+                    trust["false_hit_rates"] = {}
+            try:
+                trust["diversity"] = ctx.router.semantic_cache.diversity_stats()
+            except Exception:
+                trust["diversity"] = {}
+            payload["cache_trust"] = trust
             return payload
+
+        @router.get("/v1/daari/cache/diversity")
+        async def daari_cache_diversity(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            try:
+                categories = ctx.router.semantic_cache.diversity_stats()
+            except Exception:
+                categories = {}
+            return {"categories": categories}
 
         @router.get("/v1/daari/learn/stats")
         async def daari_learn_stats(request: Request, days: int = 7) -> dict[str, Any]:
@@ -379,7 +401,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             store = ctx.router.feedback_store
             if store is None:
                 raise HTTPException(status_code=404, detail="feedback store is not configured")
-            return {"days": max(1, days), "categories": store.stats(days=max(1, days))}
+            try:
+                shadow = store.shadow_stats(days=max(1, days))
+            except Exception:
+                shadow = {}
+            return {
+                "days": max(1, days),
+                "categories": store.stats(days=max(1, days)),
+                "shadow": shadow,
+            }
 
         @router.post("/v1/daari/feedback")
         async def daari_feedback(request: Request, body: FeedbackBody) -> dict[str, Any]:

@@ -9,6 +9,7 @@ from typing import Any, Protocol
 import httpx
 
 from daari.cache.exact import tools_schema_hash
+from daari.cache.normalize import normalize_for_embedding
 from daari.gateway.internal import InternalRequest, InternalResponse
 
 
@@ -114,15 +115,25 @@ class SemanticCache:
         max_entries: int = 1000,
         ttl_seconds: float = 0.0,
         clock: Any = None,
+        normalize_inputs: bool = True,
     ) -> None:
         self.enabled = enabled
         self.embedder = embedder
         self.similarity_threshold = similarity_threshold
         self.max_entries = max_entries
         self.ttl_seconds = ttl_seconds
+        self.normalize_inputs = normalize_inputs
         self._clock = clock or time.time
         self._path = path
         self._cache: Any = None
+
+    def _embed_text(self, request: InternalRequest) -> str:
+        text = extract_embed_text(request)
+        if self.normalize_inputs:
+            normalized = normalize_for_embedding(text)
+            # Never normalize down to nothing — fall back to the raw text.
+            return normalized or text
+        return text
 
     def _store(self) -> Any:
         if self._cache is None:
@@ -154,7 +165,7 @@ class SemanticCache:
         if not self.enabled:
             return None, 0.0
 
-        text = extract_embed_text(request)
+        text = self._embed_text(request)
         if not text.strip():
             return None, 0.0
 
@@ -206,13 +217,21 @@ class SemanticCache:
         if not self.enabled:
             return
 
-        text = extract_embed_text(request)
+        text = self._embed_text(request)
         if not text.strip():
             return
 
         embedding = await self.embedder.embed(text)
         if embedding is None:
             return
+
+        # Lazy import avoids a load-time cycle (router imports this module).
+        try:
+            from daari.router.profile import build_prompt_profile
+
+            category = build_prompt_profile(request).category
+        except Exception:
+            category = "unknown"
 
         entries = self._load_entries()
         entries.append(
@@ -221,8 +240,33 @@ class SemanticCache:
                 "embedding": embedding,
                 "response_json": response.model_dump_json(),
                 "created_at": self._clock(),
+                "category": category,
+                "answer_hash": hashlib.sha256(
+                    (response.content or "").encode("utf-8")
+                ).hexdigest(),
             }
         )
         if len(entries) > self.max_entries:
             entries = entries[-self.max_entries :]
         self._save_entries(entries)
+
+    def diversity_stats(self) -> dict[str, dict[str, Any]]:
+        """Unique-answer ratio per category (Trust PRD T1b).
+
+        A category serving one unique answer across many distinct prompts is
+        the canonical broken-cache signal.
+        """
+        grouped: dict[str, dict[str, Any]] = {}
+        for entry in self._load_entries():
+            category = entry.get("category") or "unknown"
+            bucket = grouped.setdefault(category, {"entries": 0, "hashes": set()})
+            bucket["entries"] += 1
+            bucket["hashes"].add(entry.get("answer_hash") or entry.get("response_json"))
+        return {
+            category: {
+                "entries": bucket["entries"],
+                "unique_answers": len(bucket["hashes"]),
+                "ratio": round(len(bucket["hashes"]) / bucket["entries"], 4),
+            }
+            for category, bucket in grouped.items()
+        }
