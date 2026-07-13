@@ -64,8 +64,8 @@ class ClaudeCodeSetupRecipe:
             "This recipe merges an `env` block into ~/.claude/settings.json "
             "(ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN). Claude Code picks it up "
             "on next launch — no manual sourcing needed.",
-            "Note: only plain chat routes through daari today; Claude Code tool/agent "
-            "turns need Anthropic tool passthrough (tracked separately).",
+            "Chat and agent/tool turns both route through daari (issue #84); local "
+            "models are weaker than Claude at complex multi-step agent work.",
         ]
         action = "would_patch" if settings_file.exists() else "would_create"
         changes = [
