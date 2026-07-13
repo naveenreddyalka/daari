@@ -162,6 +162,7 @@ class Router:
         shadow_rng: Any | None = None,
         model_profile_store: Any | None = None,
         warm_tracker: Any | None = None,
+        learned_router: Any | None = None,
         *,
         l1_shadow_sample_rate: float = 0.0,
         latency_budget_ms: int = 0,
@@ -220,6 +221,7 @@ class Router:
         self.example_store = example_store
         self.model_profile_store = model_profile_store
         self.warm_tracker = warm_tracker
+        self.learned_router = learned_router
         self.latency_budget_ms = latency_budget_ms
         self._warm_models: set[str] = set()
         self.l1_shadow_sample_rate = max(0.0, min(1.0, l1_shadow_sample_rate))
@@ -254,6 +256,7 @@ class Router:
             complexity=profile.complexity,
             prompt_tokens_est=profile.prompt_tokens_est,
         )
+        profile = await self._apply_learned_route(request, profile)
         try:
             response = await self._route_impl(request, profile)
         except Exception:
@@ -371,6 +374,35 @@ class Router:
     _SHADOW_FALSE_HIT_LIMIT = 0.10
     _L1_THRESHOLD_STEP = 0.02
     _SHADOW_STATS_TTL = 60.0
+
+    async def _apply_learned_route(
+        self, request: InternalRequest, profile: PromptProfile
+    ) -> PromptProfile:
+        """Trust PRD Train 4: confident learned category beats the heuristic."""
+        if self.learned_router is None:
+            return profile
+        try:
+            if not self.learned_router.available:
+                return profile
+            text = self._last_user_text(request.messages)
+            if not text.strip():
+                return profile
+            embedding = await self.semantic_cache.embedder.embed(text)
+            if embedding is None:
+                return profile
+            prediction = self.learned_router.predict(embedding)
+        except Exception:
+            return profile
+        if prediction is None or prediction[0] == profile.category:
+            return profile
+        category, confidence = prediction
+        add_step(
+            "learned_route",
+            category=category,
+            confidence=confidence,
+            heuristic=profile.category,
+        )
+        return profile.model_copy(update={"category": category})
 
     async def _refresh_warm_models(self) -> None:
         """Trust PRD T3c: keep the /api/ps warm set fresh (TTL-cached)."""
@@ -682,7 +714,7 @@ class Router:
             add_step("draft_injected", similarity=round(draft_similarity, 4))
 
         await self._refresh_warm_models()
-        initial_tier = self._choose_initial_tier(request)
+        initial_tier = self._choose_initial_tier(request, profile)
         try:
             response = await self._run_model_tier(initial_tier, gen_request)
         except Exception:
@@ -769,6 +801,7 @@ class Router:
             prompt_tokens_est=profile.prompt_tokens_est,
             stream=True,
         )
+        profile = await self._apply_learned_route(request, profile)
 
         def finish_trace(tier: str | None) -> None:
             if trace is not None:
@@ -776,7 +809,7 @@ class Router:
             end_trace()
 
         await self._refresh_warm_models()
-        tier_chain = self._stream_tier_chain(request)
+        tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (tools passed through by the gateway, or tool history)
         # keep the full tool protocol; Ask flows get plain-text sanitization.
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
@@ -1058,8 +1091,10 @@ class Router:
         if last_error is not None:
             raise last_error
 
-    def _stream_tier_chain(self, request: InternalRequest) -> list[str]:
-        initial = self._choose_initial_tier(request)
+    def _stream_tier_chain(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> list[str]:
+        initial = self._choose_initial_tier(request, profile)
         chain = [initial]
         if initial == "L5":
             chain.extend(["L4", "L3"])
@@ -1395,13 +1430,15 @@ class Router:
             return cap
         return tier
 
-    def _choose_initial_tier(self, request: InternalRequest) -> str:
+    def _choose_initial_tier(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> str:
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             return override
-        tier = self._choose_uncapped_tier(request)
+        tier = self._choose_uncapped_tier(request, profile)
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
-        return self._apply_latency_budget(tier, request)
+        return self._apply_latency_budget(tier, request, profile)
 
     @staticmethod
     def _policy_attr(policy: Any, name: str) -> Any:
@@ -1411,12 +1448,14 @@ class Router:
             return policy.get(name)
         return getattr(policy, name, None)
 
-    def _effective_latency_budget(self, request: InternalRequest) -> int:
+    def _effective_latency_budget(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> int:
         """Header > category policy > global setting. 0 disables."""
         header_budget = request.meta.latency_budget_ms
         if isinstance(header_budget, int) and header_budget > 0:
             return header_budget
-        policy = self._policy_for(build_prompt_profile(request))
+        policy = self._policy_for(profile or build_prompt_profile(request))
         policy_budget = self._policy_attr(policy, "latency_budget_ms")
         if isinstance(policy_budget, (int, float)) and policy_budget > 0:
             return int(policy_budget)
@@ -1424,12 +1463,14 @@ class Router:
 
     _TIER_SPEED_ORDER = ["L3", "L4", "L5"]  # fastest first
 
-    def _apply_latency_budget(self, tier: str, request: InternalRequest) -> str:
+    def _apply_latency_budget(
+        self, tier: str, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> str:
         """Trust PRD T3b: step down to a faster tier when the profiled model
         would blow the latency budget."""
         if self.model_profile_store is None:
             return tier
-        budget = self._effective_latency_budget(request)
+        budget = self._effective_latency_budget(request, profile)
         if budget <= 0:
             return tier
         try:
@@ -1457,8 +1498,10 @@ class Router:
                 return faster
         return tier
 
-    def _choose_uncapped_tier(self, request: InternalRequest) -> str:
-        policy = self._policy_for(build_prompt_profile(request))
+    def _choose_uncapped_tier(
+        self, request: InternalRequest, profile: PromptProfile | None = None
+    ) -> str:
+        policy = self._policy_for(profile or build_prompt_profile(request))
         policy_tier = getattr(policy, "tier", None) if policy is not None else None
         if policy_tier in {"L3", "L4", "L5"}:
             return policy_tier
@@ -2050,6 +2093,14 @@ class AppContext:
             if settings.routing.warm_model_preference
             else None
         )
+        learned_router = None
+        if settings.routing.learned_router:
+            from daari.learning.router_model import LearnedRouter
+
+            learned_router = LearnedRouter(
+                settings.learning.router_model_path,
+                min_samples=settings.learning.router_min_samples,
+            )
         tuner = None
         if settings.learning.auto_tune and settings.learning.enabled:
             from daari.learning.tuner import RoutingTuner
@@ -2091,6 +2142,7 @@ class AppContext:
             l1_shadow_sample_rate=settings.cache.l1.shadow_sample_rate,
             model_profile_store=model_profile_store,
             warm_tracker=warm_tracker,
+            learned_router=learned_router,
             latency_budget_ms=settings.routing.latency_budget_ms,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,

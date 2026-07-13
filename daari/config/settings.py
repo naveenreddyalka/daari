@@ -106,6 +106,9 @@ class RoutingSettings(BaseModel):
     latency_budget_ms: int = 0
     # Prefer already-loaded Ollama models on weight ties (Trust PRD T3c).
     warm_model_preference: bool = True
+    # Use the trained personal classifier (`daari learn train-router`) to
+    # override heuristic categorization when confident (Trust PRD Train 4).
+    learned_router: bool = False
 
 
 class ToolsSettings(BaseModel):
@@ -168,6 +171,9 @@ class LearningSettings(BaseModel):
     capture_examples: bool = False
     examples_path: str = "~/.daari/training/examples.sqlite3"
     examples_max_rows: int = 5000
+    # Learned router (Trust PRD Train 4): never predict from fewer samples.
+    router_min_samples: int = 200
+    router_model_path: str = "~/.daari/learning/router-model.json"
 
 
 class ContextOptimizerSettings(BaseModel):
