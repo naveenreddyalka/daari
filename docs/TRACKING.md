@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-06-23  
+> Last updated: 2026-07-13  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -368,6 +368,33 @@ suite now at 359 pytest tests (329 → 359). Actual training runs are
 user-invoked (`daari learn finetune`, needs `pip install mlx-lm`); serving
 MLX adapters through Ollama (fuse/convert to GGUF) is the documented manual
 follow-up. Remaining Phase D scope: D3 opt-in collective stats.
+
+### Trust & Efficiency trains (2026-07-12/13, PRD [docs/prd/trust.md](prd/trust.md))
+
+Competitive research (Portkey/LiteLLM/OpenRouter/Requesty/RouteLLM, semantic-
+cache postmortems, local-first routers) distilled into five trains. Headline:
+daari now **measures semantic-cache false-hit rate** — the metric none of the
+compared products ship. PRD merged as [#68](https://github.com/naveenreddyalka/daari/pull/68).
+
+| Issue | Train | PR | Merge |
+|-------|-------|----|-------|
+| [#69](https://github.com/naveenreddyalka/daari/issues/69) | **Cache trust**: embedding-input normalization (fences/JSON scaffolding stripped, `cache.l1.normalize_inputs`); per-category answer-diversity monitor (`/v1/daari/cache/diversity` + doctor warning); shadow sampling of L1 hits (`cache.l1.shadow_sample_rate`, default 5%) → per-category false-hit rate that auto-raises the L1 threshold; report/`learn stats`/dashboard panels | [#70](https://github.com/naveenreddyalka/daari/pull/70) | `7721b25` |
+| [#71](https://github.com/naveenreddyalka/daari/issues/71) | **Token savings**: Anthropic `cache_control` prompt-cache hint on L6 with byte-stable prefix pinned by test; `context_optimizer.compact` — over-limit history summarized by L3 into a pinned recap (memoized per prefix); `frontier.compress_context` — sentence-level relevance pruning before L6 | [#75](https://github.com/naveenreddyalka/daari/pull/75) | `da4fabf` |
+| [#72](https://github.com/naveenreddyalka/daari/issues/72) | **Latency-aware routing**: `daari profile` hardware benchmarks; `routing.latency_budget_ms` + category override + `X-Daari-Latency-Budget` with profiled step-down; warm-model preference via TTL-cached `/api/ps` | [#79](https://github.com/naveenreddyalka/daari/pull/79) | `4c365d9` |
+| [#73](https://github.com/naveenreddyalka/daari/issues/73) | **Learned routing**: `daari learn train-router` centroid classifier over captured prompts; `routing.learned_router` overrides heuristics when confident (200-sample floor + margin gate); trace `learned_route` | [#79](https://github.com/naveenreddyalka/daari/pull/79) | `4c365d9` |
+| [#74](https://github.com/naveenreddyalka/daari/issues/74) | **Budget & client UX**: monthly + soft budgets (`frontier_budget_warning` band before hard cap); per-client ledger attribution (`X-Daari-Client-Id`, Cursor auto-tagged) + `daari report --by-client`; opt-in pre-L6 PII scrub with typed placeholders | [#79](https://github.com/naveenreddyalka/daari/pull/79) | `4c365d9` |
+
+Trains 3–5 were consolidated into [#79](https://github.com/naveenreddyalka/daari/pull/79)
+after the stacked branches went stale post-squash (#76–#78 closed as superseded).
+Live E2E validated 2026-07-13 on an isolated temp instance (port 11438, live
+Ollama, throwaway stores): paraphrase served from L1 with normalization on,
+shadow check ran in background (answer similarity 0.984 → agreed, false-hit
+rate 0.0 in `learn stats`/report/diversity endpoints), per-client attribution
+(`e2e-test`) and budget state in the report, and `benchmark_model` + warm
+tracker measured the live 3B model (349 ms wall, 115 tok/s, warm set
+detected). Default suite 430 pytest tests (359 → 430); web-ui at 9 DOM tests.
+All new behaviors default-safe: normalization + shadow sampling on (read-only
+additions), compaction/compression/learned-router/PII-scrub opt-in.
 
 ---
 
