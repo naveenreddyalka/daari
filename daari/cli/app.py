@@ -993,6 +993,45 @@ def learn_export_dataset(
     typer.echo(f"Wrote {counts['train']} train / {counts['valid']} valid examples to {out}")
 
 
+@learn_app.command("train-router")
+def learn_train_router(
+    min_samples: int = typer.Option(
+        None, help="Minimum labeled examples required (default: learning.router_min_samples)"
+    ),
+    out: str | None = typer.Option(None, "--out", help="Model output path"),
+) -> None:
+    """Train the personal routing classifier from captured examples."""
+    import asyncio as _asyncio
+
+    from daari.cache.semantic import OllamaEmbedder
+    from daari.learning.router_model import RouterTrainingError, train_router
+
+    settings = get_settings()
+    store = _example_store()
+    embedder = OllamaEmbedder(
+        base_url=settings.ollama.base_url.rstrip("/"),
+        model=settings.cache.l1.embedding_model,
+        cache_size=settings.cache.l1.embed_cache_size,
+    )
+    floor = min_samples if min_samples is not None else settings.learning.router_min_samples
+    out_path = out or settings.learning.router_model_path
+    try:
+        result = _asyncio.run(
+            train_router(store, embedder, out_path=out_path, min_samples=floor)
+        )
+    except RouterTrainingError as exc:
+        typer.echo(f"Cannot train: {exc}", err=True)
+        typer.echo(
+            "Enable learning.capture_examples and route more requests first.", err=True
+        )
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Trained on {result['samples']} examples:")
+    for category, count in sorted(result["categories"].items()):
+        typer.echo(f"  {category:<14} {count}")
+    typer.echo(f"Saved to {result['path']}")
+    typer.echo("Enable with routing.learned_router: true in settings.")
+
+
 @learn_app.command("finetune")
 def learn_finetune(
     model: str | None = typer.Option(None, help="MLX model to fine-tune"),
