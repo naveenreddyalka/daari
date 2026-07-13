@@ -29,6 +29,13 @@ CREATE TABLE IF NOT EXISTS outcomes (
     signal TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_outcomes_trace ON outcomes(trace_id);
+CREATE TABLE IF NOT EXISTS shadow_checks (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    category TEXT,
+    similarity REAL,
+    agreed INTEGER NOT NULL
+);
 """
 
 
@@ -134,6 +141,50 @@ class FeedbackStore:
             }
             stats.setdefault(category or "unknown", {})[tier] = entry
         return stats
+
+    def record_shadow(self, *, category: str | None, similarity: float, agreed: bool) -> None:
+        """Trust PRD T1c: outcome of comparing an L1 hit with a fresh answer."""
+        if not self.enabled:
+            return
+        try:
+            with self._lock, self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO shadow_checks (ts, category, similarity, agreed)"
+                    " VALUES (?, ?, ?, ?)",
+                    (
+                        datetime.now(timezone.utc).isoformat(),
+                        category,
+                        float(similarity),
+                        1 if agreed else 0,
+                    ),
+                )
+        except Exception:
+            pass
+
+    def shadow_stats(self, days: int = 7) -> dict[str, dict[str, Any]]:
+        """Per-category false-hit rate from shadow sampling."""
+        if not self.enabled:
+            return {}
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days))).isoformat()
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT category, COUNT(*),"
+                    " SUM(CASE WHEN agreed = 0 THEN 1 ELSE 0 END), AVG(similarity)"
+                    " FROM shadow_checks WHERE ts >= ? GROUP BY category",
+                    (cutoff,),
+                ).fetchall()
+        except Exception:
+            return {}
+        return {
+            (category or "unknown"): {
+                "samples": samples,
+                "disagreements": disagreements or 0,
+                "false_hit_rate": round((disagreements or 0) / samples, 4) if samples else 0.0,
+                "avg_answer_similarity": round(avg_sim, 4) if avg_sim is not None else None,
+            }
+            for category, samples, disagreements, avg_sim in rows
+        }
 
     def outcomes(self, limit: int = 50) -> list[dict[str, Any]]:
         if not self.enabled:

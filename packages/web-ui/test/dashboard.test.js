@@ -36,6 +36,15 @@ const REPORT = {
     frontier_requests: 2,
     estimated_saved_usd: 0.0123,
   },
+  cache_trust: {
+    false_hit_rates: {
+      doc_qa: { samples: 20, disagreements: 3, false_hit_rate: 0.15, avg_answer_similarity: 0.7 },
+    },
+    diversity: {
+      doc_qa: { entries: 12, unique_answers: 4, ratio: 0.3333 },
+      code_gen: { entries: 5, unique_answers: 5, ratio: 1.0 },
+    },
+  },
 };
 
 const TRACES = {
@@ -78,6 +87,35 @@ test("report totals and daily table render", async (t) => {
   assert.equal(rows.length, 2);
   assert.match(rows[0].textContent, /2026-07-11/, "most recent day listed first");
   assert.match(rows[0].textContent, /L0:6/);
+});
+
+test("cache trust panel shows false-hit rate and diversity per category", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const rows = [...doc.querySelectorAll("#cache-trust-table tr")];
+  assert.equal(rows.length, 2);
+  const docQa = rows.find((row) => row.textContent.includes("doc_qa"));
+  assert.match(docQa.textContent, /15\.0%/, "false-hit rate rendered");
+  assert.match(docQa.textContent, /4\/12/, "diversity ratio rendered");
+  const codeGen = rows.find((row) => row.textContent.includes("code_gen"));
+  assert.match(codeGen.textContent, /5\/5/, "diversity without shadow samples still renders");
+});
+
+test("cache trust panel shows placeholder without data", async (t) => {
+  const fetch = fakeFetch(
+    routes({ "/v1/daari/report": { ...REPORT, cache_trust: { false_hit_rates: {}, diversity: {} } } })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const rows = doc.querySelectorAll("#cache-trust-table tr");
+  assert.match(rows[0].textContent, /No shadow samples yet/);
 });
 
 test("recent traces list renders and detail opens on click", async (t) => {

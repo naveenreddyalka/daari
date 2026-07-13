@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import random
 import re
 import time
 import uuid
@@ -14,7 +15,7 @@ import httpx
 
 from daari.cache.command_context import CommandContextStore
 from daari.cache.exact import ExactCache
-from daari.cache.semantic import OllamaEmbedder, SemanticCache
+from daari.cache.semantic import OllamaEmbedder, SemanticCache, cosine_similarity
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
@@ -158,7 +159,9 @@ class Router:
         feedback_store: Any | None = None,
         tuner: Any | None = None,
         example_store: Any | None = None,
+        shadow_rng: Any | None = None,
         *,
+        l1_shadow_sample_rate: float = 0.0,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
         l1_draft_threshold: float = 0.75,
@@ -209,6 +212,10 @@ class Router:
         self.feedback_store = feedback_store
         self.tuner = tuner
         self.example_store = example_store
+        self.l1_shadow_sample_rate = max(0.0, min(1.0, l1_shadow_sample_rate))
+        self._shadow_rng = shadow_rng or random.random
+        self._shadow_tasks: set[Any] = set()
+        self._shadow_stats_cache: tuple[float, dict[str, Any]] | None = None
         self.l1_draft_threshold = l1_draft_threshold
         self.context_optimizer_enabled = context_optimizer_enabled
         self.context_max_history = context_max_history
@@ -343,6 +350,93 @@ class Router:
         except Exception:
             pass
 
+    # Trust PRD T1c: shadow-check tuning knobs.
+    _SHADOW_AGREE_SIMILARITY = 0.80
+    _SHADOW_MIN_SAMPLES = 20
+    _SHADOW_FALSE_HIT_LIMIT = 0.10
+    _L1_THRESHOLD_STEP = 0.02
+    _SHADOW_STATS_TTL = 60.0
+
+    def _shadow_stats(self) -> dict[str, Any]:
+        if self.feedback_store is None:
+            return {}
+        now = time.monotonic()
+        if (
+            self._shadow_stats_cache is not None
+            and now - self._shadow_stats_cache[0] < self._SHADOW_STATS_TTL
+        ):
+            return self._shadow_stats_cache[1]
+        try:
+            stats = self.feedback_store.shadow_stats(days=7)
+        except Exception:
+            stats = {}
+        self._shadow_stats_cache = (now, stats)
+        return stats
+
+    def _l1_threshold_for_category(self, category: str | None) -> float:
+        """Raise the L1 similarity bar for categories with measured false hits."""
+        base = self.semantic_cache.similarity_threshold
+        if category is None:
+            return base
+        stats = self._shadow_stats().get(category)
+        if not stats or stats.get("samples", 0) < self._SHADOW_MIN_SAMPLES:
+            return base
+        if stats.get("false_hit_rate", 0.0) > self._SHADOW_FALSE_HIT_LIMIT:
+            tuned = min(0.99, base + self._L1_THRESHOLD_STEP)
+            add_step("l1_threshold", category=category, base=base, tuned=tuned)
+            return tuned
+        return base
+
+    def _maybe_shadow_check(
+        self,
+        request: InternalRequest,
+        cached_content: str,
+        profile: PromptProfile | None,
+    ) -> None:
+        """Sample L1 hits for background verification — never blocks serving."""
+        if (
+            self.feedback_store is None
+            or self.l1_shadow_sample_rate <= 0.0
+            or not cached_content.strip()
+            or self._shadow_rng() >= self.l1_shadow_sample_rate
+        ):
+            return
+        category = (
+            profile.category
+            if profile is not None
+            else build_prompt_profile(request).category
+        )
+        try:
+            task = asyncio.create_task(
+                self._shadow_check(request, cached_content, category)
+            )
+        except RuntimeError:
+            return
+        self._shadow_tasks.add(task)
+        task.add_done_callback(self._shadow_tasks.discard)
+
+    async def _shadow_check(
+        self, request: InternalRequest, cached_content: str, category: str
+    ) -> None:
+        try:
+            fresh = await self.ollama_l3.execute(request.model_copy(deep=True))
+            if not fresh.content.strip():
+                return
+            embedder = self.semantic_cache.embedder
+            cached_vec = await embedder.embed(cached_content)
+            fresh_vec = await embedder.embed(fresh.content)
+            if cached_vec is None or fresh_vec is None:
+                return
+            similarity = cosine_similarity(cached_vec, fresh_vec)
+            self.feedback_store.record_shadow(
+                category=category,
+                similarity=similarity,
+                agreed=similarity >= self._SHADOW_AGREE_SIMILARITY,
+            )
+            self._shadow_stats_cache = None
+        except Exception:
+            pass
+
     async def _route_impl(
         self, request: InternalRequest, profile: PromptProfile | None = None
     ) -> InternalResponse:
@@ -405,10 +499,12 @@ class Router:
                 )
             except Exception:
                 nearest_response, nearest_similarity = None, 0.0
+            l1_threshold = self._l1_threshold_for_category(
+                profile.category if profile is not None else None
+            )
             semantic_hit = (
                 nearest_response
-                if nearest_response is not None
-                and nearest_similarity >= self.semantic_cache.similarity_threshold
+                if nearest_response is not None and nearest_similarity >= l1_threshold
                 else None
             )
             add_step("l1_lookup", hit=semantic_hit is not None, similarity=round(nearest_similarity, 4))
@@ -430,6 +526,7 @@ class Router:
                 semantic_hit.daari_meta.task_type = "cache_hit"
                 self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
                 self._emit_org_feedback(last_user, semantic_hit)
+                self._maybe_shadow_check(request, semantic_hit.content, profile)
                 return semantic_hit
             if self.org_cache_client is not None:
                 org_l1_hit = await self.org_cache_client.get_l1(request)
@@ -740,7 +837,10 @@ class Router:
                 nearest_response, nearest_similarity = None, 0.0
             l1_hit = (
                 nearest_response is not None
-                and nearest_similarity >= self.semantic_cache.similarity_threshold
+                and nearest_similarity
+                >= self._l1_threshold_for_category(
+                    profile.category if profile is not None else None
+                )
                 and bool(nearest_response.content.strip())
             )
             add_step("l1_lookup", hit=l1_hit, similarity=round(nearest_similarity, 4))
@@ -762,6 +862,7 @@ class Router:
                 yield "data: [DONE]\n\n"
                 add_step("served", tier="L1", cache_hit=True, latency_ms=latency_ms)
                 finish_trace("L1")
+                self._maybe_shadow_check(request, nearest_response.content, profile)
                 return
             if (
                 nearest_response is not None
@@ -1530,6 +1631,7 @@ class AppContext:
             similarity_threshold=self.settings.cache.l1.similarity_threshold,
             max_entries=self.settings.cache.l1.max_entries,
             ttl_seconds=self.settings.cache.l1.ttl_seconds,
+            normalize_inputs=self.settings.cache.l1.normalize_inputs,
         )
         self.command_context = self._build_command_context_store(self.settings, context_path)
 
@@ -1653,6 +1755,7 @@ class AppContext:
             similarity_threshold=settings.cache.l1.similarity_threshold,
             max_entries=settings.cache.l1.max_entries,
             ttl_seconds=settings.cache.l1.ttl_seconds,
+            normalize_inputs=settings.cache.l1.normalize_inputs,
         )
         command_context = cls._build_command_context_store(settings, context_path)
         ollama_l3 = OllamaExecutor(
@@ -1770,6 +1873,7 @@ class AppContext:
             feedback_store=feedback_store,
             tuner=tuner,
             example_store=example_store,
+            l1_shadow_sample_rate=settings.cache.l1.shadow_sample_rate,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
             frontier_slim_prompts=settings.frontier.slim_prompts,

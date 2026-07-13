@@ -49,6 +49,11 @@ class L1CacheSettings(BaseModel):
     ttl_seconds: float = 0.0
     # In-memory LRU for embeddings; 0 disables memoization.
     embed_cache_size: int = 512
+    # Normalize template/boilerplate text before embedding (Trust PRD T1a).
+    normalize_inputs: bool = True
+    # Fraction of L1 hits verified in the background against a fresh local
+    # answer (Trust PRD T1c). 0 disables shadow sampling.
+    shadow_sample_rate: float = 0.05
 
 
 class CacheSettings(BaseModel):

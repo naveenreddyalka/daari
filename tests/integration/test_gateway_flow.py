@@ -1474,3 +1474,74 @@ async def test_feedback_promotes_or_deletes_examples(app, monkeypatch, tmp_path)
     assert len(rows) == 1, "rejected example must be deleted"
     assert rows[0]["trace_id"] == accept_id
     assert rows[0]["accepted"] is True
+
+
+@pytest.mark.asyncio
+async def test_shadow_sampled_l1_hit_records_false_hit_evidence(app, monkeypatch):
+    """Issue #69: sampled L1 hits are verified in the background and surfaced."""
+    import asyncio
+
+    from daari.cache.semantic import SemanticCache
+
+    class KeywordEmbedder:
+        async def embed(self, text: str) -> list[float] | None:
+            if "capital of France" in text:
+                return [1.0, 0.0]
+            if "France's capital" in text:
+                return [0.96, 0.28]
+            # Shadow comparison embeds raw answers: make them disagree.
+            if "Paris" in text:
+                return [1.0, 0.0]
+            return [0.0, 1.0]
+
+    router = app.state.ctx.router
+    router.semantic_cache = SemanticCache(
+        path=str(router.semantic_cache._path) + "-shadow",
+        embedder=KeywordEmbedder(),
+        enabled=True,
+        similarity_threshold=0.88,
+    )
+    router.l1_shadow_sample_rate = 1.0
+    await router.semantic_cache.put(
+        InternalRequest(
+            messages=[Message(role="user", content="What is the capital of France?")],
+            model="daari",
+        ),
+        InternalResponse(
+            content="Paris is the capital of France.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=2),
+        ),
+    )
+
+    async def fresh_answer(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="Completely different fresh answer.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=2),
+        )
+
+    mock_all_ollama_executors(monkeypatch, router, fresh_answer)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        hit = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "Tell me France's capital"}],
+            },
+            headers=META_HEADERS,
+        )
+        assert hit.json()["daari_meta"]["tier"] == "L1"
+        await asyncio.gather(*router._shadow_tasks)
+
+        stats = await client.get("/v1/daari/learn/stats")
+        diversity = await client.get("/v1/daari/cache/diversity")
+        report = await client.get("/v1/daari/report")
+
+    shadow = stats.json()["shadow"]
+    assert sum(row["samples"] for row in shadow.values()) == 1
+    assert sum(row["disagreements"] for row in shadow.values()) == 1
+    assert diversity.json()["categories"], "diversity stats must be exposed"
+    assert "cache_trust" in report.json()
