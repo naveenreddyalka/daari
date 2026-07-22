@@ -46,11 +46,50 @@ context_app = typer.Typer(help="Manage daari caches and context.")
 org_cache_app = typer.Typer(help="Run org shared-cache service.")
 org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.")
 web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
+project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 app.add_typer(setup_app, name="setup")
 app.add_typer(context_app, name="context")
 app.add_typer(org_cache_app, name="org-cache")
 app.add_typer(org_learning_app, name="org-learning")
 app.add_typer(web_ui_app, name="web-ui")
+app.add_typer(project_app, name="project")
+
+
+@project_app.command("init")
+def project_init(
+    path: Path = typer.Argument(Path("."), help="Repo root to create .daari.yaml in."),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing .daari.yaml."),
+) -> None:
+    """Write a commented .daari.yaml template at the repo root (issue #91)."""
+    from daari.config.project import PROJECT_FILE, TEMPLATE
+
+    target = path.expanduser().resolve() / PROJECT_FILE
+    if target.exists() and not force:
+        typer.echo(f"{target} already exists — use --force to overwrite.")
+        raise typer.Exit(code=1)
+    target.write_text(TEMPLATE, encoding="utf-8")
+    typer.echo(f"Wrote {target}")
+    typer.echo(
+        "Clients opt in with the X-Daari-Project header pointing anywhere inside the repo."
+    )
+
+
+@project_app.command("show")
+def project_show(
+    path: Path = typer.Argument(Path("."), help="Path inside the repo to resolve."),
+) -> None:
+    """Show the effective profile daari would apply for a path."""
+    from daari.config.project import load_project_profile
+
+    profile = load_project_profile(path)
+    if profile is None:
+        typer.echo("No .daari.yaml found for this path.")
+        raise typer.Exit(code=1)
+    typer.echo(f"source: {profile.source}")
+    typer.echo(f"tier_cap: {profile.tier_cap or '-'}")
+    typer.echo(f"no_frontier: {profile.no_frontier}")
+    typer.echo(f"latency_budget_ms: {profile.latency_budget_ms or '-'}")
+    typer.echo(f"client_id: {profile.client_id or '-'}")
 
 
 def _daemon_is_running(settings: Settings) -> bool:
