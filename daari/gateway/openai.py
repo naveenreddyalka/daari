@@ -10,6 +10,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, sanitize_messages_for_ollama
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
@@ -214,6 +215,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
             x_daari_tools: str | None = Header(default=None, alias="X-Daari-Tools"),
+            x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -245,21 +247,24 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
 
             ctx: AppContext = request.app.state.ctx
+            meta = RequestMeta(
+                no_cache=x_daari_no_cache == "true",
+                tier_override=x_daari_tier_override,
+                tier_cap=x_daari_tier_cap,
+                latency_budget_ms=latency_budget_ms,
+                client_id=client_id,
+                no_frontier=x_daari_no_frontier == "true",
+                confirm_tool=confirm_tool,
+                rerun_command=x_daari_rerun_command == "true",
+                stream_include_usage=include_usage,
+            )
+            # Per-project profile defaults (issue #91); headers keep precedence.
+            apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = _prepare_internal_request(
                 body,
                 default_model=ctx.settings.models.l3,
                 tools_mode=x_daari_tools,
-                meta=RequestMeta(
-                    no_cache=x_daari_no_cache == "true",
-                    tier_override=x_daari_tier_override,
-                    tier_cap=x_daari_tier_cap,
-                    latency_budget_ms=latency_budget_ms,
-                    client_id=client_id,
-                    no_frontier=x_daari_no_frontier == "true",
-                    confirm_tool=confirm_tool,
-                    rerun_command=x_daari_rerun_command == "true",
-                    stream_include_usage=include_usage,
-                ),
+                meta=meta,
             )
 
             if body.stream:

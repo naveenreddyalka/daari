@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
@@ -138,6 +139,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
             x_daari_tools: str | None = Header(default=None, alias="X-Daari-Tools"),
+            x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
+            x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -176,19 +179,23 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             if body.tools and tools_mode != "strip":
                 internal_tools = anthropic_tools_to_openai(body.tools) or None
 
+            meta = RequestMeta(
+                no_cache=x_daari_no_cache == "true",
+                tier_override=x_daari_tier_override,
+                no_frontier=x_daari_no_frontier == "true",
+                confirm_tool=confirm_tool,
+                rerun_command=x_daari_rerun_command == "true",
+                client_id=x_daari_client_id,
+            )
+            # Per-project profile defaults (issue #91); headers keep precedence.
+            apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
                 messages=internal_messages,
                 tools=internal_tools,
                 model=body.model or ctx.settings.models.l3,
                 temperature=body.temperature,
                 stream=False,
-                meta=RequestMeta(
-                    no_cache=x_daari_no_cache == "true",
-                    tier_override=x_daari_tier_override,
-                    no_frontier=x_daari_no_frontier == "true",
-                    confirm_tool=confirm_tool,
-                    rerun_command=x_daari_rerun_command == "true",
-                ),
+                meta=meta,
             )
 
             if body.stream:

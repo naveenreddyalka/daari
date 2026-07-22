@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-07-13  
+> Last updated: 2026-07-22  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -404,9 +404,36 @@ additions), compaction/compression/learned-router/PII-scrub opt-in.
 
 Live-verified 2026-07-13 on the running daemon: `/api/tags` lists `daari` +
 tier models, non-stream `/api/chat` answered from L3 with `daari_meta`, and the
-`intellij` client id landed in the ledger. Claude Code agent/tool turns still
-need Anthropic tool passthrough (known limit, documented in
-[setup/claude-code.md](setup/claude-code.md)). Suite: 442 pytest tests.
+`intellij` client id landed in the ledger. The tool-passthrough limit noted at
+the time was closed the same day by issue #84 (below). Suite: 442 pytest tests.
+
+### Claude Code agent E2E + tunnel hardening (2026-07-13, issues [#84](https://github.com/naveenreddyalka/daari/issues/84)/[#86](https://github.com/naveenreddyalka/daari/issues/86)/[#88](https://github.com/naveenreddyalka/daari/issues/88))
+
+| Item | PR | Merge |
+|------|----|-------|
+| **Anthropic tool passthrough**: `tools`/`tool_choice` on `/v1/messages`, `tool_use`→`tool_calls` and `tool_result`→`role:tool` conversion, agent flows skip sanitization/context-optimizer, streamed `tool_use` content blocks with `stop_reason: "tool_use"`; `X-Daari-Tools: strip` forces plain chat; one-click uninstall fallback strips daari `ANTHROPIC_*` keys when no backup exists | [#85](https://github.com/naveenreddyalka/daari/pull/85) | `1e2934c` |
+| **Gateway API-key auth**: `server.api_key` setting + middleware (Bearer or `x-api-key`, health endpoints exempt); `daari setup cursor --tunnel` auto-generates + persists the key and configures Cursor with it; docs on named Cloudflare tunnels / Tailscale Funnel | [#87](https://github.com/naveenreddyalka/daari/pull/87) | `b594500` |
+| **Claude Code live E2E fixes** (first real session surfaced 3 gaps): `OllamaRequestError` preserves Ollama 400 bodies in logs; `num_ctx` sized from prompt chars (4096..32768) so 10-20k-token Claude Code system prompts stop yielding empty streams; tool-call arguments converted JSON-string→object and content-less non-tool messages dropped (both 400'd Ollama); `anthropic_messages_request` shape logging | [#89](https://github.com/naveenreddyalka/daari/pull/89) | `8265b21` |
+
+### Loop cycle 2026-07-22 — full live E2E + per-project profiles ([#91](https://github.com/naveenreddyalka/daari/issues/91))
+
+Regression issue #90 closed as transient: the working tree sat on a dev branch
+Jul 13–22 so the watchdog skipped deploys; its own kickstart recovered the
+daemon in the same run. Daemon redeployed on `main @ 8265b21`, then the full
+live battery passed 11/11 against the running daemon: OpenAI fresh→L3,
+repeat→L0, stream SSE+DONE, Anthropic non-stream with `system`, streamed
+`tool_use` + `stop_reason`, facade `/api/tags` + `/api/chat`, stats/report/
+traces/diversity endpoints. Full suite 474 pytest + ruff + extension/web-ui
+npm suites green.
+
+**Per-project profiles** (roadmap Phase C1's last unshipped item): commit a
+`.daari.yaml` at the repo root (`routing.max_tier_for_chat`, `no_frontier`,
+`latency_budget_ms`, `client_id`); clients opt in with `X-Daari-Project:
+/path/inside/repo` on both OpenAI and Anthropic gateways (the Anthropic
+gateway also gained `X-Daari-Client-Id` parity). Explicit headers always win;
+profiles are mtime-cached and malformed files never break a request. New CLI:
+`daari project init` / `daari project show`. Docs:
+[setup/project-profiles.md](setup/project-profiles.md).
 
 ---
 
