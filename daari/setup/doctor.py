@@ -43,6 +43,7 @@ def run_doctor(
     results.append(_check_python())
     results.append(_check_config(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
+    results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
@@ -336,6 +337,49 @@ def _check_org(settings: Settings) -> CheckResult:
         detail=f"enabled for {org_id} (cache root: {cache_root})",
         optional=True,
     )
+
+
+def _check_mlx(settings: Settings, client: httpx.Client | None) -> CheckResult:
+    """MLX backend reachability (issue #97) — optional, only when enabled."""
+    mlx = settings.mlx
+    if not mlx.enabled:
+        return CheckResult(name="mlx", ok=True, detail="disabled", optional=True)
+    if not mlx.models:
+        return CheckResult(
+            name="mlx",
+            ok=False,
+            detail="enabled but mlx.models maps no tiers",
+            optional=True,
+        )
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    url = f"{mlx.base_url.rstrip('/')}/v1/models"
+    try:
+        response = http.get(url)
+        if response.status_code == 200:
+            tiers = ", ".join(sorted(mlx.models))
+            return CheckResult(
+                name="mlx",
+                ok=True,
+                detail=f"mlx_lm.server reachable at {mlx.base_url} (tiers: {tiers})",
+                optional=True,
+            )
+        return CheckResult(
+            name="mlx",
+            ok=False,
+            detail=f"unreachable at {mlx.base_url} (HTTP {response.status_code})",
+            optional=True,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="mlx",
+            ok=False,
+            detail=f"unreachable at {mlx.base_url}: {exc} — start with: mlx_lm.server --port 11440",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
 
 
 def _check_org_cache(
