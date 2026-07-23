@@ -32,6 +32,16 @@ class OllamaSettings(BaseModel):
     base_url: str = "http://127.0.0.1:11434"
 
 
+class MLXSettings(BaseModel):
+    """Optional MLX backend (issue #97): serve tiers via mlx_lm.server."""
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:11440"
+    # Tier -> model name, e.g. {"L3": "mlx-community/Llama-3.2-3B-Instruct-4bit"}.
+    # Tiers not listed here stay on Ollama.
+    models: dict[str, str] = Field(default_factory=dict)
+
+
 class L0CacheSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/cache/l0"
@@ -228,6 +238,7 @@ class Settings(BaseSettings):
     server: ServerSettings = Field(default_factory=ServerSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    mlx: MLXSettings = Field(default_factory=MLXSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)
