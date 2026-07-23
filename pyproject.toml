@@ -37,7 +37,9 @@ Repository = "https://github.com/naveenreddyalka/daari"
 Issues = "https://github.com/naveenreddyalka/daari/issues"
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.8"]
+# ruff is pinned: CI installs this extra fresh, and unpinned ruff releases
+# add rules that fail lint repo-wide with no code change (2026-07-23).
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff==0.15.17"]
 
 [project.scripts]
 daari = "daari.cli.app:app"
