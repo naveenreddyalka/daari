@@ -435,6 +435,18 @@ profiles are mtime-cached and malformed files never break a request. New CLI:
 `daari project init` / `daari project show`. Docs:
 [setup/project-profiles.md](setup/project-profiles.md).
 
+### Release v1.2.0 + Claude Code live fix (2026-07-23)
+
+| Item | PR | Merge |
+|------|----|-------|
+| **Release v1.2.0 — Learning, Trust & Clients**: version bump + [RELEASE-v1.2.0.md](RELEASE-v1.2.0.md) covering the 26 commits since v1.1.2 (Phase D learning, Trust trains, one-click clients, gateway auth, per-project profiles); tagged and [published](https://github.com/naveenreddyalka/daari/releases/tag/v1.2.0) | [#93](https://github.com/naveenreddyalka/daari/pull/93) | `6bfc9e3` |
+| **Trailing system message fix** (issue [#94](https://github.com/naveenreddyalka/daari/issues/94)): live `claude -p` printed nothing — claude-cli 2.1.215 sends `messages=[user, system]` (SessionStart-hook/plugin content as a 14k-char trailing system-role message) and llama chat templates emit zero tokens in that shape, so L4 and L3 both streamed empty. Captured via a recording proxy; Anthropic gateway now hoists out-of-order system messages ahead of the conversation (stable order, leading-system requests untouched) | [#95](https://github.com/naveenreddyalka/daari/pull/95) | `bab511c` |
+
+Suite: 493 pytest. The #94 regression test replays the captured Claude Code
+request shape (top-level `system` + `[user, system]` + tools) and asserts
+Ollama receives `[system, system, user]`. Live `claude -p` re-verification
+runs on the next watchdog deploy cycle.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
