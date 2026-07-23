@@ -224,3 +224,88 @@ async def test_strip_header_forces_plain_chat(app, monkeypatch):
 
     assert response.status_code == 200
     assert seen["tools"] is None
+
+
+class TestHoistSystemMessages:
+    """Claude Code trailing system messages (issue #94)."""
+
+    def test_trailing_system_hoisted(self):
+        from daari.gateway.anthropic import hoist_system_messages
+        from daari.gateway.internal import Message
+
+        messages = [
+            Message(role="system", content="base system"),
+            Message(role="user", content="question"),
+            Message(role="system", content="SessionStart hook context"),
+        ]
+        hoisted = hoist_system_messages(messages)
+        assert [m.role for m in hoisted] == ["system", "system", "user"]
+        assert hoisted[0].content == "base system"
+        assert hoisted[1].content == "SessionStart hook context"
+        assert hoisted[-1].content == "question"
+
+    def test_leading_systems_untouched(self):
+        from daari.gateway.anthropic import hoist_system_messages
+        from daari.gateway.internal import Message
+
+        messages = [
+            Message(role="system", content="s1"),
+            Message(role="user", content="u1"),
+            Message(role="assistant", content="a1"),
+            Message(role="user", content="u2"),
+        ]
+        assert hoist_system_messages(messages) is messages
+
+    def test_no_system_messages_noop(self):
+        from daari.gateway.anthropic import hoist_system_messages
+        from daari.gateway.internal import Message
+
+        messages = [Message(role="user", content="u1")]
+        assert hoist_system_messages(messages) is messages
+
+
+@pytest.mark.asyncio
+async def test_claude_code_trailing_system_reordered_before_ollama(app, monkeypatch):
+    """The captured claude-cli 2.1.215 shape: messages=[user, system] plus a
+    top-level system field. Ollama must receive all system messages first."""
+    seen: dict = {}
+
+    async def fake_stream(request: InternalRequest):
+        seen["roles"] = [m.role for m in request.messages]
+        seen["last"] = request.messages[-1].content
+        yield {"message": {"role": "assistant", "content": "Paris."}, "done": False}
+        yield {"message": {"role": "assistant", "content": ""}, "done": True}
+
+    router = app.state.ctx.router
+    for attr in ("ollama", "ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "stream", fake_stream)
+
+    payload = {
+        "model": "daari",
+        "max_tokens": 512,
+        "stream": True,
+        "tools": TOOLS,
+        "system": [{"type": "text", "text": "You are Claude Code."}],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "<system-reminder>claudeMd context</system-reminder>"},
+                    {"type": "text", "text": "what is the capital of France?"},
+                ],
+            },
+            {"role": "system", "content": "SessionStart hook additional context: superpowers"},
+        ],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/v1/messages", json=payload)
+
+    assert response.status_code == 200
+    assert "Paris." in response.text
+    assert seen["roles"] == ["system", "system", "user"], (
+        "system messages must be hoisted ahead of the user turn"
+    )
+    assert "capital of France" in seen["last"]
