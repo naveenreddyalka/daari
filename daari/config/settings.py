@@ -195,6 +195,12 @@ class LearningSettings(BaseModel):
     # Learned router (Trust PRD Train 4): never predict from fewer samples.
     router_min_samples: int = 200
     router_model_path: str = "~/.daari/learning/router-model.json"
+    # D3: opt-in collective stats. Export is always local + reviewable;
+    # upload requires BOTH the flag and a URL, and sends metadata only
+    # (tier/category aggregates, latency, model IDs — never prompt text).
+    collective_enabled: bool = False
+    collective_url: str = ""
+    collective_token: str = ""
 
 
 class ContextOptimizerSettings(BaseModel):

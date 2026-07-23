@@ -1,7 +1,7 @@
 # daari — Local Learning PRD (Phase D)
 
-> **Status:** Active — D1 shipped (#53–#55); D2 feature train in progress
-> **Last updated:** 2026-07-12
+> **Status:** Active — D1 shipped (#53–#55); D2 shipped (#61–#63); D3 (collective stats) and deploy in progress
+> **Last updated:** 2026-07-23
 > **Companion to:** [PRD v0.4](PRD.md), [ROADMAP Phase D](ROADMAP.md#phase-d--local-learning--collective-improvement-future), [intelligence PRD](intelligence.md)
 > **Tracking:** GitHub issues labeled `auto-dev`; progress in [TRACKING.md](../TRACKING.md)
 
@@ -162,6 +162,37 @@ D1 deliberately stored no prompt/completion text, so D2 adds a separate,
   dependency of daari itself.
 - Run metadata (`run.json`: model, iters, example counts, timestamps) written
   next to the adapters for auditability.
+
+## Feature D3 — Opt-in anonymized collective stats
+
+Review-first export of routing evidence — nothing leaves the device without
+the user seeing the exact payload and opting in twice (flag + config):
+
+- `daari/learning/collective.py`: `build_collective_stats` aggregates
+  FeedbackStore evidence only — per category × tier outcome counts,
+  escalation/reject rates, avg confidence/latency, shadow-sampled false-hit
+  rates — plus model IDs, platform, daari version, schema version. Never
+  prompt text, completions, client IDs, or trace IDs (`payload_is_clean`
+  guard is enforced at upload time and test-pinned).
+- `daari learn export-stats [--days N] [--out FILE] [--upload]` prints the
+  exact JSON for review; `--upload` refuses unless
+  `learning.collective_enabled: true` AND `learning.collective_url` are both
+  configured (`collective_token` optional bearer auth). All default off.
+
+## Feature D-deploy — Serve fine-tuned adapters
+
+`daari learn deploy RUN_DIR [--backend mlx|ollama] [--name NAME] [--tier L3]`
+bridges D2c output to the local executors:
+
+- **mlx** (default): prints the `mlx_lm server --model BASE --adapter-path
+  ADAPTERS` command (server loads LoRA directly, no fuse) plus the
+  `mlx.enabled/models` config snippet routing a tier at it. Long-running, so
+  plan-and-print only.
+- **ollama**: `mlx_lm fuse --export-gguf` then `ollama create NAME -f
+  Modelfile`; prints the `models.<tier>` snippet. `--dry-run` shows steps
+  without executing; `deploy.json` records planned/running/completed/failed.
+- Guards: run must be `completed` with an adapters dir; mlx-lm and the
+  ollama binary checked before execution.
 
 ## Rollout & validation
 
