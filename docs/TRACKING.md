@@ -447,6 +447,16 @@ request shape (top-level `system` + `[user, system]` + tools) and asserts
 Ollama receives `[system, system, user]`. Live `claude -p` re-verification
 runs on the next watchdog deploy cycle.
 
+### MLX backend + CI hardening (2026-07-23, issue [#97](https://github.com/naveenreddyalka/daari/issues/97))
+
+| Item | PR | Merge |
+|------|----|-------|
+| **MLX backend** (roadmap C2 optional): `MLXExecutor` speaks OpenAI wire to `mlx_lm.server` and duck-types `OllamaExecutor` (SSE chunks converted to Ollama-style events), so tier loops/caching/escalation/budgets/traces are unchanged; `mlx.models` tier→model map routes only listed tiers to MLX (mixed setups fine, default off); optional `daari doctor` mlx check; [setup/mlx.md](setup/mlx.md) | [#98](https://github.com/naveenreddyalka/daari/pull/98) | `5270dd4` |
+| **CI ruff pin**: lint job installed unpinned `ruff>=0.8`; a new ruff release flagged 167 pre-existing issues repo-wide and failed every open PR — pinned to `ruff==0.15.17` (local version, clean) so lint is deterministic and upgrades become deliberate PRs | [#99](https://github.com/naveenreddyalka/daari/pull/99) | `b1c2385` |
+
+Suite: 508 pytest (493 → 508). MLX live smoke is hardware/download-gated
+(`pip install mlx-lm` + model fetch) — doctor and docs cover the path.
+
 ---
 
 ## Phase E2 — Org shared cache (tracer bullet)
