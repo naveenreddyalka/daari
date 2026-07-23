@@ -30,6 +30,7 @@ from daari.rules.dev_commands import DevCommandMatch, match_dev_command
 from daari.rules.engine import apply_l2_rules
 from daari.router.confidence import score_l3_confidence
 from daari.router.frontier import FrontierExecutor
+from daari.router.mlx_executor import MLXExecutor
 from daari.router.context_optimizer import optimize_messages
 from daari.router.profile import PromptProfile, build_prompt_profile, categorize
 from daari.tools.shell import ShellExecutor
@@ -186,9 +187,9 @@ class Router:
         cache: ExactCache,
         semantic_cache: SemanticCache,
         metrics: Metrics,
-        ollama_l3: OllamaExecutor | None = None,
-        ollama_l4: OllamaExecutor | None = None,
-        ollama_l5: OllamaExecutor | None = None,
+        ollama_l3: OllamaExecutor | MLXExecutor | None = None,
+        ollama_l4: OllamaExecutor | MLXExecutor | None = None,
+        ollama_l5: OllamaExecutor | MLXExecutor | None = None,
         ollama: OllamaExecutor | None = None,
         frontier: FrontierExecutor | None = None,
         command_context: CommandContextStore | None = None,
@@ -2185,21 +2186,25 @@ class AppContext:
             normalize_inputs=settings.cache.l1.normalize_inputs,
         )
         command_context = cls._build_command_context_store(settings, context_path)
-        ollama_l3 = OllamaExecutor(
-            base_url=settings.ollama.base_url.rstrip("/"),
-            default_model=settings.models.l3,
-            tier="L3",
-        )
-        ollama_l4 = OllamaExecutor(
-            base_url=settings.ollama.base_url.rstrip("/"),
-            default_model=settings.models.l4,
-            tier="L4",
-        )
-        ollama_l5 = OllamaExecutor(
-            base_url=settings.ollama.base_url.rstrip("/"),
-            default_model=settings.models.l5,
-            tier="L5",
-        )
+        def tier_executor(tier: str, ollama_model: str) -> OllamaExecutor | MLXExecutor:
+            # MLX backend (issue #97): tiers mapped in mlx.models are served by
+            # mlx_lm.server; the rest stay on Ollama.
+            mlx_model = settings.mlx.models.get(tier) if settings.mlx.enabled else None
+            if mlx_model:
+                return MLXExecutor(
+                    base_url=settings.mlx.base_url.rstrip("/"),
+                    default_model=mlx_model,
+                    tier=tier,
+                )
+            return OllamaExecutor(
+                base_url=settings.ollama.base_url.rstrip("/"),
+                default_model=ollama_model,
+                tier=tier,
+            )
+
+        ollama_l3 = tier_executor("L3", settings.models.l3)
+        ollama_l4 = tier_executor("L4", settings.models.l4)
+        ollama_l5 = tier_executor("L5", settings.models.l5)
         frontier = FrontierExecutor(
             base_url=settings.frontier.base_url.rstrip("/"),
             default_model=settings.frontier.model,
