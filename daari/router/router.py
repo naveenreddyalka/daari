@@ -1178,7 +1178,11 @@ class Router:
 
         message_id = f"msg_{int(time.time() * 1000)}"
         await self._refresh_warm_models()
-        tier_chain = self._stream_tier_chain(request)
+        # Parity with the OpenAI stream path (issue #101): category policies,
+        # learned routing, and latency step-down all key off the profile.
+        profile = build_prompt_profile(request)
+        profile = await self._apply_learned_route(request, profile)
+        tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (issue #84: Claude Code tool turns) keep the full tool
         # protocol; plain chat gets sanitization + context optimization.
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
@@ -1193,6 +1197,7 @@ class Router:
         def sse(event_type: str, payload: dict[str, Any]) -> str:
             return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
+        stream_started = time.perf_counter()
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
             stream_executor = self._executor_for_tier(tier)
@@ -1321,7 +1326,14 @@ class Router:
                 last_error = exc
                 log_gateway_event(
                     "anthropic_stream_attempt_failed",
-                    {"tier": tier, "ollama_model": model_name, "error": str(exc)[:300]},
+                    {
+                        "tier": tier,
+                        "ollama_model": model_name,
+                        # Timeouts stringify to "" (issue #101); the type name
+                        # keeps the cause diagnosable.
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:300],
+                    },
                 )
                 if tier_index < len(tier_chain) - 1:
                     continue
@@ -1361,6 +1373,20 @@ class Router:
                 },
             )
             yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
+            # Mirror chat_completions_stream_done (issue #101) so the final
+            # outcome of a fallback chain is visible in cursor-requests.log.
+            log_gateway_event(
+                "anthropic_stream_done",
+                {
+                    "tier": tier,
+                    "ollama_model": model_name,
+                    "latency_ms": int((time.perf_counter() - stream_started) * 1000),
+                    "completion_chars": completion_chars,
+                    "tool_use": tool_use_sent,
+                    "agent_flow": agent_flow,
+                    "empty": not any_output,
+                },
+            )
             return
 
         if last_error is not None:

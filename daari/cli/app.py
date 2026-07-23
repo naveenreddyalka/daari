@@ -999,6 +999,42 @@ def learn_stats(days: int = typer.Option(7, help="Evidence window in days")) -> 
             )
 
 
+@learn_app.command("export-stats")
+def learn_export_stats(
+    days: int = typer.Option(30, help="Evidence window in days"),
+    out: Path | None = typer.Option(None, "--out", help="Write payload JSON to this file."),
+    upload: bool = typer.Option(
+        False,
+        "--upload",
+        help="POST to learning.collective_url (requires learning.collective_enabled).",
+    ),
+) -> None:
+    """D3: build the anonymized collective-stats payload for review.
+
+    Prints the exact JSON that would leave the device — category/tier
+    aggregates, latency averages, false-hit rates, model IDs. Never prompt
+    text. Upload is opt-in twice over: the --upload flag AND config.
+    """
+    import json as _json
+
+    from daari.learning.collective import build_collective_stats, upload_collective_stats
+
+    settings = get_settings()
+    payload = build_collective_stats(settings, _feedback_store(), days=days)
+    rendered = _json.dumps(payload, indent=2)
+    typer.echo(rendered)
+    if out is not None:
+        out.expanduser().resolve().write_text(rendered + "\n", encoding="utf-8")
+        typer.echo(f"\nWrote {out}")
+    if upload:
+        try:
+            status = upload_collective_stats(payload, settings)
+        except RuntimeError as exc:
+            typer.echo(f"\nUpload refused: {exc}")
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"\nUploaded to {settings.learning.collective_url} (HTTP {status})")
+
+
 def _example_store():
     from daari.learning.examples import ExampleStore
 
@@ -1159,6 +1195,53 @@ def learn_finetune(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Adapters written to {plan.run_dir / 'adapters'}")
+
+
+@learn_app.command("deploy")
+def learn_deploy(
+    run_dir: Path = typer.Argument(..., help="A completed `learn finetune` run directory"),
+    backend: str = typer.Option(
+        "mlx", help="mlx (serve adapter directly) or ollama (fuse + GGUF + create)"
+    ),
+    name: str = typer.Option(
+        "daari-tuned", "--name", help="Ollama model name for the fused model"
+    ),
+    tier: str = typer.Option("L3", help="daari tier the config snippet targets"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the deploy steps without running them"
+    ),
+) -> None:
+    """Serve a fine-tuned adapter locally (Phase D deploy).
+
+    mlx: prints the mlx_lm.server command that loads the adapter plus the
+    config snippet to route a tier at it. ollama: fuses the adapter, exports
+    GGUF, and creates a named Ollama model.
+    """
+    from daari.learning.deploy import DeployError, plan_deploy, run_deploy
+
+    try:
+        plan = plan_deploy(run_dir, backend=backend, model_name=name, tier=tier)
+    except DeployError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"Backend: {plan.backend}  Base model: {plan.base_model}")
+    for command in plan.commands:
+        typer.echo(f"Step: {' '.join(command)}")
+    typer.echo("Config snippet for ~/.daari/config.yaml:")
+    typer.echo(plan.config_snippet)
+    if dry_run or plan.backend == "mlx":
+        if plan.backend == "mlx":
+            typer.echo("MLX servers are long-running — start the step above yourself.")
+        else:
+            typer.echo("Dry run — nothing executed. Re-run without --dry-run to deploy.")
+        return
+    try:
+        run_deploy(plan)
+    except DeployError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Created Ollama model {plan.model_name!r} — point a tier at it in config.yaml.")
 
 
 @learn_app.command("recommend")
