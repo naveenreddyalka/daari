@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-07-22  
+> Last updated: 2026-07-23  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -456,6 +456,20 @@ runs on the next watchdog deploy cycle.
 
 Suite: 508 pytest (493 → 508). MLX live smoke is hardware/download-gated
 (`pip install mlx-lm` + model fetch) — doctor and docs cover the path.
+
+### Anthropic observability + Phase D3 + adapter deploy (2026-07-23, issue [#101](https://github.com/naveenreddyalka/daari/issues/101))
+
+| Item | PR | Merge |
+|------|----|-------|
+| **Anthropic stream observability & routing parity** (issue #101): `anthropic_stream_attempt_failed` logs `error_type` (timeouts stringify to `""`), new `anthropic_stream_done` event records winning tier/model/latency/chars, and the Anthropic path now builds the prompt profile so category policies, learned routing, and latency-budget step-down apply like the OpenAI path | [#102](https://github.com/naveenreddyalka/daari/pull/102) | `e4628f4` |
+| **Phase D3 — opt-in collective stats** ([learning PRD](prd/learning.md)): `daari learn export-stats` prints the exact metadata-only payload for review (category/tier aggregates, shadow false-hit rates, model IDs — never prompts/IDs); `--upload` gated on `learning.collective_enabled` + `collective_url` with a recursive sensitive-key guard; all defaults off | [#102](https://github.com/naveenreddyalka/daari/pull/102) | `e4628f4` |
+| **`daari learn deploy`**: bridges D2c fine-tune runs to executors — mlx backend prints the `mlx_lm server --adapter-path` command + config snippet (long-running, plan-and-print); ollama backend fuses to GGUF and `ollama create`s a named model with `deploy.json` status audit | [#102](https://github.com/naveenreddyalka/daari/pull/102) | `e4628f4` |
+
+Suite: 535 pytest (508 → 535). Live E2E on the redeployed daemon:
+`/v1/messages` stream answered via L3 in 2.2s and `anthropic_stream_done`
+appeared in cursor-requests.log; `learn export-stats` rendered real
+30-day aggregates (metadata only); `learn deploy` printed correct mlx and
+ollama plans against a stub run dir.
 
 ---
 
