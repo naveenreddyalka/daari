@@ -2,7 +2,7 @@
 
 > **Open-source local execution router** — run cheaply on your machine, not in the cloud.
 
-**Status:** v1.1.2 Cursor BYOK E2E verified — [tracker](docs/TRACKING.md) · [validation](docs/VALIDATION.md) · [release notes](docs/RELEASE-v1.1.2-cursor-e2e.md)
+**Status:** v1.2.0 Learning, Trust & Clients — [tracker](docs/TRACKING.md) · [validation](docs/VALIDATION.md) · [release notes](docs/RELEASE-v1.2.0.md)
 
 Route dev agent work through local tiers (cache → IDE tools → local AI) instead of frontier APIs. **Not a proxy** — a cost optimizer you own.
 
