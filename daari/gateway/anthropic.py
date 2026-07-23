@@ -92,6 +92,24 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
     return expanded
 
 
+def hoist_system_messages(messages: list[Message]) -> list[Message]:
+    """Move system-role messages ahead of the conversation (issue #94).
+
+    Claude Code appends SessionStart-hook content as a system-role message
+    AFTER the user turn; llama chat templates emit zero tokens when a system
+    message trails the final user message, so every local tier streams empty.
+    Relative order within each group is preserved.
+    """
+    first_other = next(
+        (i for i, m in enumerate(messages) if m.role != "system"), len(messages)
+    )
+    if not any(m.role == "system" for m in messages[first_other:]):
+        return messages
+    systems = [m for m in messages if m.role == "system"]
+    others = [m for m in messages if m.role != "system"]
+    return systems + others
+
+
 class AnthropicRequest(BaseModel):
     model: str
     messages: list[AnthropicMessageIn]
@@ -170,6 +188,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 internal_messages.append(Message(role="system", content=system_text))
             for message in body.messages:
                 internal_messages.extend(anthropic_message_to_internal(message))
+            internal_messages = hoist_system_messages(internal_messages)
 
             # Tool passthrough (issue #84): Claude Code agent turns carry tools;
             # X-Daari-Tools: strip forces plain-chat handling for parity with
