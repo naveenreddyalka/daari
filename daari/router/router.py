@@ -2168,6 +2168,7 @@ class AppContext:
     router: Router
     org_cache_client: OrgCacheClient | None = None
     org_learning_client: OrgLearningClient | None = None
+    virtual_key_store: Any | None = None
     org_learning_sync_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 
     @property
