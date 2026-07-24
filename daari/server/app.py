@@ -35,7 +35,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     api_key = resolved.server.api_key.strip()
     if api_key:
-        open_paths = {"/health", "/v1/messages/health"}
+        # Probes stay open: orchestrators can't attach API keys (issue #105).
+        open_paths = {"/health", "/ready", "/v1/messages/health"}
 
         @app.middleware("http")
         async def require_api_key(request: Request, call_next):

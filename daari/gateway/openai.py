@@ -6,8 +6,9 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
@@ -344,6 +345,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         async def health() -> dict[str, str]:
             return {"status": "ok"}
 
+        @router.get("/ready")
+        async def ready(request: Request) -> JSONResponse:
+            """Readiness probe (issue #105): unlike /health liveness, this
+            verifies the daemon can actually serve — cache handles exist and
+            the L3 model backend answers. Returns 503 while dependencies are
+            down so orchestrators keep traffic away."""
+            ctx: AppContext = request.app.state.ctx
+            base_url = ctx.ollama_l3.base_url.rstrip("/")
+            probe = (
+                f"{base_url}/v1/models"
+                if type(ctx.ollama_l3).__name__ == "MLXExecutor"
+                else f"{base_url}/api/version"
+            )
+            checks = {
+                "cache": "ok" if ctx.cache is not None else "missing",
+                "model_backend": await check_model_backend(probe),
+            }
+            ready_now = all(value == "ok" for value in checks.values())
+            return JSONResponse(
+                status_code=200 if ready_now else 503,
+                content={"status": "ready" if ready_now else "not_ready", "checks": checks},
+            )
+
         @router.get("/v1/daari/stats")
         async def daari_stats(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
@@ -491,6 +515,19 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             }
 
         return router
+
+
+async def check_model_backend(probe_url: str, timeout: float = 2.0) -> str:
+    """Readiness dependency check (issue #105). Returns "ok" or a short
+    diagnostic; module-level so tests and future backends can override."""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(probe_url)
+    except Exception as exc:
+        return type(exc).__name__
+    if response.status_code >= 500:
+        return f"http {response.status_code}"
+    return "ok"
 
 
 def create_gateway_router() -> APIRouter:

@@ -8,7 +8,15 @@ Route dev agent work through local tiers (cache → IDE tools → local AI) inst
 
 ## Quick start
 
-Full pickup guide (clone, venv, smoke test, pytest): **[docs/DEVELOPING.md](docs/DEVELOPING.md)**
+**Docker (one command, bundles Ollama):**
+
+```bash
+docker compose up
+```
+
+First start pulls the L3 model (~2 GB), then daari listens on `http://127.0.0.1:11435` (readiness: `GET /ready`). Prebuilt image: `ghcr.io/naveenreddyalka/daari`.
+
+**From source** — full pickup guide (clone, venv, smoke test, pytest): **[docs/DEVELOPING.md](docs/DEVELOPING.md)**
 
 **One-click demo** (install, serve, smoke curl, stats):
 
