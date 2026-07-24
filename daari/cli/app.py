@@ -47,12 +47,82 @@ org_cache_app = typer.Typer(help="Run org shared-cache service.")
 org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.")
 web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
+enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 app.add_typer(setup_app, name="setup")
 app.add_typer(context_app, name="context")
 app.add_typer(org_cache_app, name="org-cache")
 app.add_typer(org_learning_app, name="org-learning")
 app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
+app.add_typer(enterprise_app, name="enterprise")
+
+
+@enterprise_app.command("bootstrap")
+def enterprise_bootstrap(
+    org_config: str = typer.Option(
+        ...,
+        "--org-config",
+        help="URL of signed org config JSON (policies, cache URL, pool URL).",
+    ),
+    token: str = typer.Option("", "--token", help="Bearer token for the config URL."),
+    secret: str = typer.Option(
+        "",
+        "--secret",
+        help="HMAC secret to verify X-Daari-Signature (or from config later).",
+    ),
+    device_id: str = typer.Option("", "--device-id", help="Optional device registration id."),
+    config_path: Path | None = typer.Option(
+        None, "--config", help="Write path (default ~/.daari/config.yaml)."
+    ),
+    insecure: bool = typer.Option(
+        False, "--insecure", help="Skip signature verification (dev only)."
+    ),
+) -> None:
+    """Fetch signed org config and install a local enterprise profile (issue #118)."""
+    from daari.enterprise.bootstrap import apply_org_config, fetch_org_config, verify_signature
+
+    data, raw, signature = fetch_org_config(org_config, token=token)
+    signing_secret = secret or str(
+        (data.get("org") or data.get("enterprise") or {}).get("config_signing_secret") or ""
+    )
+    if not insecure:
+        if not verify_signature(raw, signature, signing_secret):
+            typer.echo(
+                "Org config signature missing or invalid. Pass --secret or --insecure.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+    path = apply_org_config(data, config_path=config_path, device_id=device_id or None)
+    typer.echo(f"Wrote enterprise profile to {path}")
+    typer.echo("Restart `daari serve` to pick up shared cache / org pool settings.")
+
+
+@enterprise_app.command("policy-sync")
+def enterprise_policy_sync(
+    org_config: str = typer.Option(
+        "",
+        "--org-config",
+        help="Override URL (default: enterprise.policy_sync_url from local config).",
+    ),
+    insecure: bool = typer.Option(False, "--insecure"),
+) -> None:
+    """Refresh signed org policy into the local config (issue #118)."""
+    from daari.enterprise.bootstrap import apply_org_config, fetch_org_config, verify_signature
+
+    settings = get_settings()
+    url = org_config or settings.enterprise.policy_sync_url or ""
+    if not url:
+        typer.echo("No policy_sync_url configured.", err=True)
+        raise typer.Exit(code=1)
+    data, raw, signature = fetch_org_config(
+        url, token=settings.enterprise.org_token or ""
+    )
+    secret = settings.enterprise.config_signing_secret
+    if not insecure and not verify_signature(raw, signature, secret):
+        typer.echo("Policy sync signature invalid.", err=True)
+        raise typer.Exit(code=1)
+    path = apply_org_config(data, device_id=settings.enterprise.device_id)
+    typer.echo(f"Synced org policy into {path}")
 
 
 @project_app.command("init")
