@@ -90,12 +90,29 @@ class CacheSettings(BaseModel):
     redis_prefix: str = "daari:l0:"
 
 
+class FrontierProviderConfig(BaseModel):
+    """One L6 provider in the fallback chain (issue #109)."""
+
+    id: str = "openai"
+    base_url: str = "https://api.openai.com/v1"
+    model: str = "gpt-4o-mini"
+    # Explicit keys (rarely set in YAML — prefer api_key_env). Rotated by weight.
+    keys: list[str] = Field(default_factory=list)
+    api_key_env: str = ""
+    weight: float = 1.0
+    failure_threshold: int = 3
+    cooldown_seconds: float = 30.0
+
+
 class FrontierSettings(BaseModel):
     enabled: bool = False
     provider: str = "openai"
     model: str = "gpt-4o-mini"
     confidence_threshold: float = 0.7
     base_url: str = "https://api.openai.com/v1"
+    # Ordered failover list (issue #109). Empty → use the scalar
+    # provider/base_url/model + resolve_frontier_api_key() shorthand.
+    providers: list[FrontierProviderConfig] = Field(default_factory=list)
     # 0 = unlimited. When today's estimated spend reaches the cap, daari stops
     # escalating to L6 and serves the best local answer instead.
     daily_budget_usd: float = 0.0
