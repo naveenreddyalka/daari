@@ -12,6 +12,7 @@ from daari.gateway.mcp import MCPGatewayAdapter
 from daari.gateway.ollama_compat import OllamaCompatGatewayAdapter
 from daari.gateway.openai import create_gateway_router
 from daari.gateway.request_log import configure_request_log
+from daari.gateway.responses import ResponsesGatewayAdapter
 from daari.router.router import AppContext
 
 
@@ -63,4 +64,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(AnthropicGatewayAdapter().router())
     app.include_router(MCPGatewayAdapter().router())
     app.include_router(OllamaCompatGatewayAdapter().router())
+    app.include_router(ResponsesGatewayAdapter().router())
     return app
