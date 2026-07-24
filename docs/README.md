@@ -1,6 +1,6 @@
 # daari documentation
 
-> Start here. Product pitch and quickstart live in the [repo README](../README.md).
+> Start here. Product pitch and quickstart live in the [repo README](https://github.com/naveenreddyalka/daari#readme).
 
 ## Using daari
 
