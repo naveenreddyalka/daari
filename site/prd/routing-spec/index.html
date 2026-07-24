@@ -1,0 +1,1710 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Local-first LLM router — route to cache, tools, and local models before frontier APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://naveenreddyalka.github.io/daari/prd/routing-spec/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Routing Specification — daari - daari</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#routing-specification-daari" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="daari" class="md-header__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            daari
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Routing Specification — daari
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="daari" class="md-nav__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    daari
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/cursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/intellij/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JetBrains
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/openai-compat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAI-compatible
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/project-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setup/mlx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ROADMAP-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../TRACKING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../DEVELOPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AUTOMATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#purpose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Purpose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#routing-pipeline-ordered" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routing pipeline (ordered)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#classifier-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Classifier inputs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heuristic-classifier-phase-a-mvp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heuristic classifier (Phase A — MVP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hybrid-classifier-phase-b-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hybrid classifier (Phase B — v1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#confidence-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence scoring
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Confidence scoring">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-a-mvp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A (MVP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-a1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A.1+
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#escalation-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escalation policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#l2-dev-developer-command-rules-phase-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        L2-dev — developer command rules (Phase B)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ccs-command-context-store-phase-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CCS — command context store (Phase B)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lt-matching-phase-b" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lt matching (Phase B)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#l0-cache-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        L0 cache key
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#golden-prompt-eval-set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Golden prompt eval set
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#daari_meta-response-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        daari_meta response shape
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-items-tracked-elsewhere" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open items (tracked elsewhere)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="routing-specification-daari">Routing Specification — daari<a class="headerlink" href="#routing-specification-daari" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>Status:</strong> Draft v1.0 — pre-implementation<br />
+<strong>Related:</strong> <a href="../PRD/">PRD</a> · <a href="../../adr/0004-agent-tool-call-compatibility/">ADR-0004</a> · <a href="../PLAN-REVIEW/">PLAN-REVIEW</a><br />
+<strong>Fixes:</strong> Plan review issue #3</p>
+</blockquote>
+<hr />
+<h2 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h2>
+<p>Define <strong>how</strong> daari classifies requests, selects tiers, scores confidence, and escalates — so routing is testable before code is written.</p>
+<hr />
+<h2 id="routing-pipeline-ordered">Routing pipeline (ordered)<a class="headerlink" href="#routing-pipeline-ordered" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>1. Normalize request
+2. Check headers (X-Daari-Tier-Override, X-Daari-No-Cache)
+3. L0 exact cache lookup
+4. CCS command context lookup           [Phase B — ADR-0008]
+5. L1 semantic cache lookup              [Phase B]
+6. L2-dev developer command rules        [Phase B — ADR-0008]
+7. L2 generic rules match              [Phase B]
+8. Lt tool-native match / execute        [Phase B]
+9. Classify task → initial model tier (L3 default in MVP)
+10. Execute at tier
+11. Confidence check on result           [Phase A.1 for L6 escalation]
+12. Escalate L3 → L4 → L5 → L6 if below threshold
+13. Cache write: CCS after Lt; L0 if cacheable
+14. Return response + daari_meta
+</code></pre></div>
+<p><strong>MVP (Phase A):</strong> Steps 1–3, 7 (heuristic only), 8 at L3 only, 11–12. No L1/L2/Lt/L4/L5/L6.</p>
+<hr />
+<h2 id="classifier-inputs">Classifier inputs<a class="headerlink" href="#classifier-inputs" title="Permanent link">&para;</a></h2>
+<p>The router reads these signals from each request:</p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Source</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>message_count</code></td>
+<td>messages array length</td>
+<td>Multi-turn → skip L0 for some keys</td>
+</tr>
+<tr>
+<td><code>total_tokens</code></td>
+<td>Estimated token count</td>
+<td>Size buckets (see below)</td>
+</tr>
+<tr>
+<td><code>last_user_content</code></td>
+<td>Final user message text</td>
+<td>Keywords, regex, Lt patterns</td>
+</tr>
+<tr>
+<td><code>has_tool_calls</code></td>
+<td>Request/response history</td>
+<td>Agent round — see ADR-0004</td>
+</tr>
+<tr>
+<td><code>tools_defined</code></td>
+<td><code>tools</code> array present</td>
+<td>Agent mode — routing restrictions</td>
+</tr>
+<tr>
+<td><code>model_requested</code></td>
+<td><code>model</code> field</td>
+<td>Client hint; daari may override internally</td>
+</tr>
+<tr>
+<td><code>stream</code></td>
+<td>boolean</td>
+<td>Affects execution, not tier selection</td>
+</tr>
+<tr>
+<td><code>temperature</code></td>
+<td>float</td>
+<td>Included in L0 cache key</td>
+</tr>
+<tr>
+<td><code>X-Daari-*</code> headers</td>
+<td>HTTP headers</td>
+<td>Override / no-cache</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Not used in MVP:</strong> embeddings, SLM classifier (Phase B hybrid).</p>
+<hr />
+<h2 id="heuristic-classifier-phase-a-mvp">Heuristic classifier (Phase A — MVP)<a class="headerlink" href="#heuristic-classifier-phase-a-mvp" title="Permanent link">&para;</a></h2>
+<p>Simple rule chain evaluated top-to-bottom; <strong>first match wins</strong> for tier <em>ceiling</em> (max tier allowed before escalation logic):</p>
+<table>
+<thead>
+<tr>
+<th>Rule ID</th>
+<th>Condition</th>
+<th>Max tier</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R-A1</td>
+<td><code>total_tokens</code> &lt; 50 AND matches classify regex¹</td>
+<td>L3</td>
+<td>Tiny classification</td>
+</tr>
+<tr>
+<td>R-A2</td>
+<td><code>total_tokens</code> &lt; 200 AND matches transform regex²</td>
+<td>L3</td>
+<td>Small reformat/extract</td>
+</tr>
+<tr>
+<td>R-A3</td>
+<td><code>total_tokens</code> &lt; 500</td>
+<td>L3</td>
+<td>Default small local</td>
+</tr>
+<tr>
+<td>R-A4</td>
+<td><code>total_tokens</code> ≥ 500 AND &lt; 2000</td>
+<td>L4</td>
+<td>Medium generation [Phase B]</td>
+</tr>
+<tr>
+<td>R-A5</td>
+<td><code>total_tokens</code> ≥ 2000</td>
+<td>L6</td>
+<td>Large context — skip local in MVP, escalate [Phase A.1]</td>
+</tr>
+</tbody>
+</table>
+<p>¹ Classify regex (examples): <code>(?i)(is this|classify|which type|yes or no|true or false)</code><br />
+² Transform regex (examples): <code>(?i)(format|reformat|convert to json|extract|parse)</code></p>
+<p><strong>MVP simplification:</strong> All requests → L3 unless L0 cache hit. Heuristic rules logged but only affect Phase A.1 escalation.</p>
+<hr />
+<h2 id="hybrid-classifier-phase-b-v1">Hybrid classifier (Phase B — v1)<a class="headerlink" href="#hybrid-classifier-phase-b-v1" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Method</th>
+<th>Output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Heuristic rules (above)</td>
+<td>Candidate tier + task type</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Lt pattern registry</td>
+<td>Lt if high-confidence tool match</td>
+</tr>
+<tr>
+<td>3</td>
+<td>SLM prompt (L3)</td>
+<td><code>{ task_type, suggested_tier, confidence }</code> if heuristic ambiguous</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Ambiguous</strong> = heuristic returns default AND <code>total_tokens</code> in 200–800 range AND no Lt match.</p>
+<hr />
+<h2 id="task-types">Task types<a class="headerlink" href="#task-types" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Description</th>
+<th>Typical tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cache_hit</code></td>
+<td>Exact or semantic match</td>
+<td>L0 / L1</td>
+</tr>
+<tr>
+<td><code>rule</code></td>
+<td>Deterministic transform</td>
+<td>L2</td>
+</tr>
+<tr>
+<td><code>tool</code></td>
+<td>CLI/IDE dispatch</td>
+<td>Lt</td>
+</tr>
+<tr>
+<td><code>classify</code></td>
+<td>Label, route, score</td>
+<td>L3</td>
+</tr>
+<tr>
+<td><code>extract</code></td>
+<td>Pull structured data</td>
+<td>L3</td>
+</tr>
+<tr>
+<td><code>transform</code></td>
+<td>Reformat, light edit</td>
+<td>L3</td>
+</tr>
+<tr>
+<td><code>generate_small</code></td>
+<td>Short completion</td>
+<td>L3 / L4</td>
+</tr>
+<tr>
+<td><code>generate_large</code></td>
+<td>Long reasoning, multi-file</td>
+<td>L5 / L6</td>
+</tr>
+<tr>
+<td><code>agent_turn</code></td>
+<td>Has tool_calls in history</td>
+<td>L3+ (see ADR-0004)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="confidence-scoring">Confidence scoring<a class="headerlink" href="#confidence-scoring" title="Permanent link">&para;</a></h2>
+<h3 id="phase-a-mvp">Phase A (MVP)<a class="headerlink" href="#phase-a-mvp" title="Permanent link">&para;</a></h3>
+<p>No confidence scoring. L3 result always returned. L6 disabled.</p>
+<h3 id="phase-a1">Phase A.1+<a class="headerlink" href="#phase-a1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Confidence source</th>
+<th>Pass threshold</th>
+<th>Fail action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L3</td>
+<td>Heuristic: response length &gt; 10 chars AND no refusal phrases³</td>
+<td>0.7 (binary mapped)</td>
+<td>Escalate to L4</td>
+</tr>
+<tr>
+<td>L4</td>
+<td>SLM self-eval prompt: "Rate 1-5 completeness"</td>
+<td>≥ 4/5</td>
+<td>Escalate to L5</td>
+</tr>
+<tr>
+<td>L5</td>
+<td>Same self-eval</td>
+<td>≥ 4/5</td>
+<td>Escalate to L6</td>
+</tr>
+<tr>
+<td>L6</td>
+<td>N/A — terminal</td>
+<td>—</td>
+<td>Return or error</td>
+</tr>
+</tbody>
+</table>
+<p>³ Refusal phrases: <code>(?i)(i cannot|i can't|as an ai|i don't have access)</code></p>
+<p><strong>Phase B improvement:</strong> Use logprobs from Ollama when available; fall back to self-eval.</p>
+<h3 id="escalation-policy">Escalation policy<a class="headerlink" href="#escalation-policy" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>L3 fail → L4 (if configured) → L5 (if configured) → L6 (if frontier.enabled)
+</code></pre></div>
+<p>If <code>frontier.enabled: false</code> and all local tiers fail → return best local attempt + <code>daari_meta.warning: "below_confidence_threshold"</code>.</p>
+<p>Config keys:
+<div class="highlight"><pre><span></span><code><span class="nt">confidence</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">l3_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.7</span>
+<span class="w">  </span><span class="nt">l4_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.8</span>
+<span class="w">  </span><span class="nt">l5_min</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.8</span>
+<span class="nt">frontier</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div></p>
+<hr />
+<h2 id="l2-dev-developer-command-rules-phase-b">L2-dev — developer command rules (Phase B)<a class="headerlink" href="#l2-dev-developer-command-rules-phase-b" title="Permanent link">&para;</a></h2>
+<p><strong>Purpose:</strong> Fine-tuned for coding/enterprise — detect <strong>execute command</strong> vs <strong>ask model</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Rule ID</th>
+<th>Trigger (regex / intent)</th>
+<th>Action</th>
+<th>Lt command</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DEV-01</td>
+<td><code>(?i)^(run \|execute )?(git status)</code></td>
+<td>execute</td>
+<td><code>git status</code></td>
+</tr>
+<tr>
+<td>DEV-02</td>
+<td><code>(?i)^(run \|execute )?(git diff)</code></td>
+<td>execute</td>
+<td><code>git diff</code></td>
+</tr>
+<tr>
+<td>DEV-03</td>
+<td><code>(?i)(run tests\|npm test\|pytest)</code></td>
+<td>execute</td>
+<td>project test command from config</td>
+</tr>
+<tr>
+<td>DEV-04</td>
+<td><code>(?i)(run lint\|eslint\|run linter)</code></td>
+<td>execute</td>
+<td>lint command from config</td>
+</tr>
+<tr>
+<td>DEV-05</td>
+<td><code>(?i)run (script )?(\./[\w./-]+\.(sh\|py))</code></td>
+<td>execute</td>
+<td>script path (validated under repo)</td>
+</tr>
+<tr>
+<td>DEV-06</td>
+<td><code>(?i)(what did (test\|lint) (say\|show)\|last test output)</code></td>
+<td><strong>ccs_read</strong></td>
+<td>no execution — inject CCS</td>
+</tr>
+<tr>
+<td>DEV-07</td>
+<td><code>(?i)(re-run\|run again) (tests\|lint)</code></td>
+<td>execute + invalidate CCS</td>
+<td>force fresh Lt run</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Project overrides:</strong> <code>.daari/commands.yaml</code> maps intent aliases → shell command (enterprise teams).</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># .daari/commands.yaml example</span>
+<span class="nt">commands</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">test</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;npm</span><span class="nv"> </span><span class="s">test&quot;</span>
+<span class="w">  </span><span class="nt">lint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;npm</span><span class="nv"> </span><span class="s">run</span><span class="nv"> </span><span class="s">lint&quot;</span>
+<span class="w">  </span><span class="nt">build</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;./gradlew</span><span class="nv"> </span><span class="s">build&quot;</span>
+<span class="nt">allow_scripts</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;./scripts/ci-check.sh&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="ccs-command-context-store-phase-b">CCS — command context store (Phase B)<a class="headerlink" href="#ccs-command-context-store-phase-b" title="Permanent link">&para;</a></h2>
+<p><strong>Not L0.</strong> Stores <strong>execution results</strong> for developer reuse.</p>
+<p><strong>Key:</strong>
+<div class="highlight"><pre><span></span><code>SHA256(repo_root + cwd + normalized_command)
+</code></pre></div></p>
+<p><strong>On Lt execute success:</strong> write CCS entry (stdout summary + path to full log, exit code, TTL).</p>
+<p><strong>On DEV-06 / readonly query:</strong> return CCS content in response; tier = <code>CCS</code> in daari_meta.</p>
+<p><strong>TTL defaults:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Command type</th>
+<th>TTL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git status</code>, <code>git diff</code></td>
+<td>60s</td>
+</tr>
+<tr>
+<td>test/lint</td>
+<td>300s</td>
+</tr>
+<tr>
+<td>build</td>
+<td>600s</td>
+</tr>
+<tr>
+<td>scripts</td>
+<td>configurable</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Headers:</strong> <code>X-Daari-ReRun-Command: true</code> bypasses CCS read.</p>
+<hr />
+<h2 id="lt-matching-phase-b">Lt matching (Phase B)<a class="headerlink" href="#lt-matching-phase-b" title="Permanent link">&para;</a></h2>
+<p>Lt runs <strong>only</strong> when pattern match confidence ≥ 0.95. Patterns are explicit — no free-form NLP in v1.</p>
+<table>
+<thead>
+<tr>
+<th>Pattern ID</th>
+<th>Trigger (regex on last user message)</th>
+<th>Tool</th>
+<th>Destructive?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LT-01</td>
+<td><code>(?i)run (eslint|lint)</code></td>
+<td>eslint</td>
+<td>No</td>
+</tr>
+<tr>
+<td>LT-02</td>
+<td><code>(?i)format (this |the )?(file|code)</code></td>
+<td>prettier</td>
+<td>No</td>
+</tr>
+<tr>
+<td>LT-03</td>
+<td><code>(?i)git status</code></td>
+<td>git status</td>
+<td>No</td>
+</tr>
+<tr>
+<td>LT-04</td>
+<td><code>(?i)git diff</code></td>
+<td>git diff</td>
+<td>No</td>
+</tr>
+<tr>
+<td>LT-05</td>
+<td><code>(?i)rename (symbol|method|class)</code></td>
+<td>intellij refactor</td>
+<td><strong>Yes</strong></td>
+</tr>
+<tr>
+<td>LT-06</td>
+<td><code>(?i)optimize imports</code></td>
+<td>intellij</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Destructive ops (LT-05+):</strong> Require <code>X-Daari-Confirm-Tool: true</code> header or config <code>tools.auto_confirm: false</code> (default) → return confirmation prompt instead of executing.</p>
+<hr />
+<h2 id="l0-cache-key">L0 cache key<a class="headerlink" href="#l0-cache-key" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>SHA256(
+  normalize(messages) +
+  model +
+  temperature +
+  tools_schema_hash +    # see ADR-0004
+  tier_override_or_none
+)
+</code></pre></div>
+<p>Skip L0 if <code>X-Daari-No-Cache: true</code> or request contains <code>tool_calls</code> in messages (agent mid-turn).</p>
+<hr />
+<h2 id="golden-prompt-eval-set">Golden prompt eval set<a class="headerlink" href="#golden-prompt-eval-set" title="Permanent link">&para;</a></h2>
+<p>File: <code>evals/routing/prompts.jsonl</code> (to be created at implementation)</p>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Prompt (summary)</th>
+<th>Expected tier (MVP)</th>
+<th>Expected tier (v1)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GP-01</td>
+<td>Exact repeat of prior request</td>
+<td>L0</td>
+<td>L0</td>
+</tr>
+<tr>
+<td>GP-02</td>
+<td>"Is this a test file?" + 20 lines Java</td>
+<td>L3</td>
+<td>L3</td>
+</tr>
+<tr>
+<td>GP-03</td>
+<td>"Format as JSON: {foo: 1}"</td>
+<td>L3</td>
+<td>L2 or L3</td>
+</tr>
+<tr>
+<td>GP-04</td>
+<td>"Write commit message for: " + small diff</td>
+<td>L3</td>
+<td>L3</td>
+</tr>
+<tr>
+<td>GP-05</td>
+<td>Same commit message request (repeat)</td>
+<td>L0</td>
+<td>L0</td>
+</tr>
+<tr>
+<td>GP-06</td>
+<td>"Run eslint on src/"</td>
+<td>L3</td>
+<td><strong>Lt</strong></td>
+</tr>
+<tr>
+<td>GP-07</td>
+<td>"git status"</td>
+<td>L3</td>
+<td><strong>Lt</strong></td>
+</tr>
+<tr>
+<td>GP-08</td>
+<td>"Explain microservices vs monolith" (500+ words)</td>
+<td>L3</td>
+<td>L6</td>
+</tr>
+<tr>
+<td>GP-09</td>
+<td>"Add docstring to this 10-line function"</td>
+<td>L3</td>
+<td>L3</td>
+</tr>
+<tr>
+<td>GP-10</td>
+<td>"Refactor this 500-line class for SOLID"</td>
+<td>L3</td>
+<td>L5/L6</td>
+</tr>
+<tr>
+<td>GP-11</td>
+<td>"What does this regex match?" (short)</td>
+<td>L3</td>
+<td>L3</td>
+</tr>
+<tr>
+<td>GP-12</td>
+<td>Paraphrase of GP-04 (same intent)</td>
+<td>L3</td>
+<td>L1</td>
+</tr>
+<tr>
+<td>GP-13</td>
+<td>"Rename method foo to bar in UserService"</td>
+<td>L3</td>
+<td><strong>Lt</strong> (confirm)</td>
+</tr>
+<tr>
+<td>GP-14</td>
+<td>"Convert this YAML to JSON" (small)</td>
+<td>L3</td>
+<td>L2/L3</td>
+</tr>
+<tr>
+<td>GP-15</td>
+<td>"Summarize this 3-line error log"</td>
+<td>L3</td>
+<td>L3</td>
+</tr>
+<tr>
+<td>GP-16</td>
+<td>"Generate unit tests for Calculator"</td>
+<td>L3</td>
+<td>L4</td>
+</tr>
+<tr>
+<td>GP-17</td>
+<td>Empty/minimal prompt "hi"</td>
+<td>L3</td>
+<td>L3</td>
+</tr>
+<tr>
+<td>GP-18</td>
+<td>Prompt with <code>tools</code> defined (agent)</td>
+<td>L3</td>
+<td>L3 (passthrough rules)</td>
+</tr>
+<tr>
+<td>GP-19</td>
+<td>"Optimize imports in User.java"</td>
+<td>L3</td>
+<td><strong>Lt</strong></td>
+</tr>
+<tr>
+<td>GP-20</td>
+<td>Multi-turn: 5 messages debugging session</td>
+<td>L3</td>
+<td>L3/L4</td>
+</tr>
+</tbody>
+</table>
+<p><strong>MVP pass criteria:</strong> GP-01, GP-05 hit L0; GP-02–GP-04, GP-09, GP-11, GP-15, GP-17 route to L3; no silent failures.</p>
+<p><strong>v1 pass criteria:</strong> ≥90% match expected tier on GP-01–GP-20.</p>
+<hr />
+<h2 id="daari_meta-response-shape">daari_meta response shape<a class="headerlink" href="#daari_meta-response-shape" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;daari_meta&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;tier&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;L3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;task_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;generate_small&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;cache_hit&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;executor&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ollama&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;llama3.2:3b&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;latency_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">842</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;confidence&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;escalated_from&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;rule_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;R-A3&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<hr />
+<h2 id="open-items-tracked-elsewhere">Open items (tracked elsewhere)<a class="headerlink" href="#open-items-tracked-elsewhere" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>ADR / doc</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tool-call cache/routing</td>
+<td>ADR-0004</td>
+</tr>
+<tr>
+<td>Lt destructive confirmation</td>
+<td>ADR-0003, ADR-0012, PRD #14, #75</td>
+</tr>
+<tr>
+<td>Execution policy (allow/deny/ask)</td>
+<td>ADR-0012</td>
+</tr>
+<tr>
+<td>Semantic cache thresholds</td>
+<td>OD-3</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

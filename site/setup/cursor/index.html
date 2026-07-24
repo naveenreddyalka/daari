@@ -1,0 +1,1318 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Local-first LLM router — route to cache, tools, and local models before frontier APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://naveenreddyalka.github.io/daari/setup/cursor/">
+      
+      
+        <link rel="prev" href="../..">
+      
+      
+        <link rel="next" href="../claude-code/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Cursor - daari</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cursor-setup-e2e-with-tunnel" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="daari" class="md-header__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            daari
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Cursor
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="daari" class="md-nav__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    daari
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#important-cursor-cannot-call-localhost-directly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Important: Cursor cannot call localhost directly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fast-path-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fast path (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-setup-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual setup options
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Manual setup options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-use-the-tunnel-script-without-auto-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A: Use the tunnel script without auto-setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-setup-cursor-with-explicit-base-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B: Setup Cursor with explicit base URL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-c-let-setup-command-start-tunnel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option C: Let setup command start tunnel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#securing-the-tunnel-issue-86" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Securing the tunnel (issue #86)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-for-true-local-e2e-no-public-tunnel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives for true-local E2E (no public tunnel)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prefer-latency-cap-the-local-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prefer latency? Cap the local tier
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verify-routing-debug-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify routing (debug log)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../intellij/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JetBrains
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openai-compat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAI-compatible
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../project-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mlx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../prd/ROADMAP-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../TRACKING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../DEVELOPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../AUTOMATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#important-cursor-cannot-call-localhost-directly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Important: Cursor cannot call localhost directly
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fast-path-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fast path (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-setup-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual setup options
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Manual setup options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#option-a-use-the-tunnel-script-without-auto-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option A: Use the tunnel script without auto-setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-b-setup-cursor-with-explicit-base-url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option B: Setup Cursor with explicit base URL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#option-c-let-setup-command-start-tunnel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Option C: Let setup command start tunnel
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#securing-the-tunnel-issue-86" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Securing the tunnel (issue #86)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#alternatives-for-true-local-e2e-no-public-tunnel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Alternatives for true-local E2E (no public tunnel)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prefer-latency-cap-the-local-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prefer latency? Cap the local tier
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#verify-routing-debug-log" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verify routing (debug log)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cursor-setup-e2e-with-tunnel">Cursor setup (E2E with tunnel)<a class="headerlink" href="#cursor-setup-e2e-with-tunnel" title="Permanent link">&para;</a></h1>
+<h2 id="important-cursor-cannot-call-localhost-directly">Important: Cursor cannot call localhost directly<a class="headerlink" href="#important-cursor-cannot-call-localhost-directly" title="Permanent link">&para;</a></h2>
+<p>Cursor BYOK traffic is proxied through Cursor cloud, so private addresses like <code>http://127.0.0.1:11435/v1</code> are blocked (<code>Access to private networks is forbidden</code>).<br />
+For Cursor E2E, use an HTTPS tunnel that forwards to local daari.</p>
+<h2 id="fast-path-recommended">Fast path (recommended)<a class="headerlink" href="#fast-path-recommended" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>scripts/tunnel.sh<span class="w"> </span>--setup-cursor
+</code></pre></div>
+<p>This command:</p>
+<ul>
+<li>starts <code>daari serve</code> if needed</li>
+<li>opens a <code>cloudflared</code> quick tunnel to <code>http://127.0.0.1:11435</code></li>
+<li>configures Cursor with the tunnel URL (<code>https://...trycloudflare.com/v1</code>)</li>
+<li>keeps running until you stop it (<code>Ctrl+C</code>)</li>
+</ul>
+<p>Inference still runs locally in daari/Ollama. Only the Cursor HTTP hop is public.</p>
+<h2 id="manual-setup-options">Manual setup options<a class="headerlink" href="#manual-setup-options" title="Permanent link">&para;</a></h2>
+<h3 id="option-a-use-the-tunnel-script-without-auto-setup">Option A: Use the tunnel script without auto-setup<a class="headerlink" href="#option-a-use-the-tunnel-script-without-auto-setup" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>scripts/tunnel.sh
+</code></pre></div>
+<p>Then paste the printed URL (<code>https://.../v1</code>) into Cursor <strong>Override OpenAI Base URL</strong>.</p>
+<h3 id="option-b-setup-cursor-with-explicit-base-url">Option B: Setup Cursor with explicit base URL<a class="headerlink" href="#option-b-setup-cursor-with-explicit-base-url" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>daari<span class="w"> </span>setup<span class="w"> </span>cursor<span class="w"> </span>--base-url<span class="w"> </span><span class="s2">&quot;https://&lt;your-tunnel-host&gt;/v1&quot;</span>
+</code></pre></div>
+<h3 id="option-c-let-setup-command-start-tunnel">Option C: Let setup command start tunnel<a class="headerlink" href="#option-c-let-setup-command-start-tunnel" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>daari<span class="w"> </span>setup<span class="w"> </span>cursor<span class="w"> </span>--tunnel
+</code></pre></div>
+<p>If <code>DAARI_TUNNEL_URL</code> is set, it is used directly.</p>
+<h2 id="securing-the-tunnel-issue-86">Securing the tunnel (issue #86)<a class="headerlink" href="#securing-the-tunnel-issue-86" title="Permanent link">&para;</a></h2>
+<p>A public tunnel means anyone with the URL could reach the gateway. Mitigations:</p>
+<ul>
+<li><code>daari setup cursor --tunnel</code> now auto-generates <code>server.api_key</code> in
+  <code>~/.daari/config.yaml</code> (when unset) and configures Cursor to send it.
+  With the key set, all endpoints except <code>/health</code> return 401 without a
+  matching <code>Authorization: Bearer</code> or <code>x-api-key</code> header. Restart the daemon
+  after the key is first generated:
+  <code>launchctl kickstart -k gui/$(id -u)/com.daari.serve</code>.</li>
+<li>Quick tunnels get a fresh random URL each start, which limits exposure but
+  breaks Cursor config on every restart. For a stable, lower-profile setup use
+  a <strong>named Cloudflare tunnel</strong> on your own domain (free; requires a Cloudflare
+  account) — the URL never changes and you can add Cloudflare Access policies
+  in front.</li>
+<li>Alternatives in the same category: ngrok (ephemeral free URLs) or Tailscale
+  Funnel (stable URL tied to your tailnet identity). All of them are public
+  HTTPS endpoints — the API key is what actually gates access.</li>
+</ul>
+<p>Note: the tunnel requirement is Cursor's architecture, not daari's. Cursor
+builds prompts on its servers and SSRF-blocks private IPs, so no BYOK setup
+can call localhost directly. Claude Code, IntelliJ, VS Code, and the browser
+extension all talk to <code>http://127.0.0.1:11435</code> with no tunnel.</p>
+<h2 id="alternatives-for-true-local-e2e-no-public-tunnel">Alternatives for true-local E2E (no public tunnel)<a class="headerlink" href="#alternatives-for-true-local-e2e-no-public-tunnel" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Browser extension: <code>packages/browser-extension/</code> (direct localhost usage)</li>
+<li><code>curl</code> against local daemon: <code>http://127.0.0.1:11435/v1</code></li>
+<li>VS Code local setup: <code>daari setup vscode</code> (same machine, no Cursor cloud hop)</li>
+</ul>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Problem</th>
+<th>Check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Access to private networks is forbidden</code></td>
+<td>You are still using localhost in Cursor; switch to tunnel HTTPS URL</td>
+</tr>
+<tr>
+<td>Cursor shows <code>Reconnecting...</code> + <code>Network Error - trouble connecting to model provider</code></td>
+<td>Verify your tunnel URL is a random <code>https://&lt;name&gt;.trycloudflare.com</code> hostname (not <code>https://api.trycloudflare.com</code>), then test <code>curl https://&lt;name&gt;.trycloudflare.com/health</code> and <code>daari doctor --tunnel --tunnel-url https://&lt;name&gt;.trycloudflare.com</code></td>
+</tr>
+<tr>
+<td>Empty response in Cursor (no text)</td>
+<td>Check <code>~/.daari/cursor-requests.log</code> — look for <code>content_chunks: 0</code>. Common causes (fixed in recent builds): unrecognized <code>input_text</code> content blocks, IDE tools causing Ollama <code>tool_calls</code>, L4 model not pulled (404 then fallback). Restart <code>daari serve</code> from venv after updates.</td>
+</tr>
+<tr>
+<td>Slow first reply on long prompts</td>
+<td>Cursor context may route to L4 (<code>llama3.1:8b</code>). If not pulled, daari retries L3 after 404 — run <code>ollama pull llama3.1:8b</code> or expect ~15s L3 fallback latency.</td>
+</tr>
+<tr>
+<td>Reply mentions shell/tools but didn't use them</td>
+<td>Expected POC limitation: daari strips Cursor's 18 IDE tools for Ask, but Cursor's system prompt still describes tools; small local models may hallucinate tool narration in plain text. See <a href="../../TRACKING/#cursor-e2e-byok--poc-2026-06-23">TRACKING.md</a>.</td>
+</tr>
+<tr>
+<td><code>cloudflared: command not found</code></td>
+<td>Install: <code>brew install cloudflared</code></td>
+</tr>
+<tr>
+<td>Tunnel command exits quickly</td>
+<td>Restart with <code>scripts/tunnel.sh</code>; it now validates <code>/health</code> before printing ready and shows copy/paste curl checks</td>
+</tr>
+<tr>
+<td>Slow every request</td>
+<td>Cache miss — verify with <code>daari stats</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="prefer-latency-cap-the-local-tier">Prefer latency? Cap the local tier<a class="headerlink" href="#prefer-latency-cap-the-local-tier" title="Permanent link">&para;</a></h2>
+<p>Cursor's Ask context is usually &gt;250 words, which routes to L4 (<code>llama3.1:8b</code>) and pays its latency even for trivial questions. To keep chat on the fast L3 model:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ~/.daari/config.yaml</span>
+<span class="nt">routing</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">max_tier_for_chat</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">L3</span>
+</code></pre></div>
+<p>Or per request with the <code>X-Daari-Tier-Cap: L3</code> header (wins over config). The cap bounds both the initial tier and local confidence escalation; an explicit <code>X-Daari-Tier-Override</code> still wins over the cap.</p>
+<h2 id="verify-routing-debug-log">Verify routing (debug log)<a class="headerlink" href="#verify-routing-debug-log" title="Permanent link">&para;</a></h2>
+<p>After a Cursor chat message:</p>
+<div class="highlight"><pre><span></span><code>tail<span class="w"> </span>-10<span class="w"> </span>~/.daari/cursor-requests.log
+</code></pre></div>
+<p>Healthy Ask flow:</p>
+<ul>
+<li><code>chat_completions_request</code> with <code>user_agent: Cursor/1.0</code></li>
+<li><code>tools_stripped</code> with <code>count: 18</code> (Ask mode)</li>
+<li><code>stream_attempt</code> → optionally <code>stream_fallback_ok</code> if L4 missing</li>
+<li><code>chat_completions_stream_done</code> with <strong><code>content_chunks</code> &gt; 0</strong></li>
+</ul>
+<p>Answer source: <strong>local Ollama</strong> (<code>llama3.2:3b</code> or <code>llama3.1:8b</code>), not Cursor built-in or frontier APIs — unless L6 escalation is configured and triggered (not used in standard Ask POC).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

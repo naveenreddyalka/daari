@@ -4,9 +4,20 @@ set -euo pipefail
 
 BASE_URL="${DAARI_BASE_URL:-http://127.0.0.1:11435}"
 SAMPLES="${SAMPLES:-5}"
+# Daemons exposed via tunnel enforce API-key auth (issue #86); pick the key
+# up from the env or the local config so the bench works either way.
+API_KEY="${DAARI_API_KEY:-$(python3 -c "
+import pathlib, yaml
+path = pathlib.Path.home() / '.daari' / 'config.yaml'
+try:
+    print((yaml.safe_load(path.read_text()) or {}).get('server', {}).get('api_key', ''))
+except FileNotFoundError:
+    print('')
+" 2>/dev/null || true)}"
 
-python3 - "$BASE_URL" "$SAMPLES" <<'PY'
+API_KEY="$API_KEY" python3 - "$BASE_URL" "$SAMPLES" <<'PY'
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -16,6 +27,7 @@ import uuid
 base_url = sys.argv[1].rstrip("/")
 samples = int(sys.argv[2])
 endpoint = f"{base_url}/v1/chat/completions"
+api_key = os.environ.get("API_KEY", "").strip()
 
 
 def call(prompt: str, headers: dict[str, str] | None = None) -> tuple[float, str]:
@@ -23,7 +35,15 @@ def call(prompt: str, headers: dict[str, str] | None = None) -> tuple[float, str
         "model": "llama3.2:3b",
         "messages": [{"role": "user", "content": prompt}],
     }
-    cmd = ["curl", "-s", endpoint, "-H", "Content-Type: application/json"]
+    # daari_meta is opt-in since the Cursor BYOK compat work — the tier
+    # column comes back empty without this header.
+    cmd = [
+        "curl", "-s", endpoint,
+        "-H", "Content-Type: application/json",
+        "-H", "X-Daari-Meta: true",
+    ]
+    if api_key:
+        cmd += ["-H", f"x-api-key: {api_key}"]
     for key, value in (headers or {}).items():
         cmd += ["-H", f"{key}: {value}"]
     cmd += ["-d", json.dumps(payload)]

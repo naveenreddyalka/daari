@@ -1,0 +1,3049 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Local-first LLM router — route to cache, tools, and local models before frontier APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://naveenreddyalka.github.io/daari/TRACKING/">
+      
+      
+        <link rel="prev" href="../prd/ROADMAP-v2/">
+      
+      
+        <link rel="next" href="../DEVELOPING/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Tracking - daari</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#daari-task-tracking" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="daari" class="md-header__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            daari
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tracking
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="daari" class="md-nav__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    daari
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/cursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/intellij/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JetBrains
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/openai-compat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAI-compatible
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/project-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/mlx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prd/ROADMAP-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracking
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#legend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Legend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-a-tracer-bullet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A — Tracer bullet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-a1-install-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A.1 — Install &amp; setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-b-full-local-first-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase B — Full local-first stack
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-c-bootstrap-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase C bootstrap — in progress
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cursor-e2e-byok-poc-2026-06-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cursor E2E BYOK — POC (2026-06-23)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cursor E2E BYOK — POC (2026-06-23)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#issues-found-fixed-shipped-2026-06-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issues found &amp; fixed (shipped 2026-06-23)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-summary-2026-06-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing summary (2026-06-23)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#next-steps-cursor-byok-migrated-to-github-issues-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next steps (Cursor / BYOK) — migrated to GitHub issues (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#autonomous-dev-loop-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Autonomous dev loop (2026-07-10)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Autonomous dev loop (2026-07-10)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demo-cycle-2026-07-10-loop-verified-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demo cycle (2026-07-10) — loop verified end-to-end
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-23-p1-backlog-cleared-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles 2–3: P1 backlog cleared (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-cycle-v12-candidate-set-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature cycle: v1.2 candidate set (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-cycle-prompt-intelligence-transparency-2026-07-10-prd-docsprdintelligencemd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature cycle: prompt intelligence &amp; transparency (2026-07-10, PRD docs/prd/intelligence.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-original-backlog-cleared-36-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles: original backlog cleared (#3–#6) (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-extension-coverage-scouted-improvements-7-3436-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles: extension coverage + scouted improvements (#7, #34–#36) (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v112-released-ci-hardening-2026-07-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.1.2 released + CI hardening (2026-07-11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-streaming-l1-scouted-improvements-4346-2026-07-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles: streaming L1 + scouted improvements (#43–#46) (2026-07-11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-d1-personal-feedback-loop-2026-07-11-prd-docsprdlearningmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase D1 — personal feedback loop (2026-07-11, PRD docs/prd/learning.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-d2-local-fine-tuning-train-2026-07-12-prd-docsprdlearningmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase D2 — local fine-tuning train (2026-07-12, PRD docs/prd/learning.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trust-efficiency-trains-2026-07-1213-prd-docsprdtrustmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust &amp; Efficiency trains (2026-07-12/13, PRD docs/prd/trust.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-click-client-setup-2026-07-13-issue-81" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-click client setup (2026-07-13, issue #81)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-code-agent-e2e-tunnel-hardening-2026-07-13-issues-848688" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude Code agent E2E + tunnel hardening (2026-07-13, issues #84/#86/#88)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycle-2026-07-22-full-live-e2e-per-project-profiles-91" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycle 2026-07-22 — full live E2E + per-project profiles (#91)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#release-v120-claude-code-live-fix-2026-07-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release v1.2.0 + Claude Code live fix (2026-07-23)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mlx-backend-ci-hardening-2026-07-23-issue-97" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLX backend + CI hardening (2026-07-23, issue #97)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anthropic-observability-phase-d3-adapter-deploy-2026-07-23-issue-101" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anthropic observability + Phase D3 + adapter deploy (2026-07-23, issue #101)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-e2-org-shared-cache-tracer-bullet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase E2 — Org shared cache (tracer bullet)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deferred-user-owned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deferred / user-owned
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to update
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DEVELOPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../AUTOMATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#legend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Legend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-a-tracer-bullet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A — Tracer bullet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-a1-install-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase A.1 — Install &amp; setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-b-full-local-first-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase B — Full local-first stack
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-c-bootstrap-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase C bootstrap — in progress
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cursor-e2e-byok-poc-2026-06-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cursor E2E BYOK — POC (2026-06-23)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cursor E2E BYOK — POC (2026-06-23)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#issues-found-fixed-shipped-2026-06-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Issues found &amp; fixed (shipped 2026-06-23)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#testing-summary-2026-06-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing summary (2026-06-23)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#next-steps-cursor-byok-migrated-to-github-issues-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next steps (Cursor / BYOK) — migrated to GitHub issues (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#autonomous-dev-loop-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Autonomous dev loop (2026-07-10)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Autonomous dev loop (2026-07-10)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#demo-cycle-2026-07-10-loop-verified-end-to-end" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Demo cycle (2026-07-10) — loop verified end-to-end
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-23-p1-backlog-cleared-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles 2–3: P1 backlog cleared (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-cycle-v12-candidate-set-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature cycle: v1.2 candidate set (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#feature-cycle-prompt-intelligence-transparency-2026-07-10-prd-docsprdintelligencemd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Feature cycle: prompt intelligence &amp; transparency (2026-07-10, PRD docs/prd/intelligence.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-original-backlog-cleared-36-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles: original backlog cleared (#3–#6) (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-extension-coverage-scouted-improvements-7-3436-2026-07-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles: extension coverage + scouted improvements (#7, #34–#36) (2026-07-10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#v112-released-ci-hardening-2026-07-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v1.1.2 released + CI hardening (2026-07-11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycles-streaming-l1-scouted-improvements-4346-2026-07-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycles: streaming L1 + scouted improvements (#43–#46) (2026-07-11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-d1-personal-feedback-loop-2026-07-11-prd-docsprdlearningmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase D1 — personal feedback loop (2026-07-11, PRD docs/prd/learning.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-d2-local-fine-tuning-train-2026-07-12-prd-docsprdlearningmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase D2 — local fine-tuning train (2026-07-12, PRD docs/prd/learning.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trust-efficiency-trains-2026-07-1213-prd-docsprdtrustmd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust &amp; Efficiency trains (2026-07-12/13, PRD docs/prd/trust.md)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-click-client-setup-2026-07-13-issue-81" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One-click client setup (2026-07-13, issue #81)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#claude-code-agent-e2e-tunnel-hardening-2026-07-13-issues-848688" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claude Code agent E2E + tunnel hardening (2026-07-13, issues #84/#86/#88)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loop-cycle-2026-07-22-full-live-e2e-per-project-profiles-91" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loop cycle 2026-07-22 — full live E2E + per-project profiles (#91)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#release-v120-claude-code-live-fix-2026-07-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release v1.2.0 + Claude Code live fix (2026-07-23)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mlx-backend-ci-hardening-2026-07-23-issue-97" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLX backend + CI hardening (2026-07-23, issue #97)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#anthropic-observability-phase-d3-adapter-deploy-2026-07-23-issue-101" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Anthropic observability + Phase D3 + adapter deploy (2026-07-23, issue #101)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-e2-org-shared-cache-tracer-bullet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase E2 — Org shared cache (tracer bullet)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deferred-user-owned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deferred / user-owned
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to update
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="daari-task-tracking">daari — Task tracking<a class="headerlink" href="#daari-task-tracking" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Last updated: 2026-07-23<br />
+Update this file when phases/tasks complete.<br />
+Repo layout and request flow: <a href="../ARCHITECTURE/">ARCHITECTURE.md</a></p>
+</blockquote>
+<h2 id="legend">Legend<a class="headerlink" href="#legend" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[x] done  [ ] pending  [~] in progress  [-] deferred</li>
+</ul>
+<hr />
+<h2 id="phase-a-tracer-bullet">Phase A — Tracer bullet<a class="headerlink" href="#phase-a-tracer-bullet" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scaffold (<code>pyproject.toml</code>, Typer CLI)</td>
+<td>[x]</td>
+<td><code>cf50264</code></td>
+</tr>
+<tr>
+<td>Config (<code>Settings</code>, <code>~/.daari/config.yaml</code>)</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Internal model (<code>InternalRequest</code> / <code>InternalResponse</code>)</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>L0 exact cache</td>
+<td>[x]</td>
+<td>diskcache</td>
+</tr>
+<tr>
+<td>ProviderRegistry (cache + Ollama)</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>OpenAI gateway (<code>POST /v1/chat/completions</code>)</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>FastAPI server (<code>daari serve</code>)</td>
+<td>[x]</td>
+<td>port 11435</td>
+</tr>
+<tr>
+<td>Ollama executor (L3)</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Router L0 → L3</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Metrics / <code>daari stats</code></td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Agent passthrough (tool_calls skip L0)</td>
+<td>[x]</td>
+<td>ADR-0004</td>
+</tr>
+<tr>
+<td><code>X-Daari-No-Cache</code> / tier override headers</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Ollama-down → 503</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Eval file GP-01–GP-10</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Routing eval pytest</td>
+<td>[x]</td>
+<td><code>6768fb8</code></td>
+</tr>
+<tr>
+<td>Live Ollama integration test (optional)</td>
+<td>[x]</td>
+<td>skipped without <code>OLLAMA_HOST</code></td>
+</tr>
+<tr>
+<td>Manual Cursor doc</td>
+<td>[x]</td>
+<td><a href="../setup/cursor/">setup/cursor.md</a></td>
+</tr>
+<tr>
+<td>Dev pickup docs</td>
+<td>[x]</td>
+<td><a href="../DEVELOPING/">DEVELOPING.md</a></td>
+</tr>
+<tr>
+<td>Streaming SSE</td>
+<td>[x]</td>
+<td>basic OpenAI-style SSE passthrough for stream=true</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Exit criteria</strong></p>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Second identical prompt hits L0</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td><code>daari stats</code> shows tier breakdown</td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td>Cursor via tunnel setup</td>
+<td>[x]</td>
+<td><code>scripts/tunnel.sh --setup-cursor</code> + <code>daari setup cursor --base-url/--tunnel</code></td>
+</tr>
+<tr>
+<td>GP-01–GP-10 pass MVP criteria</td>
+<td>[x]</td>
+<td><code>tests/test_routing_eval.py</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tests:</strong> see <a href="#testing">Testing</a> below.</p>
+<hr />
+<h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Location</th>
+<th>CI</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Unit</strong></td>
+<td><code>tests/unit/</code></td>
+<td>✅</td>
+<td>cache keys, semantic similarity, metrics, settings, internal models, confidence, L6 escalation</td>
+</tr>
+<tr>
+<td><strong>Integration (mocked)</strong></td>
+<td><code>tests/integration/test_gateway_flow.py</code>, <code>tests/integration/test_l1_semantic_cache.py</code>, <code>tests/integration/test_l6_escalation.py</code>, <code>tests/test_phase_a.py</code>, <code>tests/test_routing_eval.py</code></td>
+<td>✅</td>
+<td>gateway + router + L0/L1 cache + L6; Ollama mocked</td>
+</tr>
+<tr>
+<td><strong>Integration (live Ollama)</strong></td>
+<td><code>tests/integration/test_ollama_live.py</code></td>
+<td>skipped</td>
+<td><code>@pytest.mark.integration</code>; run with <code>OLLAMA_HOST=http://127.0.0.1:11434 pytest -m integration</code></td>
+</tr>
+<tr>
+<td><strong>Benchmark</strong></td>
+<td><code>tests/benchmark/</code></td>
+<td>skipped</td>
+<td><code>@pytest.mark.benchmark</code>; L0 vs L3 latency</td>
+</tr>
+<tr>
+<td><strong>Setup / doctor</strong></td>
+<td><code>tests/test_setup.py</code>, <code>tests/test_doctor.py</code></td>
+<td>✅</td>
+<td>dry-run, backup, doctor checks</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Commands</strong></p>
+<div class="highlight"><pre><span></span><code>pytest<span class="w">                              </span><span class="c1"># default: unit + mocked integration (no live Ollama)</span>
+pytest<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;not integration and not benchmark&quot;</span><span class="w">   </span><span class="c1"># same as CI</span>
+pytest<span class="w"> </span>-m<span class="w"> </span>integration<span class="w">               </span><span class="c1"># live Ollama only (needs OLLAMA_HOST + model pulled)</span>
+pytest<span class="w"> </span>-m<span class="w"> </span>benchmark<span class="w">                 </span><span class="c1"># optional latency checks</span>
+./scripts/demo.sh<span class="w">                   </span><span class="c1"># one-click smoke (serve + curl + stats)</span>
+</code></pre></div>
+<p><strong>CI:</strong> <code>.github/workflows/ci.yml</code> — Python 3.12, <code>pytest -m "not integration and not benchmark"</code> on push/PR. No secrets.</p>
+<p><strong>Gaps (planned):</strong> L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.</p>
+<p><strong>Count:</strong> 162 passed (<code>pytest -m "not integration and not benchmark"</code>, 2026-06-23)</p>
+<hr />
+<h2 id="phase-a1-install-setup">Phase A.1 — Install &amp; setup<a class="headerlink" href="#phase-a1-install-setup" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scripts/install.sh</code></td>
+<td>[x]</td>
+<td>venv + pip + Ollama pull; <code>13a2345</code></td>
+</tr>
+<tr>
+<td><code>daari doctor</code></td>
+<td>[x]</td>
+<td><code>daari/setup/doctor.py</code></td>
+</tr>
+<tr>
+<td><code>daari setup cursor --dry-run</code></td>
+<td>[x]</td>
+<td></td>
+</tr>
+<tr>
+<td><code>daari setup cursor</code> (apply + backup)</td>
+<td>[x]</td>
+<td><code>aaf3f06</code></td>
+</tr>
+<tr>
+<td><code>daari setup --undo cursor</code></td>
+<td>[x]</td>
+<td><code>daari/setup/backup.py</code></td>
+</tr>
+<tr>
+<td>Interactive <code>daari setup</code> wizard</td>
+<td>[x]</td>
+<td><code>daari/setup/wizard.py</code> — <strong>partial vs spec</strong> (see gaps below)</td>
+</tr>
+<tr>
+<td><code>daari setup models</code></td>
+<td>[x]</td>
+<td><code>daari/setup/models.py</code></td>
+</tr>
+<tr>
+<td>JSONC patch helpers</td>
+<td>[x]</td>
+<td><code>daari/setup/jsonc.py</code></td>
+</tr>
+<tr>
+<td>Setup tests</td>
+<td>[x]</td>
+<td><code>tests/test_setup.py</code></td>
+</tr>
+<tr>
+<td><code>daari install</code> (Typer)</td>
+<td>[x]</td>
+<td>wrapper command to <code>scripts/install.sh</code> with <code>--run-doctor</code></td>
+</tr>
+<tr>
+<td>L6 frontier executor</td>
+<td>[x]</td>
+<td><code>daari/router/frontier.py</code> — OpenAI-compat httpx</td>
+</tr>
+<tr>
+<td>Confidence scoring → L6</td>
+<td>[x]</td>
+<td><code>daari/router/confidence.py</code> — binary heuristic per routing-spec</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Exit criteria</strong></p>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>./install.sh &amp;&amp; daari doctor</code> passes</td>
+<td>[~]</td>
+<td>run on fresh clone to confirm</td>
+</tr>
+<tr>
+<td><code>daari setup cursor --dry-run</code> shows diff</td>
+<td>[x]</td>
+<td>covered by tests</td>
+</tr>
+<tr>
+<td>Low-confidence response escalates to L6</td>
+<td>[x]</td>
+<td>when <code>frontier.enabled</code> + API key present</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Wizard gaps (A.1 spec vs shipped):</strong> single-choice menu (not multi-select); frontier helper writes hints/templates only (no secret capture by design); IntelliJ/Claude deferred to Phase B per setup-spec.</p>
+<p><strong>Key commits:</strong> <code>13a2345</code> (scaffold), <code>aaf3f06</code> (apply, undo, wizard, models)</p>
+<hr />
+<h2 id="phase-b-full-local-first-stack">Phase B — Full local-first stack<a class="headerlink" href="#phase-b-full-local-first-stack" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L1 semantic cache</td>
+<td>[x]</td>
+<td>Ollama embeddings + diskcache; router L0 → L1 → L3</td>
+</tr>
+<tr>
+<td>L2 rules engine</td>
+<td>[x]</td>
+<td>JSON/YAML deterministic transforms before model tiers</td>
+</tr>
+<tr>
+<td>L2-dev developer commands</td>
+<td>[x]</td>
+<td>regex rules for git/test/lint + readonly command-context prompts</td>
+</tr>
+<tr>
+<td>CCS command context store</td>
+<td>[x]</td>
+<td>disk-backed command output reuse with TTL</td>
+</tr>
+<tr>
+<td>PolicyEngine B.0</td>
+<td>[x]</td>
+<td>allow/block + unknown deny/ask outcomes for Lt execution</td>
+</tr>
+<tr>
+<td>Lt B.0 CLI tools</td>
+<td>[x]</td>
+<td><code>git status</code>, <code>git diff</code>, <code>pytest</code>, <code>eslint</code> command dispatch</td>
+</tr>
+<tr>
+<td>L4 medium model</td>
+<td>[x]</td>
+<td>second local model tier + L3→L4→L6 escalation path</td>
+</tr>
+<tr>
+<td><code>daari setup openai-compat</code></td>
+<td>[x]</td>
+<td>prints OPENAI_* exports + writes <code>~/.daari/.env.example</code></td>
+</tr>
+<tr>
+<td>Wizard frontier key helper</td>
+<td>[x]</td>
+<td>optional profile hint + env template (no config secret storage)</td>
+</tr>
+<tr>
+<td><code>daari context clear</code></td>
+<td>[x]</td>
+<td>clears L0/L1/CCS caches</td>
+</tr>
+<tr>
+<td><code>daari setup all</code> auto-detect run</td>
+<td>[x]</td>
+<td>detects registered clients and runs applicable recipes</td>
+</tr>
+<tr>
+<td><code>daari setup intellij</code></td>
+<td>[x]</td>
+<td>minimal IntelliJ helper config + dry-run + undo path</td>
+</tr>
+<tr>
+<td><code>daari setup vscode</code></td>
+<td>[x]</td>
+<td>VS Code dry-run/apply/undo recipe with marker + docs</td>
+</tr>
+<tr>
+<td><code>daari setup claude-code</code></td>
+<td>[x]</td>
+<td>minimal env helper + config pointer recipe with dry-run/apply</td>
+</tr>
+<tr>
+<td>Lt ask/confirm UX</td>
+<td>[x]</td>
+<td><code>daari_meta.confirmation_prompt</code> + <code>X-Daari-Confirm: yes</code></td>
+</tr>
+<tr>
+<td>Lt <code>--yes</code> support</td>
+<td>[x]</td>
+<td><code>--yes</code> in prompt text now confirms unknown-policy commands</td>
+</tr>
+<tr>
+<td>Doctor L4 pull hint</td>
+<td>[x]</td>
+<td>optional <code>model_l4</code> hint with pull command</td>
+</tr>
+<tr>
+<td>Install optional L4/L5 pull flags</td>
+<td>[x]</td>
+<td><code>daari install --pull-l4 --pull-l5</code> + <code>scripts/install.sh</code> env knobs</td>
+</tr>
+<tr>
+<td>Eval expansion GP-11–GP-20</td>
+<td>[x]</td>
+<td>prompts + regression assertions updated</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Exit criteria (Phase B — partial)</strong></p>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Paraphrased prompt hits L1</td>
+<td>[x]</td>
+<td>mocked embedder tests</td>
+</tr>
+<tr>
+<td>L1 metrics in <code>daari stats</code></td>
+<td>[x]</td>
+<td>tier counter <code>L1</code></td>
+</tr>
+<tr>
+<td>L0 → CCS → L1 → L2-dev → L2 → Lt → L3/L4 routing order</td>
+<td>[x]</td>
+<td>with tool_calls bypass caches retained</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tests:</strong> see <a href="#testing">Testing</a> below.</p>
+<hr />
+<h2 id="phase-c-bootstrap-in-progress">Phase C bootstrap — in progress<a class="headerlink" href="#phase-c-bootstrap-in-progress" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gateway adapter protocol (<code>daari/gateway/base.py</code>)</td>
+<td>[x]</td>
+<td>OpenAI adapter now implements protocol</td>
+</tr>
+<tr>
+<td>Anthropic gateway adapter (<code>/v1/messages</code>)</td>
+<td>[x]</td>
+<td>non-stream + SSE event streaming (<code>stream: true</code>)</td>
+</tr>
+<tr>
+<td>MCP gateway ingress</td>
+<td>[x]</td>
+<td><code>/v1/mcp/query</code> now supports <code>tools/list</code>, <code>tools/call</code>, and JSON-schema tool catalog</td>
+</tr>
+<tr>
+<td>L5 local tier wiring</td>
+<td>[~]</td>
+<td>config + routing/escalation support; large model remains optional</td>
+</tr>
+<tr>
+<td>Sourcegraph/GHE provider depth (C3)</td>
+<td>[x]</td>
+<td>Sourcegraph GraphQL + GHE repo/issue search with configurable base URLs and token envs</td>
+</tr>
+<tr>
+<td>GitLab self-hosted provider depth (C3)</td>
+<td>[x]</td>
+<td>REST project/issue search + <code>@gitlab</code> trigger + MCP tool support</td>
+</tr>
+<tr>
+<td>L2-live URL fetch</td>
+<td>[x]</td>
+<td>simple fetch trigger (<code>fetch/read/summarize/get &lt;url&gt;</code>) + L3 summarization</td>
+</tr>
+<tr>
+<td>SSE metadata enrichment</td>
+<td>[x]</td>
+<td>stream chunks now include <code>daari_meta</code> tier/provider/model</td>
+</tr>
+<tr>
+<td>Browser extension MVP</td>
+<td>[x]</td>
+<td>MV3 popup UI in <code>packages/browser-extension/</code> sends prompts to local daemon (<code>:11435</code>)</td>
+</tr>
+<tr>
+<td>Browser extension options + error UX</td>
+<td>[x]</td>
+<td>API base URL options page + popup guidance when daemon is unreachable</td>
+</tr>
+<tr>
+<td>Router integration prefixes</td>
+<td>[x]</td>
+<td><code>@sourcegraph</code> / <code>@ghe</code> now route to integration providers before L3</td>
+</tr>
+<tr>
+<td>Per-project profiles</td>
+<td>[x]</td>
+<td><code>~/.daari/profiles/&lt;hash|slug&gt;.yaml</code> + <code>DAARI_PROFILE</code> support</td>
+</tr>
+<tr>
+<td>Skills loader stub</td>
+<td>[x]</td>
+<td><code>~/.daari/skills/*.md</code> merged into system prompt prefix</td>
+</tr>
+<tr>
+<td>Anthropic stream fallback</td>
+<td>[x]</td>
+<td>stream error now emits SSE error and falls back to non-stream response events</td>
+</tr>
+<tr>
+<td>Web UI MVP dashboard</td>
+<td>[x]</td>
+<td><code>daari web-ui serve</code> + static dashboard (<code>packages/web-ui/</code>)</td>
+</tr>
+<tr>
+<td>Web UI auto-refresh + tier chart</td>
+<td>[x]</td>
+<td>dashboard now includes periodic refresh controls and tier distribution bars</td>
+</tr>
+<tr>
+<td>Web UI export + theme controls</td>
+<td>[x]</td>
+<td>export current stats as JSON, dark/light toggle, and org-learning summary line</td>
+</tr>
+<tr>
+<td>Enterprise scaffold</td>
+<td>[x]</td>
+<td><code>daari/enterprise/</code> added with minimal <code>OrgSettings</code> models</td>
+</tr>
+<tr>
+<td>Enterprise E1 runtime scaffold</td>
+<td>[x]</td>
+<td>org cache path resolver + <code>daari serve --org</code> + <code>DAARI_ORG_ID</code> + doctor org check</td>
+</tr>
+<tr>
+<td>Enterprise E2 org shared cache service</td>
+<td>[x]</td>
+<td><code>daari org-cache serve</code> + org cache client + router <code>L0-org/L1-org</code> lookup + write-through</td>
+</tr>
+<tr>
+<td><code>context clear</code> stale-cache warning</td>
+<td>[x]</td>
+<td>prints restart note when daemon is running to avoid stale in-memory cache handles</td>
+</tr>
+<tr>
+<td>Hot cache reload endpoint</td>
+<td>[x]</td>
+<td><code>POST /v1/daari/reload-caches</code> reloads cache handles in running daemon; <code>daari context clear</code> invokes it automatically</td>
+</tr>
+<tr>
+<td>Enterprise periodic profile sync</td>
+<td>[x]</td>
+<td>startup + interval sync via <code>org.learning_sync_seconds</code>, plus force-sync endpoint/CLI</td>
+</tr>
+<tr>
+<td>Org cache retry/backoff hardening</td>
+<td>[x]</td>
+<td>retries transient org cache failures with exponential backoff</td>
+</tr>
+<tr>
+<td>L1 semantic threshold + bench hardening</td>
+<td>[x]</td>
+<td>default threshold tuned to <code>0.88</code>; <code>scripts/bench.sh</code> now deterministically checks L0 and L1</td>
+</tr>
+<tr>
+<td>Doctor embedding-model check</td>
+<td>[x]</td>
+<td><code>daari doctor</code> now validates <code>cache.l1.embedding_model</code> (<code>nomic-embed-text</code>)</td>
+</tr>
+<tr>
+<td>PyPI publish prep</td>
+<td>[x]</td>
+<td>enriched <code>pyproject.toml</code> metadata + <code>.github/workflows/publish.yml</code> for PyPI/TestPyPI</td>
+</tr>
+<tr>
+<td>Cursor setup smoke script</td>
+<td>[x]</td>
+<td><code>scripts/smoke-cursor-dry-run.sh</code> for CI/local setup dry-run validation</td>
+</tr>
+<tr>
+<td>Cursor tunnel setup script</td>
+<td>[x]</td>
+<td><code>scripts/tunnel.sh</code> starts local daemon + cloudflared and prints <code>/v1</code> URL</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cursor-e2e-byok-poc-2026-06-23">Cursor E2E BYOK — POC (2026-06-23)<a class="headerlink" href="#cursor-e2e-byok-poc-2026-06-23" title="Permanent link">&para;</a></h2>
+<p>Manual validation: <strong>Cursor Ask + daari model via cloudflared tunnel → local Ollama</strong>.<br />
+Debug log: <code>~/.daari/cursor-requests.log</code> (request shape, tier attempts, <code>content_chunks</code>).</p>
+<h3 id="issues-found-fixed-shipped-2026-06-23">Issues found &amp; fixed (shipped 2026-06-23)<a class="headerlink" href="#issues-found-fixed-shipped-2026-06-23" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Symptom</th>
+<th>Fix</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cursor blocks localhost</td>
+<td><code>Access to private networks is forbidden</code></td>
+<td>HTTPS tunnel (<code>scripts/tunnel.sh</code>)</td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Array message content (<code>[{"type":"text",...}]</code>)</td>
+<td>422 Unprocessable Entity</td>
+<td><code>content_to_text()</code> in gateway</td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Cursor <code>input_text</code> content blocks</td>
+<td>Empty stream (~20ms), 0 <code>content_chunks</code></td>
+<td><code>content_to_text()</code> handles <code>input_text</code>, <code>output_text</code>, dict blocks</td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Cursor sends 18 IDE tools on Ask</td>
+<td>Ollama returns <code>tool_calls</code>, 0 text chunks</td>
+<td>Strip <code>tools</code> in <code>_prepare_internal_request()</code> + plain-text system hint</td>
+<td>[x]</td>
+</tr>
+<tr>
+<td><code>tool_calls</code> left in message history</td>
+<td>Ollama 400, empty stream</td>
+<td><code>sanitize_messages_for_ollama()</code> when tools stripped</td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Stream path missing L4→L3 fallback</td>
+<td>L4 404 when <code>llama3.1:8b</code> not pulled; empty or slow retry</td>
+<td><code>stream_openai_chunks()</code> tier chain + fallback (matches non-stream <code>route()</code>)</td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Stream error JSON malformed</td>
+<td>Cursor freeze / parse errors</td>
+<td><code>json.dumps()</code> for stream errors; initial <code>role: assistant</code> chunk</td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Missing <code>/v1/models</code></td>
+<td>Cursor model picker issues</td>
+<td><code>GET /v1/models</code>, <code>GET /v1/models/{id}</code></td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Gateway request logging</td>
+<td>Hard to debug Cursor payloads</td>
+<td><code>~/.daari/cursor-requests.log</code> via <code>log_gateway_event()</code></td>
+<td>[x]</td>
+</tr>
+<tr>
+<td>Integration tests for above</td>
+<td>—</td>
+<td><code>tests/integration/test_gateway_flow.py</code>, <code>tests/unit/test_gateway_content.py</code></td>
+<td>[x]</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Verified E2E:</strong> Cursor <code>user_agent: Cursor/1.0</code> → daari → Ollama <code>llama3.2:3b</code> (L3 fallback) or <code>llama3.1:8b</code> (L4 when pulled); <code>content_chunks</code> &gt; 0. Release notes: <a href="../RELEASE-v1.1.2-cursor-e2e/">RELEASE-v1.1.2-cursor-e2e.md</a>.</p>
+<h3 id="testing-summary-2026-06-23">Testing summary (2026-06-23)<a class="headerlink" href="#testing-summary-2026-06-23" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pytest</code> (default, mocked)</td>
+<td><strong>162 passed</strong>, 1 skipped</td>
+</tr>
+<tr>
+<td>Manual Cursor Ask E2E</td>
+<td>✅ math question + follow-up</td>
+</tr>
+<tr>
+<td>Log verification</td>
+<td>✅ <code>tools_stripped</code>, <code>stream_fallback_ok</code>, <code>content_chunks</code> &gt; 0</td>
+</tr>
+</tbody>
+</table>
+<h3 id="next-steps-cursor-byok-migrated-to-github-issues-2026-07-10">Next steps (Cursor / BYOK) — migrated to GitHub issues (2026-07-10)<a class="headerlink" href="#next-steps-cursor-byok-migrated-to-github-issues-2026-07-10" title="Permanent link">&para;</a></h3>
+<p>The open rows below moved to the <code>auto-dev</code> backlog worked by the autonomous dev loop (<a href="../AUTOMATION/">AUTOMATION.md</a>):</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Issue</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>~~Commit Cursor compat fixes to <code>main</code>~~</td>
+<td>done (commit <code>1d651c6</code>)</td>
+</tr>
+<tr>
+<td>~~Document <code>cursor-requests.log</code> in setup/cursor.md~~</td>
+<td>done</td>
+</tr>
+<tr>
+<td>Tool hallucination after tools stripped</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/1">#1</a> (P1)</td>
+</tr>
+<tr>
+<td>Ask vs Agent mode split (ADR-0004)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/2">#2</a> (P1)</td>
+</tr>
+<tr>
+<td>Cursor-specific tier policy</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/3">#3</a> (P2)</td>
+</tr>
+<tr>
+<td>Pull L4 in install by default</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/4">#4</a> (P3)</td>
+</tr>
+<tr>
+<td>Anthropic stream usage + fallback parity</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/5">#5</a> (P2)</td>
+</tr>
+<tr>
+<td>Org L1 semantic matching depth</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/6">#6</a> (P2)</td>
+</tr>
+<tr>
+<td>Browser extension E2E coverage</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/7">#7</a> (P3)</td>
+</tr>
+<tr>
+<td>Tag v1.1.2 release prep</td>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/8">#8</a> (P3)</td>
+</tr>
+<tr>
+<td>Automated Cursor E2E test</td>
+<td>covered by local watchdog (<code>scripts/autodev-local.sh</code>, Cursor-shaped smoke every 2h)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="autonomous-dev-loop-2026-07-10">Autonomous dev loop (2026-07-10)<a class="headerlink" href="#autonomous-dev-loop-2026-07-10" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Piece</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backlog seeded as <code>auto-dev</code> issues #1–#8</td>
+<td>[x]</td>
+<td>priorities P1–P3, acceptance criteria per issue</td>
+</tr>
+<tr>
+<td>AGENTS.md agent contract</td>
+<td>[x]</td>
+<td>repo root</td>
+</tr>
+<tr>
+<td>Repo public + auto-merge + branch protection on main (CI <code>test</code> required)</td>
+<td>[x]</td>
+<td>via <code>gh api</code></td>
+</tr>
+<tr>
+<td>Local watchdog (<code>scripts/autodev-local.sh</code> + launchd)</td>
+<td>[x]</td>
+<td>validated live: filed issue #9 on first cycle (caught real live-test regression), Cursor smoke PASS</td>
+</tr>
+<tr>
+<td>Cloud automation drafts (dev-cycle / pr-review / scout)</td>
+<td>[x]</td>
+<td><a href="automations/">docs/automations/</a> — create in Agents Window or enable Bugbot</td>
+</tr>
+<tr>
+<td>CI fallback dev-cycle workflow</td>
+<td>[x]</td>
+<td><code>.github/workflows/autodev.yml</code>; activates when <code>CURSOR_API_KEY</code> secret is set</td>
+</tr>
+<tr>
+<td>Runbook</td>
+<td>[x]</td>
+<td><a href="../AUTOMATION/">AUTOMATION.md</a></td>
+</tr>
+</tbody>
+</table>
+<h3 id="demo-cycle-2026-07-10-loop-verified-end-to-end">Demo cycle (2026-07-10) — loop verified end-to-end<a class="headerlink" href="#demo-cycle-2026-07-10-loop-verified-end-to-end" title="Permanent link">&para;</a></h3>
+<p>The first full autonomous cycle ran the same day the loop was built:</p>
+<ol>
+<li><strong>Detect</strong> — local watchdog's first run caught a real regression on <code>main</code> (live Ollama test asserting removed <code>daari_meta</code> default + a prompt failing the confidence heuristic) and filed <a href="https://github.com/naveenreddyalka/daari/issues/9">#9</a> with logs, labels <code>auto-dev,regression</code>.</li>
+<li><strong>Fix</strong> — agent picked up #9 per AGENTS.md: branch <code>autodev/9-live-test-meta-headers</code>, fix + test runs (live: 1 passed; default: 161 passed), conventional commit.</li>
+<li><strong>Gate</strong> — PR <a href="https://github.com/naveenreddyalka/daari/pull/10">#10</a> opened with <code>Closes #9</code>, auto-merge armed; branch protection held it until CI <code>test</code> went green.</li>
+<li><strong>Merge</strong> — auto-merged as <code>f12889a</code>; branch auto-deleted; issue #9 auto-closed.</li>
+<li><strong>Validate</strong> — next watchdog cycle on updated <code>main</code>: daemon healthy, integration tests PASS, Cursor smoke PASS (8 content chunks). <code>cycle result: PASS</code>.</li>
+</ol>
+<h3 id="loop-cycles-23-p1-backlog-cleared-2026-07-10">Loop cycles 2–3: P1 backlog cleared (2026-07-10)<a class="headerlink" href="#loop-cycles-23-p1-backlog-cleared-2026-07-10" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Fix</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/1">#1</a> tool hallucination</td>
+<td>strengthened <code>NO_TOOLS_HINT</code> leads message list, idempotent</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/11">#11</a></td>
+<td><code>4b35cfa</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/2">#2</a> Ask vs Agent split</td>
+<td>tool-history detection, <code>X-Daari-Tools</code> override, OpenAI <code>tool_calls</code> stream deltas</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/12">#12</a></td>
+<td><code>f080150</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="feature-cycle-v12-candidate-set-2026-07-10">Feature cycle: v1.2 candidate set (2026-07-10)<a class="headerlink" href="#feature-cycle-v12-candidate-set-2026-07-10" title="Permanent link">&para;</a></h3>
+<p>Scouted against LiteLLM/RouteLLM feature sets; filed as issues #13–#15, implemented TDD-style, all auto-merged the same evening:</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Feature</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/13">#13</a></td>
+<td>Streaming L0 exact cache read/write + stream metrics (Cursor BYOK is stream-only; the cache never served it before)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/16">#16</a></td>
+<td><code>d4fe1ee</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/14">#14</a></td>
+<td>Persistent usage ledger (<code>~/.daari/usage/ledger.sqlite3</code>) + <code>GET /v1/daari/report</code> + <code>daari report</code> CLI with <code>estimated_saved_usd</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/17">#17</a></td>
+<td><code>d9736f1</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/15">#15</a></td>
+<td>Frontier daily budget guard (<code>frontier.daily_budget_usd</code>, warning <code>frontier_budget_exceeded</code>, spend surfaced in report)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/18">#18</a></td>
+<td><code>2e7ec56</code></td>
+</tr>
+</tbody>
+</table>
+<p>Default suite grew 162 → 180 tests across these five cycles.</p>
+<h3 id="feature-cycle-prompt-intelligence-transparency-2026-07-10-prd-docsprdintelligencemd">Feature cycle: prompt intelligence &amp; transparency (2026-07-10, PRD <a href="../prd/intelligence/">docs/prd/intelligence.md</a>)<a class="headerlink" href="#feature-cycle-prompt-intelligence-transparency-2026-07-10-prd-docsprdintelligencemd" title="Permanent link">&para;</a></h3>
+<p>Filed as issues #19–#22 from the new PRD, implemented TDD-style, all auto-merged, then validated end-to-end by a full <code>autodev-local.sh</code> cycle (deploy <code>ae3b01f</code>, live Ollama integration tests PASS, Cursor-shaped streaming smoke PASS) plus a live trace fetch (<code>daari trace</code> showed profile → l0_lookup → l1_lookup → tier_attempt → served for a real daemon request):</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Feature</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/19">#19</a></td>
+<td>Prompt profile (category/complexity/token est) + <code>routing.category_policies</code> action policies; category in <code>daari_meta.task_type</code>, new <code>complexity</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/23">#23</a></td>
+<td><code>ed43d21</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/20">#20</a></td>
+<td>Per-request decision trace: <code>TraceStore</code> sqlite, <code>daari_meta.trace_id</code>, <code>GET /v1/daari/traces[/id]</code>, <code>daari trace</code> CLI (client-facing audit trail)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/24">#24</a></td>
+<td><code>cb80d4a</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/21">#21</a></td>
+<td>Cached-draft injection: L1 near-misses (<code>cache.l1.draft_threshold</code>=0.75) seed local and L6 generation as reuse/reformat drafts</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/25">#25</a></td>
+<td><code>e4126d4</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/22">#22</a></td>
+<td>Context optimizer: system + last-N history trimming and whitespace squeeze for local models (<code>context_optimizer.*</code>), savings traced per prompt</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/26">#26</a></td>
+<td><code>ae3b01f</code></td>
+</tr>
+</tbody>
+</table>
+<p>Default suite now at 226 tests (180 → 226).</p>
+<h3 id="loop-cycles-original-backlog-cleared-36-2026-07-10">Loop cycles: original backlog cleared (#3–#6) (2026-07-10)<a class="headerlink" href="#loop-cycles-original-backlog-cleared-36-2026-07-10" title="Permanent link">&para;</a></h3>
+<p>The remaining seeded issues from the first backlog, implemented TDD-style, auto-merged, and each validated live by a full <code>autodev-local.sh</code> cycle (final deploy <code>a8600cc</code>, live Ollama integration tests PASS, Cursor-shaped streaming smoke PASS):</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Feature</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/3">#3</a></td>
+<td>Tier cap for chat: <code>routing.max_tier_for_chat</code> + <code>X-Daari-Tier-Cap</code> header clamp initial tier, stream chain, and local escalation (latency recipe in docs/setup/cursor.md)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/28">#28</a></td>
+<td><code>9da32c4</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/4">#4</a></td>
+<td><code>daari setup cursor</code> verifies/pulls the L4 model (<code>--yes</code> for non-interactive; tunnel.sh passes it); <code>daari doctor</code> upgrades <code>model_l4</code> to required when Cursor is configured</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/29">#29</a></td>
+<td><code>79b3221</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/5">#5</a></td>
+<td>Anthropic stream parity: tier fallback chain, message sanitization, chars/4 usage estimates in <code>message_start</code>/<code>message_delta</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/30">#30</a></td>
+<td><code>a956d33</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/6">#6</a></td>
+<td>Org L1 semantic matching: embeddings stored with entries, <code>POST /v1/org-cache/similar</code>, client similarity fallback on key miss (paraphrases now hit <code>L1-org</code>)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/31">#31</a></td>
+<td><code>a8600cc</code></td>
+</tr>
+</tbody>
+</table>
+<p>Default suite now at 250 tests (226 → 250). Remaining open backlog: #7 (browser-extension E2E), #8 (v1.1.2 release prep — tagging stays human-approved).</p>
+<h3 id="loop-cycles-extension-coverage-scouted-improvements-7-3436-2026-07-10">Loop cycles: extension coverage + scouted improvements (#7, #34–#36) (2026-07-10)<a class="headerlink" href="#loop-cycles-extension-coverage-scouted-improvements-7-3436-2026-07-10" title="Permanent link">&para;</a></h3>
+<p>After clearing the original backlog, the loop scouted and filed three fresh improvement issues (#34–#36), then implemented all of them plus #7. Each cycle E2E-validated by <code>autodev-local.sh</code> (final deploy <code>984bc99</code>); markdown export and cache prune also verified live against the running daemon:</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Feature</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/7">#7</a></td>
+<td>Browser extension DOM tests (jsdom + node --test, 12 tests: send flow, error UX, draft persistence, options); new <code>extension</code> CI job</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/33">#33</a></td>
+<td><code>aa6602d</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/34">#34</a></td>
+<td>Frontier prompt slimming before L6: strip internal hints, collapse duplicate system prompts, trim history; ledger records actual chars sent (<code>frontier.slim_prompts</code>)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/37">#37</a></td>
+<td><code>e27e930</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/35">#35</a></td>
+<td>Client-shareable markdown export: <code>daari report</code>/<code>daari trace</code> gain <code>--format markdown</code> + <code>--out FILE</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/38">#38</a></td>
+<td><code>78a0066</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/36">#36</a></td>
+<td>Cache TTLs (<code>cache.l0/l1.ttl_seconds</code>, category <code>ttl_seconds</code> overrides) + <code>daari cache prune</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/39">#39</a></td>
+<td><code>984bc99</code></td>
+</tr>
+</tbody>
+</table>
+<p>Default suite now at 272 pytest tests (250 → 272) + 12 extension tests. Open backlog: #8 (release prep, human-gated).</p>
+<h3 id="v112-released-ci-hardening-2026-07-11">v1.1.2 released + CI hardening (2026-07-11)<a class="headerlink" href="#v112-released-ci-hardening-2026-07-11" title="Permanent link">&para;</a></h3>
+<ul>
+<li>CI expanded to four required checks on <code>main</code>: <code>test</code>, <code>extension</code>, <code>lint</code> (ruff), <code>sanity</code> (runtime-deps install, imports, settings load, CLI entrypoint, app build) — <a href="https://github.com/naveenreddyalka/daari/pull/41">#41</a>, <code>97cb5e1</code>.</li>
+<li><strong>v1.1.2 shipped</strong> (issue <a href="https://github.com/naveenreddyalka/daari/issues/8">#8</a>, user-approved tag): version bump (pyproject + stale <code>daari.__version__</code>), consolidated release notes addendum, <code>python -m build</code> + <code>twine check</code> PASSED (no PyPI upload) — <a href="https://github.com/naveenreddyalka/daari/pull/42">#42</a>, tag <a href="https://github.com/naveenreddyalka/daari/releases/tag/v1.1.2"><code>v1.1.2</code></a>.</li>
+</ul>
+<h3 id="loop-cycles-streaming-l1-scouted-improvements-4346-2026-07-11">Loop cycles: streaming L1 + scouted improvements (#43–#46) (2026-07-11)<a class="headerlink" href="#loop-cycles-streaming-l1-scouted-improvements-4346-2026-07-11" title="Permanent link">&para;</a></h3>
+<p>Scout pass filed four issues; all implemented TDD-style, auto-merged, and E2E-validated by <code>autodev-local.sh</code> on the final deploy <code>531e407</code> (live Ollama integration tests PASS, Cursor streaming smoke PASS; daemon restarted on the new build and <code>/v1/daari/report</code> verified live):</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Feature</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/43">#43</a></td>
+<td>Streaming path L1 parity: semantic hits served as SSE, draft-band injection, post-<code>[DONE]</code> L1 write-back — Cursor (all-streaming) finally benefits from the semantic cache</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/47">#47</a></td>
+<td><code>1f3d963</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/44">#44</a></td>
+<td>Gateway request log rotation: size-based with numbered backups (<code>observability.request_log_max_bytes</code>, default 5 MB / 3 backups)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/48">#48</a></td>
+<td><code>121aa43</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/45">#45</a></td>
+<td>Embedding memoization: in-process LRU in <code>OllamaEmbedder</code> keyed by (model, sha256) — repeat L1 lookups skip the Ollama HTTP call (<code>cache.l1.embed_cache_size</code>)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/49">#49</a></td>
+<td><code>b3e4596</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/46">#46</a></td>
+<td>Web UI usage &amp; savings dashboard: report totals, per-day tier table, recent traces with step-timeline click-through; jsdom DOM suite added to CI</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/50">#50</a></td>
+<td><code>531e407</code></td>
+</tr>
+</tbody>
+</table>
+<p>Default suite now at 291 pytest tests (272 → 291) + 12 extension tests + 7 web-ui tests. Open backlog: empty — scout refills it.</p>
+<h3 id="phase-d1-personal-feedback-loop-2026-07-11-prd-docsprdlearningmd">Phase D1 — personal feedback loop (2026-07-11, PRD <a href="../prd/learning/">docs/prd/learning.md</a>)<a class="headerlink" href="#phase-d1-personal-feedback-loop-2026-07-11-prd-docsprdlearningmd" title="Permanent link">&para;</a></h3>
+<p>daari starts learning from outcomes. Everything stays on-device
+(<code>~/.daari/feedback/feedback.sqlite3</code>) and stores outcome metadata only —
+never prompt or completion text. PRD merged as <a href="https://github.com/naveenreddyalka/daari/pull/52">#52</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Feature</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/53">#53</a></td>
+<td>Outcome store + implicit capture (every model-tier response, stream + non-stream, not cache hits) + explicit <code>POST /v1/daari/feedback</code> / <code>daari feedback &lt;trace_id&gt; --accept\|--reject</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/56">#56</a></td>
+<td><code>b272153</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/54">#54</a></td>
+<td><code>daari learn stats</code> per-category × tier evidence + <code>daari learn recommend</code> (cheapest tier with escalation ≤ 15%, rejects ≤ 10%, min 20 samples) emitting a Settings-valid <code>routing.category_policies</code> YAML block; <code>GET /v1/daari/learn/stats</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/57">#57</a></td>
+<td><code>62dbf24</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/55">#55</a></td>
+<td>Routing tuner: per-category confidence thresholds ±0.05 from outcome evidence, bounded [0.5, 0.9], <code>learning.tuner_min_samples</code> gate, <code>tuner</code> trace step; off by default (<code>learning.auto_tune</code>)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/58">#58</a></td>
+<td><code>518e8ae</code></td>
+</tr>
+</tbody>
+</table>
+<p>Live E2E validated 2026-07-11: daemon restarted on <code>518e8ae</code>; live doc_qa
+request through the gateway → <code>daari feedback &lt;trace_id&gt; --accept</code> →
+outcome + accept visible in <code>daari learn stats</code>; <code>daari learn recommend</code>
+emitted a valid policy block from live evidence. Default suite now at 329
+pytest tests (291 → 329). Remaining Phase D scope (D2 local fine-tuning,
+D3 opt-in collective stats) stays on the roadmap.</p>
+<h3 id="phase-d2-local-fine-tuning-train-2026-07-12-prd-docsprdlearningmd">Phase D2 — local fine-tuning train (2026-07-12, PRD <a href="../prd/learning/">docs/prd/learning.md</a>)<a class="headerlink" href="#phase-d2-local-fine-tuning-train-2026-07-12-prd-docsprdlearningmd" title="Permanent link">&para;</a></h3>
+<p>The models themselves can now improve. Accepted answers — especially L6
+frontier answers — become local training data (distillation). Capture is
+strictly <strong>opt-in</strong> (<code>learning.capture_examples</code>, default off) because unlike
+the D1 outcome store it keeps full prompt/completion text; everything stays
+under <code>~/.daari/training/</code> and is wipeable. PRD merged as <a href="https://github.com/naveenreddyalka/daari/pull/60">#60</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Feature</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/61">#61</a></td>
+<td><code>ExampleStore</code> + router capture (both paths, L3–L6, never cache hits/tool flows); accept promotes to training data, reject deletes; <code>daari learn examples [--clear]</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/64">#64</a></td>
+<td><code>0144b17</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/62">#62</a></td>
+<td><code>daari learn export-dataset</code>: mlx-lm chat-format train/valid JSONL, deterministic trace_id-hash split, min-examples gate, <code>--only-accepted</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/65">#65</a></td>
+<td><code>eb7104d</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/63">#63</a></td>
+<td><code>daari learn finetune</code>: plans + runs <code>mlx_lm lora --train</code> (LoRA on <code>mlx-community/Llama-3.2-3B-Instruct-4bit</code>), auditable run.json, <code>--dry-run</code>, clean optional-dep gating</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/66">#66</a></td>
+<td><code>1d4cdb5</code></td>
+</tr>
+</tbody>
+</table>
+<p>Live E2E validated 2026-07-12 on an isolated temp instance (capture on,
+throwaway stores — user config untouched): 10 live Ollama requests captured,
+2 accepted + 1 rejected via <code>/v1/daari/feedback</code> (reject confirmed deleted),
+<code>export-dataset</code> produced 8 train / 1 valid chat-format examples, and
+<code>plan_finetune</code> emitted the exact <code>mlx_lm lora</code> command + run.json. Default
+suite now at 359 pytest tests (329 → 359). Actual training runs are
+user-invoked (<code>daari learn finetune</code>, needs <code>pip install mlx-lm</code>); serving
+MLX adapters through Ollama (fuse/convert to GGUF) is the documented manual
+follow-up. Remaining Phase D scope: D3 opt-in collective stats.</p>
+<h3 id="trust-efficiency-trains-2026-07-1213-prd-docsprdtrustmd">Trust &amp; Efficiency trains (2026-07-12/13, PRD <a href="../prd/trust/">docs/prd/trust.md</a>)<a class="headerlink" href="#trust-efficiency-trains-2026-07-1213-prd-docsprdtrustmd" title="Permanent link">&para;</a></h3>
+<p>Competitive research (Portkey/LiteLLM/OpenRouter/Requesty/RouteLLM, semantic-
+cache postmortems, local-first routers) distilled into five trains. Headline:
+daari now <strong>measures semantic-cache false-hit rate</strong> — the metric none of the
+compared products ship. PRD merged as <a href="https://github.com/naveenreddyalka/daari/pull/68">#68</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Train</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/69">#69</a></td>
+<td><strong>Cache trust</strong>: embedding-input normalization (fences/JSON scaffolding stripped, <code>cache.l1.normalize_inputs</code>); per-category answer-diversity monitor (<code>/v1/daari/cache/diversity</code> + doctor warning); shadow sampling of L1 hits (<code>cache.l1.shadow_sample_rate</code>, default 5%) → per-category false-hit rate that auto-raises the L1 threshold; report/<code>learn stats</code>/dashboard panels</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/70">#70</a></td>
+<td><code>7721b25</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/71">#71</a></td>
+<td><strong>Token savings</strong>: Anthropic <code>cache_control</code> prompt-cache hint on L6 with byte-stable prefix pinned by test; <code>context_optimizer.compact</code> — over-limit history summarized by L3 into a pinned recap (memoized per prefix); <code>frontier.compress_context</code> — sentence-level relevance pruning before L6</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/75">#75</a></td>
+<td><code>da4fabf</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/72">#72</a></td>
+<td><strong>Latency-aware routing</strong>: <code>daari profile</code> hardware benchmarks; <code>routing.latency_budget_ms</code> + category override + <code>X-Daari-Latency-Budget</code> with profiled step-down; warm-model preference via TTL-cached <code>/api/ps</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/79">#79</a></td>
+<td><code>4c365d9</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/73">#73</a></td>
+<td><strong>Learned routing</strong>: <code>daari learn train-router</code> centroid classifier over captured prompts; <code>routing.learned_router</code> overrides heuristics when confident (200-sample floor + margin gate); trace <code>learned_route</code></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/79">#79</a></td>
+<td><code>4c365d9</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naveenreddyalka/daari/issues/74">#74</a></td>
+<td><strong>Budget &amp; client UX</strong>: monthly + soft budgets (<code>frontier_budget_warning</code> band before hard cap); per-client ledger attribution (<code>X-Daari-Client-Id</code>, Cursor auto-tagged) + <code>daari report --by-client</code>; opt-in pre-L6 PII scrub with typed placeholders</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/79">#79</a></td>
+<td><code>4c365d9</code></td>
+</tr>
+</tbody>
+</table>
+<p>Trains 3–5 were consolidated into <a href="https://github.com/naveenreddyalka/daari/pull/79">#79</a>
+after the stacked branches went stale post-squash (#76–#78 closed as superseded).
+Live E2E validated 2026-07-13 on an isolated temp instance (port 11438, live
+Ollama, throwaway stores): paraphrase served from L1 with normalization on,
+shadow check ran in background (answer similarity 0.984 → agreed, false-hit
+rate 0.0 in <code>learn stats</code>/report/diversity endpoints), per-client attribution
+(<code>e2e-test</code>) and budget state in the report, and <code>benchmark_model</code> + warm
+tracker measured the live 3B model (349 ms wall, 115 tok/s, warm set
+detected). Default suite 430 pytest tests (359 → 430); web-ui at 9 DOM tests.
+All new behaviors default-safe: normalization + shadow sampling on (read-only
+additions), compaction/compression/learned-router/PII-scrub opt-in.</p>
+<h3 id="one-click-client-setup-2026-07-13-issue-81">One-click client setup (2026-07-13, issue <a href="https://github.com/naveenreddyalka/daari/issues/81">#81</a>)<a class="headerlink" href="#one-click-client-setup-2026-07-13-issue-81" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Claude Code one-click</strong>: <code>daari setup claude-code</code> merges <code>ANTHROPIC_BASE_URL</code>/<code>ANTHROPIC_AUTH_TOKEN</code>/<code>ANTHROPIC_MODEL</code> into the <code>env</code> block of <code>~/.claude/settings.json</code> (existing keys preserved, backup + undo); Anthropic gateway now honors the top-level <code>system</code> field (string or blocks) that Claude Code sends. <strong>Ollama-compatible facade</strong>: <code>/api/tags</code>, <code>/api/chat</code> (stream NDJSON + non-stream), <code>/api/version</code>, <code>/api/show</code>, <code>/api/ps</code> — JetBrains AI Assistant, Zed, Continue etc. connect by pasting <code>http://127.0.0.1:11435</code>, full router semantics + per-client attribution (<code>X-Daari-Client-Id</code>). IntelliJ recipe/docs updated with exact AI Assistant steps; native IntelliJ plugin deferred in favor of the facade.</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/82">#82</a></td>
+<td><code>bbe233e</code></td>
+</tr>
+</tbody>
+</table>
+<p>Live-verified 2026-07-13 on the running daemon: <code>/api/tags</code> lists <code>daari</code> +
+tier models, non-stream <code>/api/chat</code> answered from L3 with <code>daari_meta</code>, and the
+<code>intellij</code> client id landed in the ledger. The tool-passthrough limit noted at
+the time was closed the same day by issue #84 (below). Suite: 442 pytest tests.</p>
+<h3 id="claude-code-agent-e2e-tunnel-hardening-2026-07-13-issues-848688">Claude Code agent E2E + tunnel hardening (2026-07-13, issues <a href="https://github.com/naveenreddyalka/daari/issues/84">#84</a>/<a href="https://github.com/naveenreddyalka/daari/issues/86">#86</a>/<a href="https://github.com/naveenreddyalka/daari/issues/88">#88</a>)<a class="headerlink" href="#claude-code-agent-e2e-tunnel-hardening-2026-07-13-issues-848688" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Anthropic tool passthrough</strong>: <code>tools</code>/<code>tool_choice</code> on <code>/v1/messages</code>, <code>tool_use</code>→<code>tool_calls</code> and <code>tool_result</code>→<code>role:tool</code> conversion, agent flows skip sanitization/context-optimizer, streamed <code>tool_use</code> content blocks with <code>stop_reason: "tool_use"</code>; <code>X-Daari-Tools: strip</code> forces plain chat; one-click uninstall fallback strips daari <code>ANTHROPIC_*</code> keys when no backup exists</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/85">#85</a></td>
+<td><code>1e2934c</code></td>
+</tr>
+<tr>
+<td><strong>Gateway API-key auth</strong>: <code>server.api_key</code> setting + middleware (Bearer or <code>x-api-key</code>, health endpoints exempt); <code>daari setup cursor --tunnel</code> auto-generates + persists the key and configures Cursor with it; docs on named Cloudflare tunnels / Tailscale Funnel</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/87">#87</a></td>
+<td><code>b594500</code></td>
+</tr>
+<tr>
+<td><strong>Claude Code live E2E fixes</strong> (first real session surfaced 3 gaps): <code>OllamaRequestError</code> preserves Ollama 400 bodies in logs; <code>num_ctx</code> sized from prompt chars (4096..32768) so 10-20k-token Claude Code system prompts stop yielding empty streams; tool-call arguments converted JSON-string→object and content-less non-tool messages dropped (both 400'd Ollama); <code>anthropic_messages_request</code> shape logging</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/89">#89</a></td>
+<td><code>8265b21</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="loop-cycle-2026-07-22-full-live-e2e-per-project-profiles-91">Loop cycle 2026-07-22 — full live E2E + per-project profiles (<a href="https://github.com/naveenreddyalka/daari/issues/91">#91</a>)<a class="headerlink" href="#loop-cycle-2026-07-22-full-live-e2e-per-project-profiles-91" title="Permanent link">&para;</a></h3>
+<p>Regression issue #90 closed as transient: the working tree sat on a dev branch
+Jul 13–22 so the watchdog skipped deploys; its own kickstart recovered the
+daemon in the same run. Daemon redeployed on <code>main @ 8265b21</code>, then the full
+live battery passed 11/11 against the running daemon: OpenAI fresh→L3,
+repeat→L0, stream SSE+DONE, Anthropic non-stream with <code>system</code>, streamed
+<code>tool_use</code> + <code>stop_reason</code>, facade <code>/api/tags</code> + <code>/api/chat</code>, stats/report/
+traces/diversity endpoints. Full suite 474 pytest + ruff + extension/web-ui
+npm suites green.</p>
+<p><strong>Per-project profiles</strong> (roadmap Phase C1's last unshipped item): commit a
+<code>.daari.yaml</code> at the repo root (<code>routing.max_tier_for_chat</code>, <code>no_frontier</code>,
+<code>latency_budget_ms</code>, <code>client_id</code>); clients opt in with <code>X-Daari-Project:
+/path/inside/repo</code> on both OpenAI and Anthropic gateways (the Anthropic
+gateway also gained <code>X-Daari-Client-Id</code> parity). Explicit headers always win;
+profiles are mtime-cached and malformed files never break a request. New CLI:
+<code>daari project init</code> / <code>daari project show</code>. Docs:
+<a href="../setup/project-profiles/">setup/project-profiles.md</a>.</p>
+<h3 id="release-v120-claude-code-live-fix-2026-07-23">Release v1.2.0 + Claude Code live fix (2026-07-23)<a class="headerlink" href="#release-v120-claude-code-live-fix-2026-07-23" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Release v1.2.0 — Learning, Trust &amp; Clients</strong>: version bump + <a href="../RELEASE-v1.2.0/">RELEASE-v1.2.0.md</a> covering the 26 commits since v1.1.2 (Phase D learning, Trust trains, one-click clients, gateway auth, per-project profiles); tagged and <a href="https://github.com/naveenreddyalka/daari/releases/tag/v1.2.0">published</a></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/93">#93</a></td>
+<td><code>6bfc9e3</code></td>
+</tr>
+<tr>
+<td><strong>Trailing system message fix</strong> (issue <a href="https://github.com/naveenreddyalka/daari/issues/94">#94</a>): live <code>claude -p</code> printed nothing — claude-cli 2.1.215 sends <code>messages=[user, system]</code> (SessionStart-hook/plugin content as a 14k-char trailing system-role message) and llama chat templates emit zero tokens in that shape, so L4 and L3 both streamed empty. Captured via a recording proxy; Anthropic gateway now hoists out-of-order system messages ahead of the conversation (stable order, leading-system requests untouched)</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/95">#95</a></td>
+<td><code>bab511c</code></td>
+</tr>
+</tbody>
+</table>
+<p>Suite: 493 pytest. The #94 regression test replays the captured Claude Code
+request shape (top-level <code>system</code> + <code>[user, system]</code> + tools) and asserts
+Ollama receives <code>[system, system, user]</code>. Live <code>claude -p</code> re-verification
+runs on the next watchdog deploy cycle.</p>
+<h3 id="mlx-backend-ci-hardening-2026-07-23-issue-97">MLX backend + CI hardening (2026-07-23, issue <a href="https://github.com/naveenreddyalka/daari/issues/97">#97</a>)<a class="headerlink" href="#mlx-backend-ci-hardening-2026-07-23-issue-97" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MLX backend</strong> (roadmap C2 optional): <code>MLXExecutor</code> speaks OpenAI wire to <code>mlx_lm.server</code> and duck-types <code>OllamaExecutor</code> (SSE chunks converted to Ollama-style events), so tier loops/caching/escalation/budgets/traces are unchanged; <code>mlx.models</code> tier→model map routes only listed tiers to MLX (mixed setups fine, default off); optional <code>daari doctor</code> mlx check; <a href="../setup/mlx/">setup/mlx.md</a></td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/98">#98</a></td>
+<td><code>5270dd4</code></td>
+</tr>
+<tr>
+<td><strong>CI ruff pin</strong>: lint job installed unpinned <code>ruff&gt;=0.8</code>; a new ruff release flagged 167 pre-existing issues repo-wide and failed every open PR — pinned to <code>ruff==0.15.17</code> (local version, clean) so lint is deterministic and upgrades become deliberate PRs</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/99">#99</a></td>
+<td><code>b1c2385</code></td>
+</tr>
+</tbody>
+</table>
+<p>Suite: 508 pytest (493 → 508). MLX live smoke is hardware/download-gated
+(<code>pip install mlx-lm</code> + model fetch) — doctor and docs cover the path.</p>
+<h3 id="anthropic-observability-phase-d3-adapter-deploy-2026-07-23-issue-101">Anthropic observability + Phase D3 + adapter deploy (2026-07-23, issue <a href="https://github.com/naveenreddyalka/daari/issues/101">#101</a>)<a class="headerlink" href="#anthropic-observability-phase-d3-adapter-deploy-2026-07-23-issue-101" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>PR</th>
+<th>Merge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Anthropic stream observability &amp; routing parity</strong> (issue #101): <code>anthropic_stream_attempt_failed</code> logs <code>error_type</code> (timeouts stringify to <code>""</code>), new <code>anthropic_stream_done</code> event records winning tier/model/latency/chars, and the Anthropic path now builds the prompt profile so category policies, learned routing, and latency-budget step-down apply like the OpenAI path</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/102">#102</a></td>
+<td><code>e4628f4</code></td>
+</tr>
+<tr>
+<td><strong>Phase D3 — opt-in collective stats</strong> (<a href="../prd/learning/">learning PRD</a>): <code>daari learn export-stats</code> prints the exact metadata-only payload for review (category/tier aggregates, shadow false-hit rates, model IDs — never prompts/IDs); <code>--upload</code> gated on <code>learning.collective_enabled</code> + <code>collective_url</code> with a recursive sensitive-key guard; all defaults off</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/102">#102</a></td>
+<td><code>e4628f4</code></td>
+</tr>
+<tr>
+<td><strong><code>daari learn deploy</code></strong>: bridges D2c fine-tune runs to executors — mlx backend prints the <code>mlx_lm server --adapter-path</code> command + config snippet (long-running, plan-and-print); ollama backend fuses to GGUF and <code>ollama create</code>s a named model with <code>deploy.json</code> status audit</td>
+<td><a href="https://github.com/naveenreddyalka/daari/pull/102">#102</a></td>
+<td><code>e4628f4</code></td>
+</tr>
+</tbody>
+</table>
+<p>Suite: 535 pytest (508 → 535). Live E2E on the redeployed daemon:
+<code>/v1/messages</code> stream answered via L3 in 2.2s and <code>anthropic_stream_done</code>
+appeared in cursor-requests.log; <code>learn export-stats</code> rendered real
+30-day aggregates (metadata only); <code>learn deploy</code> printed correct mlx and
+ollama plans against a stub run dir.</p>
+<hr />
+<h2 id="phase-e2-org-shared-cache-tracer-bullet">Phase E2 — Org shared cache (tracer bullet)<a class="headerlink" href="#phase-e2-org-shared-cache-tracer-bullet" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Org cache HTTP service (<code>/get</code>, <code>/put</code>, <code>/stats</code>)</td>
+<td>[x]</td>
+<td><code>daari/enterprise/service.py</code></td>
+</tr>
+<tr>
+<td>Router shared-cache lookup order (<code>L0-org</code>, <code>L1-org</code>)</td>
+<td>[x]</td>
+<td>local L0 -&gt; org L0 -&gt; local L1 -&gt; org L1</td>
+</tr>
+<tr>
+<td>Shared write-through from local model responses</td>
+<td>[x]</td>
+<td>pushes L0 + L1 keys to org cache when configured</td>
+</tr>
+<tr>
+<td>Config expansion (<code>org.id</code>, <code>shared_cache_url</code>, token, timeout)</td>
+<td>[x]</td>
+<td><code>Settings.load</code> maps <code>org</code> block into <code>enterprise</code></td>
+</tr>
+<tr>
+<td><code>daari serve --org</code> org-cache client wiring</td>
+<td>[x]</td>
+<td><code>AppContext.from_settings</code> instantiates <code>OrgCacheClient</code> when URL set</td>
+</tr>
+<tr>
+<td>Doctor org-cache reachability check</td>
+<td>[x]</td>
+<td>optional <code>org_cache</code> check (<code>/v1/org-cache/stats</code>)</td>
+</tr>
+<tr>
+<td>Tests (service/client/router/config/cli)</td>
+<td>[x]</td>
+<td>no real network required in CI</td>
+</tr>
+<tr>
+<td>E3 collective learning</td>
+<td>[x]</td>
+<td>metadata-only feedback API + profile sync + CLI stats/export</td>
+</tr>
+<tr>
+<td>Web UI serve CLI smoke test</td>
+<td>[x]</td>
+<td><code>tests/test_setup.py::test_web_ui_serve_mounts_static_assets</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="deferred-user-owned">Deferred / user-owned<a class="headerlink" href="#deferred-user-owned" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Cursor smoke test on personal device (<code>daari setup cursor</code> + chat through daari) — <strong>Ask E2E verified 2026-06-23</strong>; see <a href="#cursor-e2e-byok--poc-2026-06-23">Cursor E2E BYOK POC</a></li>
+<li>L4 model pull/install still user-managed (falls back to L3 when unavailable; pull <code>llama3.1:8b</code> to use L4 without retry)</li>
+<li>L6 live frontier smoke depends on API key presence</li>
+<li>Cursor follow-up quality / tool hallucination when tools stripped (tracked in open todos above)</li>
+</ul>
+<hr />
+<h2 id="how-to-update">How to update<a class="headerlink" href="#how-to-update" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Mark tasks <code>[x]</code> when merged to <code>main</code>; add commit hash in <strong>Notes</strong> when helpful.</li>
+<li>Refresh <strong>Last updated</strong> and pytest count after test changes.</li>
+<li>Do not mark done without implementation — check <code>daari/cli/</code>, <code>tests/</code>, and <code>git log</code>.</li>
+<li>Keep Phase B+ as preview; detail stays in <a href="../prd/ROADMAP/">ROADMAP</a> and <a href="../plans/phase-a/">phase-a.md</a>.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

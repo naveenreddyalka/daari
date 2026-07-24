@@ -1,0 +1,2276 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Local-first LLM router — route to cache, tools, and local models before frontier APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://naveenreddyalka.github.io/daari/ARCHITECTURE/">
+      
+      
+        <link rel="prev" href="../reference/config/">
+      
+      
+        <link rel="next" href="../prd/ROADMAP-v2/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Architecture - daari</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#daari-architecture-project-structure" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="daari" class="md-header__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            daari
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="daari" class="md-nav__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    daari
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/cursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/intellij/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JetBrains
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/openai-compat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAI-compatible
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/project-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/mlx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-daari-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What daari is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory tree
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#path-purpose-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path → purpose → status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Path → purpose → status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtime-code-daari" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime code (daari/)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docs-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs (docs/)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scripts-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scripts &amp; tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#request-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entry-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entry points
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Entry points">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-daari" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI (daari)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-daemon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP (daemon)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scripts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implemented-vs-spec-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implemented vs spec-only
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-walkthrough-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suggested walkthrough order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prd/ROADMAP-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TRACKING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DEVELOPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../AUTOMATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-daari-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What daari is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory tree
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#path-purpose-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path → purpose → status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Path → purpose → status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#runtime-code-daari" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime code (daari/)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docs-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs (docs/)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scripts-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scripts &amp; tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#request-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#entry-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entry points
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Entry points">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-daari" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI (daari)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http-daemon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP (daemon)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scripts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scripts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implemented-vs-spec-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implemented vs spec-only
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suggested-walkthrough-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Suggested walkthrough order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="daari-architecture-project-structure">daari — Architecture &amp; project structure<a class="headerlink" href="#daari-architecture-project-structure" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p>Living overview of the repo layout, runtime flow, and implementation status.<br />
+<strong>Last updated:</strong> 2026-07-23 (v1.2.0) · <strong>Verified at:</strong> <code>working tree</code></p>
+</blockquote>
+<p>For phase tasks and exit criteria, see <a href="../TRACKING/">TRACKING.md</a>. For clone/run/test pickup, see <a href="../DEVELOPING/">DEVELOPING.md</a>.</p>
+<hr />
+<h2 id="what-daari-is">What daari is<a class="headerlink" href="#what-daari-is" title="Permanent link">&para;</a></h2>
+<p>daari is an open-source <strong>local execution router</strong> — a cost optimizer you run on your machine. Dev agents (Cursor, OpenAI SDK, curl) send chat requests to a localhost daemon; daari routes each request through the cheapest capable tier (exact cache → local model) before any frontier API. It is <strong>not a proxy</strong>: routing, cache, and policy live in one Python process you own. See <a href="../prd/PRD/">PRD v0.4</a> and <a href="../adr/0013-monorepo-structure/">ADR-0013</a> for monorepo rules.</p>
+<hr />
+<h2 id="phase-status">Phase status<a class="headerlink" href="#phase-status" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Status</th>
+<th>Summary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A / A.1 — Tracer bullet + install</strong></td>
+<td>Done</td>
+<td>gateway, L0, L3, router, metrics, evals; install, setup, doctor, L6 escalation, confidence</td>
+</tr>
+<tr>
+<td><strong>B — Rules, Lt, multi-model</strong></td>
+<td>Done</td>
+<td>L1, L2, L2-dev, CCS, Lt B.0 + PolicyEngine, L4, setup recipes, ask/confirm UX, evals GP-20</td>
+</tr>
+<tr>
+<td><strong>C1/C2/C3 — Clients &amp; providers</strong></td>
+<td>Done</td>
+<td>Anthropic gateway (+ tool passthrough), MCP ingress, Ollama-compatible facade, browser extension, web UI, MLX backend, Sourcegraph/GHE/GitLab providers, per-project <code>.daari.yaml</code> profiles, gateway API-key auth</td>
+</tr>
+<tr>
+<td><strong>D — Local learning</strong></td>
+<td>Done</td>
+<td>feedback store + tuner (D1), example capture + MLX fine-tune (D2), opt-in collective stats export (D3), <code>learn deploy</code></td>
+</tr>
+<tr>
+<td><strong>Trust trains 1–5</strong></td>
+<td>Done</td>
+<td>cache-trust measurement (false-hit rate, diversity, normalization), prompt-cache passthrough + compaction + compression, latency-aware routing, learned routing, budgets/client attribution/PII scrub</td>
+</tr>
+<tr>
+<td><strong>E2/E3 — Org shared cache + learning</strong></td>
+<td>Done (tracer)</td>
+<td><code>daari org-cache serve</code>, <code>L0-org</code>/<code>L1-org</code> lookup + write-through, metadata feedback + profile sync</td>
+</tr>
+<tr>
+<td><strong>Roadmap v2 (F1–F5)</strong></td>
+<td>Next</td>
+<td>OSS launch pack, gateway parity, Prometheus/OTel, enterprise scale-out — <a href="../prd/ROADMAP-v2/">ROADMAP-v2</a></td>
+</tr>
+</tbody>
+</table>
+<p>Detail and task checklists: <a href="../TRACKING/">TRACKING.md</a>.</p>
+<hr />
+<h2 id="directory-tree">Directory tree<a class="headerlink" href="#directory-tree" title="Permanent link">&para;</a></h2>
+<p>Concise layout as of <code>main</code> (~<code>3c44a8e</code>). Omitted: <code>__pycache__</code>, <code>.venv</code>, dotfiles.</p>
+<div class="highlight"><pre><span></span><code>daari/                              # repo root
+├── daari/                          # Python package — routing brain (pip install -e .)
+│   ├── cli/                        # Typer commands (serve, stats, report, trace, learn, setup, …)
+│   ├── server/                     # FastAPI app factory + API-key middleware
+│   ├── gateway/                    # OpenAI, Anthropic (tool passthrough), MCP, Ollama facade, PII scrub, request log
+│   ├── router/                     # Tier routing + prompt profile, latency budgets, compression, MLX executor, model profiling
+│   ├── cache/                      # L0 exact + L1 semantic (normalization, TTLs) + CCS command context
+│   ├── learning/                   # Phase D: feedback, tuner, examples, dataset, finetune, deploy, collective, router model
+│   ├── config/                     # Settings + defaults.yaml + per-project .daari.yaml profiles
+│   ├── observability/              # Tier metrics, usage ledger (savings), request traces
+│   ├── providers/                  # IntegrationProvider registry (Sourcegraph, GHE, GitLab)
+│   ├── enterprise/                 # Org config + shared-cache/learning service and client
+│   ├── rules/                      # L2 + L2-dev regex/template routing rules
+│   ├── tools/                      # Lt subprocess executor
+│   ├── policy/                     # Lt allow/deny/ask policy engine
+│   ├── clients/                    # One-click setup recipes (Cursor, Claude Code, IntelliJ, VS Code)
+│   └── setup/                      # doctor, wizard, backup, jsonc, models, openai-compat/context helpers
+├── tests/
+│   ├── unit/                       # cache, router, learning, trust, budgets, settings, …
+│   ├── integration/                # gateway flows (OpenAI/Anthropic/MCP/facade/auth); optional live Ollama
+│   ├── benchmark/                  # L0 vs L3 latency (optional)
+│   └── test_*.py                   # routing evals, setup, doctor
+├── evals/routing/                  # Golden prompts GP-01–GP-20
+├── docs/                           # PRDs, ADRs, setup guides, release notes, tracker
+├── scripts/                        # install.sh, demo.sh, bench.sh, tunnel.sh, autodev-local.sh
+├── packages/
+│   ├── browser-extension/          # MV3 popup → local daemon (jsdom-tested)
+│   └── web-ui/                     # Stats/savings/traces dashboard (jsdom-tested)
+├── pyproject.toml
+├── README.md
+└── CONTEXT.md                      # Agent handoff
+</code></pre></div>
+<p>User runtime paths (not in repo): <code>~/.daari/config.yaml</code>, <code>~/.daari/cache/{l0,l1}</code>, <code>~/.daari/traces/</code>, <code>~/.daari/usage/</code>, <code>~/.daari/feedback/</code>, <code>~/.daari/training/</code>, <code>~/.daari/backups/&lt;tool&gt;/</code>, <code>~/.daari/cursor-requests.log</code> (rotated).</p>
+<hr />
+<h2 id="path-purpose-status">Path → purpose → status<a class="headerlink" href="#path-purpose-status" title="Permanent link">&para;</a></h2>
+<h3 id="runtime-code-daari">Runtime code (<code>daari/</code>)<a class="headerlink" href="#runtime-code-daari" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>daari/__main__.py</code></td>
+<td><code>python -m daari</code> entry</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/cli/app.py</code></td>
+<td>Typer CLI: <code>serve</code>, <code>stats</code>, <code>doctor</code>, <code>setup</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/cli/setup_actions.py</code></td>
+<td>Shared setup apply helpers</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/server/app.py</code></td>
+<td>FastAPI factory, lifespan → <code>AppContext</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/openai.py</code></td>
+<td><code>POST /v1/chat/completions</code>, stats, health</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/internal.py</code></td>
+<td><code>InternalRequest</code> / <code>InternalResponse</code> / <code>DaariMeta</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/router/router.py</code></td>
+<td>Router: L0/CCS/L1/L2/Lt/L3/L4/L5/L6 + no-frontier + fallback behavior</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/base.py</code></td>
+<td><code>GatewayAdapter</code> protocol</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/anthropic.py</code></td>
+<td><code>POST /v1/messages</code> Anthropic-compatible adapter (minimal)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/mcp.py</code></td>
+<td>MCP ingress (<code>health</code>/<code>stats</code>/<code>route</code>, <code>tools/list</code>, <code>tools/call</code>)</td>
+<td>✅ expanded</td>
+</tr>
+<tr>
+<td><code>daari/cache/exact.py</code></td>
+<td>L0 exact cache keys + diskcache store</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/cache/semantic.py</code></td>
+<td>L1 semantic cache — Ollama embeddings + cosine similarity</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/config/settings.py</code></td>
+<td>Merged config (<code>defaults.yaml</code> + <code>~/.daari/</code> + profile overlays + skills prefix)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/config/defaults.yaml</code></td>
+<td>Package defaults (host, port, models)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/observability/metrics.py</code></td>
+<td>Tier counters for <code>/v1/daari/stats</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/providers/base.py</code></td>
+<td><code>IntegrationProvider</code> protocol (<code>execute</code>, <code>health</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/providers/registry.py</code></td>
+<td>Provider registry used by router</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/providers/integrations.py</code></td>
+<td>Sourcegraph GraphQL + GHE repo/issue search providers</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/enterprise/config.py</code></td>
+<td>Enterprise org settings schema (<code>OrgSettings</code>) including shared-cache URL/token fields</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/enterprise/client.py</code></td>
+<td>Org shared-cache + learning HTTP clients used by router/CLI (<code>L0-org</code>, <code>L1-org</code>, feedback/profile)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/enterprise/service.py</code></td>
+<td>Lightweight shared-cache + learning FastAPI service (<code>/v1/org-cache/*</code>, <code>/v1/org-learning/*</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/rules/engine.py</code></td>
+<td>L2 deterministic transforms (JSON/YAML)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/rules/dev_commands.py</code></td>
+<td>L2-dev developer command detection</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/cache/command_context.py</code></td>
+<td>CCS store for command output reuse</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/tools/shell.py</code></td>
+<td>Lt shell execution backend</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/policy/engine.py</code></td>
+<td>Allow/deny/ask execution policy</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/clients/base.py</code></td>
+<td><code>ClientSetupRecipe</code> protocol</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/clients/registry.py</code></td>
+<td>Setup recipe dispatch (<code>cursor</code>, <code>intellij</code>, <code>vscode</code>, <code>claude-code</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/clients/cursor/recipe.py</code></td>
+<td>Cursor settings patch / undo / dry-run</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/clients/intellij/recipe.py</code></td>
+<td>IntelliJ helper config patch / undo / dry-run</td>
+<td>✅ minimal</td>
+</tr>
+<tr>
+<td><code>daari/clients/vscode/recipe.py</code></td>
+<td>VS Code settings patch / undo / dry-run</td>
+<td>✅ minimal</td>
+</tr>
+<tr>
+<td><code>daari/clients/claude_code/recipe.py</code></td>
+<td>claude-code env helper + config pointer dry-run/apply/undo</td>
+<td>✅ minimal</td>
+</tr>
+<tr>
+<td><code>daari/setup/doctor.py</code></td>
+<td>Health checks (Python, config, Ollama models including embedding model, org cache, daemon)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/setup/wizard.py</code></td>
+<td>Interactive <code>daari setup</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/setup/backup.py</code></td>
+<td>Backup / restore for setup recipes</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/setup/jsonc.py</code></td>
+<td>JSONC read/write for Cursor config</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/setup/models.py</code></td>
+<td><code>daari setup models</code> — tier → Ollama model</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/setup/openai_compat.py</code></td>
+<td><code>setup openai-compat</code> + frontier env/profile hints</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/setup/context.py</code></td>
+<td><code>daari context clear</code> cache invalidation helper + daemon cache-handle reload support</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/ollama_compat.py</code></td>
+<td>Ollama-compatible facade (<code>/api/tags</code>, <code>/api/chat</code>, …) for JetBrains &amp; Ollama-speaking clients</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/pii.py</code></td>
+<td>Regex PII scrub before L6 escalation (opt-in)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/gateway/request_log.py</code></td>
+<td>Rotating JSON request log (<code>~/.daari/cursor-requests.log</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/router/profile.py</code></td>
+<td>Prompt profiling: category, complexity, token estimate</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/router/mlx_executor.py</code></td>
+<td>MLX backend executor (<code>mlx_lm.server</code>, Apple Silicon)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/router/model_profile.py</code></td>
+<td><code>daari profile</code> benchmarks + warm-model tracking + latency budgets</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/router/compress.py</code></td>
+<td>Frontier context compression (relevance pruning)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/cache/normalize.py</code></td>
+<td>Input normalization before L1 embedding</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/observability/usage.py</code></td>
+<td>SQLite usage ledger — savings, budgets, client attribution</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/observability/trace.py</code></td>
+<td>Per-request trace store (<code>daari trace</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/learning/feedback.py</code></td>
+<td>Outcome store + explicit accept/reject + shadow-sampling stats</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/learning/tuner.py</code></td>
+<td>Per-category confidence threshold tuner (opt-in)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/learning/examples.py</code> · <code>dataset.py</code> · <code>finetune.py</code> · <code>deploy.py</code></td>
+<td>Opt-in example capture → MLX LoRA fine-tune → adapter deploy</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/learning/router_model.py</code></td>
+<td>Learned category/tier classifier (<code>daari learn train-router</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/learning/collective.py</code></td>
+<td>D3 opt-in anonymized stats export (review-first)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>daari/config/project.py</code></td>
+<td>Per-project <code>.daari.yaml</code> profiles (<code>X-Daari-Project</code>)</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Not in tree (Roadmap v2):</strong> Docker/Helm artifacts, Prometheus exporter, Redis/Postgres backends, virtual keys, guardrails, Responses API adapter.</p>
+<h3 id="docs-docs">Docs (<code>docs/</code>)<a class="headerlink" href="#docs-docs" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docs/prd/</code></td>
+<td>PRD, ROADMAP, routing-spec, setup-spec, glossary</td>
+<td>Spec (living)</td>
+</tr>
+<tr>
+<td><code>docs/adr/</code></td>
+<td>Architecture decision records 0001–0014</td>
+<td>Accepted</td>
+</tr>
+<tr>
+<td><code>docs/plans/phase-a.md</code></td>
+<td>Phase A implementation plan</td>
+<td>Historical + reference</td>
+</tr>
+<tr>
+<td><code>docs/setup/cursor.md</code></td>
+<td>Manual Cursor fallback</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>docs/setup/intellij.md</code></td>
+<td>IntelliJ setup + helper config behavior</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>docs/setup/vscode.md</code></td>
+<td>VS Code setup helper behavior</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>docs/setup/claude-code.md</code></td>
+<td>claude-code env helper setup</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>docs/DEVELOPING.md</code></td>
+<td>Clone, run, test pickup</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>docs/TRACKING.md</code></td>
+<td>Phase task tracker</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>docs/ARCHITECTURE.md</code></td>
+<td>This file</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scripts-tests">Scripts &amp; tests<a class="headerlink" href="#scripts-tests" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scripts/install.sh</code></td>
+<td>venv + editable install + Ollama pull hint</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>scripts/demo.sh</code></td>
+<td>One-click smoke: serve, curl, stats, setup dry-run</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>tests/unit/</code></td>
+<td>Fast unit tests (CI)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>tests/integration/</code></td>
+<td>Mocked gateway flow; live Ollama optional</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>tests/benchmark/</code></td>
+<td>Tier latency (<code>@pytest.mark.benchmark</code>)</td>
+<td>✅ optional</td>
+</tr>
+<tr>
+<td><code>tests/test_routing_eval.py</code></td>
+<td>GP-01–GP-20 routing evals</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>tests/test_setup.py</code>, <code>tests/test_doctor.py</code></td>
+<td>Setup / doctor coverage</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>.github/workflows/ci.yml</code></td>
+<td>Python 3.12 pytest on push/PR</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="other">Other<a class="headerlink" href="#other" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>evals/routing/prompts.jsonl</code></td>
+<td>Golden prompt fixtures for routing evals</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>packages/README.md</code></td>
+<td>Placeholder for future browser ext / web UI</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>packages/browser-extension/</code></td>
+<td>Browser extension popup bridge + options page for daemon URL (<code>:11435</code> default)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>packages/web-ui/README.md</code></td>
+<td>Web UI runtime docs (table + chart + auto-refresh controls)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>CONTEXT.md</code></td>
+<td>Agent/session handoff</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="request-flow">Request flow<a class="headerlink" href="#request-flow" title="Permanent link">&para;</a></h2>
+<p>Typical chat completion path: client → OpenAI-compat gateway → router → cache/rules/tools/local models/frontier.</p>
+<pre class="mermaid"><code>flowchart LR
+  Client["Client\n(Cursor / curl / SDK)"]
+  Serve["daari serve\nFastAPI :11435"]
+  GW["gateway/openai.py\nPOST /v1/chat/completions"]
+  Router["router/router.py"]
+  L0["L0 ExactCache\ndiskcache"]
+  L1["L1 SemanticCache\nOllama embeddings"]
+  L3["L3 OllamaExecutor\n/api/chat"]
+  Ollama["Ollama\n:11434"]
+
+  Client --&gt; Serve
+  Serve --&gt; GW
+  GW --&gt; Router
+  Router --&gt;|"L0 miss"| L1
+  Router --&gt;|"L1 miss, no tool_calls"| L3
+  Router --&gt;|"L0 hit"| L0
+  Router --&gt;|"L1 hit"| L1
+  Router --&gt;|"tool_calls in history"| L3
+  L1 --&gt; Ollama
+  L3 --&gt; Ollama
+  L0 --&gt; GW
+  L1 --&gt; GW
+  L3 --&gt; GW
+  GW --&gt; Client</code></pre>
+<p><strong>Routing rules (shipped):</strong></p>
+<ol>
+<li>Agent flows (<code>tools</code> present or <code>tool_calls</code> in history) skip caches, keep the full tool protocol, and route to local model tiers (ADR-0004).</li>
+<li>Try L0 exact cache, then org L0 when configured (unless <code>X-Daari-No-Cache: true</code> or the category policy skips cache).</li>
+<li>Try CCS for matched dev command context before re-execution.</li>
+<li>Try L1 semantic cache (normalized-input embeddings + cosine threshold, per-category TTLs); near-misses above the draft threshold inject the cached answer as a draft; a sample of hits is shadow-checked to measure false-hit rate.</li>
+<li>Apply L2-dev command rules (<code>git</code>, <code>pytest</code>, <code>eslint</code>) and policy gate; execute Lt when allowed.</li>
+<li>Apply L2 deterministic transforms (JSON/YAML patterns).</li>
+<li>Build the prompt profile (category/complexity; learned router can override the heuristic); pick the initial tier via category policy → tier cap (<code>X-Daari-Tier-Cap</code>, <code>.daari.yaml</code>) → latency budget step-down (profiled model latency vs <code>routing.latency_budget_ms</code> / <code>X-Daari-Latency-Budget</code>) with warm-model preference.</li>
+<li>Model path L3/L4/L5 with fallback; confidence (per-category tuned when <code>learning.auto_tune</code>) drives escalation toward L6 — slimmed, optionally compressed and PII-scrubbed, budget-guarded (daily + monthly soft/hard).</li>
+<li><code>X-Daari-No-Frontier: true</code> (or the project profile) prevents L6 escalation.</li>
+</ol>
+<hr />
+<h2 id="entry-points">Entry points<a class="headerlink" href="#entry-points" title="Permanent link">&para;</a></h2>
+<h3 id="cli-daari">CLI (<code>daari</code>)<a class="headerlink" href="#cli-daari" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>daari serve [--host] [--port] [--no-frontier] [--org]</code></td>
+<td>Start HTTP daemon (default <code>127.0.0.1:11435</code>)</td>
+</tr>
+<tr>
+<td><code>daari org-cache serve [--org] [--port] [--require-token]</code></td>
+<td>Start org shared-cache + learning service (default <code>127.0.0.1:11436</code>)</td>
+</tr>
+<tr>
+<td><code>daari org-learning stats</code></td>
+<td>Show aggregated org learning metrics</td>
+</tr>
+<tr>
+<td><code>daari org-learning sync</code></td>
+<td>Force the running daemon to refresh org-learning routing profile</td>
+</tr>
+<tr>
+<td><code>daari org-learning export [-o FILE]</code></td>
+<td>Export anonymized org learning summary</td>
+</tr>
+<tr>
+<td><code>daari stats [--host] [--port]</code></td>
+<td>Fetch tier counters from running daemon</td>
+</tr>
+<tr>
+<td><code>daari doctor</code></td>
+<td>Check Python, config, Ollama, model, optional daemon</td>
+</tr>
+<tr>
+<td><code>daari install [--run-doctor/--no-run-doctor] [--pull-l4] [--pull-l5]</code></td>
+<td>Run install workflow via <code>scripts/install.sh</code></td>
+</tr>
+<tr>
+<td><code>daari setup</code></td>
+<td>Interactive setup wizard</td>
+</tr>
+<tr>
+<td><code>daari setup --undo &lt;tool&gt;</code></td>
+<td>Restore latest backup (e.g. <code>cursor</code>)</td>
+</tr>
+<tr>
+<td><code>daari setup cursor [--dry-run] [--force]</code></td>
+<td>Patch Cursor to point at daari</td>
+</tr>
+<tr>
+<td><code>daari setup intellij [--dry-run] [--force]</code></td>
+<td>Write IntelliJ helper OpenAI-compatible config</td>
+</tr>
+<tr>
+<td><code>daari setup vscode [--dry-run] [--force]</code></td>
+<td>Patch VS Code settings with daari OpenAI-compatible marker</td>
+</tr>
+<tr>
+<td><code>daari setup claude-code [--dry-run] [--force]</code></td>
+<td>Write claude-code OPENAI_* env helper + config pointer</td>
+</tr>
+<tr>
+<td><code>daari setup all [--dry-run] [--force]</code></td>
+<td>Run setup recipes for all detected clients</td>
+</tr>
+<tr>
+<td><code>daari setup models [--tier] [--model] [--list]</code></td>
+<td>Map tier → Ollama model in user config</td>
+</tr>
+<tr>
+<td><code>daari setup openai-compat</code></td>
+<td>Print OPENAI_* exports + write <code>~/.daari/.env.example</code></td>
+</tr>
+<tr>
+<td><code>daari setup frontier-key</code></td>
+<td>Optional shell/profile frontier key hint (no secret persistence)</td>
+</tr>
+<tr>
+<td><code>daari context clear [--l0/--l1/--ccs]</code></td>
+<td>Clear L0/L1/CCS caches and auto-refresh running daemon cache handles</td>
+</tr>
+<tr>
+<td><code>daari report [--days N] [--md FILE]</code></td>
+<td>Usage, savings, budget state, client breakdown, cache trust</td>
+</tr>
+<tr>
+<td><code>daari trace [ID] [--md FILE]</code></td>
+<td>Per-request decision timeline</td>
+</tr>
+<tr>
+<td><code>daari feedback &lt;trace_id&gt; --accept/--reject</code></td>
+<td>Explicit outcome feedback</td>
+</tr>
+<tr>
+<td><code>daari learn stats/recommend/examples/export-dataset/train-router/finetune/deploy/export-stats</code></td>
+<td>Phase D learning loop</td>
+</tr>
+<tr>
+<td><code>daari profile [--models ...]</code></td>
+<td>Benchmark local models (tokens/sec, load) for latency-aware routing</td>
+</tr>
+<tr>
+<td><code>daari project init/show</code></td>
+<td>Per-repo <code>.daari.yaml</code> profile management</td>
+</tr>
+<tr>
+<td><code>daari cache prune</code></td>
+<td>Remove expired L0/L1 entries</td>
+</tr>
+<tr>
+<td><code>daari web-ui serve</code></td>
+<td>Local dashboard (stats, savings, traces, cache trust)</td>
+</tr>
+<tr>
+<td><code>daari setup cursor --tunnel</code></td>
+<td>Cursor BYOK via cloudflared + auto-generated gateway API key</td>
+</tr>
+</tbody>
+</table>
+<p>Registered in <code>pyproject.toml</code> as <code>daari = "daari.cli.app:app"</code>.</p>
+<h3 id="http-daemon">HTTP (daemon)<a class="headerlink" href="#http-daemon" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/chat/completions</code></td>
+<td>OpenAI-compat chat with full SSE streaming (tier fallback, L0/L1, draft injection)</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/models</code>, <code>/v1/models/{id}</code></td>
+<td>Model listing for client pickers</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/messages</code></td>
+<td>Anthropic-compatible adapter with tool passthrough (non-stream + SSE)</td>
+</tr>
+<tr>
+<td><code>GET</code>/<code>POST</code></td>
+<td><code>/api/tags</code>, <code>/api/chat</code>, <code>/api/version</code>, <code>/api/show</code>, <code>/api/ps</code></td>
+<td>Ollama-compatible facade (JetBrains AI Assistant, any Ollama client)</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/mcp/query</code></td>
+<td>MCP ingress (<code>health</code>, <code>stats</code>, <code>route</code>, <code>tools/list</code>, <code>tools/call</code>, providers)</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/daari/reload-caches</code></td>
+<td>Reload in-memory L0/L1/CCS handles from current settings</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/daari/stats</code></td>
+<td>Tier metrics snapshot</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/daari/report</code></td>
+<td>Usage/savings/budget/cache-trust report</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/daari/traces</code>, <code>/v1/daari/traces/{id}</code></td>
+<td>Request trace list/detail</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/daari/feedback</code></td>
+<td>Explicit accept/reject by trace_id</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/daari/learn/stats</code></td>
+<td>Learning outcome evidence</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/daari/cache/diversity</code></td>
+<td>Semantic-cache diversity stats</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/health</code></td>
+<td>Liveness (open even when API-key auth is on)</td>
+</tr>
+</tbody>
+</table>
+<p>When <code>server.api_key</code> is set (auto-generated by <code>daari setup cursor --tunnel</code>), all non-health endpoints require <code>Authorization: Bearer</code> or <code>x-api-key</code>.</p>
+<p>Optional headers on chat: <code>X-Daari-No-Cache</code>, <code>X-Daari-Tier-Override</code>, <code>X-Daari-Tier-Cap</code>, <code>X-Daari-No-Frontier</code>, <code>X-Daari-Latency-Budget</code>, <code>X-Daari-Client-Id</code>, <code>X-Daari-Project</code>, <code>X-Daari-Meta</code>, <code>X-Daari-Tools</code>, <code>X-Daari-Confirm</code>, <code>X-Daari-Confirm-Tool</code>, <code>X-Daari-ReRun-Command</code>.</p>
+<p>Org shared-cache service (<code>daari org-cache serve</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/org-cache/get?key=...&amp;tier=...</code></td>
+<td>Read org cache entry</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/v1/org-cache/put</code></td>
+<td>Write org cache entry</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/org-cache/stats</code></td>
+<td>Show entries and hit/miss/write counters</td>
+</tr>
+</tbody>
+</table>
+<p>Org learning endpoints (same service host):</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/org-learning/feedback</code></td>
+<td>Ingest anonymized routing feedback metadata</td>
+</tr>
+<tr>
+<td><code>GET</code></td>
+<td><code>/v1/org-learning/profile</code></td>
+<td>Read aggregated org routing profile</td>
+</tr>
+<tr>
+<td><code>PUT</code></td>
+<td><code>/v1/org-learning/profile</code></td>
+<td>Admin override for org routing profile (token-gated)</td>
+</tr>
+<tr>
+<td><code>POST</code></td>
+<td><code>/v1/org-learning/sync</code></td>
+<td>Force profile refresh in running daemon app context</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scripts">Scripts<a class="headerlink" href="#scripts" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Script</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>./scripts/install.sh</code></td>
+<td>Create venv, <code>pip install -e ".[dev]"</code>, Ollama model hint</td>
+</tr>
+<tr>
+<td><code>./scripts/demo.sh</code></td>
+<td>Full smoke: install, serve, double curl (L0 hit), stats, setup dry-run</td>
+</tr>
+<tr>
+<td><code>./scripts/bench.sh</code></td>
+<td>Tier latency benchmark helper (L0/L1/L2/Lt/L3) with robust uncached prompt seeding</td>
+</tr>
+<tr>
+<td><code>./scripts/smoke-cursor-dry-run.sh</code></td>
+<td>CI-friendly <code>daari setup cursor --dry-run</code> smoke command</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="implemented-vs-spec-only">Implemented vs spec-only<a class="headerlink" href="#implemented-vs-spec-only" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Implemented</th>
+<th>Spec only / deferred (Roadmap v2)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gateway</td>
+<td>OpenAI (+SSE), Anthropic with tool passthrough, MCP ingress, Ollama facade, API-key auth, PII scrub</td>
+<td>Responses API, guardrails, virtual keys, MCP egress client</td>
+</tr>
+<tr>
+<td>Tiers</td>
+<td>L0/L1 (TTLs, normalization, draft injection, shadow sampling), CCS, L2/L2-dev, Lt + policy, L3–L5 (Ollama or MLX), L6 with slimming/compression/budgets</td>
+<td>multi-provider L6 fallback chains, key rotation, circuit breakers</td>
+</tr>
+<tr>
+<td>Routing intelligence</td>
+<td>Prompt profile, category policies, tier caps, latency budgets + model profiling + warm preference, learned router, tuner</td>
+<td>capability catalog, VRAM stack advisor</td>
+</tr>
+<tr>
+<td>Learning</td>
+<td>Feedback → stats/recommend → tuner → examples → fine-tune → deploy; D3 opt-in export</td>
+<td>D4 published defaults pipeline</td>
+</tr>
+<tr>
+<td>Setup</td>
+<td>One-click Cursor (tunnel+auth), Claude Code, IntelliJ facade, VS Code, openai-compat, per-project profiles</td>
+<td>Homebrew, Docker one-command</td>
+</tr>
+<tr>
+<td>Providers</td>
+<td>Sourcegraph, GHE, GitLab, generic HTTP, L2-live URL fetch</td>
+<td>live-source family (Open-Meteo, wttr.in, <code>sources.yaml</code>)</td>
+</tr>
+<tr>
+<td>Observability</td>
+<td>Tier metrics, usage ledger + savings, traces, request log rotation, web dashboard, MD export</td>
+<td>Prometheus <code>/metrics</code>, Grafana, OTel</td>
+</tr>
+<tr>
+<td>Enterprise</td>
+<td>Org shared cache + learning sync (tracer), API-key auth</td>
+<td>Redis/Postgres backends, stateless replicas, Helm, fleet bootstrap, SSO/RBAC/audit</td>
+</tr>
+<tr>
+<td>Packages</td>
+<td>browser-extension + web-ui (both jsdom-tested in CI)</td>
+<td>intellij-plugin (superseded by Ollama facade)</td>
+</tr>
+</tbody>
+</table>
+<p>Source of truth for “done”: <a href="../TRACKING/">TRACKING.md</a> task tables + <code>daari/</code> tree + pytest.</p>
+<hr />
+<h2 id="suggested-walkthrough-order">Suggested walkthrough order<a class="headerlink" href="#suggested-walkthrough-order" title="Permanent link">&para;</a></h2>
+<p>Read in this order to follow a request from CLI to response, then setup and tests.</p>
+<ol>
+<li><code>README.md</code> — one-paragraph product + quick start  </li>
+<li><code>docs/prd/PRD.md</code> (§ tiers) or <a href="../prd/routing-spec/">routing-spec</a> — tier model  </li>
+<li><code>daari/config/defaults.yaml</code> → <code>daari/config/settings.py</code> — config merge  </li>
+<li><code>daari/gateway/internal.py</code> — internal wire models  </li>
+<li><code>daari/server/app.py</code> — app bootstrap  </li>
+<li><code>daari/gateway/openai.py</code> — HTTP → internal request  </li>
+<li><code>daari/router/router.py</code> — L0 / L1 / L3 routing  </li>
+<li><code>daari/cache/exact.py</code> — L0 cache keys  </li>
+<li><code>daari/cache/semantic.py</code> — L1 semantic cache  </li>
+<li><code>daari/observability/metrics.py</code> — stats  </li>
+<li><code>daari/cli/app.py</code> — CLI surface  </li>
+<li><code>daari/clients/cursor/recipe.py</code> + <code>daari/setup/</code> — Phase A.1 setup  </li>
+<li><code>tests/integration/test_gateway_flow.py</code> — end-to-end mocked flow  </li>
+<li><code>tests/test_routing_eval.py</code> + <code>evals/routing/prompts.jsonl</code> — routing quality  </li>
+<li><code>docs/adr/0013-monorepo-structure.md</code> — where future code goes  </li>
+</ol>
+<hr />
+<h2 id="maintenance">Maintenance<a class="headerlink" href="#maintenance" title="Permanent link">&para;</a></h2>
+<p><strong>Update this doc when:</strong></p>
+<ul>
+<li>A new <strong>phase ships</strong> (or exits) — refresh phase status, path table, implemented vs spec</li>
+<li>A <strong>major module</strong> is added under <code>daari/</code> (e.g. <code>tools/</code>, new gateway adapter)</li>
+<li>A <strong>tier is implemented</strong> (L1, L2, L6, Lt, …) — update flow diagram and routing rules</li>
+<li>A <strong>CLI command</strong> or <strong>HTTP endpoint</strong> is added or renamed</li>
+<li>Default <strong>ports, paths, or entry points</strong> change</li>
+</ul>
+<p>Also refresh <strong>Last updated</strong> and <strong>Verified at</strong> commit when editing. Keep <a href="../TRACKING/">TRACKING.md</a> as the task-level checklist; this file is the structural map.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

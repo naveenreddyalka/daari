@@ -1,0 +1,1436 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Local-first LLM router — route to cache, tools, and local models before frontier APIs.">
+      
+      
+      
+        <link rel="canonical" href="https://naveenreddyalka.github.io/daari/PRD-PLAN/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>PRD Plan — daari - daari</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#prd-plan-daari" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="daari" class="md-header__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            daari
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              PRD Plan — daari
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="daari" class="md-nav__button md-logo" aria-label="daari" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    daari
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/naveenreddyalka/daari" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    naveenreddyalka/daari
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Setup
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/cursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/claude-code/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Claude Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/intellij/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JetBrains
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/openai-compat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAI-compatible
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/project-profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../setup/mlx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLX backend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prd/ROADMAP-v2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TRACKING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DEVELOPING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../AUTOMATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deliverables-by-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deliverables by phase
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deliverables by phase">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-0-scaffold-this-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0 — Scaffold (this commit)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-vision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — Vision
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — Discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-approach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — Approach
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-prd-draft" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4 — PRD draft
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5 — Review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-6-implementation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 6 — Implementation plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#session-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Session workflow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Session workflow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#git-commit-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Git commit conventions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#skills-strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Skills strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#timeline-suggested" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Timeline (suggested)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-action" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next action
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="prd-plan-daari">PRD Plan — daari<a class="headerlink" href="#prd-plan-daari" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>Purpose:</strong> Define <em>how</em> we go from "empty repo" to an approved PRD ready for implementation.<br />
+<strong>Status:</strong> Phase 5 — PRD v0.3 review (competitive analysis + plan review added)<br />
+<strong>Owner:</strong> Naveen Reddy Alka</p>
+</blockquote>
+<hr />
+<h2 id="goal">Goal<a class="headerlink" href="#goal" title="Permanent link">&para;</a></h2>
+<p>Produce a <strong>complete, approved PRD</strong> in this repo that answers:</p>
+<ul>
+<li>What daari is and is not</li>
+<li>Who it is for and why they care</li>
+<li>Core user stories and success metrics</li>
+<li>Technical approach (language, architecture, hosting)</li>
+<li>Scope boundaries and phased delivery</li>
+<li>Testing and quality expectations</li>
+</ul>
+<p>Everything is versioned in git. Nothing lives only in chat.</p>
+<hr />
+<h2 id="phases">Phases<a class="headerlink" href="#phases" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    P0[Phase 0&lt;br/&gt;Scaffold] --&gt; P1[Phase 1&lt;br/&gt;Vision]
+    P1 --&gt; P2[Phase 2&lt;br/&gt;Discovery]
+    P2 --&gt; P3[Phase 3&lt;br/&gt;Approach]
+    P3 --&gt; P4[Phase 4&lt;br/&gt;PRD draft]
+    P4 --&gt; P5[Phase 5&lt;br/&gt;Review]
+    P5 --&gt; P6[Phase 6&lt;br/&gt;Implementation plan]
+    P5 --&gt;|changes| P4</code></pre>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Name</th>
+<th>Output</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>0</strong></td>
+<td>Scaffold</td>
+<td>Repo structure, this plan, CONTEXT.md</td>
+<td>✅ Done when pushed to <code>main</code></td>
+</tr>
+<tr>
+<td><strong>1</strong></td>
+<td>Vision</td>
+<td>One-paragraph pitch + problem statement</td>
+<td>You approve the "why"</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>Discovery</td>
+<td>User personas, constraints, competitors/alternatives</td>
+<td>You approve scope direction</td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td>Approach</td>
+<td>Language/stack options, architecture sketch, ADR-001</td>
+<td>You pick an approach</td>
+</tr>
+<tr>
+<td><strong>4</strong></td>
+<td>PRD draft</td>
+<td>Full PRD in <code>docs/prd/PRD.md</code></td>
+<td>Internal consistency check</td>
+</tr>
+<tr>
+<td><strong>5</strong></td>
+<td>Review</td>
+<td>Your edits + sign-off</td>
+<td>Explicit "PRD approved"</td>
+</tr>
+<tr>
+<td><strong>6</strong></td>
+<td>Implementation plan</td>
+<td><code>docs/plans/YYYY-MM-DD-&lt;feature&gt;.md</code></td>
+<td>Ready to code</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="deliverables-by-phase">Deliverables by phase<a class="headerlink" href="#deliverables-by-phase" title="Permanent link">&para;</a></h2>
+<h3 id="phase-0-scaffold-this-commit">Phase 0 — Scaffold <em>(this commit)</em><a class="headerlink" href="#phase-0-scaffold-this-commit" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[x] <code>README.md</code>, <code>CONTEXT.md</code></li>
+<li>[x] <code>docs/PRD-PLAN.md</code> (this file)</li>
+<li>[x] <code>docs/discovery/</code> workspace</li>
+<li>[x] <code>docs/prd/</code> placeholder</li>
+<li>[x] <code>docs/adr/</code> for decisions</li>
+<li>[x] <code>.gitignore</code></li>
+</ul>
+<h3 id="phase-1-vision">Phase 1 — Vision<a class="headerlink" href="#phase-1-vision" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>docs/discovery/01-vision.md</code></p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Questions to answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Elevator pitch</td>
+<td>What is daari in one sentence?</td>
+</tr>
+<tr>
+<td>Problem</td>
+<td>What pain exists today?</td>
+</tr>
+<tr>
+<td>Insight</td>
+<td>Why now? Why you?</td>
+</tr>
+<tr>
+<td>Name</td>
+<td>Why "daari"? Does the Telugu meaning ("path/way") inform the product?</td>
+</tr>
+<tr>
+<td>Non-goals</td>
+<td>What is this definitely <em>not</em>?</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Exit criteria:</strong> You read it and say "yes, that's the problem I want to solve."</p>
+<h3 id="phase-2-discovery">Phase 2 — Discovery<a class="headerlink" href="#phase-2-discovery" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>docs/discovery/02-discovery.md</code></p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Questions to answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Users</td>
+<td>Primary and secondary personas</td>
+</tr>
+<tr>
+<td>Jobs to be done</td>
+<td>What are they trying to accomplish?</td>
+</tr>
+<tr>
+<td>Current alternatives</td>
+<td>How do they solve this today?</td>
+</tr>
+<tr>
+<td>Constraints</td>
+<td>Time, budget, privacy, offline, platforms</td>
+</tr>
+<tr>
+<td>Risks</td>
+<td>What could kill the project?</td>
+</tr>
+<tr>
+<td>Success metrics</td>
+<td>How do we know it worked?</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Activities:</strong></p>
+<ul>
+<li>Structured Q&amp;A (one topic at a time)</li>
+<li>Optional: competitor/alternative scan</li>
+<li>Optional: rough user journey sketch</li>
+</ul>
+<p><strong>Exit criteria:</strong> Scope is bounded enough for one PRD (or we split into sub-projects).</p>
+<h3 id="phase-3-approach">Phase 3 — Approach<a class="headerlink" href="#phase-3-approach" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li><code>docs/discovery/03-approach-options.md</code> — 2–3 options with trade-offs</li>
+<li><code>docs/adr/0001-tech-stack.md</code> — chosen approach (ADR format)</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Decision area</th>
+<th>Options to evaluate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Product shape</strong></td>
+<td>Web / mobile / CLI / desktop / API-only / hybrid</td>
+</tr>
+<tr>
+<td><strong>Language</strong></td>
+<td>TypeScript, Python, Rust, Go, etc. — fit for problem</td>
+</tr>
+<tr>
+<td><strong>Frontend</strong></td>
+<td>React, Svelte, native, terminal UI, none</td>
+</tr>
+<tr>
+<td><strong>Backend</strong></td>
+<td>Serverless, single server, edge, local-first</td>
+</tr>
+<tr>
+<td><strong>Data</strong></td>
+<td>SQLite, Postgres, files, cloud DB, none</td>
+</tr>
+<tr>
+<td><strong>AI/agents</strong></td>
+<td>Core feature vs. optional vs. none</td>
+</tr>
+<tr>
+<td><strong>Hosting</strong></td>
+<td>Local, Vercel, Fly, GCP, self-hosted</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Process:</strong></p>
+<ol>
+<li>Agent proposes 2–3 stacks with pros/cons/recommendation</li>
+<li>You pick one (or hybrid)</li>
+<li>Record in ADR-0001</li>
+</ol>
+<p><strong>Exit criteria:</strong> Stack and architecture direction locked.</p>
+<h3 id="phase-4-prd-draft">Phase 4 — PRD draft<a class="headerlink" href="#phase-4-prd-draft" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>docs/prd/PRD.md</code></p>
+<p>Uses this structure:</p>
+<div class="highlight"><pre><span></span><code><span class="gh"># daari — Product Requirements Document</span>
+
+<span class="gu">## Problem Statement</span>
+<span class="gu">## Solution</span>
+<span class="gu">## User Stories          (numbered, extensive)</span>
+<span class="gu">## Implementation Decisions</span>
+<span class="gu">## Testing Decisions</span>
+<span class="gu">## Out of Scope</span>
+<span class="gu">## Further Notes</span>
+<span class="gu">## Phased Delivery       (MVP → v1 → later)</span>
+</code></pre></div>
+<p><strong>Also create:</strong></p>
+<ul>
+<li><code>docs/prd/glossary.md</code> — domain terms (if any)</li>
+<li>Module sketch — major components, no file paths</li>
+</ul>
+<p><strong>Exit criteria:</strong> No TBD placeholders; spec self-review passed.</p>
+<h3 id="phase-5-review">Phase 5 — Review<a class="headerlink" href="#phase-5-review" title="Permanent link">&para;</a></h3>
+<ul>
+<li>You review <code>docs/prd/PRD.md</code></li>
+<li>Changes go through git (commits on a branch or main)</li>
+<li>Sign-off recorded in PRD header: <code>Status: Approved — YYYY-MM-DD</code></li>
+</ul>
+<h3 id="phase-6-implementation-plan">Phase 6 — Implementation plan<a class="headerlink" href="#phase-6-implementation-plan" title="Permanent link">&para;</a></h3>
+<p><strong>File:</strong> <code>docs/plans/YYYY-MM-DD-mvp.md</code></p>
+<ul>
+<li>Bite-sized tasks, TDD where applicable</li>
+<li>Only after PRD approved</li>
+<li>Separate from PRD (plan can change; PRD should not drift silently)</li>
+</ul>
+<hr />
+<h2 id="session-workflow">Session workflow<a class="headerlink" href="#session-workflow" title="Permanent link">&para;</a></h2>
+<p>Each working session:</p>
+<ol>
+<li><strong>Read</strong> CONTEXT.md + latest discovery doc</li>
+<li><strong>Work</strong> one phase section at a time (no skipping)</li>
+<li><strong>Commit</strong> with conventional messages, e.g. <code>docs: add vision draft</code></li>
+<li><strong>Push</strong> to <code>origin/main</code> (or PR branch for larger reviews)</li>
+</ol>
+<h3 id="git-commit-conventions">Git commit conventions<a class="headerlink" href="#git-commit-conventions" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>docs: &lt;what changed&gt;       # discovery, PRD, ADR
+chore: &lt;what changed&gt;      # repo setup, gitignore
+feat: &lt;what changed&gt;       # only after Phase 6
+</code></pre></div>
+<hr />
+<h2 id="skills-strategy">Skills strategy<a class="headerlink" href="#skills-strategy" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Skill type</th>
+<th>Location</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>daari-specific</strong></td>
+<td><code>.cursor/skills/</code> in this repo</td>
+<td>Workflow unique to this product</td>
+</tr>
+<tr>
+<td><strong>Reusable across projects</strong></td>
+<td><code>github.com/naveenreddyalka/agent-skills</code></td>
+<td>Generic patterns (PRD, triage, deploy, etc.)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rule:</strong> If a skill could help <code>next</code>, <code>daari</code>, or future repos → separate repo.<br />
+<strong>Install:</strong> Symlink or copy into <code>~/.cursor/skills/</code> / <code>~/.claude/skills/</code>.</p>
+<p>Create <code>agent-skills</code> repo when the first reusable skill is written.</p>
+<hr />
+<h2 id="roles">Roles<a class="headerlink" href="#roles" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Who</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Product owner</td>
+<td>Naveen</td>
+<td>Vision, approvals, priority</td>
+</tr>
+<tr>
+<td>Agent</td>
+<td>Cursor/Claude</td>
+<td>Draft docs, research, propose options</td>
+</tr>
+<tr>
+<td>Reviewer</td>
+<td>Naveen</td>
+<td>Approve each phase gate</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="timeline-suggested">Timeline (suggested)<a class="headerlink" href="#timeline-suggested" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Week</th>
+<th>Focus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1</strong></td>
+<td>Phase 1–2: Vision + Discovery</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>Phase 3: Approach + ADR-0001</td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td>Phase 4–5: PRD draft + review</td>
+</tr>
+<tr>
+<td><strong>4</strong></td>
+<td>Phase 6: Implementation plan → start MVP</td>
+</tr>
+</tbody>
+</table>
+<p>Adjust as needed. Quality of thinking beats speed.</p>
+<hr />
+<h2 id="next-action">Next action<a class="headerlink" href="#next-action" title="Permanent link">&para;</a></h2>
+<p><strong>→ PRD v0.4 approval</strong> — all plan review issues resolved. See <a href="../prd/PLAN-REVIEW/"><code>docs/prd/PLAN-REVIEW.md</code></a>.</p>
+<p>Then: Phase A implementation plan.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
