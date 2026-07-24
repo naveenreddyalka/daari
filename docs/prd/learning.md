@@ -1,6 +1,6 @@
 # daari — Local Learning PRD (Phase D)
 
-> **Status:** Active — D1 shipped (#53–#55); D2 shipped (#61–#63); D3 (collective stats) and deploy in progress
+> **Status:** Shipped — D1 (#53–#55), D2 (#61–#63), D3 + deploy (#102); D4 (published defaults) awaits opt-in adoption
 > **Last updated:** 2026-07-23
 > **Companion to:** [PRD v0.4](PRD.md), [ROADMAP Phase D](ROADMAP.md#phase-d--local-learning--collective-improvement-future), [intelligence PRD](intelligence.md)
 > **Tracking:** GitHub issues labeled `auto-dev`; progress in [TRACKING.md](../TRACKING.md)

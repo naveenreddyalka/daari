@@ -33,26 +33,40 @@ curl http://127.0.0.1:11435/v1/chat/completions \
 
 Run the same curl twice — the second response should show `"tier": "L0"` in `daari_meta`.
 
-## Feature snapshot (v1.1.0)
+## Feature snapshot (v1.2.0)
 
-- Local-first routing chain with cache/rules/tooling/model tiers (`L0`, `L1`, `CCS`, `L2`, `Lt`, `L3-L6`)
-- OpenAI-compatible and Anthropic-compatible gateways with SSE streaming support
-- MCP ingress with `tools/list` + `tools/call`, schema-aware input validation, and structured errors
-- C3 integration providers: Sourcegraph, GitHub Enterprise, and GitLab self-hosted trigger routing
-- Enterprise E1/E2/E3 runtime: org mode, shared-cache service, learning feedback/profile APIs, CLI stats/export
-- Local stats dashboard: `daari web-ui serve` (`packages/web-ui/`)
-- Setup and health tooling: `daari setup ...`, `daari doctor`, `daari install`, demo + bench scripts
+**Routing & caching**
+- Local-first routing chain: `L0` exact cache → `L1` semantic cache (with draft injection) → `CCS`/`L2` rules → `Lt` CLI tools → `L3–L5` local models (Ollama or MLX) → `L6` frontier, with confidence-based escalation
+- Cache trust you can measure: shadow-sampled **false-hit rate**, response-diversity monitoring, input normalization, per-category TTLs
+- Prompt intelligence: category/complexity profiling, per-category policies, latency budgets, warm-model preference, learned routing from your own outcomes
+
+**Learning (on-device)**
+- Implicit outcome capture + explicit accept/reject feedback → `daari learn stats/recommend`
+- Auto-tuned per-category confidence thresholds, opt-in example capture → `daari learn finetune` (MLX LoRA) → `daari learn deploy`
+- Opt-in, review-first anonymized stats export (`daari learn export-stats`) — metadata only, never prompts
+
+**Clients (one-click)**
+- Cursor (BYOK via tunnel + API-key auth), Claude Code (full tool passthrough), JetBrains AI Assistant (Ollama-compatible facade), VS Code, any OpenAI/Anthropic SDK
+- Per-project profiles (`.daari.yaml`): tier caps, no-frontier, latency budgets per repo
+
+**Observability & spend**
+- Per-request traces (`daari trace`), usage ledger with estimated savings (`daari report`, Markdown export), web dashboard (`daari web-ui serve`)
+- Monthly/daily frontier budgets with soft warnings, per-client cost attribution, optional pre-frontier PII scrub
+
+**Platform**
+- MCP ingress (`tools/list`/`tools/call`), Sourcegraph/GHE/GitLab providers, org shared cache + collective learning (tracer), gateway API-key auth, MLX backend for Apple Silicon
 
 ## Docs
 
 | Doc | Purpose |
 |-----|---------|
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Repo layout, request flow, implementation map |
-| [`docs/TRACKING.md`](docs/TRACKING.md) | Phase task tracker (A / A.1 / deferred) |
+| [`docs/TRACKING.md`](docs/TRACKING.md) | Living phase/task tracker |
 | [`docs/DEVELOPING.md`](docs/DEVELOPING.md) | Dev pickup — clone, run, test |
-| [`docs/plans/phase-a.md`](docs/plans/phase-a.md) | Phase A implementation plan |
 | [`docs/prd/PRD.md`](docs/prd/PRD.md) | Product requirements |
-| [`docs/setup/cursor.md`](docs/setup/cursor.md) | Manual Cursor setup |
+| [`docs/prd/ROADMAP-v2.md`](docs/prd/ROADMAP-v2.md) | Forward roadmap: OSS launch, gateway parity, enterprise scale |
+| [`docs/setup/cursor.md`](docs/setup/cursor.md) | Cursor setup (tunnel + auth) |
+| [`docs/setup/claude-code.md`](docs/setup/claude-code.md) | Claude Code one-click setup |
 | [`CONTEXT.md`](CONTEXT.md) | Agent handoff |
 
 ## Principles
