@@ -174,6 +174,9 @@ class ObservabilitySettings(BaseModel):
     # Gateway request log rotation; 0 max bytes disables rotation.
     request_log_max_bytes: int = 5 * 1024 * 1024
     request_log_backups: int = 3
+    # F3: expose GET /metrics in Prometheus exposition format. Open when
+    # server.api_key is unset; honors auth otherwise (issue #107).
+    prometheus: bool = True
 
 
 class LearningSettings(BaseModel):
