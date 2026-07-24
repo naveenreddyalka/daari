@@ -42,6 +42,12 @@ def _guardrails_from_settings(settings: Settings) -> Any | None:
     return engine_from_settings(settings)
 
 
+def _catalog_from_settings(settings: Settings) -> Any:
+    from daari.router.capabilities import catalog_from_settings
+
+    return catalog_from_settings(settings)
+
+
 def _openai_tool_call_deltas(tool_calls: list[Any]) -> list[dict[str, Any]]:
     """Convert Ollama-native tool calls (dict arguments, no id) to OpenAI delta shape."""
     deltas: list[dict[str, Any]] = []
@@ -240,6 +246,7 @@ class Router:
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
         guardrails: Any | None = None,
+        capability_catalog: Any | None = None,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -306,10 +313,42 @@ class Router:
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
         self.guardrails = guardrails
+        self.capability_catalog = capability_catalog
 
     @property
     def ollama(self) -> OllamaExecutor:
         return self.ollama_l3
+
+    def _tier_models(self) -> dict[str, str]:
+        return {
+            "L3": self.ollama_l3.default_model,
+            "L4": self.ollama_l4.default_model,
+            "L5": self.ollama_l5.default_model,
+        }
+
+    def _filter_capable_tiers(self, tiers: list[str], request: InternalRequest) -> list[str]:
+        if self.capability_catalog is None:
+            return tiers
+        from daari.router.capabilities import filter_tiers_by_capability, required_capabilities
+
+        required = required_capabilities(request)
+        if not required:
+            return tiers
+        kept = filter_tiers_by_capability(
+            tiers,
+            tier_models=self._tier_models(),
+            catalog=self.capability_catalog,
+            required=required,
+        )
+        if kept != tiers:
+            add_step(
+                "capability_filter",
+                required=sorted(required),
+                before=tiers,
+                after=kept or tiers,
+            )
+        # Never empty the chain — fall back to the original if everything filtered out.
+        return kept or tiers
 
     def _apply_guardrail_hits(self, hits: list[Any], *, warning: str | None) -> None:
         for hit in hits:
@@ -1216,7 +1255,7 @@ class Router:
         for tier in chain:
             if tier not in deduped:
                 deduped.append(tier)
-        return deduped
+        return self._filter_capable_tiers(deduped, request)
 
     async def stream_anthropic_events(self, request: InternalRequest) -> AsyncIterator[str]:
         """Emit Anthropic-compatible SSE events with daari metadata.
@@ -1647,10 +1686,14 @@ class Router:
     ) -> str:
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
-            return override
+            # Still respect capability filter for explicit overrides when possible.
+            capable = self._filter_capable_tiers([override, "L5", "L4", "L3"], request)
+            return capable[0] if capable else override
         tier = self._choose_uncapped_tier(request, profile)
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
-        return self._apply_latency_budget(tier, request, profile)
+        tier = self._apply_latency_budget(tier, request, profile)
+        capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
+        return capable[0] if capable else tier
 
     @staticmethod
     def _policy_attr(policy: Any, name: str) -> Any:
@@ -2424,6 +2467,7 @@ class AppContext:
             frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
             guardrails=_guardrails_from_settings(settings),
+            capability_catalog=_catalog_from_settings(settings),
         )
         context = cls(
             settings=settings,
