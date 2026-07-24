@@ -1808,6 +1808,7 @@ class Router:
             )
             if budget_state == "soft":
                 l6_response.daari_meta.warning = "frontier_budget_warning"
+            self.metrics.record_escalation()
             return l6_response
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
