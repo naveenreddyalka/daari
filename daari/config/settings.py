@@ -75,6 +75,10 @@ class L1CacheSettings(BaseModel):
 class CacheSettings(BaseModel):
     l0: L0CacheSettings = Field(default_factory=L0CacheSettings)
     l1: L1CacheSettings = Field(default_factory=L1CacheSettings)
+    # F4: disk (default) or redis for shared L0 across replicas (issue #112).
+    backend: str = "disk"  # disk | redis
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    redis_prefix: str = "daari:l0:"
 
 
 class FrontierSettings(BaseModel):
@@ -118,6 +122,16 @@ class CategoryPolicy(BaseModel):
     latency_budget_ms: int | None = None
 
 
+class OrgPoolSettings(BaseModel):
+    """Shared org GPU inference pool between local L5 and frontier L6 (issue #118)."""
+
+    enabled: bool = False
+    base_url: str = ""
+    model: str = ""
+    # Tier label recorded in daari_meta (L5.5 conceptually; stored as L5-org).
+    tier: str = "L5-org"
+
+
 class RoutingSettings(BaseModel):
     prefer: str = "balanced"  # latency | accuracy | balanced
     confidence_threshold: float = 0.7
@@ -133,6 +147,8 @@ class RoutingSettings(BaseModel):
     # Use the trained personal classifier (`daari learn train-router`) to
     # override heuristic categorization when confident (Trust PRD Train 4).
     learned_router: bool = False
+    # Org inference pool (device-local → org pool → frontier).
+    org_pool: OrgPoolSettings = Field(default_factory=OrgPoolSettings)
 
 
 class ToolsSettings(BaseModel):
@@ -180,6 +196,18 @@ class ObservabilitySettings(BaseModel):
     # F3: expose GET /metrics in Prometheus exposition format. Open when
     # server.api_key is unset; honors auth otherwise (issue #107).
     prometheus: bool = True
+    # Optional OTel export of RequestTrace steps (issue #115). Requires
+    # opentelemetry-api; no-op when the package is missing.
+    otel: bool = False
+    # Allow authenticated PATCH of a safe config subset via the web UI.
+    config_editor: bool = False
+    # sqlite (default) or postgres for ledger + traces (issue #116).
+    backend: str = "sqlite"  # sqlite | postgres
+    postgres_url: str = ""
+    # Emit gateway request logs as single-line JSON to stdout (containers).
+    structured_json_logs: bool = False
+    # Hint that redis+postgres backends are in use (no local request state).
+    stateless: bool = False
 
 
 class LearningSettings(BaseModel):
@@ -241,6 +269,15 @@ class IntegrationEndpointSettings(BaseModel):
     triggers: list[str] = Field(default_factory=list)
 
 
+class McpServerSettings(BaseModel):
+    """External MCP server daari can call as a tool (issue #121)."""
+
+    id: str
+    url: str
+    token: str = ""
+    triggers: list[str] = Field(default_factory=list)
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -260,6 +297,8 @@ class IntegrationsSettings(BaseModel):
             triggers=["@gitlab"],
         )
     )
+    # F5 MCP egress: daari → external MCP servers.
+    mcp_servers: list[McpServerSettings] = Field(default_factory=list)
 
 
 class Settings(BaseSettings):

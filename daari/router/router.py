@@ -42,6 +42,23 @@ def _guardrails_from_settings(settings: Settings) -> Any | None:
     return engine_from_settings(settings)
 
 
+def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
+    if getattr(settings.cache, "backend", "disk") == "redis":
+        from daari.cache.redis_exact import RedisExactCache
+
+        return RedisExactCache(
+            settings.cache.redis_url,
+            prefix=settings.cache.redis_prefix,
+            enabled=settings.cache.l0.enabled,
+            ttl_seconds=settings.cache.l0.ttl_seconds,
+        )
+    return ExactCache(
+        path=str(l0_path),
+        enabled=settings.cache.l0.enabled,
+        ttl_seconds=settings.cache.l0.ttl_seconds,
+    )
+
+
 def _catalog_from_settings(settings: Settings) -> Any:
     from daari.router.capabilities import catalog_from_settings
 
@@ -247,6 +264,8 @@ class Router:
         frontier_max_history: int = 8,
         guardrails: Any | None = None,
         capability_catalog: Any | None = None,
+        otel_enabled: bool = False,
+        org_pool: OllamaExecutor | MLXExecutor | None = None,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -314,6 +333,8 @@ class Router:
         self.frontier_max_history = frontier_max_history
         self.guardrails = guardrails
         self.capability_catalog = capability_catalog
+        self.otel_enabled = otel_enabled
+        self.org_pool = org_pool
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -422,6 +443,10 @@ class Router:
         if trace is not None:
             response.daari_meta.trace_id = trace.trace_id
             self.trace_store.save(trace, tier=response.daari_meta.tier, category=profile.category)
+            if getattr(self, "otel_enabled", False):
+                from daari.observability.otel import export_trace
+
+                export_trace(trace)
         end_trace()
         self._ledger_record(request, response)
         self._feedback_record(profile, response)
@@ -917,19 +942,17 @@ class Router:
 
     def _match_integration_provider(self, text: str) -> str | None:
         text_lower = text.strip().lower()
-        trigger_map = {
-            "integration:sourcegraph": self.integration_triggers.get("integration:sourcegraph", ["@sourcegraph"]),
-            "integration:ghe": self.integration_triggers.get("integration:ghe", ["@ghe"]),
-            "integration:gitlab": self.integration_triggers.get("integration:gitlab", ["@gitlab"]),
-        }
-        for provider_id, triggers in trigger_map.items():
-            for trigger in triggers:
+        # Longest trigger wins so "@mcp:demo" beats "@mcp".
+        candidates: list[tuple[int, str]] = []
+        for provider_id, triggers in self.integration_triggers.items():
+            for trigger in triggers or []:
                 normalized = trigger.strip().lower()
-                if not normalized:
-                    continue
-                if text_lower.startswith(normalized):
-                    return provider_id
-        return None
+                if normalized and text_lower.startswith(normalized):
+                    candidates.append((len(normalized), provider_id))
+        if not candidates:
+            return None
+        candidates.sort(reverse=True)
+        return candidates[0][1]
 
     async def stream_openai_chunks(self, request: InternalRequest) -> AsyncIterator[str]:
         """Emit OpenAI-compatible SSE chunks (strict shape for Cursor and other clients)."""
@@ -1872,6 +1895,24 @@ class Router:
                     response.daari_meta.warning = "below_confidence_threshold"
                     return response
 
+        # L5.5 — org inference pool before paying frontier (issue #118).
+        if self.org_pool is not None:
+            try:
+                add_step("escalate", to="L5-org", local_confidence=confidence)
+                pool_request = request.model_copy(deep=True)
+                pool_request.model = self.org_pool.default_model
+                pool_response = await self.org_pool.execute(pool_request)
+                pool_confidence = score_l3_confidence(pool_response.content)
+                pool_response.daari_meta.confidence = pool_confidence
+                pool_response.daari_meta.tier = getattr(self.org_pool, "tier", None) or "L5-org"
+                pool_response.daari_meta.escalated_from = response.daari_meta.tier
+                if pool_confidence >= threshold:
+                    return pool_response
+                response = pool_response
+                confidence = pool_confidence
+            except Exception:
+                add_step("org_pool_failed")
+
         if request.meta.no_frontier or not self.frontier_enabled:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
@@ -2288,11 +2329,7 @@ class AppContext:
                 timeout_seconds=settings.enterprise.learning_timeout_seconds,
                 enabled=True,
             )
-        cache = ExactCache(
-            path=str(l0_path),
-            enabled=settings.cache.l0.enabled,
-            ttl_seconds=settings.cache.l0.ttl_seconds,
-        )
+        cache = _build_l0_cache(settings, l0_path)
         embedder = OllamaEmbedder(
             base_url=settings.ollama.base_url.rstrip("/"),
             model=settings.cache.l1.embedding_model,
@@ -2327,6 +2364,14 @@ class AppContext:
         ollama_l3 = tier_executor("L3", settings.models.l3)
         ollama_l4 = tier_executor("L4", settings.models.l4)
         ollama_l5 = tier_executor("L5", settings.models.l5)
+        org_pool_executor: OllamaExecutor | MLXExecutor | None = None
+        org_pool_cfg = settings.routing.org_pool
+        if org_pool_cfg.enabled and org_pool_cfg.base_url.strip():
+            org_pool_executor = OllamaExecutor(
+                base_url=org_pool_cfg.base_url.rstrip("/"),
+                default_model=org_pool_cfg.model or settings.models.l5,
+                tier=org_pool_cfg.tier or "L5-org",
+            )
         frontier = FrontierExecutor(
             base_url=settings.frontier.base_url.rstrip("/"),
             default_model=settings.frontier.model,
@@ -2365,16 +2410,40 @@ class AppContext:
         providers.register(SourcegraphProvider(base_url=settings.integrations.sourcegraph.url))
         providers.register(GitHubEnterpriseProvider(base_url=settings.integrations.ghe.url))
         providers.register(GitLabProvider(base_url=settings.integrations.gitlab.url))
+        from daari.providers.mcp_egress import build_mcp_providers
+
+        mcp_providers = build_mcp_providers(settings.integrations.mcp_servers)
+        mcp_triggers: dict[str, list[str]] = {}
+        for mcp_provider in mcp_providers:
+            providers.register(mcp_provider)
+            mcp_triggers[mcp_provider.id] = list(mcp_provider.server.triggers)
         metrics = Metrics()
-        usage_ledger = UsageLedger(
-            path=settings.usage_ledger_path,
-            enabled=settings.usage.enabled,
-        )
-        trace_store = TraceStore(
-            path=settings.trace_store_path,
-            enabled=settings.trace.enabled,
-            max_entries=settings.trace.max_entries,
-        )
+        if (
+            settings.observability.backend == "postgres"
+            and settings.observability.postgres_url.strip()
+        ):
+            from daari.observability.postgres_trace import PostgresTraceStore
+            from daari.observability.postgres_usage import PostgresUsageLedger
+
+            usage_ledger = PostgresUsageLedger(
+                settings.observability.postgres_url,
+                enabled=settings.usage.enabled,
+            )
+            trace_store = PostgresTraceStore(
+                settings.observability.postgres_url,
+                enabled=settings.trace.enabled,
+                max_entries=settings.trace.max_entries,
+            )
+        else:
+            usage_ledger = UsageLedger(
+                path=settings.usage_ledger_path,
+                enabled=settings.usage.enabled,
+            )
+            trace_store = TraceStore(
+                path=settings.trace_store_path,
+                enabled=settings.trace.enabled,
+                max_entries=settings.trace.max_entries,
+            )
         from daari.learning.feedback import FeedbackStore
 
         feedback_store = FeedbackStore(
@@ -2433,6 +2502,7 @@ class AppContext:
                 "integration:sourcegraph": settings.integrations.sourcegraph.triggers,
                 "integration:ghe": settings.integrations.ghe.triggers,
                 "integration:gitlab": settings.integrations.gitlab.triggers,
+                **mcp_triggers,
             },
             skills_system_prefix=settings.skills_system_prefix,
             org_cache_client=org_cache_client,
@@ -2468,6 +2538,8 @@ class AppContext:
             max_tier_for_chat=settings.routing.max_tier_for_chat,
             guardrails=_guardrails_from_settings(settings),
             capability_catalog=_catalog_from_settings(settings),
+            otel_enabled=bool(settings.observability.otel),
+            org_pool=org_pool_executor,
         )
         context = cls(
             settings=settings,

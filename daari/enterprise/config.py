@@ -17,6 +17,17 @@ class EnterpriseLearningSettings(BaseModel):
     upload_code: bool = False
 
 
+class SsoSettings(BaseModel):
+    """OIDC / SSO for admin surfaces (issue #119). Dev HMAC when secret set."""
+
+    enabled: bool = False
+    issuer: str = "daari-dev"
+    # Shared secret for mint_dev_token / verify_dev_token (local IdP stub).
+    secret: str = ""
+    # Require at least this role for /v1/daari/config and audit endpoints.
+    admin_min_role: str = "admin"
+
+
 class OrgSettings(BaseModel):
     enabled: bool = False
     id: str | None = None
@@ -39,8 +50,15 @@ class OrgSettings(BaseModel):
     learning_path: str | None = None
     policy_overrides: dict[str, Any] = Field(default_factory=dict)
     profile: str = "developer"
+    device_id: str | None = None
+    # HMAC secret used to verify X-Daari-Signature on org config fetch.
+    config_signing_secret: str = ""
+    # Periodic signed org-config refresh URL (extends learning sync).
+    policy_sync_url: str | None = None
     cache: EnterpriseCacheSettings = Field(default_factory=EnterpriseCacheSettings)
     learning: EnterpriseLearningSettings = Field(default_factory=EnterpriseLearningSettings)
+    sso: SsoSettings = Field(default_factory=SsoSettings)
+    audit_path: str = "~/.daari/audit/audit.sqlite3"
 
     @property
     def resolved_org_id(self) -> str | None:

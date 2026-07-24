@@ -41,6 +41,9 @@ Issues = "https://github.com/naveenreddyalka/daari/issues"
 # add rules that fail lint repo-wide with no code change (2026-07-23).
 dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff==0.15.17"]
 docs = ["mkdocs-material>=9.5"]
+redis = ["redis>=5.0"]
+postgres = ["psycopg[binary]>=3.1"]
+otel = ["opentelemetry-api>=1.27"]
 
 [project.scripts]
 daari = "daari.cli.app:app"

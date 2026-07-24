@@ -13,6 +13,7 @@ DEFAULT_BACKUPS = 3
 LOG_PATH = DEFAULT_LOG_PATH
 _max_bytes = DEFAULT_MAX_BYTES
 _backups = DEFAULT_BACKUPS
+_stdout_json = False
 _lock = threading.Lock()
 
 
@@ -21,15 +22,18 @@ def configure_request_log(
     path: Path | str | None = None,
     max_bytes: int | None = None,
     backups: int | None = None,
+    structured_json_logs: bool | None = None,
 ) -> None:
     """Apply settings at daemon startup; max_bytes=0 disables rotation."""
-    global LOG_PATH, _max_bytes, _backups
+    global LOG_PATH, _max_bytes, _backups, _stdout_json
     if path is not None:
         LOG_PATH = Path(path)
     if max_bytes is not None:
         _max_bytes = max(0, int(max_bytes))
     if backups is not None:
         _backups = max(1, int(backups))
+    if structured_json_logs is not None:
+        _stdout_json = bool(structured_json_logs)
 
 
 def _rotate_if_needed() -> None:
@@ -54,15 +58,18 @@ def _rotate_if_needed() -> None:
 def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
     """Append JSON lines for Cursor/BYOK debugging."""
     try:
-        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         record = {
             "ts": datetime.now(UTC).isoformat(),
             "event": event,
             **payload,
         }
+        line = json.dumps(record, default=str) + "\n"
+        if _stdout_json:
+            print(line, end="", flush=True)
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with _lock:
             _rotate_if_needed()
             with LOG_PATH.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, default=str) + "\n")
+                handle.write(line)
     except OSError:
         pass

@@ -1,0 +1,52 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/naveenreddyalka/daari
+  tag: "1.2.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 11435
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# HPA: scale on CPU. For request-rate, wire KEDA externally.
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Readiness uses /ready (checks model backend). Liveness uses /health.
+probes:
+  readinessPath: /ready
+  livenessPath: /health
+
+# External Redis for L0/L1 when cache.backend=redis (issue #112).
+redis:
+  enabled: false
+  url: redis://redis:6379/0
+
+# External Postgres for ledger/traces (issue #116) — optional.
+postgres:
+  enabled: false
+  url: ""
+
+# Point tiers at an org GPU pool (Ollama/vLLM) instead of sidecar Ollama.
+orgPool:
+  enabled: false
+  baseUrl: ""
+
+env:
+  DAARI_SERVER__HOST: "0.0.0.0"
+  DAARI_OBSERVABILITY__PROMETHEUS: "true"
+
+# Capacity guidance (see docs/setup/capacity.md):
+# ~50–100 req/s per replica for cache-heavy traffic; Redis ~1–2KB/entry.
