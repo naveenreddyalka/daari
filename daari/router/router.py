@@ -2160,7 +2160,7 @@ class AppContext:
     ollama_l3: OllamaExecutor
     ollama_l4: OllamaExecutor
     ollama_l5: OllamaExecutor
-    frontier: FrontierExecutor
+    frontier: FrontierExecutor | Any
     shell_executor: ShellExecutor
     policy: PolicyEngine
     providers: ProviderRegistry
@@ -2372,13 +2372,12 @@ class AppContext:
                 default_model=org_pool_cfg.model or settings.models.l5,
                 tier=org_pool_cfg.tier or "L5-org",
             )
-        frontier = FrontierExecutor(
-            base_url=settings.frontier.base_url.rstrip("/"),
-            default_model=settings.frontier.model,
-            api_key=settings.resolve_frontier_api_key(),
-            provider=settings.frontier.provider,
-            prompt_cache=settings.frontier.prompt_cache,
-        )
+        from daari.router.frontier_pool import build_frontier_pool
+
+        # Issue #109: FrontierPool duck-types FrontierExecutor.execute and
+        # adds ordered failover + weighted key rotation + circuit breakers.
+        # Scalar frontier.* fields remain the single-provider shorthand.
+        frontier = build_frontier_pool(settings)
         shell_executor = ShellExecutor(timeout_seconds=settings.tools.timeout_seconds)
         policy = PolicyEngine(
             allow_patterns=settings.tools.allow,
