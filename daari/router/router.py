@@ -942,7 +942,7 @@ class Router:
 
     def _match_integration_provider(self, text: str) -> str | None:
         text_lower = text.strip().lower()
-        # Longest trigger wins so "@mcp:demo" beats "@mcp".
+        # Longest trigger wins so "@mcp:demo" / "@open-meteo" beat shorter prefixes.
         candidates: list[tuple[int, str]] = []
         for provider_id, triggers in self.integration_triggers.items():
             for trigger in triggers or []:
@@ -2409,6 +2409,12 @@ class AppContext:
         providers.register(SourcegraphProvider(base_url=settings.integrations.sourcegraph.url))
         providers.register(GitHubEnterpriseProvider(base_url=settings.integrations.ghe.url))
         providers.register(GitLabProvider(base_url=settings.integrations.gitlab.url))
+        # F5 live sources (issue #120): Open-Meteo / wttr.in / generic REST.
+        from daari.providers.live_sources import build_live_providers, live_triggers, load_sources_config
+
+        sources_cfg = load_sources_config()
+        for live_provider in build_live_providers(sources_cfg):
+            providers.register(live_provider)
         from daari.providers.mcp_egress import build_mcp_providers
 
         mcp_providers = build_mcp_providers(settings.integrations.mcp_servers)
@@ -2501,6 +2507,7 @@ class AppContext:
                 "integration:sourcegraph": settings.integrations.sourcegraph.triggers,
                 "integration:ghe": settings.integrations.ghe.triggers,
                 "integration:gitlab": settings.integrations.gitlab.triggers,
+                **live_triggers(sources_cfg),
                 **mcp_triggers,
             },
             skills_system_prefix=settings.skills_system_prefix,
