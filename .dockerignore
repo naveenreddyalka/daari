@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__
+*.pyc
+dist
+build
+*.egg-info
+node_modules
+packages/*/node_modules
+tests
+evals
+docs
+scripts
+.github
+.dockerignore
+Dockerfile
+docker-compose.yml

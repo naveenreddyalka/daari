@@ -1,0 +1,67 @@
+# daari one-command quickstart (issue #105):
+#   docker compose up
+# First start pulls the L3 model (~2 GB). Then:
+#   curl http://127.0.0.1:11435/v1/chat/completions -H 'Content-Type: application/json' \
+#     -d '{"model":"daari","messages":[{"role":"user","content":"Say hi"}]}'
+#
+# Optional org shared-cache service:
+#   docker compose --profile org up
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # One-shot: make sure the default L3 + embedding models exist.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull llama3.2:3b && ollama pull nomic-embed-text"]
+    restart: "no"
+
+  daari:
+    build: .
+    ports:
+      - "11435:11435"
+    environment:
+      DAARI_OLLAMA__BASE_URL: http://ollama:11434
+    volumes:
+      - daari-state:/home/daari/.daari
+    depends_on:
+      ollama:
+        condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:11435/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  org-cache:
+    profiles: ["org"]
+    build: .
+    command: ["daari", "org-cache", "serve", "--host", "0.0.0.0", "--port", "11436"]
+    environment:
+      DAARI_ORG_ID: ${DAARI_ORG_ID:-demo-org}
+    ports:
+      - "11436:11436"
+    volumes:
+      - org-cache-state:/home/daari/.daari
+
+volumes:
+  ollama-models:
+  daari-state:
+  org-cache-state:
