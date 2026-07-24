@@ -1,0 +1,21 @@
+# Copy to ~/.daari/sources.yaml — F5 live-source providers (issue #120).
+# Priority order: first matching provider wins for a given trigger.
+
+priority:
+  - open-meteo
+  - wttr
+  - generic
+
+providers:
+  open-meteo:
+    type: open-meteo
+    triggers: ["@weather", "@open-meteo"]
+  wttr:
+    type: wttr
+    triggers: ["@wttr"]
+  generic:
+    type: generic-rest
+    triggers: ["@source"]
+    endpoints:
+      # - id: status
+      #   url: https://example.com/health

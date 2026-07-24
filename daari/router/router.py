@@ -878,19 +878,17 @@ class Router:
 
     def _match_integration_provider(self, text: str) -> str | None:
         text_lower = text.strip().lower()
-        trigger_map = {
-            "integration:sourcegraph": self.integration_triggers.get("integration:sourcegraph", ["@sourcegraph"]),
-            "integration:ghe": self.integration_triggers.get("integration:ghe", ["@ghe"]),
-            "integration:gitlab": self.integration_triggers.get("integration:gitlab", ["@gitlab"]),
-        }
-        for provider_id, triggers in trigger_map.items():
-            for trigger in triggers:
+        # Prefer longest trigger match so "@open-meteo" wins over "@weather".
+        candidates: list[tuple[int, str]] = []
+        for provider_id, triggers in self.integration_triggers.items():
+            for trigger in triggers or []:
                 normalized = trigger.strip().lower()
-                if not normalized:
-                    continue
-                if text_lower.startswith(normalized):
-                    return provider_id
-        return None
+                if normalized and text_lower.startswith(normalized):
+                    candidates.append((len(normalized), provider_id))
+        if not candidates:
+            return None
+        candidates.sort(reverse=True)
+        return candidates[0][1]
 
     async def stream_openai_chunks(self, request: InternalRequest) -> AsyncIterator[str]:
         """Emit OpenAI-compatible SSE chunks (strict shape for Cursor and other clients)."""
@@ -2322,6 +2320,12 @@ class AppContext:
         providers.register(SourcegraphProvider(base_url=settings.integrations.sourcegraph.url))
         providers.register(GitHubEnterpriseProvider(base_url=settings.integrations.ghe.url))
         providers.register(GitLabProvider(base_url=settings.integrations.gitlab.url))
+        # F5 live sources (issue #120): Open-Meteo / wttr.in / generic REST.
+        from daari.providers.live_sources import build_live_providers, live_triggers, load_sources_config
+
+        sources_cfg = load_sources_config()
+        for live_provider in build_live_providers(sources_cfg):
+            providers.register(live_provider)
         metrics = Metrics()
         usage_ledger = UsageLedger(
             path=settings.usage_ledger_path,
@@ -2390,6 +2394,7 @@ class AppContext:
                 "integration:sourcegraph": settings.integrations.sourcegraph.triggers,
                 "integration:ghe": settings.integrations.ghe.triggers,
                 "integration:gitlab": settings.integrations.gitlab.triggers,
+                **live_triggers(sources_cfg),
             },
             skills_system_prefix=settings.skills_system_prefix,
             org_cache_client=org_cache_client,
