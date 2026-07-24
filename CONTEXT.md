@@ -1,7 +1,7 @@
 # daari — Project Context
 
 > Handoff document for any tool or session picking up this project.  
-> **Last updated:** 2026-07-10  
+> **Last updated:** 2026-07-23  
 > **Project location:** `~/Home/Daari`  
 > **GitHub:** https://github.com/naveenreddyalka/daari
 
@@ -9,14 +9,13 @@
 
 ## Current phase
 
-**v1.1.1 released; Cursor Ask E2E POC verified (2026-06-23)**  
-Phase A/A.1/B/C3 baseline is complete with enterprise E2/E3, plus hot cache reload (`POST /v1/daari/reload-caches`), enterprise periodic profile sync (`org.learning_sync_seconds`), browser extension options UX, web UI export/theme controls, and Cursor tunnel-based E2E setup for BYOK/private-network restrictions.
+**v1.2.0 released (2026-07-23) — Learning, Trust & Clients.** Roadmap v1 Phases A–E are all shipped at least to tracer depth: full tier chain (L0/L1/CCS/L2/Lt/L3–L6), prompt intelligence + traces + savings ledger, trust trains (false-hit measurement, prompt-cache passthrough, latency-aware + learned routing, budgets/PII scrub), Phase D learning (feedback → tuner → MLX fine-tune → deploy, opt-in D3 stats export), one-click clients (Cursor BYOK, Claude Code with full tool passthrough, JetBrains via Ollama facade, VS Code), per-project `.daari.yaml` profiles, gateway API-key auth, MLX backend, org shared cache/learning (E2/E3 tracer).
 
-**Cursor BYOK:** Ask + `daari` model works via cloudflared → local Ollama. Open items (tool hallucination on follow-ups, Ask vs Agent split) now live as GitHub issues labeled `auto-dev`.
+**Forward plan:** [docs/prd/ROADMAP-v2.md](docs/prd/ROADMAP-v2.md) — OSS launch readiness (Docker, PyPI, docs site), gateway parity (Responses API, guardrails, virtual keys, L6 fallback chains), Prometheus/OTel observability, and enterprise scale-out (Redis/Postgres backends, stateless replicas, Helm, org inference pool, fleet bootstrap, SSO/RBAC).
 
-**Autonomous dev loop (2026-07-10):** the project develops itself — backlog is GitHub issues `auto-dev` (#1–#8), agents follow [AGENTS.md](AGENTS.md), `main` is protected (CI required, auto-merge on green), a local launchd watchdog redeploys + runs live E2E every 2h and files regression issues. Runbook: [docs/AUTOMATION.md](docs/AUTOMATION.md). Repo is now **public**.
+**Autonomous dev loop:** the project develops itself — backlog is GitHub issues labeled `auto-dev`, agents follow [AGENTS.md](AGENTS.md), `main` is protected (4 CI checks, auto-merge on green), a local launchd watchdog redeploys + runs live E2E every 2h and files regression issues. Runbook: [docs/AUTOMATION.md](docs/AUTOMATION.md). Repo is **public**.
 
-**Last verified:** run `pytest` on current branch.
+**Last verified:** 535 pytest passing (2026-07-23); run `pytest` on current branch.
 
 ## What daari is
 
@@ -61,38 +60,21 @@ Open-source **local cost optimizer** — routes work through cache → tools →
 
 **Separate repo:** `agent-skills` only — reusable skills, not daari runtime.
 
-## Next tasks (post-v1.1.0)
+## Next tasks
 
-1. **Commit Cursor BYOK compat fixes** (content normalization, tools strip, stream L4 fallback, sanitization, tests) — see [TRACKING.md — Cursor E2E](docs/TRACKING.md#cursor-e2e-byok--poc-2026-06-23)
-2. **Cursor follow-up quality** — reduce tool hallucination when IDE tools stripped but system prompt still describes tools
-3. **Ask vs Agent BYOK split** — strip tools for Ask only; preserve tool round-trip for Agent per ADR-0004
-4. **Org L1 semantic matching depth** in shared service (current tracer bullet is key-based)
-5. **Lt B.1 profiles** (project/path command templates + richer confirmations)
-6. Optional: enrich Anthropic stream usage accounting and preflight diagnostics
-7. Browser extension E2E automation coverage (popup + options flow)
+The backlog lives in GitHub issues labeled `auto-dev`. The forward feature plan is
+[ROADMAP-v2](docs/prd/ROADMAP-v2.md), in priority order:
 
-**L1 config** (`~/.daari/config.yaml`):
+1. **F1 — OSS launch readiness:** Docker/compose, readiness probes, PyPI publish (user-gated), MkDocs site, generated API/config reference, CHANGELOG, published benchmark
+2. **F2 — Gateway parity:** OpenAI Responses API, L6 multi-provider fallback chains + key rotation + circuit breakers, guardrails, virtual keys, capability catalog
+3. **F3 — Ops:** Prometheus `/metrics`, Grafana dashboard, optional OTel, web UI config editor
+4. **F4 — Enterprise scale-out:** Redis cache backend, Postgres ledger, stateless replicas, Helm chart, org inference pool routing, fleet bootstrap, SSO/RBAC/audit
+5. **F5 — Leftovers:** live-source providers (Open-Meteo/wttr.in/`sources.yaml`), MCP egress client, Phase B exit metrics, Homebrew
 
-```yaml
-cache:
-  l1:
-    enabled: true
-    path: ~/.daari/cache/l1
-    similarity_threshold: 0.88
-    max_entries: 1000
-    embedding_model: nomic-embed-text   # ollama pull nomic-embed-text
-```
-
-**Validation baseline (2026-06-23):**
-- `pytest -m "not integration and not benchmark"`: 162 passed, 1 skipped
-- Cursor Ask E2E (tunnel + daari model): verified — see [RELEASE-v1.1.2-cursor-e2e.md](docs/RELEASE-v1.1.2-cursor-e2e.md)
-- `OLLAMA_HOST=http://127.0.0.1:11434 .venv/bin/python -m pytest -m integration`: 1 passed, 132 deselected
-- `.venv/bin/python -m pytest -m benchmark`: 1 passed, 132 deselected
-- `./scripts/demo.sh`: pass
-- `./scripts/bench.sh`: pass
-- `./scripts/smoke-cursor-dry-run.sh`: pass
-- `scripts/tunnel.sh --setup-cursor`: manual smoke path (requires `cloudflared`)
-- Manual smoke: org shared-cache cross-instance hit, org-learning feedback/profile sync (`daari org-learning sync`), `POST /v1/daari/reload-caches`, and `daari web-ui serve` dashboard load verified.
+**Validation baseline (2026-07-23):**
+- `pytest` (default suite): 535 passed, 1 skipped
+- Live E2E (launchd watchdog every 2h + on-merge): Cursor-shaped OpenAI stream, Anthropic stream (`anthropic_stream_done` in `~/.daari/cursor-requests.log`), L0/L1 cache hits, `daari report`/`trace`
+- Claude Code live: `claude -p` verified end-to-end through daari (trailing-system fix #94/#95)
 
 **Pickup on new machine:** [docs/DEVELOPING.md](docs/DEVELOPING.md)
 

@@ -1,8 +1,10 @@
-# daari — Product Roadmap
+# daari — Product Roadmap (v1 — shipped)
 
-> **Status:** Draft — companion to [PRD v0.4](PRD.md)  
-> **Last updated:** 2026-06-15  
-> **Purpose:** Detailed phase plan — what ships when, which language, which clients
+> **Status:** Complete — Phases A–E shipped (some at tracer depth); superseded by [ROADMAP-v2.md](ROADMAP-v2.md) for forward work  
+> **Last updated:** 2026-07-23  
+> **Purpose:** Historical phase plan — what shipped when; per-task status lives in [TRACKING.md](../TRACKING.md)
+>
+> **Known deviations from this plan:** C1 live-source providers (Open-Meteo/wttr.in/`sources.yaml`) and the MCP egress client moved to [ROADMAP-v2 Train F5](ROADMAP-v2.md); the IntelliJ Kotlin plugin was superseded by the Ollama-compatible facade; L5 (`llama3.1:70b`) is wired but the model pull stays user-optional; D4 depends on D3 opt-in adoption.
 
 ---
 
@@ -102,10 +104,10 @@ daari/gateway/
 
 ### Exit criteria
 
-- [ ] Second identical prompt hits L0
-- [ ] `daari stats` shows tier breakdown
-- [ ] Cursor works via manual config
-- [ ] 10 eval prompts pass
+- [x] Second identical prompt hits L0
+- [x] `daari stats` shows tier breakdown
+- [x] Cursor works via manual config
+- [x] 10 eval prompts pass
 
 ---
 
@@ -136,9 +138,9 @@ daari/gateway/
 
 ### Exit criteria
 
-- [ ] `./install.sh && daari doctor` passes
-- [ ] `daari setup cursor --dry-run` shows diff
-- [ ] Low-confidence local response escalates to L6 (if keys configured)
+- [x] `./install.sh && daari doctor` passes
+- [x] `daari setup cursor --dry-run` shows diff
+- [x] Low-confidence local response escalates to L6 (if keys configured)
 
 ---
 
@@ -185,10 +187,10 @@ daari/gateway/
 
 ### Exit criteria
 
-- [ ] `$0 tier rate` ≥30% on dev session eval
-- [ ] Lt dispatches `git status` without model call
-- [ ] Routing accuracy ≥90% on 20-prompt eval
-- [ ] `daari setup --all` detects Cursor + Ollama
+- [ ] `$0 tier rate` ≥30% on dev session eval — *not formally measured; queued in [ROADMAP-v2 F5](ROADMAP-v2.md)*
+- [x] Lt dispatches `git status` without model call
+- [ ] Routing accuracy ≥90% on 20-prompt eval — *eval suite passes; the accuracy metric itself queued in [ROADMAP-v2 F5](ROADMAP-v2.md)*
+- [x] `daari setup --all` detects Cursor + Ollama
 
 ---
 

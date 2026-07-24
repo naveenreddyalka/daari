@@ -1,6 +1,6 @@
 # daari — Prompt Intelligence & Transparency PRD
 
-> **Status:** Active — v1.2 feature train
+> **Status:** Shipped — released in v1.2.0 (features #19–#22; see [TRACKING.md](../TRACKING.md))
 > **Last updated:** 2026-07-10
 > **Companion to:** [PRD v0.4](PRD.md), [routing-spec](routing-spec.md)
 > **Tracking:** GitHub issues labeled `auto-dev` (#19–#22); progress in [TRACKING.md](../TRACKING.md)
