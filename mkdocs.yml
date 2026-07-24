@@ -55,5 +55,6 @@ nav:
   - Architecture: ARCHITECTURE.md
   - Roadmap: prd/ROADMAP-v2.md
   - Tracking: TRACKING.md
+  - Auto handoff (review): HANDOFF-AUTO-2026-07.md
   - Developing: DEVELOPING.md
   - Automation loop: AUTOMATION.md
