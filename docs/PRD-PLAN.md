@@ -217,6 +217,6 @@ Adjust as needed. Quality of thinking beats speed.
 
 ## Next action
 
-**→ PRD v0.4 approval** — all plan review issues resolved. See [`docs/prd/PLAN-REVIEW.md`](docs/prd/PLAN-REVIEW.md).
+**→ PRD v0.4 approval** — all plan review issues resolved. See [`docs/prd/PLAN-REVIEW.md`](prd/PLAN-REVIEW.md).
 
 Then: Phase A implementation plan.
