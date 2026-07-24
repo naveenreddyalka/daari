@@ -36,6 +36,12 @@ from daari.router.profile import PromptProfile, build_prompt_profile, categorize
 from daari.tools.shell import ShellExecutor
 
 
+def _guardrails_from_settings(settings: Settings) -> Any | None:
+    from daari.gateway.guardrails import engine_from_settings
+
+    return engine_from_settings(settings)
+
+
 def _openai_tool_call_deltas(tool_calls: list[Any]) -> list[dict[str, Any]]:
     """Convert Ollama-native tool calls (dict arguments, no id) to OpenAI delta shape."""
     deltas: list[dict[str, Any]] = []
@@ -233,6 +239,7 @@ class Router:
         frontier_scrub_pii: bool = False,
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
+        guardrails: Any | None = None,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -298,12 +305,29 @@ class Router:
         self.frontier_scrub_pii = frontier_scrub_pii
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
+        self.guardrails = guardrails
 
     @property
     def ollama(self) -> OllamaExecutor:
         return self.ollama_l3
 
+    def _apply_guardrail_hits(self, hits: list[Any], *, warning: str | None) -> None:
+        for hit in hits:
+            add_step(
+                "guardrail",
+                stage=hit.stage,
+                rule=hit.rule,
+                action=hit.action,
+                detail=hit.detail,
+            )
+            if hasattr(self.metrics, "record_guardrail"):
+                self.metrics.record_guardrail(hit.action)
+        if warning:
+            add_step("guardrail_warning", warning=warning)
+
     async def route(self, request: InternalRequest) -> InternalResponse:
+        from daari.gateway.guardrails import blocked_response
+
         profile = build_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         add_step(
@@ -313,11 +337,39 @@ class Router:
             prompt_tokens_est=profile.prompt_tokens_est,
         )
         profile = await self._apply_learned_route(request, profile)
+        input_warning: str | None = None
+        if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
+            inbound = self.guardrails.check_input(request)
+            if inbound.hits:
+                self._apply_guardrail_hits(inbound.hits, warning=inbound.warning)
+            if inbound.blocked:
+                response = blocked_response(request, self.guardrails.block_message)
+                if response.daari_meta.task_type is None:
+                    response.daari_meta.task_type = profile.category
+                add_step("served", tier="guardrail", cache_hit=False, latency_ms=0)
+                if trace is not None:
+                    response.daari_meta.trace_id = trace.trace_id
+                    self.trace_store.save(
+                        trace, tier="guardrail", category=profile.category
+                    )
+                end_trace()
+                return response
+            input_warning = inbound.warning
         try:
             response = await self._route_impl(request, profile)
         except Exception:
             end_trace()
             raise
+        if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
+            outbound = self.guardrails.check_output(response)
+            if outbound.hits:
+                self._apply_guardrail_hits(outbound.hits, warning=outbound.warning)
+            if outbound.response is not None:
+                response = outbound.response
+            if outbound.warning and not response.daari_meta.warning:
+                response.daari_meta.warning = outbound.warning
+        if input_warning and not response.daari_meta.warning:
+            response.daari_meta.warning = input_warning
         if response.daari_meta.task_type is None:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:
@@ -2371,6 +2423,7 @@ class AppContext:
             frontier_compress=settings.frontier.compress_context,
             frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
+            guardrails=_guardrails_from_settings(settings),
         )
         context = cls(
             settings=settings,
