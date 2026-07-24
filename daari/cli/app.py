@@ -47,6 +47,7 @@ org_cache_app = typer.Typer(help="Run org shared-cache service.")
 org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.")
 web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
+keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 app.add_typer(setup_app, name="setup")
 app.add_typer(context_app, name="context")
@@ -54,6 +55,72 @@ app.add_typer(org_cache_app, name="org-cache")
 app.add_typer(org_learning_app, name="org-learning")
 app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
+app.add_typer(keys_app, name="keys")
+
+
+@keys_app.command("create")
+def keys_create(
+    name: str = typer.Argument(..., help="Human label for the key"),
+    daily_budget: float = typer.Option(0.0, "--daily-budget", help="Daily USD cap (0=unlimited)"),
+    monthly_budget: float = typer.Option(
+        0.0, "--monthly-budget", help="Monthly USD cap (0=unlimited)"
+    ),
+    rpm: int = typer.Option(0, "--rpm", help="Requests per minute (0=unlimited)"),
+    tier_cap: str | None = typer.Option(None, "--tier-cap", help="L3|L4|L5"),
+    client_id: str | None = typer.Option(None, "--client-id", help="Ledger attribution id"),
+) -> None:
+    """Create a virtual API key (issue #111). Plaintext shown once."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings = get_settings()
+    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    created = store.create(
+        name,
+        daily_budget_usd=daily_budget,
+        monthly_budget_usd=monthly_budget,
+        rpm=rpm,
+        tier_cap=tier_cap,
+        client_id=client_id,
+    )
+    typer.echo(f"key_id: {created.key.key_id}")
+    typer.echo(f"name:   {created.key.name}")
+    typer.echo(f"prefix: {created.key.prefix}…")
+    typer.echo("")
+    typer.echo("Store this token now — it will not be shown again:")
+    typer.echo(created.plaintext)
+
+
+@keys_app.command("list")
+def keys_list() -> None:
+    """List virtual keys (prefixes only — never plaintext)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings = get_settings()
+    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    keys = store.list()
+    if not keys:
+        typer.echo("No virtual keys.")
+        return
+    typer.echo(f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tier':<4} revoked")
+    for key in keys:
+        typer.echo(
+            f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
+            f"{(key.tier_cap or '-'):<4} {'yes' if key.revoked else 'no'}"
+        )
+
+
+@keys_app.command("revoke")
+def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys list`")) -> None:
+    """Revoke a virtual key immediately."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings = get_settings()
+    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    if store.revoke(key_id):
+        typer.echo(f"Revoked {key_id}")
+    else:
+        typer.echo(f"No active key {key_id}")
+        raise typer.Exit(code=1)
 app.add_typer(enterprise_app, name="enterprise")
 
 

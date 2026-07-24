@@ -192,6 +192,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
             )
+            from daari.server.auth import apply_auth_claims_to_meta
+
+            apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
                 messages=messages,
