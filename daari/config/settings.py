@@ -26,6 +26,9 @@ class ModelsSettings(BaseModel):
     l4: str = "llama3.1:8b"
     l5: str = "llama3.1:70b"
     weights: dict[str, dict[str, float]] = Field(default_factory=dict)
+    # Per-model capability tags (tools/json/vision/long_context). Empty →
+    # stock defaults in CapabilityCatalog (issue #113).
+    capabilities: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class OllamaSettings(BaseModel):
