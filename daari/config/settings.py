@@ -13,12 +13,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from daari.enterprise.config import OrgSettings
 
 
+class VirtualKeysSettings(BaseModel):
+    """Per-key budgets / RPM / tier caps (issue #111). Off until a key is created."""
+
+    enabled: bool = True
+    path: str = "~/.daari/auth/virtual-keys.sqlite3"
+
+
 class ServerSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 11435
     # When set, all endpoints except health checks require this key via
     # Authorization: Bearer or x-api-key (issue #86 — tunnel exposure).
+    # Virtual keys (issue #111) are accepted alongside this master key.
     api_key: str = ""
+    virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
 
 
 class ModelsSettings(BaseModel):
@@ -374,6 +383,10 @@ class Settings(BaseSettings):
     @property
     def usage_ledger_path(self) -> Path:
         return Path(self.usage.path).expanduser()
+
+    @property
+    def virtual_keys_path(self) -> Path:
+        return Path(self.server.virtual_keys.path).expanduser()
 
     @property
     def trace_store_path(self) -> Path:
