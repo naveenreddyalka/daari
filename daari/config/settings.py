@@ -35,6 +35,9 @@ class ModelsSettings(BaseModel):
     l4: str = "llama3.1:8b"
     l5: str = "llama3.1:70b"
     weights: dict[str, dict[str, float]] = Field(default_factory=dict)
+    # Per-model capability tags (tools/json/vision/long_context). Empty →
+    # stock defaults in CapabilityCatalog (issue #113).
+    capabilities: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class OllamaSettings(BaseModel):
@@ -224,6 +227,24 @@ class ContextOptimizerSettings(BaseModel):
     compact: bool = False
 
 
+class GuardrailRuleSettings(BaseModel):
+    name: str = "rule"
+    pattern: str | None = None
+    action: str = "block"  # block | warn | redact
+    kind: str = "deny"  # deny | allow | secret | pii
+
+
+class GuardrailSettings(BaseModel):
+    """Input/output checks before and after model tiers (issue #110). Off by default."""
+
+    enabled: bool = False
+    max_prompt_chars: int = 0  # 0 = unlimited
+    injection_action: str = "block"
+    block_message: str = "Request blocked by daari guardrail."
+    input_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
+    output_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
+
+
 class IntegrationEndpointSettings(BaseModel):
     url: str
     triggers: list[str] = Field(default_factory=list)
@@ -267,6 +288,7 @@ class Settings(BaseSettings):
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     learning: LearningSettings = Field(default_factory=LearningSettings)
     context_optimizer: ContextOptimizerSettings = Field(default_factory=ContextOptimizerSettings)
+    guardrails: GuardrailSettings = Field(default_factory=GuardrailSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     skills_system_prefix: str = ""

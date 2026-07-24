@@ -652,8 +652,24 @@ def doctor(
         "--tunnel-url",
         help="Tunnel URL to check (defaults to DAARI_TUNNEL_URL when --tunnel is set).",
     ),
+    suggest_models: bool = typer.Option(
+        False,
+        "--suggest-models",
+        help="Print a VRAM/RAM-aware L3/L4/L5 stack recommendation (issue #113).",
+    ),
 ) -> None:
     """Verify Python, config, Ollama, model, and optional daemon."""
+    if suggest_models:
+        from daari.router.capabilities import detect_system_ram_gb, suggest_models_for_vram
+
+        ram = detect_system_ram_gb()
+        suggestion = suggest_models_for_vram(ram or 16.0)
+        typer.echo(f"Detected RAM: {ram if ram is not None else 'unknown'} GiB")
+        typer.echo(f"Suggested L3: {suggestion['l3']}")
+        typer.echo(f"Suggested L4: {suggestion['l4']}")
+        typer.echo(f"Suggested L5: {suggestion['l5']}")
+        typer.echo(suggestion["note"])
+        return
     settings = get_settings()
     resolved_tunnel_url = tunnel_url
     if tunnel and not resolved_tunnel_url:
