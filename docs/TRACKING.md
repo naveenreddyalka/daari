@@ -515,6 +515,18 @@ Forward plan: [ROADMAP-v2.md](prd/ROADMAP-v2.md). Issues labeled `auto-dev`.
 
 Suite: 596 pytest (default markers).
 
+### Auto-mode deepeners (2026-07-24) — **needs review**
+
+See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Tracer deepeners only; full suite / security / live E2E deferred to next month.
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Periodic org policy sync in daemon | [x] | `policy_sync.py` + learning sync loop |
+| Config editor persist to disk | [x] | `persist: true` on PATCH |
+| D4 `propose-defaults` | [x] | YAML proposal only — never auto-promote |
+| Web UI config card | [x] | No API-key input yet — review item |
+| Strong-model review / PyPI / OIDC | [ ] | User-gated / next month |
+
 ---
 
 ## How to update

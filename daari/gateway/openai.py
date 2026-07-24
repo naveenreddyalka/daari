@@ -626,11 +626,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.patch("/v1/daari/config")
         async def daari_config_patch(request: Request) -> dict[str, Any]:
-            """Apply a safe in-memory config subset (not persisted to disk)."""
+            """Apply a safe config subset; optional `persist: true` writes config.yaml."""
             ctx: AppContext = request.app.state.ctx
             _require_config_editor(ctx)
             role = _require_admin_role(request, ctx)
             body = await request.json()
+            persist = bool(body.pop("persist", False)) if isinstance(body, dict) else False
             routing = body.get("routing") or {}
             frontier = body.get("frontier") or {}
             cache = body.get("cache") or {}
@@ -662,15 +663,31 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.router.semantic_cache.similarity_threshold = float(
                     cache["l1_similarity_threshold"]
                 )
+            persisted_path = None
+            if persist:
+                from daari.config.persist import persist_safe_config
+
+                persisted_path = str(
+                    persist_safe_config(
+                        {
+                            "routing": routing,
+                            "frontier": frontier,
+                            "cache": cache,
+                        }
+                    )
+                )
             from daari.enterprise.audit import AuditLog
 
             AuditLog(ctx.settings.enterprise.audit_path).record(
                 actor=request.headers.get("x-daari-actor", "api"),
                 role=role,
                 action="config.patch",
-                detail={"keys": sorted(body.keys())},
+                detail={"keys": sorted(body.keys()), "persist": persist},
             )
-            return await daari_config_get(request)
+            result = await daari_config_get(request)
+            if persisted_path:
+                result["persisted_to"] = persisted_path
+            return result
 
         @router.get("/v1/daari/audit")
         async def daari_audit_list(request: Request) -> dict[str, Any]:

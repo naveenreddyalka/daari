@@ -4,6 +4,24 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Roadmap v2 (F1–F5) — merged to main 2026-07-24
+
+- **F1:** Docker/compose + `/ready`, MkDocs site, PyPI prep + benchmarks doc (upload still user-gated), Homebrew formula stub
+- **F2:** Responses API, L6 frontier pool (fallback / key rotation / circuit breakers), guardrails, virtual keys, capability catalog + `--suggest-models`
+- **F3:** Prometheus `/metrics` + Grafana JSON, optional OTel export, structured stdout logs, config editor API
+- **F4:** Redis L0, Postgres ledger/traces, Helm chart, org inference pool, `daari enterprise bootstrap` / policy-sync, SSO/RBAC/audit tracers
+- **F5:** Live-source providers, MCP egress, Phase B metrics script, Homebrew docs
+
+### Auto-mode deepeners (2026-07-24) — needs stronger-model review
+
+- Periodic in-daemon org policy sync when `enterprise.policy_sync_url` is set
+- Config editor `persist: true` writes safe subset to `~/.daari/config.yaml`
+- `daari learn propose-defaults` (D4 proposal YAML only — never auto-promotes)
+- Web UI config editor card (confidence / prefer / daily budget)
+- Handoff notes: [docs/HANDOFF-AUTO-2026-07.md](docs/HANDOFF-AUTO-2026-07.md)
+
+### Earlier Unreleased (pre-v2)
+
 - Anthropic stream observability: `error_type` on failures, `anthropic_stream_done` event, profile-driven latency step-down parity with the OpenAI path (#101, #102)
 - Phase D3: `daari learn export-stats` — opt-in, review-first anonymized stats export with sensitive-key guard (#102)
 - `daari learn deploy`: serve fine-tuned adapters via `mlx_lm.server` or fuse to GGUF + `ollama create` (#102)

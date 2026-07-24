@@ -2270,19 +2270,29 @@ class AppContext:
         return self._apply_org_learning_profile(profile)
 
     def start_org_learning_sync(self) -> None:
-        if self.org_learning_client is None:
-            return
         interval = float(self.settings.enterprise.learning_sync_seconds)
         if interval <= 0:
             return
         if self.org_learning_sync_task is not None and not self.org_learning_sync_task.done():
+            return
+        has_learning = self.org_learning_client is not None
+        has_policy = bool(self.settings.enterprise.policy_sync_url)
+        if not has_learning and not has_policy:
             return
 
         async def _sync_loop() -> None:
             try:
                 while True:
                     await asyncio.sleep(interval)
-                    await self.sync_org_learning_profile_once()
+                    if has_learning:
+                        await self.sync_org_learning_profile_once()
+                    if has_policy:
+                        try:
+                            from daari.enterprise.policy_sync import sync_policy_once
+
+                            sync_policy_once(self.settings, self.router, persist=False)
+                        except Exception:
+                            pass
             except asyncio.CancelledError:
                 return
 
