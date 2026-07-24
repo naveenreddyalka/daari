@@ -1,6 +1,6 @@
 # AUTOMATION.md — the autonomous dev loop
 
-> How daari develops itself with minimal human involvement. Agent contract: [AGENTS.md](../AGENTS.md).
+> How daari develops itself with minimal human involvement. Agent contract: [AGENTS.md](https://github.com/naveenreddyalka/daari/blob/main/AGENTS.md).
 
 ## The loop
 
@@ -28,9 +28,9 @@ flowchart LR
 | Piece | Where | State |
 |-------|-------|-------|
 | Backlog | GitHub issues labeled `auto-dev` (+`P1/P2/P3`) | seeded #1–#8 |
-| Agent contract | [AGENTS.md](../AGENTS.md) | active |
+| Agent contract | [AGENTS.md](https://github.com/naveenreddyalka/daari/blob/main/AGENTS.md) | active |
 | Merge gate | branch protection on `main` (requires CI check `test`, strict, no force-push) + repo auto-merge | active |
-| Dev-cycle agent | Cursor Automation draft: [automations/dev-cycle.md](automations/dev-cycle.md); CI fallback: [.github/workflows/autodev.yml](../.github/workflows/autodev.yml) | fallback committed; needs `CURSOR_API_KEY` secret or Automation creation |
+| Dev-cycle agent | Cursor Automation draft: [automations/dev-cycle.md](automations/dev-cycle.md); CI fallback: [.github/workflows/autodev.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/autodev.yml) | fallback committed; needs `CURSOR_API_KEY` secret or Automation creation |
 | PR review agent | [automations/pr-review.md](automations/pr-review.md) or enable Bugbot on cursor.com | draft |
 | Scout (continuous improvement) | [automations/scout.md](automations/scout.md) — weekly competitive survey files new `auto-dev` issues | draft |
 | Local watchdog | `scripts/autodev-local.sh` + launchd (`com.daari.serve`, `com.daari.autodev`) | installed and validated |
@@ -71,6 +71,6 @@ tail -f ~/.daari/autodev/watchdog.out.log
 
 ## Safety rails
 
-- Agents touch only `auto-dev` issues; human-only actions (tags, releases, force-push, dep bumps, workflow edits) are enumerated in [AGENTS.md](../AGENTS.md).
+- Agents touch only `auto-dev` issues; human-only actions (tags, releases, force-push, dep bumps, workflow edits) are enumerated in [AGENTS.md](https://github.com/naveenreddyalka/daari/blob/main/AGENTS.md).
 - `main` is protected: CI `test` check required, strict up-to-date, force-pushes and deletions blocked.
 - Local watchdog is read-only on the repo except `gh issue create`.

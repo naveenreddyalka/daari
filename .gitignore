@@ -28,3 +28,7 @@ target/
 .ruff_cache/
 *.egg-info/
 .tmp/
+
+# Docs site (generated)
+site/
+docs/reference/

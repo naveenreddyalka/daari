@@ -108,7 +108,7 @@ Routing evals (GP-01–GP-10) live in `tests/test_routing_eval.py`. Live Ollama 
 
 ## CI
 
-GitHub Actions workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on push/PR to `main`:
+GitHub Actions workflow [`.github/workflows/ci.yml`](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/ci.yml) runs on push/PR to `main`:
 
 - Python 3.12, `pip install -e ".[dev]"`
 - `pytest -m "not integration and not benchmark"` — no secrets, no Ollama service container
@@ -201,7 +201,7 @@ Environment overrides use prefix `DAARI_` with nested delimiter `__` (e.g. `DAAR
 |-----|---------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Repo layout, request flow, file map |
 | [TRACKING.md](TRACKING.md) | Phase A / A.1 task tracker |
-| [CONTEXT.md](../CONTEXT.md) | Agent handoff — phase, decisions, next steps |
+| [CONTEXT.md](https://github.com/naveenreddyalka/daari/blob/main/CONTEXT.md) | Agent handoff — phase, decisions, next steps |
 | [docs/plans/phase-a.md](plans/phase-a.md) | Phase A implementation plan |
 | [docs/prd/PRD.md](prd/PRD.md) | Product requirements v0.4 |
 | [docs/prd/ROADMAP.md](prd/ROADMAP.md) | Phase roadmap |

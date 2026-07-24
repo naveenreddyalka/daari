@@ -28,7 +28,7 @@ daari is **not** another cloud LLM proxy. It is an **open-source, local-first ex
 | **Local-first** | Default path is on-device: cache → rules → tools → local models. |
 | **Cost-minimize** | Every request takes the cheapest capable tier. Frontier (L6) is last resort. |
 | **AI is optional** | Many tasks need no model at all (Lt tool-native tier). |
-| **Not tied to one API shape** | OpenAI-compat is **adapter #1**, not identity. Add Anthropic, MCP, others as the ecosystem shifts — [ADR-0007](0007-pluggable-gateway-adapters.md). |
+| **Not tied to one API shape** | OpenAI-compat is **adapter #1**, not identity. Add Anthropic, MCP, others as the ecosystem shifts — [ADR-0007](../adr/0007-pluggable-gateway-adapters.md). |
 | **Not a proxy** | Gateways translate wire formats; daari's job is local routing and cost optimization. |
 | **Privacy by default** | Routable work stays on your machine. No telemetry unless you opt in. |
 

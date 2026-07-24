@@ -1,0 +1,59 @@
+site_name: daari
+site_description: Local-first LLM router — route to cache, tools, and local models before frontier APIs.
+site_url: https://naveenreddyalka.github.io/daari/
+repo_url: https://github.com/naveenreddyalka/daari
+repo_name: naveenreddyalka/daari
+docs_dir: docs
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      toggle:
+        icon: material/brightness-7
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      toggle:
+        icon: material/brightness-4
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight
+  - toc:
+      permalink: true
+
+nav:
+  - Home: README.md
+  - Setup:
+      - Cursor: setup/cursor.md
+      - Claude Code: setup/claude-code.md
+      - JetBrains: setup/intellij.md
+      - VS Code: setup/vscode.md
+      - OpenAI-compatible: setup/openai-compat.md
+      - Project profiles: setup/project-profiles.md
+      - MLX backend: setup/mlx.md
+  - Reference:
+      - HTTP API: reference/api.md
+      - Configuration: reference/config.md
+  - Architecture: ARCHITECTURE.md
+  - Roadmap: prd/ROADMAP-v2.md
+  - Tracking: TRACKING.md
+  - Developing: DEVELOPING.md
+  - Automation loop: AUTOMATION.md
