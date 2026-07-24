@@ -206,6 +206,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 rerun_command=x_daari_rerun_command == "true",
                 client_id=x_daari_client_id,
             )
+            from daari.server.auth import apply_auth_claims_to_meta
+
+            apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
