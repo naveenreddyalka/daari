@@ -312,6 +312,74 @@ themeToggleButton.addEventListener("click", toggleTheme);
 autoRefreshNode.addEventListener("change", configureAutoRefresh);
 refreshIntervalNode.addEventListener("change", configureAutoRefresh);
 window.addEventListener("beforeunload", clearAutoRefresh);
+
+const cfgConfidence = document.getElementById("cfg-confidence");
+const cfgPrefer = document.getElementById("cfg-prefer");
+const cfgDailyBudget = document.getElementById("cfg-daily-budget");
+const cfgPersist = document.getElementById("cfg-persist");
+const cfgLoad = document.getElementById("cfg-load");
+const cfgSave = document.getElementById("cfg-save");
+const cfgStatus = document.getElementById("cfg-status");
+
+async function loadConfigEditor() {
+  if (!cfgStatus) return;
+  cfgStatus.textContent = "Loading config…";
+  try {
+    const response = await fetch(`${apiBaseUrl}/v1/daari/config`);
+    if (response.status === 404) {
+      cfgStatus.textContent = "Config editor disabled (set observability.config_editor=true).";
+      return;
+    }
+    if (!response.ok) {
+      cfgStatus.textContent = `Load failed: HTTP ${response.status}`;
+      return;
+    }
+    const body = await response.json();
+    cfgConfidence.value = body.routing?.confidence_threshold ?? "";
+    cfgPrefer.value = body.routing?.prefer || "balanced";
+    cfgDailyBudget.value = body.frontier?.daily_budget_usd ?? "";
+    cfgStatus.textContent = "Loaded.";
+  } catch (err) {
+    cfgStatus.textContent = `Load error: ${err}`;
+  }
+}
+
+async function saveConfigEditor() {
+  if (!cfgStatus) return;
+  cfgStatus.textContent = "Saving…";
+  const payload = {
+    persist: Boolean(cfgPersist?.checked),
+    routing: {
+      confidence_threshold: Number(cfgConfidence.value),
+      prefer: cfgPrefer.value,
+    },
+    frontier: {
+      daily_budget_usd: Number(cfgDailyBudget.value),
+    },
+  };
+  try {
+    const response = await fetch(`${apiBaseUrl}/v1/daari/config`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      cfgStatus.textContent = `Save failed: HTTP ${response.status}`;
+      return;
+    }
+    const body = await response.json();
+    cfgStatus.textContent = body.persisted_to
+      ? `Saved + persisted to ${body.persisted_to}`
+      : "Saved (in-memory until restart).";
+  } catch (err) {
+    cfgStatus.textContent = `Save error: ${err}`;
+  }
+}
+
+if (cfgLoad) cfgLoad.addEventListener("click", () => void loadConfigEditor());
+if (cfgSave) cfgSave.addEventListener("click", () => void saveConfigEditor());
+
 configureTheme();
 configureAutoRefresh();
 loadStats();
+void loadConfigEditor();

@@ -29,6 +29,7 @@
 | Doc | Purpose |
 |-----|---------|
 | [TRACKING.md](TRACKING.md) | Living task tracker — the source of truth for "what shipped" |
+| [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md) | Auto-mode deepeners — **needs stronger-model review next month** |
 | [RELEASE-v1.2.0.md](RELEASE-v1.2.0.md) | Latest release notes (older: RELEASE-v1.0 … v1.1.2) |
 | [AUTOMATION.md](AUTOMATION.md) | The autonomous dev loop that builds this project |
 | [DEVELOPING.md](DEVELOPING.md) | Contributor pickup: clone, run, test |

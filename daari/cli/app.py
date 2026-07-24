@@ -1188,6 +1188,34 @@ def learn_export_stats(
         typer.echo(f"\nUploaded to {settings.learning.collective_url} (HTTP {status})")
 
 
+@learn_app.command("propose-defaults")
+def learn_propose_defaults(
+    stats_file: Path | None = typer.Option(
+        None,
+        "--from",
+        help="JSON from `daari learn export-stats --out` (optional).",
+    ),
+    out_dir: Path | None = typer.Option(
+        None, "--out-dir", help="Proposal directory (default ~/.daari/proposals)."
+    ),
+) -> None:
+    """D4 tracer: propose routing defaults YAML from local aggregates (review only)."""
+    import json as _json
+
+    from daari.learning.propose_defaults import propose_routing_defaults
+
+    if stats_file is not None:
+        stats = _json.loads(stats_file.expanduser().read_text(encoding="utf-8"))
+    else:
+        from daari.learning.collective import build_collective_stats
+
+        settings = get_settings()
+        stats = build_collective_stats(settings, _feedback_store(), days=30)
+    path = propose_routing_defaults(stats, out_dir=out_dir)
+    typer.echo(f"Wrote proposal: {path}")
+    typer.echo("Review before promoting into package defaults (D4 — human gated).")
+
+
 def _example_store():
     from daari.learning.examples import ExampleStore
 
