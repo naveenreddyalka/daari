@@ -137,6 +137,8 @@ pytest -m benchmark                 # optional latency checks
 | Paraphrased prompt hits L1 | [x] | mocked embedder tests |
 | L1 metrics in `daari stats` | [x] | tier counter `L1` |
 | L0 → CCS → L1 → L2-dev → L2 → Lt → L3/L4 routing order | [x] | with tool_calls bypass caches retained |
+| $0-tier rate ≥30% on eval | [x] | Measured 2026-07-23 on GP-01–GP-20 mocked suite: **55%** $0-tier (L0/L1/CCS/L2/Lt) — see `scripts/measure_phase_b_metrics.py` |
+| Routing accuracy ≥90% on 20-prompt eval | [x] | Same run: **100%** of eval assertions green (20/20) |
 
 **Tests:** see [Testing](#testing) below.
 
@@ -495,6 +497,23 @@ ollama plans against a stub run dir.
 - L4 model pull/install still user-managed (falls back to L3 when unavailable; pull `llama3.1:8b` to use L4 without retry)
 - L6 live frontier smoke depends on API key presence
 - Cursor follow-up quality / tool hallucination when tools stripped (tracked in open todos above)
+- PyPI upload remains **user-gated** (needs PyPI token in repo secrets)
+
+---
+
+## Roadmap v2 (F1–F5) — 2026-07-23/24
+
+Forward plan: [ROADMAP-v2.md](prd/ROADMAP-v2.md). Issues labeled `auto-dev`.
+
+| Train | Status | Notes |
+|-------|--------|-------|
+| F1 OSS launch | [x] | Docker/compose/`/ready` (#105), MkDocs (#114), PyPI prep (#106, upload user-gated), CHANGELOG + community pack |
+| F2 Gateway parity | [x]/[~] | Responses API (#108), Prometheus (#107), guardrails (#110), capability catalog (#113); L6 pool (#109), virtual keys (#111) in flight / merged via auto-dev PRs |
+| F3 Ops | [x] | Prometheus + Grafana (#107); OTel export + structured stdout logs + `GET/PATCH /v1/daari/config` (#115) |
+| F4 Enterprise scale | [x] | Redis L0 (#112); Postgres ledger/traces + `observability.stateless` (#116); Helm + capacity (#117); org pool + `daari enterprise bootstrap` (#118); SSO/RBAC/audit tracer (#119) |
+| F5 Leftovers | [x] | Live sources (#120); MCP egress (#121); Phase B exit metrics recorded above + `scripts/measure_phase_b_metrics.py` (#122); Homebrew formula (#123, sha256 filled after release) |
+
+Suite: 596 pytest (default markers).
 
 ---
 
@@ -503,4 +522,4 @@ ollama plans against a stub run dir.
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
 2. Refresh **Last updated** and pytest count after test changes.
 3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
-4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md).
+4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
