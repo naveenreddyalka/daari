@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import time
 import uuid
@@ -565,6 +566,120 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             payload = ctx.reload_cache_handles()
             return {"status": "ok", **payload}
+
+        def _require_config_editor(ctx: AppContext) -> None:
+            if not ctx.settings.observability.config_editor:
+                raise HTTPException(status_code=404, detail="config editor disabled")
+
+        def _require_admin_role(request: Request, ctx: AppContext) -> str:
+            """SSO role gate for admin surfaces when enterprise.sso.enabled."""
+            sso = ctx.settings.enterprise.sso
+            if not sso.enabled or not sso.secret:
+                return "admin"
+            from daari.enterprise.rbac import role_at_least, role_from_claims
+            from daari.enterprise.sso import verify_dev_token
+
+            auth = request.headers.get("authorization", "")
+            token = ""
+            if auth.lower().startswith("bearer "):
+                token = auth[len("bearer ") :].strip()
+            if not token:
+                raise HTTPException(status_code=401, detail="SSO token required")
+            # Master API key still counts as admin when it matches.
+            master = ctx.settings.server.api_key.strip()
+            if master and hmac.compare_digest(token, master):
+                return "admin"
+            try:
+                claims = verify_dev_token(token, secret=sso.secret, issuer=sso.issuer)
+            except ValueError as exc:
+                raise HTTPException(status_code=401, detail=str(exc)) from exc
+            role = role_from_claims(claims)
+            if not role_at_least(role, sso.admin_min_role):
+                raise HTTPException(status_code=403, detail="insufficient role")
+            return role
+
+        @router.get("/v1/daari/config")
+        async def daari_config_get(request: Request) -> dict[str, Any]:
+            """Safe config subset for the web UI editor (issue #115)."""
+            ctx: AppContext = request.app.state.ctx
+            _require_config_editor(ctx)
+            _require_admin_role(request, ctx)
+            s = ctx.settings
+            return {
+                "routing": {
+                    "prefer": s.routing.prefer,
+                    "confidence_threshold": s.routing.confidence_threshold,
+                    "latency_budget_ms": s.routing.latency_budget_ms,
+                    "max_tier_for_chat": s.routing.max_tier_for_chat,
+                },
+                "frontier": {
+                    "daily_budget_usd": s.frontier.daily_budget_usd,
+                    "monthly_budget_usd": s.frontier.monthly_budget_usd,
+                    "soft_budget_ratio": s.frontier.soft_budget_ratio,
+                },
+                "cache": {
+                    "l0_ttl_seconds": s.cache.l0.ttl_seconds,
+                    "l1_ttl_seconds": s.cache.l1.ttl_seconds,
+                    "l1_similarity_threshold": s.cache.l1.similarity_threshold,
+                },
+            }
+
+        @router.patch("/v1/daari/config")
+        async def daari_config_patch(request: Request) -> dict[str, Any]:
+            """Apply a safe in-memory config subset (not persisted to disk)."""
+            ctx: AppContext = request.app.state.ctx
+            _require_config_editor(ctx)
+            role = _require_admin_role(request, ctx)
+            body = await request.json()
+            routing = body.get("routing") or {}
+            frontier = body.get("frontier") or {}
+            cache = body.get("cache") or {}
+            if "confidence_threshold" in routing:
+                ctx.router.confidence_threshold = float(routing["confidence_threshold"])
+                ctx.settings.routing.confidence_threshold = float(routing["confidence_threshold"])
+            if "latency_budget_ms" in routing:
+                ctx.router.latency_budget_ms = int(routing["latency_budget_ms"])
+                ctx.settings.routing.latency_budget_ms = int(routing["latency_budget_ms"])
+            if "max_tier_for_chat" in routing:
+                ctx.router.max_tier_for_chat = routing["max_tier_for_chat"]
+                ctx.settings.routing.max_tier_for_chat = routing["max_tier_for_chat"]
+            if "prefer" in routing:
+                ctx.router.model_preference = str(routing["prefer"])
+                ctx.settings.routing.prefer = str(routing["prefer"])
+            for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
+                if key in frontier:
+                    setattr(ctx.settings.frontier, key, float(frontier[key]))
+                    if hasattr(ctx.router, f"frontier_{key}"):
+                        setattr(ctx.router, f"frontier_{key}", float(frontier[key]))
+            if "l0_ttl_seconds" in cache:
+                ctx.settings.cache.l0.ttl_seconds = float(cache["l0_ttl_seconds"])
+            if "l1_ttl_seconds" in cache:
+                ctx.settings.cache.l1.ttl_seconds = float(cache["l1_ttl_seconds"])
+            if "l1_similarity_threshold" in cache:
+                ctx.settings.cache.l1.similarity_threshold = float(
+                    cache["l1_similarity_threshold"]
+                )
+                ctx.router.semantic_cache.similarity_threshold = float(
+                    cache["l1_similarity_threshold"]
+                )
+            from daari.enterprise.audit import AuditLog
+
+            AuditLog(ctx.settings.enterprise.audit_path).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="config.patch",
+                detail={"keys": sorted(body.keys())},
+            )
+            return await daari_config_get(request)
+
+        @router.get("/v1/daari/audit")
+        async def daari_audit_list(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
+            from daari.enterprise.audit import AuditLog
+
+            entries = AuditLog(ctx.settings.enterprise.audit_path).list(limit=100)
+            return {"entries": entries}
 
         @router.post("/v1/org-learning/sync")
         async def org_learning_sync(request: Request) -> dict[str, Any]:
