@@ -526,6 +526,7 @@ See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Tracer deepeners only; f
 | D4 `propose-defaults` | [x] | YAML proposal only — never auto-promote |
 | Web UI config card | [x] | No API-key input yet — review item |
 | Strong-model review / PyPI / OIDC | [ ] | User-gated / next month |
+| Redis L1 semantic (`cache.backend=redis`) | [x] | #135 — `RedisSemanticCache`, tags `fable-review/135-*` |
 
 ---
 

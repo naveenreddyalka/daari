@@ -59,6 +59,32 @@ def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
     )
 
 
+def _build_l1_cache(settings: Settings, l1_path: Path, embedder: OllamaEmbedder) -> SemanticCache:
+    """diskcache default, or Redis when cache.backend=redis (issue #135)."""
+    if getattr(settings.cache, "backend", "disk") == "redis":
+        from daari.cache.redis_semantic import RedisSemanticCache
+
+        return RedisSemanticCache(
+            settings.cache.redis_url,
+            embedder,
+            prefix=getattr(settings.cache, "redis_l1_prefix", "daari:l1:"),
+            enabled=settings.cache.l1.enabled,
+            similarity_threshold=settings.cache.l1.similarity_threshold,
+            max_entries=settings.cache.l1.max_entries,
+            ttl_seconds=settings.cache.l1.ttl_seconds,
+            normalize_inputs=settings.cache.l1.normalize_inputs,
+        )
+    return SemanticCache(
+        path=str(l1_path),
+        embedder=embedder,
+        enabled=settings.cache.l1.enabled,
+        similarity_threshold=settings.cache.l1.similarity_threshold,
+        max_entries=settings.cache.l1.max_entries,
+        ttl_seconds=settings.cache.l1.ttl_seconds,
+        normalize_inputs=settings.cache.l1.normalize_inputs,
+    )
+
+
 def _catalog_from_settings(settings: Settings) -> Any:
     from daari.router.capabilities import catalog_from_settings
 
@@ -2207,24 +2233,13 @@ class AppContext:
 
     def reload_cache_handles(self) -> dict[str, str | bool]:
         l0_path, l1_path, context_path = self._resolve_runtime_paths()
-        self.cache = ExactCache(
-            path=str(l0_path),
-            enabled=self.settings.cache.l0.enabled,
-            ttl_seconds=self.settings.cache.l0.ttl_seconds,
+        self.cache = _build_l0_cache(self.settings, l0_path)
+        embedder = OllamaEmbedder(
+            base_url=self.settings.ollama.base_url.rstrip("/"),
+            model=self.settings.cache.l1.embedding_model,
+            cache_size=self.settings.cache.l1.embed_cache_size,
         )
-        self.semantic_cache = SemanticCache(
-            path=str(l1_path),
-            embedder=OllamaEmbedder(
-                base_url=self.settings.ollama.base_url.rstrip("/"),
-                model=self.settings.cache.l1.embedding_model,
-                cache_size=self.settings.cache.l1.embed_cache_size,
-            ),
-            enabled=self.settings.cache.l1.enabled,
-            similarity_threshold=self.settings.cache.l1.similarity_threshold,
-            max_entries=self.settings.cache.l1.max_entries,
-            ttl_seconds=self.settings.cache.l1.ttl_seconds,
-            normalize_inputs=self.settings.cache.l1.normalize_inputs,
-        )
+        self.semantic_cache = _build_l1_cache(self.settings, l1_path, embedder)
         self.command_context = self._build_command_context_store(self.settings, context_path)
 
         self.router.cache = self.cache
@@ -2346,15 +2361,7 @@ class AppContext:
             model=settings.cache.l1.embedding_model,
             cache_size=settings.cache.l1.embed_cache_size,
         )
-        semantic_cache = SemanticCache(
-            path=str(l1_path),
-            embedder=embedder,
-            enabled=settings.cache.l1.enabled,
-            similarity_threshold=settings.cache.l1.similarity_threshold,
-            max_entries=settings.cache.l1.max_entries,
-            ttl_seconds=settings.cache.l1.ttl_seconds,
-            normalize_inputs=settings.cache.l1.normalize_inputs,
-        )
+        semantic_cache = _build_l1_cache(settings, l1_path, embedder)
         command_context = cls._build_command_context_store(settings, context_path)
         def tier_executor(tier: str, ollama_model: str) -> OllamaExecutor | MLXExecutor:
             # MLX backend (issue #97): tiers mapped in mlx.models are served by

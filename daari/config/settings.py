@@ -84,10 +84,11 @@ class L1CacheSettings(BaseModel):
 class CacheSettings(BaseModel):
     l0: L0CacheSettings = Field(default_factory=L0CacheSettings)
     l1: L1CacheSettings = Field(default_factory=L1CacheSettings)
-    # F4: disk (default) or redis for shared L0 across replicas (issue #112).
+    # F4: disk (default) or redis for shared L0/L1 across replicas (#112, #135).
     backend: str = "disk"  # disk | redis
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_prefix: str = "daari:l0:"
+    redis_l1_prefix: str = "daari:l1:"
 
 
 class FrontierProviderConfig(BaseModel):
