@@ -65,6 +65,21 @@ def test_build_l0_cache_selects_redis(tmp_path):
     assert isinstance(cache, RedisExactCache)
 
 
+def test_build_l1_cache_selects_redis(tmp_path):
+    from daari.cache.redis_semantic import RedisSemanticCache
+    from daari.cache.semantic import OllamaEmbedder
+    from daari.router.router import _build_l1_cache
+
+    settings = Settings()
+    settings.cache.backend = "redis"
+    settings.cache.redis_url = "redis://example:6379/0"
+    settings.cache.redis_l1_prefix = "daari:l1:test:"
+    embedder = OllamaEmbedder("http://127.0.0.1:11434", "nomic-embed-text")
+    cache = _build_l1_cache(settings, tmp_path / "l1", embedder)
+    assert isinstance(cache, RedisSemanticCache)
+    assert cache.prefix == "daari:l1:test:"
+
+
 def test_missing_redis_package_message(monkeypatch):
     cache = RedisExactCache("redis://test", enabled=True)
 
