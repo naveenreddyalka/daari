@@ -20,6 +20,12 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 - Web UI config editor card (confidence / prefer / daily budget)
 - Handoff notes: [docs/HANDOFF-AUTO-2026-07.md](docs/HANDOFF-AUTO-2026-07.md)
 
+### Redis L1 shared cache (issue #135)
+
+- `cache.backend=redis` now covers L1 as well as L0 (`RedisSemanticCache`, `redis_l1_prefix`)
+- Triple-verified: unit + gateway integration + `scripts/smoke_redis_l1.py`
+- Fable re-verify tags: see [docs/REVIEW-TAGS.md](docs/REVIEW-TAGS.md)
+
 ### Earlier Unreleased (pre-v2)
 
 - Anthropic stream observability: `error_type` on failures, `anthropic_stream_done` event, profile-driven latency step-down parity with the OpenAI path (#101, #102)
