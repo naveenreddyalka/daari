@@ -70,6 +70,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             supplied = extract_api_key(request.headers)
             claims = resolve_auth(supplied, master_key=master_key, store=store)
+            if claims is None and resolved.enterprise.sso.enabled and supplied:
+                # Allow verified OIDC/HMAC SSO bearers through; endpoints still
+                # enforce role via _require_admin_role (issue #136).
+                try:
+                    from daari.enterprise.sso import verify_access_token
+
+                    sso_claims = verify_access_token(supplied, resolved.enterprise.sso)
+                    request.state.sso_claims = sso_claims
+                    return await call_next(request)
+                except Exception:
+                    pass
             if claims is None:
                 return JSONResponse(
                     status_code=401,
