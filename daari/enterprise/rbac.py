@@ -20,7 +20,14 @@ def role_at_least(role: str | None, minimum: str) -> bool:
     return ROLE_RANK[normalize_role(role)] >= ROLE_RANK[normalize_role(minimum)]
 
 
-def role_from_claims(claims: dict[str, Any] | None) -> str:
+def role_from_claims(claims: dict[str, Any] | None, *, role_claim: str = "role") -> str:
     if not claims:
         return "user"
-    return normalize_role(str(claims.get("role") or claims.get("daari_role") or "user"))
+    claim = role_claim or "role"
+    value = claims.get(claim)
+    if value is None:
+        value = claims.get("role") or claims.get("daari_role")
+    # Some IdPs put roles in a list.
+    if isinstance(value, list) and value:
+        value = value[0]
+    return normalize_role(str(value or "user"))

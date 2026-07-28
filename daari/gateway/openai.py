@@ -574,10 +574,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         def _require_admin_role(request: Request, ctx: AppContext) -> str:
             """SSO role gate for admin surfaces when enterprise.sso.enabled."""
             sso = ctx.settings.enterprise.sso
-            if not sso.enabled or not sso.secret:
+            oidc_ready = bool(sso.jwks_url.strip() or sso.discovery_url.strip())
+            if not sso.enabled or (not sso.secret and not oidc_ready):
                 return "admin"
             from daari.enterprise.rbac import role_at_least, role_from_claims
-            from daari.enterprise.sso import verify_dev_token
+            from daari.enterprise.sso import verify_access_token
 
             auth = request.headers.get("authorization", "")
             token = ""
@@ -590,13 +591,71 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if master and hmac.compare_digest(token, master):
                 return "admin"
             try:
-                claims = verify_dev_token(token, secret=sso.secret, issuer=sso.issuer)
-            except ValueError as exc:
+                claims = verify_access_token(token, sso)
+            except Exception as exc:  # noqa: BLE001 — surface auth failures as 401
                 raise HTTPException(status_code=401, detail=str(exc)) from exc
-            role = role_from_claims(claims)
+            role = role_from_claims(claims, role_claim=sso.role_claim)
             if not role_at_least(role, sso.admin_min_role):
                 raise HTTPException(status_code=403, detail="insufficient role")
+            request.state.sso_claims = claims
             return role
+
+        @router.post("/v1/daari/sso/session")
+        async def daari_sso_session(request: Request) -> dict[str, Any]:
+            """Validate SSO token; optionally mint a virtual key for the subject (#136)."""
+            ctx: AppContext = request.app.state.ctx
+            sso = ctx.settings.enterprise.sso
+            if not sso.enabled:
+                raise HTTPException(status_code=404, detail="SSO disabled")
+            from daari.enterprise.rbac import role_from_claims
+            from daari.enterprise.sso import verify_access_token
+
+            auth = request.headers.get("authorization", "")
+            token = auth[len("bearer ") :].strip() if auth.lower().startswith("bearer ") else ""
+            if not token:
+                raise HTTPException(status_code=401, detail="Bearer token required")
+            try:
+                claims = verify_access_token(token, sso)
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(status_code=401, detail=str(exc)) from exc
+            subject = str(claims.get("sub") or "")
+            role = role_from_claims(claims, role_claim=sso.role_claim)
+            result: dict[str, Any] = {
+                "sub": subject,
+                "role": role,
+                "issuer": claims.get("iss"),
+            }
+            if sso.mint_virtual_key_on_login and subject:
+                from daari.auth.virtual_keys import VirtualKeyStore
+                from daari.enterprise.audit import AuditLog
+
+                store = VirtualKeyStore(
+                    ctx.settings.virtual_keys_path,
+                    enabled=True,
+                )
+                existing = [
+                    k for k in store.list() if (k.client_id or "") == f"sso:{subject}" and not k.revoked
+                ]
+                if existing:
+                    result["virtual_key_id"] = existing[0].key_id
+                    result["virtual_key_minted"] = False
+                else:
+                    created = store.create(
+                        name=f"sso:{subject}",
+                        client_id=f"sso:{subject}",
+                        tier_cap=None,
+                    )
+                    result["virtual_key_id"] = created.key.key_id
+                    result["virtual_key_prefix"] = created.key.prefix
+                    result["virtual_key"] = created.plaintext
+                    result["virtual_key_minted"] = True
+                    AuditLog(ctx.settings.enterprise.audit_path).record(
+                        actor=subject,
+                        role=role,
+                        action="sso.mint_virtual_key",
+                        detail={"key_id": created.key.key_id},
+                    )
+            return result
 
         @router.get("/v1/daari/config")
         async def daari_config_get(request: Request) -> dict[str, Any]:
