@@ -14,6 +14,27 @@ Commits on backlog work are tagged so a stronger model can re-verify each slice:
 | `fable-review/135-2-wire` | settings + `_build_l1_cache` wiring | unit ✅ |
 | `fable-review/135-3-verify` | integration + `scripts/smoke_redis_l1.py` | unit + integration + live smoke ✅ |
 
+## #136 OIDC JWKS SSO — tagged slices (2026-07-28)
+
+| Tag | Commit focus | Triple verify |
+|-----|--------------|---------------|
+| `fable-review/136-1-jwks` | JWKS verify + unit | unit ✅ |
+| `fable-review/136-2-wire` | settings + admin gate + session | unit ✅ |
+| `fable-review/136-3-verify` | middleware + integration + smoke | unit + integration + live ✅ |
+
+```bash
+git checkout fable-review/136-1-jwks
+pip install 'daari[oidc]'  # or PyJWT[crypto]
+pytest tests/unit/test_oidc_jwks.py -q
+
+git checkout fable-review/136-2-wire
+pytest tests/unit/test_oidc_jwks.py tests/unit/test_sso_wiring.py -q
+
+git checkout fable-review/136-3-verify
+pytest tests/unit/test_oidc_jwks.py tests/integration/test_oidc_sso_gateway.py -q
+python scripts/smoke_oidc_sso.py
+```
+
 Re-verify after Aug 5:
 
 ```bash
