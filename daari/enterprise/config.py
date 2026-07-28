@@ -18,14 +18,23 @@ class EnterpriseLearningSettings(BaseModel):
 
 
 class SsoSettings(BaseModel):
-    """OIDC / SSO for admin surfaces (issue #119). Dev HMAC when secret set."""
+    """OIDC / SSO for admin surfaces (issues #119, #136)."""
 
     enabled: bool = False
     issuer: str = "daari-dev"
     # Shared secret for mint_dev_token / verify_dev_token (local IdP stub).
     secret: str = ""
+    # Production OIDC: explicit JWKS URL and/or discovery document.
+    jwks_url: str = ""
+    discovery_url: str = ""
+    # Expected aud claim (empty = do not verify audience).
+    audience: str = ""
+    # Claim name used for RBAC (default "role"; also checks daari_role).
+    role_claim: str = "role"
     # Require at least this role for /v1/daari/config and audit endpoints.
     admin_min_role: str = "admin"
+    # When true, first successful SSO login mints a virtual API key for sub.
+    mint_virtual_key_on_login: bool = False
 
 
 class OrgSettings(BaseModel):
