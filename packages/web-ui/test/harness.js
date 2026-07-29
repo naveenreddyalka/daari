@@ -12,8 +12,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
  */
 export function fakeFetch(routes) {
   const calls = [];
-  const fetcher = async (url) => {
-    calls.push(String(url));
+  const fetcher = async (url, init = {}) => {
+    calls.push({ url: String(url), init });
     for (const [needle, payload] of Object.entries(routes)) {
       if (String(url).includes(needle)) {
         if (payload && typeof payload === "object" && "status" in payload && payload.status >= 400) {

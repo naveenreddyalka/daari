@@ -47,6 +47,19 @@ body[data-theme="light"] .card {
   display: flex;
   gap: 8px;
   margin: 8px 0 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.api-key-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.api-key-field input {
+  min-width: 14rem;
 }
 
 .metric {

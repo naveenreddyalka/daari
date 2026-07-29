@@ -25,9 +25,44 @@ const tracesTableNode = document.getElementById("traces-table");
 const traceDetailNode = document.getElementById("trace-detail");
 const tracesStatusNode = document.getElementById("traces-status");
 const THEME_KEY = "daari.webui.theme";
+const API_KEY_STORAGE = "daari.webui.apiKey";
 let refreshTimerId = null;
 let latestStats = null;
 let latestOrgProfile = null;
+
+function getApiKey() {
+  const input = document.getElementById("api-key");
+  if (input && typeof input.value === "string" && input.value.trim()) {
+    return input.value.trim();
+  }
+  try {
+    return (localStorage.getItem(API_KEY_STORAGE) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function persistApiKey(value) {
+  const trimmed = (value || "").trim();
+  try {
+    if (trimmed) {
+      localStorage.setItem(API_KEY_STORAGE, trimmed);
+    } else {
+      localStorage.removeItem(API_KEY_STORAGE);
+    }
+  } catch {
+    /* private mode */
+  }
+}
+
+function authHeaders(extra = {}) {
+  const headers = { Accept: "application/json", ...extra };
+  const key = getApiKey();
+  if (key) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+  return headers;
+}
 
 function formatNumber(value) {
   if (typeof value !== "number") {
@@ -81,9 +116,13 @@ function renderTiers(tiers) {
   }
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, { headers: { Accept: "application/json" } });
+async function fetchJson(url, init = {}) {
+  const headers = authHeaders(init.headers || {});
+  const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error("401 Unauthorized — set API key / Bearer above");
+    }
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return response.json();
@@ -325,9 +364,15 @@ async function loadConfigEditor() {
   if (!cfgStatus) return;
   cfgStatus.textContent = "Loading config…";
   try {
-    const response = await fetch(`${apiBaseUrl}/v1/daari/config`);
+    const response = await fetch(`${apiBaseUrl}/v1/daari/config`, {
+      headers: authHeaders(),
+    });
     if (response.status === 404) {
       cfgStatus.textContent = "Config editor disabled (set observability.config_editor=true).";
+      return;
+    }
+    if (response.status === 401) {
+      cfgStatus.textContent = "Load failed: 401 — set API key / Bearer above.";
       return;
     }
     if (!response.ok) {
@@ -360,9 +405,13 @@ async function saveConfigEditor() {
   try {
     const response = await fetch(`${apiBaseUrl}/v1/daari/config`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
     });
+    if (response.status === 401) {
+      cfgStatus.textContent = "Save failed: 401 — set API key / Bearer above.";
+      return;
+    }
     if (!response.ok) {
       cfgStatus.textContent = `Save failed: HTTP ${response.status}`;
       return;
@@ -374,6 +423,18 @@ async function saveConfigEditor() {
   } catch (err) {
     cfgStatus.textContent = `Save error: ${err}`;
   }
+}
+
+const apiKeyInput = document.getElementById("api-key");
+if (apiKeyInput) {
+  try {
+    apiKeyInput.value = localStorage.getItem(API_KEY_STORAGE) || "";
+  } catch {
+    /* ignore */
+  }
+  apiKeyInput.addEventListener("change", () => {
+    persistApiKey(apiKeyInput.value);
+  });
 }
 
 if (cfgLoad) cfgLoad.addEventListener("click", () => void loadConfigEditor());
