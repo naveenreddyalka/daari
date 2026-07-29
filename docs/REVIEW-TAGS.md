@@ -55,4 +55,18 @@ For each tagged commit, re-run **three** verification approaches:
 2. **Integration** — `pytest -m integration` and/or gateway ASGI tests
 3. **Live/smoke** — hit a running daemon (`/health`, `/v1/chat/completions` or `daari` prompt path)
 
+## #141 Web UI API key — tagged slices (2026-07-29)
+
+| Tag | Commit focus | Triple verify |
+|-----|--------------|---------------|
+| `fable-review/141-1-auth` | toolbar `#api-key` + Authorization on fetches | npm test ✅ |
+| `fable-review/141-2-verify` | smoke + docs | unit + smoke ✅ |
+
+```bash
+git checkout fable-review/141-2-verify
+cd packages/web-ui && npm test
+cd ../.. && python scripts/smoke_webui_auth.py
+pytest tests/unit/test_config_editor.py -q
+```
+
 Do not delete these tags until Fable review is recorded on the linked issue.

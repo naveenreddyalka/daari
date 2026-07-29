@@ -11,6 +11,10 @@
       <h1>daari stats dashboard</h1>
       <p class="subtle">Live view of local daemon counters and org learning profile.</p>
       <section class="toolbar">
+        <label class="api-key-field">
+          API key / Bearer
+          <input id="api-key" type="password" autocomplete="off" placeholder="optional when daemon auth off" />
+        </label>
         <button id="theme-toggle" type="button">Switch to light</button>
         <button id="export-stats" type="button">Export stats JSON</button>
       </section>
