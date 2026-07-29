@@ -184,7 +184,71 @@ test("report window selector refetches with chosen days", async (t) => {
   await settle();
 
   assert.ok(
-    fetch.calls.some((url) => url.includes("/v1/daari/report?days=30")),
+    fetch.calls.some((call) => call.url.includes("/v1/daari/report?days=30")),
     "changing the window must refetch with days=30"
   );
+});
+
+test("API key field sends Authorization Bearer on dashboard fetches", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const keyInput = doc.getElementById("api-key");
+  assert.ok(keyInput, "api-key input must exist");
+  keyInput.value = "sekret-key";
+  keyInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+
+  doc.getElementById("refresh").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+
+  const statsCall = [...fetch.calls].reverse().find((c) => c.url.includes("/v1/daari/stats"));
+  assert.ok(statsCall, "refresh must hit stats");
+  assert.equal(statsCall.init?.headers?.Authorization, "Bearer sekret-key");
+  assert.equal(dom.window.localStorage.getItem("daari.webui.apiKey"), "sekret-key");
+});
+
+test("config editor Load/Save include Authorization when API key set", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/config": {
+        routing: { confidence_threshold: 0.7, prefer: "balanced" },
+        frontier: { daily_budget_usd: 1.5 },
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const keyInput = doc.getElementById("api-key");
+  keyInput.value = "vk-token";
+  keyInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+
+  doc.getElementById("cfg-load").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+
+  const loadCall = [...fetch.calls].reverse().find((c) => c.url.includes("/v1/daari/config"));
+  assert.equal(loadCall?.init?.headers?.Authorization, "Bearer vk-token");
+
+  doc.getElementById("cfg-save").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+
+  const saveCall = [...fetch.calls]
+    .reverse()
+    .find((c) => c.url.includes("/v1/daari/config") && c.init?.method === "PATCH");
+  assert.equal(saveCall?.init?.headers?.Authorization, "Bearer vk-token");
+});
+
+test("401 on stats shows auth hint in status", async (t) => {
+  const fetch = fakeFetch(routes({ "/v1/daari/stats": { status: 401 } }));
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const status = dom.window.document.getElementById("status").textContent;
+  assert.match(status, /API key|Bearer|401/i);
 });

@@ -20,10 +20,10 @@ This branch/commit deepens tracer-bullet areas that were thin:
 
 1. **PyPI upload** — needs `PYPI_API_TOKEN` in repo secrets; cut 1.2.x or 1.3.0.
 2. **Homebrew sha256** — fill `Formula/daari.rb` after release tarball exists.
-3. **Real OIDC** — current SSO is HMAC dev JWT stub (`daari/enterprise/sso.py`); wire JWKS / IdP.
-4. **Redis L1 semantic** — only L0 Redis shipped; L1 still diskcache.
-5. **Live Postgres / Redis E2E** — unit fakes only; no container CI job.
-6. **Config editor auth in web-ui** — fetch has no Bearer header UI yet.
+3. **Real OIDC** — **done** (#136 / PR #140); HMAC retained for local/dev.
+4. **Redis L1 semantic** — **done** (#135 / PR #139).
+5. **Live Postgres / Redis E2E** — unit fakes only; tracked as [#142](https://github.com/naveenreddyalka/daari/issues/142).
+6. **Config editor auth in web-ui** — **done** (#141); toolbar Bearer field + `localStorage`.
 7. **Full suite + live E2E** — intentionally skipped this pass; run default pytest + daemon smoke before shipping a release.
 8. **D4 promotion** — proposals under `~/.daari/proposals/` must stay review-gated.
 
