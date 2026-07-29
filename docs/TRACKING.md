@@ -529,7 +529,7 @@ See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Tracer deepeners only; f
 | Redis L1 semantic (`cache.backend=redis`) | [x] | #135 — `RedisSemanticCache`, tags `fable-review/135-*` |
 | OIDC JWKS admin SSO | [x] | #136 — tags `fable-review/136-*`; HMAC stub retained |
 | Web UI Bearer / API key field | [x] | #141 — tags `fable-review/141-*` |
-| Live Redis+Postgres compose E2E | [ ] | #142 |
+| Live Redis+Postgres compose E2E | [x] | #142 — profile `backends` + `scripts/smoke_backends.py` / `.sh` |
 
 ---
 

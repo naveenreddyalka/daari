@@ -69,4 +69,18 @@ cd ../.. && python scripts/smoke_webui_auth.py
 pytest tests/unit/test_config_editor.py -q
 ```
 
+## #142 Redis + Postgres backends E2E — tagged slices (2026-07-29)
+
+| Tag | Commit focus | Triple verify |
+|-----|--------------|---------------|
+| `fable-review/142-1-compose` | compose profile + unit YAML assert | unit ✅ |
+| `fable-review/142-2-verify` | smoke_backends.py/.sh | offline smoke ✅ (live when Docker up) |
+
+```bash
+git checkout fable-review/142-2-verify
+pytest tests/unit/test_compose_backends.py -q
+python scripts/smoke_backends.py
+./scripts/smoke_backends.sh   # SKIP if no Docker; live otherwise
+```
+
 Do not delete these tags until Fable review is recorded on the linked issue.
