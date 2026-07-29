@@ -22,7 +22,7 @@ This branch/commit deepens tracer-bullet areas that were thin:
 2. **Homebrew sha256** — fill `Formula/daari.rb` after release tarball exists.
 3. **Real OIDC** — **done** (#136 / PR #140); HMAC retained for local/dev.
 4. **Redis L1 semantic** — **done** (#135 / PR #139).
-5. **Live Postgres / Redis E2E** — unit fakes only; tracked as [#142](https://github.com/naveenreddyalka/daari/issues/142).
+5. **Live Postgres / Redis E2E** — **done** (#142); `docker compose --profile backends` + `scripts/smoke_backends.sh` (skips if Docker down).
 6. **Config editor auth in web-ui** — **done** (#141); toolbar Bearer field + `localStorage`.
 7. **Full suite + live E2E** — intentionally skipped this pass; run default pytest + daemon smoke before shipping a release.
 8. **D4 promotion** — proposals under `~/.daari/proposals/` must stay review-gated.

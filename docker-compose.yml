@@ -61,6 +61,35 @@ services:
     volumes:
       - org-cache-state:/home/daari/.daari
 
+  # Optional shared backends for multi-replica / E2E (issue #142):
+  #   docker compose --profile backends up -d
+  #   ./scripts/smoke_backends.sh
+  redis:
+    profiles: ["backends"]
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    profiles: ["backends"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: daari
+      POSTGRES_PASSWORD: daari
+      POSTGRES_DB: daari
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daari -d daari"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   ollama-models:
   daari-state:

@@ -26,6 +26,11 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 - Triple-verified: unit + gateway integration + `scripts/smoke_redis_l1.py`
 - Fable re-verify tags: see [docs/REVIEW-TAGS.md](docs/REVIEW-TAGS.md)
 
+### Redis + Postgres backends E2E (issue #142)
+
+- Compose profile `backends` (redis + postgres); offline smoke with fakes; live via `scripts/smoke_backends.sh`
+- Fable tags: `fable-review/142-*` — see [docs/REVIEW-TAGS.md](docs/REVIEW-TAGS.md)
+
 ### Web UI API key / Bearer (issue #141)
 
 - Toolbar field stores token in `localStorage` and sends `Authorization: Bearer` on all dashboard + config-editor fetches
