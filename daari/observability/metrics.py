@@ -35,6 +35,7 @@ class Metrics:
     errors: int = 0
     escalations: int = 0
     guardrails: dict[str, int] = field(default_factory=dict)
+    boundaries: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -65,6 +66,11 @@ class Metrics:
         with self._lock:
             self.guardrails[action] = self.guardrails.get(action, 0) + 1
 
+    def record_boundary(self, label: str, stage: str) -> None:
+        key = f"{stage}:{label}"
+        with self._lock:
+            self.boundaries[key] = self.boundaries.get(key, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -87,4 +93,5 @@ class Metrics:
                 "errors": self.errors,
                 "escalations": self.escalations,
                 "guardrails": dict(self.guardrails),
+                "boundaries": dict(self.boundaries),
             }

@@ -58,6 +58,17 @@ def render_prometheus(
     for action, count in snap["guardrails"].items():
         lines.append(f"daari_guardrail_trips_total{_labels(action=action)} {count}")
 
+    lines.append("# HELP daari_boundary_decisions_total Product-boundary classifications.")
+    lines.append("# TYPE daari_boundary_decisions_total counter")
+    for key, count in (snap.get("boundaries") or {}).items():
+        if ":" in key:
+            stage, label = key.split(":", 1)
+        else:
+            stage, label = "unknown", key
+        lines.append(
+            f"daari_boundary_decisions_total{_labels(stage=stage, label=label)} {count}"
+        )
+
     lines.append(
         "# HELP daari_request_latency_ms Request latency histogram in milliseconds, by tier."
     )

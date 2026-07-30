@@ -42,6 +42,12 @@ def _guardrails_from_settings(settings: Settings) -> Any | None:
     return engine_from_settings(settings)
 
 
+def _boundaries_from_settings(settings: Settings) -> Any | None:
+    from daari.gateway.boundaries import default_local_judge, engine_from_settings
+
+    return engine_from_settings(settings, judge=default_local_judge)
+
+
 def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
     if getattr(settings.cache, "backend", "disk") == "redis":
         from daari.cache.redis_exact import RedisExactCache
@@ -289,6 +295,7 @@ class Router:
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
         guardrails: Any | None = None,
+        boundaries: Any | None = None,
         capability_catalog: Any | None = None,
         otel_enabled: bool = False,
         org_pool: OllamaExecutor | MLXExecutor | None = None,
@@ -358,6 +365,7 @@ class Router:
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
         self.guardrails = guardrails
+        self.boundaries = boundaries
         self.capability_catalog = capability_catalog
         self.otel_enabled = otel_enabled
         self.org_pool = org_pool
@@ -424,6 +432,42 @@ class Router:
         )
         profile = await self._apply_learned_route(request, profile)
         input_warning: str | None = None
+        boundary_meta: dict | None = None
+        if self.boundaries is not None and getattr(self.boundaries, "enabled", False):
+            decision = await self.boundaries.classify(request)
+            mode = getattr(self.boundaries, "mode", "block")
+            boundary_meta = decision.as_meta(mode=mode)
+            add_step(
+                "boundary",
+                label=decision.label,
+                stage=decision.stage,
+                confidence=decision.confidence,
+                reason=decision.reason,
+                mode=mode,
+            )
+            if hasattr(self.metrics, "record_boundary"):
+                self.metrics.record_boundary(decision.label, decision.stage)
+            if decision.label == "out":
+                if mode == "block":
+                    from daari.gateway.boundaries import refused_response
+
+                    response = refused_response(
+                        request,
+                        self.boundaries.settings.refuse_message,
+                        decision,
+                        mode=mode,
+                    )
+                    if response.daari_meta.task_type is None:
+                        response.daari_meta.task_type = profile.category
+                    add_step("served", tier="boundary", cache_hit=False, latency_ms=0)
+                    if trace is not None:
+                        response.daari_meta.trace_id = trace.trace_id
+                        self.trace_store.save(
+                            trace, tier="boundary", category=profile.category
+                        )
+                    end_trace()
+                    return response
+                input_warning = f"boundary_out:{decision.reason}"
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
             inbound = self.guardrails.check_input(request)
             if inbound.hits:
@@ -440,12 +484,14 @@ class Router:
                     )
                 end_trace()
                 return response
-            input_warning = inbound.warning
+            input_warning = inbound.warning or input_warning
         try:
             response = await self._route_impl(request, profile)
         except Exception:
             end_trace()
             raise
+        if boundary_meta is not None:
+            response.daari_meta.boundary = boundary_meta
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
             outbound = self.guardrails.check_output(response)
             if outbound.hits:
@@ -2561,6 +2607,7 @@ class AppContext:
             frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
             guardrails=_guardrails_from_settings(settings),
+            boundaries=_boundaries_from_settings(settings),
             capability_catalog=_catalog_from_settings(settings),
             otel_enabled=bool(settings.observability.otel),
             org_pool=org_pool_executor,
