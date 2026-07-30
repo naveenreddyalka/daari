@@ -291,6 +291,35 @@ class GuardrailSettings(BaseModel):
     output_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
 
 
+class BoundariesSettings(BaseModel):
+    """Product-domain scope gate (Roadmap F6). Off by default.
+
+    When enabled, clearly out-of-scope prompts are refused locally before any
+    model spend. Ambiguous prompts may use a cheap local judge (B1).
+    """
+
+    enabled: bool = False
+    mode: str = "block"  # off | warn | block
+    product_name: str = ""
+    product_description: str = ""
+    allow_topics: list[str] = Field(default_factory=list)
+    deny_topics: list[str] = Field(default_factory=list)
+    examples_in: list[str] = Field(default_factory=list)
+    examples_out: list[str] = Field(default_factory=list)
+    refuse_message: str = "This assistant can only help with in-product questions."
+    clear_out_threshold: float = 0.85
+    clear_in_threshold: float = 0.85
+    local_judge_model: str | None = None
+    quorum_votes: int = 2
+    frontier_judge_daily_budget_usd: float = 0.5
+    stages_b0: bool = True
+    stages_b1: bool = True
+    stages_b2: bool = True
+    stages_b3: bool = False
+    active_profile: str = ""
+    profiles: dict[str, dict] = Field(default_factory=dict)
+
+
 class IntegrationEndpointSettings(BaseModel):
     url: str
     triggers: list[str] = Field(default_factory=list)
@@ -346,6 +375,7 @@ class Settings(BaseSettings):
     learning: LearningSettings = Field(default_factory=LearningSettings)
     context_optimizer: ContextOptimizerSettings = Field(default_factory=ContextOptimizerSettings)
     guardrails: GuardrailSettings = Field(default_factory=GuardrailSettings)
+    boundaries: BoundariesSettings = Field(default_factory=BoundariesSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     skills_system_prefix: str = ""

@@ -89,6 +89,19 @@ def apply_policy_to_runtime(
             settings.guardrails.enabled = bool(guardrails["enabled"])
             applied["guardrails.enabled"] = guardrails["enabled"]
 
+    boundaries = config.get("boundaries")
+    if isinstance(boundaries, dict) and hasattr(settings, "boundaries"):
+        for key, value in boundaries.items():
+            if hasattr(settings.boundaries, key):
+                setattr(settings.boundaries, key, value)
+                applied[f"boundaries.{key}"] = value
+        if router is not None:
+            from daari.gateway.boundaries import default_local_judge, engine_from_settings
+
+            router.boundaries = engine_from_settings(
+                settings, judge=default_local_judge
+            )
+
     return applied
 
 

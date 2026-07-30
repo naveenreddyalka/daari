@@ -29,3 +29,4 @@ Status: proposed | accepted | deprecated
 | ADR-0012 | Execution policy (Lt) and CCS cache policy | accepted |
 | ADR-0013 | Single-repo monorepo structure | accepted |
 | ADR-0014 | Enterprise distributed install, org cache, org learning | accepted |
+| ADR-0015 | Local-first product boundaries (scope gate) | accepted |
