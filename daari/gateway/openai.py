@@ -681,6 +681,23 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "l1_ttl_seconds": s.cache.l1.ttl_seconds,
                     "l1_similarity_threshold": s.cache.l1.similarity_threshold,
                 },
+                "boundaries": {
+                    "enabled": s.boundaries.enabled,
+                    "mode": s.boundaries.mode,
+                    "product_name": s.boundaries.product_name,
+                    "product_description": s.boundaries.product_description,
+                    "allow_topics": list(s.boundaries.allow_topics),
+                    "deny_topics": list(s.boundaries.deny_topics),
+                    "examples_in": list(s.boundaries.examples_in),
+                    "examples_out": list(s.boundaries.examples_out),
+                    "refuse_message": s.boundaries.refuse_message,
+                    "clear_out_threshold": s.boundaries.clear_out_threshold,
+                    "clear_in_threshold": s.boundaries.clear_in_threshold,
+                    "stages_b0": s.boundaries.stages_b0,
+                    "stages_b1": s.boundaries.stages_b1,
+                    "stages_b2": s.boundaries.stages_b2,
+                    "stages_b3": s.boundaries.stages_b3,
+                },
             }
 
         @router.patch("/v1/daari/config")
@@ -694,6 +711,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             routing = body.get("routing") or {}
             frontier = body.get("frontier") or {}
             cache = body.get("cache") or {}
+            boundaries = body.get("boundaries") or {}
             if "confidence_threshold" in routing:
                 ctx.router.confidence_threshold = float(routing["confidence_threshold"])
                 ctx.settings.routing.confidence_threshold = float(routing["confidence_threshold"])
@@ -722,6 +740,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.router.semantic_cache.similarity_threshold = float(
                     cache["l1_similarity_threshold"]
                 )
+            if boundaries:
+                from daari.gateway.boundaries import default_local_judge, engine_from_settings
+
+                for key, value in boundaries.items():
+                    if hasattr(ctx.settings.boundaries, key):
+                        setattr(ctx.settings.boundaries, key, value)
+                ctx.router.boundaries = engine_from_settings(
+                    ctx.settings, judge=default_local_judge
+                )
             persisted_path = None
             if persist:
                 from daari.config.persist import persist_safe_config
@@ -732,6 +759,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             "routing": routing,
                             "frontier": frontier,
                             "cache": cache,
+                            "boundaries": boundaries,
                         }
                     )
                 )

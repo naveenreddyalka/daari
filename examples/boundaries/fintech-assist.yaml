@@ -1,0 +1,41 @@
+# Example: fintech / credit-assistant product boundary (Roadmap F6)
+# Copy into ~/.daari/config.yaml under `boundaries:` or PATCH /v1/daari/config.
+#
+# Workflow: start with mode: warn (dry-run), tune topics, then mode: block.
+
+boundaries:
+  enabled: true
+  mode: warn  # warn | block | off
+  product_name: "Credit Assist"
+  product_description: >
+    Helps members understand credit scores, credit cards, personal loans,
+    disputes, and account settings. Not a general-purpose chatbot.
+  allow_topics:
+    - credit score
+    - credit card
+    - loan
+    - dispute
+    - account
+  deny_topics:
+    - python
+    - coding homework
+    - write a novel
+    - wedding
+    - medical diagnosis
+  examples_in:
+    - Why did my credit score drop?
+    - Which card is best for travel rewards?
+    - How do I dispute an error on my report?
+  examples_out:
+    - Write a Python web scraper
+    - Plan my wedding itinerary
+    - Diagnose this rash
+  refuse_message: >
+    I can only help with credit, cards, loans, and your account.
+    For other topics, please use a general assistant.
+  clear_out_threshold: 0.75
+  clear_in_threshold: 0.75
+  stages_b0: true
+  stages_b1: true
+  stages_b2: false
+  stages_b3: false
