@@ -89,13 +89,15 @@ python scripts/smoke_backends.py
 |-----|--------------|---------------|
 | `fable-review/boundaries-1-engine` | Settings + BoundaryEngine B0/B1 + router | unit ✅ |
 | `fable-review/boundaries-2-verify` | config editor, smoke, ADR/docs | unit + smoke ✅ |
+| `fable-review/boundaries-3-triple` | integration gateway + hardened smoke | unit + integration + smoke ✅ |
 
 ```bash
-git checkout fable-review/boundaries-2-verify
+git checkout fable-review/boundaries-3-triple
 pytest tests/unit/test_boundaries.py -q
+pytest tests/integration/test_boundaries_gateway.py -q
 python scripts/smoke_boundaries.py
 ```
 
-**Fable review (after Aug 5):** re-run the commands above; also spot-check warn vs block modes and false-refuse rate with `examples/boundaries/fintech-assist.yaml`.
+**Fable review (after Aug 5):** re-run the three commands above; also spot-check warn vs block with `examples/boundaries/fintech-assist.yaml`.
 
 Do not delete these tags until Fable review is recorded on the linked issue.

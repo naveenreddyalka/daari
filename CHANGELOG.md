@@ -10,6 +10,7 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 - Local B0 classify + B1 judge; clear out → `tier=boundary` with zero model tokens
 - Config editor GET/PATCH + persist; org policy sync; example `examples/boundaries/fintech-assist.yaml`
 - Smoke: `scripts/smoke_boundaries.py` · ADR-0015 · Fable tags in [docs/REVIEW-TAGS.md](docs/REVIEW-TAGS.md)
+- Triple-verified: unit (`test_boundaries`) + integration (`test_boundaries_gateway`) + live smoke
 
 ### Roadmap v2 (F1–F5) — merged to main 2026-07-24
 
