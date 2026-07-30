@@ -4,6 +4,13 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Product boundaries / scope gate (Roadmap F6)
+
+- Configurable `boundaries.*` (off by default): product description, allow/deny topics, examples, `mode: warn|block`
+- Local B0 classify + B1 judge; clear out → `tier=boundary` with zero model tokens
+- Config editor GET/PATCH + persist; org policy sync; example `examples/boundaries/fintech-assist.yaml`
+- Smoke: `scripts/smoke_boundaries.py` · ADR-0015 · Fable tags in [docs/REVIEW-TAGS.md](docs/REVIEW-TAGS.md)
+
 ### Roadmap v2 (F1–F5) — merged to main 2026-07-24
 
 - **F1:** Docker/compose + `/ready`, MkDocs site, PyPI prep + benchmarks doc (upload still user-gated), Homebrew formula stub

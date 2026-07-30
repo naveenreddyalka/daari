@@ -129,9 +129,21 @@ Same loop contract as always: PRD → issues → TDD trains → 4 CI checks → 
 - Model marketplace/billing (OpenRouter's lane; we can route L6 through it instead).
 - Training foundation models (adapters only, per Phase D).
 
+## Train F6 — Product boundaries (scope gate)
+
+Goal: keep embedded B2C/SaaS chatbots inside the product domain (refuse free-ChatGPT abuse locally). See [ADR-0015](../adr/0015-product-boundaries.md).
+
+| Feature | Notes |
+|---|---|
+| Configurable on/off + definition | `boundaries.enabled`, `mode: warn\|block`, topics/examples/refuse_message via config + config editor |
+| B0 local classify | Topic/example overlap; clear out → `tier=boundary` before any model |
+| B1 local judge | Ambiguous → cheap local judgment |
+| B2/B3 | Quorum / optional frontier judge (off by default) |
+| Observability | `daari_meta.boundary`, traces, `daari_boundary_decisions_total` |
+
 ## Related docs
 
 - [ROADMAP.md](ROADMAP.md) (v1, Phases A–E — shipped)
-- [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md)
+- [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · [ADR-0015](../adr/0015-product-boundaries.md)
 - [trust.md](trust.md) · [learning.md](learning.md) · [intelligence.md](intelligence.md)
 - [TRACKING.md](../TRACKING.md)

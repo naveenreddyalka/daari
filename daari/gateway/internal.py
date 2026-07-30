@@ -62,6 +62,8 @@ class DaariMeta(BaseModel):
     pending_command: str | None = None
     confirmation_prompt: str | None = None
     confirmation_header: str | None = None
+    # Product boundary decision (F6): {label, stage, confidence, reason, mode}
+    boundary: dict | None = None
 
 
 class InternalResponse(BaseModel):

@@ -20,7 +20,7 @@ def persist_safe_config(
         loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         if isinstance(loaded, dict):
             existing = loaded
-    for section in ("routing", "frontier", "cache", "guardrails"):
+    for section in ("routing", "frontier", "cache", "guardrails", "boundaries"):
         if section not in patch or not isinstance(patch[section], dict):
             continue
         if section == "cache":

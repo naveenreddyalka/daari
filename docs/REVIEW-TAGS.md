@@ -83,4 +83,19 @@ python scripts/smoke_backends.py
 ./scripts/smoke_backends.sh   # SKIP if no Docker; live otherwise
 ```
 
+## #F6 Product boundaries — tagged slices (2026-07-30)
+
+| Tag | Commit focus | Triple verify |
+|-----|--------------|---------------|
+| `fable-review/boundaries-1-engine` | Settings + BoundaryEngine B0/B1 + router | unit ✅ |
+| `fable-review/boundaries-2-verify` | config editor, smoke, ADR/docs | unit + smoke ✅ |
+
+```bash
+git checkout fable-review/boundaries-2-verify
+pytest tests/unit/test_boundaries.py -q
+python scripts/smoke_boundaries.py
+```
+
+**Fable review (after Aug 5):** re-run the commands above; also spot-check warn vs block modes and false-refuse rate with `examples/boundaries/fintech-assist.yaml`.
+
 Do not delete these tags until Fable review is recorded on the linked issue.
