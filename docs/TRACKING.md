@@ -530,7 +530,7 @@ See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Tracer deepeners only; f
 | OIDC JWKS admin SSO | [x] | #136 — tags `fable-review/136-*`; HMAC stub retained |
 | Web UI Bearer / API key field | [x] | #141 — tags `fable-review/141-*` |
 | Live Redis+Postgres compose E2E | [x] | #142 — profile `backends` + `scripts/smoke_backends.py` / `.sh` |
-| F6 Product boundaries (scope gate) | [x] | ADR-0015; B0+B1+config; tags `fable-review/boundaries-*` |
+| F6 Product boundaries (scope gate) | [x] | #145 — ADR-0015; B0+B1+config; tags `fable-review/boundaries-*` (triple-verify) |
 
 ---
 

@@ -168,6 +168,116 @@ async def test_b1_judge_resolves_ambiguous(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_b1_judge_out_blocks(tmp_path):
+    calls = {"n": 0}
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        calls["n"] += 1
+        return InternalResponse(
+            content="should-not-run",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    async def fake_judge(text: str, settings: BoundariesSettings) -> BoundaryDecision:
+        return BoundaryDecision(label="out", confidence=0.95, stage="b1", reason="judge_out")
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    engine = BoundaryEngine.from_settings(_fintech_settings(), judge=fake_judge)
+    router = Router(
+        cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+        semantic_cache=SemanticCache(str(tmp_path / "l1"), NoopEmbedder(), enabled=False),
+        ollama=ollama,
+        ollama_l3=ollama,
+        ollama_l4=ollama,
+        ollama_l5=ollama,
+        metrics=Metrics(),
+        boundaries=engine,
+    )
+    resp = await router.route(_request("What is the weather in Austin?"))
+    assert calls["n"] == 0
+    assert resp.daari_meta.tier == "boundary"
+    assert resp.daari_meta.boundary["stage"] == "b1"
+    assert resp.daari_meta.boundary["label"] == "out"
+
+
+def test_persist_includes_boundaries(tmp_path):
+    from daari.config.persist import persist_safe_config
+
+    path = tmp_path / "config.yaml"
+    path.write_text("routing:\n  prefer: balanced\n", encoding="utf-8")
+    persist_safe_config(
+        {
+            "boundaries": {
+                "enabled": True,
+                "mode": "warn",
+                "product_name": "Demo",
+                "allow_topics": ["mortgage"],
+            }
+        },
+        config_path=path,
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "boundaries:" in text
+    assert "Demo" in text
+    assert "mortgage" in text
+
+
+def test_policy_sync_applies_boundaries(settings):
+    from daari.enterprise.policy_sync import apply_policy_to_runtime
+    from daari.router.router import AppContext
+
+    settings.boundaries.enabled = False
+    ctx = AppContext.from_settings(settings)
+    assert ctx.router.boundaries is None
+    applied = apply_policy_to_runtime(
+        settings,
+        ctx.router,
+        {
+            "boundaries": {
+                "enabled": True,
+                "mode": "block",
+                "product_name": "Synced Bot",
+                "allow_topics": ["apr"],
+                "deny_topics": ["python"],
+            }
+        },
+    )
+    assert applied.get("boundaries.enabled") is True
+    assert ctx.router.boundaries is not None
+    assert ctx.router.boundaries.settings.product_name == "Synced Bot"
+
+
+@pytest.mark.asyncio
+async def test_metrics_record_boundary_decision(tmp_path):
+    metrics = Metrics()
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="x",
+            model="m",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(
+        cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+        semantic_cache=SemanticCache(str(tmp_path / "l1"), NoopEmbedder(), enabled=False),
+        ollama=ollama,
+        ollama_l3=ollama,
+        ollama_l4=ollama,
+        ollama_l5=ollama,
+        metrics=metrics,
+        boundaries=BoundaryEngine.from_settings(_fintech_settings()),
+    )
+    await router.route(_request("Write a Python scraper"))
+    snap = metrics.snapshot(include_histograms=True)
+    assert snap["boundaries"].get("b0:out", 0) >= 1
+
+
+@pytest.mark.asyncio
 async def test_config_editor_exposes_boundaries(settings):
     from httpx import ASGITransport, AsyncClient
 
