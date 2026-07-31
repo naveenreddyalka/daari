@@ -16,7 +16,7 @@ docker compose up
 
 First start pulls the L3 model (~2 GB), then daari listens on `http://127.0.0.1:11435` (readiness: `GET /ready`). Prebuilt image: `ghcr.io/naveenreddyalka/daari`.
 
-**From source** — full pickup guide (clone, venv, smoke test, pytest): **[docs/DEVELOPING.md](docs/DEVELOPING.md)**
+**Docs** — **[Developer documentation](docs/developer/index.md)** (install, concepts, guides, reference). Contributors: [docs/DEVELOPING.md](docs/DEVELOPING.md).
 
 **One-click demo** (install, serve, smoke curl, stats):
 
@@ -68,13 +68,12 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 
 | Doc | Purpose |
 |-----|---------|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Repo layout, request flow, implementation map |
-| [`docs/TRACKING.md`](docs/TRACKING.md) | Living phase/task tracker |
-| [`docs/DEVELOPING.md`](docs/DEVELOPING.md) | Dev pickup — clone, run, test |
-| [`docs/prd/PRD.md`](docs/prd/PRD.md) | Product requirements |
-| [`docs/prd/ROADMAP-v2.md`](docs/prd/ROADMAP-v2.md) | Forward roadmap: OSS launch, gateway parity, enterprise scale |
-| [`docs/setup/cursor.md`](docs/setup/cursor.md) | Cursor setup (tunnel + auth) |
-| [`docs/setup/claude-code.md`](docs/setup/claude-code.md) | Claude Code one-click setup |
+| [`docs/developer/`](docs/developer/index.md) | **Start here** — get started, concepts, guides, reference, internals |
+| [Docs site](https://naveenreddyalka.github.io/daari/) | Published MkDocs |
+| [`docs/DEVELOPING.md`](docs/DEVELOPING.md) | Contributor pickup (clone, pytest, CI) |
+| [`docs/prd/ROADMAP-v2.md`](docs/prd/ROADMAP-v2.md) | Forward roadmap |
+| [`docs/TRACKING.md`](docs/TRACKING.md) | Living task tracker (maintainers) |
+| [`docs/pitch/DEMO.md`](docs/pitch/DEMO.md) | Demo script |
 | [`CONTEXT.md`](CONTEXT.md) | Agent handoff |
 
 ## Principles

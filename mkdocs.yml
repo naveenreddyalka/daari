@@ -1,5 +1,5 @@
 site_name: daari
-site_description: Local-first LLM router — route to cache, tools, and local models before frontier APIs.
+site_description: Local-first LLM router — cache, tools, and local models before frontier APIs.
 site_url: https://naveenreddyalka.github.io/daari/
 repo_url: https://github.com/naveenreddyalka/daari
 repo_name: naveenreddyalka/daari
@@ -10,6 +10,7 @@ theme:
   name: material
   features:
     - navigation.sections
+    - navigation.expand
     - navigation.top
     - content.code.copy
     - search.suggest
@@ -40,21 +41,75 @@ markdown_extensions:
       permalink: true
 
 nav:
-  - Home: README.md
-  - Setup:
-      - Cursor: setup/cursor.md
-      - Claude Code: setup/claude-code.md
-      - JetBrains: setup/intellij.md
-      - VS Code: setup/vscode.md
-      - OpenAI-compatible: setup/openai-compat.md
-      - Project profiles: setup/project-profiles.md
-      - MLX backend: setup/mlx.md
+  - Home: developer/index.md
+  - Get started:
+      - Overview: developer/get-started/index.md
+      - Install: developer/get-started/install.md
+      - Quickstart: developer/get-started/quickstart.md
+      - First client: developer/get-started/first-client.md
+  - Concepts:
+      - Overview: developer/concepts/index.md
+      - What is daari?: developer/concepts/what-is-daari.md
+      - Routing tiers: developer/concepts/routing-tiers.md
+      - Caching and trust: developer/concepts/caching-and-trust.md
+      - Clients and gateways: developer/concepts/clients-and-gateways.md
+      - Learning loop: developer/concepts/learning-loop.md
+      - Boundaries and guardrails: developer/concepts/boundaries-and-guardrails.md
+      - Glossary: developer/concepts/glossary.md
+  - Guides:
+      - Clients:
+          - Cursor: developer/guides/clients/cursor.md
+          - Claude Code: developer/guides/clients/claude-code.md
+          - JetBrains: developer/guides/clients/intellij.md
+          - VS Code: developer/guides/clients/vscode.md
+          - OpenAI SDK: developer/guides/clients/openai-sdk.md
+      - Configuration:
+          - Overview: developer/guides/configuration/overview.md
+          - Project profiles: developer/guides/configuration/project-profiles.md
+          - Auth and keys: developer/guides/configuration/auth-and-keys.md
+          - Budgets and frontier: developer/guides/configuration/budgets-frontier.md
+      - Backends:
+          - Ollama: developer/guides/backends/ollama.md
+          - MLX: developer/guides/backends/mlx.md
+      - Features:
+          - Boundaries: developer/guides/features/boundaries.md
+          - Guardrails: developer/guides/features/guardrails.md
+          - Virtual keys: developer/guides/features/virtual-keys.md
+          - Org cache: developer/guides/features/org-cache.md
+      - Observability:
+          - Traces and stats: developer/guides/observability/traces-stats.md
+          - Savings report: developer/guides/observability/savings-report.md
+          - Prometheus: developer/guides/observability/metrics-prometheus.md
+      - Operations:
+          - Doctor and health: developer/guides/operations/doctor-health.md
+          - Docker Compose: developer/guides/operations/docker-compose.md
+          - Capacity and Helm: developer/guides/operations/capacity-helm.md
+  - Tutorials:
+      - Cursor BYOK tunnel: developer/tutorials/cursor-byok-tunnel.md
+      - Zero-dollar loop: developer/tutorials/zero-dollar-dev-loop.md
+      - Measure cache trust: developer/tutorials/measure-cache-trust.md
   - Reference:
-      - HTTP API: reference/api.md
-      - Configuration: reference/config.md
-  - Architecture: ARCHITECTURE.md
-  - Roadmap: prd/ROADMAP-v2.md
-  - Tracking: TRACKING.md
-  - Auto handoff (review): HANDOFF-AUTO-2026-07.md
-  - Developing: DEVELOPING.md
-  - Automation loop: AUTOMATION.md
+      - Overview: developer/reference/index.md
+      - HTTP API: developer/reference/http-api.md
+      - Configuration: developer/reference/config.md
+      - CLI: developer/reference/cli.md
+      - Headers: developer/reference/headers.md
+      - Errors: developer/reference/errors.md
+  - Internals:
+      - Overview: developer/internals/index.md
+      - Package map: developer/internals/package-map.md
+      - Request lifecycle: developer/internals/request-lifecycle.md
+      - Extension points: developer/internals/extension-points.md
+      - Testing: developer/internals/testing.md
+  - Resources:
+      - Architecture: developer/resources/architecture.md
+      - Benchmarks: developer/resources/benchmarks.md
+      - Security: developer/resources/security.md
+      - Changelog: developer/resources/changelog.md
+      - FAQ: developer/resources/faq.md
+      - Compare: developer/resources/compare.md
+      - Pitch outline: developer/resources/pitch-outline.md
+  - Contribute:
+      - Developing: DEVELOPING.md
+      - ADRs: adr/README.md
+      - Roadmap: prd/ROADMAP-v2.md

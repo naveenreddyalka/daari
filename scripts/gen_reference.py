@@ -98,11 +98,16 @@ def render_api_reference() -> str:
 
 
 def main(output_dir: str | None = None) -> None:
-    out = Path(output_dir or "docs/reference")
+    out = Path(output_dir or "docs/developer/reference")
     out.mkdir(parents=True, exist_ok=True)
-    (out / "config.md").write_text(render_config_reference(), encoding="utf-8")
-    (out / "api.md").write_text(render_api_reference(), encoding="utf-8")
-    print(f"Wrote {out / 'config.md'} and {out / 'api.md'}")
+    config_path = out / "config.md"
+    api_path = out / "http-api.md"
+    config_path.write_text(render_config_reference(), encoding="utf-8")
+    # Keep legacy api.md name for older callers; http-api.md is the docs site path.
+    api_body = render_api_reference()
+    api_path.write_text(api_body, encoding="utf-8")
+    (out / "api.md").write_text(api_body, encoding="utf-8")
+    print(f"Wrote {config_path} and {api_path}")
 
 
 if __name__ == "__main__":

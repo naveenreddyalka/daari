@@ -31,4 +31,5 @@ target/
 
 # Docs site (generated)
 site/
+# Legacy generated path (prefer docs/developer/reference/, which is committed)
 docs/reference/
