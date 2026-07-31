@@ -4,6 +4,13 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### Developer documentation overhaul
+
+- New public docs tree under `docs/developer/` (Get started, Concepts, Guides, Tutorials, Reference, Internals, Resources)
+- MkDocs nav demotes TRACKING/AUTOMATION; generated API/config via `scripts/gen_reference.py` → `docs/developer/reference/`
+- Pitch/demo: `docs/developer/resources/pitch-outline.md`, `docs/pitch/DEMO.md`
+- Legacy `docs/setup/*` pages redirect into the new guides
+
 ### Product boundaries / scope gate (Roadmap F6)
 
 - Configurable `boundaries.*` (off by default): product description, allow/deny topics, examples, `mode: warn|block`

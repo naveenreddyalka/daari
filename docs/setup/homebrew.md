@@ -1,6 +1,8 @@
+> Install overview: [Get started → Install](../developer/get-started/install.md)
+
 # Homebrew install
 
-> Issue [#123](https://github.com/naveenreddyalka/daari/issues/123) · formula at [`Formula/daari.rb`](../../Formula/daari.rb)
+> Issue [#123](https://github.com/naveenreddyalka/daari/issues/123) · formula at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb)
 
 ## From this repo (development)
 
