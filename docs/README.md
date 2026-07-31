@@ -1,40 +1,27 @@
 # daari documentation
 
-> Start here. Product pitch and quickstart live in the [repo README](https://github.com/naveenreddyalka/daari#readme).
+## Public developer docs
 
-## Using daari
+Start at **[developer/index.md](developer/index.md)** (also published at [naveenreddyalka.github.io/daari](https://naveenreddyalka.github.io/daari/)).
 
-| Doc | Purpose |
-|-----|---------|
-| [setup/cursor.md](setup/cursor.md) | Cursor BYOK (tunnel + API-key auth) |
-| [setup/claude-code.md](setup/claude-code.md) | Claude Code one-click setup (full tool passthrough) |
-| [setup/intellij.md](setup/intellij.md) | JetBrains AI Assistant via the Ollama-compatible facade |
-| [setup/vscode.md](setup/vscode.md) | VS Code recipe |
-| [setup/openai-compat.md](setup/openai-compat.md) | Any OpenAI SDK / script |
-| [setup/project-profiles.md](setup/project-profiles.md) | Per-repo `.daari.yaml` (tier caps, no-frontier, latency budgets) |
-| [setup/mlx.md](setup/mlx.md) | MLX backend for Apple Silicon |
+| Section | Purpose |
+|---------|---------|
+| [Get started](developer/get-started/index.md) | Install, quickstart, first client |
+| [Concepts](developer/concepts/index.md) | Tiers, cache trust, gateways, boundaries |
+| [Guides](developer/guides/clients/cursor.md) | Clients, config, features, ops |
+| [Reference](developer/reference/index.md) | HTTP API, config, CLI, headers |
+| [Internals](developer/internals/index.md) | Package map, lifecycle, testing |
+| [Resources](developer/resources/faq.md) | Security, FAQ, compare, pitch outline |
 
-## Understanding the system
-
-| Doc | Purpose |
-|-----|---------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Repo layout, request flow, CLI/HTTP surface |
-| [prd/README.md](prd/README.md) | PRD index with per-doc status |
-| [prd/ROADMAP-v2.md](prd/ROADMAP-v2.md) | Forward roadmap: OSS launch, gateway parity, enterprise scale |
-| [prd/glossary.md](prd/glossary.md) | Tier names and terms |
-| [adr/](adr/README.md) | Architecture decision records 0001–0014 |
-
-## Project status & process
+## Maintainer / product (not in default site nav)
 
 | Doc | Purpose |
 |-----|---------|
-| [TRACKING.md](TRACKING.md) | Living task tracker — the source of truth for "what shipped" |
-| [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md) | Auto-mode deepeners — **needs stronger-model review next month** |
-| [RELEASE-v1.2.0.md](RELEASE-v1.2.0.md) | Latest release notes (older: RELEASE-v1.0 … v1.1.2) |
-| [AUTOMATION.md](AUTOMATION.md) | The autonomous dev loop that builds this project |
-| [DEVELOPING.md](DEVELOPING.md) | Contributor pickup: clone, run, test |
-| [VALIDATION.md](VALIDATION.md) | Release readiness scoring (historical: v1.1.x) |
+| [TRACKING.md](TRACKING.md) | Task tracker |
+| [AUTOMATION.md](AUTOMATION.md) | Autonomous loop |
+| [prd/](prd/PRD.md) | Product requirements |
+| [adr/](adr/README.md) | Architecture decisions |
+| [DEVELOPING.md](DEVELOPING.md) | Contributor environment |
+| [pitch/DEMO.md](pitch/DEMO.md) | Live demo script |
 
-## Historical
-
-[discovery/](discovery/00-kickoff.md) (product discovery, 2026-06), [plans/phase-a.md](plans/phase-a.md), [PRD-PLAN.md](PRD-PLAN.md), [prd/ROADMAP.md](prd/ROADMAP.md) (v1 phases, shipped).
+Legacy setup paths under `setup/` redirect into `developer/guides/`.

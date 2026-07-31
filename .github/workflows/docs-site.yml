@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: pip install -e ".[docs]"
       - name: Generate API + config reference
-        run: python scripts/gen_reference.py
+        run: python scripts/gen_reference.py docs/developer/reference
       - name: Build site
         run: mkdocs build --strict
       - uses: actions/configure-pages@v5

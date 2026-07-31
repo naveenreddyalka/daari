@@ -52,3 +52,7 @@ def test_main_writes_both_pages(tmp_path, monkeypatch):
     module.main(str(out))
     assert (out / "config.md").exists()
     assert (out / "api.md").exists()
+    assert (out / "http-api.md").exists()
+    assert (out / "http-api.md").read_text(encoding="utf-8") == (
+        out / "api.md"
+    ).read_text(encoding="utf-8")
