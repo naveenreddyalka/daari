@@ -513,24 +513,44 @@ Forward plan: [ROADMAP-v2.md](prd/ROADMAP-v2.md). Issues labeled `auto-dev`.
 | F4 Enterprise scale | [x] | Redis L0 (#112); Postgres ledger/traces + `observability.stateless` (#116); Helm + capacity (#117); org pool + `daari enterprise bootstrap` (#118); SSO/RBAC/audit tracer (#119) |
 | F5 Leftovers | [x] | Live sources (#120); MCP egress (#121); Phase B exit metrics recorded above + `scripts/measure_phase_b_metrics.py` (#122); Homebrew formula (#123, sha256 filled after release) |
 
-Suite: 596 pytest (default markers).
+Suite: 669 pytest (default markers).
 
-### Auto-mode deepeners (2026-07-24) — **needs review**
+### Auto-mode deepeners (2026-07-24) — **reviewed 2026-08-11**
 
-See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Tracer deepeners only; full suite / security / live E2E deferred to next month.
+See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Built as tracer deepeners with review deferred; the frontier review pass landed as issue #137 (see below).
 
 | Item | Status | Notes |
 |------|--------|-------|
 | Periodic org policy sync in daemon | [x] | `policy_sync.py` + learning sync loop |
-| Config editor persist to disk | [x] | `persist: true` on PATCH |
+| Config editor persist to disk | [x] | `persist: true` on PATCH; atomic 0600 write |
 | D4 `propose-defaults` | [x] | YAML proposal only — never auto-promote |
-| Web UI config card | [x] | No API-key input yet — review item |
-| Strong-model review / PyPI / OIDC | [ ] | User-gated / next month |
+| Web UI config card | [x] | Bearer field added in #141 |
+| Strong-model review | [x] | #137 — see review pass below |
+| PyPI upload / Homebrew sha256 | [ ] | User-gated (needs a release tarball) |
 | Redis L1 semantic (`cache.backend=redis`) | [x] | #135 — `RedisSemanticCache`, tags `fable-review/135-*` |
 | OIDC JWKS admin SSO | [x] | #136 — tags `fable-review/136-*`; HMAC stub retained |
 | Web UI Bearer / API key field | [x] | #141 — tags `fable-review/141-*` |
 | Live Redis+Postgres compose E2E | [x] | #142 — profile `backends` + `scripts/smoke_backends.py` / `.sh` |
 | F6 Product boundaries (scope gate) | [x] | #145 — ADR-0015; B0+B1+config; tags `fable-review/boundaries-*` (triple-verify) |
+
+### Frontier review pass (2026-08-11, issue #137)
+
+Review of everything built while the deep-review pass was deferred. Defects fixed
+in `tests/unit/test_review_hardening_137.py` (15 tests, all previously red):
+
+| Defect | Severity | Fix |
+|--------|----------|-----|
+| Daemon policy sync applied **unsigned** org config when no signing secret was set (CLI path already failed closed) | high | `sync_policy_once` requires a secret unless `insecure=True` |
+| Policy sync accepted plaintext `http://` for config that can disable guardrails and raise budgets | high | `policy_url_is_secure()` — https, or http to loopback only |
+| Blocking `httpx` fetch ran on the event loop, stalling in-flight requests for up to the 10s timeout | medium | `asyncio.to_thread` in the sync loop |
+| Sync failures were swallowed by `except Exception: pass` — no way to see a broken policy feed | medium | `log_gateway_event("policy_sync_failed"/"policy_sync_skipped")` |
+| `daari learn propose-defaults` read a `{category: {accept_rate, n}}` shape that `build_collective_stats` never emits, so every run wrote an empty proposal and reported success | medium | `_flatten_category()` derives accept rate + sample count from the real nested `categories` payload; flat shape still supported |
+| `~/.daari/config.yaml` written non-atomically at umask default, next to provider API keys | medium | `write_config_atomically()` — temp file + `os.replace`, mode 0600 (also used by `enterprise bootstrap`) |
+| Cached JWKS locked admins out for the full TTL after an IdP key rotation | medium | refetch once with `force=True` on unknown `kid` |
+| `PATCH /v1/daari/config` returned 500 on malformed values and half-applied out-of-range ones; `setattr` bypassed pydantic validation | medium | `daari/config/validate.py` validates the whole patch first → 400 |
+
+Deferred to follow-up issues (out of this scope): Redis L1 lost-update race under
+concurrent replicas, EC/ES256 JWKS keys, `validate_assignment` on `Settings`.
 
 ---
 

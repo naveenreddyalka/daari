@@ -10,6 +10,8 @@ from typing import Any
 import httpx
 import yaml
 
+from daari.config.persist import write_config_atomically
+
 
 def verify_signature(payload: bytes, signature_hex: str, secret: str) -> bool:
     if not secret or not signature_hex:
@@ -67,5 +69,5 @@ def apply_org_config(
             base = dict(existing.get(key) or {})
             base.update(config[key])
             existing[key] = base
-    path.write_text(yaml.safe_dump(existing, sort_keys=False), encoding="utf-8")
+    write_config_atomically(path, existing)
     return path

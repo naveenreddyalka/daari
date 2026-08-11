@@ -172,8 +172,15 @@ def verify_oidc_token(
         url = resolve_jwks_url(jwks_url=jwks_url, discovery_url=discovery_url, http_get=http_get)
         cache = jwks_cache or _JWKS_CACHE
         jwks = cache.get(url, http_get=http_get)
-
-    jwk = _jwk_for_token(token, jwks)
+        try:
+            jwk = _jwk_for_token(token, jwks)
+        except ValueError:
+            # Unknown kid means the IdP most likely rotated signing keys. Refetch
+            # once rather than rejecting every token until the TTL lapses.
+            jwks = cache.get(url, http_get=http_get, force=True)
+            jwk = _jwk_for_token(token, jwks)
+    else:
+        jwk = _jwk_for_token(token, jwks)
     public_key = RSAAlgorithm.from_jwk(json.dumps(jwk))
     options: dict[str, Any] = {"require": ["exp", "iss"]}
     decode_kwargs: dict[str, Any] = {
