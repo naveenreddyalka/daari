@@ -572,11 +572,29 @@ through `route()`, but streamed model output with no refusal.
 fallen back through the local tiers, so re-running L4/L5 non-streamed would only
 duplicate work. Non-streaming keeps the full local ladder.
 
-Still open on the streaming path (tracked in #155): true SSE relay from frontier
-(`FrontierExecutor` still buffers, so first-token latency on an escalated stream is
-non-streaming latency), and CCS/`Lt` tier parity.
-
 Covered by `tests/unit/test_stream_policy_parity.py` (11 tests, 5 previously red).
+
+### Streaming tier parity (#155) (2026-08-11)
+
+Follow-up that closed the rest of the streaming gap.
+
+| Defect | Severity | Fix |
+|--------|----------|-----|
+| Deterministic tiers (`Lt` shell tools, L2 rules, live fetch, integrations) were unreachable while streaming — the same prompt got a model answer instead of tool output | high | `_resolve_deterministic_tier()` extracted from `_route_impl` and called from both stream paths |
+| Escalated streams buffered the whole frontier answer before emitting, so first-token latency was non-streaming latency | medium | `FrontierExecutor.stream()` relays upstream SSE; the router relays it chunk-by-chunk |
+
+`_route_impl` is now three named steps (deterministic tiers → generation →
+escalation) rather than one long function, which is what let the stream paths
+reuse the same logic instead of reimplementing a subset of it.
+
+The relay is skipped, falling back to the buffered path, when the complete text
+is needed first: output guardrails must see the whole answer to redact it, and
+the org pool has to be tried before paying for frontier. Both are explicit
+checks in `_can_relay_frontier_stream()`.
+
+Covered by `tests/unit/test_stream_tier_parity.py` (7 tests, 4 previously red),
+including a `MockTransport` case proving the SSE decoder skips blank, malformed,
+and `[DONE]` lines.
 
 ---
 
