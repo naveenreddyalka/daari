@@ -35,7 +35,7 @@ Entry point: `daari` (Typer).
 |-------|----------|
 | `context` | `clear` |
 | `cache` | `prune` |
-| `learn` | `stats`, `export-stats`, `propose-defaults`, `examples`, `export-dataset`, `train-router`, `finetune`, `deploy`, `recommend` |
+| `learn` | `stats`, `export-stats`, `aggregates`, `propose-defaults`, `outcome`, `examples`, `export-dataset`, `train-router`, `finetune`, `mlx-lm`, `deploy`, `recommend` |
 | `org-cache` | `serve` |
 | `org-learning` | `stats`, `sync`, `export` |
 | `web-ui` | `serve` |

@@ -6,21 +6,10 @@
 
 ## From this repo (development)
 
-```bash
-brew install --formula ./Formula/daari.rb
-```
-
-The published `sha256` is a placeholder until a PyPI/GitHub release asset is hashed — for head installs use:
+Clone the repo, then install from `HEAD`:
 
 ```bash
 brew install --HEAD --formula ./Formula/daari.rb
-```
-
-## After the public tap
-
-```bash
-brew tap naveenreddyalka/daari
-brew install daari
 ```
 
 Requires Python 3.12 from Homebrew. Then:
@@ -30,4 +19,18 @@ ollama pull llama3.2:3b
 daari serve
 ```
 
-Prefer `pip install daari` / `docker compose up` until the tap sha256 is filled in from a real release tarball.
+## Not working yet
+
+`brew install --formula ./Formula/daari.rb` (without `--HEAD`) fails: the formula's
+`sha256` is a placeholder, so the v1.2.0 tarball fails its checksum. The public tap
+below is also unavailable — the tap repo does not exist yet.
+
+```bash
+# blocked on a release: needs a hashed tarball pushed to homebrew-daari
+brew tap naveenreddyalka/daari
+brew install daari
+```
+
+Both unblock once a release tarball is published and its hash replaces the
+placeholder in `Formula/daari.rb`. Until then use `docker compose up` or the
+from-source install — daari is not on PyPI either, so `pip install daari` fails.

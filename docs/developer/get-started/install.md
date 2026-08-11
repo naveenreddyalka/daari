@@ -21,9 +21,10 @@ docker compose --profile org up          # org-cache on :11436
 docker compose --profile backends up -d  # Redis + Postgres
 ```
 
-## Option B — pip / from source
+## Option B — from source
 
 ```bash
+git clone https://github.com/naveenreddyalka/daari.git && cd daari
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -34,12 +35,17 @@ daari serve
 
 ## Option C — Homebrew
 
-See [docs/setup/homebrew.md](../../setup/homebrew.md) (formula stub; fill sha256 after a PyPI release).
+!!! warning "Not published yet"
+    There is no `daari` package on PyPI and no Homebrew tap yet, so
+    `pip install daari` and `brew install daari` both fail. Use Option A or B.
+
+The formula is checked in at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb) and works today from a clone:
 
 ```bash
-# when published
-brew install naveenreddyalka/tap/daari
+brew install --HEAD --formula ./Formula/daari.rb
 ```
+
+A public tap needs a release tarball to hash — see [Homebrew notes](../../setup/homebrew.md).
 
 ## Verify
 
