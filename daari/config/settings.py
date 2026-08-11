@@ -76,6 +76,9 @@ class L1CacheSettings(BaseModel):
     embed_cache_size: int = 512
     # Normalize template/boilerplate text before embedding (Trust PRD T1a).
     normalize_inputs: bool = True
+    # Second-stage check before serving a hit (#168). A cosine threshold alone
+    # cannot separate a paraphrase from a near-miss. none | lexical | model.
+    verify: str = "lexical"
     # Fraction of L1 hits verified in the background against a fresh local
     # answer (Trust PRD T1c). 0 disables shadow sampling.
     shadow_sample_rate: float = 0.05

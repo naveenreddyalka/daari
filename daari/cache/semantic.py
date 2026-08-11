@@ -11,6 +11,7 @@ import httpx
 from daari.cache.exact import tools_schema_hash
 from daari.cache.normalize import normalize_for_embedding
 from daari.gateway.internal import InternalRequest, InternalResponse
+from daari.gateway.request_log import log_gateway_event
 
 
 def extract_embed_text(request: InternalRequest) -> str:
@@ -116,6 +117,8 @@ class SemanticCache:
         ttl_seconds: float = 0.0,
         clock: Any = None,
         normalize_inputs: bool = True,
+        verifier: Any = None,
+        metrics: Any = None,
     ) -> None:
         self.enabled = enabled
         self.embedder = embedder
@@ -123,6 +126,8 @@ class SemanticCache:
         self.max_entries = max_entries
         self.ttl_seconds = ttl_seconds
         self.normalize_inputs = normalize_inputs
+        self.verifier = verifier
+        self.metrics = metrics
         self._clock = clock or time.time
         self._path = path
         self._cache: Any = None
@@ -162,16 +167,27 @@ class SemanticCache:
         self, request: InternalRequest, *, max_age: float | None = None
     ) -> tuple[InternalResponse | None, float]:
         """Best entry regardless of threshold — shared by the hit path and draft injection."""
+        response, score, _ = await self._nearest_entry(request, max_age=max_age)
+        return response, score
+
+    async def _nearest_entry(
+        self, request: InternalRequest, *, max_age: float | None = None
+    ) -> tuple[InternalResponse | None, float, str | None]:
+        """Best entry plus the prompt that produced it, for verification (#168).
+
+        The stored text is returned rather than stashed on the instance because
+        concurrent requests share this object.
+        """
         if not self.enabled:
-            return None, 0.0
+            return None, 0.0, None
 
         text = self._embed_text(request)
         if not text.strip():
-            return None, 0.0
+            return None, 0.0, None
 
         embedding = await self.embedder.embed(text)
         if embedding is None:
-            return None, 0.0
+            return None, 0.0, None
 
         context_key = semantic_context_key(request)
         best_score = 0.0
@@ -191,16 +207,44 @@ class SemanticCache:
                 best_entry = entry
 
         if best_entry is None:
-            return None, 0.0
-        return InternalResponse.model_validate_json(best_entry["response_json"]), best_score
+            return None, 0.0, None
+        return (
+            InternalResponse.model_validate_json(best_entry["response_json"]),
+            best_score,
+            best_entry.get("prompt_text"),
+        )
 
     async def get(
         self, request: InternalRequest, *, max_age: float | None = None
     ) -> tuple[InternalResponse | None, float | None]:
-        response, best_score = await self.nearest(request, max_age=max_age)
+        response, best_score, stored_text = await self._nearest_entry(request, max_age=max_age)
         if response is None or best_score < self.similarity_threshold:
             return None, best_score if best_score > 0 else None
+        if self.verifier is not None and not self._verified(request, stored_text):
+            return None, best_score
         return response, best_score
+
+    def _verified(self, request: InternalRequest, stored_text: str | None) -> bool:
+        """Second stage between cosine and serve (#168).
+
+        A candidate that cannot be checked is not served: entries written before
+        verification existed carry no prompt text, so serving them would keep
+        exactly the false hits this exists to stop. They are re-learned on the
+        next miss.
+        """
+        if not stored_text:
+            self._record_avoided("unverifiable_entry")
+            return False
+        result = self.verifier.verify(self._embed_text(request), stored_text)
+        if result.ok:
+            return True
+        self._record_avoided(result.reason or "rejected")
+        return False
+
+    def _record_avoided(self, reason: str) -> None:
+        if self.metrics is not None and hasattr(self.metrics, "record_false_hit_avoided"):
+            self.metrics.record_false_hit_avoided()
+        log_gateway_event("l1_verification_rejected", {"reason": reason})
 
     def prune(self) -> int:
         """Remove expired entries; returns how many were removed."""
@@ -238,6 +282,9 @@ class SemanticCache:
             {
                 "context_key": semantic_context_key(request),
                 "embedding": embedding,
+                # Kept so a hit can be verified against the question that
+                # produced it, not just its embedding (#168).
+                "prompt_text": text,
                 "response_json": response.model_dump_json(),
                 "created_at": self._clock(),
                 "category": category,

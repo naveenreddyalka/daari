@@ -52,6 +52,13 @@ def render_prometheus(
     lines.append("# HELP daari_escalations_total Local→frontier (L6) escalations.")
     lines.append("# TYPE daari_escalations_total counter")
     lines.append(f"daari_escalations_total {snap['escalations']}")
+    lines.append(
+        "# HELP daari_cache_false_hits_avoided_total L1 hits vetoed by verification."
+    )
+    lines.append("# TYPE daari_cache_false_hits_avoided_total counter")
+    lines.append(
+        f"daari_cache_false_hits_avoided_total {snap.get('cache_false_hits_avoided', 0)}"
+    )
 
     lines.append("# HELP daari_guardrail_trips_total Guardrail actions taken.")
     lines.append("# TYPE daari_guardrail_trips_total counter")
