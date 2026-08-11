@@ -764,6 +764,10 @@ def doctor(
         mark = "✓" if result.ok else "✗"
         suffix = " (optional)" if result.optional else ""
         typer.echo(f"  {mark} {result.name}{suffix}: {result.detail}")
+    from daari.pricing import pricing_warnings
+
+    for warning in pricing_warnings(settings):
+        typer.echo(f"  ! pricing: {warning}")
     code = doctor_exit_code(results)
     if code != 0:
         raise typer.Exit(code=code)

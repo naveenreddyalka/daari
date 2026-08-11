@@ -22,6 +22,7 @@ from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearni
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.observability.trace import TraceStore, add_step, end_trace, start_trace
+from daari.observability.tokens import ollama_token_usage, response_token_usage
 from daari.observability.usage import UsageLedger
 from daari.policy.engine import PolicyEngine
 from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
@@ -200,6 +201,7 @@ class OllamaExecutor:
             data = response.json()
         content = data.get("message", {}).get("content", "")
         latency_ms = int((time.perf_counter() - started) * 1000)
+        input_tokens, output_tokens, estimated = ollama_token_usage(data, request, content)
         return InternalResponse(
             content=content,
             model=model,
@@ -210,6 +212,9 @@ class OllamaExecutor:
                 provider_id=f"ollama:{self.tier.lower()}",
                 latency_ms=latency_ms,
                 model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                usage_estimated=estimated,
             ),
         )
 
@@ -301,6 +306,7 @@ class Router:
         frontier_monthly_budget_usd: float = 0.0,
         frontier_soft_budget_ratio: float = 0.8,
         frontier_price_per_1k_tokens: float = 0.002,
+        pricing: Any = None,
         frontier_scrub_pii: bool = False,
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
@@ -371,6 +377,7 @@ class Router:
         self.frontier_monthly_budget_usd = frontier_monthly_budget_usd
         self.frontier_soft_budget_ratio = frontier_soft_budget_ratio
         self.frontier_price_per_1k_tokens = frontier_price_per_1k_tokens
+        self.pricing = pricing
         self.frontier_scrub_pii = frontier_scrub_pii
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
@@ -594,12 +601,17 @@ class Router:
             prompt_chars = response.daari_meta.prompt_chars
         else:
             prompt_chars = sum(len(message.content or "") for message in request.messages)
+        input_tokens, output_tokens, _ = response_token_usage(response, prompt_chars)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
             prompt_chars=prompt_chars,
             completion_chars=len(response.content or ""),
             client_id=request.meta.client_id,
+            model=response.daari_meta.model or response.model,
+            provider=response.daari_meta.provider_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
     def _example_record(
@@ -1309,8 +1321,15 @@ class Router:
             content_sent = False
             tool_calls_sent = False
             tier_completion_chars = 0
+            reported_usage: tuple[int, int] | None = None
             try:
                 async for event in stream_executor.stream(stream_request):
+                    if event.get("prompt_eval_count") is not None:
+                        # Ollama reports real counts on the terminal event (#156).
+                        reported_usage = (
+                            int(event.get("prompt_eval_count") or 0),
+                            int(event.get("eval_count") or 0),
+                        )
                     message = event.get("message", {})
                     delta = message.get("content", "")
                     raw_tool_calls = message.get("tool_calls")
@@ -1370,6 +1389,9 @@ class Router:
                     executor="ollama",
                     provider_id=f"ollama:{tier.lower()}",
                     model=ollama_model,
+                    input_tokens=reported_usage[0] if reported_usage else None,
+                    output_tokens=reported_usage[1] if reported_usage else None,
+                    usage_estimated=reported_usage is None,
                 ),
             )
             # A low-confidence answer escalates to L6. When nothing needs the
@@ -1465,12 +1487,17 @@ class Router:
             streamed_text = served.content
             self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
             if self.usage_ledger is not None:
+                stream_in, stream_out, _ = response_token_usage(served, prompt_chars)
                 self.usage_ledger.record(
                     tier=tier,
                     cache_hit=False,
                     prompt_chars=prompt_chars,
                     completion_chars=completion_chars,
                     client_id=request.meta.client_id,
+                    model=served.daari_meta.model or served.model,
+                    provider=served.daari_meta.provider_id,
+                    input_tokens=stream_in,
+                    output_tokens=stream_out,
                 )
             if self.feedback_store is not None:
                 try:
@@ -2476,7 +2503,16 @@ class Router:
             if spend_fn is None:
                 continue
             try:
-                spend = spend_fn(price_per_1k_tokens=self.frontier_price_per_1k_tokens)
+                spend = spend_fn(
+                    pricing=self.pricing,
+                    fallback_per_1k=self.frontier_price_per_1k_tokens,
+                )
+            except TypeError:
+                # Postgres ledger still takes the flat rate only.
+                try:
+                    spend = spend_fn(price_per_1k_tokens=self.frontier_price_per_1k_tokens)
+                except Exception:
+                    continue
             except Exception:
                 continue
             if spend >= budget:
@@ -2976,6 +3012,7 @@ class AppContext:
             frontier_monthly_budget_usd=settings.frontier.monthly_budget_usd,
             frontier_soft_budget_ratio=settings.frontier.soft_budget_ratio,
             frontier_price_per_1k_tokens=settings.frontier.price_per_1k_tokens,
+            pricing=settings.pricing,
             frontier_scrub_pii=settings.frontier.scrub_pii,
             frontier_slim_prompts=settings.frontier.slim_prompts,
             frontier_max_history=settings.frontier.max_history_messages,

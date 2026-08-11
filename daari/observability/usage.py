@@ -14,29 +14,44 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from daari.pricing import cost_usd
+
 FRONTIER_TIER = "L6"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage (
     day TEXT NOT NULL,
     tier TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
     requests INTEGER NOT NULL DEFAULT 0,
     cache_hits INTEGER NOT NULL DEFAULT 0,
     prompt_chars INTEGER NOT NULL DEFAULT 0,
     completion_chars INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, tier)
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, tier, model)
 );
 CREATE TABLE IF NOT EXISTS client_usage (
     day TEXT NOT NULL,
     client_id TEXT NOT NULL,
     tier TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
     requests INTEGER NOT NULL DEFAULT 0,
     cache_hits INTEGER NOT NULL DEFAULT 0,
     prompt_chars INTEGER NOT NULL DEFAULT 0,
     completion_chars INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, client_id, tier)
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, client_id, tier, model)
 );
 """
+
+# Ledgers created before #156 lack the token and model columns, and their
+# primary key omits `model`. ALTER TABLE ADD COLUMN cannot change a primary key,
+# and the upsert needs (day, tier, model) as its conflict target, so migration
+# rebuilds the table and copies the old rows across.
+_MIGRATED_TABLES = ("usage", "client_usage")
 
 
 def _today() -> str:
@@ -63,11 +78,27 @@ class UsageLedger:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self._connect() as conn:
                     conn.executescript(_SCHEMA)
+                    self._migrate(conn)
             except Exception:
                 self.enabled = False
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=5.0)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        for table in _MIGRATED_TABLES:
+            columns = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+            if not columns or "model" in columns:
+                continue
+            carried = [name for name in columns if name != "model"]
+            conn.execute(f"ALTER TABLE {table} RENAME TO {table}_pre_tokens")
+            conn.executescript(_SCHEMA)
+            conn.execute(
+                f"INSERT INTO {table} ({', '.join(carried)}) "
+                f"SELECT {', '.join(carried)} FROM {table}_pre_tokens"
+            )
+            conn.execute(f"DROP TABLE {table}_pre_tokens")
 
     def record(
         self,
@@ -78,46 +109,70 @@ class UsageLedger:
         completion_chars: int = 0,
         day: str | None = None,
         client_id: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> None:
         if not self.enabled:
             return
+        # Fall back to the chars/4 estimate only when the provider reported
+        # nothing, so old call sites keep working (#156).
+        tokens_in = max(0, input_tokens if input_tokens is not None else prompt_chars // 4)
+        tokens_out = max(
+            0, output_tokens if output_tokens is not None else completion_chars // 4
+        )
         try:
             with self._lock, self._connect() as conn:
                 conn.execute(
                     """
-                    INSERT INTO usage (day, tier, requests, cache_hits, prompt_chars, completion_chars)
-                    VALUES (?, ?, 1, ?, ?, ?)
-                    ON CONFLICT(day, tier) DO UPDATE SET
+                    INSERT INTO usage (day, tier, model, provider, requests, cache_hits,
+                                       prompt_chars, completion_chars, input_tokens, output_tokens)
+                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                    ON CONFLICT(day, tier, model) DO UPDATE SET
                         requests = requests + 1,
                         cache_hits = cache_hits + excluded.cache_hits,
                         prompt_chars = prompt_chars + excluded.prompt_chars,
-                        completion_chars = completion_chars + excluded.completion_chars
+                        completion_chars = completion_chars + excluded.completion_chars,
+                        input_tokens = input_tokens + excluded.input_tokens,
+                        output_tokens = output_tokens + excluded.output_tokens,
+                        provider = excluded.provider
                     """,
                     (
                         day or _today(),
                         tier,
+                        model or "",
+                        provider or "",
                         1 if cache_hit else 0,
                         max(0, prompt_chars),
                         max(0, completion_chars),
+                        tokens_in,
+                        tokens_out,
                     ),
                 )
                 conn.execute(
                     """
-                    INSERT INTO client_usage (day, client_id, tier, requests, cache_hits, prompt_chars, completion_chars)
-                    VALUES (?, ?, ?, 1, ?, ?, ?)
-                    ON CONFLICT(day, client_id, tier) DO UPDATE SET
+                    INSERT INTO client_usage (day, client_id, tier, model, requests, cache_hits,
+                                              prompt_chars, completion_chars, input_tokens, output_tokens)
+                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                    ON CONFLICT(day, client_id, tier, model) DO UPDATE SET
                         requests = requests + 1,
                         cache_hits = cache_hits + excluded.cache_hits,
                         prompt_chars = prompt_chars + excluded.prompt_chars,
-                        completion_chars = completion_chars + excluded.completion_chars
+                        completion_chars = completion_chars + excluded.completion_chars,
+                        input_tokens = input_tokens + excluded.input_tokens,
+                        output_tokens = output_tokens + excluded.output_tokens
                     """,
                     (
                         day or _today(),
                         client_id or "unknown",
                         tier,
+                        model or "",
                         1 if cache_hit else 0,
                         max(0, prompt_chars),
                         max(0, completion_chars),
+                        tokens_in,
+                        tokens_out,
                     ),
                 )
         except Exception:
@@ -167,40 +222,74 @@ class UsageLedger:
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
         return sorted(clients.values(), key=lambda entry: -entry["requests"])
 
-    def frontier_spend_usd(self, *, price_per_1k_tokens: float, day: str | None = None) -> float:
-        """Estimated USD spent on the frontier tier for the given UTC day."""
-        if not self.enabled:
-            return 0.0
+    def _spend_for(
+        self,
+        where: str,
+        params: tuple[Any, ...],
+        *,
+        pricing: Any,
+        fallback_per_1k: float,
+    ) -> float:
+        """Sum L6 spend, pricing each model at its own rate (#157)."""
         try:
             with self._lock, self._connect() as conn:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
-                    " FROM usage WHERE day = ? AND tier = ?",
-                    (day or _today(), FRONTIER_TIER),
-                ).fetchone()
+                rows = conn.execute(
+                    "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
+                    f" FROM usage WHERE {where} AND tier = ? GROUP BY model",
+                    (*params, FRONTIER_TIER),
+                ).fetchall()
         except Exception:
             return 0.0
-        chars = row[0] if row else 0
-        return (chars / 4) / 1000 * price_per_1k_tokens
+        total = 0.0
+        for model, input_tokens, output_tokens in rows:
+            total += cost_usd(
+                model or None,
+                input_tokens,
+                output_tokens,
+                pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+        return total
+
+    def frontier_spend_usd(
+        self,
+        *,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        price_per_1k_tokens: float | None = None,
+        day: str | None = None,
+    ) -> float:
+        """USD spent on the frontier tier for the given UTC day."""
+        if not self.enabled:
+            return 0.0
+        if price_per_1k_tokens is not None:
+            fallback_per_1k = price_per_1k_tokens
+        return self._spend_for(
+            "day = ?",
+            (day or _today(),),
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
 
     def frontier_spend_usd_month(
-        self, *, price_per_1k_tokens: float, month: str | None = None
+        self,
+        *,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        price_per_1k_tokens: float | None = None,
+        month: str | None = None,
     ) -> float:
-        """Estimated USD spent on L6 for the given UTC month (Trust PRD T5a)."""
+        """USD spent on L6 for the given UTC month (Trust PRD T5a)."""
         if not self.enabled:
             return 0.0
-        prefix = (month or _today()[:7]) + "-%"
-        try:
-            with self._lock, self._connect() as conn:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
-                    " FROM usage WHERE day LIKE ? AND tier = ?",
-                    (prefix, FRONTIER_TIER),
-                ).fetchone()
-        except Exception:
-            return 0.0
-        chars = row[0] if row else 0
-        return (chars / 4) / 1000 * price_per_1k_tokens
+        if price_per_1k_tokens is not None:
+            fallback_per_1k = price_per_1k_tokens
+        return self._spend_for(
+            "day LIKE ?",
+            ((month or _today()[:7]) + "-%",),
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
 
     def report(self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002) -> dict[str, Any]:
         if not self.enabled:
@@ -234,12 +323,16 @@ class UsageLedger:
             entry["cache_hits"] += cache_hits
             entry["prompt_chars"] += prompt_chars
             entry["completion_chars"] += completion_chars
-            entry["tiers"][tier] = {
-                "requests": requests,
-                "cache_hits": cache_hits,
-                "prompt_chars": prompt_chars,
-                "completion_chars": completion_chars,
-            }
+            # One tier can now have several rows, one per model, so accumulate
+            # rather than assign (#156).
+            tier_entry = entry["tiers"].setdefault(
+                tier,
+                {"requests": 0, "cache_hits": 0, "prompt_chars": 0, "completion_chars": 0},
+            )
+            tier_entry["requests"] += requests
+            tier_entry["cache_hits"] += cache_hits
+            tier_entry["prompt_chars"] += prompt_chars
+            tier_entry["completion_chars"] += completion_chars
             totals["requests"] += requests
             totals["cache_hits"] += cache_hits
             if tier == FRONTIER_TIER:
