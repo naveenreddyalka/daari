@@ -552,6 +552,32 @@ in `tests/unit/test_review_hardening_137.py` (15 tests, all previously red):
 Deferred to follow-up issues (out of this scope): Redis L1 lost-update race under
 concurrent replicas, EC/ES256 JWKS keys, `validate_assignment` on `Settings`.
 
+### Streaming policy parity (#154, #155) (2026-08-11)
+
+A feature-gap audit found that boundaries, guardrails, and frontier escalation ran
+only in `Router.route()`. Both streaming entry points were separate code paths that
+called none of them — so for every supported IDE client, which streams by default,
+those features were inert. Reproduced before the fix: the same prompt with
+`boundaries.mode = "block"` returned `tier='boundary'` with zero upstream calls
+through `route()`, but streamed model output with no refusal.
+
+| Defect | Severity | Fix |
+|--------|----------|-----|
+| Boundary gate never ran on either stream path — a `block`-mode refusal was silently skipped for all IDE traffic | high | `_apply_input_policy()` shared by `route()` and both stream paths |
+| Input guardrails never ran on either stream path | high | same shared gate; refusals emitted as well-formed terminal streams (OpenAI `[DONE]`, Anthropic `message_stop`) |
+| Output guardrails never ran on streams, so a leaked secret reached the client **and** was written to L0/L1 | high | `_apply_output_policy()` runs over accumulated text before flush and before cache write-back |
+| `_stream_tier_chain` was local-model-only, so a streaming request could never reach the org pool or L6 | high | streams call `_maybe_escalate(..., local_ladder=False)` — org pool and frontier now reachable |
+
+`local_ladder=False` is deliberate: `_stream_tier_chain` has already chosen and
+fallen back through the local tiers, so re-running L4/L5 non-streamed would only
+duplicate work. Non-streaming keeps the full local ladder.
+
+Still open on the streaming path (tracked in #155): true SSE relay from frontier
+(`FrontierExecutor` still buffers, so first-token latency on an escalated stream is
+non-streaming latency), and CCS/`Lt` tier parity.
+
+Covered by `tests/unit/test_stream_policy_parity.py` (11 tests, 5 previously red).
+
 ---
 
 ## How to update
