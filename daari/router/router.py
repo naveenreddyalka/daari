@@ -242,6 +242,16 @@ class CallableProvider:
         return await self.execute_fn(request)
 
 
+@dataclass
+class _InputPolicy:
+    """Outcome of the pre-generation boundary and guardrail gate."""
+
+    refusal: InternalResponse | None = None
+    refusal_tier: str | None = None
+    boundary_meta: dict | None = None
+    warning: str | None = None
+
+
 class Router:
     def __init__(
         self,
@@ -419,24 +429,21 @@ class Router:
         if warning:
             add_step("guardrail_warning", warning=warning)
 
-    async def route(self, request: InternalRequest) -> InternalResponse:
+    async def _apply_input_policy(
+        self, request: InternalRequest, profile: PromptProfile
+    ) -> _InputPolicy:
+        """Boundary and input-guardrail gate shared by every entry point.
+
+        Streaming used to skip this, which made both features inert for IDE
+        clients (#154). Any new entry point must call this before generation.
+        """
         from daari.gateway.guardrails import blocked_response
 
-        profile = build_prompt_profile(request)
-        trace = start_trace() if self.trace_store is not None else None
-        add_step(
-            "profile",
-            category=profile.category,
-            complexity=profile.complexity,
-            prompt_tokens_est=profile.prompt_tokens_est,
-        )
-        profile = await self._apply_learned_route(request, profile)
-        input_warning: str | None = None
-        boundary_meta: dict | None = None
+        policy = _InputPolicy()
         if self.boundaries is not None and getattr(self.boundaries, "enabled", False):
             decision = await self.boundaries.classify(request)
             mode = getattr(self.boundaries, "mode", "block")
-            boundary_meta = decision.as_meta(mode=mode)
+            policy.boundary_meta = decision.as_meta(mode=mode)
             add_step(
                 "boundary",
                 label=decision.label,
@@ -451,40 +458,64 @@ class Router:
                 if mode == "block":
                     from daari.gateway.boundaries import refused_response
 
-                    response = refused_response(
+                    policy.refusal = refused_response(
                         request,
                         self.boundaries.settings.refuse_message,
                         decision,
                         mode=mode,
                     )
-                    if response.daari_meta.task_type is None:
-                        response.daari_meta.task_type = profile.category
-                    add_step("served", tier="boundary", cache_hit=False, latency_ms=0)
-                    if trace is not None:
-                        response.daari_meta.trace_id = trace.trace_id
-                        self.trace_store.save(
-                            trace, tier="boundary", category=profile.category
-                        )
-                    end_trace()
-                    return response
-                input_warning = f"boundary_out:{decision.reason}"
+                    policy.refusal_tier = "boundary"
+                    return policy
+                policy.warning = f"boundary_out:{decision.reason}"
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
             inbound = self.guardrails.check_input(request)
             if inbound.hits:
                 self._apply_guardrail_hits(inbound.hits, warning=inbound.warning)
             if inbound.blocked:
-                response = blocked_response(request, self.guardrails.block_message)
-                if response.daari_meta.task_type is None:
-                    response.daari_meta.task_type = profile.category
-                add_step("served", tier="guardrail", cache_hit=False, latency_ms=0)
-                if trace is not None:
-                    response.daari_meta.trace_id = trace.trace_id
-                    self.trace_store.save(
-                        trace, tier="guardrail", category=profile.category
-                    )
-                end_trace()
-                return response
-            input_warning = inbound.warning or input_warning
+                policy.refusal = blocked_response(request, self.guardrails.block_message)
+                policy.refusal_tier = "guardrail"
+                return policy
+            policy.warning = inbound.warning or policy.warning
+        return policy
+
+    def _apply_output_policy(self, response: InternalResponse) -> InternalResponse:
+        """Output guardrails. Returns the response the client should receive."""
+        if self.guardrails is None or not getattr(self.guardrails, "enabled", False):
+            return response
+        outbound = self.guardrails.check_output(response)
+        if outbound.hits:
+            self._apply_guardrail_hits(outbound.hits, warning=outbound.warning)
+        if outbound.response is not None:
+            response = outbound.response
+        if outbound.warning and not response.daari_meta.warning:
+            response.daari_meta.warning = outbound.warning
+        return response
+
+    async def route(self, request: InternalRequest) -> InternalResponse:
+        profile = build_prompt_profile(request)
+        trace = start_trace() if self.trace_store is not None else None
+        add_step(
+            "profile",
+            category=profile.category,
+            complexity=profile.complexity,
+            prompt_tokens_est=profile.prompt_tokens_est,
+        )
+        profile = await self._apply_learned_route(request, profile)
+        policy = await self._apply_input_policy(request, profile)
+        boundary_meta = policy.boundary_meta
+        input_warning = policy.warning
+        if policy.refusal is not None:
+            response = policy.refusal
+            if response.daari_meta.task_type is None:
+                response.daari_meta.task_type = profile.category
+            add_step("served", tier=policy.refusal_tier, cache_hit=False, latency_ms=0)
+            if trace is not None:
+                response.daari_meta.trace_id = trace.trace_id
+                self.trace_store.save(
+                    trace, tier=policy.refusal_tier, category=profile.category
+                )
+            end_trace()
+            return response
         try:
             response = await self._route_impl(request, profile)
         except Exception:
@@ -492,14 +523,7 @@ class Router:
             raise
         if boundary_meta is not None:
             response.daari_meta.boundary = boundary_meta
-        if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
-            outbound = self.guardrails.check_output(response)
-            if outbound.hits:
-                self._apply_guardrail_hits(outbound.hits, warning=outbound.warning)
-            if outbound.response is not None:
-                response = outbound.response
-            if outbound.warning and not response.daari_meta.warning:
-                response.daari_meta.warning = outbound.warning
+        response = self._apply_output_policy(response)
         if input_warning and not response.daari_meta.warning:
             response.daari_meta.warning = input_warning
         if response.daari_meta.task_type is None:
@@ -1103,6 +1127,28 @@ class Router:
             }
             return f"data: {json.dumps(payload)}\n\n"
 
+        def terminal_stream(text: str, *, finish_reason: str = "stop") -> list[str]:
+            return [
+                f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n",
+                f"data: {json.dumps(chunk_payload(delta={'content': text}))}\n\n",
+                f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n",
+                usage_chunk(len(text)),
+                "data: [DONE]\n\n",
+            ]
+
+        # Policy gate before cache and generation, matching route() (#154).
+        policy = await self._apply_input_policy(request, profile)
+        if policy.refusal is not None:
+            log_gateway_event(
+                "stream_refused",
+                {"tier": policy.refusal_tier, "model": client_model},
+            )
+            for chunk in terminal_stream(policy.refusal.content):
+                yield chunk
+            add_step("served", tier=policy.refusal_tier, cache_hit=False, latency_ms=0)
+            finish_trace(policy.refusal_tier)
+            return
+
         if cacheable:
             try:
                 cached = self.cache.get(request, max_age=self._category_cache_max_age(profile))
@@ -1248,8 +1294,51 @@ class Router:
             if tier_index > 0 and content_sent:
                 log_gateway_event("stream_fallback_ok", {"tier": tier, "ollama_model": ollama_model})
 
-            completion_chars = tier_completion_chars
-            if content_sent:
+            streamed_text = "".join(tier_text_parts)
+            served = InternalResponse(
+                content=streamed_text,
+                model=ollama_model,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    cache_hit=False,
+                    executor="ollama",
+                    provider_id=f"ollama:{tier.lower()}",
+                    model=ollama_model,
+                ),
+            )
+            # Chunks are buffered until the tier completes, so the confidence
+            # ladder, org pool, and L6 can all run before the client sees
+            # anything — parity with route() (#155).
+            if not tool_calls_sent and streamed_text.strip():
+                try:
+                    escalated = await self._maybe_escalate(
+                        stream_request, served, started, profile=profile, local_ladder=False
+                    )
+                except Exception:
+                    escalated = served
+                if escalated.daari_meta.tier != tier and escalated.content.strip():
+                    add_step(
+                        "stream_escalated", from_tier=tier, to_tier=escalated.daari_meta.tier
+                    )
+                    log_gateway_event(
+                        "stream_escalated",
+                        {"from": tier, "to": escalated.daari_meta.tier},
+                    )
+                    served = escalated
+            # Output guardrails run before the first byte reaches the client
+            # and before cache write-back, so a redacted secret cannot be
+            # served or persisted (#154).
+            if not tool_calls_sent and served.content.strip():
+                served = self._apply_output_policy(served)
+
+            served_tier = served.daari_meta.tier or tier
+            served_model = served.daari_meta.model or served.model or ollama_model
+            rewritten = served.content != streamed_text
+            completion_chars = len(served.content) if rewritten else tier_completion_chars
+            if rewritten:
+                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
+            elif content_sent:
                 for chunk in pending_chunks:
                     yield chunk
             else:
@@ -1260,8 +1349,10 @@ class Router:
             yield "data: [DONE]\n\n"
 
             latency_ms = int((time.perf_counter() - started) * 1000)
+            tier = served_tier
+            ollama_model = served_model
+            streamed_text = served.content
             self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
-            streamed_text = "".join(tier_text_parts)
             if self.usage_ledger is not None:
                 self.usage_ledger.record(
                     tier=tier,
@@ -1277,8 +1368,8 @@ class Router:
                         category=profile.category,
                         complexity=profile.complexity,
                         tier=tier,
-                        confidence=None,
-                        escalated=False,
+                        confidence=served.daari_meta.confidence,
+                        escalated=served.daari_meta.escalated_from is not None,
                         latency_ms=latency_ms,
                     )
                 except Exception:
@@ -1307,18 +1398,8 @@ class Router:
                 except Exception:
                     pass
             if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
-                streamed_response = InternalResponse(
-                    content=streamed_text,
-                    model=ollama_model,
-                    daari_meta=DaariMeta(
-                        tier=tier,
-                        cache_hit=False,
-                        executor="ollama",
-                        provider_id=f"ollama:{tier.lower()}",
-                        latency_ms=latency_ms,
-                        model=ollama_model,
-                    ),
-                )
+                streamed_response = served.model_copy(deep=True)
+                streamed_response.daari_meta.latency_ms = latency_ms
                 try:
                     self.cache.put(request, streamed_response)
                 except Exception:
@@ -1383,6 +1464,74 @@ class Router:
         def sse(event_type: str, payload: dict[str, Any]) -> str:
             return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
 
+        def terminal_events(text: str, tier_label: str | None) -> list[str]:
+            """A complete single-text-block Anthropic message."""
+            event_meta = {
+                "tier": tier_label,
+                "executor": tier_label,
+                "provider_id": tier_label,
+                "stream": True,
+            }
+            return [
+                sse(
+                    "message_start",
+                    {
+                        "type": "message_start",
+                        "message": {
+                            "id": message_id,
+                            "type": "message",
+                            "role": "assistant",
+                            "model": request.model or "daari",
+                            "content": [],
+                            "stop_reason": None,
+                            "stop_sequence": None,
+                            "usage": {"input_tokens": input_tokens, "output_tokens": 0},
+                        },
+                        "daari_meta": event_meta,
+                    },
+                ),
+                sse(
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": 0,
+                        "content_block": {"type": "text", "text": ""},
+                        "daari_meta": event_meta,
+                    },
+                ),
+                sse(
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": 0,
+                        "delta": {"type": "text_delta", "text": text},
+                        "daari_meta": event_meta,
+                    },
+                ),
+                sse(
+                    "content_block_stop",
+                    {"type": "content_block_stop", "index": 0, "daari_meta": event_meta},
+                ),
+                sse(
+                    "message_delta",
+                    {
+                        "type": "message_delta",
+                        "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                        "usage": {"output_tokens": max(0, len(text) // 4)},
+                        "daari_meta": event_meta,
+                    },
+                ),
+                sse("message_stop", {"type": "message_stop", "daari_meta": event_meta}),
+            ]
+
+        # Policy gate before generation, matching route() (#154).
+        policy = await self._apply_input_policy(request, profile)
+        if policy.refusal is not None:
+            log_gateway_event("anthropic_stream_refused", {"tier": policy.refusal_tier})
+            for event in terminal_events(policy.refusal.content, policy.refusal_tier):
+                yield event
+            return
+
         stream_started = time.perf_counter()
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
@@ -1437,6 +1586,7 @@ class Router:
             block_index = 0
             tool_use_sent = False
             completion_chars = 0
+            tier_text_parts: list[str] = []
             try:
                 async for event in stream_executor.stream(stream_request):
                     message = event.get("message", {})
@@ -1495,6 +1645,7 @@ class Router:
                             pending.append(text_block_start(block_index))
                             text_block_open = True
                         completion_chars += len(delta)
+                        tier_text_parts.append(delta)
                         pending.append(
                             sse(
                                 "content_block_delta",
@@ -1537,6 +1688,52 @@ class Router:
                     },
                 )
                 continue
+
+            streamed_text = "".join(tier_text_parts)
+            served = InternalResponse(
+                content=streamed_text,
+                model=model_name,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    cache_hit=False,
+                    executor="ollama",
+                    provider_id=f"ollama:{tier.lower()}",
+                    model=model_name,
+                ),
+            )
+            # Events are buffered until the tier completes, so the confidence
+            # ladder, org pool, and L6 can run before the client sees anything,
+            # and output guardrails can rewrite the text (#154, #155).
+            if not tool_use_sent and streamed_text.strip():
+                try:
+                    escalated = await self._maybe_escalate(
+                        stream_request, served, stream_started, profile=profile, local_ladder=False
+                    )
+                except Exception:
+                    escalated = served
+                if escalated.daari_meta.tier != tier and escalated.content.strip():
+                    log_gateway_event(
+                        "anthropic_stream_escalated",
+                        {"from": tier, "to": escalated.daari_meta.tier},
+                    )
+                    served = escalated
+                served = self._apply_output_policy(served)
+
+            if served.content != streamed_text and not tool_use_sent:
+                for event in terminal_events(served.content, served.daari_meta.tier or tier):
+                    yield event
+                log_gateway_event(
+                    "anthropic_stream_done",
+                    {
+                        "tier": served.daari_meta.tier or tier,
+                        "ollama_model": served.daari_meta.model or model_name,
+                        "latency_ms": int((time.perf_counter() - stream_started) * 1000),
+                        "completion_chars": len(served.content),
+                        "rewritten": True,
+                        "agent_flow": agent_flow,
+                    },
+                )
+                return
 
             if not any_output:
                 pending.append(message_start)
@@ -1937,7 +2134,15 @@ class Router:
         response: InternalResponse,
         started: float,
         profile: PromptProfile | None = None,
+        local_ladder: bool = True,
     ) -> InternalResponse:
+        """Escalate a low-confidence answer up the tier ladder.
+
+        Streaming callers pass local_ladder=False: `_stream_tier_chain` already
+        picked and fell back through the local tiers, so re-running them
+        non-streamed would only duplicate work. Org pool and L6 still apply,
+        which is what streaming used to miss entirely (#155).
+        """
         threshold = self._confidence_threshold_for(request, profile)
         confidence = score_l3_confidence(response.content)
         response.daari_meta.confidence = confidence
@@ -1945,7 +2150,7 @@ class Router:
         if confidence >= threshold:
             return response
 
-        tier_chain = ["L3", "L4", "L5"]
+        tier_chain = ["L3", "L4", "L5"] if local_ladder else []
         cap = self._effective_tier_cap(request)
         if cap in tier_chain:
             tier_chain = tier_chain[: tier_chain.index(cap) + 1]
