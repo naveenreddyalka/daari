@@ -16,6 +16,39 @@ from typing import Any
 import yaml
 
 
+MIN_SAMPLES = 20
+
+
+def _flatten_category(row: dict[str, Any]) -> tuple[float, int] | None:
+    """Return (accept_rate, n) for one category row.
+
+    Accepts both shapes: the flat `{"accept_rate": .., "n": ..}` summary and the
+    real `build_collective_stats` payload, which nests per tier and reports raw
+    `outcomes`/`accepts`/`rejects` counts with no rate at all.
+    """
+    if "accept_rate" in row or "n" in row or "samples" in row:
+        n = int(row.get("n") or row.get("samples") or 0)
+        return float(row.get("accept_rate") or 0.0), n
+
+    accepts = 0
+    rejects = 0
+    outcomes = 0
+    for tier_row in row.values():
+        if not isinstance(tier_row, dict):
+            continue
+        accepts += int(tier_row.get("accepts") or 0)
+        rejects += int(tier_row.get("rejects") or 0)
+        outcomes += int(tier_row.get("outcomes") or 0)
+    if not outcomes:
+        return None
+    judged = accepts + rejects
+    # No explicit accept/reject signal means no evidence about quality, even
+    # though the category has traffic.
+    if not judged:
+        return None
+    return accepts / judged, outcomes
+
+
 def propose_routing_defaults(
     stats: dict[str, Any],
     *,
@@ -23,12 +56,10 @@ def propose_routing_defaults(
 ) -> Path:
     """Build a proposed defaults snippet from aggregate stats.
 
-    Expected stats shape (flexible):
-      {
-        "by_category": {"code": {"accept_rate": 0.9, "n": 120}, ...},
-        "suggested_confidence_threshold": 0.65,  # optional override
-        "prefer": "balanced"
-      }
+    Accepts either a flat summary or a `daari learn export-stats` payload:
+      {"by_category": {"code": {"accept_rate": 0.9, "n": 120}}}
+      {"categories": {"code": {"L3": {"outcomes": 60, "accepts": 57, ...}}}}
+    Optional overrides: `suggested_confidence_threshold`, `prefer`.
     """
     root = out_dir or (Path.home() / ".daari" / "proposals")
     root.mkdir(parents=True, exist_ok=True)
@@ -36,24 +67,24 @@ def propose_routing_defaults(
     path = root / f"routing-defaults-{stamp}.yaml"
 
     by_category = stats.get("by_category") or stats.get("categories") or {}
-    confidence = stats.get("suggested_confidence_threshold")
-    if confidence is None:
-        # Heuristic: if overall accept rate is high, lower threshold slightly.
-        rates = [
-            float(v.get("accept_rate", 0))
-            for v in by_category.values()
-            if isinstance(v, dict) and v.get("n", 0) >= 20
-        ]
-        confidence = 0.65 if rates and sum(rates) / len(rates) >= 0.85 else 0.7
-
-    category_policies: dict[str, Any] = {}
+    evidence: dict[str, tuple[float, int]] = {}
     for name, row in by_category.items():
         if not isinstance(row, dict):
             continue
-        n = int(row.get("n") or row.get("samples") or 0)
-        if n < 20:
+        flattened = _flatten_category(row)
+        if flattened is not None:
+            evidence[name] = flattened
+
+    confidence = stats.get("suggested_confidence_threshold")
+    if confidence is None:
+        # Heuristic: if overall accept rate is high, lower threshold slightly.
+        rates = [rate for rate, n in evidence.values() if n >= MIN_SAMPLES]
+        confidence = 0.65 if rates and sum(rates) / len(rates) >= 0.85 else 0.7
+
+    category_policies: dict[str, Any] = {}
+    for name, (accept, n) in evidence.items():
+        if n < MIN_SAMPLES:
             continue
-        accept = float(row.get("accept_rate") or 0)
         # High-accept categories can stay on cheaper tiers; low-accept bump.
         if accept >= 0.9:
             category_policies[name] = {"tier": "L3"}

@@ -2342,6 +2342,8 @@ class AppContext:
             return
 
         async def _sync_loop() -> None:
+            from daari.gateway.request_log import log_gateway_event
+
             try:
                 while True:
                     await asyncio.sleep(interval)
@@ -2351,9 +2353,24 @@ class AppContext:
                         try:
                             from daari.enterprise.policy_sync import sync_policy_once
 
-                            sync_policy_once(self.settings, self.router, persist=False)
-                        except Exception:
-                            pass
+                            # Blocking httpx fetch — keep it off the event loop so
+                            # in-flight gateway requests don't stall on the IdP.
+                            status = await asyncio.to_thread(
+                                sync_policy_once,
+                                self.settings,
+                                self.router,
+                                persist=False,
+                            )
+                            if not status.get("ok"):
+                                log_gateway_event(
+                                    "policy_sync_skipped",
+                                    {"reason": status.get("reason", "unknown")},
+                                )
+                        except Exception as exc:
+                            log_gateway_event(
+                                "policy_sync_failed",
+                                {"error": f"{type(exc).__name__}: {exc}"},
+                            )
             except asyncio.CancelledError:
                 return
 
