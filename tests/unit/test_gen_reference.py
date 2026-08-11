@@ -51,8 +51,7 @@ def test_main_writes_both_pages(tmp_path, monkeypatch):
     out = tmp_path / "ref"
     module.main(str(out))
     assert (out / "config.md").exists()
-    assert (out / "api.md").exists()
     assert (out / "http-api.md").exists()
-    assert (out / "http-api.md").read_text(encoding="utf-8") == (
-        out / "api.md"
-    ).read_text(encoding="utf-8")
+    # http-api.md is the only HTTP reference page; a second api.md copy used to
+    # ship as an unlinked duplicate of the same content.
+    assert not (out / "api.md").exists()
