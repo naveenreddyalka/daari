@@ -708,44 +708,59 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             role = _require_admin_role(request, ctx)
             body = await request.json()
             persist = bool(body.pop("persist", False)) if isinstance(body, dict) else False
-            routing = body.get("routing") or {}
-            frontier = body.get("frontier") or {}
-            cache = body.get("cache") or {}
-            boundaries = body.get("boundaries") or {}
+            from daari.config.validate import (
+                ConfigValidationError,
+                merged_boundaries,
+                validated_cache,
+                validated_frontier,
+                validated_routing,
+            )
+
+            # Validate the whole patch before touching live settings, so a bad
+            # field is a 400 instead of a half-applied config.
+            try:
+                routing = validated_routing(body.get("routing") or {})
+                frontier = validated_frontier(body.get("frontier") or {})
+                cache = validated_cache(body.get("cache") or {})
+                raw_boundaries = body.get("boundaries") or {}
+                new_boundaries = (
+                    merged_boundaries(ctx.settings.boundaries, raw_boundaries)
+                    if raw_boundaries
+                    else None
+                )
+            except ConfigValidationError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            boundaries = raw_boundaries
             if "confidence_threshold" in routing:
-                ctx.router.confidence_threshold = float(routing["confidence_threshold"])
-                ctx.settings.routing.confidence_threshold = float(routing["confidence_threshold"])
+                ctx.router.confidence_threshold = routing["confidence_threshold"]
+                ctx.settings.routing.confidence_threshold = routing["confidence_threshold"]
             if "latency_budget_ms" in routing:
-                ctx.router.latency_budget_ms = int(routing["latency_budget_ms"])
-                ctx.settings.routing.latency_budget_ms = int(routing["latency_budget_ms"])
+                ctx.router.latency_budget_ms = routing["latency_budget_ms"]
+                ctx.settings.routing.latency_budget_ms = routing["latency_budget_ms"]
             if "max_tier_for_chat" in routing:
                 ctx.router.max_tier_for_chat = routing["max_tier_for_chat"]
                 ctx.settings.routing.max_tier_for_chat = routing["max_tier_for_chat"]
             if "prefer" in routing:
-                ctx.router.model_preference = str(routing["prefer"])
-                ctx.settings.routing.prefer = str(routing["prefer"])
+                ctx.router.model_preference = routing["prefer"]
+                ctx.settings.routing.prefer = routing["prefer"]
             for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
                 if key in frontier:
-                    setattr(ctx.settings.frontier, key, float(frontier[key]))
+                    setattr(ctx.settings.frontier, key, frontier[key])
                     if hasattr(ctx.router, f"frontier_{key}"):
-                        setattr(ctx.router, f"frontier_{key}", float(frontier[key]))
+                        setattr(ctx.router, f"frontier_{key}", frontier[key])
             if "l0_ttl_seconds" in cache:
-                ctx.settings.cache.l0.ttl_seconds = float(cache["l0_ttl_seconds"])
+                ctx.settings.cache.l0.ttl_seconds = cache["l0_ttl_seconds"]
             if "l1_ttl_seconds" in cache:
-                ctx.settings.cache.l1.ttl_seconds = float(cache["l1_ttl_seconds"])
+                ctx.settings.cache.l1.ttl_seconds = cache["l1_ttl_seconds"]
             if "l1_similarity_threshold" in cache:
-                ctx.settings.cache.l1.similarity_threshold = float(
-                    cache["l1_similarity_threshold"]
-                )
-                ctx.router.semantic_cache.similarity_threshold = float(
-                    cache["l1_similarity_threshold"]
-                )
-            if boundaries:
+                ctx.settings.cache.l1.similarity_threshold = cache["l1_similarity_threshold"]
+                ctx.router.semantic_cache.similarity_threshold = cache[
+                    "l1_similarity_threshold"
+                ]
+            if new_boundaries is not None:
                 from daari.gateway.boundaries import default_local_judge, engine_from_settings
 
-                for key, value in boundaries.items():
-                    if hasattr(ctx.settings.boundaries, key):
-                        setattr(ctx.settings.boundaries, key, value)
+                ctx.settings.boundaries = new_boundaries
                 ctx.router.boundaries = engine_from_settings(
                     ctx.settings, judge=default_local_judge
                 )

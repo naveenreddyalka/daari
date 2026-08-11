@@ -176,10 +176,18 @@ def enterprise_policy_sync(
     """Refresh signed org policy into the local config (issue #118)."""
     from daari.enterprise.bootstrap import apply_org_config, fetch_org_config, verify_signature
 
+    from daari.enterprise.policy_sync import policy_url_is_secure
+
     settings = get_settings()
     url = org_config or settings.enterprise.policy_sync_url or ""
     if not url:
         typer.echo("No policy_sync_url configured.", err=True)
+        raise typer.Exit(code=1)
+    if not insecure and not policy_url_is_secure(url):
+        typer.echo(
+            "Policy sync requires an https:// URL (or loopback). Use --insecure to override.",
+            err=True,
+        )
         raise typer.Exit(code=1)
     data, raw, signature = fetch_org_config(
         url, token=settings.enterprise.org_token or ""

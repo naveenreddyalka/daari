@@ -2,10 +2,39 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+CONFIG_FILE_MODE = 0o600
+
+
+def write_config_atomically(path: Path, document: dict[str, Any]) -> None:
+    """Replace `path` in one step, owner-only.
+
+    The file lives next to provider API keys, and a truncated write would leave
+    the daemon unable to start, so serialize to a sibling temp file first and
+    rename over the target.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = yaml.safe_dump(document, sort_keys=False)
+    handle, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
+    )
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(tmp_path, CONFIG_FILE_MODE)
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def persist_safe_config(
@@ -43,5 +72,5 @@ def persist_safe_config(
         base = dict(existing.get(section) or {})
         base.update(patch[section])
         existing[section] = base
-    path.write_text(yaml.safe_dump(existing, sort_keys=False), encoding="utf-8")
+    write_config_atomically(path, existing)
     return path
