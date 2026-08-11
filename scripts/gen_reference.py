@@ -103,10 +103,7 @@ def main(output_dir: str | None = None) -> None:
     config_path = out / "config.md"
     api_path = out / "http-api.md"
     config_path.write_text(render_config_reference(), encoding="utf-8")
-    # Keep legacy api.md name for older callers; http-api.md is the docs site path.
-    api_body = render_api_reference()
-    api_path.write_text(api_body, encoding="utf-8")
-    (out / "api.md").write_text(api_body, encoding="utf-8")
+    api_path.write_text(render_api_reference(), encoding="utf-8")
     print(f"Wrote {config_path} and {api_path}")
 
 
