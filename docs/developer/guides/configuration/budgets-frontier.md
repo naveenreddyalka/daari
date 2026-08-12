@@ -14,12 +14,35 @@ frontier:
 
 Soft warnings then hard stop.
 
-!!! warning "Per-key budgets are not yet isolated"
-    A virtual key can carry its own budget, but spend is currently checked against
-    total frontier spend rather than that key's own usage, so one key's traffic can
-    exhaust another key's allowance. Track
-    [#158](https://github.com/naveenreddyalka/daari/issues/158). Until it lands,
-    treat `frontier.daily_budget_usd` as the only reliable cap.
+## Per-key budgets
+
+A virtual key can carry its own caps, charged only against that key's own spend:
+
+```bash
+daari keys create ci-bot --daily-budget 2 --monthly-budget 20
+```
+
+Each window is checked independently, and the caps above act as an outer ceiling
+that no key can exceed regardless of its own allowance. A key over budget gets
+`402` naming the window that tripped, so a client can tell "I am out of budget"
+from "the org is out of budget":
+
+```json
+{
+  "error": {
+    "type": "budget_exceeded",
+    "message": "Virtual key daily frontier budget ($2.0000) exceeded — $2.4310 spent.",
+    "client_id": "ci-bot",
+    "window": "daily",
+    "budget_usd": 2.0,
+    "spend_usd": 2.431
+  }
+}
+```
+
+Only frontier (L6) usage counts. Local tiers and cache hits are free and never
+consume a budget. Spend is priced per model from `pricing.models`, so a key's
+remaining allowance reflects the models it actually used.
 
 ## Pricing
 
