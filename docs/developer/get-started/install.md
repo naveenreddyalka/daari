@@ -33,18 +33,29 @@ ollama pull llama3.2:3b
 daari serve
 ```
 
-## Option C — Homebrew or pip
+## Option C — Homebrew (macOS/Linux)
 
-!!! warning "Neither works yet — use Option A or B"
-    `pip install daari` fails because nothing is published to PyPI, and
-    `brew install daari` fails because there is no tap. Installing the checked-in
-    formula by path fails too: Homebrew 6 rejects formulae outside a tap.
+```bash
+brew tap naveenreddyalka/daari
+brew trust naveenreddyalka/daari
+brew install daari
+ollama pull llama3.2:3b
+daari serve
+```
 
-The formula at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb)
-is otherwise complete — real tarball hash, all 30 dependency resources, checksums
-verified. What remains is publishing, tracked in
-[#160](https://github.com/naveenreddyalka/daari/issues/160): a PyPI trusted
-publisher and a public tap repo. See [Homebrew notes](../../setup/homebrew.md).
+`brew trust` is not optional — Homebrew 6 refuses to load formulae from
+third-party taps until you trust them explicitly. The formula compiles the Rust
+extensions in `pydantic-core` and `watchfiles`, so the first install pulls the
+Rust toolchain and takes a few minutes.
+
+Tap: [naveenreddyalka/homebrew-daari](https://github.com/naveenreddyalka/homebrew-daari).
+
+## Option D — pip
+
+!!! warning "Not published yet"
+    `pip install daari` fails; nothing is on PyPI. Tracked in
+    [#160](https://github.com/naveenreddyalka/daari/issues/160), which needs a
+    one-time trusted-publisher registration. Use Option A, B, or C.
 
 ## Verify
 

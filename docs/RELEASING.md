@@ -84,11 +84,14 @@ are generated — never hand-edited:
 python scripts/update_formula.py --version X.Y.Z
 ```
 
-The formula also cannot be installed from a path. Homebrew 6 rejects formulae
-outside a tap (`Error: Homebrew requires formulae to be in a tap`), so shipping
-`brew install daari` needs a separate public `naveenreddyalka/homebrew-daari`
-repository holding this file. To validate changes before that repo exists, use a
-throwaway local tap — `brew fetch` verifies every checksum without installing:
+The formula cannot be installed from a path — Homebrew 6 rejects formulae outside
+a tap (`Error: Homebrew requires formulae to be in a tap`). It is served from
+[naveenreddyalka/homebrew-daari](https://github.com/naveenreddyalka/homebrew-daari);
+after regenerating, copy the file into that repo. Users additionally need
+`brew trust naveenreddyalka/daari`, which Homebrew 6 requires for third-party taps.
+
+To validate a change without touching the public tap, use a throwaway local tap —
+`brew fetch` verifies every checksum without installing:
 
 ```bash
 brew tap-new --no-git naveenreddyalka/formulatest
