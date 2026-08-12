@@ -737,6 +737,35 @@ Covered by `tests/unit/test_upstream_retry.py` (35 tests) and
 
 ---
 
+### Test isolation: a flake and a hazard
+
+`tests/integration/test_redis_l1_gateway.py` failed roughly one run in ten while
+passing in isolation. Two independent causes, found by reproducing it rather than
+by reading the test:
+
+**The flake was `cache.l1.shadow_sample_rate`.** It ships at 0.05, so one in
+twenty L1 hits spawns a background task that re-executes the request to audit the
+cached answer. The test asserted its mock executor ran exactly once. Because the
+audit runs as a task, whether it had incremented that counter by assertion time
+was a race — the cache assertions always passed, which is why the failure surfaced
+as a call count and looked unrelated to caching. The shared fixture now pins the
+rate to 0; tests that exercise shadow sampling set it themselves, and the shipped
+default is asserted separately so disabling it for tests cannot quietly disable it
+for users.
+
+**The hazard was `~/.daari`.** Six settings defaulted there, including the
+command-context store that a locally running `daari serve` writes, its L1 cache,
+and — worst — the real virtual-keys database. The suite was reading and writing a
+live daemon's state, and a developer's actual credential store. `HOME` is now
+redirected per test, which fixes the whole class rather than the six paths found
+today.
+
+Verified by 25 consecutive full-suite runs with no failures, against two failures
+in the preceding 22. Guarded by `tests/unit/test_fixture_isolation.py` (8 tests),
+which walks the settings tree and fails on any path escaping to the real home.
+
+---
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
