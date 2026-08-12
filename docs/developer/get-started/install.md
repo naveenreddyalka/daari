@@ -33,19 +33,18 @@ ollama pull llama3.2:3b
 daari serve
 ```
 
-## Option C — Homebrew
+## Option C — Homebrew or pip
 
-!!! warning "Not published yet"
-    There is no `daari` package on PyPI and no Homebrew tap yet, so
-    `pip install daari` and `brew install daari` both fail. Use Option A or B.
+!!! warning "Neither works yet — use Option A or B"
+    `pip install daari` fails because nothing is published to PyPI, and
+    `brew install daari` fails because there is no tap. Installing the checked-in
+    formula by path fails too: Homebrew 6 rejects formulae outside a tap.
 
-The formula is checked in at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb) and works today from a clone:
-
-```bash
-brew install --HEAD --formula ./Formula/daari.rb
-```
-
-A public tap needs a release tarball to hash — see [Homebrew notes](../../setup/homebrew.md).
+The formula at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb)
+is otherwise complete — real tarball hash, all 30 dependency resources, checksums
+verified. What remains is publishing, tracked in
+[#160](https://github.com/naveenreddyalka/daari/issues/160): a PyPI trusted
+publisher and a public tap repo. See [Homebrew notes](../../setup/homebrew.md).
 
 ## Verify
 
