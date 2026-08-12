@@ -174,7 +174,7 @@ pytest -m benchmark                 # optional latency checks
 | Org cache retry/backoff hardening | [x] | retries transient org cache failures with exponential backoff |
 | L1 semantic threshold + bench hardening | [x] | default threshold tuned to `0.88`; `scripts/bench.sh` now deterministically checks L0 and L1 |
 | Doctor embedding-model check | [x] | `daari doctor` now validates `cache.l1.embedding_model` (`nomic-embed-text`) |
-| PyPI publish prep | [x] | enriched `pyproject.toml` metadata + `.github/workflows/publish.yml` for PyPI/TestPyPI |
+| PyPI publish prep | [~] | `pyproject.toml` metadata + `publish.yml` are correct and the build job passes, but no release ever reached PyPI: the publish job failed `invalid-publisher` on v1.1.1/v1.1.2/v1.2.0 because no trusted publisher is registered. One-time PyPI setup, see [RELEASING.md](RELEASING.md#blocking-one-time-setup-pypi-trusted-publisher) · [#160](https://github.com/naveenreddyalka/daari/issues/160) |
 | Cursor setup smoke script | [x] | `scripts/smoke-cursor-dry-run.sh` for CI/local setup dry-run validation |
 | Cursor tunnel setup script | [x] | `scripts/tunnel.sh` starts local daemon + cloudflared and prints `/v1` URL |
 
