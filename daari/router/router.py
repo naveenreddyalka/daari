@@ -867,6 +867,41 @@ class Router:
                     self._emit_org_feedback(last_user, org_l1_hit)
                     return org_l1_hit
 
+        deterministic = await self._resolve_deterministic_tier(
+            request, last_user, dev_match, started
+        )
+        if deterministic is not None:
+            return deterministic
+
+        # The draft only affects generation (local and frontier); cache reads
+        # and writes keep using the original request so keys are unaffected.
+        gen_request = request
+        if draft_response is not None:
+            gen_request = request.model_copy(deep=True)
+            gen_request.messages = [
+                *request.messages,
+                Message(
+                    role="system",
+                    content=_draft_hint(draft_response.content, draft_similarity),
+                ),
+            ]
+            add_step("draft_injected", similarity=round(draft_similarity, 4))
+        return await self._route_generation(
+            gen_request, request, profile, started, cache_skip=cache_skip
+        )
+
+    async def _resolve_deterministic_tier(
+        self,
+        request: InternalRequest,
+        last_user: str,
+        dev_match: DevCommandMatch | None,
+        started: float,
+    ) -> InternalResponse | None:
+        """Tiers that answer without a model: Lt tools, live fetch, L2, integrations.
+
+        Shared with the streaming paths, which reached none of these before
+        (#155). Agent turns are excluded: they carry their own tool protocol.
+        """
         if dev_match is not None and dev_match.action == "execute" and dev_match.command:
             confirmed = request.meta.confirm_tool or bool(re.search(r"(?i)(?:^|\s)--yes(?:\s|$)", last_user))
             policy = self.policy.evaluate(dev_match.command, confirmed=confirmed)
@@ -971,17 +1006,21 @@ class Router:
                 self._record(integrated, started)
                 return integrated
 
-        # The draft only affects generation (local and frontier); cache reads
-        # and writes keep using the original request so keys are unaffected.
-        gen_request = request
-        if draft_response is not None:
-            gen_request = request.model_copy(deep=True)
-            gen_request.messages = [
-                *gen_request.messages,
-                Message(role="system", content=_draft_hint(draft_response.content, draft_similarity)),
-            ]
-            add_step("draft_injected", similarity=round(draft_similarity, 4))
+        return None
 
+    async def _route_generation(
+        self,
+        gen_request: InternalRequest,
+        request: InternalRequest,
+        profile: PromptProfile | None,
+        started: float,
+        cache_skip: bool,
+    ) -> InternalResponse:
+        """Local model tiers, confidence escalation, and cache write-back.
+
+        `gen_request` may carry a draft hint; `request` stays pristine so cache
+        keys are unaffected.
+        """
         await self._refresh_warm_models()
         initial_tier = self._choose_initial_tier(request, profile)
         try:
@@ -1149,6 +1188,33 @@ class Router:
             finish_trace(policy.refusal_tier)
             return
 
+        # Deterministic tiers (Lt tools, L2 rules, live fetch, integrations)
+        # answer without a model and were unreachable while streaming (#155).
+        if not agent_flow:
+            last_user = self._last_user_text(request.messages)
+            deterministic = await self._resolve_deterministic_tier(
+                request, last_user, match_dev_command(last_user), started
+            )
+            if deterministic is not None:
+                tier = deterministic.daari_meta.tier
+                log_gateway_event(
+                    "stream_deterministic_tier", {"tier": tier, "model": client_model}
+                )
+                for chunk in terminal_stream(deterministic.content):
+                    yield chunk
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                if self.usage_ledger is not None:
+                    self.usage_ledger.record(
+                        tier=tier,
+                        cache_hit=deterministic.daari_meta.cache_hit,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(deterministic.content),
+                        client_id=request.meta.client_id,
+                    )
+                add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
+                finish_trace(tier)
+                return
+
         if cacheable:
             try:
                 cached = self.cache.get(request, max_age=self._category_cache_max_age(profile))
@@ -1306,9 +1372,54 @@ class Router:
                     model=ollama_model,
                 ),
             )
-            # Chunks are buffered until the tier completes, so the confidence
-            # ladder, org pool, and L6 can all run before the client sees
-            # anything — parity with route() (#155).
+            # A low-confidence answer escalates to L6. When nothing needs the
+            # complete text first, relay the frontier SSE straight through so
+            # the client sees tokens as they arrive (#155).
+            confidence = score_l3_confidence(streamed_text)
+            threshold = self._confidence_threshold_for(stream_request, profile)
+            if not tool_calls_sent and self._can_relay_frontier_stream(
+                stream_request, streamed_text, confidence, threshold
+            ):
+                budget_state = self._frontier_budget_state()
+                add_step("escalate", to="L6", local_confidence=confidence, relay=True)
+                log_gateway_event("stream_frontier_relay", {"from": tier, "to": "L6"})
+                relayed: list[str] = []
+                try:
+                    l6_request = await self._frontier_request(stream_request)
+                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    async for delta in self.frontier.stream(
+                        l6_request, escalated_from=tier, local_confidence=confidence
+                    ):
+                        relayed.append(delta)
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+                except Exception as exc:
+                    log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
+                    # Nothing was emitted yet if the failure came before the
+                    # first delta; otherwise the partial answer stands.
+                    if not relayed:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
+                        relayed.append(streamed_text)
+                relayed_text = "".join(relayed)
+                yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                yield usage_chunk(len(relayed_text))
+                yield "data: [DONE]\n\n"
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
+                self.metrics.record_escalation()
+                if budget_state == "soft":
+                    add_step("budget_check", exceeded=False, soft=True)
+                if self.usage_ledger is not None:
+                    self.usage_ledger.record(
+                        tier="L6",
+                        cache_hit=False,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(relayed_text),
+                        client_id=request.meta.client_id,
+                    )
+                add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+                finish_trace("L6")
+                return
+
             if not tool_calls_sent and streamed_text.strip():
                 try:
                     escalated = await self._maybe_escalate(
@@ -1533,6 +1644,29 @@ class Router:
             return
 
         stream_started = time.perf_counter()
+
+        # Deterministic tiers (Lt tools, L2 rules, live fetch, integrations)
+        # answer without a model and were unreachable while streaming (#155).
+        if not agent_flow:
+            last_user = self._last_user_text(request.messages)
+            deterministic = await self._resolve_deterministic_tier(
+                request, last_user, match_dev_command(last_user), stream_started
+            )
+            if deterministic is not None:
+                tier = deterministic.daari_meta.tier
+                log_gateway_event("anthropic_stream_deterministic_tier", {"tier": tier})
+                for event in terminal_events(deterministic.content, tier):
+                    yield event
+                if self.usage_ledger is not None:
+                    self.usage_ledger.record(
+                        tier=tier,
+                        cache_hit=deterministic.daari_meta.cache_hit,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(deterministic.content),
+                        client_id=request.meta.client_id,
+                    )
+                return
+
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
             stream_executor = self._executor_for_tier(tier)
@@ -2190,11 +2324,7 @@ class Router:
             except Exception:
                 add_step("org_pool_failed")
 
-        if request.meta.no_frontier or not self.frontier_enabled:
-            response.daari_meta.warning = "below_confidence_threshold"
-            return response
-
-        if self.frontier is None or not self.frontier.api_key:
+        if not self._frontier_reachable(request):
             response.daari_meta.warning = "below_confidence_threshold"
             return response
 
@@ -2208,9 +2338,7 @@ class Router:
 
         add_step("escalate", to="L6", local_confidence=confidence)
         try:
-            l6_request = self._slim_for_frontier(request)
-            l6_request = await self._compress_for_frontier(l6_request)
-            l6_request = self._scrub_for_frontier(l6_request)
+            l6_request = await self._frontier_request(request)
             l6_response = await self.frontier.execute(
                 l6_request,
                 escalated_from=response.daari_meta.tier,
@@ -2226,6 +2354,39 @@ class Router:
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
+
+    def _frontier_reachable(self, request: InternalRequest) -> bool:
+        """Whether L6 is configured and permitted for this request."""
+        if request.meta.no_frontier or not self.frontier_enabled:
+            return False
+        return self.frontier is not None and bool(self.frontier.api_key)
+
+    async def _frontier_request(self, request: InternalRequest) -> InternalRequest:
+        """Apply the outbound slim/compress/scrub pipeline before leaving the device."""
+        l6_request = self._slim_for_frontier(request)
+        l6_request = await self._compress_for_frontier(l6_request)
+        return self._scrub_for_frontier(l6_request)
+
+    def _can_relay_frontier_stream(
+        self, request: InternalRequest, text: str, confidence: float, threshold: float
+    ) -> bool:
+        """Whether an escalated stream can be relayed chunk-by-chunk.
+
+        Output guardrails and the org pool both need the complete answer before
+        anything is emitted, so they force the buffered path instead.
+        """
+        if not text.strip() or confidence >= threshold:
+            return False
+        if self.org_pool is not None:
+            return False
+        if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
+            if getattr(self.guardrails, "output_rules", None):
+                return False
+        if not self._frontier_reachable(request):
+            return False
+        if self._frontier_budget_state() == "exceeded":
+            return False
+        return callable(getattr(self.frontier, "stream", None))
 
     def _slim_for_frontier(self, request: InternalRequest) -> InternalRequest:
         """Cut frontier token spend: drop daari-internal hints, collapse
