@@ -213,6 +213,52 @@ class ContextSettings(BaseModel):
     path: str = "~/.daari/context/commands"
 
 
+class UpstreamRetrySettings(BaseModel):
+    attempts: int = Field(
+        default=3,
+        description=(
+            "Total attempts per upstream call, counting the first. `1` disables "
+            "retries. Only transient failures are retried (408, 429, 5xx, connect "
+            "and read timeouts); a 401 or malformed body fails immediately."
+        ),
+    )
+    base_delay_ms: int = Field(
+        default=200,
+        description="First backoff, doubled per retry up to `max_delay_ms`.",
+    )
+    max_delay_ms: int = Field(
+        default=5_000, description="Ceiling for a single backoff interval."
+    )
+    jitter: float = Field(
+        default=0.5,
+        description=(
+            "Fraction of each backoff that is randomized, keeping the delay in "
+            "[d*(1-jitter), d]. Spreads retries from requests that failed "
+            "together instead of returning them in lockstep."
+        ),
+    )
+
+
+class UpstreamSettings(BaseModel):
+    """Timeouts and retries for calls daari makes to model backends (#159)."""
+
+    local_timeout_seconds: float = Field(
+        default=120.0,
+        description=(
+            "Request timeout for local backends (Ollama, MLX). Generous because a "
+            "large local model on a cold start can be genuinely slow."
+        ),
+    )
+    frontier_timeout_seconds: float = Field(
+        default=90.0,
+        description=(
+            "Request timeout for frontier (L6) providers. Lower than local, since "
+            "a hosted API that has not answered in 90s is usually not going to."
+        ),
+    )
+    retry: UpstreamRetrySettings = Field(default_factory=UpstreamRetrySettings)
+
+
 class ModelPrice(BaseModel):
     """USD per 1M tokens, which is how providers quote list prices."""
 
@@ -422,6 +468,7 @@ class Settings(BaseSettings):
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
     pricing: PricingSettings = Field(default_factory=PricingSettings)
+    upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     learning: LearningSettings = Field(default_factory=LearningSettings)

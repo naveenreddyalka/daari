@@ -698,6 +698,45 @@ two-key isolation and attribution for keys created without `--client-id`.
 
 ---
 
+### Upstream retries and per-tier timeouts ([#159](https://github.com/naveenreddyalka/daari/issues/159))
+
+Every upstream call got exactly one attempt, so a single transient 429, connection
+reset, or 503 failed the request outright. Worse, the frontier pool advanced to
+the next provider on *any* exception, spending a provider slot on a blip that a
+200 ms backoff would have cleared.
+
+`daari/router/retry.py` adds bounded exponential backoff with equal jitter, wired
+into Ollama, MLX, and frontier calls. Three properties matter more than the
+backoff itself:
+
+- **Only transient failures retry.** 408, 429, 5xx, connect and read timeouts.
+  A 401 or malformed body fails immediately, because retrying it only delays an
+  error the caller has to see.
+- **The retry budget never outlives the request timeout.** A backoff that would
+  land past the deadline is not attempted, so retries cannot turn a slow request
+  into a hung one.
+- **Retries sit below the ledger write.** One client request stays one ledger
+  row, so a flaky upstream cannot inflate request counts or spend.
+
+`Retry-After` is honored when present, in both seconds and HTTP-date form, and
+overrides the computed backoff. Jitter spreads retries from requests that failed
+together, which otherwise return in lockstep and rebuild the load that caused the
+failure.
+
+Timeouts are now per-tier rather than a hardcoded 120s: `upstream.local_timeout_seconds`
+defaults to 120s (a cold local model is genuinely slow) and
+`upstream.frontier_timeout_seconds` to 90s (a hosted API silent for 90s usually
+stays silent).
+
+Each retry becomes an `upstream_retry` trace step carrying the status and delay,
+and increments `daari_upstream_retries_total`. A rising counter means backoff is
+absorbing instability the client never saw.
+
+Covered by `tests/unit/test_upstream_retry.py` (35 tests) and
+`tests/unit/test_upstream_retry_wiring.py` (14 tests).
+
+---
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

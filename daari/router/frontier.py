@@ -10,6 +10,7 @@ import httpx
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.observability.tokens import openai_token_usage
 from daari.observability.trace import add_step
+from daari.router.retry import RetryPolicy, run_upstream
 
 
 @dataclass
@@ -24,6 +25,8 @@ class FrontierExecutor:
     # prefixes automatically, so no payload change is needed there.
     prompt_cache: bool = True
     transport: httpx.AsyncBaseTransport | None = None
+    retry: RetryPolicy | None = None
+    metrics: Any = None
 
     def _build_messages(self, request: InternalRequest) -> list[dict[str, Any]]:
         messages = [m.model_dump(exclude_none=True) for m in request.messages]
@@ -110,12 +113,24 @@ class FrontierExecutor:
             "stream": False,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        async with httpx.AsyncClient(
-            base_url=self.base_url, timeout=self.timeout, transport=self.transport
-        ) as client:
-            response = await client.post("/chat/completions", json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+
+        async def attempt() -> dict[str, Any]:
+            async with httpx.AsyncClient(
+                base_url=self.base_url, timeout=self.timeout, transport=self.transport
+            ) as client:
+                response = await client.post(
+                    "/chat/completions", json=payload, headers=headers
+                )
+                response.raise_for_status()
+                return response.json()
+
+        data = await run_upstream(
+            attempt,
+            upstream=f"frontier:{self.provider}",
+            policy=self.retry,
+            timeout=self.timeout,
+            metrics=self.metrics,
+        )
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         latency_ms = int((time.perf_counter() - started) * 1000)
         prompt_chars = sum(len(message.content or "") for message in request.messages)
