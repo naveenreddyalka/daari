@@ -8,6 +8,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.observability.tokens import openai_token_usage
 from daari.observability.trace import add_step
 
 
@@ -117,6 +118,8 @@ class FrontierExecutor:
             data = response.json()
         content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         latency_ms = int((time.perf_counter() - started) * 1000)
+        prompt_chars = sum(len(message.content or "") for message in request.messages)
+        input_tokens, output_tokens, estimated = openai_token_usage(data, prompt_chars, content)
         return InternalResponse(
             content=content,
             model=model,
@@ -129,5 +132,8 @@ class FrontierExecutor:
                 model=model,
                 confidence=local_confidence,
                 escalated_from=escalated_from,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                usage_estimated=estimated,
             ),
         )

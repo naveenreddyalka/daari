@@ -596,6 +596,38 @@ Covered by `tests/unit/test_stream_tier_parity.py` (7 tests, 4 previously red),
 including a `MockTransport` case proving the SSE decoder skips blank, malformed,
 and `[DONE]` lines.
 
+### Real token accounting and per-model pricing (#156, #157) (2026-08-11)
+
+Every token count in daari was `len(chars) // 4`, and every cost was that
+estimate multiplied by one flat `frontier.price_per_1k_tokens`. Two compounding
+approximations fed the savings report, the `/v1/daari/report` endpoint, the
+Prometheus spend gauges, and the budget cutoff that decides whether to escalate.
+
+| Defect | Severity | Fix |
+|--------|----------|-----|
+| Providers report real usage (Ollama `prompt_eval_count`/`eval_count`, OpenAI `usage`) and none of it was read | high | `daari/observability/tokens.py` readers; captured into `DaariMeta.input_tokens`/`output_tokens` on both non-streaming and streaming paths |
+| Clients received chars/4 in the `usage` block with no way to tell it was a guess | medium | real counts when reported; `daari_meta.usage_estimated` says which it was |
+| One flat rate priced every model and both directions, so a gpt-4o output token and a gpt-4o-mini input token cost the same | high | `daari/pricing.py` with per-model, per-direction USD/1M rates; `pricing.models` in config |
+| Ledger stored only chars, so spend could not be recomputed per model after the fact | medium | `usage`/`client_usage` gain `model`, `provider`, `input_tokens`, `output_tokens` |
+
+Output tokens cost 4-5x input tokens at every major provider, so pricing both
+directions at one blended rate was the largest single source of error.
+
+The ledger migration rebuilds `usage` and `client_usage` rather than using
+`ALTER TABLE ADD COLUMN`: the upsert needs `(day, tier, model)` as its conflict
+target and SQLite cannot alter a primary key in place. Existing rows are copied
+across with `model = ''`, which prices them at the fallback rate — historical
+rows never had a model recorded, so no precision is lost that existed before.
+
+Unpriced models still work: they fall back to the flat rate and `daari doctor`
+prints a warning naming the model, so silently-wrong spend is visible rather
+than discovered on a bill. The shipped price table is a dated convenience
+default and `pricing.models` always overrides it.
+
+Covered by `tests/unit/test_token_accounting.py` (15 tests) plus an
+integration test asserting reported counts survive from executor to both the
+API `usage` block and the ledger columns.
+
 ---
 
 ## How to update

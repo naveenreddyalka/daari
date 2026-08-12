@@ -15,8 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, sanitize_messages_for_ollama
-from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
+from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
 
 OPENAI_SSE_HEADERS = {
@@ -166,6 +167,41 @@ class FeedbackBody(BaseModel):
     signal: str
 
 
+def build_chat_completion_payload(
+    response: InternalResponse,
+    *,
+    prompt_chars: int,
+    include_daari_meta: bool,
+    client_model: str | None = None,
+) -> dict[str, Any]:
+    """Serialize an InternalResponse as an OpenAI chat completion.
+
+    Token counts come from the provider when it reported them; `usage_estimated`
+    in daari_meta says whether they had to be derived from chars (#156).
+    """
+    input_tokens, output_tokens, estimated = response_token_usage(response, prompt_chars)
+    meta = response.daari_meta.model_dump(exclude_none=True)
+    meta["usage_estimated"] = estimated
+    payload = ChatCompletionResponse(
+        id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
+        created=int(time.time()),
+        model=client_model or response.model,
+        choices=[
+            ChatCompletionChoice(
+                message=ChatMessage(role="assistant", content=response.content),
+                finish_reason=response.finish_reason or "stop",
+            )
+        ],
+        usage={
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        },
+        daari_meta=meta if include_daari_meta else None,
+    )
+    return payload.model_dump(exclude_none=True)
+
+
 def _openai_completion_body(
     *,
     body: ChatCompletionRequest,
@@ -173,9 +209,18 @@ def _openai_completion_body(
     result_model: str,
     daari_meta: dict[str, Any] | None,
     include_daari_meta: bool,
+    usage: tuple[int, int, bool] | None = None,
 ) -> dict[str, Any]:
     prompt_chars = sum(len(message.content or "") for message in body.messages)
-    completion_chars = len(result_content)
+    if usage is not None:
+        input_tokens, output_tokens, estimated = usage
+    else:
+        input_tokens = estimate_tokens(prompt_chars)
+        output_tokens = estimate_tokens(len(result_content))
+        estimated = True
+    meta = dict(daari_meta) if daari_meta else None
+    if meta is not None:
+        meta["usage_estimated"] = estimated
     payload = ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
         created=int(time.time()),
@@ -187,11 +232,11 @@ def _openai_completion_body(
             )
         ],
         usage={
-            "prompt_tokens": max(1, prompt_chars // 4),
-            "completion_tokens": max(0, completion_chars // 4),
-            "total_tokens": max(1, (prompt_chars + completion_chars) // 4),
+            "prompt_tokens": max(1, input_tokens),
+            "completion_tokens": max(0, output_tokens),
+            "total_tokens": max(1, input_tokens + output_tokens),
         },
-        daari_meta=daari_meta if include_daari_meta else None,
+        daari_meta=meta if include_daari_meta else None,
     )
     return payload.model_dump(exclude_none=True)
 
@@ -307,12 +352,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
 
+            prompt_chars = sum(len(message.content or "") for message in body.messages)
             return _openai_completion_body(
                 body=body,
                 result_content=result.content,
                 result_model=result.model,
                 daari_meta=result.daari_meta.model_dump(exclude_none=True),
                 include_daari_meta=include_daari_meta,
+                usage=response_token_usage(result, prompt_chars),
             )
 
         @router.get("/v1/models")

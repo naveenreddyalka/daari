@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -530,6 +531,54 @@ async def test_report_endpoint_tracks_route_and_stream_usage(app, monkeypatch):
     assert report["totals"]["estimated_saved_usd"] > 0
     assert len(report["days"]) == 1
     assert report["days"][0]["tiers"]["L3"]["requests"] == 2
+
+
+@pytest.mark.asyncio
+async def test_provider_reported_tokens_reach_api_and_ledger(app, monkeypatch):
+    """#156: usage must be the provider's counts, not chars/4, end to end."""
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="short",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                model="llama3.2:3b",
+                input_tokens=777,
+                output_tokens=123,
+                usage_estimated=False,
+            ),
+        )
+
+    router = app.state.ctx.router
+    for executor in (router.ollama, router.ollama_l3, router.ollama_l4, router.ollama_l5):
+        monkeypatch.setattr(executor, "execute", fake_execute)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "token check"}]},
+            headers=META_HEADERS,
+        )
+        payload = response.json()
+
+    assert payload["daari_meta"]["executor"] == "ollama", "must not have hit a live model"
+    # chars/4 on a 5-character answer would be 1, not 123.
+    assert payload["usage"]["prompt_tokens"] == 777
+    assert payload["usage"]["completion_tokens"] == 123
+    assert payload["usage"]["total_tokens"] == 900
+    assert payload["daari_meta"]["usage_estimated"] is False
+
+    # The tier depends on the confidence ladder; the token columns are the point.
+    ledger = app.state.ctx.router.usage_ledger
+    with sqlite3.connect(ledger.path) as conn:
+        row = conn.execute(
+            "SELECT model, provider, input_tokens, output_tokens FROM usage"
+        ).fetchone()
+    assert row == ("llama3.2:3b", "ollama", 777, 123)
 
 
 @pytest.mark.asyncio
