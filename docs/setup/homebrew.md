@@ -2,35 +2,60 @@
 
 # Homebrew install
 
-> Issue [#123](https://github.com/naveenreddyalka/daari/issues/123) · formula at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb)
+> Issue [#160](https://github.com/naveenreddyalka/daari/issues/160) · formula at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb)
 
-## From this repo (development)
+## Not available yet
 
-Clone the repo, then install from `HEAD`:
+`brew install daari` does not work, and neither does installing the checked-in
+formula directly. Use [Docker Compose or the from-source
+install](../developer/get-started/install.md) instead.
 
-```bash
-brew install --HEAD --formula ./Formula/daari.rb
+Two things are missing, and both need a maintainer:
+
+**A tap repository.** Homebrew 6 refuses to install a formula that is not in a
+tap, so a path-based install now fails outright:
+
+```console
+$ brew install --formula ./Formula/daari.rb
+Error: Homebrew requires formulae to be in a tap, rejecting:
 ```
 
-Requires Python 3.12 from Homebrew. Then:
+Shipping `brew install daari` therefore needs a public
+`naveenreddyalka/homebrew-daari` repository holding this formula. That repo does
+not exist yet, so `brew tap naveenreddyalka/daari` also fails.
+
+**A PyPI release.** Tracked in [#160](https://github.com/naveenreddyalka/daari/issues/160).
+
+## What is ready
+
+The formula itself is complete. It carries the real sha256 for the v1.2.0 release
+tarball and a `resource` block for all 30 transitive runtime dependencies —
+required because Homebrew builds without network access, so
+`virtualenv_install_with_resources` installs only what is declared. Every checksum
+is verified against upstream.
+
+Both the tarball hash and the resource blocks are generated, never hand-edited:
 
 ```bash
-ollama pull llama3.2:3b
-daari serve
+python scripts/update_formula.py --version X.Y.Z
 ```
 
-## Not working yet
+## Validating the formula before a tap exists
 
-`brew install --formula ./Formula/daari.rb` (without `--HEAD`) fails: the formula's
-`sha256` is a placeholder, so the v1.2.0 tarball fails its checksum. The public tap
-below is also unavailable — the tap repo does not exist yet.
+A throwaway local tap is enough to check it. `brew fetch` downloads and verifies
+every checksum without installing anything:
 
 ```bash
-# blocked on a release: needs a hashed tarball pushed to homebrew-daari
-brew tap naveenreddyalka/daari
-brew install daari
+brew tap-new --no-git naveenreddyalka/formulatest
+cp Formula/daari.rb "$(brew --repository naveenreddyalka/formulatest)/Formula/"
+brew fetch --formula --build-from-source naveenreddyalka/formulatest/daari
+brew untap naveenreddyalka/formulatest
 ```
 
-Both unblock once a release tarball is published and its hash replaces the
-placeholder in `Formula/daari.rb`. Until then use `docker compose up` or the
-from-source install — daari is not on PyPI either, so `pip install daari` fails.
+A full `brew install` from that tap additionally compiles the Rust extensions in
+`pydantic-core` and `watchfiles`, which is why the formula declares
+`depends_on "rust" => :build`. Expect it to pull the Rust toolchain.
+
+## Next
+
+→ [Releasing](../RELEASING.md) for the maintainer steps · [Install options](../developer/get-started/install.md)
