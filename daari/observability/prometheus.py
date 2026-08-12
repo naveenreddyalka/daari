@@ -59,6 +59,11 @@ def render_prometheus(
     lines.append(
         f"daari_cache_false_hits_avoided_total {snap.get('cache_false_hits_avoided', 0)}"
     )
+    lines.append(
+        "# HELP daari_upstream_retries_total Transient upstream failures retried."
+    )
+    lines.append("# TYPE daari_upstream_retries_total counter")
+    lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
 
     lines.append("# HELP daari_guardrail_trips_total Guardrail actions taken.")
     lines.append("# TYPE daari_guardrail_trips_total counter")

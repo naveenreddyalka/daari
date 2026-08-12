@@ -77,6 +77,12 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `usage.path` | str | `'~/.daari/usage/ledger.sqlite3'` |  |
 | `usage.frontier_price_per_1k_tokens` | float | `0.002` | Flat fallback rate used to estimate what locally-served tokens would have cost on a frontier model. Applies only to models absent from `pricing.models`, and ignores input/output direction. |
 | `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25}, 'gpt-4o-mini': {'input_per_1m': 0.15, 'output_per_1m':…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06`. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
+| `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
+| `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |
+| `upstream.retry.attempts` | int | `3` | Total attempts per upstream call, counting the first. `1` disables retries. Only transient failures are retried (408, 429, 5xx, connect and read timeouts); a 401 or malformed body fails immediately. |
+| `upstream.retry.base_delay_ms` | int | `200` | First backoff, doubled per retry up to `max_delay_ms`. |
+| `upstream.retry.max_delay_ms` | int | `5000` | Ceiling for a single backoff interval. |
+| `upstream.retry.jitter` | float | `0.5` | Fraction of each backoff that is randomized, keeping the delay in [d*(1-jitter), d]. Spreads retries from requests that failed together instead of returning them in lockstep. |
 | `trace.enabled` | bool | `True` |  |
 | `trace.path` | str | `'~/.daari/traces/traces.sqlite3'` |  |
 | `trace.max_entries` | int | `200` |  |

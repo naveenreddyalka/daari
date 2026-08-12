@@ -17,6 +17,7 @@ from typing import Any
 from daari.gateway.internal import InternalRequest, InternalResponse
 from daari.observability.trace import add_step
 from daari.router.circuit_breaker import CircuitBreaker
+from daari.router.retry import RetryPolicy, is_retryable, status_of
 from daari.router.frontier import FrontierExecutor
 
 
@@ -120,6 +121,10 @@ class FrontierPool:
                 response.daari_meta.provider_id = slot.id
                 return response
             except Exception as exc:  # noqa: BLE001 — try next provider
+                # The executor has already spent its retry budget on transient
+                # failures, so reaching here means this provider is genuinely
+                # unhealthy (#159). Auth failures never retry and fail over at
+                # once, since another key or provider is the only way forward.
                 slot.breaker.record_failure()
                 errors.append(f"{slot.id}:{type(exc).__name__}")
                 add_step(
@@ -127,6 +132,8 @@ class FrontierPool:
                     provider=slot.id,
                     error_type=type(exc).__name__,
                     error=str(exc)[:200],
+                    status=status_of(exc),
+                    retried=is_retryable(exc),
                     breaker=slot.breaker.state,
                 )
                 continue
@@ -139,6 +146,9 @@ class FrontierPool:
 def build_frontier_pool(settings: Any) -> FrontierPool:
     """Build a pool from FrontierSettings.providers, falling back to scalars."""
     frontier = settings.frontier
+    upstream = getattr(settings, "upstream", None)
+    retry = RetryPolicy.from_settings(upstream.retry) if upstream else None
+    timeout = getattr(upstream, "frontier_timeout_seconds", 90.0) if upstream else 90.0
     providers = list(getattr(frontier, "providers", None) or [])
     if not providers:
         # Single-provider shorthand (pre-#109 config).
@@ -149,6 +159,8 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             api_key=key,
             provider=frontier.provider,
             prompt_cache=frontier.prompt_cache,
+            timeout=timeout,
+            retry=retry,
         )
         return FrontierPool.from_single(executor)
 
@@ -170,6 +182,8 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             api_key=keys[0] if keys else None,
             provider=entry.id,
             prompt_cache=frontier.prompt_cache,
+            timeout=timeout,
+            retry=retry,
         )
         slots.append(
             ProviderSlot(

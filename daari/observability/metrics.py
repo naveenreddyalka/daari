@@ -37,6 +37,7 @@ class Metrics:
     guardrails: dict[str, int] = field(default_factory=dict)
     boundaries: dict[str, int] = field(default_factory=dict)
     cache_false_hits_avoided: int = 0
+    upstream_retries: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -77,6 +78,15 @@ class Metrics:
         with self._lock:
             self.cache_false_hits_avoided += 1
 
+    def record_upstream_retry(self) -> None:
+        """A transient upstream failure that was retried rather than surfaced (#159).
+
+        A rising count means backoff is absorbing instability the client never
+        saw; a flat count with rising errors means failures are not retryable.
+        """
+        with self._lock:
+            self.upstream_retries += 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -101,4 +111,5 @@ class Metrics:
                 "guardrails": dict(self.guardrails),
                 "boundaries": dict(self.boundaries),
                 "cache_false_hits_avoided": self.cache_false_hits_avoided,
+                "upstream_retries": self.upstream_retries,
             }

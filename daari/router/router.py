@@ -32,6 +32,7 @@ from daari.rules.dev_commands import DevCommandMatch, match_dev_command
 from daari.rules.engine import apply_l2_rules
 from daari.router.confidence import score_l3_confidence
 from daari.router.frontier import FrontierExecutor
+from daari.router.retry import RetryPolicy, run_upstream
 from daari.router.mlx_executor import MLXExecutor
 from daari.router.context_optimizer import optimize_messages
 from daari.router.profile import PromptProfile, build_prompt_profile, categorize
@@ -167,6 +168,8 @@ class OllamaExecutor:
     default_model: str
     tier: str = "L3"
     timeout: float = 120.0
+    retry: RetryPolicy | None = None
+    metrics: Any = None
 
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
@@ -203,13 +206,25 @@ class OllamaExecutor:
         model = request.model or self.default_model
         started = time.perf_counter()
         payload = self._payload(request, model, stream=False)
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            response = await client.post("/api/chat", json=payload)
-            if response.status_code >= 400:
-                raise OllamaRequestError(
-                    response.status_code, str(response.request.url), response.text
-                )
-            data = response.json()
+
+        async def attempt() -> dict[str, Any]:
+            async with httpx.AsyncClient(
+                base_url=self.base_url, timeout=self.timeout
+            ) as client:
+                response = await client.post("/api/chat", json=payload)
+                if response.status_code >= 400:
+                    raise OllamaRequestError(
+                        response.status_code, str(response.request.url), response.text
+                    )
+                return response.json()
+
+        data = await run_upstream(
+            attempt,
+            upstream=f"ollama:{self.tier}",
+            policy=self.retry,
+            timeout=self.timeout,
+            metrics=self.metrics,
+        )
         content = data.get("message", {}).get("content", "")
         latency_ms = int((time.perf_counter() - started) * 1000)
         input_tokens, output_tokens, estimated = ollama_token_usage(data, request, content)
@@ -2839,6 +2854,10 @@ class AppContext:
         )
         semantic_cache = _build_l1_cache(settings, l1_path, embedder)
         command_context = cls._build_command_context_store(settings, context_path)
+        upstream = settings.upstream
+        local_retry = RetryPolicy.from_settings(upstream.retry)
+        local_timeout = upstream.local_timeout_seconds
+
         def tier_executor(tier: str, ollama_model: str) -> OllamaExecutor | MLXExecutor:
             # MLX backend (issue #97): tiers mapped in mlx.models are served by
             # mlx_lm.server; the rest stay on Ollama.
@@ -2848,11 +2867,15 @@ class AppContext:
                     base_url=settings.mlx.base_url.rstrip("/"),
                     default_model=mlx_model,
                     tier=tier,
+                    timeout=local_timeout,
+                    retry=local_retry,
                 )
             return OllamaExecutor(
                 base_url=settings.ollama.base_url.rstrip("/"),
                 default_model=ollama_model,
                 tier=tier,
+                timeout=local_timeout,
+                retry=local_retry,
             )
 
         ollama_l3 = tier_executor("L3", settings.models.l3)
@@ -2865,6 +2888,8 @@ class AppContext:
                 base_url=org_pool_cfg.base_url.rstrip("/"),
                 default_model=org_pool_cfg.model or settings.models.l5,
                 tier=org_pool_cfg.tier or "L5-org",
+                timeout=local_timeout,
+                retry=local_retry,
             )
         from daari.router.frontier_pool import build_frontier_pool
 
@@ -2920,6 +2945,12 @@ class AppContext:
         # The cache is built before metrics exist; it only needs them to count
         # verification vetoes (#168).
         semantic_cache.metrics = metrics
+        # Same for the executors, which only need metrics to count retries (#159).
+        for executor in (ollama_l3, ollama_l4, ollama_l5, org_pool_executor):
+            if executor is not None:
+                executor.metrics = metrics
+        for slot in getattr(frontier, "slots", []) or []:
+            slot.executor.metrics = metrics
         if (
             settings.observability.backend == "postgres"
             and settings.observability.postgres_url.strip()
