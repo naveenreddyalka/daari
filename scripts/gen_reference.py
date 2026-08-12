@@ -18,6 +18,28 @@ from pydantic import BaseModel
 from daari.config.settings import Settings
 
 
+MAX_DEFAULT_CHARS = 140
+
+
+def _plain(value: Any) -> Any:
+    """Recursively replace nested pydantic models with plain dicts."""
+    if isinstance(value, BaseModel):
+        return value.model_dump()
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return type(value)(_plain(item) for item in value)
+    return value
+
+
+def format_default_value(value: Any) -> str:
+    """Render a default as a readable, table-safe markdown cell."""
+    text = repr(_plain(value))
+    if len(text) > MAX_DEFAULT_CHARS:
+        text = f"{text[:MAX_DEFAULT_CHARS].rstrip()}…"
+    return f"`{text.replace('|', chr(92) + '|')}`"
+
+
 def _default_repr(field: Any) -> str:
     if field.default_factory is not None:
         try:
@@ -26,13 +48,13 @@ def _default_repr(field: Any) -> str:
             return "—"
         if isinstance(value, BaseModel):
             return "*(section)*"
-        return f"`{value!r}`"
+        return format_default_value(value)
     default = field.default
     if type(default).__name__ == "PydanticUndefinedType":
         return "*(required)*"
     if isinstance(default, BaseModel):
         return "*(section)*"
-    return f"`{default!r}`"
+    return format_default_value(default)
 
 
 def _type_repr(annotation: Any) -> str:

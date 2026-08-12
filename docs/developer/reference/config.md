@@ -34,7 +34,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `cache.l1.ttl_seconds` | float | `0.0` |  |
 | `cache.l1.embed_cache_size` | int | `512` |  |
 | `cache.l1.normalize_inputs` | bool | `True` |  |
-| `cache.l1.verify` | str | `'lexical'` |  |
+| `cache.l1.verify` | str | `'lexical'` | Second-stage check before serving a semantic hit, because a cosine threshold alone cannot separate a paraphrase from a near-miss. `none` serves any hit above the threshold; `lexical` (default) vetoes hits whose numbers, units, or negation differ; `model` additionally asks a local model to confirm equivalence. |
 | `cache.l1.shadow_sample_rate` | float | `0.05` |  |
 | `cache.backend` | str | `'disk'` |  |
 | `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` |  |
@@ -69,14 +69,14 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.compress_target_ratio` | float | `0.6` |  |
 | `tools.unknown` | str | `'deny'` |  |
 | `tools.allow` | list | `['git status', 'git diff', 'pytest', 'eslint *']` |  |
-| `tools.block` | list | `['rm *', 'curl *| sh', '*> /dev/*']` |  |
+| `tools.block` | list | `['rm *', 'curl *\| sh', '*> /dev/*']` |  |
 | `tools.timeout_seconds` | float | `30.0` |  |
 | `context.enabled` | bool | `True` |  |
 | `context.path` | str | `'~/.daari/context/commands'` |  |
 | `usage.enabled` | bool | `True` |  |
 | `usage.path` | str | `'~/.daari/usage/ledger.sqlite3'` |  |
-| `usage.frontier_price_per_1k_tokens` | float | `0.002` |  |
-| `pricing.models` | dict | `{'gpt-4o': ModelPrice(input_per_1m=2.5, output_per_1m=10.0, cached_input_per_1m=1.25), 'gpt-4o-mini': ModelPrice(input_per_1m=0.15, output_per_1m=0.6, cached_input_per_1m=0.075), 'claude-3-5-sonnet': ModelPrice(input_per_1m=3.0, output_per_1m=15.0, cached_input_per_1m=None), 'claude-3-5-haiku': ModelPrice(input_per_1m=0.8, output_per_1m=4.0, cached_input_per_1m=None), 'claude-3-opus': ModelPrice(input_per_1m=15.0, output_per_1m=75.0, cached_input_per_1m=None)}` |  |
+| `usage.frontier_price_per_1k_tokens` | float | `0.002` | Flat fallback rate used to estimate what locally-served tokens would have cost on a frontier model. Applies only to models absent from `pricing.models`, and ignores input/output direction. |
+| `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25}, 'gpt-4o-mini': {'input_per_1m': 0.15, 'output_per_1m':…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06`. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `trace.enabled` | bool | `True` |  |
 | `trace.path` | str | `'~/.daari/traces/traces.sqlite3'` |  |
 | `trace.max_entries` | int | `200` |  |
