@@ -55,6 +55,11 @@ class DaariMeta(BaseModel):
     # Chars actually sent to the provider when it differs from the client
     # request (e.g. frontier prompt slimming); used for ledger accounting.
     prompt_chars: int | None = None
+    # Token counts as reported by the provider. usage_estimated stays True when
+    # they had to be derived from character length instead (#156).
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    usage_estimated: bool = True
     escalated_from: str | None = None
     rule_id: str | None = None
     warning: str | None = None

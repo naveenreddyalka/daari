@@ -75,6 +75,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `usage.enabled` | bool | `True` |  |
 | `usage.path` | str | `'~/.daari/usage/ledger.sqlite3'` |  |
 | `usage.frontier_price_per_1k_tokens` | float | `0.002` |  |
+| `pricing.models` | dict | `{'gpt-4o': ModelPrice(input_per_1m=2.5, output_per_1m=10.0, cached_input_per_1m=1.25), 'gpt-4o-mini': ModelPrice(input_per_1m=0.15, output_per_1m=0.6, cached_input_per_1m=0.075), 'claude-3-5-sonnet': ModelPrice(input_per_1m=3.0, output_per_1m=15.0, cached_input_per_1m=None), 'claude-3-5-haiku': ModelPrice(input_per_1m=0.8, output_per_1m=4.0, cached_input_per_1m=None), 'claude-3-opus': ModelPrice(input_per_1m=15.0, output_per_1m=75.0, cached_input_per_1m=None)}` |  |
 | `trace.enabled` | bool | `True` |  |
 | `trace.path` | str | `'~/.daari/traces/traces.sqlite3'` |  |
 | `trace.max_entries` | int | `200` |  |

@@ -203,10 +203,40 @@ class ContextSettings(BaseModel):
     path: str = "~/.daari/context/commands"
 
 
+class ModelPrice(BaseModel):
+    """USD per 1M tokens, which is how providers quote list prices."""
+
+    input_per_1m: float
+    output_per_1m: float
+    # Providers discount cached prompt prefixes; None means bill at input rate.
+    cached_input_per_1m: float | None = None
+
+
+# List prices captured 2026-08-11. These move, so treat the table as a
+# convenience default: anything in `pricing.models` overrides an entry here,
+# and unpriced models fall back to frontier.price_per_1k_tokens.
+_DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
+    "gpt-4o": {"input_per_1m": 2.50, "output_per_1m": 10.00, "cached_input_per_1m": 1.25},
+    "gpt-4o-mini": {"input_per_1m": 0.15, "output_per_1m": 0.60, "cached_input_per_1m": 0.075},
+    "claude-3-5-sonnet": {"input_per_1m": 3.00, "output_per_1m": 15.00},
+    "claude-3-5-haiku": {"input_per_1m": 0.80, "output_per_1m": 4.00},
+    "claude-3-opus": {"input_per_1m": 15.00, "output_per_1m": 75.00},
+}
+
+
+class PricingSettings(BaseModel):
+    models: dict[str, ModelPrice] = Field(
+        default_factory=lambda: {
+            name: ModelPrice(**price) for name, price in _DEFAULT_MODEL_PRICES.items()
+        }
+    )
+
+
 class UsageSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/usage/ledger.sqlite3"
     # Frontier rate used to estimate what locally-served tokens would have cost.
+    # Only applies to models absent from `pricing.models`.
     frontier_price_per_1k_tokens: float = 0.002
 
 
@@ -370,6 +400,7 @@ class Settings(BaseSettings):
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
+    pricing: PricingSettings = Field(default_factory=PricingSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
     learning: LearningSettings = Field(default_factory=LearningSettings)
