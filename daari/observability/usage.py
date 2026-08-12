@@ -229,13 +229,20 @@ class UsageLedger:
         *,
         pricing: Any,
         fallback_per_1k: float,
+        table: str = "usage",
     ) -> float:
-        """Sum L6 spend, pricing each model at its own rate (#157)."""
+        """Sum L6 spend, pricing each model at its own rate (#157).
+
+        `table` selects the global ledger or the per-client one; both carry the
+        model and token columns, so pricing works identically for either.
+        """
+        if table not in _MIGRATED_TABLES:
+            raise ValueError(f"unknown usage table: {table}")
         try:
             with self._lock, self._connect() as conn:
                 rows = conn.execute(
                     "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
-                    f" FROM usage WHERE {where} AND tier = ? GROUP BY model",
+                    f" FROM {table} WHERE {where} AND tier = ? GROUP BY model",
                     (*params, FRONTIER_TIER),
                 ).fetchall()
         except Exception:
@@ -289,6 +296,41 @@ class UsageLedger:
             ((month or _today()[:7]) + "-%",),
             pricing=pricing,
             fallback_per_1k=fallback_per_1k,
+        )
+
+    def frontier_spend_usd_for_client(
+        self,
+        client_id: str,
+        *,
+        window: str = "day",
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+        month: str | None = None,
+    ) -> float:
+        """USD one client spent on the frontier tier (#158).
+
+        Virtual-key budgets must be charged to the key that caused the spend;
+        billing them against global spend lets one key exhaust every other key.
+        `window` is `day` or `month`.
+        """
+        if not self.enabled or not client_id:
+            return 0.0
+        if window == "month":
+            where, params = "client_id = ? AND day LIKE ?", (
+                client_id,
+                (month or _today()[:7]) + "-%",
+            )
+        elif window == "day":
+            where, params = "client_id = ? AND day = ?", (client_id, day or _today())
+        else:
+            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+        return self._spend_for(
+            where,
+            params,
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+            table="client_usage",
         )
 
     def report(self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002) -> dict[str, Any]:
