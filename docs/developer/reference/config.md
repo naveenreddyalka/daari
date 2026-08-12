@@ -34,6 +34,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `cache.l1.ttl_seconds` | float | `0.0` |  |
 | `cache.l1.embed_cache_size` | int | `512` |  |
 | `cache.l1.normalize_inputs` | bool | `True` |  |
+| `cache.l1.verify` | str | `'lexical'` |  |
 | `cache.l1.shadow_sample_rate` | float | `0.05` |  |
 | `cache.backend` | str | `'disk'` |  |
 | `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` |  |

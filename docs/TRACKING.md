@@ -628,6 +628,44 @@ Covered by `tests/unit/test_token_accounting.py` (15 tests) plus an
 integration test asserting reported counts survive from executor to both the
 API `usage` block and the ledger columns.
 
+### L1 hit verification before serving (#168) (2026-08-11)
+
+daari measured its semantic-cache false-hit rate but still served any hit above
+a cosine threshold. Correct and incorrect similarity distributions overlap, so a
+threshold cannot separate the two cases: "what is 15% of 200" and "what is 15%
+of 300" are textually near-identical with different answers, while "how do I
+list files" and "how can I list files" are further apart with the same answer.
+Embedding distance ranks those two pairs in the wrong order.
+
+`cache.l1.verify` (`none | lexical | model`, default `lexical`) adds a second
+stage between the cosine match and the response. The lexical verifier rejects
+differing numbers, differing or reordered units, flipped negations, swapped
+opposites, and substituted content words; rejections fall through to generation
+and increment `daari_cache_false_hits_avoided_total`.
+
+Two deliberate choices worth knowing:
+
+- **Entries without stored prompt text are not served.** Caches written before
+  this change have no text to verify against, and serving them unverified would
+  preserve exactly the false hits this exists to prevent. They are re-learned on
+  the next miss, so the cost is a one-time warm-up.
+- **Additions pass, substitutions do not.** Extra words are filler; a swapped
+  word may change the answer.
+
+The known limitation is honest and tracked rather than hidden: a lexical stage
+cannot distinguish a harmless synonym substitution ("fix" for "resolve") from a
+meaningful one ("staging" for "production"), because both are one-word swaps. It
+errs toward regeneration and loses those hits. `verify = "model"` is the path to
+recovering them.
+
+`evals/cache/verification.jsonl` labels 36 pairs and runs in CI as a gate:
+paraphrase retention and near-miss rejection both floor at 90%, currently 100%
+each, with synonym retention reported but ungated at 0/6. Verification costs
+0.007 ms per call against the hundreds of milliseconds a hit saves.
+
+Covered by `tests/unit/test_l1_verification.py` (21 tests) and
+`tests/unit/test_l1_verification_corpus.py` (4 gates).
+
 ---
 
 ## How to update

@@ -26,6 +26,8 @@ class RedisSemanticCache(SemanticCache):
         clock: Callable[[], float] | None = None,
         normalize_inputs: bool = True,
         client: Any | None = None,
+        verifier: Any = None,
+        metrics: Any = None,
     ) -> None:
         super().__init__(
             path="redis",
@@ -36,6 +38,8 @@ class RedisSemanticCache(SemanticCache):
             ttl_seconds=ttl_seconds,
             clock=clock,
             normalize_inputs=normalize_inputs,
+            verifier=verifier,
+            metrics=metrics,
         )
         self.redis_url = redis_url
         self.prefix = prefix
