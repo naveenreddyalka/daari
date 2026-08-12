@@ -15,6 +15,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.router.retry import RetryPolicy, run_upstream
 
 
 class MLXRequestError(RuntimeError):
@@ -33,6 +34,8 @@ class MLXExecutor:
     default_model: str
     tier: str = "L3"
     timeout: float = 120.0
+    retry: RetryPolicy | None = None
+    metrics: Any = None
 
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
@@ -72,13 +75,25 @@ class MLXExecutor:
         model = request.model or self.default_model
         started = time.perf_counter()
         payload = self._payload(request, model, stream=False)
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            response = await client.post("/v1/chat/completions", json=payload)
-            if response.status_code >= 400:
-                raise MLXRequestError(
-                    response.status_code, str(response.request.url), response.text
-                )
-            data = response.json()
+
+        async def attempt() -> dict[str, Any]:
+            async with httpx.AsyncClient(
+                base_url=self.base_url, timeout=self.timeout
+            ) as client:
+                response = await client.post("/v1/chat/completions", json=payload)
+                if response.status_code >= 400:
+                    raise MLXRequestError(
+                        response.status_code, str(response.request.url), response.text
+                    )
+                return response.json()
+
+        data = await run_upstream(
+            attempt,
+            upstream=f"mlx:{self.tier}",
+            policy=self.retry,
+            timeout=self.timeout,
+            metrics=self.metrics,
+        )
         choice = (data.get("choices") or [{}])[0]
         content = (choice.get("message") or {}).get("content") or ""
         latency_ms = int((time.perf_counter() - started) * 1000)
