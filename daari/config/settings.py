@@ -76,9 +76,16 @@ class L1CacheSettings(BaseModel):
     embed_cache_size: int = 512
     # Normalize template/boilerplate text before embedding (Trust PRD T1a).
     normalize_inputs: bool = True
-    # Second-stage check before serving a hit (#168). A cosine threshold alone
-    # cannot separate a paraphrase from a near-miss. none | lexical | model.
-    verify: str = "lexical"
+    verify: str = Field(
+        default="lexical",
+        description=(
+            "Second-stage check before serving a semantic hit, because a cosine "
+            "threshold alone cannot separate a paraphrase from a near-miss. "
+            "`none` serves any hit above the threshold; `lexical` (default) vetoes "
+            "hits whose numbers, units, or negation differ; `model` additionally "
+            "asks a local model to confirm equivalence."
+        ),
+    )
     # Fraction of L1 hits verified in the background against a fresh local
     # answer (Trust PRD T1c). 0 disables shadow sampling.
     shadow_sample_rate: float = 0.05
@@ -231,16 +238,27 @@ class PricingSettings(BaseModel):
     models: dict[str, ModelPrice] = Field(
         default_factory=lambda: {
             name: ModelPrice(**price) for name, price in _DEFAULT_MODEL_PRICES.items()
-        }
+        },
+        description=(
+            "Per-model, per-direction USD rates per 1M tokens. Keys match on "
+            "longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06`. Models "
+            "absent here fall back to `usage.frontier_price_per_1k_tokens`; run "
+            "`daari doctor` to list models being billed at the fallback rate."
+        ),
     )
 
 
 class UsageSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/usage/ledger.sqlite3"
-    # Frontier rate used to estimate what locally-served tokens would have cost.
-    # Only applies to models absent from `pricing.models`.
-    frontier_price_per_1k_tokens: float = 0.002
+    frontier_price_per_1k_tokens: float = Field(
+        default=0.002,
+        description=(
+            "Flat fallback rate used to estimate what locally-served tokens would "
+            "have cost on a frontier model. Applies only to models absent from "
+            "`pricing.models`, and ignores input/output direction."
+        ),
+    )
 
 
 class TraceSettings(BaseModel):
