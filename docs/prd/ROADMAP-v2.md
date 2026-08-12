@@ -7,7 +7,7 @@
 
 ## Where daari stands (v1.2.0)
 
-Shipped: tiered local-first routing (L0/L1 caches → L2 rules → Lt tools → L3–L5 local → L6 frontier), prompt intelligence + traces + savings ledger, cache-trust measurement (false-hit rate — no competitor publishes this), on-device learning (feedback → tuner → fine-tune → deploy), one-click clients (Cursor, Claude Code, JetBrains via Ollama facade, VS Code), MLX backend, per-project profiles, gateway API-key auth, org shared cache tracer bullet.
+Shipped: tiered local-first routing (L0/L1 caches → L2 rules → Lt tools → L3–L5 local → L6 frontier), prompt intelligence + traces + savings ledger, cache-trust measurement and pre-serve verification (false-hit rate plus a lexical verifier between the cosine match and the response; vCache, semcache, kmemo, and SemanticMemo also verify before serving, so the differentiator is publishing the rate, not having one), on-device learning (feedback → tuner → fine-tune → deploy), one-click clients (Cursor, Claude Code, JetBrains via Ollama facade, VS Code), MLX backend, per-project profiles, gateway API-key auth, org shared cache tracer bullet.
 
 Differentiators to protect: **local-first privacy**, **measured cache trust**, **personal learning loop**, **client one-click setup**. Gaps below are what competitors have that we lack, plus what an OSS release and a company-wide deployment require.
 

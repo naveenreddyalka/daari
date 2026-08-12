@@ -16,6 +16,7 @@ import httpx
 from daari.cache.command_context import CommandContextStore
 from daari.cache.exact import ExactCache
 from daari.cache.semantic import OllamaEmbedder, SemanticCache, cosine_similarity
+from daari.cache.verify import build_verifier
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
@@ -66,8 +67,14 @@ def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
     )
 
 
-def _build_l1_cache(settings: Settings, l1_path: Path, embedder: OllamaEmbedder) -> SemanticCache:
+def _build_l1_cache(
+    settings: Settings,
+    l1_path: Path,
+    embedder: OllamaEmbedder,
+    metrics: Any = None,
+) -> SemanticCache:
     """diskcache default, or Redis when cache.backend=redis (issue #135)."""
+    verifier = build_verifier(getattr(settings.cache.l1, "verify", "lexical"))
     if getattr(settings.cache, "backend", "disk") == "redis":
         from daari.cache.redis_semantic import RedisSemanticCache
 
@@ -80,6 +87,8 @@ def _build_l1_cache(settings: Settings, l1_path: Path, embedder: OllamaEmbedder)
             max_entries=settings.cache.l1.max_entries,
             ttl_seconds=settings.cache.l1.ttl_seconds,
             normalize_inputs=settings.cache.l1.normalize_inputs,
+            verifier=verifier,
+            metrics=metrics,
         )
     return SemanticCache(
         path=str(l1_path),
@@ -89,6 +98,8 @@ def _build_l1_cache(settings: Settings, l1_path: Path, embedder: OllamaEmbedder)
         max_entries=settings.cache.l1.max_entries,
         ttl_seconds=settings.cache.l1.ttl_seconds,
         normalize_inputs=settings.cache.l1.normalize_inputs,
+        verifier=verifier,
+        metrics=metrics,
     )
 
 
@@ -2906,6 +2917,9 @@ class AppContext:
             providers.register(mcp_provider)
             mcp_triggers[mcp_provider.id] = list(mcp_provider.server.triggers)
         metrics = Metrics()
+        # The cache is built before metrics exist; it only needs them to count
+        # verification vetoes (#168).
+        semantic_cache.metrics = metrics
         if (
             settings.observability.backend == "postgres"
             and settings.observability.postgres_url.strip()

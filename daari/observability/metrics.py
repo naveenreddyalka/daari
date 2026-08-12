@@ -36,6 +36,7 @@ class Metrics:
     escalations: int = 0
     guardrails: dict[str, int] = field(default_factory=dict)
     boundaries: dict[str, int] = field(default_factory=dict)
+    cache_false_hits_avoided: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -71,6 +72,11 @@ class Metrics:
         with self._lock:
             self.boundaries[key] = self.boundaries.get(key, 0) + 1
 
+    def record_false_hit_avoided(self) -> None:
+        """An L1 candidate that cleared cosine but failed verification (#168)."""
+        with self._lock:
+            self.cache_false_hits_avoided += 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -94,4 +100,5 @@ class Metrics:
                 "escalations": self.escalations,
                 "guardrails": dict(self.guardrails),
                 "boundaries": dict(self.boundaries),
+                "cache_false_hits_avoided": self.cache_false_hits_avoided,
             }

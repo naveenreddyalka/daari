@@ -1,0 +1,36 @@
+{"id":"PARA-01","stored":"how do I list files in a directory","candidate":"how can I list files in a directory","label":"paraphrase","notes":"modal verb swap"}
+{"id":"PARA-02","stored":"explain the router module","candidate":"please explain the router module","label":"paraphrase","notes":"politeness prefix"}
+{"id":"PARA-03","stored":"what does this function do","candidate":"what does this function do?","label":"paraphrase","notes":"punctuation only"}
+{"id":"PARA-04","stored":"show 5 examples of decorators","candidate":"show me 5 examples of decorators","label":"paraphrase","notes":"filler pronoun"}
+{"id":"PARA-05","stored":"how do I deploy to Staging","candidate":"how do I deploy to staging","label":"paraphrase","notes":"casing only"}
+{"id":"PARA-06","stored":"describe the caching layers","candidate":"explain the caching layers","label":"paraphrase","notes":"synonymous stopword verb"}
+{"id":"PARA-07","stored":"what is the default timeout","candidate":"whats the default timeout","label":"paraphrase","notes":"contraction"}
+{"id":"PARA-08","stored":"help me understand semantic caching","candidate":"i want to understand semantic caching","label":"paraphrase","notes":"reframed request"}
+{"id":"PARA-09","stored":"list the supported gateways","candidate":"list supported gateways","label":"paraphrase","notes":"dropped article"}
+{"id":"PARA-10","stored":"tell me about the confidence threshold","candidate":"about the confidence threshold","label":"paraphrase","notes":"dropped lead-in"}
+{"id":"PARA-11","stored":"how does the router pick a tier","candidate":"how does the router pick a tier?","label":"paraphrase","notes":"punctuation only"}
+{"id":"PARA-12","stored":"give me the config for redis","candidate":"show the config for redis","label":"paraphrase","notes":"verb swap, same entity"}
+{"id":"NEAR-01","stored":"what is 15% of 200","candidate":"what is 15% of 300","label":"near_miss","notes":"differing number"}
+{"id":"NEAR-02","stored":"retry after 30 seconds","candidate":"retry after 30 minutes","label":"near_miss","notes":"changed unit"}
+{"id":"NEAR-03","stored":"how do I deploy to staging","candidate":"how do I deploy to production","label":"near_miss","notes":"differing environment"}
+{"id":"NEAR-04","stored":"is this thread safe","candidate":"is this not thread safe","label":"near_miss","notes":"negation flip"}
+{"id":"NEAR-05","stored":"which is greater, a or b","candidate":"which is less, a or b","label":"near_miss","notes":"reversed comparison"}
+{"id":"NEAR-06","stored":"convert 10 km to miles","candidate":"convert 10 miles to km","label":"near_miss","notes":"reversed conversion"}
+{"id":"NEAR-07","stored":"sort ascending by date","candidate":"sort descending by date","label":"near_miss","notes":"reversed order"}
+{"id":"NEAR-08","stored":"set the timeout to 60 seconds","candidate":"set the timeout to 90 seconds","label":"near_miss","notes":"differing number"}
+{"id":"NEAR-09","stored":"how do I enable the frontier tier","candidate":"how do I disable the frontier tier","label":"near_miss","notes":"inverted action"}
+{"id":"NEAR-10","stored":"what is the maximum cache size","candidate":"what is the minimum cache size","label":"near_miss","notes":"max/min swap"}
+{"id":"NEAR-11","stored":"add a user to the org pool","candidate":"remove a user from the org pool","label":"near_miss","notes":"inverted action"}
+{"id":"NEAR-12","stored":"encode this string as base64","candidate":"decode this string as base64","label":"near_miss","notes":"inverted direction"}
+{"id":"NEAR-13","stored":"which model is faster, l3 or l5","candidate":"which model is slower, l3 or l5","label":"near_miss","notes":"reversed comparison"}
+{"id":"NEAR-14","stored":"show logs from before the restart","candidate":"show logs from after the restart","label":"near_miss","notes":"reversed time order"}
+{"id":"NEAR-15","stored":"cost of 5 items","candidate":"cost of 6 items","label":"near_miss","notes":"differing quantity"}
+{"id":"NEAR-16","stored":"allow this command in policy","candidate":"deny this command in policy","label":"near_miss","notes":"inverted policy outcome"}
+{"id":"NEAR-17","stored":"how do I configure ollama","candidate":"how do I configure redis","label":"near_miss","notes":"differing subject"}
+{"id":"NEAR-18","stored":"what is 20 GB in MB","candidate":"what is 20 MB in GB","label":"near_miss","notes":"reversed unit conversion"}
+{"id":"SYN-01","stored":"what is the quickest way to sort a collection","candidate":"what is the fastest way to sort a collection","label":"synonym_substitution","notes":"lexical verification cannot tell this from staging/production"}
+{"id":"SYN-02","stored":"how do I resolve this error","candidate":"how do I fix this error","label":"synonym_substitution","notes":"verb synonym"}
+{"id":"SYN-03","stored":"what triggers a cache miss","candidate":"what causes a cache miss","label":"synonym_substitution","notes":"verb synonym"}
+{"id":"SYN-04","stored":"create a function to reverse a string","candidate":"write a function to reverse a string","label":"synonym_substitution","notes":"verb synonym"}
+{"id":"SYN-05","stored":"how do I launch the daari server","candidate":"how do I start the daari server","label":"synonym_substitution","notes":"verb synonym"}
+{"id":"SYN-06","stored":"summarise this document","candidate":"summarize this document","label":"synonym_substitution","notes":"spelling variant, ideally retained"}
