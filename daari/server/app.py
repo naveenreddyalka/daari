@@ -102,28 +102,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             }
                         },
                     )
-                # Per-key frontier budget against the usage ledger.
+                # Per-key frontier budget, charged to the key that caused the
+                # spend. Billing against global spend let one key exhaust every
+                # other key's allowance (#158). The global cap still applies
+                # separately as an outer ceiling in the router.
                 ctx = getattr(request.app.state, "ctx", None)
                 ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
-                price = float(resolved.frontier.price_per_1k_tokens or 0.002)
                 if ledger is not None and getattr(ledger, "enabled", False):
                     client = claims.client_id or claims.key_id or ""
-                    if claims.daily_budget_usd > 0:
-                        # Approximate: ledger is not yet per-client frontier-only
-                        # for a single day helper — use client report if present,
-                        # else fall back to global frontier spend (conservative).
-                        spend = float(ledger.frontier_spend_usd(price_per_1k_tokens=price))
-                        if spend >= claims.daily_budget_usd:
+                    pricing = getattr(resolved, "pricing", None)
+                    fallback = float(resolved.usage.frontier_price_per_1k_tokens or 0.002)
+                    windows = (
+                        ("daily", "day", claims.daily_budget_usd),
+                        ("monthly", "month", claims.monthly_budget_usd),
+                    )
+                    for label, window, budget in windows:
+                        if budget <= 0:
+                            continue
+                        spend = float(
+                            ledger.frontier_spend_usd_for_client(
+                                client,
+                                window=window,
+                                pricing=pricing,
+                                fallback_per_1k=fallback,
+                            )
+                        )
+                        if spend >= budget:
                             return JSONResponse(
                                 status_code=402,
                                 content={
                                     "error": {
                                         "type": "budget_exceeded",
                                         "message": (
-                                            f"Virtual key daily budget "
-                                            f"(${claims.daily_budget_usd:.4f}) exceeded."
+                                            f"Virtual key {label} frontier budget "
+                                            f"(${budget:.4f}) exceeded — "
+                                            f"${spend:.4f} spent."
                                         ),
                                         "client_id": client,
+                                        "window": label,
+                                        "budget_usd": round(budget, 6),
+                                        "spend_usd": round(spend, 6),
                                     }
                                 },
                             )

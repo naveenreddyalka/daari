@@ -668,6 +668,36 @@ Covered by `tests/unit/test_l1_verification.py` (21 tests) and
 
 ---
 
+### Per-key frontier budgets ([#158](https://github.com/naveenreddyalka/daari/issues/158))
+
+Virtual-key budgets were compared against **global** frontier spend. The
+middleware said so in its own comment: the ledger had no per-client frontier
+helper, so it used the global figure "conservatively". The effect was that one
+key's traffic exhausted every other key's allowance, and a key with a small cap
+could be blocked by spend it never caused — while per-key budgets were a headline
+feature of the virtual-keys work ([#111](https://github.com/naveenreddyalka/daari/issues/111)).
+
+`UsageLedger.frontier_spend_usd_for_client()` now answers the question directly,
+over `day` or `month`, priced per model like the global figure. No migration was
+needed: `client_usage` already gained the model and token columns in #156.
+
+Two behaviors changed beyond the isolation fix:
+
+- **Monthly caps now do something.** Only the daily window was ever checked, so
+  `--monthly-budget` was silently inert.
+- **The 402 names what tripped.** The body carries `window`, `budget_usd`, and
+  `spend_usd`, so a client can tell "I am out of budget" from "the org is out of
+  budget" instead of inferring it.
+
+The global caps still apply as an outer ceiling through the router's
+`_frontier_budget_state()`, unchanged — a per-key allowance cannot be used to
+exceed the org cap.
+
+Covered by `tests/unit/test_virtual_key_budgets.py` (11 tests), including
+two-key isolation and attribution for keys created without `--client-id`.
+
+---
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
