@@ -2,48 +2,63 @@
 
 # Homebrew install
 
-> Issue [#160](https://github.com/naveenreddyalka/daari/issues/160) · formula at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb)
+> Tap: [naveenreddyalka/homebrew-daari](https://github.com/naveenreddyalka/homebrew-daari) · formula source at [`Formula/daari.rb`](https://github.com/naveenreddyalka/daari/blob/main/Formula/daari.rb)
 
-## Not available yet
+## Install
 
-`brew install daari` does not work, and neither does installing the checked-in
-formula directly. Use [Docker Compose or the from-source
-install](../developer/get-started/install.md) instead.
-
-Two things are missing, and both need a maintainer:
-
-**A tap repository.** Homebrew 6 refuses to install a formula that is not in a
-tap, so a path-based install now fails outright:
-
-```console
-$ brew install --formula ./Formula/daari.rb
-Error: Homebrew requires formulae to be in a tap, rejecting:
+```bash
+brew tap naveenreddyalka/daari
+brew trust naveenreddyalka/daari
+brew install daari
 ```
 
-Shipping `brew install daari` therefore needs a public
-`naveenreddyalka/homebrew-daari` repository holding this formula. That repo does
-not exist yet, so `brew tap naveenreddyalka/daari` also fails.
+Then pull a local model and start the daemon:
 
-**A PyPI release.** Tracked in [#160](https://github.com/naveenreddyalka/daari/issues/160).
+```bash
+ollama pull llama3.2:3b
+daari serve
+daari doctor
+```
 
-## What is ready
+## Why `brew trust` is required
 
-The formula itself is complete. It carries the real sha256 for the v1.2.0 release
-tarball and a `resource` block for all 30 transitive runtime dependencies —
-required because Homebrew builds without network access, so
-`virtualenv_install_with_resources` installs only what is declared. Every checksum
-is verified against upstream.
+Homebrew 6 refuses to load a formula from a third-party tap until it is trusted:
 
-Both the tarball hash and the resource blocks are generated, never hand-edited:
+```console
+$ brew info daari
+Error: Refusing to load formula naveenreddyalka/daari/daari from untrusted tap naveenreddyalka/daari.
+Run `brew trust --formula naveenreddyalka/daari/daari` or `brew trust naveenreddyalka/daari` to trust it.
+```
+
+This is a deliberate Homebrew safeguard, not a problem with the tap. Trust is
+per-machine, so each new install needs it once.
+
+## What the formula builds
+
+daari itself is pure Python, but two dependencies ship Rust extensions —
+`pydantic-core` and `watchfiles` — and the formula builds them from sdist, hence
+`depends_on "rust" => :build`. Expect the first install to pull the Rust
+toolchain.
+
+The formula declares a `resource` block for all 30 transitive runtime
+dependencies. Homebrew builds without network access, so
+`virtualenv_install_with_resources` installs only what is declared; a missing
+resource produces a `daari` that cannot import its own dependencies.
+
+## Maintaining the formula
+
+Never hand-edit it. Both the release tarball hash and every resource block are
+generated:
 
 ```bash
 python scripts/update_formula.py --version X.Y.Z
 ```
 
-## Validating the formula before a tap exists
+Then copy the result into the tap repo. The `formula` job in `publish.yml` opens a
+PR with the regenerated file after each release.
 
-A throwaway local tap is enough to check it. `brew fetch` downloads and verifies
-every checksum without installing anything:
+To validate changes without touching the public tap, use a throwaway local tap —
+`brew fetch` verifies every checksum and installs nothing:
 
 ```bash
 brew tap-new --no-git naveenreddyalka/formulatest
@@ -52,10 +67,6 @@ brew fetch --formula --build-from-source naveenreddyalka/formulatest/daari
 brew untap naveenreddyalka/formulatest
 ```
 
-A full `brew install` from that tap additionally compiles the Rust extensions in
-`pydantic-core` and `watchfiles`, which is why the formula declares
-`depends_on "rust" => :build`. Expect it to pull the Rust toolchain.
-
 ## Next
 
-→ [Releasing](../RELEASING.md) for the maintainer steps · [Install options](../developer/get-started/install.md)
+→ [Install options](../developer/get-started/install.md) · [Releasing](../RELEASING.md)
