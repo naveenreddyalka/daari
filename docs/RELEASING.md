@@ -31,6 +31,20 @@ The build job runs `twine check --strict` on the sdist/wheel before any upload.
     is correct — PyPI simply has no publisher registered to trust it, and a failed
     publish does not fail the release, so it went unnoticed three times.
 
+`scripts/release_pypi.py` drives everything around that one form:
+
+```bash
+python scripts/release_pypi.py check                    # what is blocking, changes nothing
+python scripts/release_pypi.py publish --target testpypi # optional dry run
+python scripts/release_pypi.py publish --target pypi      # triggers, watches, diagnoses
+python scripts/release_pypi.py verify --version X.Y.Z     # clean-venv install check
+```
+
+`publish` reruns the failed job from the tag's own release run when one exists, so
+the upload matches the tag instead of whatever `main` currently holds. It refuses
+to publish a version already on the index, since PyPI uploads cannot be replaced,
+and decodes an `invalid-publisher` failure back into the claim values to fix.
+
 Because `daari` does not exist on PyPI yet, register a **pending** publisher at
 [pypi.org/manage/account/publishing](https://pypi.org/manage/account/publishing/)
 using exactly these values — they must match the OIDC claims the workflow sends:
@@ -70,11 +84,14 @@ are generated — never hand-edited:
 python scripts/update_formula.py --version X.Y.Z
 ```
 
-The formula also cannot be installed from a path. Homebrew 6 rejects formulae
-outside a tap (`Error: Homebrew requires formulae to be in a tap`), so shipping
-`brew install daari` needs a separate public `naveenreddyalka/homebrew-daari`
-repository holding this file. To validate changes before that repo exists, use a
-throwaway local tap — `brew fetch` verifies every checksum without installing:
+The formula cannot be installed from a path — Homebrew 6 rejects formulae outside
+a tap (`Error: Homebrew requires formulae to be in a tap`). It is served from
+[naveenreddyalka/homebrew-daari](https://github.com/naveenreddyalka/homebrew-daari);
+after regenerating, copy the file into that repo. Users additionally need
+`brew trust naveenreddyalka/daari`, which Homebrew 6 requires for third-party taps.
+
+To validate a change without touching the public tap, use a throwaway local tap —
+`brew fetch` verifies every checksum without installing:
 
 ```bash
 brew tap-new --no-git naveenreddyalka/formulatest
