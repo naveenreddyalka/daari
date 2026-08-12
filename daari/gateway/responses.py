@@ -24,6 +24,7 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
+from daari.gateway.sampling import SamplingParams
 from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
@@ -203,6 +204,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 tools=responses_tools_to_openai(body.tools) if body.tools else None,
                 stream=body.stream,
                 meta=meta,
+                sampling=SamplingParams.from_responses_body(body.model_dump()),
             )
             input_chars = sum(len(message.content or "") for message in messages)
             log_gateway_event(

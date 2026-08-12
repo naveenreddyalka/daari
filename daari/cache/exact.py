@@ -36,6 +36,10 @@ def cache_key(request: InternalRequest) -> str:
             str(request.temperature),
             tools_schema_hash(request.tools),
             request.meta.tier_override or "",
+            # Two requests asking for different max_tokens or seed are different
+            # questions and must not share an entry (#161). Empty when the client
+            # asked for nothing, so pre-#161 entries stay reachable.
+            request.sampling.cache_fingerprint(),
         ]
     )
     return hashlib.sha256(payload.encode()).hexdigest()

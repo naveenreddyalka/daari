@@ -59,6 +59,8 @@ class MLXExecutor:
             payload["tools"] = request.tools
         if request.temperature is not None:
             payload["temperature"] = request.temperature
+        # mlx_lm.server speaks the OpenAI shape, so forward these verbatim (#161).
+        payload.update(request.sampling.openai_payload())
         return payload
 
     def _meta(self, model: str, latency_ms: int) -> DaariMeta:

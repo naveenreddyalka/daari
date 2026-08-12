@@ -199,7 +199,14 @@ class OllamaExecutor:
         if request.tools:
             payload["tools"] = request.tools
             prompt_chars += len(json.dumps(request.tools))
-        payload["options"] = {"num_ctx": estimate_num_ctx(prompt_chars)}
+        options: dict[str, Any] = {"num_ctx": estimate_num_ctx(prompt_chars)}
+        # Client-requested generation controls (#161). num_ctx stays ours: it is
+        # sized from the prompt, not something the client asks for.
+        options.update(request.sampling.ollama_options())
+        payload["options"] = options
+        response_format = request.sampling.ollama_format()
+        if response_format:
+            payload["format"] = response_format
         return payload
 
     async def execute(self, request: InternalRequest) -> InternalResponse:
@@ -559,6 +566,18 @@ class Router:
         response = self._apply_output_policy(response)
         if input_warning and not response.daari_meta.warning:
             response.daari_meta.warning = input_warning
+        # Say so when a requested parameter could not be honored, rather than
+        # returning 200 as though it had been (#161). Frontier answers come from a
+        # provider that does support them, so only local tiers warn. Appended
+        # rather than assigned: a low-confidence answer already sets a warning,
+        # and that is exactly when a client most needs to know what else was
+        # dropped.
+        if response.daari_meta.tier != "L6":
+            unsupported = request.sampling.unsupported_locally()
+            if unsupported:
+                existing = response.daari_meta.warning
+                notes = "; ".join(unsupported)
+                response.daari_meta.warning = f"{existing}; {notes}" if existing else notes
         if response.daari_meta.task_type is None:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:

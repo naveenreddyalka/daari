@@ -16,6 +16,7 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, sanitize_messages_for_ollama
 from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
+from daari.gateway.sampling import SamplingParams
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
@@ -57,6 +58,21 @@ class ChatCompletionRequest(BaseModel):
     tools: list[Any] | None = None
     stream: bool = False
     stream_options: dict[str, Any] | None = None
+    # Declared so they reach SamplingParams instead of being dropped by
+    # extra="ignore" (#161). Kept permissive: a client sending an odd shape used
+    # to be ignored, and turning that into a 422 would trade silence for a hard
+    # failure. SamplingParams validates and discards what it cannot use.
+    max_tokens: Any | None = None
+    max_completion_tokens: Any | None = None
+    top_p: Any | None = None
+    stop: Any | None = None
+    seed: Any | None = None
+    frequency_penalty: Any | None = None
+    presence_penalty: Any | None = None
+    response_format: Any | None = None
+    tool_choice: Any | None = None
+    n: Any | None = None
+    logprobs: Any | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
@@ -94,6 +110,7 @@ def _prepare_internal_request(
     untouched. Fresh tool-bearing requests (Cursor Ask) keep the strip + hint
     behavior. `X-Daari-Tools: passthrough|strip` overrides the detection.
     """
+    sampling = SamplingParams.from_openai_body(body.model_dump())
     messages = _to_internal_messages(body.messages)
     user_messages = sum(1 for message in messages if message.role == "user")
     if user_messages == 0:
@@ -136,12 +153,17 @@ def _prepare_internal_request(
         if not already_hinted:
             messages.insert(0, Message(role="system", content=NO_TOOLS_HINT))
         messages = sanitize_messages_for_ollama(messages)
+    if sampling.tool_choice == "none" and tools:
+        # The client explicitly opted out of tools for this turn.
+        log_gateway_event("tools_disabled_by_tool_choice", {"count": len(tools)})
+        tools = None
     return InternalRequest(
         messages=messages,
         model=body.model or default_model,
         temperature=body.temperature,
         tools=tools,
         stream=body.stream,
+        sampling=sampling,
         meta=meta,
     )
 
