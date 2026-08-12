@@ -12,7 +12,38 @@ frontier:
   soft_budget_ratio: 0.8
 ```
 
-Soft warnings then hard stop. Per-virtual-key budgets also apply.
+Soft warnings then hard stop.
+
+!!! warning "Per-key budgets are not yet isolated"
+    A virtual key can carry its own budget, but spend is currently checked against
+    total frontier spend rather than that key's own usage, so one key's traffic can
+    exhaust another key's allowance. Track
+    [#158](https://github.com/naveenreddyalka/daari/issues/158). Until it lands,
+    treat `frontier.daily_budget_usd` as the only reliable cap.
+
+## Pricing
+
+Spend is computed per model and per direction from `pricing.models`, in USD per
+1M tokens:
+
+```yaml
+pricing:
+  models:
+    gpt-4o:
+      input_per_1m: 2.50
+      output_per_1m: 10.00
+      cached_input_per_1m: 1.25
+    my-self-hosted-model:
+      input_per_1m: 0.0
+      output_per_1m: 0.0
+```
+
+Names match on longest prefix, so a `gpt-4o` entry also prices
+`gpt-4o-2024-08-06`. Anything unmatched falls back to the flat
+`usage.frontier_price_per_1k_tokens`, which ignores direction and will misprice a
+model whose output rate differs sharply from its input rate. `daari doctor` warns
+about models being billed at that fallback, so add an entry when you adopt a new
+model or your budgets will drift from your real invoice.
 
 ## Providers / fallback
 
