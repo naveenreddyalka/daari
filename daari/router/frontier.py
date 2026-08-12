@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, AsyncIterator
 
 import httpx
 
@@ -44,6 +45,50 @@ class FrontierExecutor:
         if marked:
             add_step("prompt_cache_hint", provider=self.provider, marked_blocks=marked)
         return messages
+
+    async def stream(
+        self,
+        request: InternalRequest,
+        *,
+        escalated_from: str | None = None,
+        local_confidence: float | None = None,
+    ) -> AsyncIterator[str]:
+        """Relay upstream SSE as text deltas.
+
+        Lets an escalated stream reach the client incrementally instead of
+        waiting for the whole frontier answer to buffer (#155).
+        """
+        if not self.api_key:
+            raise RuntimeError("frontier API key not configured")
+
+        payload = {
+            "model": self.default_model,
+            "messages": self._build_messages(request),
+            "temperature": request.temperature,
+            "stream": True,
+        }
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        async with httpx.AsyncClient(
+            base_url=self.base_url, timeout=self.timeout, transport=self.transport
+        ) as client:
+            async with client.stream(
+                "POST", "/chat/completions", json=payload, headers=headers
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[len("data:") :].strip()
+                    if not data or data == "[DONE]":
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except ValueError:
+                        continue
+                    for choice in chunk.get("choices", []):
+                        delta = (choice.get("delta") or {}).get("content")
+                        if delta:
+                            yield delta
 
     async def execute(
         self,
