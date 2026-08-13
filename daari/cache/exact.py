@@ -34,7 +34,10 @@ def _messages_for_cache(request: InternalRequest) -> list[dict[str, Any]]:
     """Dump messages without an empty `images` field, so pre-#164 keys survive."""
     dumped: list[dict[str, Any]] = []
     for message in request.messages:
-        data = message.model_dump(exclude={"images"})
+        exclude = {"images"}
+        if not message.tool_call_id:
+            exclude.add("tool_call_id")
+        data = message.model_dump(exclude=exclude)
         if message.images:
             data["images"] = [image.cache_token() for image in message.images]
         dumped.append(data)
