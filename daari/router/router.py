@@ -235,12 +235,16 @@ class OllamaExecutor:
             timeout=self.timeout,
             metrics=self.metrics,
         )
-        content = data.get("message", {}).get("content", "")
+        message = data.get("message") or {}
+        content = message.get("content") or ""
+        tool_calls = message.get("tool_calls") or None
         latency_ms = int((time.perf_counter() - started) * 1000)
         input_tokens, output_tokens, estimated = ollama_token_usage(data, request, content)
         return InternalResponse(
             content=content,
             model=model,
+            finish_reason="tool_calls" if tool_calls else "stop",
+            tool_calls=tool_calls,
             daari_meta=DaariMeta(
                 tier=self.tier,
                 cache_hit=False,

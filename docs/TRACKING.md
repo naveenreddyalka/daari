@@ -870,6 +870,22 @@ path stays as a deprecated alias (`Deprecation: true`, `Link: </mcp>`).
 Covered by `tests/unit/test_mcp_server.py`. Client config:
 [MCP guide](developer/guides/clients/mcp.md).
 
+### Responses API completeness ([#165](https://github.com/naveenreddyalka/daari/issues/165))
+
+The adapter was text-only: `function_call` input items were skipped, tool-call
+output items were never emitted, and there was no conversation state. Agent
+frameworks moving off Assistants (sunset 2026-08-26) could not use this surface.
+
+`function_call` / `function_call_output` now map to internal `tool_calls` /
+`role=tool`. Non-stream output emits `function_call` items; streams emit
+`response.function_call_arguments.delta`. `previous_response_id` prepends the
+stored conversation (sqlite next to the trace store). `store: false` skips
+persistence. `background: true` returns `queued` and `GET /v1/responses/{id}`
+polls to `completed`. `include` is 400; `metadata` is echoed.
+
+Covered by `tests/integration/test_responses_api.py`, including a call through
+the official OpenAI `AsyncOpenAI.responses` client.
+
 ---
 
 ## How to update
