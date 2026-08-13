@@ -73,12 +73,12 @@ class TestPromptCachePassthrough:
             local_confidence=0.4,
         )
 
-        system = captured["messages"][0]
-        assert isinstance(system["content"], list)
-        assert system["content"][0]["cache_control"] == {"type": "ephemeral"}
-        assert system["content"][0]["text"] == "You are a stable long system prompt."
-        # Non-system messages stay plain strings.
-        assert captured["messages"][1]["content"] == "hello"
+        system = captured["system"]
+        assert isinstance(system, list)
+        assert system[0]["text"] == "You are a stable long system prompt."
+        assert system[0]["cache_control"] == {"type": "ephemeral"}
+        assert captured["messages"][0]["role"] == "user"
+        assert captured["messages"][0]["content"] == "hello"
 
     @pytest.mark.asyncio
     async def test_openai_payload_untouched(self):
@@ -139,7 +139,10 @@ class TestPromptCachePassthrough:
             escalated_from="L3",
             local_confidence=0.4,
         )
-        assert captured["messages"][0]["content"] == "Stable prompt."
+        system = captured["system"]
+        assert isinstance(system, list)
+        assert system[0]["text"] == "Stable prompt."
+        assert "cache_control" not in system[0]
 
     def test_slimming_keeps_system_prefix_byte_stable(self, tmp_path):
         """T2a invariant: the slimmer must never rewrite or reorder system text."""

@@ -15,6 +15,7 @@ from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.sampling import SamplingParams
+from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.router import AppContext
 
@@ -79,7 +80,13 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
             )
         elif block_type == "tool_result":
             result_text = content_to_text(block.get("content")) or ""
-            tool_results.append(Message(role="tool", content=result_text))
+            tool_results.append(
+                Message(
+                    role="tool",
+                    content=result_text,
+                    tool_call_id=block.get("tool_use_id"),
+                )
+            )
         else:
             text = content_to_text([block])
             if text:
@@ -297,6 +304,24 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 content=[AnthropicTextBlock(text=result.content)],
                 daari_meta=result.daari_meta.model_dump(),
             ).model_dump()
+
+        @router.post("/v1/messages/count_tokens")
+        async def count_tokens(body: AnthropicRequest) -> dict[str, int]:
+            """Claude-family clients call this for context budgeting (#166).
+
+            Count locally: this is an ingress helper, not an L6 round-trip.
+            """
+            chars = 0
+            if body.system:
+                chars += len(content_to_text(body.system) or "")
+            for message in body.messages:
+                if isinstance(message.content, str):
+                    chars += len(message.content)
+                else:
+                    chars += len(content_to_text(message.content) or "")
+            if body.tools:
+                chars += len(json.dumps(body.tools))
+            return {"input_tokens": max(1, estimate_tokens(chars))}
 
         @router.get("/v1/messages/health")
         async def health() -> dict[str, str]:

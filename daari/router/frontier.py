@@ -9,7 +9,14 @@ import httpx
 
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.observability.tokens import openai_token_usage
-from daari.observability.trace import add_step
+from daari.router.anthropic_messages import (
+    anthropic_headers,
+    anthropic_messages_path,
+    infer_frontier_kind,
+    text_delta_from_sse_data,
+    text_from_anthropic_content,
+    to_anthropic_payload,
+)
 from daari.router.retry import RetryPolicy, run_upstream
 
 
@@ -46,25 +53,19 @@ class FrontierExecutor:
             elif message.content is not None:
                 entry["content"] = message.content
             messages.append(entry)
-        if self.provider != "anthropic" or not self.prompt_cache:
-            return messages
-        marked = 0
-        for message in messages:
-            if message.get("role") != "system":
-                break
-            content = message.get("content")
-            if isinstance(content, str) and content:
-                message["content"] = [
-                    {
-                        "type": "text",
-                        "text": content,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ]
-                marked += 1
-        if marked:
-            add_step("prompt_cache_hint", provider=self.provider, marked_blocks=marked)
         return messages
+
+    def _is_anthropic(self) -> bool:
+        return infer_frontier_kind(self.provider, self.base_url) == "anthropic"
+
+    def _openai_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
+        return {
+            "model": self.default_model,
+            "messages": self._build_messages(request),
+            "temperature": request.temperature,
+            "stream": stream,
+            **request.sampling.openai_payload(),
+        }
 
     async def stream(
         self,
@@ -76,27 +77,42 @@ class FrontierExecutor:
         """Relay upstream SSE as text deltas.
 
         Lets an escalated stream reach the client incrementally instead of
-        waiting for the whole frontier answer to buffer (#155).
+        waiting for the whole frontier answer to buffer (#155). Anthropic
+        upstream is parsed from native SSE, not an OpenAI body (#166).
         """
         if not self.api_key:
             raise RuntimeError("frontier API key not configured")
 
-        payload = {
-            "model": self.default_model,
-            "messages": self._build_messages(request),
-            "temperature": request.temperature,
-            "stream": True,
-            **request.sampling.openai_payload(),
-        }
-        headers = {"Authorization": f"Bearer {self.api_key}"}
+        if self._is_anthropic():
+            payload = to_anthropic_payload(
+                request,
+                model=self.default_model,
+                stream=True,
+                prompt_cache=self.prompt_cache,
+            )
+            headers = anthropic_headers(self.api_key)
+            path = anthropic_messages_path(self.base_url)
+        else:
+            payload = self._openai_payload(request, stream=True)
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            path = "/chat/completions"
+
         async with httpx.AsyncClient(
             base_url=self.base_url, timeout=self.timeout, transport=self.transport
         ) as client:
             async with client.stream(
-                "POST", "/chat/completions", json=payload, headers=headers
+                "POST", path, json=payload, headers=headers
             ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
+                    if self._is_anthropic():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[len("data:") :].strip()
+                        delta = text_delta_from_sse_data(data) if data else None
+                        if delta:
+                            yield delta
+                        continue
                     if not line.startswith("data:"):
                         continue
                     data = line[len("data:") :].strip()
@@ -123,22 +139,26 @@ class FrontierExecutor:
 
         model = self.default_model
         started = time.perf_counter()
-        payload = {
-            "model": model,
-            "messages": self._build_messages(request),
-            "temperature": request.temperature,
-            "stream": False,
-            **request.sampling.openai_payload(),
-        }
-        headers = {"Authorization": f"Bearer {self.api_key}"}
+        anthropic = self._is_anthropic()
+        if anthropic:
+            payload = to_anthropic_payload(
+                request,
+                model=model,
+                stream=False,
+                prompt_cache=self.prompt_cache,
+            )
+            headers = anthropic_headers(self.api_key)
+            path = anthropic_messages_path(self.base_url)
+        else:
+            payload = self._openai_payload(request, stream=False)
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            path = "/chat/completions"
 
         async def attempt() -> dict[str, Any]:
             async with httpx.AsyncClient(
                 base_url=self.base_url, timeout=self.timeout, transport=self.transport
             ) as client:
-                response = await client.post(
-                    "/chat/completions", json=payload, headers=headers
-                )
+                response = await client.post(path, json=payload, headers=headers)
                 response.raise_for_status()
                 return response.json()
 
@@ -149,10 +169,15 @@ class FrontierExecutor:
             timeout=self.timeout,
             metrics=self.metrics,
         )
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if anthropic:
+            content = text_from_anthropic_content(data.get("content"))
+        else:
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         latency_ms = int((time.perf_counter() - started) * 1000)
         prompt_chars = sum(len(message.content or "") for message in request.messages)
-        input_tokens, output_tokens, estimated = openai_token_usage(data, prompt_chars, content)
+        input_tokens, output_tokens, estimated = openai_token_usage(
+            data, prompt_chars, content
+        )
         return InternalResponse(
             content=content,
             model=model,

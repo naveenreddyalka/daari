@@ -837,6 +837,26 @@ OpenAI-shaped (string or batch), served by `cache.l1.embedding_model`, cached in
 under an `__embed__:` key, listed on `/v1/models`, and recorded as tier `embed`.
 `model: daari` aliases the configured embedder; anything else is 400.
 
+### Native Anthropic L6 egress ([#166](https://github.com/naveenreddyalka/daari/issues/166))
+
+`provider: anthropic` used to POST an OpenAI-shaped body at `/chat/completions` and
+sprinkle `cache_control` on system strings. That is not the Anthropic API, so
+Claude keys 400'd and prompt-cache billing never applied. `FrontierExecutor` now
+selects a native Messages path when `provider` is `anthropic`/`claude` or
+`anthropic.com` is in `base_url`: `x-api-key` + `anthropic-version: 2023-06-01`,
+system text in the top-level `system` field, `tool_use`/`tool_result` blocks,
+image sources, and `cache_control: ephemeral` on the last system block. Stream
+deltas parse `content_block_delta` / `text_delta`. OpenAI-compatible providers
+are unchanged.
+
+Ingress gained `POST /v1/messages/count_tokens` — a local `estimate_tokens` of
+system + messages + tools, not an L6 call. Claude-family clients use it for
+context budgeting.
+
+Covered by `tests/unit/test_anthropic_egress.py` and
+`tests/integration/test_anthropic_egress_live.py` (skipped without
+`ANTHROPIC_API_KEY`).
+
 ---
 
 ## How to update
