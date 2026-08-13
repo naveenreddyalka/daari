@@ -7,10 +7,39 @@ from pydantic import BaseModel, Field
 from daari.gateway.sampling import SamplingParams
 
 
+class ContentImage(BaseModel):
+    """One image the client sent. `data` is raw base64; `url` may be a data: or https URL."""
+
+    media_type: str = "image/png"
+    data: str | None = None
+    url: str | None = None
+
+    def as_base64(self) -> str | None:
+        if self.data:
+            return self.data
+        if self.url and self.url.startswith("data:") and "," in self.url:
+            return self.url.split(",", 1)[1]
+        return None
+
+    def as_data_url(self) -> str | None:
+        if self.url:
+            return self.url
+        if self.data:
+            return f"data:{self.media_type};base64,{self.data}"
+        return None
+
+    def cache_token(self) -> str:
+        import hashlib
+
+        raw = self.as_base64() or self.url or ""
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
 class Message(BaseModel):
     role: str
     content: str | None = None
     tool_calls: list[Any] | None = None
+    images: list[ContentImage] = Field(default_factory=list)
 
 
 class RequestMeta(BaseModel):

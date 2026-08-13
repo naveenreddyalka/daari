@@ -174,8 +174,9 @@ class OllamaExecutor:
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
         for m in request.messages:
-            data = m.model_dump(exclude_none=True)
+            data = m.model_dump(exclude_none=True, exclude={"images"})
             tool_calls = data.get("tool_calls")
+            image_b64 = [img.as_base64() for img in m.images if img.as_base64()]
             if tool_calls:
                 # Ollama requires function.arguments as an object; OpenAI/Anthropic
                 # conversions carry JSON strings (issue #88).
@@ -186,9 +187,11 @@ class OllamaExecutor:
                             function["arguments"] = json.loads(function["arguments"] or "{}")
                         except json.JSONDecodeError:
                             function["arguments"] = {}
-            elif not data.get("content"):
+            elif not data.get("content") and not image_b64:
                 # Content-less non-tool-call messages make Ollama reject the batch.
                 continue
+            if image_b64:
+                data["images"] = image_b64
             messages.append(data)
         payload: dict[str, Any] = {
             "model": model,
@@ -450,10 +453,19 @@ class Router:
                 "capability_filter",
                 required=sorted(required),
                 before=tiers,
-                after=kept or tiers,
+                after=kept,
             )
-        # Never empty the chain — fall back to the original if everything filtered out.
-        return kept or tiers
+        if not kept:
+            # A vision request on a text-only stack used to run anyway and answer
+            # as if no image was sent (#164). Refuse rather than silently degrade.
+            from daari.router.capabilities import UnsupportedCapability
+
+            raise UnsupportedCapability(required)
+        return kept
+
+    def ensure_capable(self, request: InternalRequest) -> None:
+        """Raise before a stream starts so the client sees HTTP 422, not an SSE error."""
+        self._filter_capable_tiers(["L3", "L4", "L5"], request)
 
     def _apply_guardrail_hits(self, hits: list[Any], *, warning: str | None) -> None:
         for hit in hits:
