@@ -150,7 +150,7 @@ pytest -m benchmark                 # optional latency checks
 |------|--------|-------|
 | Gateway adapter protocol (`daari/gateway/base.py`) | [x] | OpenAI adapter now implements protocol |
 | Anthropic gateway adapter (`/v1/messages`) | [x] | non-stream + SSE event streaming (`stream: true`) |
-| MCP gateway ingress | [x] | `/v1/mcp/query` now supports `tools/list`, `tools/call`, and JSON-schema tool catalog |
+| MCP gateway ingress | [x] | JSON-RPC 2.0 at `POST /mcp`; `/v1/mcp/query` deprecated alias |
 | L5 local tier wiring | [~] | config + routing/escalation support; large model remains optional |
 | Sourcegraph/GHE provider depth (C3) | [x] | Sourcegraph GraphQL + GHE repo/issue search with configurable base URLs and token envs |
 | GitLab self-hosted provider depth (C3) | [x] | REST project/issue search + `@gitlab` trigger + MCP tool support |
@@ -856,6 +856,19 @@ context budgeting.
 Covered by `tests/unit/test_anthropic_egress.py` and
 `tests/integration/test_anthropic_egress_live.py` (skipped without
 `ANTHROPIC_API_KEY`).
+
+### MCP JSON-RPC server ([#162](https://github.com/naveenreddyalka/daari/issues/162))
+
+`POST /v1/mcp/query` was a bespoke body, not JSON-RPC, so no real MCP client could
+connect even though the README claimed `tools/list` / `tools/call`. `POST /mcp` is
+now a streamable-HTTP JSON-RPC 2.0 endpoint: `initialize`, `notifications/*` (202),
+`tools/list`, `tools/call`, with parse/invalid/method-not-found codes. Tools are
+`route`, `stats`, and registered `integration:` / `mcp:` providers, each with an
+`inputSchema`. Auth is the existing master / virtual-key middleware. The old query
+path stays as a deprecated alias (`Deprecation: true`, `Link: </mcp>`).
+
+Covered by `tests/unit/test_mcp_server.py`. Client config:
+[MCP guide](developer/guides/clients/mcp.md).
 
 ---
 

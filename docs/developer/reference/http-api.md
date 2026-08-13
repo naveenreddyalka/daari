@@ -12,6 +12,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/api/tags` | Tags |
 | `GET` | `/api/version` | Version |
 | `GET` | `/health` | Health |
+| `POST` | `/mcp` | Mcp Jsonrpc |
 | `GET` | `/metrics` | Prometheus Metrics |
 | `GET` | `/ready` | Ready |
 | `POST` | `/v1/chat/completions` | Chat Completions |

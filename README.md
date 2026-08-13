@@ -70,7 +70,7 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 - Monthly/daily frontier budgets with soft warnings, per-client cost attribution, optional pre-frontier PII scrub
 
 **Platform**
-- MCP ingress (`tools/list`/`tools/call`), Sourcegraph/GHE/GitLab providers, org shared cache + collective learning (tracer), gateway API-key auth, MLX backend for Apple Silicon
+- MCP server at `POST /mcp` (`initialize` / `tools/list` / `tools/call`), Sourcegraph/GHE/GitLab providers, org shared cache + collective learning (tracer), gateway API-key auth, MLX backend for Apple Silicon
 
 ## Docs
 

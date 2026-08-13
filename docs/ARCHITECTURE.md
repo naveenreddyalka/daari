@@ -86,7 +86,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L5/L6 + no-frontier + fallback behavior | ✅ |
 | `daari/gateway/base.py` | `GatewayAdapter` protocol | ✅ |
 | `daari/gateway/anthropic.py` | `POST /v1/messages` Anthropic-compatible adapter (minimal) | ✅ |
-| `daari/gateway/mcp.py` | MCP ingress (`health`/`stats`/`route`, `tools/list`, `tools/call`) | ✅ expanded |
+| `daari/gateway/mcp.py` | MCP JSON-RPC 2.0 at `POST /mcp`; deprecated `/v1/mcp/query` alias | ✅ |
 | `daari/cache/exact.py` | L0 exact cache keys + diskcache store | ✅ |
 | `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
 | `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/` + profile overlays + skills prefix) | ✅ |
@@ -265,7 +265,8 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | `GET` | `/v1/models`, `/v1/models/{id}` | Model listing for client pickers |
 | `POST` | `/v1/messages` | Anthropic-compatible adapter with tool passthrough (non-stream + SSE) |
 | `GET`/`POST` | `/api/tags`, `/api/chat`, `/api/version`, `/api/show`, `/api/ps` | Ollama-compatible facade (JetBrains AI Assistant, any Ollama client) |
-| `POST` | `/v1/mcp/query` | MCP ingress (`health`, `stats`, `route`, `tools/list`, `tools/call`, providers) |
+| `POST` | `/mcp` | MCP JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) over streamable HTTP |
+| `POST` | `/v1/mcp/query` | Deprecated MCP alias (`Deprecation` + `Link` to `/mcp`) |
 | `POST` | `/v1/daari/reload-caches` | Reload in-memory L0/L1/CCS handles from current settings |
 | `GET` | `/v1/daari/stats` | Tier metrics snapshot |
 | `GET` | `/v1/daari/report` | Usage/savings/budget/cache-trust report |
