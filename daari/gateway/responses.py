@@ -23,8 +23,10 @@ from pydantic import BaseModel, ConfigDict
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
+from daari.gateway.content import extract_images
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.sampling import SamplingParams
+from daari.router.capabilities import UnsupportedCapability
 from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
@@ -69,7 +71,14 @@ def responses_input_to_messages(body: ResponsesRequest) -> list[Message]:
             # the v1 adapter (see module docstring); skip rather than 500.
             continue
         role = item.get("role", "user")
-        messages.append(Message(role=role, content=_content_to_text(item.get("content"))))
+        content = item.get("content")
+        messages.append(
+            Message(
+                role=role,
+                content=_content_to_text(content),
+                images=extract_images(content),
+            )
+        )
     return messages
 
 
@@ -228,6 +237,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
 
             try:
                 result = await ctx.router.route(internal)
+            except UnsupportedCapability as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc

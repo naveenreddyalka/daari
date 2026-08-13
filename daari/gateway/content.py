@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from daari.gateway.internal import Message
+from daari.gateway.internal import ContentImage, Message
 
 _TEXT_BLOCK_TYPES = frozenset({"text", "input_text", "output_text"})
 
@@ -32,6 +32,52 @@ def content_to_text(content: str | list[dict[str, Any]] | dict[str, Any] | None)
     return joined or None
 
 
+def extract_images(content: str | list[dict[str, Any]] | dict[str, Any] | None) -> list[ContentImage]:
+    """Pull image blocks out of an OpenAI/Anthropic/Ollama content value.
+
+    `content_to_text` is deliberately text-only — callers that need the pictures
+    have to ask for them, or they vanish the way they did before #164.
+    """
+    if content is None or isinstance(content, str):
+        return []
+    blocks = [content] if isinstance(content, dict) else content
+    images: list[ContentImage] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type in {"image_url", "input_image"}:
+            image_url = block.get("image_url") or block.get("url")
+            url = image_url.get("url") if isinstance(image_url, dict) else image_url
+            if isinstance(url, str) and url:
+                images.append(_image_from_url(url))
+        elif block_type == "image":
+            source = block.get("source") or {}
+            if not isinstance(source, dict):
+                continue
+            if source.get("type") == "base64" and isinstance(source.get("data"), str):
+                images.append(
+                    ContentImage(
+                        media_type=str(source.get("media_type") or "image/png"),
+                        data=source["data"],
+                    )
+                )
+            elif isinstance(source.get("url"), str):
+                images.append(_image_from_url(source["url"]))
+    return images
+
+
+def _image_from_url(url: str) -> ContentImage:
+    if url.startswith("data:") and "," in url:
+        header, data = url.split(",", 1)
+        media = "image/png"
+        rest = header[5:] if header.startswith("data:") else header
+        if ";" in rest:
+            media = rest.split(";", 1)[0] or media
+        return ContentImage(media_type=media, data=data, url=url)
+    return ContentImage(url=url)
+
+
 def _tool_call_names(tool_calls: list[Any]) -> list[str]:
     names: list[str] = []
     for tool_call in tool_calls:
@@ -56,7 +102,9 @@ def sanitize_messages_for_ollama(messages: list[Message]) -> list[Message]:
             if not text:
                 names = _tool_call_names(message.tool_calls)
                 text = f"(called tools: {', '.join(names)})" if names else "(called tools)"
-            sanitized.append(Message(role=message.role, content=text))
+            sanitized.append(Message(role=message.role, content=text, images=list(message.images)))
             continue
-        sanitized.append(message)
+        sanitized.append(
+            Message(role=message.role, content=message.content, images=list(message.images))
+        )
     return sanitized
