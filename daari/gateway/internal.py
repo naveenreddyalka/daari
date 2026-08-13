@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from daari.gateway.sampling import SamplingParams
+
 
 class Message(BaseModel):
     role: str
@@ -30,6 +32,8 @@ class InternalRequest(BaseModel):
     temperature: float = 0.7
     tools: list[Any] | None = None
     stream: bool = False
+    # Generation controls the client asked for; previously dropped (#161).
+    sampling: SamplingParams = Field(default_factory=SamplingParams)
     meta: RequestMeta = Field(default_factory=RequestMeta)
 
     @property

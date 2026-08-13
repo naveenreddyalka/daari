@@ -70,6 +70,7 @@ class FrontierExecutor:
             "messages": self._build_messages(request),
             "temperature": request.temperature,
             "stream": True,
+            **request.sampling.openai_payload(),
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
         async with httpx.AsyncClient(
@@ -111,6 +112,7 @@ class FrontierExecutor:
             "messages": self._build_messages(request),
             "temperature": request.temperature,
             "stream": False,
+            **request.sampling.openai_payload(),
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
 

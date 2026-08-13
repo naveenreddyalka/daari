@@ -766,6 +766,42 @@ which walks the settings tree and fails on any path escaping to the real home.
 
 ---
 
+### Sampling parameters ([#161](https://github.com/naveenreddyalka/daari/issues/161))
+
+`ChatCompletionRequest` declared six fields and set `extra="ignore"`, so `max_tokens`,
+`top_p`, `stop`, `seed`, and `response_format` were accepted with a 200 and dropped.
+A client asking for a bounded or deterministic answer got neither, and no error. The
+other three surfaces were worse: the Anthropic endpoint parsed the `max_tokens` that
+API *requires* and never used it, the Responses endpoint did the same with
+`max_output_tokens`, and the Ollama facade read `temperature` out of `options` and
+discarded `num_predict` beside it.
+
+`daari/gateway/sampling.py` now owns one `SamplingParams` model with a reader per
+surface, and each executor maps it on the way out. Three rules shaped it:
+
+- **Unset means absent.** Sending `None` for an omitted parameter would override the
+  backend's own default, so unset keys never reach a payload.
+- **What cannot be honored is reported.** `presence_penalty`, `n > 1`, `logprobs`, and
+  `tool_choice: required` become a `daari_meta.warning`. Appended, not assigned: a
+  low-confidence answer already sets a warning, and that is when a client most needs
+  to know what else was dropped.
+- **Only honored parameters split the cache.** Sampling is in the cache key, so a
+  16-token answer cannot be served to a request asking for 500, while a parameter that
+  never reached the model does not fragment the cache. Requests that set nothing keep
+  hitting pre-#161 entries.
+
+Two bugs the mocked tests could not have found, both caught by asserting on the wire:
+`max_completion_tokens` is present-but-`None` in a parsed body, so `get(key, default)`
+read the `None` and never fell back to `max_tokens`; and Ollama matches `stop`
+case-sensitively, which broke a test rather than the mapping.
+
+Covered by `tests/unit/test_sampling_params.py` (mapping), `test_sampling_end_to_end.py`
+(values reach the wire, across all four surfaces), and `tests/integration/test_sampling_live.py`,
+which confirms against a real `llama3.2:3b` that the cap truncates, a shared seed
+reproduces, a stop sequence ends generation, and JSON mode parses.
+
+---
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

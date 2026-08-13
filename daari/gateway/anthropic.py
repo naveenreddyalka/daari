@@ -14,6 +14,7 @@ from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
+from daari.gateway.sampling import SamplingParams
 from daari.router.router import AppContext
 
 
@@ -121,6 +122,9 @@ class AnthropicRequest(BaseModel):
     max_tokens: int | None = None
     stream: bool = False
     temperature: float = 0.7
+    top_p: float | None = None
+    top_k: int | None = None
+    stop_sequences: list[str] | None = None
 
 
 class AnthropicTextBlock(BaseModel):
@@ -218,6 +222,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 temperature=body.temperature,
                 stream=False,
                 meta=meta,
+                sampling=SamplingParams.from_anthropic_body(body.model_dump()),
             )
 
             if body.stream:

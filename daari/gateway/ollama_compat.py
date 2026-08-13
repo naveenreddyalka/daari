@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.sampling import SamplingParams
 from daari.router.router import AppContext
 
 DEFAULT_CLIENT_ID = "ollama-compat"
@@ -154,6 +155,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 temperature=temperature,
                 stream=body.stream,
                 meta=RequestMeta(client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip()),
+                sampling=SamplingParams.from_ollama_options(body.options),
             )
 
             if body.stream:
