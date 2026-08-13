@@ -24,6 +24,20 @@ daari setup vscode
 daari setup openai-compat
 ```
 
+## Sampling parameters
+
+Generation controls are read on every surface and mapped to the backend: `max_tokens`
+(`max_completion_tokens`, `max_output_tokens`, or `num_predict` depending on the
+surface), `top_p`, `top_k`, `stop` / `stop_sequences`, `seed`, `frequency_penalty`,
+and `response_format: json_object`. Omitted parameters are not sent, so backend
+defaults stand.
+
+What a local model cannot do is reported in `daari_meta.warning` rather than silently
+dropped: `presence_penalty`, `n > 1`, `logprobs`, and `tool_choice: required`.
+`frequency_penalty` is approximated by Ollama's `repeat_penalty`. Sampling parameters
+are part of the cache key, so a 16-token answer is never served to a request asking
+for 500.
+
 ## Auth
 
 Optional `server.api_key`, virtual keys (`daari keys`), or SSO for admin surfaces. Health stays open when keyed.
