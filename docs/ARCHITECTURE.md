@@ -262,6 +262,8 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat with full SSE streaming (tier fallback, L0/L1, draft injection) |
+| `POST` | `/v1/responses` | OpenAI Responses API (function calls, previous_response_id, background) |
+| `GET` | `/v1/responses/{id}` | Retrieve a stored Responses object |
 | `GET` | `/v1/models`, `/v1/models/{id}` | Model listing for client pickers |
 | `POST` | `/v1/messages` | Anthropic-compatible adapter with tool passthrough (non-stream + SSE) |
 | `GET`/`POST` | `/api/tags`, `/api/chat`, `/api/version`, `/api/show`, `/api/ps` | Ollama-compatible facade (JetBrains AI Assistant, any Ollama client) |

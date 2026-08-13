@@ -112,3 +112,4 @@ class InternalResponse(BaseModel):
     model: str
     daari_meta: DaariMeta
     finish_reason: str = "stop"
+    tool_calls: list[Any] | None = None

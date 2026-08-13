@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -57,14 +58,27 @@ class TestInputMapping:
                     {"type": "input_text", "text": "part two"},
                 ]},
                 {"type": "message", "role": "assistant", "content": "earlier answer"},
-                {"type": "function_call", "name": "ignored"},  # out of scope: skipped
+                {
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "lookup",
+                    "arguments": "{\"q\": \"x\"}",
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_1",
+                    "output": "found it",
+                },
             ],
         )
         messages = responses_input_to_messages(body)
-        assert [(m.role, m.content) for m in messages] == [
-            ("user", "part one part two"),
-            ("assistant", "earlier answer"),
-        ]
+        assert messages[0].role == "user"
+        assert messages[1].role == "assistant"
+        assert messages[2].role == "assistant"
+        assert messages[2].tool_calls[0]["function"]["name"] == "lookup"
+        assert messages[3].role == "tool"
+        assert messages[3].tool_call_id == "call_1"
+        assert messages[3].content == "found it"
 
     def test_flat_tools_convert_to_nested(self):
         converted = responses_tools_to_openai(
@@ -163,3 +177,177 @@ async def test_stream_failure_emits_response_failed(settings):
         )
     assert "event: response.failed" in response.text
     assert "tier exploded" in response.text
+
+
+def _mock_route_with_tools(app):
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        fake_route.last_request = request
+        return InternalResponse(
+            content="",
+            model="llama3.2:3b",
+            finish_reason="tool_calls",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=5),
+            tool_calls=[
+                {
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": "{\"city\": \"NYC\"}"},
+                }
+            ],
+        )
+
+    app.state.ctx.router.route = fake_route
+    return fake_route
+
+
+@pytest.mark.asyncio
+async def test_function_call_output_item_is_emitted(settings):
+    app = _app(settings)
+    _mock_route_with_tools(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "daari",
+                "input": "weather?",
+                "tools": [{"type": "function", "name": "get_weather", "parameters": {"type": "object"}}],
+            },
+        )
+    assert response.status_code == 200
+    items = response.json()["output"]
+    call = next(item for item in items if item["type"] == "function_call")
+    assert call["name"] == "get_weather"
+    assert call["call_id"] == "call_abc"
+    assert json.loads(call["arguments"]) == {"city": "NYC"}
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_function_call_argument_deltas(settings):
+    app = _app(settings)
+
+    async def fake_chunks(request: InternalRequest):
+        delta = {
+            "tool_calls": [
+                {
+                    "index": 0,
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "lookup", "arguments": "{\"q\":"},
+                }
+            ]
+        }
+        yield f"data: {json.dumps({'choices': [{'delta': delta}]})}\n\n"
+        delta2 = {"tool_calls": [{"index": 0, "function": {"arguments": " \"x\"}"}}]}
+        yield f"data: {json.dumps({'choices': [{'delta': delta2}]})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    app.state.ctx.router.stream_openai_chunks = fake_chunks
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses", json={"model": "daari", "input": "lookup x", "stream": True}
+        )
+    text = response.text
+    assert "response.function_call_arguments.delta" in text
+    assert "response.function_call_arguments.done" in text
+
+
+@pytest.mark.asyncio
+async def test_previous_response_id_chains_conversation(settings):
+    app = _app(settings)
+    fake = _mock_route(app, content="second turn")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/v1/responses", json={"model": "daari", "input": "hello"})
+        first_id = first.json()["id"]
+        second = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "and then?", "previous_response_id": first_id},
+        )
+    assert second.status_code == 200
+    roles = [m.role for m in fake.last_request.messages]
+    assert "assistant" in roles
+    assert any(m.content == "hello" for m in fake.last_request.messages)
+
+
+@pytest.mark.asyncio
+async def test_store_false_is_not_retrievable(settings):
+    app = _app(settings)
+    _mock_route(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = await client.post(
+            "/v1/responses", json={"model": "daari", "input": "ephemeral", "store": False}
+        )
+        fetched = await client.get(f"/v1/responses/{created.json()['id']}")
+    assert created.status_code == 200
+    assert fetched.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_stored_response_is_retrievable(settings):
+    app = _app(settings)
+    _mock_route(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = await client.post("/v1/responses", json={"model": "daari", "input": "keep me"})
+        fetched = await client.get(f"/v1/responses/{created.json()['id']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["output"][0]["content"][0]["text"] == "routed answer"
+
+
+@pytest.mark.asyncio
+async def test_background_returns_queued_then_completes(settings):
+    app = _app(settings)
+    _mock_route(app, content="done in background")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = await client.post(
+            "/v1/responses", json={"model": "daari", "input": "later", "background": True}
+        )
+        assert created.status_code == 200
+        assert created.json()["status"] == "queued"
+        response_id = created.json()["id"]
+        body = None
+        for _ in range(20):
+            fetched = await client.get(f"/v1/responses/{response_id}")
+            body = fetched.json()
+            if body.get("status") == "completed":
+                break
+        assert body["status"] == "completed"
+        assert body["output"][0]["content"][0]["text"] == "done in background"
+
+
+@pytest.mark.asyncio
+async def test_include_is_rejected_not_dropped(settings):
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "hi", "include": ["file_search_call.results"]},
+        )
+    assert response.status_code == 400
+    assert "include" in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_metadata_is_echoed(settings):
+    app = _app(settings)
+    _mock_route(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "hi", "metadata": {"run": "a1"}},
+        )
+    assert response.status_code == 200
+    assert response.json()["metadata"] == {"run": "a1"}
+
+
+@pytest.mark.asyncio
+async def test_openai_sdk_responses_client(settings):
+    openai = pytest.importorskip("openai")
+    app = _app(settings)
+    _mock_route(app, content="sdk-ok")
+    http = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    client = openai.AsyncOpenAI(base_url="http://test/v1", api_key="local", http_client=http)
+    created = await client.responses.create(model="daari", input="hello from sdk")
+    assert created.status == "completed"
+    assert created.output[0].content[0].text == "sdk-ok"
+    fetched = await client.responses.retrieve(created.id)
+    assert fetched.id == created.id
+    await http.aclose()
