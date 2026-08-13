@@ -174,7 +174,7 @@ pytest -m benchmark                 # optional latency checks
 | Org cache retry/backoff hardening | [x] | retries transient org cache failures with exponential backoff |
 | L1 semantic threshold + bench hardening | [x] | default threshold tuned to `0.88`; `scripts/bench.sh` now deterministically checks L0 and L1 |
 | Doctor embedding-model check | [x] | `daari doctor` now validates `cache.l1.embedding_model` (`nomic-embed-text`) |
-| PyPI publish prep | [~] | `pyproject.toml` metadata + `publish.yml` are correct and the build job passes, but no release ever reached PyPI: the publish job failed `invalid-publisher` on v1.1.1/v1.1.2/v1.2.0 because no trusted publisher is registered. One-time PyPI setup, see [RELEASING.md](RELEASING.md#blocking-one-time-setup-pypi-trusted-publisher) · [#160](https://github.com/naveenreddyalka/daari/issues/160) |
+| PyPI publish | [x] | `daari==1.2.0` is on [PyPI](https://pypi.org/project/daari/). Trusted publisher registered 2026-08-13; `python scripts/release_pypi.py publish --target pypi` reran the failed v1.2.0 job and `verify` installed from the index. Homebrew tap already pointed at the same tarball. · [#160](https://github.com/naveenreddyalka/daari/issues/160) |
 | Cursor setup smoke script | [x] | `scripts/smoke-cursor-dry-run.sh` for CI/local setup dry-run validation |
 | Cursor tunnel setup script | [x] | `scripts/tunnel.sh` starts local daemon + cloudflared and prints `/v1` URL |
 
@@ -799,6 +799,21 @@ Covered by `tests/unit/test_sampling_params.py` (mapping), `test_sampling_end_to
 (values reach the wire, across all four surfaces), and `tests/integration/test_sampling_live.py`,
 which confirms against a real `llama3.2:3b` that the cap truncates, a shared seed
 reproduces, a stop sequence ends generation, and JSON mode parses.
+
+---
+
+### PyPI and Homebrew ([#160](https://github.com/naveenreddyalka/daari/issues/160))
+
+v1.1.1, v1.1.2, and v1.2.0 all built and then failed `invalid-publisher` because
+no trusted publisher was registered. That is one form under a PyPI account — no
+API, no token — so it waited on a human. On 2026-08-13 the pending publisher was
+added with the OIDC claims `publish.yml` sends, and
+`python scripts/release_pypi.py publish --target pypi` reran the failed job from
+the `v1.2.0` tag so the upload matched the tag rather than `main`.
+`verify --version 1.2.0` then installed into a throwaway venv and ran
+`daari --help`. The Homebrew formula and tap were already filled from the earlier
+prep; the `formula` job in `publish.yml` did not run on the rerun because it was
+added after the tag, and had nothing left to write.
 
 ---
 

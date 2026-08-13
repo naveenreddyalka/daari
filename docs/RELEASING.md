@@ -17,21 +17,20 @@ Human-gated by design — agents prepare, a maintainer pulls the trigger.
 
 | Artifact | Workflow | Trigger | Gate |
 |----------|----------|---------|------|
-| PyPI package | `publish.yml` | GitHub release published (or manual dispatch, incl. TestPyPI) | Trusted publisher must be registered on PyPI — see below |
+| PyPI package | `publish.yml` | GitHub release published (or manual dispatch, incl. TestPyPI) | Trusted publisher registered 2026-08-13 |
 | Docker image | `docker.yml` | tag push → `ghcr.io/naveenreddyalka/daari:vX.Y.Z` + `latest` on main | ghcr package visibility (first publish creates it) |
 | Docs site | `docs-site.yml` | push to main | GitHub Pages (auto-enabled) |
 
 The build job runs `twine check --strict` on the sdist/wheel before any upload.
 
-## Blocking one-time setup: PyPI trusted publisher
+## PyPI trusted publisher
 
-!!! danger "This is why v1.1.1, v1.1.2, and v1.2.0 never reached PyPI"
-    The `build` job succeeded on all three releases; the `publish` job failed with
-    `invalid-publisher: valid token, but no corresponding publisher`. The workflow
-    is correct — PyPI simply has no publisher registered to trust it, and a failed
-    publish does not fail the release, so it went unnoticed three times.
+Registered 2026-08-13. `daari==1.2.0` is on [PyPI](https://pypi.org/project/daari/).
+v1.1.1 / v1.1.2 / the first v1.2.0 attempt failed `invalid-publisher` because this
+form had not been filled in; a failed publish does not fail the GitHub release, so
+it went unnoticed three times.
 
-`scripts/release_pypi.py` drives everything around that one form:
+`scripts/release_pypi.py` is the release path from here:
 
 ```bash
 python scripts/release_pypi.py check                    # what is blocking, changes nothing
@@ -45,9 +44,8 @@ the upload matches the tag instead of whatever `main` currently holds. It refuse
 to publish a version already on the index, since PyPI uploads cannot be replaced,
 and decodes an `invalid-publisher` failure back into the claim values to fix.
 
-Because `daari` does not exist on PyPI yet, register a **pending** publisher at
-[pypi.org/manage/account/publishing](https://pypi.org/manage/account/publishing/)
-using exactly these values — they must match the OIDC claims the workflow sends:
+The publisher is already on the project. Recreate it only if PyPI drops the
+registration, using exactly these OIDC claims — they must match the workflow:
 
 | Field | Value |
 |-------|-------|
@@ -57,15 +55,15 @@ using exactly these values — they must match the OIDC claims the workflow send
 | Workflow name | `publish.yml` |
 | Environment name | `pypi` |
 
-No API token is created or stored. Then ship the already-tagged release without
-re-tagging, by re-running just the failed job so it keeps the tag's ref:
+No API token is created or stored. For a version that already has a tag but never
+reached the index, re-run just the failed job so it keeps the tag's ref:
 
 ```bash
 gh run rerun $(gh run list --workflow publish.yml --limit 1 --json databaseId -q '.[0].databaseId') --failed
 ```
 
-Dry-run against TestPyPI first if you prefer — it needs its own pending publisher
-with environment `testpypi`:
+Dry-run against TestPyPI first if you prefer — it needs its own publisher with
+environment `testpypi`:
 
 ```bash
 gh workflow run publish.yml -f repository=testpypi
