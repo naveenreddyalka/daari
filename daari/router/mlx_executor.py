@@ -107,10 +107,16 @@ class MLXExecutor:
             metrics=self.metrics,
         )
         choice = (data.get("choices") or [{}])[0]
-        content = (choice.get("message") or {}).get("content") or ""
+        message = choice.get("message") or {}
+        content = message.get("content") or ""
+        tool_calls = message.get("tool_calls") or None
         latency_ms = int((time.perf_counter() - started) * 1000)
         return InternalResponse(
-            content=content, model=model, daari_meta=self._meta(model, latency_ms)
+            content=content,
+            model=model,
+            finish_reason="tool_calls" if tool_calls else (choice.get("finish_reason") or "stop"),
+            tool_calls=tool_calls,
+            daari_meta=self._meta(model, latency_ms),
         )
 
     async def stream(self, request: InternalRequest) -> AsyncIterator[dict]:

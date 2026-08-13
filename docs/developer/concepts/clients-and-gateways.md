@@ -7,7 +7,7 @@
 | Surface | Paths | Typical client |
 |---------|-------|----------------|
 | OpenAI Chat | `POST /v1/chat/completions` | Cursor BYOK, VS Code, SDKs |
-| OpenAI Responses | `POST /v1/responses` | Newer OpenAI SDKs |
+| OpenAI Responses | `POST /v1/responses`, `GET /v1/responses/{id}` | Newer OpenAI SDKs |
 | Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code |
 | Ollama facade | `/api/chat`, `/api/tags`, … | JetBrains AI Assistant |
 | MCP | `POST /mcp` (JSON-RPC 2.0), `POST /v1/mcp/query` (deprecated) | Cursor, Claude Desktop |
@@ -58,6 +58,11 @@ body at `/chat/completions`. Prompt-cache hints land on the last system block as
 providers are registered (Sourcegraph, GHE, GitLab, configured MCP egress). Auth is
 the same Bearer / `x-api-key` middleware as the rest of the daemon.
 `POST /v1/mcp/query` still works and sends a `Deprecation` header pointing at `/mcp`.
+
+The Responses surface round-trips `function_call` / `function_call_output` items,
+chains turns with `previous_response_id`, honors `store: false`, and returns
+`queued` for `background: true` (poll `GET /v1/responses/{id}`). `include` is
+rejected with 400 rather than ignored; `metadata` is echoed.
 
 ## Auth
 

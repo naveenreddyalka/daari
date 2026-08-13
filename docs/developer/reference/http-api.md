@@ -37,3 +37,4 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/models/{model_id}` | Retrieve Model |
 | `POST` | `/v1/org-learning/sync` | Org Learning Sync |
 | `POST` | `/v1/responses` | Responses |
+| `GET` | `/v1/responses/{response_id}` | Get Response |
