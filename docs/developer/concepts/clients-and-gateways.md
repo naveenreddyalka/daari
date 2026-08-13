@@ -43,6 +43,9 @@ Image parts (`image_url`, Anthropic `image` sources, Ollama `images`) ride on
 gateway returns **422** — it never strips the image and answers as if the question
 were text-only.
 
+`POST /v1/embeddings` is served by the same embedder L1 already uses, so a client
+pointed at daari does not need a second host for vectors.
+
 ## Auth
 
 Optional `server.api_key`, virtual keys (`daari keys`), or SSO for admin surfaces. Health stays open when keyed.

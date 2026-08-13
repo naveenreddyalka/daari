@@ -15,7 +15,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
-from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
+from daari.gateway.internal import (
+    DaariMeta,
+    InternalRequest,
+    InternalResponse,
+    Message,
+    RequestMeta,
+)
 from daari.gateway.sampling import SamplingParams
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
@@ -48,6 +54,24 @@ class ChatMessage(BaseModel):
     role: str
     content: str | list[dict[str, Any]] | dict[str, Any] | None = None
     tool_calls: list[Any] | None = None
+
+
+class EmbeddingsRequest(BaseModel):
+    model: str = ""
+    input: str | list[str]
+
+
+def _embedding_texts(value: str | list[str]) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    return [str(item) for item in value]
+
+
+def _embedding_cache_request(model: str, text: str) -> InternalRequest:
+    return InternalRequest(
+        messages=[Message(role="user", content=text)],
+        model=f"__embed__:{model}",
+    )
 
 
 class ChatCompletionRequest(BaseModel):
@@ -393,11 +417,86 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 usage=response_token_usage(result, prompt_chars),
             )
 
+        @router.post("/v1/embeddings")
+        async def embeddings(body: EmbeddingsRequest, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            configured = ctx.settings.cache.l1.embedding_model
+            requested = (body.model or "").strip() or "daari"
+            if requested not in {"daari", configured}:
+                raise HTTPException(
+                    status_code=400, detail=f"unknown embedding model: {requested}"
+                )
+            model = configured
+            embedder = ctx.router.semantic_cache.embedder
+            texts = _embedding_texts(body.input)
+            vectors: list[list[float]] = []
+            cache_hits = 0
+            for text in texts:
+                cached = ctx.router.cache.get(_embedding_cache_request(model, text))
+                if cached is not None:
+                    vectors.append(json.loads(cached.content))
+                    cache_hits += 1
+                    continue
+                embedding = await embedder.embed(text, model=model)
+                if embedding is None:
+                    raise HTTPException(
+                        status_code=502, detail=f"embedding model {model} returned no vector"
+                    )
+                ctx.router.cache.put(
+                    _embedding_cache_request(model, text),
+                    InternalResponse(
+                        content=json.dumps(embedding),
+                        model=model,
+                        daari_meta=DaariMeta(
+                            tier="embed",
+                            cache_hit=False,
+                            executor="ollama",
+                            provider_id="ollama",
+                            model=model,
+                        ),
+                    ),
+                )
+                vectors.append(embedding)
+            prompt_chars = sum(len(text) for text in texts)
+            ctx.metrics.record(
+                "embed",
+                cache_hit=bool(texts) and cache_hits == len(texts),
+                latency_ms=0,
+            )
+            if ctx.router.usage_ledger is not None:
+                ctx.router.usage_ledger.record(
+                    tier="embed",
+                    cache_hit=bool(texts) and cache_hits == len(texts),
+                    prompt_chars=prompt_chars,
+                    model=model,
+                    provider="ollama",
+                    input_tokens=estimate_tokens(prompt_chars),
+                    output_tokens=0,
+                )
+            return {
+                "object": "list",
+                "data": [
+                    {"object": "embedding", "index": index, "embedding": vector}
+                    for index, vector in enumerate(vectors)
+                ],
+                "model": model,
+                "usage": {
+                    "prompt_tokens": estimate_tokens(prompt_chars),
+                    "total_tokens": estimate_tokens(prompt_chars),
+                },
+            }
+
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
             created = int(time.time())
-            model_ids = ["daari", ctx.settings.models.l3, ctx.settings.models.l4, ctx.settings.models.l5]
+            model_ids = [
+                "daari",
+                ctx.settings.models.l3,
+                ctx.settings.models.l4,
+                ctx.settings.models.l5,
+                ctx.settings.cache.l1.embedding_model,
+            ]
             unique_ids: list[str] = []
             for model_id in model_ids:
                 if model_id not in unique_ids:

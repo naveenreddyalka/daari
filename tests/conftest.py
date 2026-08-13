@@ -9,7 +9,7 @@ from daari.config.settings import Settings
 
 
 class NoopEmbedder:
-    async def embed(self, text: str) -> list[float] | None:
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
         return None
 
 

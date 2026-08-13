@@ -45,7 +45,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 class Embedder(Protocol):
-    async def embed(self, text: str) -> list[float] | None: ...
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None: ...
 
 
 class OllamaEmbedder:
@@ -70,28 +70,29 @@ class OllamaEmbedder:
     def _cache_key(self, text: str) -> tuple[str, str]:
         return (self.model, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
-    async def embed(self, text: str) -> list[float] | None:
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
         if not text.strip():
             return None
-        key = self._cache_key(text)
+        used_model = model or self.model
+        key = (used_model, hashlib.sha256(text.encode("utf-8")).hexdigest())
         if self.cache_size > 0 and key in self._memo:
             self._memo.move_to_end(key)
             return list(self._memo[key])
-        embedding = await self._embed_http(text)
+        embedding = await self._embed_http(text, model=used_model)
         if embedding is not None and self.cache_size > 0:
             self._memo[key] = list(embedding)
             while len(self._memo) > self.cache_size:
                 self._memo.popitem(last=False)
         return embedding
 
-    async def _embed_http(self, text: str) -> list[float] | None:
+    async def _embed_http(self, text: str, *, model: str) -> list[float] | None:
         try:
             async with httpx.AsyncClient(
                 base_url=self.base_url, timeout=self.timeout, transport=self._transport
             ) as client:
                 response = await client.post(
                     "/api/embeddings",
-                    json={"model": self.model, "prompt": text},
+                    json={"model": model, "prompt": text},
                 )
                 response.raise_for_status()
                 data = response.json()
