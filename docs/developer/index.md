@@ -8,7 +8,7 @@ daari is a **local-first LLM execution router**. It sits in front of your IDE, S
 |------|------------|
 | Install and get a first response | [Get started](get-started/index.md) |
 | Understand tiers, cache, and trust | [Concepts](concepts/index.md) |
-| Wire Cursor, Claude Code, or an SDK | [Guides → Clients](guides/clients/cursor.md) |
+| Wire Cursor, Claude Code, MCP, or an SDK | [Guides → Clients](guides/clients/cursor.md) |
 | Look up HTTP routes or config keys | [Reference](reference/index.md) |
 | Learn the codebase | [Internals](internals/index.md) |
 

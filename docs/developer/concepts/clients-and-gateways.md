@@ -10,7 +10,7 @@
 | OpenAI Responses | `POST /v1/responses` | Newer OpenAI SDKs |
 | Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code |
 | Ollama facade | `/api/chat`, `/api/tags`, … | JetBrains AI Assistant |
-| MCP ingress | `POST /v1/mcp/query` | MCP hosts |
+| MCP | `POST /mcp` (JSON-RPC 2.0), `POST /v1/mcp/query` (deprecated) | Cursor, Claude Desktop |
 
 Adapters convert to `InternalRequest` / `InternalResponse` ([internals](../internals/request-lifecycle.md)).
 
@@ -53,10 +53,16 @@ native `/v1/messages` with `x-api-key` / `anthropic-version` headers, not an Ope
 body at `/chat/completions`. Prompt-cache hints land on the last system block as
 `cache_control: ephemeral`.
 
+`POST /mcp` is a JSON-RPC 2.0 MCP server (streamable HTTP): `initialize`,
+`tools/list`, `tools/call`. Tools are `route`, `stats`, and whatever integration
+providers are registered (Sourcegraph, GHE, GitLab, configured MCP egress). Auth is
+the same Bearer / `x-api-key` middleware as the rest of the daemon.
+`POST /v1/mcp/query` still works and sends a `Deprecation` header pointing at `/mcp`.
+
 ## Auth
 
 Optional `server.api_key`, virtual keys (`daari keys`), or SSO for admin surfaces. Health stays open when keyed.
 
 ## Next
 
-→ [Cursor guide](../guides/clients/cursor.md) · [HTTP API](../reference/http-api.md)
+→ [Cursor guide](../guides/clients/cursor.md) · [MCP](../guides/clients/mcp.md) · [HTTP API](../reference/http-api.md)

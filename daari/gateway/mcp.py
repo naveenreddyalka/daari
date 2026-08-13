@@ -1,13 +1,37 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from daari import __version__
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, Message
 from daari.router.router import AppContext
+
+JSONRPC_VERSION = "2.0"
+PARSE_ERROR = -32700
+INVALID_REQUEST = -32600
+METHOD_NOT_FOUND = -32601
+INVALID_PARAMS = -32602
+INTERNAL_ERROR = -32603
+
+DEFAULT_PROTOCOL_VERSION = "2025-03-26"
+SUPPORTED_PROTOCOL_VERSIONS = {
+    "2024-11-05",
+    "2025-03-26",
+    "2025-06-18",
+    "2025-11-25",
+    "2026-07-28",
+}
+
+LEGACY_HEADERS = {
+    "Deprecation": "true",
+    "Link": '</mcp>; rel="successor-version"',
+}
 
 
 class MCPQueryRequest(BaseModel):
@@ -56,7 +80,13 @@ def _validate_input(schema: dict[str, Any], arguments: Any) -> list[dict[str, An
         required = schema.get("required") or []
         for key in required:
             if key not in arguments:
-                errors.append(_error("MCP_ERR_MISSING_ARGUMENT", f"Missing required argument: {key}", details={"path": key}))
+                errors.append(
+                    _error(
+                        "MCP_ERR_MISSING_ARGUMENT",
+                        f"Missing required argument: {key}",
+                        details={"path": key},
+                    )
+                )
         additional_allowed = schema.get("additionalProperties", True)
         for key, value in arguments.items():
             prop = properties.get(key)
@@ -81,57 +111,190 @@ def _validate_input(schema: dict[str, Any], arguments: Any) -> list[dict[str, An
     return errors
 
 
-def _tool_catalog() -> list[dict[str, Any]]:
-    basic_input_schema = {
+def _basic_input_schema() -> dict[str, Any]:
+    return {
         "type": "object",
         "properties": {"input": {"type": "string"}},
         "additionalProperties": True,
     }
-    basic_output_schema = {
+
+
+def _empty_input_schema() -> dict[str, Any]:
+    return {"type": "object", "properties": {}, "additionalProperties": False}
+
+
+def _tool_name_for_provider(provider_id: str) -> str | None:
+    if provider_id.startswith("integration:"):
+        return provider_id.split(":", 1)[1].replace(":", "_")
+    if provider_id.startswith("mcp:"):
+        return "mcp_" + provider_id.split(":", 1)[1].replace(":", "_")
+    return None
+
+
+def _core_catalog() -> list[dict[str, Any]]:
+    basic_output = {
         "type": "object",
-        "properties": {
-            "content": {"type": "string"},
-            "daari_meta": {"type": "object"},
-        },
+        "properties": {"content": {"type": "string"}, "daari_meta": {"type": "object"}},
     }
     return [
         {
             "name": "health",
             "description": "MCP adapter health check",
-            "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+            "input_schema": _empty_input_schema(),
             "output_schema": {"type": "object", "properties": {"status": {"type": "string"}}},
         },
         {
             "name": "stats",
             "description": "Current daari tier metrics snapshot",
-            "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+            "input_schema": _empty_input_schema(),
             "output_schema": {"type": "object"},
         },
         {
             "name": "route",
-            "description": "Route prompt through daari pipeline",
-            "input_schema": basic_input_schema,
-            "output_schema": basic_output_schema,
-        },
-        {
-            "name": "sourcegraph",
-            "description": "Run Sourcegraph search",
-            "input_schema": basic_input_schema,
-            "output_schema": basic_output_schema,
-        },
-        {
-            "name": "ghe",
-            "description": "Run GitHub Enterprise search",
-            "input_schema": basic_input_schema,
-            "output_schema": basic_output_schema,
-        },
-        {
-            "name": "gitlab",
-            "description": "Run GitLab self-hosted search",
-            "input_schema": basic_input_schema,
-            "output_schema": basic_output_schema,
+            "description": "Route a prompt through daari's local-first pipeline",
+            "input_schema": _basic_input_schema(),
+            "output_schema": basic_output,
         },
     ]
+
+
+def _provider_catalog(ctx: AppContext) -> list[dict[str, Any]]:
+    tools: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for provider_id in ctx.providers.list_ids():
+        name = _tool_name_for_provider(provider_id)
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        tools.append(
+            {
+                "name": name,
+                "description": f"Call configured provider {provider_id}",
+                "input_schema": _basic_input_schema(),
+                "output_schema": {
+                    "type": "object",
+                    "properties": {"content": {"type": "string"}, "daari_meta": {"type": "object"}},
+                },
+                "provider_id": provider_id,
+            }
+        )
+    return tools
+
+
+def _tool_catalog(ctx: AppContext) -> list[dict[str, Any]]:
+    return [*_core_catalog(), *_provider_catalog(ctx)]
+
+
+def _mcp_list_tools(ctx: AppContext) -> list[dict[str, Any]]:
+    listed: list[dict[str, Any]] = []
+    for item in _tool_catalog(ctx):
+        if item["name"] == "health":
+            continue
+        listed.append(
+            {
+                "name": item["name"],
+                "description": item["description"],
+                "inputSchema": item["input_schema"],
+            }
+        )
+    return listed
+
+
+def _legacy(payload: dict[str, Any]) -> JSONResponse:
+    return JSONResponse(payload, headers=LEGACY_HEADERS)
+
+
+def _jsonrpc_result(rpc_id: Any, result: Any) -> dict[str, Any]:
+    return {"jsonrpc": JSONRPC_VERSION, "id": rpc_id, "result": result}
+
+
+def _jsonrpc_error(rpc_id: Any, code: int, message: str, *, data: Any = None) -> dict[str, Any]:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return {"jsonrpc": JSONRPC_VERSION, "id": rpc_id, "error": error}
+
+
+def _wants_sse(request: Request) -> bool:
+    accept = (request.headers.get("accept") or "").lower()
+    return "text/event-stream" in accept and "application/json" not in accept
+
+
+def _rpc_response(request: Request, payload: dict[str, Any], *, status_code: int = 200) -> Response:
+    if _wants_sse(request) and "error" not in payload:
+        body = f"event: message\ndata: {json.dumps(payload)}\n\n"
+        return Response(content=body, media_type="text/event-stream", status_code=status_code)
+    return JSONResponse(payload, status_code=status_code)
+
+
+def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
+    return {"content": [{"type": "text", "text": text}], "isError": is_error}
+
+
+def _negotiate_protocol(params: Any) -> str:
+    requested = ""
+    if isinstance(params, dict):
+        requested = str(params.get("protocolVersion") or "")
+    if requested in SUPPORTED_PROTOCOL_VERSIONS:
+        return requested
+    return DEFAULT_PROTOCOL_VERSION
+
+
+async def _run_tool(
+    ctx: AppContext,
+    name: str,
+    call_input: str | None,
+    call_args: dict[str, Any],
+    *,
+    model: str | None,
+) -> MCPQueryResponse:
+    normalized = name.strip().lower()
+    if normalized == "health":
+        return MCPQueryResponse(tool=normalized, result={"status": "ok", "adapter": "mcp"})
+
+    if normalized == "stats":
+        return MCPQueryResponse(tool=normalized, result=ctx.metrics.snapshot())
+
+    catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
+    provider_id = (catalog_by_name.get(normalized) or {}).get("provider_id")
+    if provider_id:
+        provider = ctx.providers.get(provider_id)
+        if provider is None:
+            return MCPQueryResponse(
+                ok=False,
+                tool=normalized,
+                result={"error": _error("MCP_ERR_PROVIDER_NOT_FOUND", f"Provider not found: {provider_id}")},
+            )
+        internal = InternalRequest(
+            messages=[Message(role="user", content=call_input or "")],
+            model=model or ctx.settings.models.l3,
+        )
+        provider_result = await provider.execute(internal)
+        return MCPQueryResponse(
+            ok=provider_result.daari_meta.warning is None,
+            tool=normalized,
+            result={"content": provider_result.content},
+            daari_meta=provider_result.daari_meta.model_dump(),
+        )
+
+    if normalized != "route":
+        return MCPQueryResponse(
+            ok=False,
+            tool=normalized,
+            result={"error": _error("MCP_ERR_UNKNOWN_TOOL", f"Unsupported tool: {normalized}")},
+        )
+
+    route_input = call_input or call_args.get("prompt") or ""
+    internal = InternalRequest(
+        messages=[Message(role="user", content=route_input)],
+        model=model or ctx.settings.models.l3,
+    )
+    routed = await ctx.router.route(internal)
+    return MCPQueryResponse(
+        tool=normalized,
+        result={"content": routed.content},
+        daari_meta=routed.daari_meta.model_dump(),
+    )
 
 
 class MCPGatewayAdapter(GatewayAdapter):
@@ -141,117 +304,179 @@ class MCPGatewayAdapter(GatewayAdapter):
         router = APIRouter()
 
         @router.post("/v1/mcp/query", response_model=None)
-        async def mcp_query(body: MCPQueryRequest, request: Request) -> dict[str, Any]:
+        async def mcp_query(body: MCPQueryRequest, request: Request) -> JSONResponse:
             ctx: AppContext = request.app.state.ctx
             tool = body.tool.strip().lower()
-            catalog_by_name = {item["name"]: item for item in _tool_catalog()}
-
-            async def run_tool(name: str, call_input: str | None, call_args: dict[str, Any]) -> MCPQueryResponse:
-                normalized = name.strip().lower()
-                if normalized == "health":
-                    return MCPQueryResponse(
-                        tool=normalized,
-                        result={"status": "ok", "adapter": "mcp"},
-                    )
-
-                if normalized == "stats":
-                    return MCPQueryResponse(
-                        tool=normalized,
-                        result=ctx.metrics.snapshot(),
-                    )
-
-                if normalized in {"sourcegraph", "ghe", "gitlab"}:
-                    provider_id = {
-                        "sourcegraph": "integration:sourcegraph",
-                        "ghe": "integration:ghe",
-                        "gitlab": "integration:gitlab",
-                    }[normalized]
-                    provider = ctx.providers.get(provider_id)
-                    if provider is None:
-                        return MCPQueryResponse(
-                            ok=False,
-                            tool=normalized,
-                            result={"error": _error("MCP_ERR_PROVIDER_NOT_FOUND", f"Provider not found: {provider_id}")},
-                        )
-                    internal = InternalRequest(
-                        messages=[Message(role="user", content=call_input or "")],
-                        model=body.model or ctx.settings.models.l3,
-                    )
-                    provider_result = await provider.execute(internal)
-                    return MCPQueryResponse(
-                        ok=provider_result.daari_meta.warning is None,
-                        tool=normalized,
-                        result={"content": provider_result.content},
-                        daari_meta=provider_result.daari_meta.model_dump(),
-                    )
-
-                if normalized not in {"route"}:
-                    return MCPQueryResponse(
-                        ok=False,
-                        tool=normalized,
-                        result={"error": _error("MCP_ERR_UNKNOWN_TOOL", f"Unsupported tool: {normalized}")},
-                    )
-
-                route_input = call_input or call_args.get("prompt") or ""
-                internal = InternalRequest(
-                    messages=[Message(role="user", content=route_input)],
-                    model=body.model or ctx.settings.models.l3,
-                )
-                routed = await ctx.router.route(internal)
-                return MCPQueryResponse(
-                    tool=normalized,
-                    result={"content": routed.content},
-                    daari_meta=routed.daari_meta.model_dump(),
-                )
+            catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
 
             if tool in {"tools/list", "list_tools"}:
-                return MCPQueryResponse(tool="tools/list", result={"tools": _tool_catalog()}).model_dump()
+                return _legacy(
+                    MCPQueryResponse(tool="tools/list", result={"tools": _tool_catalog(ctx)}).model_dump()
+                )
 
             if tool in {"tools/call", "call_tool"}:
                 name = str(body.args.get("name") or body.args.get("tool") or body.input or "").strip()
                 if not name:
-                    return MCPQueryResponse(
-                        ok=False,
-                        tool="tools/call",
-                        result={"error": _error("MCP_ERR_MISSING_TOOL_NAME", "Missing tool name in tools/call.")},
-                    ).model_dump()
+                    return _legacy(
+                        MCPQueryResponse(
+                            ok=False,
+                            tool="tools/call",
+                            result={"error": _error("MCP_ERR_MISSING_TOOL_NAME", "Missing tool name in tools/call.")},
+                        ).model_dump()
+                    )
                 arguments = body.args.get("arguments") or {}
                 if not isinstance(arguments, dict):
-                    return MCPQueryResponse(
-                        ok=False,
-                        tool="tools/call",
-                        result={"error": _error("MCP_ERR_INVALID_ARGUMENTS", "tools/call.arguments must be an object.")},
-                    ).model_dump()
+                    return _legacy(
+                        MCPQueryResponse(
+                            ok=False,
+                            tool="tools/call",
+                            result={
+                                "error": _error(
+                                    "MCP_ERR_INVALID_ARGUMENTS",
+                                    "tools/call.arguments must be an object.",
+                                )
+                            },
+                        ).model_dump()
+                    )
                 normalized_name = name.strip().lower()
                 schema = (catalog_by_name.get(normalized_name) or {}).get("input_schema")
                 if schema is not None:
                     validation_errors = _validate_input(schema, arguments)
                     if validation_errors:
-                        return MCPQueryResponse(
-                            ok=False,
-                            tool="tools/call",
-                            result={
-                                "name": normalized_name,
-                                "error": _error(
-                                    "MCP_ERR_SCHEMA_VALIDATION",
-                                    "Tool input validation failed.",
-                                    details=validation_errors,
-                                ),
-                            },
-                        ).model_dump()
-                tool_response = await run_tool(name, arguments.get("input"), arguments)
-                return MCPQueryResponse(
-                    ok=tool_response.ok,
-                    tool="tools/call",
-                    result={
-                        "name": tool_response.tool,
-                        "result": tool_response.result,
-                        "daari_meta": tool_response.daari_meta,
-                    },
-                    daari_meta=tool_response.daari_meta,
-                ).model_dump()
+                        return _legacy(
+                            MCPQueryResponse(
+                                ok=False,
+                                tool="tools/call",
+                                result={
+                                    "name": normalized_name,
+                                    "error": _error(
+                                        "MCP_ERR_SCHEMA_VALIDATION",
+                                        "Tool input validation failed.",
+                                        details=validation_errors,
+                                    ),
+                                },
+                            ).model_dump()
+                        )
+                tool_response = await _run_tool(
+                    ctx, name, arguments.get("input"), arguments, model=body.model
+                )
+                return _legacy(
+                    MCPQueryResponse(
+                        ok=tool_response.ok,
+                        tool="tools/call",
+                        result={
+                            "name": tool_response.tool,
+                            "result": tool_response.result,
+                            "daari_meta": tool_response.daari_meta,
+                        },
+                        daari_meta=tool_response.daari_meta,
+                    ).model_dump()
+                )
 
-            response = await run_tool(tool, body.input, body.args)
-            return response.model_dump()
+            response = await _run_tool(ctx, tool, body.input, body.args, model=body.model)
+            return _legacy(response.model_dump())
+
+        @router.post("/mcp")
+        async def mcp_jsonrpc(request: Request) -> Response:
+            raw = await request.body()
+            try:
+                message = json.loads(raw.decode("utf-8") or "null")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return JSONResponse(
+                    _jsonrpc_error(None, PARSE_ERROR, "Parse error"),
+                    status_code=400,
+                )
+            if not isinstance(message, dict):
+                return JSONResponse(
+                    _jsonrpc_error(None, INVALID_REQUEST, "Invalid Request"),
+                    status_code=400,
+                )
+            if message.get("jsonrpc") != JSONRPC_VERSION or not message.get("method"):
+                return JSONResponse(
+                    _jsonrpc_error(message.get("id"), INVALID_REQUEST, "Invalid Request"),
+                    status_code=400,
+                )
+
+            method = str(message["method"])
+            rpc_id = message.get("id")
+            params = message.get("params") if isinstance(message.get("params"), dict) else {}
+            if "id" not in message:
+                return Response(status_code=202)
+
+            ctx: AppContext = request.app.state.ctx
+            try:
+                if method == "initialize":
+                    return _rpc_response(
+                        request,
+                        _jsonrpc_result(
+                            rpc_id,
+                            {
+                                "protocolVersion": _negotiate_protocol(params),
+                                "capabilities": {"tools": {"listChanged": False}},
+                                "serverInfo": {"name": "daari", "version": __version__},
+                            },
+                        ),
+                    )
+                if method == "ping":
+                    return _rpc_response(request, _jsonrpc_result(rpc_id, {}))
+                if method == "tools/list":
+                    return _rpc_response(
+                        request,
+                        _jsonrpc_result(rpc_id, {"tools": _mcp_list_tools(ctx)}),
+                    )
+                if method == "tools/call":
+                    name = str(params.get("name") or "").strip()
+                    if not name:
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_error(rpc_id, INVALID_PARAMS, "Missing tool name"),
+                        )
+                    arguments = params.get("arguments") or {}
+                    if not isinstance(arguments, dict):
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_error(rpc_id, INVALID_PARAMS, "arguments must be an object"),
+                        )
+                    catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
+                    schema = (catalog_by_name.get(name.strip().lower()) or {}).get("input_schema")
+                    if schema is not None:
+                        validation_errors = _validate_input(schema, arguments)
+                        if validation_errors:
+                            return _rpc_response(
+                                request,
+                                _jsonrpc_result(
+                                    rpc_id,
+                                    _text_result(json.dumps(validation_errors), is_error=True),
+                                ),
+                            )
+                    tool_response = await _run_tool(
+                        ctx, name, arguments.get("input"), arguments, model=None
+                    )
+                    if not tool_response.ok:
+                        err = (
+                            tool_response.result.get("error")
+                            if isinstance(tool_response.result, dict)
+                            else tool_response.result
+                        )
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_result(rpc_id, _text_result(json.dumps(err), is_error=True)),
+                        )
+                    if name.strip().lower() == "stats":
+                        text = json.dumps(tool_response.result)
+                    elif isinstance(tool_response.result, dict) and "content" in tool_response.result:
+                        text = str(tool_response.result.get("content") or "")
+                    else:
+                        text = json.dumps(tool_response.result)
+                    return _rpc_response(request, _jsonrpc_result(rpc_id, _text_result(text)))
+                return _rpc_response(
+                    request,
+                    _jsonrpc_error(rpc_id, METHOD_NOT_FOUND, f"Method not found: {method}"),
+                )
+            except Exception as exc:  # noqa: BLE001 — JSON-RPC must not leak a 500
+                return _rpc_response(
+                    request,
+                    _jsonrpc_error(rpc_id, INTERNAL_ERROR, str(exc)[:200]),
+                )
 
         return router

@@ -63,6 +63,7 @@ nav:
           - JetBrains: developer/guides/clients/intellij.md
           - VS Code: developer/guides/clients/vscode.md
           - OpenAI SDK: developer/guides/clients/openai-sdk.md
+          - MCP: developer/guides/clients/mcp.md
       - Configuration:
           - Overview: developer/guides/configuration/overview.md
           - Project profiles: developer/guides/configuration/project-profiles.md
