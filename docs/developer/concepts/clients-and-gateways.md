@@ -38,6 +38,9 @@ dropped: `presence_penalty`, `n > 1`, `logprobs`, and `tool_choice: required`.
 are part of the cache key, so a 16-token answer is never served to a request asking
 for 500.
 
+`POST /v1/embeddings` is served by the same embedder L1 already uses, so a client
+pointed at daari does not need a second host for vectors.
+
 ## Auth
 
 Optional `server.api_key`, virtual keys (`daari keys`), or SSO for admin surfaces. Health stays open when keyed.

@@ -817,6 +817,16 @@ added after the tag, and had nothing left to write.
 
 ---
 
+### Embeddings endpoint ([#163](https://github.com/naveenreddyalka/daari/issues/163))
+
+`OllamaEmbedder` already ran in-process for L1, but there was no `POST /v1/embeddings`,
+so any app that wanted a vector had to point at a second host. The endpoint is
+OpenAI-shaped (string or batch), served by `cache.l1.embedding_model`, cached in L0
+under an `__embed__:` key, listed on `/v1/models`, and recorded as tier `embed`.
+`model: daari` aliases the configured embedder; anything else is 400.
+
+---
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
