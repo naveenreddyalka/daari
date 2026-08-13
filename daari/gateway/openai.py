@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
-from daari.gateway.content import content_to_text, sanitize_messages_for_ollama
+from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
 from daari.gateway.internal import (
     DaariMeta,
     InternalRequest,
@@ -26,6 +26,7 @@ from daari.gateway.sampling import SamplingParams
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
+from daari.router.capabilities import UnsupportedCapability
 
 OPENAI_SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -103,18 +104,20 @@ def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
     internal: list[Message] = []
     for message in messages:
         text = content_to_text(message.content)
+        images = extract_images(message.content)
         role = message.role
         if role == "developer":
             role = "system"
         if role == "assistant" and not text and not message.tool_calls:
             continue
-        if role in {"user", "system"} and not text:
+        if role in {"user", "system"} and not text and not images:
             continue
         internal.append(
             Message(
                 role=role,
                 content=text,
                 tool_calls=message.tool_calls,
+                images=images,
             )
         )
     return internal
@@ -365,6 +368,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
 
             if body.stream:
+                try:
+                    ctx.router.ensure_capable(internal)
+                except UnsupportedCapability as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
 
                 async def event_stream() -> AsyncIterator[str]:
                     content_chars = 0
@@ -394,6 +401,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
             try:
                 result = await ctx.router.route(internal)
+            except UnsupportedCapability as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc

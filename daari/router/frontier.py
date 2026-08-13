@@ -29,7 +29,23 @@ class FrontierExecutor:
     metrics: Any = None
 
     def _build_messages(self, request: InternalRequest) -> list[dict[str, Any]]:
-        messages = [m.model_dump(exclude_none=True) for m in request.messages]
+        messages: list[dict[str, Any]] = []
+        for message in request.messages:
+            entry: dict[str, Any] = {"role": message.role}
+            if message.tool_calls:
+                entry["tool_calls"] = message.tool_calls
+            if message.images:
+                parts: list[dict[str, Any]] = []
+                if message.content:
+                    parts.append({"type": "text", "text": message.content})
+                for image in message.images:
+                    url = image.as_data_url()
+                    if url:
+                        parts.append({"type": "image_url", "image_url": {"url": url}})
+                entry["content"] = parts
+            elif message.content is not None:
+                entry["content"] = message.content
+            messages.append(entry)
         if self.provider != "anthropic" or not self.prompt_cache:
             return messages
         marked = 0

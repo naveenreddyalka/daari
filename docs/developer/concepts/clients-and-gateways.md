@@ -38,6 +38,11 @@ dropped: `presence_penalty`, `n > 1`, `logprobs`, and `tool_choice: required`.
 are part of the cache key, so a 16-token answer is never served to a request asking
 for 500.
 
+Image parts (`image_url`, Anthropic `image` sources, Ollama `images`) ride on
+`Message.images`. A vision request is forwarded to a vision-capable tier, or the
+gateway returns **422** — it never strips the image and answers as if the question
+were text-only.
+
 `POST /v1/embeddings` is served by the same embedder L1 already uses, so a client
 pointed at daari does not need a second host for vectors.
 

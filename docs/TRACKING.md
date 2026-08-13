@@ -817,6 +817,18 @@ added after the tag, and had nothing left to write.
 
 ---
 
+### Multimodal images ([#164](https://github.com/naveenreddyalka/daari/issues/164))
+
+`content_to_text` kept only text blocks, so an `image_url` part was accepted with
+a 200 and the model answered as if no picture was sent. The capability check then
+looked for the substring `"image_url"` in that already-flattened text, so `vision`
+could never fire.
+
+Images now live on `Message.images`. Ollama gets them as `images: [b64]`; OpenAI-
+compatible backends get `image_url` content parts. A stack with no vision-capable
+model returns 422 rather than a confident wrong answer. Cache keys hash the image
+bytes; a request with no images keeps its pre-#164 key.
+
 ### Embeddings endpoint ([#163](https://github.com/naveenreddyalka/daari/issues/163))
 
 `OllamaEmbedder` already ran in-process for L1, but there was no `POST /v1/embeddings`,

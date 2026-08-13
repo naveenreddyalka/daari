@@ -16,9 +16,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from daari.gateway.base import GatewayAdapter
-from daari.gateway.content import content_to_text
-from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.content import content_to_text, extract_images
+from daari.gateway.internal import ContentImage, InternalRequest, Message, RequestMeta
 from daari.gateway.sampling import SamplingParams
+from daari.router.capabilities import UnsupportedCapability
 from daari.router.router import AppContext
 
 DEFAULT_CLIENT_ID = "ollama-compat"
@@ -27,6 +28,7 @@ DEFAULT_CLIENT_ID = "ollama-compat"
 class OllamaChatMessage(BaseModel):
     role: str
     content: str | list[dict[str, Any]] | None = None
+    images: list[str] | None = None
 
 
 class OllamaChatRequest(BaseModel):
@@ -148,7 +150,18 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
             internal = InternalRequest(
                 messages=[
-                    Message(role=message.role, content=content_to_text(message.content))
+                    Message(
+                        role=message.role,
+                        content=content_to_text(message.content),
+                        images=(
+                            extract_images(message.content)
+                            + [
+                                ContentImage(data=item)
+                                for item in (message.images or [])
+                                if item
+                            ]
+                        ),
+                    )
                     for message in body.messages
                 ],
                 model=client_model if client_model != "daari" else ctx.settings.models.l3,
@@ -175,6 +188,8 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
             try:
                 result = await ctx.router.route(internal)
+            except UnsupportedCapability as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc

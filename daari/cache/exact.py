@@ -16,6 +16,8 @@ def normalize_messages(messages: list[dict[str, Any]]) -> str:
             entry["content"] = message["content"]
         if message.get("tool_calls"):
             entry["tool_calls"] = message["tool_calls"]
+        if message.get("images"):
+            entry["images"] = message["images"]
         normalized.append(entry)
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 
@@ -28,10 +30,21 @@ def tools_schema_hash(tools: list[Any] | None) -> str:
     ).hexdigest()
 
 
+def _messages_for_cache(request: InternalRequest) -> list[dict[str, Any]]:
+    """Dump messages without an empty `images` field, so pre-#164 keys survive."""
+    dumped: list[dict[str, Any]] = []
+    for message in request.messages:
+        data = message.model_dump(exclude={"images"})
+        if message.images:
+            data["images"] = [image.cache_token() for image in message.images]
+        dumped.append(data)
+    return dumped
+
+
 def cache_key(request: InternalRequest) -> str:
     payload = "|".join(
         [
-            normalize_messages([m.model_dump() for m in request.messages]),
+            normalize_messages(_messages_for_cache(request)),
             request.model,
             str(request.temperature),
             tools_schema_hash(request.tools),
