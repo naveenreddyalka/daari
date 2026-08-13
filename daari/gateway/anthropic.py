@@ -11,10 +11,11 @@ from pydantic import BaseModel, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
-from daari.gateway.content import content_to_text
+from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.sampling import SamplingParams
+from daari.router.capabilities import UnsupportedCapability
 from daari.router.router import AppContext
 
 
@@ -57,6 +58,7 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
         return [Message(role=message.role, content=text)] if text else []
 
     text_parts: list[str] = []
+    images = extract_images(message.content)
     tool_calls: list[dict[str, Any]] = []
     tool_results: list[Message] = []
     for block in message.content:
@@ -86,9 +88,11 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
     expanded: list[Message] = []
     joined = "\n".join(text_parts) or None
     if tool_calls:
-        expanded.append(Message(role=message.role, content=joined, tool_calls=tool_calls))
-    elif joined:
-        expanded.append(Message(role=message.role, content=joined))
+        expanded.append(
+            Message(role=message.role, content=joined, tool_calls=tool_calls, images=images)
+        )
+    elif joined or images:
+        expanded.append(Message(role=message.role, content=joined, images=images))
     expanded.extend(tool_results)
     return expanded
 
@@ -281,6 +285,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
 
             try:
                 result = await ctx.router.route(internal)
+            except UnsupportedCapability as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc

@@ -40,8 +40,18 @@ class MLXExecutor:
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
         for m in request.messages:
-            data = m.model_dump(exclude_none=True)
+            data = m.model_dump(exclude_none=True, exclude={"images"})
             tool_calls = data.get("tool_calls")
+            if m.images:
+                parts: list[dict[str, Any]] = []
+                if data.get("content"):
+                    parts.append({"type": "text", "text": data["content"]})
+                for image in m.images:
+                    url = image.as_data_url()
+                    if url:
+                        parts.append({"type": "image_url", "image_url": {"url": url}})
+                if parts:
+                    data["content"] = parts
             if tool_calls:
                 # OpenAI wire format wants function.arguments as a JSON string;
                 # internal history may carry objects (Ollama shape).

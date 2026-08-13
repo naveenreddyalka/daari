@@ -15,6 +15,15 @@ from daari.gateway.internal import InternalRequest
 KNOWN_CAPABILITIES = ("tools", "json", "vision", "long_context")
 
 
+class UnsupportedCapability(Exception):
+    """The request needs a capability no configured local model declares."""
+
+    def __init__(self, required: set[str]):
+        self.required = frozenset(required)
+        missing = ", ".join(sorted(self.required))
+        super().__init__(f"no configured model supports required capabilities: {missing}")
+
+
 @dataclass
 class CapabilityCatalog:
     # model name -> frozenset of capability strings
@@ -35,14 +44,11 @@ def required_capabilities(request: InternalRequest) -> set[str]:
     needed: set[str] = set()
     if request.tools or request.has_tool_calls_in_history:
         needed.add("tools")
-    for message in request.messages:
-        content = message.content or ""
-        # Lightweight vision hint: multimodal content markers in text form.
-        if "data:image/" in content or "image_url" in content:
-            needed.add("vision")
-        if '"response_format"' in content or "json_object" in content.lower():
-            needed.add("json")
-    prompt_chars = sum(len(m.content or "") for m in request.messages)
+    if any(message.images for message in request.messages):
+        needed.add("vision")
+    if request.sampling.response_format_json:
+        needed.add("json")
+    prompt_chars = sum(len(message.content or "") for message in request.messages)
     if prompt_chars > 24_000:  # ~6k tokens
         needed.add("long_context")
     return needed
