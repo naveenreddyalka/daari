@@ -8,13 +8,21 @@ Route dev agent work through local tiers (cache → IDE tools → local AI) inst
 
 ## Quick start
 
-**Docker (one command, bundles Ollama):**
+**pip:**
+
+```bash
+pip install daari
+ollama pull llama3.2:3b
+daari serve
+```
+
+**Docker (bundles Ollama):**
 
 ```bash
 docker compose up
 ```
 
-First start pulls the L3 model (~2 GB), then daari listens on `http://127.0.0.1:11435` (readiness: `GET /ready`). Prebuilt image: `ghcr.io/naveenreddyalka/daari`.
+First start pulls the L3 model (~2 GB), then daari listens on `http://127.0.0.1:11435` (readiness: `GET /ready`). Prebuilt image: `ghcr.io/naveenreddyalka/daari`. Package: [pypi.org/project/daari](https://pypi.org/project/daari/).
 
 **Docs** — **[Developer documentation](docs/developer/index.md)** (install, concepts, guides, reference). Contributors: [docs/DEVELOPING.md](docs/DEVELOPING.md).
 

@@ -52,10 +52,13 @@ Tap: [naveenreddyalka/homebrew-daari](https://github.com/naveenreddyalka/homebre
 
 ## Option D — pip
 
-!!! warning "Not published yet"
-    `pip install daari` fails; nothing is on PyPI. Tracked in
-    [#160](https://github.com/naveenreddyalka/daari/issues/160), which needs a
-    one-time trusted-publisher registration. Use Option A, B, or C.
+```bash
+pip install daari
+ollama pull llama3.2:3b
+daari serve
+```
+
+Package: [pypi.org/project/daari](https://pypi.org/project/daari/) (`daari==1.2.0`).
 
 ## Verify
 
