@@ -27,8 +27,10 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/stats` | Daari Stats |
 | `GET` | `/v1/daari/traces` | Daari Traces |
 | `GET` | `/v1/daari/traces/{trace_id}` | Daari Trace Detail |
+| `POST` | `/v1/embeddings` | Embeddings |
 | `POST` | `/v1/mcp/query` | Mcp Query |
 | `POST` | `/v1/messages` | Messages |
+| `POST` | `/v1/messages/count_tokens` | Count Tokens |
 | `GET` | `/v1/messages/health` | Health |
 | `GET` | `/v1/models` | List Models |
 | `GET` | `/v1/models/{model_id}` | Retrieve Model |

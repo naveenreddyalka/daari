@@ -8,7 +8,7 @@
 |---------|-------|----------------|
 | OpenAI Chat | `POST /v1/chat/completions` | Cursor BYOK, VS Code, SDKs |
 | OpenAI Responses | `POST /v1/responses` | Newer OpenAI SDKs |
-| Anthropic | `POST /v1/messages` | Claude Code |
+| Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code |
 | Ollama facade | `/api/chat`, `/api/tags`, … | JetBrains AI Assistant |
 | MCP ingress | `POST /v1/mcp/query` | MCP hosts |
 
@@ -45,6 +45,13 @@ were text-only.
 
 `POST /v1/embeddings` is served by the same embedder L1 already uses, so a client
 pointed at daari does not need a second host for vectors.
+
+`POST /v1/messages/count_tokens` is a local estimate (`estimate_tokens` on system +
+messages + tools), not an L6 round-trip. When L6 itself is Anthropic (`provider`
+`anthropic`/`claude`, or `anthropic.com` in `base_url`), the frontier executor POSTs
+native `/v1/messages` with `x-api-key` / `anthropic-version` headers, not an OpenAI
+body at `/chat/completions`. Prompt-cache hints land on the last system block as
+`cache_control: ephemeral`.
 
 ## Auth
 

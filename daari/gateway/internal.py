@@ -40,6 +40,9 @@ class Message(BaseModel):
     content: str | None = None
     tool_calls: list[Any] | None = None
     images: list[ContentImage] = Field(default_factory=list)
+    # Anthropic tool_result blocks carry tool_use_id; OpenAI uses this as
+    # tool_call_id. Absent on ordinary turns so cache keys stay stable.
+    tool_call_id: str | None = None
 
 
 class RequestMeta(BaseModel):
