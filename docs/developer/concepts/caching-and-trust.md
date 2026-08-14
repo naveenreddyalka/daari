@@ -11,7 +11,8 @@ Identical normalized request → stored response. Fastest path. Backend: disk (d
 Embedding similarity above `cache.l1.similarity_threshold` finds a candidate, but
 similarity alone does not decide the hit — the candidate must also pass
 verification (below). Optional draft injection and shadow sampling add further
-trust signals.
+trust signals. When `cache.backend: redis`, replica writes use `WATCH`/`MULTI`
+so concurrent puts do not clobber each other's entries.
 
 ## Verifying a hit before serving it
 

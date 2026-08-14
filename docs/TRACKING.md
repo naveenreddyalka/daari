@@ -549,8 +549,8 @@ in `tests/unit/test_review_hardening_137.py` (15 tests, all previously red):
 | Cached JWKS locked admins out for the full TTL after an IdP key rotation | medium | refetch once with `force=True` on unknown `kid` |
 | `PATCH /v1/daari/config` returned 500 on malformed values and half-applied out-of-range ones; `setattr` bypassed pydantic validation | medium | `daari/config/validate.py` validates the whole patch first → 400 |
 
-Deferred to follow-up issues (out of this scope): Redis L1 lost-update race under
-concurrent replicas, EC/ES256 JWKS keys, `validate_assignment` on `Settings`.
+Deferred to follow-up issues (out of this scope): EC/ES256 JWKS keys,
+`validate_assignment` on `Settings`. Redis L1 lost-update is [#150](https://github.com/naveenreddyalka/daari/issues/150).
 
 ### Streaming policy parity (#154, #155) (2026-08-11)
 
@@ -902,6 +902,20 @@ the configured limits and current in-flight / queued gauges. The Redis path
 never opens SQLite.
 
 Covered by `tests/unit/test_rate_limit.py`.
+
+### Redis L1 lost-update ([#150](https://github.com/naveenreddyalka/daari/issues/150))
+
+`RedisSemanticCache` stored the whole entry list under one key and did an
+unsynchronized GET/SET. Two replicas that loaded the same list each appended
+and the later SET dropped the earlier write — the opposite of sharing
+nearest-neighbor hits.
+
+Puts (and TTL prune) now go through `WATCH`/`MULTI` optimistic locking with
+five retries, then a last-snapshot write that never raises into the request
+path. `max_entries` eviction still applies to the merged list. No new
+dependency.
+
+Covered by `tests/unit/test_redis_semantic.py`.
 
 ---
 
