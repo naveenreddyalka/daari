@@ -27,6 +27,7 @@ def render_prometheus(
     *,
     budget_state: dict[str, Any] | None = None,
     false_hit_rate: float | None = None,
+    rate_limit: dict[str, Any] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -134,5 +135,26 @@ def render_prometheus(
         )
         lines.append("# TYPE daari_cache_false_hit_rate gauge")
         lines.append(f"daari_cache_false_hit_rate {float(false_hit_rate)}")
+
+    if rate_limit is not None:
+        lines.append("# HELP daari_rate_limit_limit Configured rate / concurrency limits.")
+        lines.append("# TYPE daari_rate_limit_limit gauge")
+        lines.append(
+            f'daari_rate_limit_limit{_labels(kind="rpm")} {int(rate_limit.get("rpm_limit") or 0)}'
+        )
+        lines.append(
+            f'daari_rate_limit_limit{_labels(kind="tpm")} {int(rate_limit.get("tpm_limit") or 0)}'
+        )
+        lines.append("# HELP daari_rate_limit_in_flight Current in-flight requests.")
+        lines.append("# TYPE daari_rate_limit_in_flight gauge")
+        lines.append(f"daari_rate_limit_in_flight {int(rate_limit.get('in_flight') or 0)}")
+        lines.append("# HELP daari_rate_limit_in_flight_max Configured in-flight cap.")
+        lines.append("# TYPE daari_rate_limit_in_flight_max gauge")
+        lines.append(
+            f"daari_rate_limit_in_flight_max {int(rate_limit.get('in_flight_max') or 0)}"
+        )
+        lines.append("# HELP daari_rate_limit_queued Requests waiting on the concurrency gate.")
+        lines.append("# TYPE daari_rate_limit_queued gauge")
+        lines.append(f"daari_rate_limit_queued {int(rate_limit.get('queued') or 0)}")
 
     return "\n".join(lines) + "\n"

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from daari.auth.rate_limit import (
+    RateLimiter,
+    build_rate_limiter,
+    estimate_request_tokens,
+    request_model,
+)
 from daari.auth.virtual_keys import VirtualKeyStore
 from daari.config.settings import Settings
 from daari.gateway.anthropic import AnthropicGatewayAdapter
@@ -42,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.state.virtual_key_store = vk_store
+    app.state.rate_limiter = build_rate_limiter(resolved)
 
     master_key = resolved.server.api_key.strip()
     # Auth middleware runs when a master key is set OR virtual keys exist /
@@ -92,16 +100,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             if claims.kind == "virtual" and claims.virtual_key is not None and store is not None:
-                if not store.check_rpm(claims.virtual_key):
-                    return JSONResponse(
-                        status_code=429,
-                        content={
-                            "error": {
-                                "type": "rate_limit_error",
-                                "message": f"Virtual key RPM limit ({claims.virtual_key.rpm}) exceeded.",
-                            }
-                        },
-                    )
                 # Per-key frontier budget, charged to the key that caused the
                 # spend. Billing against global spend let one key exhaust every
                 # other key's allowance (#158). The global cap still applies
@@ -147,6 +145,82 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             )
             request.state.auth_claims = claims
             return await call_next(request)
+
+    open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics"}
+
+    @app.middleware("http")
+    async def enforce_rate_limits(request: Request, call_next):
+        if request.url.path in open_rate_paths:
+            return await call_next(request)
+        limiter: RateLimiter | None = getattr(request.app.state, "rate_limiter", None)
+        if limiter is None:
+            return await call_next(request)
+
+        raw = await request.body()
+        payload: dict = {}
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    payload = parsed
+            except json.JSONDecodeError:
+                payload = {}
+        model = request_model(payload)
+        tokens = estimate_request_tokens(payload)
+        claims = getattr(request.state, "auth_claims", None)
+        if claims is None:
+            store = getattr(request.app.state, "virtual_key_store", None)
+            claims = resolve_auth(
+                extract_api_key(request.headers),
+                master_key=master_key,
+                store=store,
+            )
+        virtual = getattr(claims, "virtual_key", None) if claims is not None else None
+        key_id = (getattr(claims, "key_id", None) if claims is not None else None) or (
+            "master" if getattr(claims, "kind", None) == "master" else "anonymous"
+        )
+        rpm = int(getattr(virtual, "rpm", 0) or 0) or None
+        tpm = int(getattr(virtual, "tpm", 0) or 0) or None
+        decision = limiter.check(
+            key_id=key_id,
+            model=model,
+            tokens=tokens,
+            rpm=rpm,
+            tpm=tpm,
+        )
+        if not decision.allowed:
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "type": "rate_limit_error",
+                        "message": f"{decision.scope or 'rate'} limit exceeded.",
+                    }
+                },
+                headers=decision.headers(),
+            )
+
+        slot = await limiter.acquire()
+        if not slot.allowed:
+            headers = slot.headers()
+            headers.setdefault("Retry-After", str(limiter.retry_after_seconds))
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {
+                        "type": "rate_limit_error",
+                        "message": "In-flight concurrency limit exceeded.",
+                    }
+                },
+                headers=headers,
+            )
+        try:
+            response = await call_next(request)
+        finally:
+            await limiter.release()
+        for header, value in decision.headers().items():
+            response.headers.setdefault(header, value)
+        return response
 
     app.include_router(create_gateway_router())
     app.include_router(AnthropicGatewayAdapter().router())

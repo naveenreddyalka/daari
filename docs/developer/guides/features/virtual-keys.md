@@ -1,11 +1,11 @@
 # Virtual keys
 
-**Outcome:** Issue scoped keys with budgets and RPM limits.
+**Outcome:** Issue scoped keys with budgets, RPM, and TPM limits.
 
 ## Steps
 
 ```bash
-daari keys create --name ci --daily-budget-usd 2
+daari keys create --name ci --daily-budget 2 --rpm 60 --tpm 40000
 daari keys list
 ```
 

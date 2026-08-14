@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     daily_budget_usd REAL NOT NULL DEFAULT 0,
     monthly_budget_usd REAL NOT NULL DEFAULT 0,
     rpm INTEGER NOT NULL DEFAULT 0,
+    tpm INTEGER NOT NULL DEFAULT 0,
     tier_cap TEXT,
     client_id TEXT
 );
@@ -46,6 +47,7 @@ class VirtualKey:
     daily_budget_usd: float = 0.0
     monthly_budget_usd: float = 0.0
     rpm: int = 0
+    tpm: int = 0
     tier_cap: str | None = None
     client_id: str | None = None
     revoked: bool = False
@@ -67,6 +69,11 @@ class VirtualKeyStore:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self._connect() as conn:
                     conn.executescript(_SCHEMA)
+                    cols = {row[1] for row in conn.execute("PRAGMA table_info(virtual_keys)")}
+                    if "tpm" not in cols:
+                        conn.execute(
+                            "ALTER TABLE virtual_keys ADD COLUMN tpm INTEGER NOT NULL DEFAULT 0"
+                        )
             except Exception:
                 self.enabled = False
 
@@ -84,6 +91,7 @@ class VirtualKeyStore:
         daily_budget_usd: float = 0.0,
         monthly_budget_usd: float = 0.0,
         rpm: int = 0,
+        tpm: int = 0,
         tier_cap: str | None = None,
         client_id: str | None = None,
     ) -> CreatedKey:
@@ -96,8 +104,8 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             conn.execute(
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
-                " daily_budget_usd, monthly_budget_usd, rpm, tier_cap, client_id)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -107,6 +115,7 @@ class VirtualKeyStore:
                     float(daily_budget_usd),
                     float(monthly_budget_usd),
                     int(rpm),
+                    int(tpm),
                     tier_cap,
                     client_id,
                 ),
@@ -119,6 +128,7 @@ class VirtualKeyStore:
                 daily_budget_usd=daily_budget_usd,
                 monthly_budget_usd=monthly_budget_usd,
                 rpm=rpm,
+                tpm=tpm,
                 tier_cap=tier_cap,
                 client_id=client_id,
             ),
@@ -141,7 +151,7 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 "SELECT key_id, name, prefix, daily_budget_usd, monthly_budget_usd,"
-                " rpm, tier_cap, client_id, revoked_at FROM virtual_keys"
+                " rpm, tpm, tier_cap, client_id, revoked_at FROM virtual_keys"
                 " ORDER BY created_at DESC"
             ).fetchall()
         return [
@@ -152,9 +162,10 @@ class VirtualKeyStore:
                 daily_budget_usd=r[3],
                 monthly_budget_usd=r[4],
                 rpm=r[5],
-                tier_cap=r[6],
-                client_id=r[7],
-                revoked=r[8] is not None,
+                tpm=r[6],
+                tier_cap=r[7],
+                client_id=r[8],
+                revoked=r[9] is not None,
             )
             for r in rows
         ]
@@ -166,11 +177,11 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             row = conn.execute(
                 "SELECT key_id, name, prefix, daily_budget_usd, monthly_budget_usd,"
-                " rpm, tier_cap, client_id, revoked_at FROM virtual_keys"
+                " rpm, tpm, tier_cap, client_id, revoked_at FROM virtual_keys"
                 " WHERE key_hash = ?",
                 (digest,),
             ).fetchone()
-        if row is None or row[8] is not None:
+        if row is None or row[9] is not None:
             return None
         return VirtualKey(
             key_id=row[0],
@@ -179,8 +190,9 @@ class VirtualKeyStore:
             daily_budget_usd=row[3],
             monthly_budget_usd=row[4],
             rpm=row[5],
-            tier_cap=row[6],
-            client_id=row[7],
+            tpm=row[6],
+            tier_cap=row[7],
+            client_id=row[8],
             revoked=False,
         )
 
@@ -211,6 +223,7 @@ class VirtualKeyStore:
             "daily_budget_usd": key.daily_budget_usd,
             "monthly_budget_usd": key.monthly_budget_usd,
             "rpm": key.rpm,
+            "tpm": key.tpm,
             "tier_cap": key.tier_cap,
             "client_id": key.client_id,
             "revoked": key.revoked,
