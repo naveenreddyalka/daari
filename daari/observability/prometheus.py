@@ -28,6 +28,7 @@ def render_prometheus(
     budget_state: dict[str, Any] | None = None,
     false_hit_rate: float | None = None,
     rate_limit: dict[str, Any] | None = None,
+    backend_pool: dict[str, Any] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -156,5 +157,34 @@ def render_prometheus(
         lines.append("# HELP daari_rate_limit_queued Requests waiting on the concurrency gate.")
         lines.append("# TYPE daari_rate_limit_queued gauge")
         lines.append(f"daari_rate_limit_queued {int(rate_limit.get('queued') or 0)}")
+
+    pool = backend_pool or {}
+    backends = list(pool.get("backends") or [])
+    recorded = snap.get("backends") or {}
+    if backends or recorded:
+        lines.append("# HELP daari_backend_up 1 if the local backend last health-check succeeded.")
+        lines.append("# TYPE daari_backend_up gauge")
+        lines.append("# HELP daari_backend_outstanding In-flight requests on this backend.")
+        lines.append("# TYPE daari_backend_outstanding gauge")
+        lines.append("# HELP daari_backend_requests_total Requests served by this backend.")
+        lines.append("# TYPE daari_backend_requests_total counter")
+        seen: set[str] = set()
+        for entry in backends:
+            backend_id = str(entry.get("id") or "unknown")
+            seen.add(backend_id)
+            lines.append(
+                f"daari_backend_up{_labels(backend=backend_id)} "
+                f"{1 if entry.get('healthy') else 0}"
+            )
+            lines.append(
+                f"daari_backend_outstanding{_labels(backend=backend_id)} "
+                f"{int(entry.get('outstanding') or 0)}"
+            )
+            count = int(entry.get("requests") or recorded.get(backend_id) or 0)
+            lines.append(f"daari_backend_requests_total{_labels(backend=backend_id)} {count}")
+        for backend_id, count in recorded.items():
+            if backend_id in seen:
+                continue
+            lines.append(f"daari_backend_requests_total{_labels(backend=backend_id)} {int(count)}")
 
     return "\n".join(lines) + "\n"

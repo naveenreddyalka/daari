@@ -42,9 +42,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ctx = AppContext.from_settings(resolved)
         app.state.ctx.virtual_key_store = vk_store
         app.state.ctx.start_org_learning_sync()
+        app.state.ctx.start_backend_health()
         try:
             yield
         finally:
+            await app.state.ctx.stop_backend_health()
             await app.state.ctx.stop_org_learning_sync()
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
