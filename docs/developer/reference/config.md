@@ -58,6 +58,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.org_pool.base_url` | str | `''` |  |
 | `routing.org_pool.model` | str | `''` |  |
 | `routing.org_pool.tier` | str | `'L5-org'` |  |
+| `routing.local_pool.strategy` | str | `'least_outstanding'` | Host pick: least_outstanding or round_robin. Warm models still win ties. |
+| `routing.local_pool.health_interval_seconds` | float | `15.0` | Background health-check interval. Requests use the last snapshot. |
+| `routing.local_pool.backends` | list | `[]` |  |
 | `frontier.enabled` | bool | `False` |  |
 | `frontier.provider` | str | `'openai'` |  |
 | `frontier.model` | str | `'gpt-4o-mini'` |  |

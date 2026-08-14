@@ -105,6 +105,8 @@ class DaariMeta(BaseModel):
     confirmation_header: str | None = None
     # Product boundary decision (F6): {label, stage, confidence, reason, mode}
     boundary: dict | None = None
+    # Local pool host that served the request (issue #170).
+    backend_id: str | None = None
 
 
 class InternalResponse(BaseModel):

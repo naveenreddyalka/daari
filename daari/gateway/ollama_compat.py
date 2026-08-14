@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from daari.gateway.base import GatewayAdapter
@@ -20,6 +20,7 @@ from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import ContentImage, InternalRequest, Message, RequestMeta
 from daari.gateway.sampling import SamplingParams
 from daari.router.capabilities import UnsupportedCapability
+from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
 
 DEFAULT_CLIENT_ID = "ollama-compat"
@@ -190,6 +191,17 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 result = await ctx.router.route(internal)
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except BackendUnavailable as exc:
+                ctx.metrics.record_error()
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": {
+                            "type": "backend_unavailable",
+                            "message": str(exc),
+                        }
+                    },
+                )
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc

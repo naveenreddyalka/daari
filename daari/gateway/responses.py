@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
@@ -26,6 +26,7 @@ from daari.gateway.request_log import log_gateway_event
 from daari.gateway.response_store import ResponseStore
 from daari.gateway.sampling import SamplingParams
 from daari.router.capabilities import UnsupportedCapability
+from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
@@ -399,6 +400,17 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 result = await ctx.router.route(internal)
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except BackendUnavailable as exc:
+                ctx.metrics.record_error()
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": {
+                            "type": "backend_unavailable",
+                            "message": str(exc),
+                        }
+                    },
+                )
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc

@@ -193,6 +193,32 @@ class OrgPoolSettings(BaseModel):
     tier: str = "L5-org"
 
 
+class LocalBackendSettings(BaseModel):
+    """One local inference host in the per-tier pool (issue #170)."""
+
+    id: str = ""
+    base_url: str = ""
+    kind: str = "ollama"
+    model: str = ""
+    tiers: list[str] = Field(default_factory=lambda: ["L3", "L4", "L5"])
+    failure_threshold: int = 3
+    cooldown_seconds: float = 30.0
+
+
+class LocalPoolSettings(BaseModel):
+    """Health-checked local backend pool (issue #170). Empty backends → ollama.base_url."""
+
+    strategy: str = Field(
+        default="least_outstanding",
+        description="Host pick: least_outstanding or round_robin. Warm models still win ties.",
+    )
+    health_interval_seconds: float = Field(
+        default=15.0,
+        description="Background health-check interval. Requests use the last snapshot.",
+    )
+    backends: list[LocalBackendSettings] = Field(default_factory=list)
+
+
 class RoutingSettings(BaseModel):
     prefer: str = "balanced"  # latency | accuracy | balanced
     confidence_threshold: float = 0.7
@@ -210,6 +236,7 @@ class RoutingSettings(BaseModel):
     learned_router: bool = False
     # Org inference pool (device-local → org pool → frontier).
     org_pool: OrgPoolSettings = Field(default_factory=OrgPoolSettings)
+    local_pool: LocalPoolSettings = Field(default_factory=LocalPoolSettings)
 
 
 class ToolsSettings(BaseModel):

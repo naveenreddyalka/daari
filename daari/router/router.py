@@ -355,6 +355,7 @@ class Router:
         capability_catalog: Any | None = None,
         otel_enabled: bool = False,
         org_pool: OllamaExecutor | MLXExecutor | None = None,
+        local_pool: Any | None = None,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -426,6 +427,7 @@ class Router:
         self.capability_catalog = capability_catalog
         self.otel_enabled = otel_enabled
         self.org_pool = org_pool
+        self.local_pool = local_pool
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -1370,7 +1372,19 @@ class Router:
 
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
+            stream_slot = None
             stream_executor = self._executor_for_tier(tier)
+            if self.local_pool is not None:
+                stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
+                stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
+                self.local_pool.acquire(stream_slot)
+                add_step(
+                    "backend_pick",
+                    tier=tier,
+                    backend_id=stream_slot.id,
+                    strategy=self.local_pool.strategy,
+                    stream=True,
+                )
             ollama_model = stream_executor.default_model
             stream_request.model = ollama_model
             add_step("tier_attempt", tier=tier, stream=True)
@@ -1431,6 +1445,9 @@ class Router:
                 add_step("served", tier=None, error=str(exc)[:120])
                 finish_trace(None)
                 return
+            finally:
+                if stream_slot is not None and self.local_pool is not None:
+                    self.local_pool.release(stream_slot)
 
             if not content_sent and tier_index < len(tier_chain) - 1:
                 add_step("fallback", from_tier=tier, error="empty_response")
@@ -1757,7 +1774,19 @@ class Router:
 
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
+            stream_slot = None
             stream_executor = self._executor_for_tier(tier)
+            if self.local_pool is not None:
+                stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
+                stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
+                self.local_pool.acquire(stream_slot)
+                add_step(
+                    "backend_pick",
+                    tier=tier,
+                    backend_id=stream_slot.id,
+                    strategy=self.local_pool.strategy,
+                    stream=True,
+                )
             model_name = stream_executor.default_model
             stream_request.model = model_name
             meta = {
@@ -1897,6 +1926,9 @@ class Router:
                 if tier_index < len(tier_chain) - 1:
                     continue
                 raise
+            finally:
+                if stream_slot is not None and self.local_pool is not None:
+                    self.local_pool.release(stream_slot)
 
             if not any_output and tier_index < len(tier_chain) - 1:
                 log_gateway_event(
@@ -2153,6 +2185,16 @@ class Router:
         add_step("tier_attempt", tier=tier)
         request = await self._compact_context(request)
         request = self._optimize_context(request)
+        executor = self._executor_for_tier(tier)
+        req = request.model_copy(deep=True)
+        req.model = executor.default_model
+        if self.local_pool is not None:
+            return await self.local_pool.execute(
+                tier,
+                req,
+                template=executor,
+                warm_models=self._warm_models,
+            )
         provider = self.provider_registry.get(f"ollama:{tier.lower()}")
         if provider is not None:
             provider_request = request.model_copy(deep=True)
@@ -2165,9 +2207,6 @@ class Router:
             response = await provider.execute(provider_request)
             response.daari_meta.tier = tier
             return response
-        executor = self._executor_for_tier(tier)
-        req = request.model_copy(deep=True)
-        req.model = executor.default_model
         return await executor.execute(req)
 
     def _executor_for_tier(self, tier: str) -> OllamaExecutor:
@@ -2594,6 +2633,7 @@ class Router:
             response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
             latency_ms=latency_ms,
+            backend_id=response.daari_meta.backend_id,
         )
 
     def _emit_org_feedback(self, last_user: str, response: InternalResponse) -> None:
@@ -2704,7 +2744,9 @@ class AppContext:
     org_cache_client: OrgCacheClient | None = None
     org_learning_client: OrgLearningClient | None = None
     virtual_key_store: Any | None = None
+    local_pool: Any | None = None
     org_learning_sync_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
+    backend_health_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -2792,6 +2834,36 @@ class AppContext:
             return False
         profile = await self.org_learning_client.get_profile()
         return self._apply_org_learning_profile(profile)
+
+    def start_backend_health(self) -> None:
+        pool = self.local_pool
+        if pool is None:
+            return
+        if self.backend_health_task is not None and not self.backend_health_task.done():
+            return
+
+        async def _health_loop() -> None:
+            try:
+                while True:
+                    try:
+                        await pool.check_health()
+                    except Exception:
+                        pass
+                    await asyncio.sleep(max(1.0, float(pool.health_interval_seconds)))
+            except asyncio.CancelledError:
+                return
+
+        self.backend_health_task = asyncio.create_task(_health_loop())
+
+    async def stop_backend_health(self) -> None:
+        if self.backend_health_task is None:
+            return
+        self.backend_health_task.cancel()
+        try:
+            await self.backend_health_task
+        except asyncio.CancelledError:
+            pass
+        self.backend_health_task = None
 
     def start_org_learning_sync(self) -> None:
         interval = float(self.settings.enterprise.learning_sync_seconds)
@@ -2927,6 +2999,9 @@ class AppContext:
                 retry=local_retry,
             )
         from daari.router.frontier_pool import build_frontier_pool
+        from daari.router.local_pool import build_local_pool
+
+        local_pool = build_local_pool(settings)
 
         # Issue #109: FrontierPool duck-types FrontierExecutor.execute and
         # adds ordered failover + weighted key rotation + circuit breakers.
@@ -3111,6 +3186,7 @@ class AppContext:
             capability_catalog=_catalog_from_settings(settings),
             otel_enabled=bool(settings.observability.otel),
             org_pool=org_pool_executor,
+            local_pool=local_pool,
         )
         context = cls(
             settings=settings,
@@ -3128,6 +3204,7 @@ class AppContext:
             router=router,
             org_cache_client=org_cache_client,
             org_learning_client=org_learning_client,
+            local_pool=local_pool,
         )
         context.sync_org_learning_profile_startup()
         return context
