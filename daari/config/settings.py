@@ -20,6 +20,30 @@ class VirtualKeysSettings(BaseModel):
     path: str = "~/.daari/auth/virtual-keys.sqlite3"
 
 
+class RateLimitSettings(BaseModel):
+    """Global request / token / concurrency caps (issue #169). 0 = unlimited."""
+
+    rpm: int = Field(default=0, description="Default requests per minute per key (0=unlimited).")
+    tpm: int = Field(default=0, description="Default tokens per minute per key (0=unlimited).")
+    model_rpm: int = Field(
+        default=0,
+        description="Per-key-per-model RPM. 0 falls back to rpm.",
+    )
+    model_tpm: int = Field(
+        default=0,
+        description="Per-key-per-model TPM. 0 falls back to tpm.",
+    )
+    max_in_flight: int = Field(
+        default=0,
+        description="Global in-flight request cap. 0 disables the concurrency gate.",
+    )
+    queue_size: int = Field(
+        default=32,
+        description="Waiters allowed when in-flight is full; overflow is 503 + Retry-After.",
+    )
+    retry_after_seconds: int = Field(default=1, description="Retry-After value on 429/503.")
+
+
 class ServerSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 11435
@@ -458,6 +482,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAARI_", env_nested_delimiter="__")
 
     server: ServerSettings = Field(default_factory=ServerSettings)
+    rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)

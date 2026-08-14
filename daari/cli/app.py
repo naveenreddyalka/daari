@@ -66,6 +66,7 @@ def keys_create(
         0.0, "--monthly-budget", help="Monthly USD cap (0=unlimited)"
     ),
     rpm: int = typer.Option(0, "--rpm", help="Requests per minute (0=unlimited)"),
+    tpm: int = typer.Option(0, "--tpm", help="Tokens per minute (0=unlimited)"),
     tier_cap: str | None = typer.Option(None, "--tier-cap", help="L3|L4|L5"),
     client_id: str | None = typer.Option(None, "--client-id", help="Ledger attribution id"),
 ) -> None:
@@ -79,6 +80,7 @@ def keys_create(
         daily_budget_usd=daily_budget,
         monthly_budget_usd=monthly_budget,
         rpm=rpm,
+        tpm=tpm,
         tier_cap=tier_cap,
         client_id=client_id,
     )
@@ -101,11 +103,13 @@ def keys_list() -> None:
     if not keys:
         typer.echo("No virtual keys.")
         return
-    typer.echo(f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tier':<4} revoked")
+    typer.echo(
+        f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'tier':<4} revoked"
+    )
     for key in keys:
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
-            f"{(key.tier_cap or '-'):<4} {'yes' if key.revoked else 'no'}"
+            f"{key.tpm:>7} {(key.tier_cap or '-'):<4} {'yes' if key.revoked else 'no'}"
         )
 
 

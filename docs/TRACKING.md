@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-07-23  
+> Last updated: 2026-08-14  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -885,6 +885,23 @@ polls to `completed`. `include` is 400; `metadata` is echoed.
 
 Covered by `tests/integration/test_responses_api.py`, including a call through
 the official OpenAI `AsyncOpenAI.responses` client.
+
+### Distributed rate limiting ([#169](https://github.com/naveenreddyalka/daari/issues/169))
+
+Virtual-key RPM used to be a SQLite `INSERT` + `COUNT` on every request — no TPM,
+no global cap, no concurrency gate, and no shared counters across replicas. One
+runaway agent loop could saturate the local GPU.
+
+`daari/auth/rate_limit.py` now owns one limiter with Redis counters when
+`cache.backend: redis` and SQLite otherwise. RPM and TPM apply per key and per
+model (`rate_limit.rpm` / `tpm` / `model_rpm` / `model_tpm`; a virtual key's
+`--rpm` / `--tpm` override the defaults). `max_in_flight` plus `queue_size`
+bounds concurrency; overflow is 503 + `Retry-After`. Successful and rejected
+responses carry `X-RateLimit-Limit` / `Remaining` / `Reset`. `/metrics` exposes
+the configured limits and current in-flight / queued gauges. The Redis path
+never opens SQLite.
+
+Covered by `tests/unit/test_rate_limit.py`.
 
 ---
 
