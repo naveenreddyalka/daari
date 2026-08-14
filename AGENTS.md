@@ -34,6 +34,7 @@ A change is not done until the default suite passes.
 
 ## Commits and PRs
 
+- Author every commit as `Naveen Reddy Alka <naveenreddy.alka@gmail.com>` (this repo's local `user.name` / `user.email`). Never use a work identity.
 - Conventional commits: `feat(scope): ...`, `fix(scope): ...`, `docs: ...`, `chore: ...`.
 - One PR per issue. Title: conventional-commit style; body must include `Closes #<issue>`, a summary, and the test output tail.
 - Push branch, open PR against `main`, then enable auto-merge: `gh pr merge --auto --squash`.
