@@ -16,12 +16,33 @@ Tunnel setup (`daari setup cursor --tunnel`) auto-generates a key when unset.
 ## Virtual keys
 
 ```bash
-daari keys create --name alice --daily-budget-usd 5
+daari keys create --name alice --daily-budget 5
 daari keys list
 daari keys revoke <key_id>
 ```
 
-Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, tier caps.
+Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, TPM, tier caps.
+
+```bash
+daari keys create --name ci --rpm 60 --tpm 40000
+```
+
+## Rate limits
+
+Defaults apply to every key (including the master key). A virtual key's `--rpm` / `--tpm` override the global defaults for that key. `0` means unlimited.
+
+```yaml
+rate_limit:
+  rpm: 60
+  tpm: 40000
+  model_rpm: 0          # 0 = same as rpm, scoped per model
+  model_tpm: 0
+  max_in_flight: 8      # 0 = no concurrency gate
+  queue_size: 32        # waiters before 503 + Retry-After
+  retry_after_seconds: 1
+```
+
+Counters live in Redis when `cache.backend: redis` (`daari:rl:` prefix); otherwise SQLite next to the virtual-key store. Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`. `/metrics` exposes the configured limits and current in-flight / queued gauges.
 
 ## SSO (admin)
 

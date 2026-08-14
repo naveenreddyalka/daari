@@ -582,8 +582,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 except Exception:
                     false_hit_rate = None
 
+            limiter = getattr(request.app.state, "rate_limiter", None)
+            rate_limit = limiter.snapshot() if limiter is not None else None
             body = render_prometheus(
-                ctx.metrics, budget_state=budget_state, false_hit_rate=false_hit_rate
+                ctx.metrics,
+                budget_state=budget_state,
+                false_hit_rate=false_hit_rate,
+                rate_limit=rate_limit,
             )
             return PlainTextResponse(
                 content=body,

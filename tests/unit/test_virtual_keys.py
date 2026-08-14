@@ -143,7 +143,7 @@ class TestCLI:
         monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
         runner = CliRunner()
         created = runner.invoke(
-            cli_app, ["keys", "create", "demo", "--rpm", "5", "--tier-cap", "L3"]
+            cli_app, ["keys", "create", "demo", "--rpm", "5", "--tpm", "1000", "--tier-cap", "L3"]
         )
         assert created.exit_code == 0
         assert "dk_" in created.output
