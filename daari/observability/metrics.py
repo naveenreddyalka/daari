@@ -38,6 +38,7 @@ class Metrics:
     boundaries: dict[str, int] = field(default_factory=dict)
     cache_false_hits_avoided: int = 0
     upstream_retries: int = 0
+    backends: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -46,6 +47,7 @@ class Metrics:
         *,
         cache_hit: bool = False,
         latency_ms: int = 0,
+        backend_id: str | None = None,
     ) -> None:
         with self._lock:
             stats = self.tiers.setdefault(tier, TierStats())
@@ -55,6 +57,8 @@ class Metrics:
             stats.total_latency_ms += latency_ms
             if latency_ms > 0:
                 stats.observe_latency(latency_ms)
+            if backend_id:
+                self.backends[backend_id] = self.backends.get(backend_id, 0) + 1
 
     def record_error(self) -> None:
         with self._lock:
@@ -112,4 +116,5 @@ class Metrics:
                 "boundaries": dict(self.boundaries),
                 "cache_false_hits_avoided": self.cache_false_hits_avoided,
                 "upstream_retries": self.upstream_retries,
+                "backends": dict(self.backends),
             }

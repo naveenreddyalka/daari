@@ -903,6 +903,23 @@ never opens SQLite.
 
 Covered by `tests/unit/test_rate_limit.py`.
 
+### Local backend pool ([#170](https://github.com/naveenreddyalka/daari/issues/170))
+
+Local tiers accepted one Ollama URL. A dead or overloaded host failed every
+request until restart — no health checks, no load balancing, and circuit
+breakers existed only for frontier providers.
+
+`routing.local_pool.backends` is a per-tier host list (empty still means
+`ollama.base_url`). A background loop probes `/api/version` (or MLX
+`/v1/models`) without blocking requests. Pick is `least_outstanding` or
+`round_robin`, with warm-model hosts preferred. Each host has a
+`CircuitBreaker`. `/ready` is `ready`, `degraded` (200, some hosts down), or
+`not_ready` (503). The chosen host is `daari_meta.backend_id`, a `backend_pick`
+trace step, and `daari_backend_*` Prometheus series. All hosts down is a typed
+`backend_unavailable` 503.
+
+Covered by `tests/unit/test_local_pool.py`.
+
 ### Redis L1 lost-update ([#150](https://github.com/naveenreddyalka/daari/issues/150))
 
 `RedisSemanticCache` stored the whole entry list under one key and did an
