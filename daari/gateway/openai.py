@@ -27,6 +27,7 @@ from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
 from daari.router.capabilities import UnsupportedCapability
+from daari.router.local_pool import BackendUnavailable
 
 OPENAI_SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -403,6 +404,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 result = await ctx.router.route(internal)
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except BackendUnavailable as exc:
+                ctx.metrics.record_error()
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": {
+                            "type": "backend_unavailable",
+                            "message": str(exc),
+                        }
+                    },
+                )
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
@@ -584,11 +596,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
             limiter = getattr(request.app.state, "rate_limiter", None)
             rate_limit = limiter.snapshot() if limiter is not None else None
+            pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
+            backend_pool = pool.snapshot() if pool is not None else None
             body = render_prometheus(
                 ctx.metrics,
                 budget_state=budget_state,
                 false_hit_rate=false_hit_rate,
                 rate_limit=rate_limit,
+                backend_pool=backend_pool,
             )
             return PlainTextResponse(
                 content=body,
@@ -597,26 +612,40 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/ready")
         async def ready(request: Request) -> JSONResponse:
-            """Readiness probe (issue #105): unlike /health liveness, this
-            verifies the daemon can actually serve — cache handles exist and
-            the L3 model backend answers. Returns 503 while dependencies are
-            down so orchestrators keep traffic away."""
+            """Readiness probe (issue #105 / #170): cache handles plus local
+            pool health. Degraded (some hosts down) is 200; no serving host
+            is 503."""
             ctx: AppContext = request.app.state.ctx
-            base_url = ctx.ollama_l3.base_url.rstrip("/")
-            probe = (
-                f"{base_url}/v1/models"
-                if type(ctx.ollama_l3).__name__ == "MLXExecutor"
-                else f"{base_url}/api/version"
-            )
+            cache_ok = ctx.cache is not None
+            pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
+            backends: list[dict[str, Any]] = []
+            if pool is not None:
+                if not pool.checked:
+                    await pool.check_health()
+                snap = pool.readiness()
+                model_backend = snap["model_backend"]
+                backends = snap["backends"]
+                status = snap["status"] if cache_ok else "not_ready"
+                http_status = snap["http_status"] if cache_ok else 503
+            else:
+                base_url = ctx.ollama_l3.base_url.rstrip("/")
+                probe = (
+                    f"{base_url}/v1/models"
+                    if type(ctx.ollama_l3).__name__ == "MLXExecutor"
+                    else f"{base_url}/api/version"
+                )
+                model_backend = await check_model_backend(probe)
+                ready_now = cache_ok and model_backend == "ok"
+                status = "ready" if ready_now else "not_ready"
+                http_status = 200 if ready_now else 503
             checks = {
-                "cache": "ok" if ctx.cache is not None else "missing",
-                "model_backend": await check_model_backend(probe),
+                "cache": "ok" if cache_ok else "missing",
+                "model_backend": model_backend,
             }
-            ready_now = all(value == "ok" for value in checks.values())
-            return JSONResponse(
-                status_code=200 if ready_now else 503,
-                content={"status": "ready" if ready_now else "not_ready", "checks": checks},
-            )
+            content: dict[str, Any] = {"status": status, "checks": checks}
+            if backends:
+                content["backends"] = backends
+            return JSONResponse(status_code=http_status, content=content)
 
         @router.get("/v1/daari/stats")
         async def daari_stats(request: Request) -> dict[str, Any]:
