@@ -4,8 +4,8 @@
 class Daari < Formula
   desc "Local-first LLM execution router — cache before cloud"
   homepage "https://github.com/naveenreddyalka/daari"
-  url "https://github.com/naveenreddyalka/daari/archive/refs/tags/v1.2.0.tar.gz"
-  sha256 "4ad7e804c7be9b51e4bfcaa405c1db8ec05afbe365c3e46b9ed1cb59e41f5f3c"
+  url "https://github.com/naveenreddyalka/daari/archive/refs/tags/v1.3.0.tar.gz"
+  sha256 "5bc6d2c379d15a6415446759d8f2f6e7e160d2fb64dd5a4b904c857b83a90366"
   license "PolyForm-Noncommercial-1.0.0"
   head "https://github.com/naveenreddyalka/daari.git", branch: "main"
 
@@ -99,13 +99,13 @@ class Daari < Formula
   end
 
   resource "Pygments" do
-    url "https://files.pythonhosted.org/packages/c3/b2/bc9c9196916376152d655522fdcebac55e66de6603a76a02bca1b6414f6c/pygments-2.20.0.tar.gz"
-    sha256 "6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f"
+    url "https://files.pythonhosted.org/packages/49/2e/ced460408999b33da6b31b0021b0f37d329e202d4169aeb164493778f25b/pygments-2.21.0.tar.gz"
+    sha256 "610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c"
   end
 
   resource "python-dotenv" do
-    url "https://files.pythonhosted.org/packages/82/ed/0301aeeac3e5353ef3d94b6ec08bbcabd04a72018415dcb29e588514bba8/python_dotenv-1.2.2.tar.gz"
-    sha256 "2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3"
+    url "https://files.pythonhosted.org/packages/6a/53/ed9d74092561d4b01a2ef1349d52cdbc135e526c245f366b089cfca6de49/python_dotenv-1.2.3.tar.gz"
+    sha256 "a20a594dabeaa385725aa239d5244871c143ecb356add8a20fcf23773a6c3a35"
   end
 
   resource "PyYAML" do
@@ -144,8 +144,8 @@ class Daari < Formula
   end
 
   resource "uvicorn" do
-    url "https://files.pythonhosted.org/packages/03/18/ccce41535dee1be77735592bd19965f3972c82e07ee703d324709496b716/uvicorn-0.52.1.tar.gz"
-    sha256 "112ec661814189acbccd3f7b86460147cc065fc92c0821afa78918780e4354dd"
+    url "https://files.pythonhosted.org/packages/2e/28/64ca011edf31c715b4fad359c587ea52391aaffa125065695590241ff617/uvicorn-0.52.3.tar.gz"
+    sha256 "18857b9e6579300be55c91c0a1cfd37d9a2cf0cabea33b88275f199eb73b8b58"
   end
 
   resource "uvloop" do
