@@ -81,6 +81,7 @@ nav:
           - Traces and stats: developer/guides/observability/traces-stats.md
           - Savings report: developer/guides/observability/savings-report.md
           - Prometheus: developer/guides/observability/metrics-prometheus.md
+          - OTel GenAI traces: developer/guides/observability/otel-genai.md
       - Operations:
           - Doctor and health: developer/guides/operations/doctor-health.md
           - Docker Compose: developer/guides/operations/docker-compose.md
