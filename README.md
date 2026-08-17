@@ -86,10 +86,22 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 
 ## Principles
 
-- **Open source** — Apache 2.0, you own the stack
+- **Source-available** — free for personal, educational, and other noncommercial use
 - **Local-first** — on-device by default
 - **Cost-minimize** — cheapest capable path for every task
 - **AI optional** — many tasks use IDE/CLI tools, not models
+
+## License
+
+Daari is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE):
+personal, educational, research, and other noncommercial use is free. Use by or
+for a business, or in any money-making activity, requires a commercial license —
+contact naveenreddy.alka@gmail.com.
+
+Required Notice: Copyright Naveen Reddy Alka (https://github.com/naveenreddyalka/daari)
+
+Releases up to and including v1.2.0 were published under Apache 2.0 and remain
+available under those terms.
 
 ## Repo
 

@@ -6,7 +6,7 @@ class Daari < Formula
   homepage "https://github.com/naveenreddyalka/daari"
   url "https://github.com/naveenreddyalka/daari/archive/refs/tags/v1.2.0.tar.gz"
   sha256 "4ad7e804c7be9b51e4bfcaa405c1db8ec05afbe365c3e46b9ed1cb59e41f5f3c"
-  license "Apache-2.0"
+  license "PolyForm-Noncommercial-1.0.0"
   head "https://github.com/naveenreddyalka/daari.git", branch: "main"
 
   # pydantic-core and watchfiles ship Rust extensions and are built from sdist here.
