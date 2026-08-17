@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-08-14  
+> Last updated: 2026-08-17 (v1.3.0 released — see [RELEASE-v1.3.0.md](RELEASE-v1.3.0.md))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
