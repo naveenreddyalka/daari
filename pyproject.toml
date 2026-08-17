@@ -8,13 +8,13 @@ version = "1.2.0"
 description = "Local-first execution router — cache before cloud"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "Apache-2.0" }
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 authors = [{ name = "Naveen Reddy Alka" }]
 keywords = ["ai", "routing", "ollama", "openai", "cache", "developer-tools"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: Apache Software License",
+  "License :: Free for non-commercial use",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Framework :: FastAPI",

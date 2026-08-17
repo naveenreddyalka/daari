@@ -24,7 +24,7 @@ daari is **not** another cloud LLM proxy. It is an **open-source, local-first ex
 
 | Principle | Meaning |
 |-----------|---------|
-| **Open source** | Core daari (router, cache, setup, CLI) is OSS (Apache 2.0). No vendor lock-in. |
+| **Source-available** | Core daari (router, cache, setup, CLI) is PolyForm Noncommercial 1.0.0 — free for personal, educational, and research use; commercial use is licensed separately. No vendor lock-in. |
 | **Local-first** | Default path is on-device: cache → rules → tools → local models. |
 | **Cost-minimize** | Every request takes the cheapest capable tier. Frontier (L6) is last resort. |
 | **AI is optional** | Many tasks need no model at all (Lt tool-native tier). |
@@ -408,9 +408,9 @@ User configures priority in `sources.yaml`. Full spec: [sources-integration.md](
 | IntelliJ | — | ✅ Lt backend | Tool executor, not AI client |
 | Generic UI | ⚠️ if OpenAI-compat | ✅ | Same as SDK |
 
-### Open source & privacy commitments
+### Licensing & privacy commitments
 
-- **License:** Apache 2.0 for daari core
+- **License:** PolyForm Noncommercial 1.0.0 for daari core (Apache 2.0 through v1.2.0); commercial use is licensed separately
 - **Dependencies:** OSS-only for core path; no required proprietary services
 - **Models:** User-provided via Ollama or local backends — daari does not ship weights
 - **Frontier keys:** User-owned; stored locally; never sent to daari project infra
