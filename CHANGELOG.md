@@ -4,6 +4,39 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-08-17 · [notes](docs/RELEASE-v1.3.0.md)
+
+**Gateway completeness, hardening & relicense** — 51 commits: full agent surface (Responses, MCP, embeddings, vision), distributed rate limits, health-checked local backend pool, real token accounting, and a move to PolyForm Noncommercial 1.0.0.
+
+### License change
+
+- **Relicensed from Apache 2.0 to [PolyForm Noncommercial 1.0.0](../LICENSE)** (#202): free for personal, educational, research, and other noncommercial use; commercial use requires a separate license (contact naveenreddy.alka@gmail.com). Releases through v1.2.0 remain available under Apache 2.0. CONTRIBUTING.md now includes a contributor relicense grant.
+
+### Gateway surface completion
+
+- **Responses API completed for agents** (#196): background mode, `previous_response_id` chaining, response store, streaming events
+- **Real MCP JSON-RPC server at `POST /mcp`** (#195): tools/list, tools/call over the gateway
+- **`POST /v1/embeddings`** on the OpenAI surface (#193)
+- **Vision requests keep image parts** (#192); OpenAI sampling parameters honored instead of dropped (#187)
+- **Native Anthropic `/v1/messages` L6 egress** (#194): no more lossy OpenAI-format round-trip for Claude
+
+### Reliability & scale-out
+
+- **Distributed rate limiting** (#197 / issue #169): RPM + TPM per key and per model with Redis or SQLite counters, global in-flight cap with bounded queue, `X-RateLimit-*` headers, limits in `/metrics`
+- **Health-checked local backend pool** (#198 / issue #170): multiple Ollama/MLX hosts per tier, background health probes, least-outstanding/round-robin pick, per-host circuit breakers, degraded `/ready`
+- **Redis L1 lost-update fix** (#199 / issue #150): `WATCH`/`MULTI` optimistic locking preserves concurrent replica writes
+- **Transient upstream retries with bounded backoff** (#185); streams enforce boundaries, guardrails, and L6 escalation (#175); deterministic tiers and frontier SSE relay on streams (#177)
+
+### Correctness & accounting
+
+- **Real token accounting** (#178): provider-reported token counts and per-model, per-direction pricing
+- **L1 semantic hits verified before serving** (#179); virtual-key budgets charged to the key that spent them (#184)
+- Test isolation from the real `~/.daari` and Redis L1 flake fix (#186)
+
+### Packaging & release
+
+- PyPI packaging unblocked; generated Homebrew formula (#182), guided PyPI publish runner (#183) — `daari==1.2.0` went live on PyPI
+
 ### Developer documentation overhaul
 
 - New public docs tree under `docs/developer/` (Get started, Concepts, Guides, Tutorials, Reference, Internals, Resources)
