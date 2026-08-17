@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 162 passed (`pytest -m "not integration and not benchmark"`, 2026-06-23)
+**Count:** 971 passed (`pytest -m "not integration and not benchmark"`, 2026-08-17)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **162 passed**, 1 skipped |
+| `pytest` (default, mocked) | **971 passed** (2026-08-17) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -933,6 +933,25 @@ path. `max_entries` eviction still applies to the merged list. No new
 dependency.
 
 Covered by `tests/unit/test_redis_semantic.py`.
+
+### OTel GenAI semantic conventions ([#167](https://github.com/naveenreddyalka/daari/issues/167))
+
+OTel export used to emit ad-hoc `daari.*` attributes with everything
+stringified — no `gen_ai.*` names, so daari traces joined nothing in
+Langfuse/Grafana/Datadog.
+
+Root spans are now `chat {model}` with `gen_ai.operation.name`, `provider.name`,
+`request.model`, `response.model`, `response.finish_reasons`, `usage.*` (real
+provider counts only — estimates are flagged `daari.usage_estimated`, never
+reported as measurements), and `error.type`. Metrics:
+`gen_ai.client.token.usage`, `gen_ai.client.operation.duration`, and for
+streams `gen_ai.server.time_to_first_token` / `time_per_output_token`.
+daari facts stay under `daari.*`; numbers are numbers. Startup installs OTLP
+providers when `OTEL_EXPORTER_OTLP_ENDPOINT` is set and nothing configured
+OTel first. Conventions are Development status and may shift.
+
+Covered by `tests/unit/test_otel_genai.py`; wire-verified by
+`scripts/smoke_otel_genai.py` against an in-process OTLP collector.
 
 ---
 

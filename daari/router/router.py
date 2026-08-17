@@ -612,7 +612,7 @@ class Router:
             if getattr(self, "otel_enabled", False):
                 from daari.observability.otel import export_trace
 
-                export_trace(trace)
+                export_trace(trace, request=request, response=response)
         end_trace()
         self._ledger_record(request, response)
         self._feedback_record(profile, response)
@@ -1397,6 +1397,9 @@ class Router:
             tool_calls_sent = False
             tier_completion_chars = 0
             reported_usage: tuple[int, int] | None = None
+            first_delta_at: float | None = None
+            last_delta_at: float | None = None
+            delta_count = 0
             try:
                 async for event in stream_executor.stream(stream_request):
                     if event.get("prompt_eval_count") is not None:
@@ -1424,6 +1427,10 @@ class Router:
                         if not content_sent:
                             pending_chunks.append(role_chunk)
                             content_sent = True
+                        last_delta_at = time.perf_counter()
+                        if first_delta_at is None:
+                            first_delta_at = last_delta_at
+                        delta_count += 1
                         tier_completion_chars += len(delta)
                         tier_text_parts.append(delta)
                         pending_chunks.append(
@@ -1443,6 +1450,10 @@ class Router:
                 yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
                 yield "data: [DONE]\n\n"
                 add_step("served", tier=None, error=str(exc)[:120])
+                if getattr(self, "otel_enabled", False) and trace is not None:
+                    from daari.observability.otel import export_trace
+
+                    export_trace(trace, request=request, error_type=type(exc).__name__)
                 finish_trace(None)
                 return
             finally:
@@ -1627,6 +1638,23 @@ class Router:
                 except Exception:
                     pass
             add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
+            if getattr(self, "otel_enabled", False) and trace is not None:
+                from daari.observability.otel import export_trace
+
+                first_chunk_s = (
+                    first_delta_at - started if first_delta_at is not None else None
+                )
+                per_chunk_s = None
+                if first_delta_at is not None and last_delta_at is not None and delta_count > 1:
+                    per_chunk_s = (last_delta_at - first_delta_at) / (delta_count - 1)
+                served.daari_meta.latency_ms = latency_ms
+                export_trace(
+                    trace,
+                    request=request,
+                    response=served,
+                    time_to_first_chunk=first_chunk_s,
+                    time_per_output_chunk=per_chunk_s,
+                )
             finish_trace(tier)
             return
 
@@ -3188,6 +3216,10 @@ class AppContext:
             org_pool=org_pool_executor,
             local_pool=local_pool,
         )
+        if settings.observability.otel:
+            from daari.observability.otel import configure_providers
+
+            configure_providers()
         context = cls(
             settings=settings,
             cache=cache,
