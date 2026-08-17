@@ -1,0 +1,66 @@
+# Live product benchmark
+
+`scripts/bench_live.py` measures daari against a **real local model** the way a
+user would — `daari serve` + Ollama, labeled prompts, no stubbed executors —
+and publishes the results to
+[docs/developer/resources/benchmarks.md](../../resources/benchmarks.md).
+It backs the routing-accuracy and cache-trust claims that the mocked CI suite
+cannot.
+
+## What it measures
+
+| Metric | Source |
+|--------|--------|
+| Routing accuracy | `evals/routing/prompts.jsonl` — observed tier vs `expected_tier_v1` (slash-separated alternatives allowed) |
+| $0-tier rate | share of served requests answered off-machine-free (any tier except L6) |
+| L1 paraphrase retention | `evals/cache/verification.jsonl` rows labeled `paraphrase` / `synonym_substitution` — candidate should hit L1 |
+| L1 near-miss rejection | rows labeled `near_miss` — candidate must **not** hit L1 |
+| p50/p95 latency per tier | client-side wall clock per request |
+| Frontier spend avoided | provider-reported tokens priced at `pricing.models` list rates (default `gpt-4o`) |
+
+## Reproduce on your machine
+
+```bash
+# prerequisites: Ollama running with llama3.2:3b, llama3.1:8b, nomic-embed-text pulled
+source .venv/bin/activate
+python scripts/bench_live.py
+```
+
+The script spawns its own **hermetic `daari serve`** — temp `HOME`, cold
+caches, default settings, a fresh instance per phase — so runs are
+reproducible and your long-lived daemon's caches neither pollute nor get
+polluted by the benchmark. It prints the report and rewrites
+`docs/developer/resources/benchmarks.md` with the commit hash, hardware,
+model IDs, and date.
+
+The equivalent pytest entry point (used by `pytest -m benchmark`):
+
+```bash
+pytest -m benchmark tests/unit/test_bench_live.py
+```
+
+Both skip cleanly (exit 0 / pass) when Ollama is unreachable, so CI and
+Ollama-less machines are unaffected.
+
+## Flags
+
+| Flag | Meaning |
+|------|---------|
+| `--daemon URL` | Benchmark an existing daemon instead of spawning a hermetic one. Warm caches will color the results; cache pairs get salted to compensate. |
+| `--allow-frontier` | Score expected-L6 rows for real. **Default is never to call a paid API**: every request carries `X-Daari-No-Frontier` and L6 rows are excluded from accuracy. |
+| `--price-model NAME` | Reference model from `pricing.models` for the "spend avoided" column (default `gpt-4o`). |
+| `--ollama URL` | Ollama base URL (default `$OLLAMA_HOST` or `http://127.0.0.1:11434`). |
+| `--out PATH` | Where to write the markdown report. |
+| `--no-write` | Print the report without touching the docs page. |
+
+## Methodology notes
+
+- Seeding for the cache-trust phase is **organic** (plain requests). Do not
+  seed with `X-Daari-Tier-Override`: the override becomes part of the L1
+  context key, so overridden entries land in a bucket organic lookups never
+  read (this is by design — pinned answers must not serve organic traffic).
+- Stored prompts that route to a non-cacheable tier (L2/Lt/CCS) cannot seed
+  L1; those pairs are excluded and the count is reported.
+- Tokens are provider-reported wherever `usage_estimated` is false; the few
+  deterministic-tier rows without provider counts are estimated at chars/4 and
+  the report says so.

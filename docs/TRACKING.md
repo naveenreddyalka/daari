@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 971 passed (`pytest -m "not integration and not benchmark"`, 2026-08-17)
+**Count:** 978 passed (`pytest -m "not integration and not benchmark"`, 2026-08-17)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **971 passed** (2026-08-17) |
+| `pytest` (default, mocked) | **978 passed** (2026-08-17) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -952,6 +952,29 @@ OTel first. Conventions are Development status and may shift.
 
 Covered by `tests/unit/test_otel_genai.py`; wire-verified by
 `scripts/smoke_otel_genai.py` against an in-process OTLP collector.
+
+### Live product benchmark ([#189](https://github.com/naveenreddyalka/daari/issues/189))
+
+`scripts/bench.sh` was a curl smoke with UUID prompts — it could not back a
+routing or cache-trust claim. `scripts/bench_live.py` now runs the labeled
+corpora (`evals/routing/prompts.jsonl`, `evals/cache/verification.jsonl`)
+against a hermetic `daari serve` + real Ollama (fresh cold-cache instance per
+phase), reports $0-tier rate, routing accuracy, L1 paraphrase retention /
+near-miss rejection, p50/p95 per tier, and frontier USD avoided from
+provider-reported tokens, and publishes
+[developer/resources/benchmarks.md](developer/resources/benchmarks.md) with
+commit, hardware, model IDs, and date. Never calls a paid API by default
+(`X-Daari-No-Frontier`; expected-L6 rows excluded unless `--allow-frontier`).
+Reproduce guide:
+[developer/guides/observability/live-benchmark.md](developer/guides/observability/live-benchmark.md).
+
+First honest run found a real trust bug: the #168 lexical verifier is bypassed
+on the serve path (router calls `nearest()`, never `get()`), so near-misses
+serve from L1 — filed as
+[#206](https://github.com/naveenreddyalka/daari/issues/206) (P1).
+
+Pure logic covered by `tests/unit/test_bench_live.py`; the live path runs via
+`pytest -m benchmark` or the script itself, skipping cleanly without Ollama.
 
 ---
 
