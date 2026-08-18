@@ -171,6 +171,22 @@ class SemanticCache:
         response, score, _ = await self._nearest_entry(request, max_age=max_age)
         return response, score
 
+    async def nearest_with_source(
+        self, request: InternalRequest, *, max_age: float | None = None
+    ) -> tuple[InternalResponse | None, float, str | None]:
+        """`nearest()` plus the stored prompt text, so serve paths can verify (#206)."""
+        return await self._nearest_entry(request, max_age=max_age)
+
+    def verify_for_serving(self, request: InternalRequest, stored_text: str | None) -> bool:
+        """Second-stage veto for serve paths that use nearest() instead of get() (#206).
+
+        True when no verifier is configured or the candidate passes; False vetoes
+        the hit (and logs/counts the avoided false hit via `_verified`).
+        """
+        if self.verifier is None:
+            return True
+        return self._verified(request, stored_text)
+
     async def _nearest_entry(
         self, request: InternalRequest, *, max_age: float | None = None
     ) -> tuple[InternalResponse | None, float, str | None]:

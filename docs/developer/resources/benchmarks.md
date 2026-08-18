@@ -5,8 +5,8 @@ and real Ollama — no stubbed executors, cold caches. Reproduce on your
 machine: [guide](../guides/observability/live-benchmark.md). Historical
 notes: [docs/BENCHMARKS.md](../../BENCHMARKS.md).
 
-- **Date:** 2026-08-17
-- **Commit:** `2cb0396`
+- **Date:** 2026-08-18
+- **Commit:** `20b3ec5`
 - **Hardware:** Apple M4 Pro, 48 GB RAM
 - **Ollama:** 0.18.2
 - **Daemon:** hermetic `daari serve` on default settings, cold caches, fresh instance per phase
@@ -18,47 +18,49 @@ notes: [docs/BENCHMARKS.md](../../BENCHMARKS.md).
 
 - **$0-tier rate:** 100% of served requests never left the machine
 - **Routing accuracy:** 16/19 scored rows matched the expected tier (1 frontier row(s) excluded — run with --allow-frontier to score them)
-- **Frontier spend avoided:** $0.0342 for this corpus at gpt-4o rates
-- **L1 paraphrase retention:** 17/18 (94%)
-- **L1 near-miss rejection:** 3/18 (17%)
+- **Frontier spend avoided:** $0.0324 for this corpus at gpt-4o rates
+- **L1 paraphrase retention:** 11/18 (61%)
+- **L1 near-miss rejection:** 18/18 (100%)
 
-> Note (2026-08-17): the weak near-miss rejection is a known bug this benchmark
-> uncovered — the #168 lexical verifier is bypassed on the serve path. Tracked
-> in [#206](https://github.com/naveenreddyalka/daari/issues/206); rerun after
-> the fix to refresh this number.
+> Note (2026-08-18): rejection went 17% → 100% after
+> [#206](https://github.com/naveenreddyalka/daari/issues/206) put the lexical
+> verifier back on the serve path. Retention dropped from 94% because the
+> verifier vetoes the six benign synonym-substitution rows (e.g.
+> summarise/summarize) — recall follow-up tracked in
+> [#208](https://github.com/naveenreddyalka/daari/issues/208).
 
 ## Latency per tier
 
 | Tier | Requests | p50 ms | p95 ms |
 |------|----------|--------|--------|
-| CCS | 1 | 7 | 7 |
-| L0 | 1 | 13 | 13 |
-| L2 | 1 | 46 | 46 |
-| L3 | 12 | 1720 | 9872 |
-| L4 | 2 | 1693 | 2576 |
-| Lt | 2 | 56 | 93 |
+| CCS | 1 | 6 | 6 |
+| L0 | 1 | 9 | 9 |
+| L2 | 1 | 53 | 53 |
+| L3 | 12 | 1471 | 8111 |
+| L4 | 2 | 779 | 1767 |
+| Lt | 2 | 66 | 95 |
 
 ## Routing corpus detail
 
 | ID | Expected | Observed | OK | ms |
 |----|----------|----------|----|-----|
-| GP-01 | L3 | L3 | yes | 785 |
-| GP-02 | L3 | L3 | yes | 4059 |
-| GP-03 | L2 | L2 | yes | 46 |
-| GP-04 | L3 | L3 | yes | 579 |
-| GP-05 | L0 | L0 | yes | 13 |
-| GP-06 | Lt | Lt | yes | 56 |
-| GP-07 | Lt | Lt | yes | 93 |
+| GP-01 | L3 | L3 | yes | 1288 |
+| GP-02 | L3 | L3 | yes | 4323 |
+| GP-03 | L2 | L2 | yes | 53 |
+| GP-04 | L3 | L3 | yes | 667 |
+| GP-05 | L0 | L0 | yes | 9 |
+| GP-06 | Lt | Lt | yes | 66 |
+| GP-07 | Lt | Lt | yes | 95 |
 | GP-08 | L6 | excluded | — | 0 |
-| GP-09 | L3 | L3 | yes | 1733 |
-| GP-10 | L5 | L3 | no | 9872 |
-| GP-11 | L3 | L3 | yes | 1720 |
-| GP-12 | L1/L3 | L4 | no | 2576 |
-| GP-13 | L3 | L3 | yes | 4332 |
-| GP-14 | L2/L3 | L3 | yes | 463 |
-| GP-15 | L3 | L3 | yes | 795 |
-| GP-16 | L3/L4 | L4 | yes | 1693 |
-| GP-17 | L3 | L3 | yes | 343 |
-| GP-18 | L3 | L3 | yes | 5191 |
-| GP-19 | Lt | CCS | no | 7 |
-| GP-20 | L3 | L3 | yes | 4567 |
+| GP-09 | L3 | L3 | yes | 1471 |
+| GP-10 | L5 | L3 | no | 8111 |
+| GP-11 | L3 | L3 | yes | 1232 |
+| GP-12 | L1/L3 | L4 | no | 779 |
+| GP-13 | L3 | L3 | yes | 3134 |
+| GP-14 | L2/L3 | L3 | yes | 2236 |
+| GP-15 | L3 | L3 | yes | 774 |
+| GP-16 | L3/L4 | L4 | yes | 1767 |
+| GP-17 | L3 | L3 | yes | 351 |
+| GP-18 | L3 | L3 | yes | 3834 |
+| GP-19 | Lt | CCS | no | 6 |
+| GP-20 | L3 | L3 | yes | 4334 |

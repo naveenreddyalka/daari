@@ -894,11 +894,13 @@ class Router:
         draft_similarity = 0.0
         if not request.meta.no_cache and not cache_skip:
             try:
-                nearest_response, nearest_similarity = await self.semantic_cache.nearest(
-                    request, max_age=cache_max_age
-                )
+                (
+                    nearest_response,
+                    nearest_similarity,
+                    nearest_source,
+                ) = await self.semantic_cache.nearest_with_source(request, max_age=cache_max_age)
             except Exception:
-                nearest_response, nearest_similarity = None, 0.0
+                nearest_response, nearest_similarity, nearest_source = None, 0.0, None
             l1_threshold = self._l1_threshold_for_category(
                 profile.category if profile is not None else None
             )
@@ -907,6 +909,13 @@ class Router:
                 if nearest_response is not None and nearest_similarity >= l1_threshold
                 else None
             )
+            if semantic_hit is not None and not self.semantic_cache.verify_for_serving(
+                request, nearest_source
+            ):
+                # #206: a cosine hit whose numbers/units/negation differ must not
+                # be served; it can still assist generation via the draft band.
+                add_step("l1_verification_rejected", similarity=round(nearest_similarity, 4))
+                semantic_hit = None
             add_step("l1_lookup", hit=semantic_hit is not None, similarity=round(nearest_similarity, 4))
             if (
                 semantic_hit is None
@@ -1320,11 +1329,15 @@ class Router:
             # L1 semantic lookup (issue #43): parity with the non-stream path.
             # One nearest() call serves both the hit path and the draft band.
             try:
-                nearest_response, nearest_similarity = await self.semantic_cache.nearest(
+                (
+                    nearest_response,
+                    nearest_similarity,
+                    nearest_source,
+                ) = await self.semantic_cache.nearest_with_source(
                     request, max_age=self._category_cache_max_age(profile)
                 )
             except Exception:
-                nearest_response, nearest_similarity = None, 0.0
+                nearest_response, nearest_similarity, nearest_source = None, 0.0, None
             l1_hit = (
                 nearest_response is not None
                 and nearest_similarity
@@ -1333,6 +1346,11 @@ class Router:
                 )
                 and bool(nearest_response.content.strip())
             )
+            if l1_hit and not self.semantic_cache.verify_for_serving(request, nearest_source):
+                # #206: same veto as the non-stream path — never serve a
+                # near-miss; the draft band below may still use it.
+                add_step("l1_verification_rejected", similarity=round(nearest_similarity, 4))
+                l1_hit = False
             add_step("l1_lookup", hit=l1_hit, similarity=round(nearest_similarity, 4))
             if l1_hit:
                 latency_ms = int((time.perf_counter() - started) * 1000)

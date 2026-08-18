@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 978 passed (`pytest -m "not integration and not benchmark"`, 2026-08-17)
+**Count:** 986 passed (`pytest -m "not integration and not benchmark"`, 2026-08-18)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **978 passed** (2026-08-17) |
+| `pytest` (default, mocked) | **986 passed** (2026-08-18) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -975,6 +975,22 @@ serve from L1 — filed as
 
 Pure logic covered by `tests/unit/test_bench_live.py`; the live path runs via
 `pytest -m benchmark` or the script itself, skipping cleanly without Ollama.
+
+### L1 verifier restored on the serve path ([#206](https://github.com/naveenreddyalka/daari/issues/206))
+
+The #168 lexical verifier only ran inside `SemanticCache.get()`, but the
+draft-band refactor (`779a146`) had switched the router to `nearest()` — so no
+live request was ever verified and near-misses served from cache ("15% of 300"
+got the answer for "15% of 200"). `nearest_with_source()` now returns the
+stored prompt text and both serve paths (non-streaming and streaming) apply
+`verify_for_serving()` before serving; a vetoed hit falls back to the draft
+band instead. Live bench: near-miss rejection 17% → 100%; retention dips to
+61% because the verifier vetoes benign synonym substitutions — recall
+follow-up filed as
+[#208](https://github.com/naveenreddyalka/daari/issues/208).
+
+Covered by `tests/unit/test_l1_verify_serve_path.py` (router-level, both
+paths, veto + paraphrase + draft fallback + avoided-counter).
 
 ---
 
