@@ -53,7 +53,7 @@
 |-------|----------|-----|-------|
 | **Unit** | `tests/unit/` | ✅ | cache keys, semantic similarity, metrics, settings, internal models, confidence, L6 escalation |
 | **Integration (mocked)** | `tests/integration/test_gateway_flow.py`, `tests/integration/test_l1_semantic_cache.py`, `tests/integration/test_l6_escalation.py`, `tests/test_phase_a.py`, `tests/test_routing_eval.py` | ✅ | gateway + router + L0/L1 cache + L6; Ollama mocked |
-| **Integration (live Ollama)** | `tests/integration/test_ollama_live.py` | skipped | `@pytest.mark.integration`; run with `OLLAMA_HOST=http://127.0.0.1:11434 pytest -m integration` |
+| **Integration (live Ollama)** | `tests/integration/test_ollama_live.py`, `test_sampling_live.py`, `test_client_path_live.py` | skipped | `@pytest.mark.integration`; run with `OLLAMA_HOST=http://127.0.0.1:11434 pytest -m integration` |
 | **Benchmark** | `tests/benchmark/` | skipped | `@pytest.mark.benchmark`; L0 vs L3 latency |
 | **Setup / doctor** | `tests/test_setup.py`, `tests/test_doctor.py` | ✅ | dry-run, backup, doctor checks |
 
@@ -1006,6 +1006,20 @@ rate. Prompt IDs match #189 so rows join. Default run never calls a paid API;
 
 Pure logic covered by `tests/unit/test_bench_compare.py`; live path via
 `pytest -m benchmark` or the script, skipping cleanly without Ollama.
+
+### Client-path live E2E pack ([#191](https://github.com/naveenreddyalka/daari/issues/191))
+
+`tests/integration/test_client_path_live.py` exercises the surfaces an IDE
+client actually sends against real Ollama: OpenAI streaming and Anthropic
+`/v1/messages` streaming each yield more than one chunk; a vision request on
+a text-only stack returns 422; `POST /v1/embeddings` returns a vector whose
+length matches the embedder (`nomic-embed-text`). Sampling (`max_tokens`
+binds, seed reproduces) stays in `test_sampling_live.py`. The color-conditioned
+vision check skips unless a vision-capable model is pulled. Default suite
+stays green (`@pytest.mark.integration`).
+
+Note: stock capability defaults tag L5 as `vision` even when L5 is collapsed
+onto a text-only 3B — the live 422 test declares the catalog explicitly.
 
 ---
 

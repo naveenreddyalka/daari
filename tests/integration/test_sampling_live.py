@@ -2,7 +2,8 @@
 
 `tests/unit/test_sampling_end_to_end.py` proves the values reach the wire against a
 mock. These prove the model then acts on them, which is the thing a client actually
-asked for. Skipped unless OLLAMA_HOST is set.
+asked for. Streaming, vision, and embeddings live coverage lives in
+`test_client_path_live.py` (issue #191). Skipped unless OLLAMA_HOST is set.
 """
 
 from __future__ import annotations
