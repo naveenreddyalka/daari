@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 986 passed (`pytest -m "not integration and not benchmark"`, 2026-08-18)
+**Count:** 991 passed (`pytest -m "not integration and not benchmark"`, 2026-08-20)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **986 passed** (2026-08-18) |
+| `pytest` (default, mocked) | **991 passed** (2026-08-20) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -991,6 +991,21 @@ follow-up filed as
 
 Covered by `tests/unit/test_l1_verify_serve_path.py` (router-level, both
 paths, veto + paraphrase + draft fallback + avoided-counter).
+
+### Competitive comparison bench ([#190](https://github.com/naveenreddyalka/daari/issues/190))
+
+`scripts/bench_compare.py` answers "why daari" with the #189 corpus run three
+ways on the same machine: raw Ollama, daari with caches (hermetic cold
+daemon), daari with `X-Daari-No-Cache`. Publishes
+[developer/resources/benchmark-comparison.md](developer/resources/benchmark-comparison.md)
+(linked from the benchmarks page and mkdocs nav) with per-prompt latency,
+tier, implied frontier USD (gpt-4o rates priced onto recorded tokens — never
+billed), and aggregates: median cache-hit speedup, total USD avoided, $0-tier
+rate. Prompt IDs match #189 so rows join. Default run never calls a paid API;
+`--live-frontier` exists but is not required to publish.
+
+Pure logic covered by `tests/unit/test_bench_compare.py`; live path via
+`pytest -m benchmark` or the script, skipping cleanly without Ollama.
 
 ---
 

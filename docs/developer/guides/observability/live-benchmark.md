@@ -53,6 +53,23 @@ Ollama-less machines are unaffected.
 | `--out PATH` | Where to write the markdown report. |
 | `--no-write` | Print the report without touching the docs page. |
 
+## Competitive comparison
+
+`scripts/bench_compare.py` (issue #190) runs the same routing corpus three
+ways on the same machine — raw Ollama, daari with caches, daari with
+`X-Daari-No-Cache` — and writes
+[benchmark-comparison.md](../../resources/benchmark-comparison.md) with
+per-prompt latency, tier, and implied frontier cost. Prompt IDs match the
+product bench, so rows join across the two pages.
+
+```bash
+python scripts/bench_compare.py
+```
+
+The frontier column is gpt-4o list rates applied to daari's recorded token
+counts, labeled as such — the default run never calls a paid API.
+`--live-frontier` opts in to scoring expected-L6 rows for real.
+
 ## Methodology notes
 
 - Seeding for the cache-trust phase is **organic** (plain requests). Do not
