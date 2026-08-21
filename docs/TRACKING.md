@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 991 passed (`pytest -m "not integration and not benchmark"`, 2026-08-20)
+**Count:** 995 passed (`pytest -m "not integration and not benchmark"`, 2026-08-21)
 
 ---
 
@@ -1020,6 +1020,15 @@ stays green (`@pytest.mark.integration`).
 
 Note: stock capability defaults tag L5 as `vision` even when L5 is collapsed
 onto a text-only 3B — the live 422 test declares the catalog explicitly.
+
+### daari vs LiteLLM ([#214](https://github.com/naveenreddyalka/daari/issues/214))
+
+`scripts/bench_vs_litellm.py` runs the #189 routing corpus through a default
+LiteLLM OpenAI-compat proxy (same Ollama, no paid providers) and a hermetic
+`daari serve`. Publishes
+[developer/resources/benchmark-vs-litellm.md](developer/resources/benchmark-vs-litellm.md)
+joined by prompt ID. LiteLLM is not a runtime dependency: skip without it, or
+`--spawn` into a throwaway venv. Covered by `tests/unit/test_bench_vs_litellm.py`.
 
 ---
 
