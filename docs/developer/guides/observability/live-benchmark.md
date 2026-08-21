@@ -70,6 +70,19 @@ The frontier column is gpt-4o list rates applied to daari's recorded token
 counts, labeled as such — the default run never calls a paid API.
 `--live-frontier` opts in to scoring expected-L6 rows for real.
 
+## vs LiteLLM
+
+`scripts/bench_vs_litellm.py` (issue #214) runs the same corpus through
+LiteLLM's `ollama_chat` adapter (tiny stdlib shim — the official proxy extra
+currently needs Prisma) and a hermetic daari daemon. LiteLLM is not a daari
+dependency — `--spawn` installs it into a throwaway venv.
+
+```bash
+python scripts/bench_vs_litellm.py --spawn
+```
+
+Results: [benchmark-vs-litellm.md](../../resources/benchmark-vs-litellm.md).
+
 ## Methodology notes
 
 - Seeding for the cache-trust phase is **organic** (plain requests). Do not

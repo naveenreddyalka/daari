@@ -108,6 +108,7 @@ nav:
       - Architecture: developer/resources/architecture.md
       - Benchmarks: developer/resources/benchmarks.md
       - Benchmark comparison: developer/resources/benchmark-comparison.md
+      - Benchmark vs LiteLLM: developer/resources/benchmark-vs-litellm.md
       - Security: developer/resources/security.md
       - Changelog: developer/resources/changelog.md
       - FAQ: developer/resources/faq.md
