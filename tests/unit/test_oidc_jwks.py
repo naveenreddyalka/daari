@@ -18,8 +18,8 @@ from daari.enterprise.sso import (
 )
 
 jwt = pytest.importorskip("jwt")
-from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: E402
-from jwt.algorithms import RSAAlgorithm  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric import ec, rsa  # noqa: E402
+from jwt.algorithms import ECAlgorithm, RSAAlgorithm  # noqa: E402
 
 
 def _rsa_pair():
@@ -30,6 +30,30 @@ def _rsa_pair():
     jwk["use"] = "sig"
     jwk["alg"] = "RS256"
     return private, {"keys": [jwk]}
+
+
+def _ec_pair():
+    private = ec.generate_private_key(ec.SECP256R1())
+    public = private.public_key()
+    jwk = json.loads(ECAlgorithm.to_jwk(public))
+    jwk["kid"] = "ec-key-1"
+    jwk["use"] = "sig"
+    jwk["alg"] = "ES256"
+    return private, {"keys": [jwk]}
+
+
+def _mint_es256(private, *, issuer: str, audience: str = "", role: str = "admin", sub: str = "alice"):
+    now = int(time.time())
+    payload = {
+        "sub": sub,
+        "role": role,
+        "iss": issuer,
+        "iat": now,
+        "exp": now + 3600,
+    }
+    if audience:
+        payload["aud"] = audience
+    return jwt.encode(payload, private, algorithm="ES256", headers={"kid": "ec-key-1"})
 
 
 def _mint_rs256(private, *, issuer: str, audience: str = "", role: str = "admin", sub: str = "alice"):
@@ -111,3 +135,48 @@ def test_verify_access_token_falls_back_to_hmac():
     claims = verify_access_token(token, sso)
     assert claims["sub"] == "bob"
     assert verify_dev_token(token, secret="sekret")["sub"] == "bob"
+
+
+def test_verify_oidc_es256_round_trip():
+    private, jwks = _ec_pair()
+    token = _mint_es256(private, issuer="https://idp.example", audience="daari-admin")
+    claims = verify_oidc_token(
+        token,
+        issuer="https://idp.example",
+        audience="daari-admin",
+        jwks=jwks,
+    )
+    assert claims["sub"] == "alice"
+    assert claims["role"] == "admin"
+
+
+def test_verify_oidc_rejects_unsupported_kty():
+    private, jwks = _rsa_pair()
+    token = _mint_rs256(private, issuer="https://idp.example")
+    jwks["keys"][0]["kty"] = "oct"
+    with pytest.raises(ValueError, match="oct"):
+        verify_oidc_token(token, issuer="https://idp.example", jwks=jwks)
+
+
+def test_jwk_prefers_sig_when_mixed_with_enc():
+    private, jwks = _rsa_pair()
+    sig = dict(jwks["keys"][0])
+    enc = dict(jwks["keys"][0])
+    enc["kid"] = "enc-key"
+    enc["use"] = "enc"
+    token = jwt.encode(
+        {
+            "sub": "alice",
+            "iss": "https://idp.example",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+        },
+        private,
+        algorithm="RS256",
+    )
+    claims = verify_oidc_token(
+        token,
+        issuer="https://idp.example",
+        jwks={"keys": [enc, sig]},
+    )
+    assert claims["sub"] == "alice"
