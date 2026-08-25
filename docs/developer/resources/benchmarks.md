@@ -5,6 +5,7 @@ and real Ollama — no stubbed executors, cold caches. Reproduce on your
 machine: [guide](../guides/observability/live-benchmark.md). Side-by-side
 vs raw Ollama and frontier pricing: [comparison](benchmark-comparison.md).
 vs LiteLLM in front of the same Ollama: [vs LiteLLM](benchmark-vs-litellm.md).
+Measured RPS / p95: [load](benchmark-load.md).
 Historical notes: [docs/BENCHMARKS.md](../../BENCHMARKS.md).
 
 - **Date:** 2026-08-18

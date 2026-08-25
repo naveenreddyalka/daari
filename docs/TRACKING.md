@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 995 passed (`pytest -m "not integration and not benchmark"`, 2026-08-21)
+**Count:** 1002 passed (`pytest -m "not integration and not benchmark"`, 2026-08-25)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **995 passed** (2026-08-21) |
+| `pytest` (default, mocked) | **1002 passed** (2026-08-25) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1029,6 +1029,16 @@ LiteLLM OpenAI-compat proxy (same Ollama, no paid providers) and a hermetic
 [developer/resources/benchmark-vs-litellm.md](developer/resources/benchmark-vs-litellm.md)
 joined by prompt ID. LiteLLM is not a runtime dependency: skip without it, or
 `--spawn` into a throwaway venv. Covered by `tests/unit/test_bench_vs_litellm.py`.
+
+### Load harness ([#215](https://github.com/naveenreddyalka/daari/issues/215))
+
+`scripts/bench_load.py` measures achieved RPS and p50/p95 on a hermetic
+`daari serve`: a warmed L0 replay mix and a unique no-cache generate mix
+(`max_tokens` capped). Publishes
+[developer/resources/benchmark-load.md](developer/resources/benchmark-load.md)
+with commit, hardware, concurrency, RPS, p95, and errors. No vegeta/k6
+dependency. Capacity guide now points at the measured page. Covered by
+`tests/unit/test_bench_load.py` (reporter + skip).
 
 ---
 

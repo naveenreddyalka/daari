@@ -83,6 +83,19 @@ python scripts/bench_vs_litellm.py --spawn
 
 Results: [benchmark-vs-litellm.md](../../resources/benchmark-vs-litellm.md).
 
+## Load
+
+`scripts/bench_load.py` (issue #215) measures achieved RPS and p50/p95 against
+a hermetic daemon. Two mixes: warmed L0 replay (`cache`) and unique
+no-cache generations with `max_tokens` capped (`generate`).
+
+```bash
+python scripts/bench_load.py
+```
+
+Results: [benchmark-load.md](../../resources/benchmark-load.md). These replace
+the estimate-only numbers in the capacity guide.
+
 ## Methodology notes
 
 - Seeding for the cache-trust phase is **organic** (plain requests). Do not
