@@ -46,7 +46,10 @@ Counters live in Redis when `cache.backend: redis` (`daari:rl:` prefix); otherwi
 
 ## SSO (admin)
 
-OIDC/JWKS for admin surfaces — see ADR and enterprise settings (`enterprise.sso`). HMAC stub remains for local/dev when JWKS unset.
+OIDC/JWKS for admin surfaces — see ADR and enterprise settings (`enterprise.sso`).
+RSA (`RS256`/`384`/`512`) and EC (`ES256`/`384`/`512`) signing keys; `use: "sig"`
+is preferred when a JWKS also lists encryption keys. HMAC stub remains for
+local/dev when JWKS unset.
 
 ## Verify
 

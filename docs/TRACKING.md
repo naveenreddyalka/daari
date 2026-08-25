@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1002 passed (`pytest -m "not integration and not benchmark"`, 2026-08-25)
+**Count:** 1005 passed (`pytest -m "not integration and not benchmark"`, 2026-08-25)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1002 passed** (2026-08-25) |
+| `pytest` (default, mocked) | **1005 passed** (2026-08-25) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -549,8 +549,9 @@ in `tests/unit/test_review_hardening_137.py` (15 tests, all previously red):
 | Cached JWKS locked admins out for the full TTL after an IdP key rotation | medium | refetch once with `force=True` on unknown `kid` |
 | `PATCH /v1/daari/config` returned 500 on malformed values and half-applied out-of-range ones; `setattr` bypassed pydantic validation | medium | `daari/config/validate.py` validates the whole patch first → 400 |
 
-Deferred to follow-up issues (out of this scope): EC/ES256 JWKS keys,
-`validate_assignment` on `Settings`. Redis L1 lost-update is [#150](https://github.com/naveenreddyalka/daari/issues/150).
+Deferred from that pass: `validate_assignment` on `Settings` ([#152](https://github.com/naveenreddyalka/daari/issues/152)).
+EC/ES256 JWKS keys closed in [#151](https://github.com/naveenreddyalka/daari/issues/151).
+Redis L1 lost-update is [#150](https://github.com/naveenreddyalka/daari/issues/150).
 
 ### Streaming policy parity (#154, #155) (2026-08-11)
 
@@ -1039,6 +1040,13 @@ joined by prompt ID. LiteLLM is not a runtime dependency: skip without it, or
 with commit, hardware, concurrency, RPS, p95, and errors. No vegeta/k6
 dependency. Capacity guide now points at the measured page. Covered by
 `tests/unit/test_bench_load.py` (reporter + skip).
+
+### OIDC ES256 JWKS ([#151](https://github.com/naveenreddyalka/daari/issues/151))
+
+`verify_oidc_token` dispatches on JWK `kty` (`RSA` → RS256/384/512, `EC` →
+ES256/384/512). Unsupported `kty` raises `ValueError` naming the type. JWKS
+documents that mix `use: enc` and `use: sig` prefer the signing key. Covered
+by `tests/unit/test_oidc_jwks.py`.
 
 ---
 

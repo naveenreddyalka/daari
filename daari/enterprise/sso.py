@@ -128,6 +128,15 @@ class JwksCache:
 _JWKS_CACHE = JwksCache()
 
 
+_RSA_ALGS = ("RS256", "RS384", "RS512")
+_EC_ALGS = ("ES256", "ES384", "ES512")
+
+
+def _prefer_sig_keys(keys: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sig = [key for key in keys if key.get("use") in (None, "sig")]
+    return sig if sig else keys
+
+
 def _jwk_for_token(token: str, jwks: dict[str, Any]) -> dict[str, Any]:
     try:
         import jwt
@@ -137,15 +146,40 @@ def _jwk_for_token(token: str, jwks: dict[str, Any]) -> dict[str, Any]:
         ) from exc
     header = jwt.get_unverified_header(token)
     kid = header.get("kid")
-    keys = jwks.get("keys") or []
+    keys = [key for key in (jwks.get("keys") or []) if isinstance(key, dict)]
     if kid:
-        for key in keys:
-            if isinstance(key, dict) and key.get("kid") == kid:
-                return key
-        raise ValueError(f"no JWK matching kid={kid}")
-    if len(keys) == 1 and isinstance(keys[0], dict):
-        return keys[0]
+        matched = [key for key in keys if key.get("kid") == kid]
+        if not matched:
+            raise ValueError(f"no JWK matching kid={kid}")
+        return _prefer_sig_keys(matched)[0]
+    preferred = _prefer_sig_keys(keys)
+    if len(preferred) == 1:
+        return preferred[0]
     raise ValueError("JWT missing kid and JWKS has multiple keys")
+
+
+def _public_key_and_algorithms(jwk: dict[str, Any]) -> tuple[Any, list[str]]:
+    try:
+        from jwt.algorithms import ECAlgorithm, RSAAlgorithm
+    except ImportError as exc:
+        raise RuntimeError(
+            "OIDC JWKS verification requires PyJWT[crypto] — pip install 'daari[oidc]'"
+        ) from exc
+    kty = jwk.get("kty")
+    if kty == "RSA":
+        family = _RSA_ALGS
+        public_key = RSAAlgorithm.from_jwk(json.dumps(jwk))
+    elif kty == "EC":
+        family = _EC_ALGS
+        public_key = ECAlgorithm.from_jwk(json.dumps(jwk))
+    else:
+        raise ValueError(f"unsupported JWK key type: {kty}")
+    declared = jwk.get("alg")
+    if declared:
+        if declared not in family:
+            raise ValueError(f"JWK alg {declared} is not allowed for kty={kty}")
+        return public_key, [declared]
+    return public_key, list(family)
 
 
 def verify_oidc_token(
@@ -162,7 +196,6 @@ def verify_oidc_token(
     """Verify a JWT against the issuer JWKS (RS256 / ES256 via PyJWT)."""
     try:
         import jwt
-        from jwt.algorithms import RSAAlgorithm
     except ImportError as exc:
         raise RuntimeError(
             "OIDC JWKS verification requires PyJWT[crypto] — pip install 'daari[oidc]'"
@@ -181,10 +214,10 @@ def verify_oidc_token(
             jwk = _jwk_for_token(token, jwks)
     else:
         jwk = _jwk_for_token(token, jwks)
-    public_key = RSAAlgorithm.from_jwk(json.dumps(jwk))
+    public_key, algorithms = _public_key_and_algorithms(jwk)
     options: dict[str, Any] = {"require": ["exp", "iss"]}
     decode_kwargs: dict[str, Any] = {
-        "algorithms": ["RS256", "RS384", "RS512"],
+        "algorithms": algorithms,
         "issuer": issuer,
         "options": options,
     }
