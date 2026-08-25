@@ -6,7 +6,7 @@
 
 | Resource | Guidance |
 |----------|----------|
-| Gateway replica | ~50–100 rps at ≥60% L0/L1 hit; ~5–15 rps if mostly L3 |
+| Gateway replica | Measured on an M4 Pro: see [benchmark-load.md](../../resources/benchmark-load.md). Older estimate (~50–100 rps cache-heavy, ~5–15 rps L3-heavy) is superseded by that page. |
 | Redis | ~200–400 MB / 100k cache entries |
 | Postgres | ~1 KB/row ledger/traces; retain 30–90 days |
 | HPA | CPU 70%, min 2 replicas; readiness `/ready` |
