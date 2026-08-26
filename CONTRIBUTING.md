@@ -1,6 +1,6 @@
 # Contributing to daari
 
-Thanks for your interest. daari is an open-source local-first LLM router — contributions of all sizes are welcome.
+Thanks for your interest. daari is a source-available local-first LLM router (PolyForm Noncommercial) — contributions of all sizes are welcome.
 
 ## Quick start for contributors
 

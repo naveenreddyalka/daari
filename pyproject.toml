@@ -33,6 +33,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/naveenreddyalka/daari"
+Documentation = "https://naveenreddyalka.github.io/daari/"
 Repository = "https://github.com/naveenreddyalka/daari"
 Issues = "https://github.com/naveenreddyalka/daari/issues"
 
