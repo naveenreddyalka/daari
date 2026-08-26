@@ -1,10 +1,9 @@
 """Validation for runtime config patches (issue #137 review).
 
 The config editor and org policy sync both write into a live `Settings` tree.
-Pydantic models here are built without `validate_assignment`, so `setattr` on a
-loaded Settings bypasses field validation — a bad value survives until the next
-request path touches it. These helpers validate and range-check first so callers
-can reject a patch instead of half-applying it.
+Runtime settings models now use `validate_assignment`, so a bad `setattr` raises
+`ValidationError`. These helpers still validate first and translate failures
+into `ConfigValidationError` so HTTP callers stay on 400, not 500.
 """
 
 from __future__ import annotations

@@ -4,6 +4,8 @@ import hashlib
 
 import pytest
 
+from pydantic import ValidationError
+
 from daari.config.settings import Settings
 
 
@@ -166,3 +168,13 @@ class TestSettings:
         assert settings.enterprise.resolved_org_id == "acme"
         assert settings.enterprise.learning_enabled is True
         assert settings.enterprise.learning_url == "http://127.0.0.1:11436"
+
+    def test_setattr_rejects_out_of_range_confidence_threshold(self):
+        settings = Settings.model_validate({})
+        with pytest.raises(ValidationError):
+            settings.routing.confidence_threshold = 42
+
+    def test_setattr_rejects_invalid_boundaries_mode(self):
+        settings = Settings.model_validate({})
+        with pytest.raises(ValidationError):
+            settings.boundaries.mode = "bogus"

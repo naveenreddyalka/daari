@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1005 passed (`pytest -m "not integration and not benchmark"`, 2026-08-25)
+**Count:** 1007 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1005 passed** (2026-08-25) |
+| `pytest` (default, mocked) | **1007 passed** (2026-08-26) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -549,7 +549,7 @@ in `tests/unit/test_review_hardening_137.py` (15 tests, all previously red):
 | Cached JWKS locked admins out for the full TTL after an IdP key rotation | medium | refetch once with `force=True` on unknown `kid` |
 | `PATCH /v1/daari/config` returned 500 on malformed values and half-applied out-of-range ones; `setattr` bypassed pydantic validation | medium | `daari/config/validate.py` validates the whole patch first → 400 |
 
-Deferred from that pass: `validate_assignment` on `Settings` ([#152](https://github.com/naveenreddyalka/daari/issues/152)).
+`validate_assignment` on Settings closed in [#152](https://github.com/naveenreddyalka/daari/issues/152).
 EC/ES256 JWKS keys closed in [#151](https://github.com/naveenreddyalka/daari/issues/151).
 Redis L1 lost-update is [#150](https://github.com/naveenreddyalka/daari/issues/150).
 
@@ -1047,6 +1047,14 @@ dependency. Capacity guide now points at the measured page. Covered by
 ES256/384/512). Unsupported `kty` raises `ValueError` naming the type. JWKS
 documents that mix `use: enc` and `use: sig` prefer the signing key. Covered
 by `tests/unit/test_oidc_jwks.py`.
+
+### Settings validate_assignment ([#152](https://github.com/naveenreddyalka/daari/issues/152))
+
+Runtime-mutated settings models (`RoutingSettings`, `FrontierSettings`,
+`CacheSettings` + L0/L1, `BoundariesSettings`, `ObservabilitySettings`) use
+`validate_assignment` and field constraints (`ge`/`le`, `Literal` modes).
+`setattr` of an out-of-range value raises `ValidationError`. Config PATCH
+still returns 400 via `daari/config/validate.py`.
 
 ---
 
