@@ -224,7 +224,7 @@ SHA256(
 )
 ```
 
-Skip L0 if `X-Daari-No-Cache: true` or request contains `tool_calls` in messages (agent mid-turn).
+Skip L0 if `X-Daari-No-Cache: true`. Agent turns (`tools` / `tool_calls` in history) use the same exact key (full messages + tools schema); a changed last tool result is a miss. L1 stays off for agent turns (ADR-0004 / G1).
 
 ---
 

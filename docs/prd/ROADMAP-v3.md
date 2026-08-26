@@ -111,6 +111,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 **Done when:** live agent mix shows ≥50% of prompt tokens served at L0/L1 or as local prefix, and the published page says so.
 
+**Shipped MVP (#223):** exact L0 on identical `tools` + full history; L1 stays off so a changed tool result cannot cosine-match a prior answer. Agent mix lives on the [load page](../developer/resources/benchmark-load.md). Prefix-embedding L1 is a later increment.
+
 ### G2 — OpenRouter-shaped L6 provider object
 
 **Outcome:** The same JSON Cursor already sends to OpenRouter (`provider.order`, `sort`, `zdr`, `data_collection`, `max_price`, `allow_fallbacks`) is honored when daari escalates to L6.

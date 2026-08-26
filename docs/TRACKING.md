@@ -24,7 +24,7 @@
 | Ollama executor (L3) | [x] | |
 | Router L0 → L3 | [x] | |
 | Metrics / `daari stats` | [x] | |
-| Agent passthrough (tool_calls skip L0) | [x] | ADR-0004 |
+| Agent passthrough (exact L0 on identical tools+history) | [x] | ADR-0004 / G1 #223 |
 | `X-Daari-No-Cache` / tier override headers | [x] | |
 | Ollama-down → 503 | [x] | |
 | Eval file GP-01–GP-10 | [x] | |
@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1007 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
+**Count:** 1010 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1007 passed** (2026-08-26) |
+| `pytest` (default, mocked) | **1010 passed** (2026-08-26) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1034,8 +1034,9 @@ joined by prompt ID. LiteLLM is not a runtime dependency: skip without it, or
 ### Load harness ([#215](https://github.com/naveenreddyalka/daari/issues/215))
 
 `scripts/bench_load.py` measures achieved RPS and p50/p95 on a hermetic
-`daari serve`: a warmed L0 replay mix and a unique no-cache generate mix
-(`max_tokens` capped). Publishes
+`daari serve`: a warmed L0 replay mix, a unique no-cache generate mix
+(`max_tokens` capped), and a tool-bearing **agent** mix (G1 / #223) that
+reports L0 hit rate and implied frontier input $ avoided. Publishes
 [developer/resources/benchmark-load.md](developer/resources/benchmark-load.md)
 with commit, hardware, concurrency, RPS, p95, and errors. No vegeta/k6
 dependency. Capacity guide now points at the measured page. Covered by
@@ -1052,8 +1053,17 @@ by `tests/unit/test_oidc_jwks.py`.
 
 Stripe agreed to acquire OpenRouter. Forward plan is
 [prd/ROADMAP-v3.md](prd/ROADMAP-v3.md): do not clone the 400-model marketplace;
-win agent token economics (G1 prefix cache — ADR-0004 currently skips L0 on
-`tools`) and honor OpenRouter’s `provider` object on L6 (G2/G3).
+win agent token economics (G1 prefix cache — exact L0 on identical `tools` +
+history; L1 still off) and honor OpenRouter’s `provider` object on L6 (G2/G3).
+
+### Agent prefix cache G1 ([#223](https://github.com/naveenreddyalka/daari/issues/223))
+
+ADR-0004 no longer skips L0 on `tools` / tool history. Identical agent
+turns hit exact L0 (full messages + tools schema are already in the key);
+changing only the last tool result misses. L1 and Lt stay off for agent
+turns. Load harness `agent` mix publishes RPS / L0 hit rate / implied
+frontier $ on
+[developer/resources/benchmark-load.md](developer/resources/benchmark-load.md).
 
 ### Settings validate_assignment ([#152](https://github.com/naveenreddyalka/daari/issues/152))
 
