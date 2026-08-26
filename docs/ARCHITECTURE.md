@@ -194,10 +194,10 @@ flowchart LR
   Serve --> GW
   GW --> Router
   Router -->|"L0 miss"| L1
-  Router -->|"L1 miss, no tool_calls"| L3
+  Router -->|"L1 miss"| L3
   Router -->|"L0 hit"| L0
   Router -->|"L1 hit"| L1
-  Router -->|"tool_calls in history"| L3
+  Router -->|"agent L0 miss"| L3
   L1 --> Ollama
   L3 --> Ollama
   L0 --> GW
@@ -208,7 +208,7 @@ flowchart LR
 
 **Routing rules (shipped):**
 
-1. Agent flows (`tools` present or `tool_calls` in history) skip caches, keep the full tool protocol, and route to local model tiers (ADR-0004).
+1. Agent flows (`tools` present or `tool_calls` in history) keep the full tool protocol and skip Lt/L2/L1. Exact L0 is on: an identical full history hits cache; a changed last tool result misses (ADR-0004 / G1).
 2. Try L0 exact cache, then org L0 when configured (unless `X-Daari-No-Cache: true` or the category policy skips cache).
 3. Try CCS for matched dev command context before re-execution.
 4. Try L1 semantic cache (normalized-input embeddings + cosine threshold, per-category TTLs); near-misses above the draft threshold inject the cached answer as a draft; a sample of hits is shadow-checked to measure false-hit rate.
