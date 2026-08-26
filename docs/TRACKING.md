@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1025 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
+**Count:** 1031 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
 
 ---
 
@@ -1055,6 +1055,14 @@ Stripe agreed to acquire OpenRouter. Forward plan is
 [prd/ROADMAP-v3.md](prd/ROADMAP-v3.md): do not clone the 400-model marketplace;
 win agent token economics (G1 prefix cache — exact L0 on identical `tools` +
 history; L1 still off) and honor OpenRouter’s `provider` object on L6 (G2/G3).
+
+### OpenRouter L6 slot G3 ([#225](https://github.com/naveenreddyalka/daari/issues/225))
+
+Documented `id: openrouter` slot (`openrouter/auto`, `OPENROUTER_API_KEY`).
+Outbound calls send `HTTP-Referer` / `X-Title`. L6 meta has upstream
+`cost_usd` vs `daari_cost_usd: 0`. Local `:floor` / `:nitro` aliases pick
+the smallest capable or warmest local tier. Live chat test skips without
+the key. Covered by `tests/unit/test_openrouter_slot.py`.
 
 ### OpenRouter provider object G2 ([#224](https://github.com/naveenreddyalka/daari/issues/224))
 
