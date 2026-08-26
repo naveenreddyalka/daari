@@ -5,12 +5,18 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from daari.enterprise.config import OrgSettings
+
+
+class RuntimeSettings(BaseModel):
+    """Settings mutated after load — reject bad setattr immediately (#152)."""
+
+    model_config = ConfigDict(validate_assignment=True)
 
 
 class VirtualKeysSettings(BaseModel):
@@ -78,29 +84,29 @@ class MLXSettings(BaseModel):
     models: dict[str, str] = Field(default_factory=dict)
 
 
-class L0CacheSettings(BaseModel):
+class L0CacheSettings(RuntimeSettings):
     enabled: bool = True
     path: str = "~/.daari/cache/l0"
     # 0 = never expire (default, preserves prior behavior).
-    ttl_seconds: float = 0.0
+    ttl_seconds: float = Field(default=0.0, ge=0.0)
 
 
-class L1CacheSettings(BaseModel):
+class L1CacheSettings(RuntimeSettings):
     enabled: bool = True
     path: str = "~/.daari/cache/l1"
-    similarity_threshold: float = 0.88
+    similarity_threshold: float = Field(default=0.88, ge=0.0, le=1.0)
     # Near-miss band [draft_threshold, similarity_threshold): the prior answer
     # is injected as a draft for the serving model instead of being discarded.
-    draft_threshold: float = 0.75
+    draft_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
     max_entries: int = 1000
     embedding_model: str = "nomic-embed-text"
     # 0 = never expire (default, preserves prior behavior).
-    ttl_seconds: float = 0.0
+    ttl_seconds: float = Field(default=0.0, ge=0.0)
     # In-memory LRU for embeddings; 0 disables memoization.
     embed_cache_size: int = 512
     # Normalize template/boilerplate text before embedding (Trust PRD T1a).
     normalize_inputs: bool = True
-    verify: str = Field(
+    verify: Literal["none", "lexical", "model"] = Field(
         default="lexical",
         description=(
             "Second-stage check before serving a semantic hit, because a cosine "
@@ -112,14 +118,14 @@ class L1CacheSettings(BaseModel):
     )
     # Fraction of L1 hits verified in the background against a fresh local
     # answer (Trust PRD T1c). 0 disables shadow sampling.
-    shadow_sample_rate: float = 0.05
+    shadow_sample_rate: float = Field(default=0.05, ge=0.0, le=1.0)
 
 
-class CacheSettings(BaseModel):
+class CacheSettings(RuntimeSettings):
     l0: L0CacheSettings = Field(default_factory=L0CacheSettings)
     l1: L1CacheSettings = Field(default_factory=L1CacheSettings)
     # F4: disk (default) or redis for shared L0/L1 across replicas (#112, #135).
-    backend: str = "disk"  # disk | redis
+    backend: Literal["disk", "redis"] = "disk"
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_prefix: str = "daari:l0:"
     redis_l1_prefix: str = "daari:l1:"
@@ -139,23 +145,23 @@ class FrontierProviderConfig(BaseModel):
     cooldown_seconds: float = 30.0
 
 
-class FrontierSettings(BaseModel):
+class FrontierSettings(RuntimeSettings):
     enabled: bool = False
     provider: str = "openai"
     model: str = "gpt-4o-mini"
-    confidence_threshold: float = 0.7
+    confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     base_url: str = "https://api.openai.com/v1"
     # Ordered failover list (issue #109). Empty → use the scalar
     # provider/base_url/model + resolve_frontier_api_key() shorthand.
     providers: list[FrontierProviderConfig] = Field(default_factory=list)
     # 0 = unlimited. When today's estimated spend reaches the cap, daari stops
     # escalating to L6 and serves the best local answer instead.
-    daily_budget_usd: float = 0.0
+    daily_budget_usd: float = Field(default=0.0, ge=0.0)
     # 0 = unlimited. Same hard-cap behavior over the calendar month (T5a).
-    monthly_budget_usd: float = 0.0
+    monthly_budget_usd: float = Field(default=0.0, ge=0.0)
     # Crossing this fraction of any budget still serves L6 but attaches
     # daari_meta.warning = "frontier_budget_warning" (T5a).
-    soft_budget_ratio: float = 0.8
+    soft_budget_ratio: float = Field(default=0.8, ge=0.0, le=1.0)
     # Regex-scrub emails/phones/SSNs/cards/IPs from the outbound L6 copy
     # only; local processing sees the original text (T5c).
     scrub_pii: bool = False
@@ -219,16 +225,16 @@ class LocalPoolSettings(BaseModel):
     backends: list[LocalBackendSettings] = Field(default_factory=list)
 
 
-class RoutingSettings(BaseModel):
-    prefer: str = "balanced"  # latency | accuracy | balanced
-    confidence_threshold: float = 0.7
+class RoutingSettings(RuntimeSettings):
+    prefer: Literal["latency", "accuracy", "balanced", "cost"] = "balanced"
+    confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     category_policies: dict[str, CategoryPolicy] = Field(default_factory=dict)
     # Cap the local tier chosen for chat/Ask requests (L3|L4|L5). None keeps
     # the weight/length heuristics unbounded. X-Daari-Tier-Cap header wins.
-    max_tier_for_chat: str | None = None
+    max_tier_for_chat: Literal["L3", "L4", "L5"] | None = None
     # Global latency budget in ms enforced against `daari profile` data
     # (Trust PRD T3b). 0 disables. X-Daari-Latency-Budget header wins.
-    latency_budget_ms: int = 0
+    latency_budget_ms: int = Field(default=0, ge=0)
     # Prefer already-loaded Ollama models on weight ties (Trust PRD T3c).
     warm_model_preference: bool = True
     # Use the trained personal classifier (`daari learn train-router`) to
@@ -364,10 +370,10 @@ class TraceSettings(BaseModel):
     max_entries: int = 200
 
 
-class ObservabilitySettings(BaseModel):
+class ObservabilitySettings(RuntimeSettings):
     # Gateway request log rotation; 0 max bytes disables rotation.
-    request_log_max_bytes: int = 5 * 1024 * 1024
-    request_log_backups: int = 3
+    request_log_max_bytes: int = Field(default=5 * 1024 * 1024, ge=0)
+    request_log_backups: int = Field(default=3, ge=0)
     # F3: expose GET /metrics in Prometheus exposition format. Open when
     # server.api_key is unset; honors auth otherwise (issue #107).
     prometheus: bool = True
@@ -377,7 +383,7 @@ class ObservabilitySettings(BaseModel):
     # Allow authenticated PATCH of a safe config subset via the web UI.
     config_editor: bool = False
     # sqlite (default) or postgres for ledger + traces (issue #116).
-    backend: str = "sqlite"  # sqlite | postgres
+    backend: Literal["sqlite", "postgres"] = "sqlite"
     postgres_url: str = ""
     # Emit gateway request logs as single-line JSON to stdout (containers).
     structured_json_logs: bool = False
@@ -439,7 +445,7 @@ class GuardrailSettings(BaseModel):
     output_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
 
 
-class BoundariesSettings(BaseModel):
+class BoundariesSettings(RuntimeSettings):
     """Product-domain scope gate (Roadmap F6). Off by default.
 
     When enabled, clearly out-of-scope prompts are refused locally before any
@@ -447,7 +453,7 @@ class BoundariesSettings(BaseModel):
     """
 
     enabled: bool = False
-    mode: str = "block"  # off | warn | block
+    mode: Literal["off", "warn", "block"] = "block"
     product_name: str = ""
     product_description: str = ""
     allow_topics: list[str] = Field(default_factory=list)
@@ -455,8 +461,8 @@ class BoundariesSettings(BaseModel):
     examples_in: list[str] = Field(default_factory=list)
     examples_out: list[str] = Field(default_factory=list)
     refuse_message: str = "This assistant can only help with in-product questions."
-    clear_out_threshold: float = 0.85
-    clear_in_threshold: float = 0.85
+    clear_out_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+    clear_in_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
     local_judge_model: str | None = None
     quorum_votes: int = 2
     frontier_judge_daily_budget_usd: float = 0.5
