@@ -21,6 +21,7 @@ from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.provider_prefs import ZdrUnavailable
 from daari.observability.metrics import Metrics
 from daari.observability.trace import TraceStore, add_step, end_trace, start_trace
 from daari.observability.tokens import ollama_token_usage, response_token_usage
@@ -2533,6 +2534,8 @@ class Router:
                 l6_response.daari_meta.warning = "frontier_budget_warning"
             self.metrics.record_escalation()
             return l6_response
+        except ZdrUnavailable:
+            raise
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
             return response

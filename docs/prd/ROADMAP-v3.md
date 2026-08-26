@@ -124,6 +124,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 **Done when:** a fixture request with `provider: { zdr: true, sort: "price" }` is visible in traces and rejected or routed correctly; OpenRouter integration test (mocked HTTP) covers passthrough.
 
+**Shipped MVP (#224):** parse on OpenAI + Anthropic; 400 when `zdr: true` and no slot declares ZDR; OpenRouter slot receives the object; `daari_meta` carries `provider_prefs`, `cost_usd`, `cached_tokens`.
+
 ### G3 — First-class OpenRouter backend (use them, don’t clone them)
 
 **Outcome:** `frontier.providers[].id: openrouter` is documented, tested, and the default L6 hop — BYOK keys still win when set.

@@ -71,7 +71,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1010 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
+**Count:** 1025 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
 
 ---
 
@@ -206,7 +206,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1010 passed** (2026-08-26) |
+| `pytest` (default, mocked) | **1025 passed** (2026-08-26) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1055,6 +1055,14 @@ Stripe agreed to acquire OpenRouter. Forward plan is
 [prd/ROADMAP-v3.md](prd/ROADMAP-v3.md): do not clone the 400-model marketplace;
 win agent token economics (G1 prefix cache — exact L0 on identical `tools` +
 history; L1 still off) and honor OpenRouter’s `provider` object on L6 (G2/G3).
+
+### OpenRouter provider object G2 ([#224](https://github.com/naveenreddyalka/daari/issues/224))
+
+OpenAI and Anthropic adapters parse the client `provider` object onto
+`InternalRequest`. `zdr: true` with no `frontier.providers[].zdr` slot is
+HTTP 400. OpenRouter L6 slots receive the object on the outbound body.
+`daari_meta` records `provider_prefs`, `cost_usd`, and `cached_tokens`.
+Covered by `tests/unit/test_provider_object.py` (mocked HTTP, no live key).
 
 ### Agent prefix cache G1 ([#223](https://github.com/naveenreddyalka/daari/issues/223))
 
