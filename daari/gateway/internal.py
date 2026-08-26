@@ -115,6 +115,8 @@ class DaariMeta(BaseModel):
     cost_usd: float | None = None
     cached_tokens: int | None = None
     provider_prefs: dict | None = None
+    # G3: local path is always $0; L6 rows keep upstream cost in cost_usd.
+    daari_cost_usd: float | None = None
 
 
 class InternalResponse(BaseModel):

@@ -2293,6 +2293,15 @@ class Router:
     def _choose_initial_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
     ) -> str:
+        from daari.router.aliases import local_model_alias
+
+        alias = local_model_alias(request.model)
+        if alias == "floor":
+            capable = self._filter_capable_tiers(["L3", "L4", "L5"], request)
+            return capable[0] if capable else "L3"
+        if alias == "nitro":
+            return self._nitro_tier(request)
+
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             # Still respect capability filter for explicit overrides when possible.
@@ -2303,6 +2312,26 @@ class Router:
         tier = self._apply_latency_budget(tier, request, profile)
         capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
         return capable[0] if capable else tier
+
+    def _nitro_tier(self, request: InternalRequest) -> str:
+        """Warmest / lowest-latency capable local backend (`:nitro`)."""
+        capable = self._filter_capable_tiers(["L3", "L4", "L5"], request)
+        if not capable:
+            return "L3"
+        warm = self._warm_models
+        if self.warm_tracker is not None:
+            try:
+                warm = warm | self.warm_tracker.get()
+            except Exception:
+                pass
+        for tier in capable:
+            try:
+                name = self._executor_for_tier(tier).default_model
+            except Exception:
+                continue
+            if name in warm:
+                return tier
+        return capable[0]
 
     @staticmethod
     def _policy_attr(policy: Any, name: str) -> Any:

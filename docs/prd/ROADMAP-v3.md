@@ -137,6 +137,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 **Done when:** docs + mocked test + one live optional test (`OPENROUTER_API_KEY`) that is skipped in CI.
 
+**Shipped MVP (#225):** `openrouter_slot()` template, Referer/title headers, `daari_cost_usd=0` vs upstream `cost_usd`, local `:floor` / `:nitro` aliases.
+
 ### G4 — Cost-of-pass routing (stop sending every task to the biggest model)
 
 **Outcome:** Published eval: expected $ and ms to a *correct* answer by task class, not just “we routed to L3.”
