@@ -8,6 +8,23 @@
 
 - [x] done  [ ] pending  [~] in progress  [-] deferred
 
+## GTM
+
+Launch spine and always-on measure/draft rules: [docs/gtm/PLAN.md](gtm/PLAN.md).
+Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229). Issues #226–#233.
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Repo listing (description, topics, homepage, Discussions) | [x] | Set 2026-08-26 via `gh repo edit` |
+| Honest public copy (#228) | [~] | PR in flight |
+| Scoreboard (#229) | [ ] | |
+| Launch drafts (#230) | [~] | this change |
+| Comparison SEO (#231) | [ ] | |
+| Shipping-note generator (#232) | [ ] | |
+| Discussions welcome (#233) | [ ] | |
+| Cloud autodev secret (#226) | [ ] | HITL — cycle is a 6s no-op |
+| Dual-license (#227) | [ ] | HITL — keep NC until decided |
+
 ---
 
 ## Phase A — Tracer bullet
