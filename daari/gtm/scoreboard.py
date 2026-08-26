@@ -67,5 +67,67 @@ def write_scoreboard(path: Path, snap: GtmSnapshot) -> None:
     path.write_text(render_scoreboard(snap), encoding="utf-8")
 
 
+def render_weekly_report(
+    snap: GtmSnapshot,
+    shipped: tuple[str, ...] = (),
+    waiting: tuple[str, ...] = (),
+) -> str:
+    ratio = (
+        f"{snap.clones_14d / snap.views_14d:.1f}x more clones than views"
+        if snap.views_14d
+        else "no page views"
+    )
+    audience = (
+        "Viewer drought."
+        if viewer_drought(snap)
+        else (
+            f"{snap.unique_viewers_14d} unique viewers and {snap.views_14d} views "
+            f"over 14 days. {snap.clones_14d} clones ({ratio}) — treat clones as "
+            "automation, not humans."
+        )
+    )
+    shipped_md = "\n".join(f"- {item}" for item in shipped) or "- (none recorded)"
+    waiting_md = "\n".join(f"- {item}" for item in waiting) or "- (none recorded)"
+    next_action = (
+        waiting[0]
+        if waiting
+        else "Refresh this report after the next public post and compare unique viewers."
+    )
+    return f"""# GTM weekly report
+
+Generated: `{snap.generated_at}`
+
+Refresh: `python scripts/gtm_scoreboard.py --report`
+
+## Verdict
+
+{audience}
+
+Stars {snap.stars}. Forks {snap.forks}. PyPI {snap.pypi_last_week} last week / {snap.pypi_last_month} last 30 days.
+
+## Shipped
+
+{shipped_md}
+
+## Waiting
+
+{waiting_md}
+
+## Next
+
+{next_action}
+"""
+
+
+def write_weekly_report(
+    path: Path,
+    snap: GtmSnapshot,
+    shipped: tuple[str, ...] = (),
+    waiting: tuple[str, ...] = (),
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_weekly_report(snap, shipped, waiting), encoding="utf-8")
+
+
 def now_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

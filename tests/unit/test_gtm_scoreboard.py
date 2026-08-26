@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from daari.gtm.scoreboard import GtmSnapshot, render_scoreboard, viewer_drought
+from daari.gtm.scoreboard import (
+    GtmSnapshot,
+    render_scoreboard,
+    render_weekly_report,
+    viewer_drought,
+)
 
 
 def _snap(**overrides) -> GtmSnapshot:
@@ -41,3 +46,18 @@ def test_viewer_drought_when_no_unique_viewers():
     md = render_scoreboard(dry)
     assert "drought" in md.lower()
     assert viewer_drought(_snap(unique_viewers_14d=1)) is False
+
+
+def test_weekly_report_names_verdict_and_next_action():
+    md = render_weekly_report(
+        _snap(),
+        shipped=("Repo listing live", "Honest public copy merged (#234)"),
+        waiting=("First public post", "CURSOR_API_KEY (#226)"),
+    )
+    assert md.startswith("# GTM weekly report")
+    assert "8 unique viewers" in md
+    assert "593 clones" in md
+    assert "Honest public copy" in md
+    assert "CURSOR_API_KEY" in md
+    assert "automation, not humans" in md.lower() or "not humans" in md.lower()
+    assert "Next" in md

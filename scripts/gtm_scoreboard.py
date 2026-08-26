@@ -17,10 +17,22 @@ from daari.gtm.scoreboard import (  # noqa: E402
     now_utc,
     viewer_drought,
     write_scoreboard,
+    write_weekly_report,
 )
 
 REPO = "naveenreddyalka/daari"
 OUT = ROOT / "docs" / "gtm" / "SCOREBOARD.md"
+REPORT = ROOT / "docs" / "gtm" / "REPORT.md"
+DEFAULT_SHIPPED = (
+    "Repo listing live (description, topics, docs homepage, Discussions)",
+    "Honest public copy merged (#234)",
+    "Welcome discussion #238",
+)
+DEFAULT_WAITING = (
+    "First public post (LocalLLaMA / r/cursor / Show HN)",
+    "CURSOR_API_KEY so autodev-cycle is not a 6s no-op (#226)",
+    "License decision (#227)",
+)
 
 
 def _gh_json(path: str) -> dict:
@@ -57,11 +69,14 @@ def collect() -> GtmSnapshot:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if "--help" in argv or "-h" in argv:
-        print("Usage: python scripts/gtm_scoreboard.py [--check-drought]")
+        print("Usage: python scripts/gtm_scoreboard.py [--report] [--check-drought]")
         return 0
     snap = collect()
     write_scoreboard(OUT, snap)
     print(f"wrote {OUT}")
+    if "--report" in argv:
+        write_weekly_report(REPORT, snap, DEFAULT_SHIPPED, DEFAULT_WAITING)
+        print(f"wrote {REPORT}")
     if "--check-drought" in argv and viewer_drought(snap):
         print("drought: unique viewers (14d) == 0", file=sys.stderr)
         return 2
