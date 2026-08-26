@@ -72,6 +72,8 @@ model or your budgets will drift from your real invoice.
 
 Configure `frontier.providers` (ordered list) for OpenAI-compatible bases, Anthropic, OpenRouter, etc. Circuit breakers and key rotation ship with the L6 pool. A provider whose `provider` is `anthropic`/`claude`, or whose `base_url` contains `anthropic.com`, is sent native Messages API payloads (`POST …/messages`, `x-api-key`) rather than an OpenAI `/chat/completions` body.
 
+Clients may send OpenRouter's `provider` object (`zdr`, `sort`, `order`, `max_price`, …). daari stores it on the request, passes it through when the L6 slot is OpenRouter, and **fails closed** (HTTP 400) if `zdr: true` and no configured slot declares `zdr: true`. Chosen provider, `usage.cost`, and cached tokens land in `daari_meta`.
+
 API keys via environment (never commit):
 
 ```bash

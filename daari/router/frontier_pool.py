@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from daari.gateway.internal import InternalRequest, InternalResponse
+from daari.gateway.provider_prefs import require_zdr_slot
 from daari.observability.trace import add_step
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.retry import RetryPolicy, is_retryable, status_of
@@ -27,6 +28,7 @@ class ProviderSlot:
     executor: FrontierExecutor
     keys: list[str]
     weight: float = 1.0
+    zdr: bool = False
     breaker: CircuitBreaker = field(default_factory=CircuitBreaker)
     _key_cycle: Any = field(default=None, repr=False)
 
@@ -87,8 +89,13 @@ class FrontierPool:
         if not self.slots:
             raise RuntimeError("no frontier providers configured")
 
+        require_zdr_slot(request.provider, self.slots)
+        slots = list(self.slots)
+        if request.provider is not None and request.provider.zdr:
+            slots = [slot for slot in slots if slot.zdr]
+
         errors: list[str] = []
-        for slot in self.slots:
+        for slot in slots:
             if not slot.breaker.allow():
                 add_step(
                     "frontier_skip",
@@ -191,6 +198,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
                 executor=executor,
                 keys=keys,
                 weight=max(0.0, float(entry.weight)),
+                zdr=bool(getattr(entry, "zdr", False)),
                 breaker=CircuitBreaker(
                     failure_threshold=max(1, int(entry.failure_threshold)),
                     cooldown_seconds=max(1.0, float(entry.cooldown_seconds)),

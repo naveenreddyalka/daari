@@ -66,7 +66,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.model` | str | `'gpt-4o-mini'` |  |
 | `frontier.confidence_threshold` | float | `0.7` |  |
 | `frontier.base_url` | str | `'https://api.openai.com/v1'` |  |
-| `frontier.providers` | list | `[]` |  |
+| `frontier.providers` | list | `[]` | Ordered L6 slots. Each may set `zdr: true` (G2). |
 | `frontier.daily_budget_usd` | float | `0.0` |  |
 | `frontier.monthly_budget_usd` | float | `0.0` |  |
 | `frontier.soft_budget_ratio` | float | `0.8` |  |

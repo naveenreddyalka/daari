@@ -143,6 +143,8 @@ class FrontierProviderConfig(BaseModel):
     weight: float = 1.0
     failure_threshold: int = 3
     cooldown_seconds: float = 30.0
+    # Zero-data-retention. Required when the client sends `provider.zdr`.
+    zdr: bool = False
 
 
 class FrontierSettings(RuntimeSettings):
