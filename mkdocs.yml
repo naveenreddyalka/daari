@@ -118,4 +118,5 @@ nav:
   - Contribute:
       - Developing: DEVELOPING.md
       - ADRs: adr/README.md
-      - Roadmap: prd/ROADMAP-v2.md
+      - Roadmap: prd/ROADMAP-v3.md
+      - Roadmap v2 (shipped trains): prd/ROADMAP-v2.md

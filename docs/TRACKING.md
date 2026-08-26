@@ -1048,6 +1048,13 @@ ES256/384/512). Unsupported `kty` raises `ValueError` naming the type. JWKS
 documents that mix `use: enc` and `use: sig` prefer the signing key. Covered
 by `tests/unit/test_oidc_jwks.py`.
 
+### OpenRouter gap roadmap (2026-08-26)
+
+Stripe agreed to acquire OpenRouter. Forward plan is
+[prd/ROADMAP-v3.md](prd/ROADMAP-v3.md): do not clone the 400-model marketplace;
+win agent token economics (G1 prefix cache — ADR-0004 currently skips L0 on
+`tools`) and honor OpenRouter’s `provider` object on L6 (G2/G3).
+
 ### Settings validate_assignment ([#152](https://github.com/naveenreddyalka/daari/issues/152))
 
 Runtime-mutated settings models (`RoutingSettings`, `FrontierSettings`,
