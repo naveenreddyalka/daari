@@ -11,7 +11,14 @@
 OpenRouter (Stripe, Aug 2026) is not a clone target. Full gap + 90-day plan:
 [ROADMAP-v3](../../prd/ROADMAP-v3.md).
 
+Buyer pages (when to pick which, licenses named):
+
+- [daari vs LiteLLM](compare-litellm.md)
+- [daari vs Ollama](compare-ollama.md)
+- [daari vs OpenRouter](compare-openrouter.md)
+
 Measured head-to-head on this machine:
 [vs LiteLLM](benchmark-vs-litellm.md) · [load RPS](benchmark-load.md).
 
 Deep notes: `docs/discovery/04-competitive-landscape.md`.
+

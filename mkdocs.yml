@@ -114,6 +114,9 @@ nav:
       - Changelog: developer/resources/changelog.md
       - FAQ: developer/resources/faq.md
       - Compare: developer/resources/compare.md
+      - vs LiteLLM: developer/resources/compare-litellm.md
+      - vs Ollama: developer/resources/compare-ollama.md
+      - vs OpenRouter: developer/resources/compare-openrouter.md
       - Pitch outline: developer/resources/pitch-outline.md
   - Contribute:
       - Developing: DEVELOPING.md
