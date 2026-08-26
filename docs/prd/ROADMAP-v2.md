@@ -1,7 +1,7 @@
 # daari — Roadmap v2: OSS launch, gateway parity, enterprise scale
 
-> **Status:** Trains F1–F5 implemented (tracer-bullet depth for enterprise SSO/Postgres); PyPI upload remains user-gated — see [TRACKING.md](../TRACKING.md)
-> **Last updated:** 2026-07-24
+> **Status:** F1–F6 trains implemented (tracer depth on some enterprise items). **Forward work:** [ROADMAP-v3.md](ROADMAP-v3.md) (OpenRouter / agent-token gap).
+> **Last updated:** 2026-08-26
 > **Inputs:** docs audit (2026-07-23) + competitive research: LiteLLM, Portkey, Bifrost, OpenRouter, Helicone, llmux, sarmakska/local-llm-router, Isartor K8s deployment patterns
 > **Tracking:** GitHub issues labeled `auto-dev`; progress in [TRACKING.md](../TRACKING.md)
 

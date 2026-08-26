@@ -1,0 +1,13 @@
+---
+description: Keep the auto-dev / roadmap loop running without asking
+alwaysApply: true
+---
+
+# Auto-dev continuity
+
+When the user is working fixes, the roadmap, or the `auto-dev` backlog:
+
+- Follow [AGENTS.md](../../AGENTS.md). After a merge (or a documented stop), pick the next highest-priority open `auto-dev` issue immediately.
+- Do not ask "want the next one?" or wait for confirmation between issues.
+- Stop only for AGENTS.md hard limits, an unfixable failure already commented on the issue, or an empty eligible backlog.
+- A new chat that says continue / keep going / work the backlog is a standing order for that session.
