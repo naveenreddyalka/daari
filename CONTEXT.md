@@ -19,7 +19,7 @@
 
 ## What daari is
 
-Open-source **local cost optimizer** — routes work through cache → tools → local AI before frontier.
+Source-available **local cost optimizer** — routes work through cache → tools → local AI before frontier.
 
 **Tracking:** [TRACKING.md](docs/TRACKING.md)
 
