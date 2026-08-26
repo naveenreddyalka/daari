@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from daari.config.settings import FrontierProviderConfig
-from daari.gateway.internal import DaariMeta, InternalRequest, Message, RequestMeta
+from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.openai import ChatCompletionRequest, _prepare_internal_request
 from daari.gateway.provider_prefs import (
     ProviderPreferences,

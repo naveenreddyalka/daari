@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from daari.gateway.internal import InternalRequest, InternalResponse
-from daari.gateway.provider_prefs import ZdrUnavailable, require_zdr_slot
+from daari.gateway.provider_prefs import require_zdr_slot
 from daari.observability.trace import add_step
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.retry import RetryPolicy, is_retryable, status_of
