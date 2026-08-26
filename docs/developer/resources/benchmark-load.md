@@ -7,7 +7,7 @@ tool-bearing agent replay (agent, G1 / #223). Reproduce:
 [guide](../guides/observability/live-benchmark.md#load).
 
 - **Date:** 2026-08-26
-- **Commit:** `e0f5c02`
+- **Commit:** `c56999c`
 - **Hardware:** Apple M4 Pro, 48 GB RAM
 - **Ollama:** 0.18.2
 
