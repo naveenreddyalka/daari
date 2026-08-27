@@ -1,7 +1,7 @@
 # ADR-0004: Agent tool-call compatibility
 
 Date: 2026-06-15  
-Status: **accepted**
+Status: **accepted** (amended 2026-08-26 — G1 / #223: exact L0 on by default)
 
 ## Context
 
@@ -27,24 +27,28 @@ A request is an **agent turn** if any of:
 
 | Condition | Behavior |
 |-----------|----------|
-| Agent turn + MVP (Phase A) | Route to **L3** (or L0 if exact repeat of full message history). **Do not** attempt Lt or L2. |
+| Agent turn + L0 miss | Route to **L3** (capability / profile may pick L4/L5). **Do not** attempt Lt or L2. |
 | Agent turn + client defines `tools` | daari does **not** replace client tool execution — it routes the *completion* request only |
-| `tool_calls` in latest assistant msg | Passthrough execution at same tier as prior turn; no L0 cache read |
+| Identical full history + tools schema | **L0 hit** — same completion as the first turn |
+| Last `tool` message changed | **L0 miss** — key includes that payload; do not serve the prior answer |
 
-**Rationale:** Agent tool loops are stateful. daari optimizes the LLM completion leg, not the client's tool runner.
+**Rationale:** Agent tool loops are stateful. daari optimizes the LLM completion leg, not the client's tool runner. The stable prefix is most of the tokens; skipping cache on every `tools` request turned the product off for Cursor.
 
 ### 3. Cache policy for agent turns
 
-| Case | L0 cache |
-|------|----------|
-| Simple chat (no tools, no tool_calls) | ✅ Normal cache key |
-| Agent turn (tools defined or tool history) | ❌ **Skip L0 read/write** by default |
-| Agent turn + `X-Daari-Cache-Agent: true` | ✅ Opt-in cache with full message hash + tools_schema_hash |
+| Case | L0 exact | L1 semantic |
+|------|----------|-------------|
+| Simple chat (no tools, no tool_calls) | ✅ Normal cache key | ✅ Cosine + verification |
+| Agent turn, identical messages + tools | ✅ **On by default** (full message hash + tools schema) | ❌ Skip — a near-match must not overwrite a different tool result |
+| Agent turn, last tool result changed | ❌ Different key | ❌ Skip |
+| `X-Daari-No-Cache: true` | ❌ | ❌ |
 
-**Cache key components (when cacheable):**
+**Cache key components:**
 ```
-hash(messages) + model + temperature + hash(tools) + hash(tool_choice)
+hash(messages including tool role + tool_calls) + model + temperature + hash(tools) + sampling fingerprint
 ```
+
+The original “skip L0 by default / opt-in `X-Daari-Cache-Agent`” policy is withdrawn. Exact-repeat of the *full* agent request is safe because the last tool payload is in the key. Semantic L1 stays off for agent turns so a similar user sentence with a different tool result cannot serve the previous final answer.
 
 ### 4. Streaming + tool_calls
 
@@ -70,18 +74,18 @@ Add `daari_meta` as sibling field in response body (non-standard extension clien
 
 **Positive**
 - Predictable behavior for Cursor agent mode
-- Avoids corrupt cache hits mid-tool-loop
-- Clear MVP scope: optimize non-agent and simple completions first
+- Identical agent turns are $0 (L0); a changed tool result cannot replay the prior answer
+- Lt / L2 still never fire on an agent protocol turn
 
 **Negative**
-- Agent sessions benefit less from L0 cache unless opt-in
+- L1 is still off for agent turns (prefix-embedding cache is a later increment)
 - Local models without tool-call support force L6 more often
-- Full agent-aware routing deferred to v2
+- Anthropic SSE path does not yet share the OpenAI-stream L0 lookup
 
 ## MVP implementation checklist
 
-- [ ] Detect agent turn from payload
-- [ ] Skip L0 when agent turn detected
-- [ ] Include `tools_schema_hash` in cache key when caching enabled
+- [x] Detect agent turn from payload
+- [x] Exact L0 on for identical agent turns; miss when the last tool result changes (G1 / #223)
+- [x] Include `tools_schema_hash` in cache key
 - [ ] Log `agent_turn: true` in daari_meta
 - [ ] Test GP-18 in routing eval set

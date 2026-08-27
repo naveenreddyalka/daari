@@ -21,6 +21,7 @@ from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.provider_prefs import ZdrUnavailable
 from daari.observability.metrics import Metrics
 from daari.observability.trace import TraceStore, add_step, end_trace, start_trace
 from daari.observability.tokens import ollama_token_usage, response_token_usage
@@ -846,11 +847,7 @@ class Router:
         cache_skip = self._category_cache_skip(profile)
         cache_max_age = self._category_cache_max_age(profile)
 
-        if request.has_tool_calls_in_history:
-            response = await self._run_model_tier("L3", request)
-            self._record(response, started)
-            return response
-
+        agent_turn = bool(request.tools) or request.has_tool_calls_in_history
         dev_match = match_dev_command(last_user)
 
         if not request.meta.no_cache and not cache_skip:
@@ -881,6 +878,14 @@ class Router:
                     self.metrics.record("L0-org", cache_hit=True, latency_ms=latency_ms)
                     self._emit_org_feedback(last_user, org_l0_hit)
                     return org_l0_hit
+
+        # G1 / ADR-0004: exact L0 is on for agent turns (full messages + tools
+        # are already in the cache key). Skip CCS / L1 / Lt — those are Ask
+        # paths and must not serve a near-match over a different tool result.
+        if agent_turn:
+            return await self._route_generation(
+                request, request, profile, started, cache_skip=cache_skip
+            )
 
         ccs_hit = self._resolve_ccs_hit(dev_match, request)
         if ccs_hit is not None:
@@ -1138,15 +1143,17 @@ class Router:
                     await self.org_cache_client.put_l0(request, response)
                 except Exception:
                     pass
-            try:
-                await self.semantic_cache.put(request, response)
-            except Exception:
-                pass
-            if self.org_cache_client is not None:
+            agent_turn = bool(request.tools) or request.has_tool_calls_in_history
+            if not agent_turn:
                 try:
-                    await self.org_cache_client.put_l1(request, response)
+                    await self.semantic_cache.put(request, response)
                 except Exception:
                     pass
+                if self.org_cache_client is not None:
+                    try:
+                        await self.org_cache_client.put_l1(request, response)
+                    except Exception:
+                        pass
         self._record(response, started)
         return response
 
@@ -1203,11 +1210,10 @@ class Router:
         # Agent flows (tools passed through by the gateway, or tool history)
         # keep the full tool protocol; Ask flows get plain-text sanitization.
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
-        # ADR-0004: agent turns skip L0 entirely; explicit no-cache and
-        # category cache-skip policies also bypass.
+        # G1 / ADR-0004: exact L0 is on for agent turns. L1 stays off — a
+        # semantic near-match must not overwrite a different tool result.
         cacheable = (
-            not agent_flow
-            and not request.meta.no_cache
+            not request.meta.no_cache
             and not self._category_cache_skip(profile)
         )
         stream_request = request.model_copy(deep=True)
@@ -1326,67 +1332,70 @@ class Router:
                 finish_trace("L0")
                 return
 
-            # L1 semantic lookup (issue #43): parity with the non-stream path.
-            # One nearest() call serves both the hit path and the draft band.
-            try:
-                (
-                    nearest_response,
-                    nearest_similarity,
-                    nearest_source,
-                ) = await self.semantic_cache.nearest_with_source(
-                    request, max_age=self._category_cache_max_age(profile)
-                )
-            except Exception:
-                nearest_response, nearest_similarity, nearest_source = None, 0.0, None
-            l1_hit = (
-                nearest_response is not None
-                and nearest_similarity
-                >= self._l1_threshold_for_category(
-                    profile.category if profile is not None else None
-                )
-                and bool(nearest_response.content.strip())
-            )
-            if l1_hit and not self.semantic_cache.verify_for_serving(request, nearest_source):
-                # #206: same veto as the non-stream path — never serve a
-                # near-miss; the draft band below may still use it.
-                add_step("l1_verification_rejected", similarity=round(nearest_similarity, 4))
-                l1_hit = False
-            add_step("l1_lookup", hit=l1_hit, similarity=round(nearest_similarity, 4))
-            if l1_hit:
-                latency_ms = int((time.perf_counter() - started) * 1000)
-                self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
-                if self.usage_ledger is not None:
-                    self.usage_ledger.record(
-                        tier="L1",
-                        cache_hit=True,
-                        prompt_chars=prompt_chars,
-                        completion_chars=len(nearest_response.content),
-                        client_id=request.meta.client_id,
+            if not agent_flow:
+                # L1 semantic lookup (issue #43): parity with the non-stream path.
+                # One nearest() call serves both the hit path and the draft band.
+                # Agent turns skip L1: a cosine near-match must not overwrite a
+                # different tool result (G1 / ADR-0004).
+                try:
+                    (
+                        nearest_response,
+                        nearest_similarity,
+                        nearest_source,
+                    ) = await self.semantic_cache.nearest_with_source(
+                        request, max_age=self._category_cache_max_age(profile)
                     )
-                log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
-                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                yield f"data: {json.dumps(chunk_payload(delta={'content': nearest_response.content}))}\n\n"
-                yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                yield usage_chunk(len(nearest_response.content))
-                yield "data: [DONE]\n\n"
-                add_step("served", tier="L1", cache_hit=True, latency_ms=latency_ms)
-                finish_trace("L1")
-                self._maybe_shadow_check(request, nearest_response.content, profile)
-                return
-            if (
-                nearest_response is not None
-                and nearest_similarity >= self.l1_draft_threshold
-                and nearest_response.content.strip()
-            ):
-                # Draft only affects generation; cache keys use the original request.
-                stream_request.messages = [
-                    *stream_request.messages,
-                    Message(
-                        role="system",
-                        content=_draft_hint(nearest_response.content, nearest_similarity),
-                    ),
-                ]
-                add_step("draft_injected", similarity=round(nearest_similarity, 4))
+                except Exception:
+                    nearest_response, nearest_similarity, nearest_source = None, 0.0, None
+                l1_hit = (
+                    nearest_response is not None
+                    and nearest_similarity
+                    >= self._l1_threshold_for_category(
+                        profile.category if profile is not None else None
+                    )
+                    and bool(nearest_response.content.strip())
+                )
+                if l1_hit and not self.semantic_cache.verify_for_serving(request, nearest_source):
+                    # #206: same veto as the non-stream path — never serve a
+                    # near-miss; the draft band below may still use it.
+                    add_step("l1_verification_rejected", similarity=round(nearest_similarity, 4))
+                    l1_hit = False
+                add_step("l1_lookup", hit=l1_hit, similarity=round(nearest_similarity, 4))
+                if l1_hit:
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
+                    if self.usage_ledger is not None:
+                        self.usage_ledger.record(
+                            tier="L1",
+                            cache_hit=True,
+                            prompt_chars=prompt_chars,
+                            completion_chars=len(nearest_response.content),
+                            client_id=request.meta.client_id,
+                        )
+                    log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
+                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={'content': nearest_response.content}))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                    yield usage_chunk(len(nearest_response.content))
+                    yield "data: [DONE]\n\n"
+                    add_step("served", tier="L1", cache_hit=True, latency_ms=latency_ms)
+                    finish_trace("L1")
+                    self._maybe_shadow_check(request, nearest_response.content, profile)
+                    return
+                if (
+                    nearest_response is not None
+                    and nearest_similarity >= self.l1_draft_threshold
+                    and nearest_response.content.strip()
+                ):
+                    # Draft only affects generation; cache keys use the original request.
+                    stream_request.messages = [
+                        *stream_request.messages,
+                        Message(
+                            role="system",
+                            content=_draft_hint(nearest_response.content, nearest_similarity),
+                        ),
+                    ]
+                    add_step("draft_injected", similarity=round(nearest_similarity, 4))
 
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
@@ -1650,11 +1659,12 @@ class Router:
                 except Exception:
                     pass
                 # L1 write-back happens after [DONE] was yielded, so it never
-                # delays chunk delivery to the client.
-                try:
-                    await self.semantic_cache.put(request, streamed_response)
-                except Exception:
-                    pass
+                # delays chunk delivery to the client. Agent turns stay off L1.
+                if not agent_flow:
+                    try:
+                        await self.semantic_cache.put(request, streamed_response)
+                    except Exception:
+                        pass
             add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
             if getattr(self, "otel_enabled", False) and trace is not None:
                 from daari.observability.otel import export_trace
@@ -2283,6 +2293,15 @@ class Router:
     def _choose_initial_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
     ) -> str:
+        from daari.router.aliases import local_model_alias
+
+        alias = local_model_alias(request.model)
+        if alias == "floor":
+            capable = self._filter_capable_tiers(["L3", "L4", "L5"], request)
+            return capable[0] if capable else "L3"
+        if alias == "nitro":
+            return self._nitro_tier(request)
+
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             # Still respect capability filter for explicit overrides when possible.
@@ -2293,6 +2312,26 @@ class Router:
         tier = self._apply_latency_budget(tier, request, profile)
         capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
         return capable[0] if capable else tier
+
+    def _nitro_tier(self, request: InternalRequest) -> str:
+        """Warmest / lowest-latency capable local backend (`:nitro`)."""
+        capable = self._filter_capable_tiers(["L3", "L4", "L5"], request)
+        if not capable:
+            return "L3"
+        warm = self._warm_models
+        if self.warm_tracker is not None:
+            try:
+                warm = warm | self.warm_tracker.get()
+            except Exception:
+                pass
+        for tier in capable:
+            try:
+                name = self._executor_for_tier(tier).default_model
+            except Exception:
+                continue
+            if name in warm:
+                return tier
+        return capable[0]
 
     @staticmethod
     def _policy_attr(policy: Any, name: str) -> Any:
@@ -2524,6 +2563,8 @@ class Router:
                 l6_response.daari_meta.warning = "frontier_budget_warning"
             self.metrics.record_escalation()
             return l6_response
+        except ZdrUnavailable:
+            raise
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
             return response

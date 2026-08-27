@@ -14,6 +14,13 @@ from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
+from daari.gateway.provider_prefs import (
+    as_openrouter_payload,
+    configured_frontier_slots,
+    parse_provider,
+    require_zdr_slot,
+    ZdrUnavailable,
+)
 from daari.gateway.sampling import SamplingParams
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
@@ -137,6 +144,7 @@ class AnthropicRequest(BaseModel):
     top_p: float | None = None
     top_k: int | None = None
     stop_sequences: list[str] | None = None
+    provider: Any | None = None
 
 
 class AnthropicTextBlock(BaseModel):
@@ -235,7 +243,19 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 stream=False,
                 meta=meta,
                 sampling=SamplingParams.from_anthropic_body(body.model_dump()),
+                provider=parse_provider(body.provider),
             )
+            if (
+                internal.provider
+                and internal.provider.zdr
+                and ctx.settings.frontier.enabled
+            ):
+                try:
+                    require_zdr_slot(
+                        internal.provider, configured_frontier_slots(ctx.settings)
+                    )
+                except ZdrUnavailable as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
 
             if body.stream:
                 internal.stream = True
@@ -293,6 +313,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
 
             try:
                 result = await ctx.router.route(internal)
+            except ZdrUnavailable as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             except BackendUnavailable as exc:
@@ -310,6 +332,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
 
+            if internal.provider and result.daari_meta.provider_prefs is None:
+                result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
             return AnthropicMessageResponse(
                 id=f"msg_{uuid.uuid4().hex[:12]}",
                 model=result.model,

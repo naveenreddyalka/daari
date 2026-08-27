@@ -22,6 +22,12 @@ from daari.gateway.internal import (
     Message,
     RequestMeta,
 )
+from daari.gateway.provider_prefs import (
+    as_openrouter_payload,
+    configured_frontier_slots,
+    require_zdr_slot,
+    ZdrUnavailable,
+)
 from daari.gateway.sampling import SamplingParams
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
@@ -99,6 +105,8 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: Any | None = None
     n: Any | None = None
     logprobs: Any | None = None
+    # OpenRouter `provider` object (G2 / #224). extra="ignore" would drop it.
+    provider: Any | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
@@ -185,6 +193,8 @@ def _prepare_internal_request(
         # The client explicitly opted out of tools for this turn.
         log_gateway_event("tools_disabled_by_tool_choice", {"count": len(tools)})
         tools = None
+    from daari.gateway.provider_prefs import parse_provider
+
     return InternalRequest(
         messages=messages,
         model=body.model or default_model,
@@ -193,6 +203,7 @@ def _prepare_internal_request(
         stream=body.stream,
         sampling=sampling,
         meta=meta,
+        provider=parse_provider(body.provider),
     )
 
 
@@ -367,6 +378,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tools_mode=x_daari_tools,
                 meta=meta,
             )
+            if (
+                internal.provider
+                and internal.provider.zdr
+                and ctx.settings.frontier.enabled
+            ):
+                try:
+                    require_zdr_slot(
+                        internal.provider, configured_frontier_slots(ctx.settings)
+                    )
+                except ZdrUnavailable as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
 
             if body.stream:
                 try:
@@ -402,6 +424,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
             try:
                 result = await ctx.router.route(internal)
+            except ZdrUnavailable as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             except BackendUnavailable as exc:
@@ -419,6 +443,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
 
+            if internal.provider and result.daari_meta.provider_prefs is None:
+                result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
             prompt_chars = sum(len(message.content or "") for message in body.messages)
             return _openai_completion_body(
                 body=body,
