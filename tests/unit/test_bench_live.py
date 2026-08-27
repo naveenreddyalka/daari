@@ -31,6 +31,12 @@ def test_loads_routing_corpus(bench):
     assert all("expected_tier_v1" in row for row in rows)
 
 
+def test_loads_agent_corpus(bench):
+    rows = bench.load_jsonl(bench.AGENT_CORPUS)
+    assert len(rows) >= 8
+    assert all(row["id"].startswith("AG-") for row in rows)
+
+
 def test_loads_cache_corpus(bench):
     rows = bench.load_jsonl(bench.CACHE_CORPUS)
     assert len(rows) == 36
@@ -51,6 +57,31 @@ def test_percentile_nearest_rank(bench):
     assert bench.percentile(values, 50) == 50.0
     assert bench.percentile(values, 95) == 100.0
     assert bench.percentile([42.0], 95) == 42.0
+
+
+def test_cost_of_pass_stops_at_first_match(bench):
+    attempts = [
+        {"match": False, "usd": 0.01, "ms": 100.0},
+        {"match": True, "usd": 0.02, "ms": 200.0},
+        {"match": True, "usd": 0.99, "ms": 900.0},
+    ]
+    stats = bench.cost_of_pass(attempts, cap=3)
+    assert stats["passed"] is True
+    assert stats["attempts"] == 2
+    assert stats["usd"] == pytest.approx(0.03)
+    assert stats["ms"] == pytest.approx(300.0)
+
+
+def test_cost_of_pass_caps_without_match(bench):
+    attempts = [
+        {"match": False, "usd": 0.01, "ms": 10.0},
+        {"match": False, "usd": 0.01, "ms": 10.0},
+        {"match": False, "usd": 0.01, "ms": 10.0},
+    ]
+    stats = bench.cost_of_pass(attempts, cap=2)
+    assert stats["passed"] is False
+    assert stats["attempts"] == 2
+    assert stats["usd"] == pytest.approx(0.02)
 
 
 def test_price_usd_uses_direction_rates(bench):
@@ -87,6 +118,11 @@ def test_render_markdown_includes_provenance(bench):
         },
         "usd_avoided": 0.0123,
         "token_note": "provider-reported",
+        "cost_of_pass": [
+            {"id": "GP-01", "passed": True, "attempts": 1, "ms": 812.0, "usd": 0.001},
+        ],
+        "agent_zero_cost_rate": 1.0,
+        "agent_served": 8,
     }
     text = bench.render_markdown(report)
     assert "abc1234" in text
@@ -96,6 +132,9 @@ def test_render_markdown_includes_provenance(bench):
     # 1 frontier row excluded from the 20 -> scored denominator is 19.
     assert "17/19" in text
     assert "$0-tier rate" in text
+    assert "Cost of pass" in text
+    assert "GP-01" in text
+    assert "agent" in text.lower()
 
 
 @pytest.mark.benchmark

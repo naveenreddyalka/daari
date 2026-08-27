@@ -1097,6 +1097,21 @@ HTTP 400. OpenRouter L6 slots receive the object on the outbound body.
 `daari_meta` records `provider_prefs`, `cost_usd`, and `cached_tokens`.
 Covered by `tests/unit/test_provider_object.py` (mocked HTTP, no live key).
 
+### Cost-of-pass + agent $0-tier G4 ([#243](https://github.com/naveenreddyalka/daari/issues/243))
+
+`scripts/bench_live.py` retries each routing row until the observed tier
+matches (or `--cost-of-pass-cap`) and publishes a **Cost of pass** table
+(attempts, ms, implied $). A separate tool-bearing corpus
+(`evals/routing/agent.jsonl`, AG-01–AG-08) reports the share of agent
+prompts that never left the device. Linked from
+[developer/guides/observability/live-benchmark.md](developer/guides/observability/live-benchmark.md).
+Reporter tests live in `tests/unit/test_bench_live.py` (default suite).
+
+First live run (2026-08-27, Apple M4 Pro, Ollama 0.18.2): **agent $0-tier
+100%** of 8 tool-bearing prompts; routing 16/19; cost-of-pass missed GP-10 /
+GP-12 / GP-19 at cap 3. Page:
+[developer/resources/benchmarks.md](developer/resources/benchmarks.md).
+
 ### Agent prefix cache G1 ([#223](https://github.com/naveenreddyalka/daari/issues/223))
 
 ADR-0004 no longer skips L0 on `tools` / tool history. Identical agent
