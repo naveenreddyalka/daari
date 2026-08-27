@@ -51,6 +51,36 @@ RSA (`RS256`/`384`/`512`) and EC (`ES256`/`384`/`512`) signing keys; `use: "sig"
 is preferred when a JWKS also lists encryption keys. HMAC stub remains for
 local/dev when JWKS unset.
 
+### IdP-minted virtual keys (MDM)
+
+Alongside `daari enterprise bootstrap`, map an IdP claim to key policy so
+devices never need a hand-distributed `dk_…` secret. First verified
+`POST /v1/daari/sso/session` mints a key; later logins resync limits.
+When the mapped claim disappears, the key is revoked. Unmapped claims use
+`default_policy` or `403` if `deny_unmapped: true`.
+
+```yaml
+enterprise:
+  sso:
+    enabled: true
+    jwks_url: https://idp.corp/jwks
+    mint_virtual_key_on_login: true
+    mapping_claim: groups
+    key_mappings:
+      eng:
+        daily_budget_usd: 5
+        rpm: 120
+        tier_cap: L4
+        boundary_profile: fintech
+      contractors:
+        tier_cap: L3
+    default_policy:
+      tier_cap: L3
+    deny_unmapped: false
+```
+
+Mint and revoke events land in the audit log with the claim that caused them.
+
 ## Verify
 
 ```bash

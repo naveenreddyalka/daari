@@ -18,6 +18,7 @@ class AuthClaims:
     daily_budget_usd: float = 0.0
     monthly_budget_usd: float = 0.0
     virtual_key: VirtualKey | None = None
+    boundary_profile: str | None = None
 
 
 def extract_api_key(headers: Any) -> str:
@@ -37,6 +38,8 @@ def apply_auth_claims_to_meta(meta: Any, claims: AuthClaims | None) -> None:
         meta.client_id = claims.client_id
     if not meta.tier_cap and claims.tier_cap:
         meta.tier_cap = claims.tier_cap
+    if not getattr(meta, "boundary_profile", None) and claims.boundary_profile:
+        meta.boundary_profile = claims.boundary_profile
 
 
 def resolve_auth(
@@ -59,6 +62,7 @@ def resolve_auth(
                 daily_budget_usd=key.daily_budget_usd,
                 monthly_budget_usd=key.monthly_budget_usd,
                 virtual_key=key,
+                boundary_profile=(key.metadata or {}).get("boundary_profile"),
             )
     # Auth required but nothing matched.
     if master_key or (store is not None and store.enabled and store.list()):

@@ -17,8 +17,21 @@ class EnterpriseLearningSettings(BaseModel):
     upload_code: bool = False
 
 
+class SsoKeyPolicy(BaseModel):
+    """Limits applied to an IdP-minted virtual key (issue #176)."""
+
+    daily_budget_usd: float = 0.0
+    monthly_budget_usd: float = 0.0
+    rpm: int = 0
+    tpm: int = 0
+    tier_cap: str | None = None
+    team: str | None = None
+    boundary_profile: str | None = None
+    budget_windows: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class SsoSettings(BaseModel):
-    """OIDC / SSO for admin surfaces (issues #119, #136)."""
+    """OIDC / SSO for admin surfaces (issues #119, #136, #176)."""
 
     enabled: bool = False
     issuer: str = "daari-dev"
@@ -35,6 +48,10 @@ class SsoSettings(BaseModel):
     admin_min_role: str = "admin"
     # When true, first successful SSO login mints a virtual API key for sub.
     mint_virtual_key_on_login: bool = False
+    mapping_claim: str = "groups"
+    key_mappings: dict[str, SsoKeyPolicy] = Field(default_factory=dict)
+    default_policy: SsoKeyPolicy | None = None
+    deny_unmapped: bool = False
 
 
 class OrgSettings(BaseModel):

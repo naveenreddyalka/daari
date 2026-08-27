@@ -856,33 +856,24 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if sso.mint_virtual_key_on_login and subject:
                 from daari.auth.virtual_keys import VirtualKeyStore
                 from daari.enterprise.audit import AuditLog
+                from daari.enterprise.sso_keys import UnmappedSsoPolicy, sync_sso_virtual_key
 
                 store = VirtualKeyStore(
                     ctx.settings.virtual_keys_path,
                     enabled=True,
                 )
-                existing = [
-                    k for k in store.list() if (k.client_id or "") == f"sso:{subject}" and not k.revoked
-                ]
-                if existing:
-                    result["virtual_key_id"] = existing[0].key_id
-                    result["virtual_key_minted"] = False
-                else:
-                    created = store.create(
-                        name=f"sso:{subject}",
-                        client_id=f"sso:{subject}",
-                        tier_cap=None,
-                    )
-                    result["virtual_key_id"] = created.key.key_id
-                    result["virtual_key_prefix"] = created.key.prefix
-                    result["virtual_key"] = created.plaintext
-                    result["virtual_key_minted"] = True
-                    AuditLog(ctx.settings.enterprise.audit_path).record(
-                        actor=subject,
+                try:
+                    minted = sync_sso_virtual_key(
+                        store,
+                        subject=subject,
+                        claims=claims,
+                        sso=sso,
+                        audit=AuditLog(ctx.settings.enterprise.audit_path),
                         role=role,
-                        action="sso.mint_virtual_key",
-                        detail={"key_id": created.key.key_id},
                     )
+                except UnmappedSsoPolicy as exc:
+                    raise HTTPException(status_code=403, detail=str(exc)) from exc
+                result.update(minted)
             return result
 
         @router.get("/v1/daari/config")

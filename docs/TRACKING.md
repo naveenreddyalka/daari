@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1074 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1080 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1161,6 +1161,17 @@ CI gates $0-tier ≥30% and routing accuracy ≥80% via
 `daari.eval.routing_score` (published headline + mocked GP-01–20).
 ROADMAP-v2 Phase B “never measured” row is retired. Covered by
 `tests/unit/test_routing_score.py`.
+
+### IdP-minted virtual keys ([#176](https://github.com/naveenreddyalka/daari/issues/176))
+
+`enterprise.sso.key_mappings` maps an IdP claim (`groups`, `department`, …)
+to budget, RPM, tier cap, team, and boundary profile. First verified SSO
+session mints the key; later sessions resync. The key is revoked when the
+mapped claim disappears. Unmapped claims use `default_policy` or `403`
+(`deny_unmapped`). Audit records include the claim. Documented next to
+`daari enterprise bootstrap` in
+[developer/guides/configuration/auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
+Covered by `tests/unit/test_sso_key_mappings.py`.
 
 ### Multi-window budgets and teams ([#174](https://github.com/naveenreddyalka/daari/issues/174))
 
