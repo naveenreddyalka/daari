@@ -24,7 +24,7 @@ docker compose up
 
 First start pulls the L3 model (~2 GB), then daari listens on `http://127.0.0.1:11435` (readiness: `GET /ready`). Prebuilt image: `ghcr.io/naveenreddyalka/daari`. Package: [pypi.org/project/daari](https://pypi.org/project/daari/).
 
-**Docs** — **[Developer documentation](docs/developer/index.md)** (install, concepts, guides, reference). Contributors: [docs/DEVELOPING.md](docs/DEVELOPING.md).
+**Docs** — **[Developer documentation](docs/developer/index.md)** (install, concepts, guides, reference). Contributors: [docs/DEVELOPING.md](docs/DEVELOPING.md). Community: [Discussions](https://github.com/naveenreddyalka/daari/discussions) ([templates](docs/gtm/discussions/)).
 
 **One-click demo** (install, serve, smoke curl, stats):
 
@@ -79,6 +79,7 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 | [`docs/developer/`](docs/developer/index.md) | **Start here** — get started, concepts, guides, reference, internals |
 | [Docs site](https://naveenreddyalka.github.io/daari/) | Published MkDocs |
 | [`docs/DEVELOPING.md`](docs/DEVELOPING.md) | Contributor pickup (clone, pytest, CI) |
+| [Discussions](https://github.com/naveenreddyalka/daari/discussions) | Q&A, show-and-tell, announce ([templates](docs/gtm/discussions/)) |
 | [`docs/prd/ROADMAP-v2.md`](docs/prd/ROADMAP-v2.md) | Forward roadmap |
 | [`docs/TRACKING.md`](docs/TRACKING.md) | Living task tracker (maintainers) |
 | [`docs/pitch/DEMO.md`](docs/pitch/DEMO.md) | Demo script |

@@ -31,7 +31,11 @@ Full environment guide: [docs/DEVELOPING.md](docs/DEVELOPING.md). Architecture m
 
 ## Reporting bugs / requesting features
 
-Use the issue templates. For routing-quality problems, include the trace (`daari trace <id>` — redact anything sensitive) and your relevant `~/.daari/config.yaml` routing settings.
+Use the issue templates. Setup questions and “show your `daari report`” belong in
+[Discussions](https://github.com/naveenreddyalka/daari/discussions)
+([templates](docs/gtm/discussions/)). For routing-quality problems, include the
+trace (`daari trace <id>` — redact anything sensitive) and your relevant
+`~/.daari/config.yaml` routing settings.
 
 ## Security issues
 

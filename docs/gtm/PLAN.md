@@ -18,7 +18,7 @@ Mirrors the auto-dev loop. The machine never sleeps on **measure** and **draft**
 | Draft | On each release / notable merge | [#232](https://github.com/naveenreddyalka/daari/issues/232) shipping note | Edit tone |
 | Publish (owned) | When a draft is ready | Open a PR | Merge |
 | Publish (HN / Reddit / PH / X) | Calendar below | Drafts in [launches/](launches/) | You post. Stay in comments 6 hours. |
-| Listen | Daily | Search queue (later) | You reply |
+| Listen | Daily | Search queue (later) | You reply in [Discussions](https://github.com/naveenreddyalka/daari/discussions) ([templates](discussions/)) |
 
 **Never:** buy stars, auto-comment, upvote bots, unattended Reddit/HN posts, scrape-and-DM.
 
