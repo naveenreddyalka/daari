@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1056 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1066 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1152,6 +1152,16 @@ CI gates $0-tier ≥30% and routing accuracy ≥80% via
 `daari.eval.routing_score` (published headline + mocked GP-01–20).
 ROADMAP-v2 Phase B “never measured” row is retired. Covered by
 `tests/unit/test_routing_score.py`.
+
+### Multi-window budgets and teams ([#174](https://github.com/naveenreddyalka/daari/issues/174))
+
+Virtual keys store `budget_windows: [{duration, max_usd}]` and optional `team_id`.
+A `teams` table holds inherited caps; the tighter of key vs team wins per
+duration. `daari keys create --team` / `--window`, `daari keys team-create`,
+and `daari report --by-team`. 402s include `reset_at` and `scope`. Flat
+`daily_budget_usd` / `monthly_budget_usd` rows migrate to `day`/`month`
+windows. Covered by `tests/unit/test_budget_windows.py`,
+`tests/unit/test_virtual_key_budgets.py`.
 
 ### Lexical synonym allowlist ([#208](https://github.com/naveenreddyalka/daari/issues/208))
 

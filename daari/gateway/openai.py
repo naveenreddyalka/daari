@@ -717,6 +717,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 days=max(1, days),
                 frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
             )
+            store = getattr(request.app.state, "virtual_key_store", None)
+            if store is not None and getattr(store, "report_by_team", None):
+                payload["teams"] = store.report_by_team(payload["clients"])
+            else:
+                payload["teams"] = []
             # Trust PRD T1d: false-hit rates + answer diversity per category.
             trust: dict[str, Any] = {}
             feedback = ctx.router.feedback_store
