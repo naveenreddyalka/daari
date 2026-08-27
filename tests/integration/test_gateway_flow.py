@@ -900,8 +900,10 @@ async def test_openai_models_list(app):
     payload = response.json()
     assert payload["object"] == "list"
     assert any(item["id"] == "daari" for item in payload["data"])
+    assert all("capabilities" in item for item in payload["data"])
     assert model_response.status_code == 200
     assert model_response.json()["id"] == "daari"
+    assert "capabilities" in model_response.json()
 
 
 @pytest.mark.asyncio

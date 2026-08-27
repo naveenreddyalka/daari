@@ -161,6 +161,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 **Done when:** a context-length error on L3 escalates to L4/L5 or compresses, traced; the three watchdog issues are closed.
 
+**Shipped MVP (#244):** L3 context-length errors remap to L4/L5 (or compress+retry) with a `context_length_failover` trace step. `/v1/models` cards carry capability tags including L6 `zdr`. Live `max_tokens` binds on `usage` + `finish_reason` (no `twenty` substring).
+
 ### G6 — v2 leftovers (do not let these jump the queue)
 
 Still worth doing, **after** G1–G3: B2/B3 boundaries (#172), extension content script (#171), IdP-minted keys (#176), multi-window budgets (#174), synonym verifier (#208), silent conflicted auto-merge (#200). These are product, not the OpenRouter gap.

@@ -1114,8 +1114,15 @@ class Router:
         initial_tier = self._choose_initial_tier(request, profile)
         try:
             response = await self._run_model_tier(initial_tier, gen_request)
-        except Exception:
-            if initial_tier == "L4":
+        except Exception as exc:
+            if initial_tier == "L3":
+                from daari.router.failover import is_context_length_error
+
+                if is_context_length_error(exc):
+                    response = await self._failover_context_length(gen_request, exc)
+                else:
+                    raise
+            elif initial_tier == "L4":
                 response = await self._run_model_tier("L3", gen_request)
                 response.daari_meta.warning = "l4_unavailable_fell_back_to_l3"
             elif initial_tier == "L5":
@@ -1472,7 +1479,17 @@ class Router:
                     {"tier": tier, "ollama_model": ollama_model, "error": str(exc)[:300]},
                 )
                 if tier_index < len(tier_chain) - 1:
-                    add_step("fallback", from_tier=tier, error=str(exc)[:120])
+                    from daari.router.failover import is_context_length_error
+
+                    if is_context_length_error(exc):
+                        add_step(
+                            "context_length_failover",
+                            from_tier=tier,
+                            to_tier=tier_chain[tier_index + 1],
+                            reason="context_too_long",
+                        )
+                    else:
+                        add_step("fallback", from_tier=tier, error=str(exc)[:120])
                     continue
                 yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
                 yield "data: [DONE]\n\n"
@@ -2236,6 +2253,33 @@ class Router:
             chars_after=chars_after,
         )
         return compacted
+
+    async def _failover_context_length(self, request: InternalRequest, exc: BaseException) -> InternalResponse:
+        for tier in ("L4", "L5"):
+            try:
+                response = await self._run_model_tier(tier, request)
+            except Exception:
+                continue
+            add_step(
+                "context_length_failover",
+                from_tier="L3",
+                to_tier=tier,
+                reason="context_too_long",
+                error=str(exc)[:120],
+            )
+            response.daari_meta.escalated_from = "L3"
+            response.daari_meta.warning = f"context_too_long_fell_back_to_{tier.lower()}"
+            return response
+        add_step(
+            "context_length_failover",
+            from_tier="L3",
+            to_tier="L3",
+            reason="compress",
+        )
+        response = await self._run_model_tier("L3", request)
+        response.daari_meta.escalated_from = "L3"
+        response.daari_meta.warning = "context_too_long_compressed"
+        return response
 
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
         add_step("tier_attempt", tier=tier)

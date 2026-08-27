@@ -67,8 +67,9 @@ async def test_max_tokens_actually_truncates(live_app):
     capped = await _chat(live_app, max_tokens=8)
     text = capped["choices"][0]["message"]["content"]
 
-    assert capped["usage"]["completion_tokens"] <= 8, text
-    assert "twenty" not in text.lower(), "an 8-token answer cannot have finished counting"
+    from daari.gateway.sampling import max_tokens_held
+
+    assert max_tokens_held(capped, 8), text
 
 
 @pytest.mark.asyncio
