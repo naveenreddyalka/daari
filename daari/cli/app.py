@@ -69,12 +69,20 @@ def keys_create(
     tpm: int = typer.Option(0, "--tpm", help="Tokens per minute (0=unlimited)"),
     tier_cap: str | None = typer.Option(None, "--tier-cap", help="L3|L4|L5"),
     client_id: str | None = typer.Option(None, "--client-id", help="Ledger attribution id"),
+    team: str | None = typer.Option(None, "--team", help="Team that inherits and tightens caps"),
+    window: list[str] = typer.Option(
+        [],
+        "--window",
+        help="Extra duration=max_usd window (e.g. 7d=5). Repeatable.",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
+    from daari.auth.budgets import parse_window_flag
     from daari.auth.virtual_keys import VirtualKeyStore
 
     settings = get_settings()
     store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    extra = [parse_window_flag(item) for item in window]
     created = store.create(
         name,
         daily_budget_usd=daily_budget,
@@ -83,6 +91,8 @@ def keys_create(
         tpm=tpm,
         tier_cap=tier_cap,
         client_id=client_id,
+        team=team,
+        budget_windows=extra or None,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -125,6 +135,34 @@ def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys 
     else:
         typer.echo(f"No active key {key_id}")
         raise typer.Exit(code=1)
+
+
+@keys_app.command("team-create")
+def keys_team_create(
+    name: str = typer.Argument(..., help="Team name"),
+    daily_budget: float = typer.Option(0.0, "--daily-budget"),
+    monthly_budget: float = typer.Option(0.0, "--monthly-budget"),
+    window: list[str] = typer.Option([], "--window", help="duration=max_usd (repeatable)"),
+) -> None:
+    """Create a team whose caps apply to every key that joins it."""
+    from daari.auth.budgets import parse_window_flag
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings = get_settings()
+    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    extra = [parse_window_flag(item) for item in window]
+    team = store.create_team(
+        name,
+        budget_windows=extra or None,
+        daily_budget_usd=daily_budget,
+        monthly_budget_usd=monthly_budget,
+    )
+    typer.echo(f"team_id: {team.team_id}")
+    typer.echo(f"name:    {team.name}")
+    for item in team.budget_windows:
+        typer.echo(f"window:  {item.duration} ${item.max_usd}")
+
+
 app.add_typer(enterprise_app, name="enterprise")
 
 
@@ -552,6 +590,7 @@ def report(
     output_format: str = typer.Option("text", "--format", help="Output format: text | markdown"),
     out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
     by_client: bool = typer.Option(False, "--by-client", help="Break usage down per client id"),
+    by_team: bool = typer.Option(False, "--by-team", help="Roll usage up by virtual-key team"),
 ) -> None:
     """Show persisted usage and estimated frontier savings."""
     settings = get_settings()
@@ -617,6 +656,23 @@ def report(
             for entry in clients:
                 typer.echo(
                     f"{entry['client_id']:<14} {entry['requests']:>9} "
+                    f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
+                    f"{entry['estimated_saved_usd']:>9.4f}"
+                )
+
+    if by_team:
+        teams = payload.get("teams") or []
+        typer.echo("")
+        if not teams:
+            typer.echo("No per-team usage recorded yet.")
+        else:
+            typer.echo(
+                f"{'team':<14} {'requests':>9} {'cache hits':>11} "
+                f"{'frontier':>9} {'saved $':>9}"
+            )
+            for entry in teams:
+                typer.echo(
+                    f"{entry['team']:<14} {entry['requests']:>9} "
                     f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
                     f"{entry['estimated_saved_usd']:>9.4f}"
                 )

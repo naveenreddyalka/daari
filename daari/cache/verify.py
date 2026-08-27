@@ -69,6 +69,30 @@ _UNITS = frozenset(
     }
 )
 
+# British/American spelling that does not change the answer (#208).
+_SPELLING = {
+    "summarise": "summarize",
+    "summarises": "summarizes",
+    "summarised": "summarized",
+    "summarising": "summarizing",
+    "normalise": "normalize",
+    "normalises": "normalizes",
+    "normalised": "normalized",
+    "normalising": "normalizing",
+    "colour": "color",
+    "colours": "colors",
+}
+
+# Curated verb/adj pairs from the SYN corpus. Do not add antonyms here
+# (start/stop stays in _OPPOSITES).
+_SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
+    frozenset({"quickest", "fastest", "quicker", "faster", "quick", "fast"}),
+    frozenset({"resolve", "fix"}),
+    frozenset({"triggers", "causes", "trigger", "cause"}),
+    frozenset({"create", "write"}),
+    frozenset({"launch", "start"}),
+)
+
 # Filler that moves an embedding without changing the answer.
 _STOPWORDS = frozenset(
     {
@@ -157,9 +181,17 @@ def _numbers(text: str) -> tuple[str, ...]:
     return tuple(match.replace(",", "") for match in _NUMBER_RE.findall(text))
 
 
+def _canonical(word: str) -> str:
+    word = _SPELLING.get(word, word)
+    for group in _SYNONYM_GROUPS:
+        if word in group:
+            return next(iter(sorted(group)))
+    return word
+
+
 def _content(words: frozenset[str]) -> frozenset[str]:
     return frozenset(
-        word
+        _canonical(word)
         for word in words
         if word and word not in _STOPWORDS and word not in _UNITS and word not in _NEGATIONS
     )

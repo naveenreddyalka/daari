@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1053 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1080 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -549,7 +549,7 @@ See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Built as tracer deepener
 | OIDC JWKS admin SSO | [x] | #136 — tags `fable-review/136-*`; HMAC stub retained |
 | Web UI Bearer / API key field | [x] | #141 — tags `fable-review/141-*` |
 | Live Redis+Postgres compose E2E | [x] | #142 — profile `backends` + `scripts/smoke_backends.py` / `.sh` |
-| F6 Product boundaries (scope gate) | [x] | #145 — ADR-0015; B0+B1+config; tags `fable-review/boundaries-*` (triple-verify) |
+| F6 Product boundaries (scope gate) | [x] | #145 — ADR-0015; B0–B3 + embed B0 (#172); tags `fable-review/boundaries-*` |
 
 ### Frontier review pass (2026-08-11, issue #137)
 
@@ -1004,9 +1004,9 @@ got the answer for "15% of 200"). `nearest_with_source()` now returns the
 stored prompt text and both serve paths (non-streaming and streaming) apply
 `verify_for_serving()` before serving; a vetoed hit falls back to the draft
 band instead. Live bench: near-miss rejection 17% → 100%; retention dips to
-61% because the verifier vetoes benign synonym substitutions — recall
-follow-up filed as
-[#208](https://github.com/naveenreddyalka/daari/issues/208).
+61% because the verifier vetoed benign synonym substitutions — recovered in
+[#208](https://github.com/naveenreddyalka/daari/issues/208) (SYN 6/6, near-miss
+still 18/18).
 
 Covered by `tests/unit/test_l1_verify_serve_path.py` (router-level, both
 paths, veto + paraphrase + draft fallback + avoided-counter).
@@ -1151,6 +1151,54 @@ Runtime-mutated settings models (`RoutingSettings`, `FrontierSettings`,
 `validate_assignment` and field constraints (`ge`/`le`, `Literal` modes).
 `setattr` of an out-of-range value raises `ValidationError`. Config PATCH
 still returns 400 via `daari/config/validate.py`.
+
+### Boundaries B2/B3 + embed B0 ([#172](https://github.com/naveenreddyalka/daari/issues/172))
+
+B0 can cosine-score topics/examples with the L1 embedder and falls back to
+lexical matching when embeddings fail. Ambiguous cases take an N-vote local
+quorum (B2, `quorum_votes`) and an optional frontier judge (B3) that will not
+spend past `frontier_judge_daily_budget_usd`. Enabling B3 without a frontier
+warns at startup. Labeled fixtures in `evals/boundaries/fixtures.jsonl` gate
+CI on false-refuse = 0. Covered by `tests/unit/test_boundaries.py`.
+
+### Routing eval harness ([#173](https://github.com/naveenreddyalka/daari/issues/173))
+
+Labeled corpus is `evals/routing/prompts.jsonl` (plus agent.jsonl). Live
+numbers live on
+[developer/resources/benchmarks.md](developer/resources/benchmarks.md).
+CI gates $0-tier ≥30% and routing accuracy ≥80% via
+`daari.eval.routing_score` (published headline + mocked GP-01–20).
+ROADMAP-v2 Phase B “never measured” row is retired. Covered by
+`tests/unit/test_routing_score.py`.
+
+### IdP-minted virtual keys ([#176](https://github.com/naveenreddyalka/daari/issues/176))
+
+`enterprise.sso.key_mappings` maps an IdP claim (`groups`, `department`, …)
+to budget, RPM, tier cap, team, and boundary profile. First verified SSO
+session mints the key; later sessions resync. The key is revoked when the
+mapped claim disappears. Unmapped claims use `default_policy` or `403`
+(`deny_unmapped`). Audit records include the claim. Documented next to
+`daari enterprise bootstrap` in
+[developer/guides/configuration/auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
+Covered by `tests/unit/test_sso_key_mappings.py`.
+
+### Multi-window budgets and teams ([#174](https://github.com/naveenreddyalka/daari/issues/174))
+
+Virtual keys store `budget_windows: [{duration, max_usd}]` and optional `team_id`.
+A `teams` table holds inherited caps; the tighter of key vs team wins per
+duration. `daari keys create --team` / `--window`, `daari keys team-create`,
+and `daari report --by-team`. 402s include `reset_at` and `scope`. Flat
+`daily_budget_usd` / `monthly_budget_usd` rows migrate to `day`/`month`
+windows. Covered by `tests/unit/test_budget_windows.py`,
+`tests/unit/test_virtual_key_budgets.py`.
+
+### Lexical synonym allowlist ([#208](https://github.com/naveenreddyalka/daari/issues/208))
+
+`LexicalVerifier` normalizes British/American spelling and a small curated
+verb/adj allowlist (fix/resolve, start/launch, create/write, cause/trigger,
+fast/quick) before the content-word substitution check. SYN-01–06 retain;
+all 18 near-miss rows still veto. Covered by
+`tests/unit/test_l1_verification_corpus.py`.
 
 ---
 

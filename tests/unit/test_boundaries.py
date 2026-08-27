@@ -386,3 +386,133 @@ async def test_config_editor_exposes_boundaries(settings):
         assert patched.json()["boundaries"]["mode"] == "block"
         assert app.state.ctx.router.boundaries is not None
         assert app.state.ctx.router.boundaries.settings.product_name == "Mortgage Bot"
+
+
+def test_startup_warns_when_b3_cannot_run():
+    from daari.gateway.boundaries import startup_warnings
+
+    settings = Settings.model_validate(
+        {
+            "boundaries": {"enabled": True, "stages_b3": True},
+            "frontier": {"enabled": False},
+        }
+    )
+    warnings = startup_warnings(settings)
+    assert any("b3" in w.lower() and "frontier" in w.lower() for w in warnings)
+
+
+def test_majority_vote_needs_quorum():
+    from daari.gateway.boundaries import majority_vote
+
+    votes = [
+        BoundaryDecision("in", 0.8, "b0"),
+        BoundaryDecision("in", 0.7, "b1"),
+        BoundaryDecision("out", 0.9, "b0"),
+    ]
+    decided = majority_vote(votes, quorum=2)
+    assert decided is not None
+    assert decided.label == "in"
+    assert decided.stage == "b2"
+
+
+@pytest.mark.asyncio
+async def test_b2_quorum_resolves_ambiguous(monkeypatch):
+    engine = BoundaryEngine.from_settings(
+        _fintech_settings(stages_b2=True, stages_b1=True, stages_b3=False, quorum_votes=2)
+    )
+
+    async def judge(text, settings):
+        return BoundaryDecision("in", 0.9, "b1", "judge")
+
+    engine.judge = judge
+    # B0 is ambiguous; B1 votes in; default_local_judge also votes in via
+    # product-description overlap ("account help") — quorum 2 → B2.
+    decision = await engine.classify(_request("Can you help with my account?"))
+    assert decision.stage == "b2"
+    assert decision.label == "in"
+
+
+@pytest.mark.asyncio
+async def test_b3_respects_daily_budget():
+    spent = {"n": 0}
+
+    async def frontier_judge(text, settings):
+        spent["n"] += 1
+        return BoundaryDecision("out", 0.95, "b3", "frontier")
+
+    engine = BoundaryEngine.from_settings(
+        _fintech_settings(
+            stages_b2=False,
+            stages_b1=False,
+            stages_b3=True,
+            frontier_judge_daily_budget_usd=0.0,
+        )
+    )
+    engine.frontier_judge = frontier_judge
+    decision = await engine.classify(_request("What is the weather in Austin?"))
+    assert spent["n"] == 0
+    assert decision.label == "ambiguous"
+
+
+@pytest.mark.asyncio
+async def test_b3_consults_frontier_within_budget():
+    spent = {"n": 0}
+
+    async def frontier_judge(text, settings):
+        spent["n"] += 1
+        return BoundaryDecision("out", 0.95, "b3", "frontier")
+
+    engine = BoundaryEngine.from_settings(
+        _fintech_settings(
+            stages_b2=False,
+            stages_b1=False,
+            stages_b3=True,
+            frontier_judge_daily_budget_usd=0.5,
+        )
+    )
+    engine.frontier_judge = frontier_judge
+    decision = await engine.classify(_request("What is the weather in Austin?"))
+    assert spent["n"] == 1
+    assert decision.stage == "b3"
+    assert decision.label == "out"
+
+
+@pytest.mark.asyncio
+async def test_b0_embed_cosine_classifies_when_lexical_misses():
+    class TopicVec:
+        async def embed(self, text: str, *, model: str | None = None):
+            lower = text.lower()
+            if any(w in lower for w in ("python", "scrape", "scraper", "harvest")):
+                return [1.0, 0.0]
+            if any(w in lower for w in ("credit", "loan", "card", "score")):
+                return [0.0, 1.0]
+            return [0.0, 0.0]
+
+    engine = BoundaryEngine.from_settings(_fintech_settings())
+    engine.embedder = TopicVec()
+    decision = await engine.classify(_request("Help me scrape a few sites"))
+    assert decision.label == "out"
+    assert decision.stage == "b0"
+
+
+@pytest.mark.asyncio
+async def test_b0_embed_falls_back_when_embedder_fails():
+    class Boom:
+        async def embed(self, text: str, *, model: str | None = None):
+            raise RuntimeError("down")
+
+    engine = BoundaryEngine.from_settings(_fintech_settings())
+    engine.embedder = Boom()
+    decision = engine.classify_b0(_request("Write a Python script for me"))
+    assert decision.label == "out"
+    assert decision.stage == "b0"
+
+
+def test_fixture_false_refuse_is_zero():
+    from daari.gateway.boundaries import score_boundary_fixtures
+
+    report = score_boundary_fixtures(
+        BoundaryEngine.from_settings(_fintech_settings(stages_b1=False, stages_b2=False, stages_b3=False))
+    )
+    assert report["false_refuse"] == 0
+    assert report["total"] >= 6

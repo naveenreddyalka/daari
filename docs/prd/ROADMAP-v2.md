@@ -109,7 +109,7 @@ flowchart LR
 |---|---|
 | Live-source providers (C1) | Open-Meteo + wttr.in + generic REST provider + `sources.yaml` priority config ([sources-integration.md](sources-integration.md)); completes Lt-fetch beyond the URL-fetch tracer |
 | MCP egress client | daari calls external/corp MCP servers as tools ([integrations.md](integrations.md)); pairs with the existing MCP ingress |
-| Phase B exit metrics | Run the eval suite, measure and record "$0-tier rate" and routing accuracy in TRACKING (roadmap v1 exit criteria never formally measured) |
+| Phase B exit metrics | **Retired into TRACKING + published benches (#173).** Mocked GP-01–20: $0-tier **55%**, routing assertions **20/20**. Live product bench (2026-08-27): $0-tier **100%**, accuracy **16/19**, agent $0-tier **100% of 8**. CI floors: $0-tier ≥30%, accuracy ≥80% (`daari.eval.routing_score`). |
 | D4 defaults pipeline | When D3 opt-in stats exist from real users: aggregate → publish improved routing defaults per release |
 
 ## Sequencing & priorities
@@ -138,7 +138,7 @@ Goal: keep embedded B2C/SaaS chatbots inside the product domain (refuse free-Cha
 | Configurable on/off + definition | `boundaries.enabled`, `mode: warn\|block`, topics/examples/refuse_message via config + config editor |
 | B0 local classify | Topic/example overlap; clear out → `tier=boundary` before any model |
 | B1 local judge | Ambiguous → cheap local judgment |
-| B2/B3 | Quorum / optional frontier judge (off by default) |
+| B2/B3 | Quorum / optional frontier judge (#172) |
 | Observability | `daari_meta.boundary`, traces, `daari_boundary_decisions_total` |
 
 ## Related docs

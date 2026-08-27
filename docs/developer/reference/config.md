@@ -194,5 +194,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.sso.role_claim` | str | `'role'` |  |
 | `enterprise.sso.admin_min_role` | str | `'admin'` |  |
 | `enterprise.sso.mint_virtual_key_on_login` | bool | `False` |  |
+| `enterprise.sso.mapping_claim` | str | `'groups'` |  |
+| `enterprise.sso.key_mappings` | dict | `{}` | claim value → budget/RPM/tier/boundary |
+| `enterprise.sso.default_policy` | object | `None` |  |
+| `enterprise.sso.deny_unmapped` | bool | `False` |  |
 | `enterprise.audit_path` | str | `'~/.daari/audit/audit.sqlite3'` |  |
 | `skills_system_prefix` | str | `''` |  |

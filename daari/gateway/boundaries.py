@@ -1,9 +1,10 @@
 """Product-domain boundary gate (Roadmap F6).
 
 Local-first ladder:
-  B0 — topic / example overlap (no model)
-  B1 — optional local L3 structured judge (injected callable)
-  B2/B3 — reserved (quorum / frontier); wired later
+  B0 — topic / example overlap, optional L1-embedder cosine
+  B1 — optional local judge (injected callable)
+  B2 — N-vote local quorum on still-ambiguous cases
+  B3 — optional frontier judge, hard-capped by daily USD budget
 
 Master switch: settings.boundaries.enabled (default False).
 Mode: block (refuse) | warn (annotate + continue) | off.
@@ -11,12 +12,20 @@ Mode: block (refuse) | warn (annotate + continue) | off.
 
 from __future__ import annotations
 
+import json
+import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Literal
 
 from daari.config.settings import BoundariesSettings
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.observability.trace import add_step
+
+_FIXTURES = Path(__file__).resolve().parents[2] / "evals" / "boundaries" / "fixtures.jsonl"
+_B3_CALL_USD = 0.01
 
 Label = Literal["in", "out", "ambiguous"]
 
@@ -91,16 +100,131 @@ def _example_overlap(text: str, examples: list[str]) -> float:
     return best
 
 
+def _cosine(a: list[float], b: list[float]) -> float:
+    if not a or not b:
+        return 0.0
+    n = min(len(a), len(b))
+    dot = sum(x * y for x, y in zip(a[:n], b[:n]))
+    na = math.sqrt(sum(x * x for x in a[:n]))
+    nb = math.sqrt(sum(y * y for y in b[:n]))
+    if na <= 0.0 or nb <= 0.0:
+        return 0.0
+    return dot / (na * nb)
+
+
+def majority_vote(
+    votes: list[BoundaryDecision], *, quorum: int
+) -> BoundaryDecision | None:
+    counts = {"in": 0, "out": 0}
+    for vote in votes:
+        if vote.label in counts:
+            counts[vote.label] += 1
+    in_n, out_n = counts["in"], counts["out"]
+    if in_n >= quorum and in_n > out_n:
+        winner: Label = "in"
+    elif out_n >= quorum and out_n > in_n:
+        winner = "out"
+    else:
+        return None
+    picked = next(v for v in votes if v.label == winner)
+    return BoundaryDecision(
+        winner, picked.confidence, "b2", f"quorum:{winner}:{counts[winner]}"
+    )
+
+
+def _shadow_local_vote(text: str, settings: BoundariesSettings) -> BoundaryDecision:
+    """Second local signal when B1 is already default_local_judge."""
+    deny_topic, deny_conf = _topic_hit(text, settings.deny_topics)
+    allow_topic, allow_conf = _topic_hit(text, settings.allow_topics)
+    out_ex = _example_overlap(text, settings.examples_out)
+    in_ex = _example_overlap(text, settings.examples_in)
+    out_score = max(deny_conf, out_ex)
+    in_score = max(allow_conf, in_ex)
+    if out_score >= 0.4 and out_score > in_score:
+        return BoundaryDecision("out", out_score, "b2", f"shadow_deny:{deny_topic}")
+    if in_score >= 0.4 and in_score >= out_score:
+        return BoundaryDecision("in", in_score, "b2", f"shadow_allow:{allow_topic}")
+    return BoundaryDecision("ambiguous", max(out_score, in_score), "b2", "shadow_uncertain")
+
+
+def startup_warnings(settings: Any) -> list[str]:
+    """Stages that cannot run should be loud at boot, not a silent no-op."""
+    block = getattr(settings, "boundaries", None)
+    if block is None or not getattr(block, "enabled", False):
+        return []
+    if not getattr(block, "stages_b3", False):
+        return []
+    frontier = getattr(settings, "frontier", None)
+    frontier_on = bool(getattr(frontier, "enabled", False))
+    key = None
+    resolver = getattr(settings, "resolve_frontier_api_key", None)
+    if callable(resolver):
+        key = resolver()
+    if frontier_on and key:
+        return []
+    return [
+        "boundaries.stages_b3 is on but no frontier judge is configured",
+    ]
+
+
+def copy_runtime_hooks(dst: BoundaryEngine | None, src: BoundaryEngine | None) -> None:
+    if dst is None or src is None:
+        return
+    dst.embedder = getattr(src, "embedder", None)
+    dst.frontier_judge = getattr(src, "frontier_judge", None)
+
+
+def score_boundary_fixtures(
+    engine: BoundaryEngine, path: Path | None = None
+) -> dict[str, int]:
+    fixture_path = path or _FIXTURES
+    false_refuse = 0
+    false_allow = 0
+    total = 0
+    for line in fixture_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        gold = row["label"]
+        request = InternalRequest(
+            messages=[Message(role="user", content=row["text"])],
+            model="daari",
+        )
+        # Fixtures are the lexical B0 CI gate; keep this sync.
+        predicted = engine.classify_b0(request)
+        total += 1
+        if gold == "in" and predicted.label == "out":
+            false_refuse += 1
+        if gold == "out" and predicted.label == "in":
+            false_allow += 1
+    return {"total": total, "false_refuse": false_refuse, "false_allow": false_allow}
+
+
 @dataclass
 class BoundaryEngine:
     settings: BoundariesSettings
     judge: JudgeFn | None = None
+    embedder: Any = None
+    frontier_judge: JudgeFn | None = None
+    _b3_spend: float = 0.0
+    _b3_day: str = field(default="")
 
     @classmethod
     def from_settings(
-        cls, settings: BoundariesSettings, *, judge: JudgeFn | None = None
+        cls,
+        settings: BoundariesSettings,
+        *,
+        judge: JudgeFn | None = None,
+        embedder: Any = None,
+        frontier_judge: JudgeFn | None = None,
     ) -> BoundaryEngine:
-        return cls(settings=settings, judge=judge)
+        return cls(
+            settings=settings,
+            judge=judge,
+            embedder=embedder,
+            frontier_judge=frontier_judge,
+        )
 
     @property
     def enabled(self) -> bool:
@@ -139,32 +263,156 @@ class BoundaryEngine:
             f"in={in_score:.2f},out={out_score:.2f}",
         )
 
-    async def classify(self, request: InternalRequest) -> BoundaryDecision:
-        if not self.settings.stages_b0:
-            decision = BoundaryDecision("ambiguous", 0.0, "b0", "b0_disabled")
-        else:
-            decision = self.classify_b0(request)
-
-        if decision.label != "ambiguous":
-            return decision
-
-        if not self.settings.stages_b1 or self.judge is None:
-            return decision
-
+    async def _classify_b0_embed(self, request: InternalRequest) -> BoundaryDecision:
         text = _user_text(request)
-        judged = await self.judge(text, self.settings)
+        if not text or self.embedder is None:
+            return BoundaryDecision("ambiguous", 0.0, "b0", "embed_unavailable")
+        text_vec = await self.embedder.embed(text)
+        if not text_vec:
+            return BoundaryDecision("ambiguous", 0.0, "b0", "embed_empty")
+
+        async def best_of(candidates: list[str]) -> tuple[str | None, float]:
+            best: tuple[str | None, float] = (None, 0.0)
+            for candidate in candidates:
+                if not (candidate or "").strip():
+                    continue
+                vec = await self.embedder.embed(candidate)
+                if not vec:
+                    continue
+                sim = _cosine(text_vec, vec)
+                if sim > best[1]:
+                    best = (candidate, sim)
+            return best
+
+        deny_topic, deny_sim = await best_of(self.settings.deny_topics + self.settings.examples_out)
+        allow_topic, allow_sim = await best_of(self.settings.allow_topics + self.settings.examples_in)
+        thr_out = float(self.settings.clear_out_threshold)
+        thr_in = float(self.settings.clear_in_threshold)
+        if deny_sim >= thr_out and deny_sim > allow_sim:
+            return BoundaryDecision("out", deny_sim, "b0", f"embed_deny:{deny_topic}")
+        if allow_sim >= thr_in and allow_sim >= deny_sim:
+            return BoundaryDecision("in", allow_sim, "b0", f"embed_allow:{allow_topic}")
+        return BoundaryDecision(
+            "ambiguous",
+            max(deny_sim, allow_sim),
+            "b0",
+            f"embed_in={allow_sim:.2f},out={deny_sim:.2f}",
+        )
+
+    def _trace(self, decision: BoundaryDecision) -> BoundaryDecision:
+        add_step(
+            "boundary_stage",
+            stage=decision.stage,
+            label=decision.label,
+            confidence=decision.confidence,
+            reason=decision.reason,
+        )
+        return decision
+
+    def _b1_decisive(self, judged: BoundaryDecision) -> BoundaryDecision | None:
         thr_out = float(self.settings.clear_out_threshold)
         thr_in = float(self.settings.clear_in_threshold)
         if judged.label == "out" and judged.confidence >= thr_out:
             return judged
         if judged.label == "in" and judged.confidence >= thr_in:
             return judged
-        return BoundaryDecision(
-            "ambiguous",
-            judged.confidence,
-            judged.stage or "b1",
-            judged.reason or "judge_uncertain",
-        )
+        return None
+
+    def _b3_budget_ok(self) -> bool:
+        today = date.today().isoformat()
+        if self._b3_day != today:
+            self._b3_day = today
+            self._b3_spend = 0.0
+        return self._b3_spend < float(self.settings.frontier_judge_daily_budget_usd)
+
+    def _effective_settings(self, request: InternalRequest) -> BoundariesSettings:
+        profile = getattr(getattr(request, "meta", None), "boundary_profile", None) or ""
+        profiles = self.settings.profiles or {}
+        if not profile or profile not in profiles:
+            return self.settings
+        overlay = profiles[profile]
+        if not isinstance(overlay, dict):
+            return self.settings
+        merged = self.settings.model_dump()
+        merged.update({k: v for k, v in overlay.items() if k != "profiles"})
+        return BoundariesSettings.model_validate(merged)
+
+    async def classify(self, request: InternalRequest) -> BoundaryDecision:
+        original = self.settings
+        self.settings = self._effective_settings(request)
+        try:
+            return await self._classify(request)
+        finally:
+            self.settings = original
+
+    async def _classify(self, request: InternalRequest) -> BoundaryDecision:
+        if not self.settings.stages_b0:
+            decision = BoundaryDecision("ambiguous", 0.0, "b0", "b0_disabled")
+        else:
+            decision = self.classify_b0(request)
+            if decision.label == "ambiguous" and self.embedder is not None:
+                try:
+                    embedded = await self._classify_b0_embed(request)
+                    if embedded.label != "ambiguous":
+                        decision = embedded
+                except Exception:
+                    pass
+        self._trace(decision)
+        if decision.label != "ambiguous":
+            return decision
+
+        votes: list[BoundaryDecision] = []
+        text = _user_text(request)
+        judged: BoundaryDecision | None = None
+        if self.settings.stages_b1 and self.judge is not None:
+            judged = await self.judge(text, self.settings)
+            self._trace(judged)
+            decisive = self._b1_decisive(judged)
+            if decisive is not None:
+                if not self.settings.stages_b2:
+                    return decisive
+                votes.append(decisive)
+            elif not self.settings.stages_b2 and not self.settings.stages_b3:
+                return BoundaryDecision(
+                    "ambiguous",
+                    judged.confidence,
+                    judged.stage or "b1",
+                    judged.reason or "judge_uncertain",
+                )
+
+        if self.settings.stages_b2:
+            if self.judge is not default_local_judge:
+                extra = await default_local_judge(text, self.settings)
+            else:
+                extra = _shadow_local_vote(text, self.settings)
+            if extra.label in ("in", "out"):
+                votes.append(extra)
+            decided = majority_vote(votes, quorum=int(self.settings.quorum_votes))
+            if decided is not None:
+                return self._trace(decided)
+            self._trace(
+                BoundaryDecision(
+                    "ambiguous",
+                    max((v.confidence for v in votes), default=0.0),
+                    "b2",
+                    "quorum_unmet",
+                )
+            )
+
+        if self.settings.stages_b3 and self.frontier_judge is not None and self._b3_budget_ok():
+            self._b3_spend += _B3_CALL_USD
+            frontier = await self.frontier_judge(text, self.settings)
+            frontier.stage = "b3"
+            return self._trace(frontier)
+
+        if judged is not None:
+            return BoundaryDecision(
+                "ambiguous",
+                judged.confidence,
+                judged.stage or "b1",
+                judged.reason or "judge_uncertain",
+            )
+        return decision
 
 
 def _overlay_named_profile(

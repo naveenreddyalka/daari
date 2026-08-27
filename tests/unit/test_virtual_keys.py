@@ -156,3 +156,64 @@ class TestCLI:
         ][0]
         revoked = runner.invoke(cli_app, ["keys", "revoke", key_id])
         assert revoked.exit_code == 0
+
+    def test_create_with_team_and_window(self, tmp_path, monkeypatch):
+        from daari.config.settings import Settings
+
+        settings = Settings()
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        runner = CliRunner()
+        team = runner.invoke(
+            cli_app, ["keys", "team-create", "eng", "--daily-budget", "1"]
+        )
+        assert team.exit_code == 0
+        created = runner.invoke(
+            cli_app,
+            ["keys", "create", "bot", "--team", "eng", "--window", "7d=5"],
+        )
+        assert created.exit_code == 0
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        store = VirtualKeyStore(settings.virtual_keys_path)
+        key = store.list()[0]
+        assert key.team_name == "eng"
+        assert any(w.duration == "7d" for w in key.budget_windows)
+
+    def test_report_by_team_rolls_up_clients(self, tmp_path):
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        store = VirtualKeyStore(tmp_path / "vk.sqlite3")
+        store.create_team("eng")
+        store.create("a", client_id="key-a", team="eng")
+        store.create("b", client_id="key-b", team="eng")
+        rows = store.report_by_team(
+            [
+                {
+                    "client_id": "key-a",
+                    "requests": 3,
+                    "cache_hits": 1,
+                    "local_requests": 2,
+                    "frontier_requests": 1,
+                    "estimated_saved_usd": 0.1,
+                },
+                {
+                    "client_id": "key-b",
+                    "requests": 2,
+                    "cache_hits": 0,
+                    "local_requests": 2,
+                    "frontier_requests": 0,
+                    "estimated_saved_usd": 0.2,
+                },
+            ]
+        )
+        assert rows == [
+            {
+                "team": "eng",
+                "requests": 5,
+                "cache_hits": 1,
+                "local_requests": 4,
+                "frontier_requests": 1,
+                "estimated_saved_usd": 0.3,
+            }
+        ]
