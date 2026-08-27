@@ -526,39 +526,25 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
+            from daari.router.capabilities import openai_model_cards
+
             ctx: AppContext = request.app.state.ctx
-            created = int(time.time())
-            model_ids = [
-                "daari",
-                ctx.settings.models.l3,
-                ctx.settings.models.l4,
-                ctx.settings.models.l5,
-                ctx.settings.cache.l1.embedding_model,
-            ]
-            unique_ids: list[str] = []
-            for model_id in model_ids:
-                if model_id not in unique_ids:
-                    unique_ids.append(model_id)
-            return {
-                "object": "list",
-                "data": [
-                    {
-                        "id": model_id,
-                        "object": "model",
-                        "created": created,
-                        "owned_by": "daari" if model_id == "daari" else "ollama",
-                    }
-                    for model_id in unique_ids
-                ],
-            }
+            return {"object": "list", "data": openai_model_cards(ctx.settings)}
 
         @router.get("/v1/models/{model_id}")
-        async def retrieve_model(model_id: str) -> dict[str, Any]:
+        async def retrieve_model(model_id: str, request: Request) -> dict[str, Any]:
+            from daari.router.capabilities import openai_model_cards
+
+            ctx: AppContext = request.app.state.ctx
+            for card in openai_model_cards(ctx.settings):
+                if card["id"] == model_id:
+                    return card
             return {
                 "id": model_id,
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "daari" if model_id == "daari" else "ollama",
+                "capabilities": [],
             }
 
         @router.get("/health")

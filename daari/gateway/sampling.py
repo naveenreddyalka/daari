@@ -227,3 +227,18 @@ class SamplingParams(BaseModel):
         return hashlib.sha256(
             json.dumps(honored, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()[:16]
+
+
+def max_tokens_held(body: dict[str, Any], cap: int) -> bool:
+    """True when the provider bound generation to `cap` tokens.
+
+    Watchdog E2E used to assert the word "twenty" was absent from the text.
+    Models can mention that word inside an 8-token answer; usage + finish_reason
+    are the contract (#244 / #213 / #217 / #220).
+    """
+    usage = body.get("usage") or {}
+    completion = usage.get("completion_tokens")
+    if not isinstance(completion, int) or completion > cap:
+        return False
+    finish = ((body.get("choices") or [{}])[0] or {}).get("finish_reason")
+    return finish in {"length", "stop"}

@@ -19,8 +19,8 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | Honest public copy (#228) | [x] | #234 |
 | Scoreboard (#229) | [x] | #237 |
 | Launch drafts (#230) | [x] | #236 |
-| Comparison SEO (#231) | [~] | PR #239 |
-| Shipping-note generator (#232) | [~] | PR #240 |
+| Comparison SEO (#231) | [x] | #239 |
+| Shipping-note generator (#232) | [x] | #240 |
 | Discussions welcome (#233) | [x] | templates in `docs/gtm/discussions/`; welcome is #238 |
 | Cloud autodev secret (#226) | [ ] | HITL — cycle is a 6s no-op |
 | Dual-license (#227) | [ ] | HITL — keep NC until decided |
@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1041 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1053 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1111,6 +1111,20 @@ First live run (2026-08-27, Apple M4 Pro, Ollama 0.18.2): **agent $0-tier
 100%** of 8 tool-bearing prompts; routing 16/19; cost-of-pass missed GP-10 /
 GP-12 / GP-19 at cap 3. Page:
 [developer/resources/benchmarks.md](developer/resources/benchmarks.md).
+
+### Availability G5 ([#244](https://github.com/naveenreddyalka/daari/issues/244))
+
+A context-length error on L3 remaps to L4/L5 (then compress+retry L3) and
+records `context_length_failover` on the request trace.
+`GET /v1/models` (and retrieve) include `capabilities` for local models and
+configured L6 slots (`zdr` when the provider is tagged). The live
+`max_tokens` check uses `usage.completion_tokens` + `finish_reason` —
+supersedes the brittle `"twenty" not in text` assertion that filed
+[#213](https://github.com/naveenreddyalka/daari/issues/213) /
+[#217](https://github.com/naveenreddyalka/daari/issues/217) /
+[#220](https://github.com/naveenreddyalka/daari/issues/220). Covered by
+`tests/unit/test_context_length_failover.py`,
+`tests/unit/test_models_catalog.py`, `tests/unit/test_max_tokens_bind.py`.
 
 ### Agent prefix cache G1 ([#223](https://github.com/naveenreddyalka/daari/issues/223))
 

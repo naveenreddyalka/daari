@@ -72,6 +72,58 @@ def filter_tiers_by_capability(
     return kept
 
 
+def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
+    """OpenAI-shaped `/v1/models` rows with capability tags (G5 / #244)."""
+    import time
+
+    catalog = catalog_from_settings(settings)
+    created = int(time.time())
+    cards: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(model_id: str, owned_by: str, caps: Iterable[str]) -> None:
+        if not model_id or model_id in seen:
+            return
+        seen.add(model_id)
+        cards.append(
+            {
+                "id": model_id,
+                "object": "model",
+                "created": created,
+                "owned_by": owned_by,
+                "capabilities": sorted(set(caps)),
+            }
+        )
+
+    local_union: set[str] = set()
+    for model_id in (settings.models.l3, settings.models.l4, settings.models.l5):
+        local_union |= set(catalog.for_model(model_id))
+    add("daari", "daari", local_union)
+    add(settings.models.l3, "ollama", catalog.for_model(settings.models.l3))
+    add(settings.models.l4, "ollama", catalog.for_model(settings.models.l4))
+    add(settings.models.l5, "ollama", catalog.for_model(settings.models.l5))
+    embed = settings.cache.l1.embedding_model
+    add(embed, "ollama", ("embed",))
+
+    providers = list(getattr(settings.frontier, "providers", None) or [])
+    if not providers and getattr(settings.frontier, "model", None):
+        from daari.config.settings import FrontierProviderConfig
+
+        providers = [
+            FrontierProviderConfig(
+                id=settings.frontier.provider,
+                model=settings.frontier.model,
+                base_url=settings.frontier.base_url,
+            )
+        ]
+    for provider in providers:
+        caps = ["tools", "json"]
+        if getattr(provider, "zdr", False):
+            caps.append("zdr")
+        add(provider.model, provider.id, caps)
+    return cards
+
+
 def catalog_from_settings(settings: Any) -> CapabilityCatalog:
     raw = getattr(settings.models, "capabilities", None) or {}
     models: dict[str, frozenset[str]] = {}
