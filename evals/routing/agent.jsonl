@@ -1,0 +1,8 @@
+{"id":"AG-01","prompt":"In one short sentence, what is a cache?","expected_tier_v1":"L3/L0"}
+{"id":"AG-02","prompt":"In one short sentence, what is a mutex?","expected_tier_v1":"L3/L0"}
+{"id":"AG-03","prompt":"In one short sentence, what is RAM?","expected_tier_v1":"L3/L0"}
+{"id":"AG-04","prompt":"In one short sentence, what is an API?","expected_tier_v1":"L3/L0"}
+{"id":"AG-05","prompt":"In one short sentence, what is a process?","expected_tier_v1":"L3/L0"}
+{"id":"AG-06","prompt":"In one short sentence, what is a database index?","expected_tier_v1":"L3/L0"}
+{"id":"AG-07","prompt":"Say hi once.","expected_tier_v1":"L3/L0"}
+{"id":"AG-08","prompt":"Classify as greeting or question: hello","expected_tier_v1":"L3/L0"}

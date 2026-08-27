@@ -8,8 +8,8 @@ vs LiteLLM in front of the same Ollama: [vs LiteLLM](benchmark-vs-litellm.md).
 Measured RPS / p95: [load](benchmark-load.md).
 Historical notes: [docs/BENCHMARKS.md](../../BENCHMARKS.md).
 
-- **Date:** 2026-08-18
-- **Commit:** `20b3ec5`
+- **Date:** 2026-08-27
+- **Commit:** `5345641`
 - **Hardware:** Apple M4 Pro, 48 GB RAM
 - **Ollama:** 0.18.2
 - **Daemon:** hermetic `daari serve` on default settings, cold caches, fresh instance per phase
@@ -21,49 +21,69 @@ Historical notes: [docs/BENCHMARKS.md](../../BENCHMARKS.md).
 
 - **$0-tier rate:** 100% of served requests never left the machine
 - **Routing accuracy:** 16/19 scored rows matched the expected tier (1 frontier row(s) excluded — run with --allow-frontier to score them)
-- **Frontier spend avoided:** $0.0324 for this corpus at gpt-4o rates
+- **Frontier spend avoided:** $0.0344 for this corpus at gpt-4o rates
+- **Agent $0-tier rate:** 100% of 8 tool-bearing agent prompts never left the machine
 - **L1 paraphrase retention:** 11/18 (61%)
 - **L1 near-miss rejection:** 18/18 (100%)
-
-> Note (2026-08-18): rejection went 17% → 100% after
-> [#206](https://github.com/naveenreddyalka/daari/issues/206) put the lexical
-> verifier back on the serve path. Retention dropped from 94% because the
-> verifier vetoes the six benign synonym-substitution rows (e.g.
-> summarise/summarize) — recall follow-up tracked in
-> [#208](https://github.com/naveenreddyalka/daari/issues/208).
 
 ## Latency per tier
 
 | Tier | Requests | p50 ms | p95 ms |
 |------|----------|--------|--------|
-| CCS | 1 | 6 | 6 |
-| L0 | 1 | 9 | 9 |
-| L2 | 1 | 53 | 53 |
-| L3 | 12 | 1471 | 8111 |
-| L4 | 2 | 779 | 1767 |
-| Lt | 2 | 66 | 95 |
+| CCS | 1 | 5 | 5 |
+| L0 | 1 | 8 | 8 |
+| L2 | 1 | 45 | 45 |
+| L3 | 12 | 1822 | 11478 |
+| L4 | 2 | 992 | 1346 |
+| Lt | 2 | 64 | 125 |
 
 ## Routing corpus detail
 
 | ID | Expected | Observed | OK | ms |
 |----|----------|----------|----|-----|
-| GP-01 | L3 | L3 | yes | 1288 |
-| GP-02 | L3 | L3 | yes | 4323 |
-| GP-03 | L2 | L2 | yes | 53 |
-| GP-04 | L3 | L3 | yes | 667 |
-| GP-05 | L0 | L0 | yes | 9 |
-| GP-06 | Lt | Lt | yes | 66 |
-| GP-07 | Lt | Lt | yes | 95 |
+| GP-01 | L3 | L3 | yes | 1703 |
+| GP-02 | L3 | L3 | yes | 1663 |
+| GP-03 | L2 | L2 | yes | 45 |
+| GP-04 | L3 | L3 | yes | 270 |
+| GP-05 | L0 | L0 | yes | 8 |
+| GP-06 | Lt | Lt | yes | 64 |
+| GP-07 | Lt | Lt | yes | 125 |
 | GP-08 | L6 | excluded | — | 0 |
-| GP-09 | L3 | L3 | yes | 1471 |
-| GP-10 | L5 | L3 | no | 8111 |
-| GP-11 | L3 | L3 | yes | 1232 |
-| GP-12 | L1/L3 | L4 | no | 779 |
-| GP-13 | L3 | L3 | yes | 3134 |
-| GP-14 | L2/L3 | L3 | yes | 2236 |
-| GP-15 | L3 | L3 | yes | 774 |
-| GP-16 | L3/L4 | L4 | yes | 1767 |
-| GP-17 | L3 | L3 | yes | 351 |
-| GP-18 | L3 | L3 | yes | 3834 |
-| GP-19 | Lt | CCS | no | 6 |
-| GP-20 | L3 | L3 | yes | 4334 |
+| GP-09 | L3 | L3 | yes | 1917 |
+| GP-10 | L5 | L3 | no | 11478 |
+| GP-11 | L3 | L3 | yes | 1822 |
+| GP-12 | L1/L3 | L4 | no | 1346 |
+| GP-13 | L3 | L3 | yes | 3145 |
+| GP-14 | L2/L3 | L3 | yes | 2772 |
+| GP-15 | L3 | L3 | yes | 836 |
+| GP-16 | L3/L4 | L4 | yes | 992 |
+| GP-17 | L3 | L3 | yes | 235 |
+| GP-18 | L3 | L3 | yes | 6655 |
+| GP-19 | Lt | CCS | no | 5 |
+| GP-20 | L3 | L3 | yes | 4355 |
+
+## Cost of pass
+
+Retries the same prompt until the observed tier matches the expected label, or the attempt cap. Spend and wall time accumulate.
+
+| ID | Passed | Attempts | ms | implied $ |
+|----|--------|----------|-----|-----------|
+| GP-01 | yes | 1 | 1703 | $0.0002 |
+| GP-02 | yes | 1 | 1663 | $0.0015 |
+| GP-03 | yes | 1 | 45 | $0.0001 |
+| GP-04 | yes | 1 | 270 | $0.0003 |
+| GP-05 | yes | 1 | 8 | $0.0003 |
+| GP-06 | yes | 1 | 64 | $0.0001 |
+| GP-07 | yes | 1 | 125 | $0.0018 |
+| GP-09 | yes | 1 | 1917 | $0.0017 |
+| GP-10 | no | 3 | 11487 | $0.0312 |
+| GP-11 | yes | 1 | 1822 | $0.0015 |
+| GP-12 | no | 3 | 2510 | $0.0006 |
+| GP-13 | yes | 1 | 3145 | $0.0028 |
+| GP-14 | yes | 1 | 2772 | $0.0025 |
+| GP-15 | yes | 1 | 836 | $0.0007 |
+| GP-16 | yes | 1 | 992 | $0.0005 |
+| GP-17 | yes | 1 | 235 | $0.0001 |
+| GP-18 | yes | 1 | 6655 | $0.0060 |
+| GP-19 | no | 3 | 13 | $0.0003 |
+| GP-20 | yes | 1 | 4355 | $0.0037 |
