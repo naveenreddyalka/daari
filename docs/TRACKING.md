@@ -1003,9 +1003,9 @@ got the answer for "15% of 200"). `nearest_with_source()` now returns the
 stored prompt text and both serve paths (non-streaming and streaming) apply
 `verify_for_serving()` before serving; a vetoed hit falls back to the draft
 band instead. Live bench: near-miss rejection 17% → 100%; retention dips to
-61% because the verifier vetoes benign synonym substitutions — recall
-follow-up filed as
-[#208](https://github.com/naveenreddyalka/daari/issues/208).
+61% because the verifier vetoed benign synonym substitutions — recovered in
+[#208](https://github.com/naveenreddyalka/daari/issues/208) (SYN 6/6, near-miss
+still 18/18).
 
 Covered by `tests/unit/test_l1_verify_serve_path.py` (router-level, both
 paths, veto + paraphrase + draft fallback + avoided-counter).
@@ -1142,6 +1142,14 @@ Runtime-mutated settings models (`RoutingSettings`, `FrontierSettings`,
 `validate_assignment` and field constraints (`ge`/`le`, `Literal` modes).
 `setattr` of an out-of-range value raises `ValidationError`. Config PATCH
 still returns 400 via `daari/config/validate.py`.
+
+### Lexical synonym allowlist ([#208](https://github.com/naveenreddyalka/daari/issues/208))
+
+`LexicalVerifier` normalizes British/American spelling and a small curated
+verb/adj allowlist (fix/resolve, start/launch, create/write, cause/trigger,
+fast/quick) before the content-word substitution check. SYN-01–06 retain;
+all 18 near-miss rows still veto. Covered by
+`tests/unit/test_l1_verification_corpus.py`.
 
 ---
 

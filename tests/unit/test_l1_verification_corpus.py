@@ -99,18 +99,14 @@ def test_verification_latency_is_a_small_fraction_of_a_hit(results):
     )
 
 
-def test_synonym_substitutions_are_a_known_limitation(results):
-    """Not a gate — a documented cost, tracked so it stays visible.
-
-    A lexical verifier cannot tell "fix" for "resolve" (harmless) from
-    "staging" for "production" (not harmless): both are one-word substitutions.
-    These lose a cache hit and get regenerated, which is the safe direction.
-    `cache.l1.verify = "model"` is the path to recovering them.
-    """
-    retained = len(results["synonyms_retained"])
-    total = len(results["synonyms"])
-    assert retained <= total
-    assert total >= 5, "keep tracking enough synonym cases for the rate to mean something"
+def test_synonym_substitutions_are_retained(results):
+    """Benign spelling/verb swaps must not cost a cache hit (#208)."""
+    missed = [
+        row["id"]
+        for row in results["synonyms"]
+        if row not in results["synonyms_retained"]
+    ]
+    assert missed == [], f"synonym rows wrongly vetoed: {missed}"
 
 
 def test_corpus_reports_its_rates(results, capsys):
@@ -125,6 +121,6 @@ def test_corpus_reports_its_rates(results, capsys):
             f"near-miss rejection {rejection:.1%} "
             f"({len(results['rejected'])}/{len(results['near_misses'])}), "
             f"synonym retention {synonym_rate:.1%} "
-            f"({len(results['synonyms_retained'])}/{len(results['synonyms'])}, ungated), "
+            f"({len(results['synonyms_retained'])}/{len(results['synonyms'])}), "
             f"{results['mean_latency_ms']:.3f}ms mean"
         )
