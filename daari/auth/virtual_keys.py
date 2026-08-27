@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     tier_cap TEXT,
     client_id TEXT,
     team_id TEXT,
-    budget_windows_json TEXT NOT NULL DEFAULT '[]'
+    budget_windows_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS key_hits (
     key_id TEXT NOT NULL,
@@ -79,6 +80,7 @@ class VirtualKey:
     team_id: str | None = None
     team_name: str | None = None
     budget_windows: tuple[BudgetWindow, ...] = field(default_factory=tuple)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -138,6 +140,10 @@ class VirtualKeyStore:
         if "budget_windows_json" not in cols:
             conn.execute(
                 "ALTER TABLE virtual_keys ADD COLUMN budget_windows_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        if "metadata_json" not in cols:
+            conn.execute(
+                "ALTER TABLE virtual_keys ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
             )
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
@@ -236,6 +242,7 @@ class VirtualKeyStore:
         client_id: str | None = None,
         team: str | None = None,
         budget_windows: list[BudgetWindow] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -256,8 +263,8 @@ class VirtualKeyStore:
             conn.execute(
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
-                " team_id, budget_windows_json)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " team_id, budget_windows_json, metadata_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -272,6 +279,7 @@ class VirtualKeyStore:
                     client_id,
                     team_row.team_id if team_row else None,
                     self._windows_json(windows),
+                    json.dumps(metadata or {}),
                 ),
             )
         return CreatedKey(
@@ -288,9 +296,53 @@ class VirtualKeyStore:
                 team_id=team_row.team_id if team_row else None,
                 team_name=team_row.name if team_row else None,
                 budget_windows=windows,
+                metadata=dict(metadata or {}),
             ),
             plaintext=plaintext,
         )
+
+    def update_limits(
+        self,
+        key_id: str,
+        *,
+        daily_budget_usd: float = 0.0,
+        monthly_budget_usd: float = 0.0,
+        rpm: int = 0,
+        tpm: int = 0,
+        tier_cap: str | None = None,
+        team: str | None = None,
+        budget_windows: list[BudgetWindow] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        if not self.enabled:
+            return False
+        from daari.auth.budgets import windows_from_flat
+
+        team_row = self.create_team(team) if team else None
+        windows = tuple(budget_windows or ())
+        seen = {item.duration for item in windows}
+        for item in windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd):
+            if item.duration not in seen:
+                windows = windows + (item,)
+                seen.add(item.duration)
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE virtual_keys SET daily_budget_usd = ?, monthly_budget_usd = ?,"
+                " rpm = ?, tpm = ?, tier_cap = ?, team_id = ?, budget_windows_json = ?,"
+                " metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
+                (
+                    float(daily_budget_usd),
+                    float(monthly_budget_usd),
+                    int(rpm),
+                    int(tpm),
+                    tier_cap,
+                    team_row.team_id if team_row else None,
+                    self._windows_json(windows),
+                    json.dumps(metadata or {}),
+                    key_id,
+                ),
+            )
+            return cur.rowcount > 0
 
     def revoke(self, key_id: str) -> bool:
         if not self.enabled:
@@ -302,12 +354,19 @@ class VirtualKeyStore:
             )
             return cur.rowcount > 0
 
-    def _key_from_row(self, row: tuple[Any, ...], *, team_name: str | None = None) -> VirtualKey:
+    def _key_from_row(
+        self,
+        row: tuple[Any, ...],
+        *,
+        team_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
             from daari.auth.budgets import windows_from_flat
 
             windows = windows_from_flat(daily_usd=float(row[3] or 0), monthly_usd=float(row[4] or 0))
+        parsed = metadata or {}
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -322,6 +381,7 @@ class VirtualKeyStore:
             team_id=row[10] if len(row) > 10 else None,
             team_name=team_name,
             budget_windows=windows,
+            metadata=parsed,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -331,11 +391,16 @@ class VirtualKeyStore:
             rows = conn.execute(
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
-                " v.budget_windows_json, t.name FROM virtual_keys v"
+                " v.budget_windows_json, v.metadata_json, t.name FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
             ).fetchall()
-        return [self._key_from_row(r[:12], team_name=r[12]) for r in rows]
+        return [
+            self._key_from_row(
+                r[:12], team_name=r[13], metadata=_parse_metadata(r[12])
+            )
+            for r in rows
+        ]
 
     def resolve(self, plaintext: str) -> VirtualKey | None:
         if not self.enabled or not plaintext:
@@ -345,14 +410,16 @@ class VirtualKeyStore:
             row = conn.execute(
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
-                " v.budget_windows_json, t.name FROM virtual_keys v"
+                " v.budget_windows_json, v.metadata_json, t.name FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ?",
                 (digest,),
             ).fetchone()
         if row is None or row[9] is not None:
             return None
-        return self._key_from_row(row[:12], team_name=row[12])
+        return self._key_from_row(
+            row[:12], team_name=row[13], metadata=_parse_metadata(row[12])
+        )
 
     def check_rpm(self, key: VirtualKey) -> bool:
         """Return True if the request is within the RPM limit (and record the hit)."""
@@ -431,3 +498,13 @@ class VirtualKeyStore:
         for bucket in teams.values():
             bucket["estimated_saved_usd"] = round(float(bucket["estimated_saved_usd"]), 4)
         return sorted(teams.values(), key=lambda item: -item["requests"])
+
+
+def _parse_metadata(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}

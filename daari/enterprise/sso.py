@@ -39,6 +39,7 @@ def mint_dev_token(
     secret: str,
     ttl_seconds: int = 3600,
     issuer: str = "daari-dev",
+    extra: dict[str, Any] | None = None,
 ) -> str:
     """Mint a signed HS256 token for local SSO testing (not for production IdPs)."""
     header = base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).rstrip(
@@ -51,6 +52,7 @@ def mint_dev_token(
         "iss": issuer,
         "iat": now,
         "exp": now + ttl_seconds,
+        **(extra or {}),
     }
     body = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=")
     signing_input = header + b"." + body

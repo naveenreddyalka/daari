@@ -325,7 +325,27 @@ class BoundaryEngine:
             self._b3_spend = 0.0
         return self._b3_spend < float(self.settings.frontier_judge_daily_budget_usd)
 
+    def _effective_settings(self, request: InternalRequest) -> BoundariesSettings:
+        profile = getattr(getattr(request, "meta", None), "boundary_profile", None) or ""
+        profiles = self.settings.profiles or {}
+        if not profile or profile not in profiles:
+            return self.settings
+        overlay = profiles[profile]
+        if not isinstance(overlay, dict):
+            return self.settings
+        merged = self.settings.model_dump()
+        merged.update({k: v for k, v in overlay.items() if k != "profiles"})
+        return BoundariesSettings.model_validate(merged)
+
     async def classify(self, request: InternalRequest) -> BoundaryDecision:
+        original = self.settings
+        self.settings = self._effective_settings(request)
+        try:
+            return await self._classify(request)
+        finally:
+            self.settings = original
+
+    async def _classify(self, request: InternalRequest) -> BoundaryDecision:
         if not self.settings.stages_b0:
             decision = BoundaryDecision("ambiguous", 0.0, "b0", "b0_disabled")
         else:
