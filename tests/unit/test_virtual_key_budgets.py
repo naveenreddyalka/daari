@@ -231,3 +231,98 @@ async def test_key_within_budget_is_served(settings, tmp_path):
         )
 
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_402_includes_reset_at(settings, tmp_path):
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    key = store.create("a", client_id="key-a", daily_budget_usd=1.0)
+    _spend(ledger, "key-a", 2.0)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json=CHAT,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+
+    error = response.json()["error"]
+    assert response.status_code == 402
+    assert error["reset_at"]
+    assert error["scope"] == "key"
+    assert "Resets at" in error["message"]
+
+
+@pytest.mark.asyncio
+async def test_multi_window_enforces_each_cap(settings, tmp_path):
+    from daari.auth.virtual_keys import BudgetWindow
+
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    key = store.create(
+        "a",
+        client_id="key-a",
+        budget_windows=[BudgetWindow("day", 10.0), BudgetWindow("7d", 1.0)],
+    )
+    _spend(ledger, "key-a", 2.0)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json=CHAT,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+
+    assert response.status_code == 402
+    assert response.json()["error"]["window"] == "7d"
+
+
+@pytest.mark.asyncio
+async def test_team_cap_tighter_than_key_trips_as_team(settings, tmp_path):
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    store.create_team("eng", daily_budget_usd=1.0)
+    key = store.create("a", client_id="key-a", daily_budget_usd=10.0, team="eng")
+    _spend(ledger, "key-a", 2.0)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json=CHAT,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+
+    error = response.json()["error"]
+    assert response.status_code == 402
+    assert error["scope"] == "team"
+    assert error["window"] == "daily"
+    assert error["budget_usd"] == pytest.approx(1.0)
+
+
+def test_flat_key_migration_preserves_daily_window(tmp_path):
+    import sqlite3
+
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    path = tmp_path / "legacy.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE virtual_keys ("
+        " key_hash TEXT PRIMARY KEY, key_id TEXT, name TEXT, prefix TEXT,"
+        " created_at TEXT, revoked_at TEXT, daily_budget_usd REAL,"
+        " monthly_budget_usd REAL, rpm INTEGER, tpm INTEGER, tier_cap TEXT,"
+        " client_id TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO virtual_keys VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("deadbeef", "k1", "legacy", "dk_old", "2026-01-01", None, 2.0, 20.0, 0, 0, None, None),
+    )
+    conn.commit()
+    conn.close()
+
+    store = VirtualKeyStore(path)
+    key = store.list()[0]
+    durations = {w.duration: w.max_usd for w in key.budget_windows}
+    assert durations["day"] == 2.0
+    assert durations["month"] == 20.0

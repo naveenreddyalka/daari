@@ -333,6 +333,28 @@ class UsageLedger:
             table="client_usage",
         )
 
+    def frontier_spend_usd_for_client_days(
+        self,
+        client_id: str,
+        *,
+        days: int,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+    ) -> float:
+        """USD one client spent on L6 across the last `days` UTC calendar days."""
+        if not self.enabled or not client_id or days <= 0:
+            return 0.0
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        return self._spend_for(
+            "client_id = ? AND day >= ?",
+            (client_id, cutoff),
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+            table="client_usage",
+        )
+
     def report(self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002) -> dict[str, Any]:
         if not self.enabled:
             return {"enabled": False, "days": [], "totals": _empty_totals()}

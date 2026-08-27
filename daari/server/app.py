@@ -114,42 +114,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ctx = getattr(request.app.state, "ctx", None)
                 ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
                 if ledger is not None and getattr(ledger, "enabled", False):
+                    from daari.auth.budgets import first_exceeded_window
+
                     client = claims.client_id or claims.key_id or ""
                     pricing = getattr(resolved, "pricing", None)
                     fallback = float(resolved.usage.frontier_price_per_1k_tokens or 0.002)
-                    windows = (
-                        ("daily", "day", claims.daily_budget_usd),
-                        ("monthly", "month", claims.monthly_budget_usd),
+                    key = claims.virtual_key
+                    team = store.get_team(key.team_id) if key is not None else None
+                    team_ids = store.team_client_ids(team.team_id) if team is not None else []
+                    error = first_exceeded_window(
+                        key,
+                        team,
+                        ledger,
+                        client_id=client,
+                        team_client_ids=team_ids,
+                        pricing=pricing,
+                        fallback_per_1k=fallback,
                     )
-                    for label, window, budget in windows:
-                        if budget <= 0:
-                            continue
-                        spend = float(
-                            ledger.frontier_spend_usd_for_client(
-                                client,
-                                window=window,
-                                pricing=pricing,
-                                fallback_per_1k=fallback,
-                            )
+                    if error is not None:
+                        return JSONResponse(
+                            status_code=402,
+                            content={"error": error},
                         )
-                        if spend >= budget:
-                            return JSONResponse(
-                                status_code=402,
-                                content={
-                                    "error": {
-                                        "type": "budget_exceeded",
-                                        "message": (
-                                            f"Virtual key {label} frontier budget "
-                                            f"(${budget:.4f}) exceeded — "
-                                            f"${spend:.4f} spent."
-                                        ),
-                                        "client_id": client,
-                                        "window": label,
-                                        "budget_usd": round(budget, 6),
-                                        "spend_usd": round(spend, 6),
-                                    }
-                                },
-                            )
             request.state.auth_claims = claims
             return await call_next(request)
 

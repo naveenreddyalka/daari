@@ -5,8 +5,10 @@
 ## Steps
 
 ```bash
-daari keys create --name ci --daily-budget 2 --rpm 60 --tpm 40000
+daari keys team-create eng --daily-budget 5
+daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --team eng --window 7d=10
 daari keys list
+daari report --by-team
 ```
 
 Enable in config:

@@ -19,26 +19,33 @@ Soft warnings then hard stop.
 A virtual key can carry its own caps, charged only against that key's own spend:
 
 ```bash
-daari keys create ci-bot --daily-budget 2 --monthly-budget 20
+daari keys team-create eng --daily-budget 5
+daari keys create ci-bot --daily-budget 2 --monthly-budget 20 --team eng --window 7d=10
 ```
 
-Each window is checked independently, and the caps above act as an outer ceiling
-that no key can exceed regardless of its own allowance. A key over budget gets
-`402` naming the window that tripped, so a client can tell "I am out of budget"
-from "the org is out of budget":
+Each window is checked independently. A key can carry several
+`{duration, max_usd}` windows at once (`day`/`24h`, `month`/`30d`, `7d`, …);
+team caps apply to every key on that team and the tighter of key vs team wins.
+The org `frontier.*` caps above remain an outer ceiling. A key over budget gets
+`402` naming the window that tripped and when it resets:
 
 ```json
 {
   "error": {
     "type": "budget_exceeded",
-    "message": "Virtual key daily frontier budget ($2.0000) exceeded — $2.4310 spent.",
+    "message": "Virtual key daily frontier budget ($2.0000) exceeded — $2.4310 spent. Resets at 2026-08-28T00:00:00+00:00.",
     "client_id": "ci-bot",
     "window": "daily",
     "budget_usd": 2.0,
-    "spend_usd": 2.431
+    "spend_usd": 2.431,
+    "reset_at": "2026-08-28T00:00:00+00:00",
+    "scope": "key"
   }
 }
 ```
+
+Existing keys that only have `daily_budget_usd` / `monthly_budget_usd` are
+migrated to `day` / `month` windows on first open; behavior is unchanged.
 
 Only frontier (L6) usage counts. Local tiers and cache hits are free and never
 consume a budget. Spend is priced per model from `pricing.models`, so a key's

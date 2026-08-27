@@ -7,16 +7,23 @@ create time. The master `server.api_key` remains valid alongside virtual keys.
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS teams (
+    team_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    budget_windows_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
     key_id TEXT NOT NULL UNIQUE,
@@ -29,7 +36,9 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     rpm INTEGER NOT NULL DEFAULT 0,
     tpm INTEGER NOT NULL DEFAULT 0,
     tier_cap TEXT,
-    client_id TEXT
+    client_id TEXT,
+    team_id TEXT,
+    budget_windows_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS key_hits (
     key_id TEXT NOT NULL,
@@ -37,6 +46,22 @@ CREATE TABLE IF NOT EXISTS key_hits (
 );
 CREATE INDEX IF NOT EXISTS idx_key_hits_key_ts ON key_hits(key_id, ts);
 """
+
+
+@dataclass(frozen=True)
+class BudgetWindow:
+    duration: str
+    max_usd: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"duration": self.duration, "max_usd": float(self.max_usd)}
+
+
+@dataclass(frozen=True)
+class Team:
+    team_id: str
+    name: str
+    budget_windows: tuple[BudgetWindow, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -51,6 +76,9 @@ class VirtualKey:
     tier_cap: str | None = None
     client_id: str | None = None
     revoked: bool = False
+    team_id: str | None = None
+    team_name: str | None = None
+    budget_windows: tuple[BudgetWindow, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -69,11 +97,7 @@ class VirtualKeyStore:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self._connect() as conn:
                     conn.executescript(_SCHEMA)
-                    cols = {row[1] for row in conn.execute("PRAGMA table_info(virtual_keys)")}
-                    if "tpm" not in cols:
-                        conn.execute(
-                            "ALTER TABLE virtual_keys ADD COLUMN tpm INTEGER NOT NULL DEFAULT 0"
-                        )
+                    self._migrate(conn)
             except Exception:
                 self.enabled = False
 
@@ -81,8 +105,124 @@ class VirtualKeyStore:
         return sqlite3.connect(self.path, timeout=5.0)
 
     @staticmethod
+    def _windows_json(windows: list[BudgetWindow] | tuple[BudgetWindow, ...] | None) -> str:
+        return json.dumps([w.as_dict() for w in (windows or ())])
+
+    @staticmethod
+    def _parse_windows(raw: str | None) -> tuple[BudgetWindow, ...]:
+        if not raw:
+            return ()
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return ()
+        out: list[BudgetWindow] = []
+        for item in payload or []:
+            if not isinstance(item, dict):
+                continue
+            duration = str(item.get("duration") or "").strip()
+            try:
+                max_usd = float(item.get("max_usd") or 0)
+            except (TypeError, ValueError):
+                continue
+            if duration and max_usd > 0:
+                out.append(BudgetWindow(duration, max_usd))
+        return tuple(out)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(virtual_keys)")}
+        if "tpm" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN tpm INTEGER NOT NULL DEFAULT 0")
+        if "team_id" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN team_id TEXT")
+        if "budget_windows_json" not in cols:
+            conn.execute(
+                "ALTER TABLE virtual_keys ADD COLUMN budget_windows_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        rows = conn.execute(
+            "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
+            " FROM virtual_keys"
+        ).fetchall()
+        for key_id, daily, monthly, raw in rows:
+            if self._parse_windows(raw):
+                continue
+            windows = []
+            if float(daily or 0) > 0:
+                windows.append(BudgetWindow("day", float(daily)))
+            if float(monthly or 0) > 0:
+                windows.append(BudgetWindow("month", float(monthly)))
+            if windows:
+                conn.execute(
+                    "UPDATE virtual_keys SET budget_windows_json = ? WHERE key_id = ?",
+                    (self._windows_json(windows), key_id),
+                )
+
+    @staticmethod
     def _hash(plaintext: str) -> str:
         return hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
+
+    def create_team(
+        self,
+        name: str,
+        *,
+        budget_windows: list[BudgetWindow] | None = None,
+        daily_budget_usd: float = 0.0,
+        monthly_budget_usd: float = 0.0,
+    ) -> Team:
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        windows = tuple(budget_windows or ())
+        if not windows:
+            from daari.auth.budgets import windows_from_flat
+
+            windows = windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd)
+        team_id = secrets.token_hex(8)
+        created = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._connect() as conn:
+            existing = conn.execute(
+                "SELECT team_id, budget_windows_json FROM teams WHERE name = ?", (name,)
+            ).fetchone()
+            if existing:
+                return Team(
+                    team_id=existing[0],
+                    name=name,
+                    budget_windows=self._parse_windows(existing[1]),
+                )
+            conn.execute(
+                "INSERT INTO teams (team_id, name, budget_windows_json, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                (team_id, name, self._windows_json(windows), created),
+            )
+        return Team(team_id=team_id, name=name, budget_windows=windows)
+
+    def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
+        if not self.enabled or (not team_id and not name):
+            return None
+        with self._lock, self._connect() as conn:
+            if team_id:
+                row = conn.execute(
+                    "SELECT team_id, name, budget_windows_json FROM teams WHERE team_id = ?",
+                    (team_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT team_id, name, budget_windows_json FROM teams WHERE name = ?",
+                    (name,),
+                ).fetchone()
+        if row is None:
+            return None
+        return Team(team_id=row[0], name=row[1], budget_windows=self._parse_windows(row[2]))
+
+    def team_client_ids(self, team_id: str) -> list[str]:
+        if not self.enabled:
+            return []
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT key_id, client_id FROM virtual_keys"
+                " WHERE team_id = ? AND revoked_at IS NULL",
+                (team_id,),
+            ).fetchall()
+        return [row[1] or row[0] for row in rows]
 
     def create(
         self,
@@ -94,18 +234,30 @@ class VirtualKeyStore:
         tpm: int = 0,
         tier_cap: str | None = None,
         client_id: str | None = None,
+        team: str | None = None,
+        budget_windows: list[BudgetWindow] | None = None,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
+        from daari.auth.budgets import windows_from_flat
+
         plaintext = f"dk_{secrets.token_urlsafe(32)}"
         key_id = secrets.token_hex(8)
         prefix = plaintext[:10]
         created = datetime.now(timezone.utc).isoformat()
+        team_row = self.create_team(team) if team else None
+        windows = tuple(budget_windows or ())
+        seen = {item.duration for item in windows}
+        for item in windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd):
+            if item.duration not in seen:
+                windows = windows + (item,)
+                seen.add(item.duration)
         with self._lock, self._connect() as conn:
             conn.execute(
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
-                " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
+                " team_id, budget_windows_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -118,6 +270,8 @@ class VirtualKeyStore:
                     int(tpm),
                     tier_cap,
                     client_id,
+                    team_row.team_id if team_row else None,
+                    self._windows_json(windows),
                 ),
             )
         return CreatedKey(
@@ -131,6 +285,9 @@ class VirtualKeyStore:
                 tpm=tpm,
                 tier_cap=tier_cap,
                 client_id=client_id,
+                team_id=team_row.team_id if team_row else None,
+                team_name=team_row.name if team_row else None,
+                budget_windows=windows,
             ),
             plaintext=plaintext,
         )
@@ -145,44 +302,12 @@ class VirtualKeyStore:
             )
             return cur.rowcount > 0
 
-    def list(self) -> list[VirtualKey]:
-        if not self.enabled:
-            return []
-        with self._lock, self._connect() as conn:
-            rows = conn.execute(
-                "SELECT key_id, name, prefix, daily_budget_usd, monthly_budget_usd,"
-                " rpm, tpm, tier_cap, client_id, revoked_at FROM virtual_keys"
-                " ORDER BY created_at DESC"
-            ).fetchall()
-        return [
-            VirtualKey(
-                key_id=r[0],
-                name=r[1],
-                prefix=r[2],
-                daily_budget_usd=r[3],
-                monthly_budget_usd=r[4],
-                rpm=r[5],
-                tpm=r[6],
-                tier_cap=r[7],
-                client_id=r[8],
-                revoked=r[9] is not None,
-            )
-            for r in rows
-        ]
+    def _key_from_row(self, row: tuple[Any, ...], *, team_name: str | None = None) -> VirtualKey:
+        windows = self._parse_windows(row[11] if len(row) > 11 else None)
+        if not windows:
+            from daari.auth.budgets import windows_from_flat
 
-    def resolve(self, plaintext: str) -> VirtualKey | None:
-        if not self.enabled or not plaintext:
-            return None
-        digest = self._hash(plaintext)
-        with self._lock, self._connect() as conn:
-            row = conn.execute(
-                "SELECT key_id, name, prefix, daily_budget_usd, monthly_budget_usd,"
-                " rpm, tpm, tier_cap, client_id, revoked_at FROM virtual_keys"
-                " WHERE key_hash = ?",
-                (digest,),
-            ).fetchone()
-        if row is None or row[9] is not None:
-            return None
+            windows = windows_from_flat(daily_usd=float(row[3] or 0), monthly_usd=float(row[4] or 0))
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -193,8 +318,41 @@ class VirtualKeyStore:
             tpm=row[6],
             tier_cap=row[7],
             client_id=row[8],
-            revoked=False,
+            revoked=row[9] is not None,
+            team_id=row[10] if len(row) > 10 else None,
+            team_name=team_name,
+            budget_windows=windows,
         )
+
+    def list(self) -> list[VirtualKey]:
+        if not self.enabled:
+            return []
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
+                " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
+                " v.budget_windows_json, t.name FROM virtual_keys v"
+                " LEFT JOIN teams t ON t.team_id = v.team_id"
+                " ORDER BY v.created_at DESC"
+            ).fetchall()
+        return [self._key_from_row(r[:12], team_name=r[12]) for r in rows]
+
+    def resolve(self, plaintext: str) -> VirtualKey | None:
+        if not self.enabled or not plaintext:
+            return None
+        digest = self._hash(plaintext)
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
+                " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
+                " v.budget_windows_json, t.name FROM virtual_keys v"
+                " LEFT JOIN teams t ON t.team_id = v.team_id"
+                " WHERE v.key_hash = ?",
+                (digest,),
+            ).fetchone()
+        if row is None or row[9] is not None:
+            return None
+        return self._key_from_row(row[:12], team_name=row[12])
 
     def check_rpm(self, key: VirtualKey) -> bool:
         """Return True if the request is within the RPM limit (and record the hit)."""
@@ -227,4 +385,49 @@ class VirtualKeyStore:
             "tier_cap": key.tier_cap,
             "client_id": key.client_id,
             "revoked": key.revoked,
+            "team_id": key.team_id,
+            "team": key.team_name,
+            "budget_windows": [w.as_dict() for w in key.budget_windows],
         }
+
+    def report_by_team(self, clients: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Roll per-client ledger rows up to the team that owns the key."""
+        if not self.enabled:
+            return []
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT v.key_id, v.client_id, t.name FROM virtual_keys v"
+                " JOIN teams t ON t.team_id = v.team_id"
+            ).fetchall()
+        owner: dict[str, str] = {}
+        for key_id, client_id, team_name in rows:
+            owner[key_id] = team_name
+            if client_id:
+                owner[client_id] = team_name
+        teams: dict[str, dict[str, Any]] = {}
+        for entry in clients:
+            team_name = owner.get(entry.get("client_id") or "")
+            if not team_name:
+                continue
+            bucket = teams.setdefault(
+                team_name,
+                {
+                    "team": team_name,
+                    "requests": 0,
+                    "cache_hits": 0,
+                    "local_requests": 0,
+                    "frontier_requests": 0,
+                    "estimated_saved_usd": 0.0,
+                },
+            )
+            for field_name in (
+                "requests",
+                "cache_hits",
+                "local_requests",
+                "frontier_requests",
+                "estimated_saved_usd",
+            ):
+                bucket[field_name] += entry.get(field_name, 0)
+        for bucket in teams.values():
+            bucket["estimated_saved_usd"] = round(float(bucket["estimated_saved_usd"]), 4)
+        return sorted(teams.values(), key=lambda item: -item["requests"])
