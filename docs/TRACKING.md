@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1056 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1064 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -548,7 +548,7 @@ See [HANDOFF-AUTO-2026-07.md](HANDOFF-AUTO-2026-07.md). Built as tracer deepener
 | OIDC JWKS admin SSO | [x] | #136 — tags `fable-review/136-*`; HMAC stub retained |
 | Web UI Bearer / API key field | [x] | #141 — tags `fable-review/141-*` |
 | Live Redis+Postgres compose E2E | [x] | #142 — profile `backends` + `scripts/smoke_backends.py` / `.sh` |
-| F6 Product boundaries (scope gate) | [x] | #145 — ADR-0015; B0+B1+config; tags `fable-review/boundaries-*` (triple-verify) |
+| F6 Product boundaries (scope gate) | [x] | #145 — ADR-0015; B0–B3 + embed B0 (#172); tags `fable-review/boundaries-*` |
 
 ### Frontier review pass (2026-08-11, issue #137)
 
@@ -1142,6 +1142,15 @@ Runtime-mutated settings models (`RoutingSettings`, `FrontierSettings`,
 `validate_assignment` and field constraints (`ge`/`le`, `Literal` modes).
 `setattr` of an out-of-range value raises `ValidationError`. Config PATCH
 still returns 400 via `daari/config/validate.py`.
+
+### Boundaries B2/B3 + embed B0 ([#172](https://github.com/naveenreddyalka/daari/issues/172))
+
+B0 can cosine-score topics/examples with the L1 embedder and falls back to
+lexical matching when embeddings fail. Ambiguous cases take an N-vote local
+quorum (B2, `quorum_votes`) and an optional frontier judge (B3) that will not
+spend past `frontier_judge_daily_budget_usd`. Enabling B3 without a frontier
+warns at startup. Labeled fixtures in `evals/boundaries/fixtures.jsonl` gate
+CI on false-refuse = 0. Covered by `tests/unit/test_boundaries.py`.
 
 ### Routing eval harness ([#173](https://github.com/naveenreddyalka/daari/issues/173))
 

@@ -981,12 +981,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "l1_similarity_threshold"
                 ]
             if new_boundaries is not None:
-                from daari.gateway.boundaries import default_local_judge, engine_from_settings
+                from daari.gateway.boundaries import (
+                    copy_runtime_hooks,
+                    default_local_judge,
+                    engine_from_settings,
+                )
 
+                prev = ctx.router.boundaries
                 ctx.settings.boundaries = new_boundaries
                 ctx.router.boundaries = engine_from_settings(
                     ctx.settings, judge=default_local_judge
                 )
+                copy_runtime_hooks(ctx.router.boundaries, prev)
             persisted_path = None
             if persist:
                 from daari.config.persist import persist_safe_config
