@@ -19,6 +19,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  stall-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Flag stalled auto-merge PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/autodev_pr_watch.py --apply --min-age-minutes 15
+
   dev-cycle:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -65,4 +78,4 @@ jobs:
           git config user.name "daari-autodev"
           git config user.email "autodev@users.noreply.github.com"
           cursor-agent --print --force \
-            "You are working in the current checkout of naveenreddyalka/daari. Read AGENTS.md and follow it exactly. Pick the highest-priority open GitHub issue labeled auto-dev without the agent:working label and no open linked PR (gh issue list --label auto-dev --state open). If none, print 'backlog empty' and stop. Add agent:working to it, create branch autodev/<issue-number>-<slug>, implement the issue TDD-style honoring its acceptance criteria, run pytest -m 'not integration and not benchmark' -q until green, update docs/TRACKING.md when relevant, commit with a conventional message, push the branch, open a PR whose body contains 'Closes #<issue>', run gh pr merge --auto --squash, then remove the agent:working label. If blocked, comment findings on the issue and remove agent:working. Hard limits: no tags, no releases, no force-push, no new runtime dependencies, no edits under .github/workflows/."
+            "You are working in the current checkout of naveenreddyalka/daari. Read AGENTS.md and follow it exactly. Pick the highest-priority open GitHub issue labeled auto-dev without the agent:working label and no open linked PR (gh issue list --label auto-dev --state open). If none, print 'backlog empty' and stop. Add agent:working to it, create branch autodev/<issue-number>-<slug> from latest origin/main, implement the issue TDD-style honoring its acceptance criteria, run pytest -m 'not integration and not benchmark' -q until green, update docs/TRACKING.md when relevant (append a new ### section above ## How to update; on conflict keep both sections), commit with a conventional message, fetch+merge origin/main if behind, push the branch, open a PR whose body contains 'Closes #<issue>', run gh pr merge --auto --squash, then check mergeStateStatus — if DIRTY, merge origin/main, resolve, push. Then remove the agent:working label. If blocked, comment findings on the issue and remove agent:working. Hard limits: no tags, no releases, no force-push, no new runtime dependencies, no edits under .github/workflows/ unless the issue explicitly requires them."
