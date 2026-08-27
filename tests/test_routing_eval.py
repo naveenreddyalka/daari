@@ -76,6 +76,7 @@ async def test_routing_eval_gp01_gp20(eval_app, monkeypatch):
     assert len(evals) == 20
     assert [row["id"] for row in evals] == [f"GP-{i:02d}" for i in range(1, 21)]
 
+    observed: list[dict] = []
     transport = ASGITransport(app=eval_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         for row in evals:
@@ -98,6 +99,13 @@ async def test_routing_eval_gp01_gp20(eval_app, monkeypatch):
             if "Lt" in allowed:
                 allowed.append("CCS")
             assert tier in allowed, f"{row['id']}: expected one of {allowed}, got {tier}"
+            observed.append(
+                {"id": row["id"], "observed": tier, "ok": tier in allowed}
+            )
+
+    from daari.eval.routing_score import assert_routing_floors, score_routing_rows
+
+    assert_routing_floors(score_routing_rows(observed))
 
 
 @pytest.mark.asyncio
