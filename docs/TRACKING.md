@@ -8,6 +8,23 @@
 
 - [x] done  [ ] pending  [~] in progress  [-] deferred
 
+## GTM
+
+Launch spine and always-on measure/draft rules: [docs/gtm/PLAN.md](gtm/PLAN.md).
+Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229). Issues #226–#233.
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Repo listing (description, topics, homepage, Discussions) | [x] | Set 2026-08-26 via `gh repo edit` |
+| Honest public copy (#228) | [~] | PR in flight |
+| Scoreboard (#229) | [ ] | |
+| Launch drafts (#230) | [~] | this change |
+| Comparison SEO (#231) | [ ] | |
+| Shipping-note generator (#232) | [ ] | |
+| Discussions welcome (#233) | [ ] | |
+| Cloud autodev secret (#226) | [ ] | HITL — cycle is a 6s no-op |
+| Dual-license (#227) | [ ] | HITL — keep NC until decided |
+
 ---
 
 ## Phase A — Tracer bullet
@@ -24,7 +41,7 @@
 | Ollama executor (L3) | [x] | |
 | Router L0 → L3 | [x] | |
 | Metrics / `daari stats` | [x] | |
-| Agent passthrough (tool_calls skip L0) | [x] | ADR-0004 |
+| Agent passthrough (exact L0 on identical tools+history) | [x] | ADR-0004 / G1 #223 |
 | `X-Daari-No-Cache` / tier override headers | [x] | |
 | Ollama-down → 503 | [x] | |
 | Eval file GP-01–GP-10 | [x] | |
@@ -71,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1007 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
+**Count:** 1031 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
 
 ---
 
@@ -206,7 +223,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1007 passed** (2026-08-26) |
+| `pytest` (default, mocked) | **1025 passed** (2026-08-26) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1034,8 +1051,9 @@ joined by prompt ID. LiteLLM is not a runtime dependency: skip without it, or
 ### Load harness ([#215](https://github.com/naveenreddyalka/daari/issues/215))
 
 `scripts/bench_load.py` measures achieved RPS and p50/p95 on a hermetic
-`daari serve`: a warmed L0 replay mix and a unique no-cache generate mix
-(`max_tokens` capped). Publishes
+`daari serve`: a warmed L0 replay mix, a unique no-cache generate mix
+(`max_tokens` capped), and a tool-bearing **agent** mix (G1 / #223) that
+reports L0 hit rate and implied frontier input $ avoided. Publishes
 [developer/resources/benchmark-load.md](developer/resources/benchmark-load.md)
 with commit, hardware, concurrency, RPS, p95, and errors. No vegeta/k6
 dependency. Capacity guide now points at the measured page. Covered by
@@ -1052,8 +1070,33 @@ by `tests/unit/test_oidc_jwks.py`.
 
 Stripe agreed to acquire OpenRouter. Forward plan is
 [prd/ROADMAP-v3.md](prd/ROADMAP-v3.md): do not clone the 400-model marketplace;
-win agent token economics (G1 prefix cache — ADR-0004 currently skips L0 on
-`tools`) and honor OpenRouter’s `provider` object on L6 (G2/G3).
+win agent token economics (G1 prefix cache — exact L0 on identical `tools` +
+history; L1 still off) and honor OpenRouter’s `provider` object on L6 (G2/G3).
+
+### OpenRouter L6 slot G3 ([#225](https://github.com/naveenreddyalka/daari/issues/225))
+
+Documented `id: openrouter` slot (`openrouter/auto`, `OPENROUTER_API_KEY`).
+Outbound calls send `HTTP-Referer` / `X-Title`. L6 meta has upstream
+`cost_usd` vs `daari_cost_usd: 0`. Local `:floor` / `:nitro` aliases pick
+the smallest capable or warmest local tier. Live chat test skips without
+the key. Covered by `tests/unit/test_openrouter_slot.py`.
+
+### OpenRouter provider object G2 ([#224](https://github.com/naveenreddyalka/daari/issues/224))
+
+OpenAI and Anthropic adapters parse the client `provider` object onto
+`InternalRequest`. `zdr: true` with no `frontier.providers[].zdr` slot is
+HTTP 400. OpenRouter L6 slots receive the object on the outbound body.
+`daari_meta` records `provider_prefs`, `cost_usd`, and `cached_tokens`.
+Covered by `tests/unit/test_provider_object.py` (mocked HTTP, no live key).
+
+### Agent prefix cache G1 ([#223](https://github.com/naveenreddyalka/daari/issues/223))
+
+ADR-0004 no longer skips L0 on `tools` / tool history. Identical agent
+turns hit exact L0 (full messages + tools schema are already in the key);
+changing only the last tool result misses. L1 and Lt stay off for agent
+turns. Load harness `agent` mix publishes RPS / L0 hit rate / implied
+frontier $ on
+[developer/resources/benchmark-load.md](developer/resources/benchmark-load.md).
 
 ### Settings validate_assignment ([#152](https://github.com/naveenreddyalka/daari/issues/152))
 

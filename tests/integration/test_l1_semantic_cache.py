@@ -82,6 +82,7 @@ async def test_router_l1_hit_on_paraphrase(tmp_path):
 
 @pytest.mark.asyncio
 async def test_router_skips_l1_with_tool_calls(tmp_path, semantic_cache_disabled):
+    """G1: tool history hits exact L0 on repeat and never L1."""
     embedder = MockEmbedder()
     embedder.set_vector("user:run tool", [1.0, 0.0])
     semantic = SemanticCache(
@@ -125,9 +126,10 @@ async def test_router_skips_l1_with_tool_calls(tmp_path, semantic_cache_disabled
     )
 
     first = await router.route(request)
+    after_first = call_count
     second = await router.route(request)
 
-    assert first.daari_meta.tier == "L3"
-    assert second.daari_meta.tier == "L3"
-    assert call_count == 2
+    assert first.daari_meta.cache_hit is False
+    assert second.daari_meta.tier == "L0"
+    assert call_count == after_first
     assert "L1" not in metrics.tiers

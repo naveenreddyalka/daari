@@ -465,14 +465,14 @@ async def test_stream_no_cache_header_bypasses_l0(app, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_agent_flow_stream_skips_l0(app, monkeypatch):
-    """ADR-0004: agent turns skip L0 read and write."""
+async def test_agent_flow_identical_turn_hits_l0(app, monkeypatch):
+    """G1 / #223: identical tool-bearing request is an L0 hit, not a skip."""
     calls = 0
 
     async def fake_stream(request: InternalRequest):
         nonlocal calls
         calls += 1
-        yield {"message": {"content": "agent step"}}
+        yield {"message": {"content": "the file prints hello"}}
         yield {"done": True}
 
     monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
@@ -485,10 +485,84 @@ async def test_agent_flow_stream_skips_l0(app, monkeypatch):
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        await client.post("/v1/chat/completions", json=body)
-        await client.post("/v1/chat/completions", json=body)
+        first = await client.post("/v1/chat/completions", json=body)
+        second = await client.post("/v1/chat/completions", json=body)
+        stats = (await client.get("/v1/daari/stats")).json()
 
-    assert calls == 2
+    assert first.status_code == 200 and second.status_code == 200
+    assert calls == 1, "second identical agent turn should be served from L0"
+    assert "the file prints hello" in second.text
+    assert stats["tiers"].get("L0", {}).get("cache_hits") == 1
+    assert stats["tiers"].get("L3", {}).get("count") == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_flow_changed_tool_result_misses_l0(app, monkeypatch):
+    """G1 / #223: changing only the last tool result must not serve the prior answer."""
+    calls = 0
+    answers = ["first answer about hello", "second answer about goodbye"]
+
+    async def fake_stream(request: InternalRequest):
+        nonlocal calls
+        text = answers[min(calls, 1)]
+        calls += 1
+        yield {"message": {"content": text}}
+        yield {"done": True}
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "stream", fake_stream)
+    first_body = {
+        "model": "daari",
+        "stream": True,
+        "messages": _agent_history_messages(),
+        "tools": _demo_tools(),
+    }
+    second_messages = _agent_history_messages()
+    second_messages[-1] = {"role": "tool", "content": "print('goodbye')"}
+    second_body = {**first_body, "messages": second_messages}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=first_body)
+        second = await client.post("/v1/chat/completions", json=second_body)
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert calls == 2, "changed tool result is a different cache key"
+    assert "first answer about hello" in first.text
+    assert "second answer about goodbye" in second.text
+    assert "first answer about hello" not in second.text
+
+
+@pytest.mark.asyncio
+async def test_agent_flow_nonstream_identical_hits_l0(app, monkeypatch):
+    """G1 / #223: non-stream tool history also writes and hits L0."""
+    calls = 0
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        nonlocal calls
+        calls += 1
+        return InternalResponse(
+            content="cached agent answer",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=5),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fake_execute)
+    body = {
+        "model": "daari",
+        "messages": _agent_history_messages(),
+        "tools": _demo_tools(),
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=body, headers=META_HEADERS)
+        second = await client.post("/v1/chat/completions", json=body, headers=META_HEADERS)
+
+    assert first.status_code == 200 and second.status_code == 200
+    assert calls == 1
+    assert first.json()["daari_meta"]["tier"] == "L3"
+    assert second.json()["daari_meta"]["tier"] == "L0"
+    assert second.json()["choices"][0]["message"]["content"] == "cached agent answer"
 
 
 @pytest.mark.asyncio

@@ -4,8 +4,8 @@
 |--|-------|------------|---------------------|
 | Primary goal | Local $0 + trusted cache | Hosted 400-model marketplace | Many cloud providers, self-host |
 | Default inference | On-device | Remote, billed | Remote / Ollama as one backend |
-| Agent prompt reread | **Should** be L0/L1 (today skipped when `tools` present) | Provider prompt-cache, cheaper not free | Optional Redis/Qdrant |
-| Same-model provider pick | Single L6 slot | Price / latency / throughput + ZDR | Fallback between deployments |
+| Agent prompt reread | Exact L0 on identical `tools` + history (G1); L1 still off | Provider prompt-cache, cheaper not free | Optional Redis/Qdrant |
+| Same-model provider pick | Honors OpenRouter `provider` on L6 (G2); ZDR fail-closed | Price / latency / throughput + ZDR | Fallback between deployments |
 | IDE one-click | Cursor/Claude/JB/VS Code | API + playground | DIY |
 
 OpenRouter (Stripe, Aug 2026) is not a clone target. Full gap + 90-day plan:

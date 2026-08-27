@@ -85,16 +85,19 @@ Results: [benchmark-vs-litellm.md](../../resources/benchmark-vs-litellm.md).
 
 ## Load
 
-`scripts/bench_load.py` (issue #215) measures achieved RPS and p50/p95 against
-a hermetic daemon. Two mixes: warmed L0 replay (`cache`) and unique
-no-cache generations with `max_tokens` capped (`generate`).
+`scripts/bench_load.py` (issues #215, #223) measures achieved RPS and p50/p95
+against a hermetic daemon. Three mixes: warmed L0 replay (`cache`), unique
+no-cache generations with `max_tokens` capped (`generate`), and a
+tool-bearing replay (`agent`) that reports L0 hit rate plus implied
+frontier input $ avoided (gpt-4o list rates, priced not billed).
 
 ```bash
 python scripts/bench_load.py
 ```
 
 Results: [benchmark-load.md](../../resources/benchmark-load.md). These replace
-the estimate-only numbers in the capacity guide.
+the estimate-only numbers in the capacity guide. The **agent** row is the
+G1 prefix-cache claim: identical Cursor-shaped turns should hit L0.
 
 ## Methodology notes
 

@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from daari.gateway.provider_prefs import ProviderPreferences
 from daari.gateway.sampling import SamplingParams
 
 
@@ -67,6 +68,8 @@ class InternalRequest(BaseModel):
     # Generation controls the client asked for; previously dropped (#161).
     sampling: SamplingParams = Field(default_factory=SamplingParams)
     meta: RequestMeta = Field(default_factory=RequestMeta)
+    # OpenRouter-shaped routing constraints (G2 / #224). None when omitted.
+    provider: ProviderPreferences | None = None
 
     @property
     def has_tool_calls_in_history(self) -> bool:
@@ -107,6 +110,13 @@ class DaariMeta(BaseModel):
     boundary: dict | None = None
     # Local pool host that served the request (issue #170).
     backend_id: str | None = None
+    # G2: OpenRouter usage.cost, cached prompt tokens, and the client
+    # `provider` constraint that was honored or refused.
+    cost_usd: float | None = None
+    cached_tokens: int | None = None
+    provider_prefs: dict | None = None
+    # G3: local path is always $0; L6 rows keep upstream cost in cost_usd.
+    daari_cost_usd: float | None = None
 
 
 class InternalResponse(BaseModel):
