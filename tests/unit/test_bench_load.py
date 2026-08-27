@@ -19,13 +19,20 @@ def bench():
 
 
 def test_named_mixes_exist(bench):
-    assert set(bench.MIXES) >= {"cache", "generate"}
+    assert set(bench.MIXES) >= {"cache", "generate", "agent"}
 
 
 def test_cache_seeds_are_l3_questions(bench):
     assert len(bench.CACHE_SEEDS) >= 8
     assert all(len(prompt) > 20 and "?" in prompt for prompt in bench.CACHE_SEEDS)
     assert all("load-cache-warm" not in prompt for prompt in bench.CACHE_SEEDS)
+
+
+def test_agent_tools_are_openai_functions(bench):
+    assert bench.AGENT_TOOLS
+    function = bench.AGENT_TOOLS[0]["function"]
+    assert function["name"]
+    assert "parameters" in function
 
 
 def test_replay_from_probes_drops_unseedable(bench):
@@ -79,6 +86,18 @@ def test_render_includes_provenance(bench):
                 "rps": 1.8,
                 "concurrency": 2,
             },
+            "agent": {
+                "count": 80,
+                "errors": 0,
+                "error_rate": 0.0,
+                "p50_ms": 12.0,
+                "p95_ms": 22.0,
+                "rps": 140.0,
+                "concurrency": 8,
+                "cache_hit_rate": 1.0,
+                "prompt_tokens": 12000,
+                "frontier_usd_avoided": 0.03,
+            },
         },
     }
     text = bench.render_markdown(report)
@@ -89,6 +108,9 @@ def test_render_includes_provenance(bench):
     assert "100%" in text or "1.00" in text
     assert "cache" in text.lower()
     assert "generate" in text.lower()
+    assert "agent" in text.lower()
+    assert "140.0" in text
+    assert "0.03" in text or "$0.03" in text
 
 
 def test_main_skips_without_ollama(bench, capsys):
@@ -99,5 +121,16 @@ def test_main_skips_without_ollama(bench, capsys):
 
 @pytest.mark.benchmark
 def test_live_load_end_to_end(bench, tmp_path):
-    rc = bench.main(["--out", str(tmp_path / "load.md"), "--cache-requests", "8", "--generate-requests", "2"])
+    rc = bench.main(
+        [
+            "--out",
+            str(tmp_path / "load.md"),
+            "--cache-requests",
+            "8",
+            "--generate-requests",
+            "2",
+            "--agent-requests",
+            "8",
+        ]
+    )
     assert rc == 0

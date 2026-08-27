@@ -72,6 +72,27 @@ model or your budgets will drift from your real invoice.
 
 Configure `frontier.providers` (ordered list) for OpenAI-compatible bases, Anthropic, OpenRouter, etc. Circuit breakers and key rotation ship with the L6 pool. A provider whose `provider` is `anthropic`/`claude`, or whose `base_url` contains `anthropic.com`, is sent native Messages API payloads (`POST …/messages`, `x-api-key`) rather than an OpenAI `/chat/completions` body.
 
+Clients may send OpenRouter's `provider` object (`zdr`, `sort`, `order`, `max_price`, …). daari stores it on the request, passes it through when the L6 slot is OpenRouter, and **fails closed** (HTTP 400) if `zdr: true` and no configured slot declares `zdr: true`. Chosen provider, `usage.cost`, and cached tokens land in `daari_meta`.
+
+### OpenRouter slot (G3)
+
+Use their catalog; do not clone it. The documented slot:
+
+```yaml
+frontier:
+  enabled: true
+  providers:
+    - id: openrouter
+      base_url: https://openrouter.ai/api/v1
+      model: openrouter/auto   # or anthropic/claude-sonnet-4.5, etc.
+      api_key_env: OPENROUTER_API_KEY
+      zdr: false               # set true if the key is ZDR-only
+```
+
+`OPENROUTER_API_KEY` (or `DAARI_FRONTIER_API_KEY`) is BYOK — never committed. Outbound calls send `HTTP-Referer` and `X-Title: daari` for app attribution. L6 `daari_meta` records `cost_usd` (upstream) and `daari_cost_usd: 0`.
+
+Local model suffixes: `daari:floor` is the smallest capable local tier (L3); `daari:nitro` prefers a warm / low-latency local backend. These do not call OpenRouter.
+
 API keys via environment (never commit):
 
 ```bash
