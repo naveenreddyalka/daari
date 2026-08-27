@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1053 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1056 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1142,6 +1142,16 @@ Runtime-mutated settings models (`RoutingSettings`, `FrontierSettings`,
 `validate_assignment` and field constraints (`ge`/`le`, `Literal` modes).
 `setattr` of an out-of-range value raises `ValidationError`. Config PATCH
 still returns 400 via `daari/config/validate.py`.
+
+### Routing eval harness ([#173](https://github.com/naveenreddyalka/daari/issues/173))
+
+Labeled corpus is `evals/routing/prompts.jsonl` (plus agent.jsonl). Live
+numbers live on
+[developer/resources/benchmarks.md](developer/resources/benchmarks.md).
+CI gates $0-tier ≥30% and routing accuracy ≥80% via
+`daari.eval.routing_score` (published headline + mocked GP-01–20).
+ROADMAP-v2 Phase B “never measured” row is retired. Covered by
+`tests/unit/test_routing_score.py`.
 
 ### Lexical synonym allowlist ([#208](https://github.com/naveenreddyalka/daari/issues/208))
 
