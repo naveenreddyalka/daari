@@ -13,6 +13,8 @@ cannot.
 |--------|--------|
 | Routing accuracy | `evals/routing/prompts.jsonl` — observed tier vs `expected_tier_v1` (slash-separated alternatives allowed) |
 | $0-tier rate | share of served requests answered off-machine-free (any tier except L6) |
+| Agent $0-tier rate | `evals/routing/agent.jsonl` posted with a Cursor-shaped `tools` array — share that never left the device |
+| Cost of pass | retries each routing row until the expected tier matches, or `--cost-of-pass-cap` (default 3); publishes attempts, ms, and implied $ |
 | L1 paraphrase retention | `evals/cache/verification.jsonl` rows labeled `paraphrase` / `synonym_substitution` — candidate should hit L1 |
 | L1 near-miss rejection | rows labeled `near_miss` — candidate must **not** hit L1 |
 | p50/p95 latency per tier | client-side wall clock per request |
@@ -49,6 +51,7 @@ Ollama-less machines are unaffected.
 | `--daemon URL` | Benchmark an existing daemon instead of spawning a hermetic one. Warm caches will color the results; cache pairs get salted to compensate. |
 | `--allow-frontier` | Score expected-L6 rows for real. **Default is never to call a paid API**: every request carries `X-Daari-No-Frontier` and L6 rows are excluded from accuracy. |
 | `--price-model NAME` | Reference model from `pricing.models` for the "spend avoided" column (default `gpt-4o`). |
+| `--cost-of-pass-cap N` | Retry a missed routing row up to N attempts (default 3). |
 | `--ollama URL` | Ollama base URL (default `$OLLAMA_HOST` or `http://127.0.0.1:11434`). |
 | `--out PATH` | Where to write the markdown report. |
 | `--no-write` | Print the report without touching the docs page. |

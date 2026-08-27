@@ -149,6 +149,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 **Done when:** `benchmarks.md` has a cost-of-pass table and TRACKING records the $0-tier rate on an *agent* corpus, not only GP-01–20.
 
+**Shipped MVP (#243):** live bench publishes a cost-of-pass table (retry until match or cap) and an agent-corpus $0-tier rate from `evals/routing/agent.jsonl` (tool-bearing Cursor-shaped posts). Latency budget + capability catalog already sit on `_choose_initial_tier` for Ask and Agent.
+
 ### G5 — Availability the IDE actually feels
 
 **Outcome:** When Ollama is cold, L4 is down, or L6 429s, the client still gets a well-formed stream — and we say which fallback fired.

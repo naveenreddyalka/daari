@@ -1,8 +1,9 @@
 """Live product benchmark against a real daari daemon + Ollama (issue #189).
 
 Talks to `daari serve` the way a client would — no stubbed executors — using
-the labeled corpora in `evals/routing/prompts.jsonl` and
-`evals/cache/verification.jsonl`. Reports $0-tier rate, routing accuracy,
+the labeled corpora in `evals/routing/prompts.jsonl`,
+`evals/routing/agent.jsonl`, and `evals/cache/verification.jsonl`. Reports
+$0-tier rate, agent $0-tier rate, cost-of-pass, routing accuracy,
 L1 paraphrase-retention / near-miss rejection, p50/p95 latency per tier, and
 frontier USD avoided from provider-reported tokens, then writes
 `docs/developer/resources/benchmarks.md` with commit, hardware, model IDs,
@@ -40,8 +41,20 @@ import httpx
 
 REPO = Path(__file__).resolve().parents[1]
 ROUTING_CORPUS = REPO / "evals" / "routing" / "prompts.jsonl"
+AGENT_CORPUS = REPO / "evals" / "routing" / "agent.jsonl"
 CACHE_CORPUS = REPO / "evals" / "cache" / "verification.jsonl"
 DEFAULT_OUT = REPO / "docs" / "developer" / "resources" / "benchmarks.md"
+
+AGENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a workspace file",
+            "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
+        },
+    }
+]
 
 RETAIN_LABELS = {"paraphrase", "synonym_substitution"}
 
@@ -70,6 +83,31 @@ def percentile(values: list[float], pct: int) -> float:
     ordered = sorted(values)
     rank = max(1, -(-len(ordered) * pct // 100))  # ceil without math
     return ordered[rank - 1]
+
+
+def cost_of_pass(attempts: list[dict[str, Any]], *, cap: int = 3) -> dict[str, Any]:
+    """First matching attempt wins; spend and time accumulate until then."""
+    used = attempts[: max(1, cap)]
+    usd = 0.0
+    ms = 0.0
+    n = 0
+    for attempt in used:
+        n += 1
+        usd += float(attempt.get("usd") or 0.0)
+        ms += float(attempt.get("ms") or 0.0)
+        if attempt.get("match"):
+            return {"passed": True, "attempts": n, "usd": usd, "ms": ms}
+    return {"passed": False, "attempts": n, "usd": usd, "ms": ms}
+
+
+def attempt_usd(raw: dict[str, Any], price: dict[str, float]) -> float:
+    if raw.get("usage_estimated") or raw.get("input_tokens") is None:
+        input_tokens = max(1, int(raw.get("prompt_chars") or 0) // 4)
+        output_tokens = max(0, int(raw.get("content_chars") or 0) // 4)
+    else:
+        input_tokens = int(raw["input_tokens"])
+        output_tokens = int(raw.get("output_tokens") or 0)
+    return price_usd(input_tokens, output_tokens, price)
 
 
 def price_usd(input_tokens: int, output_tokens: int, price: dict[str, float]) -> float:
@@ -164,11 +202,19 @@ class BenchClient:
             headers["x-api-key"] = api_key
         self._client = httpx.Client(base_url=daemon, headers=headers, timeout=timeout)
 
-    def chat(self, prompt: str, *, extra_headers: dict[str, str] | None = None) -> dict[str, Any]:
-        payload = {
+    def chat(
+        self,
+        prompt: str,
+        *,
+        extra_headers: dict[str, str] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "model": "daari",
             "messages": [{"role": "user", "content": prompt}],
         }
+        if tools:
+            payload["tools"] = tools
         started = time.perf_counter()
         try:
             response = self._client.post(
@@ -220,6 +266,7 @@ def run_routing(client: BenchClient, allow_frontier: bool) -> dict[str, Any]:
                 "observed": result.get("tier") or result.get("error", "error"),
                 "ok": ok,
                 "ms": result.get("ms", 0.0),
+                "prompt": row["prompt"],
                 "_raw": result,
             }
         )
@@ -229,6 +276,55 @@ def run_routing(client: BenchClient, allow_frontier: bool) -> dict[str, Any]:
         "correct": correct,
         "excluded_frontier": excluded,
         "rows": rows_out,
+    }
+
+
+def run_cost_of_pass(
+    client: BenchClient, routing: dict[str, Any], price: dict[str, float], *, cap: int = 3
+) -> list[dict[str, Any]]:
+    table: list[dict[str, Any]] = []
+    for row in routing["rows"]:
+        if row.get("ok") is None:
+            continue
+        first = row.get("_raw") or {}
+        attempts = [
+            {
+                "match": bool(row.get("ok")),
+                "usd": attempt_usd(first, price) if first.get("ok") else 0.0,
+                "ms": float(row.get("ms") or 0.0),
+            }
+        ]
+        expected = row["expected"]
+        prompt = row.get("prompt") or ""
+        for _ in range(cap - 1):
+            if attempts[-1]["match"]:
+                break
+            raw = client.chat(prompt)
+            attempts.append(
+                {
+                    "match": bool(raw.get("ok") and tier_matches(raw.get("tier"), expected)),
+                    "usd": attempt_usd(raw, price) if raw.get("ok") else 0.0,
+                    "ms": float(raw.get("ms") or 0.0),
+                }
+            )
+        stats = cost_of_pass(attempts, cap=cap)
+        table.append({"id": row["id"], **stats})
+    return table
+
+
+def run_agent_zero_cost(client: BenchClient) -> dict[str, Any]:
+    served = 0
+    zero = 0
+    for row in load_jsonl(AGENT_CORPUS):
+        result = client.chat(row["prompt"], tools=AGENT_TOOLS)
+        if not result.get("ok"):
+            continue
+        served += 1
+        if result.get("tier") != "L6":
+            zero += 1
+    return {
+        "agent_served": served,
+        "agent_zero_cost_rate": (zero / served) if served else 0.0,
     }
 
 
@@ -329,6 +425,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         "and real Ollama — no stubbed executors, cold caches. Reproduce on your",
         "machine: [guide](../guides/observability/live-benchmark.md). Side-by-side",
         "vs raw Ollama and frontier pricing: [comparison](benchmark-comparison.md).",
+        "vs LiteLLM in front of the same Ollama: [vs LiteLLM](benchmark-vs-litellm.md).",
+        "Measured RPS / p95: [load](benchmark-load.md).",
         "Historical notes: [docs/BENCHMARKS.md](../../BENCHMARKS.md).",
         "",
         f"- **Date:** {report['date']}",
@@ -351,6 +449,11 @@ def render_markdown(report: dict[str, Any]) -> str:
         ),
         f"- **Frontier spend avoided:** ${report['usd_avoided']:.4f} for this corpus at {report['reference_price_model']} rates",
     ]
+    if report.get("agent_served") is not None:
+        lines.append(
+            f"- **Agent $0-tier rate:** {report['agent_zero_cost_rate']:.0%} of "
+            f"{report['agent_served']} tool-bearing agent prompts never left the machine"
+        )
     if cache.get("l1_enabled") is False:
         lines.append("- **L1 cache trust:** skipped — L1 disabled on the daemon")
     else:
@@ -380,6 +483,23 @@ def render_markdown(report: dict[str, Any]) -> str:
         lines.append(
             f"| {row['id']} | {row['expected']} | {row['observed']} | {ok} | {row['ms']:.0f} |"
         )
+    cop = report.get("cost_of_pass") or []
+    if cop:
+        lines += [
+            "",
+            "## Cost of pass",
+            "",
+            "Retries the same prompt until the observed tier matches the expected "
+            "label, or the attempt cap. Spend and wall time accumulate.",
+            "",
+            "| ID | Passed | Attempts | ms | implied $ |",
+            "|----|--------|----------|-----|-----------|",
+        ]
+        for row in cop:
+            passed = "yes" if row["passed"] else "no"
+            lines.append(
+                f"| {row['id']} | {passed} | {row['attempts']} | {row['ms']:.0f} | ${row['usd']:.4f} |"
+            )
     lines.append("")
     return "\n".join(lines)
 
@@ -397,6 +517,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--allow-frontier", action="store_true")
     parser.add_argument("--no-write", action="store_true")
+    parser.add_argument("--cost-of-pass-cap", type=int, default=3)
     args = parser.parse_args(argv)
 
     try:
@@ -435,10 +556,14 @@ def main(argv: list[str] | None = None) -> int:
         client, daemon = client_for_phase()
         try:
             routing = run_routing(client, args.allow_frontier)
+            print(f"  {routing['correct']}/{routing['scored']} scored rows matched", flush=True)
+            print("cost of pass ...", flush=True)
+            cost_of_pass_rows = run_cost_of_pass(
+                client, routing, price, cap=args.cost_of_pass_cap
+            )
         finally:
             if daemon is not None:
                 daemon.stop()
-        print(f"  {routing['correct']}/{routing['scored']} scored rows matched", flush=True)
 
         print(f"cache corpus: {CACHE_CORPUS.name} ...", flush=True)
         client, daemon = client_for_phase()
@@ -448,6 +573,18 @@ def main(argv: list[str] | None = None) -> int:
             if daemon is not None:
                 daemon.stop()
         cache["l1_enabled"] = True
+
+        print(f"agent corpus: {AGENT_CORPUS.name} ...", flush=True)
+        client, daemon = client_for_phase()
+        try:
+            agent = run_agent_zero_cost(client)
+        finally:
+            if daemon is not None:
+                daemon.stop()
+        print(
+            f"  agent $0-tier {agent['agent_zero_cost_rate']:.0%} of {agent['agent_served']}",
+            flush=True,
+        )
     except SkipBench as skip:
         print(f"SKIP: {skip}")
         return 0
@@ -465,6 +602,9 @@ def main(argv: list[str] | None = None) -> int:
         "reference_price_model": args.price_model,
         "routing": routing,
         "cache": cache,
+        "cost_of_pass": cost_of_pass_rows,
+        "agent_zero_cost_rate": agent["agent_zero_cost_rate"],
+        "agent_served": agent["agent_served"],
         **agg,
     }
     text = render_markdown(report)
