@@ -9,7 +9,7 @@
 Daari enforces an optional **product boundary** *before* L0–L6 routing:
 
 1. **Configurable** — `boundaries.enabled` (default off), `mode: warn|block`, and a full editable definition (product description, allow/deny topics, examples, thresholds, stage toggles) via config.yaml, env, and `PATCH /v1/daari/config`.
-2. **Local-first ladder** — B0 topic/example overlap (no model) → B1 cheap local judge on ambiguous → B2/B3 reserved (quorum / rare frontier, off by default).
+2. **Local-first ladder** — B0 topic/example overlap (optional L1-embedder cosine) → B1 cheap local judge on ambiguous → B2 N-vote local quorum → B3 rare frontier judge (off by default; daily USD cap).
 3. **Hard refuse** when clearly out and `mode: block` — response `tier=boundary`, zero model tokens.
 4. **Warn/dry-run** — classify and attach `daari_meta.boundary` but still answer, to tune false-refuse rate.
 

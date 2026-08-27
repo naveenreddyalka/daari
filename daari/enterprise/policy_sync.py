@@ -162,11 +162,17 @@ def apply_policy_to_runtime(
         for key, value in known.items():
             applied[f"boundaries.{key}"] = value
         if known and router is not None:
-            from daari.gateway.boundaries import default_local_judge, engine_from_settings
+            from daari.gateway.boundaries import (
+                copy_runtime_hooks,
+                default_local_judge,
+                engine_from_settings,
+            )
 
+            prev = router.boundaries
             router.boundaries = engine_from_settings(
                 settings, judge=default_local_judge
             )
+            copy_runtime_hooks(router.boundaries, prev)
 
     return applied
 
