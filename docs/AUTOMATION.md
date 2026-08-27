@@ -68,6 +68,7 @@ tail -f ~/.daari/autodev/watchdog.out.log
 - Agent-blocked work → comment on the issue, `agent:working` label removed.
 - Local regressions → issues labeled `regression` (deduped by title per commit).
 - You only need to look at GitHub notifications for: blocked PRs, `regression` issues, red CI on main.
+- Stalled auto-merge (`DIRTY` / no checks): `scripts/autodev_pr_watch.py` comments on the PR and files `auto-dev,regression` (#200). Runs in `autodev-cycle` without `CURSOR_API_KEY`.
 
 ## Safety rails
 
