@@ -16,12 +16,12 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | Item | Status | Notes |
 |------|--------|-------|
 | Repo listing (description, topics, homepage, Discussions) | [x] | Set 2026-08-26 via `gh repo edit` |
-| Honest public copy (#228) | [~] | PR in flight |
-| Scoreboard (#229) | [ ] | |
-| Launch drafts (#230) | [~] | this change |
-| Comparison SEO (#231) | [ ] | |
-| Shipping-note generator (#232) | [ ] | |
-| Discussions welcome (#233) | [ ] | |
+| Honest public copy (#228) | [x] | #234 |
+| Scoreboard (#229) | [x] | #237 |
+| Launch drafts (#230) | [x] | #236 |
+| Comparison SEO (#231) | [~] | PR #239 |
+| Shipping-note generator (#232) | [~] | PR #240 |
+| Discussions welcome (#233) | [x] | templates in `docs/gtm/discussions/`; welcome is #238 |
 | Cloud autodev secret (#226) | [ ] | HITL — cycle is a 6s no-op |
 | Dual-license (#227) | [ ] | HITL — keep NC until decided |
 
@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1031 passed (`pytest -m "not integration and not benchmark"`, 2026-08-26)
+**Count:** 1041 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1065,6 +1065,14 @@ dependency. Capacity guide now points at the measured page. Covered by
 ES256/384/512). Unsupported `kty` raises `ValueError` naming the type. JWKS
 documents that mix `use: enc` and `use: sig` prefer the signing key. Covered
 by `tests/unit/test_oidc_jwks.py`.
+
+### Discussions welcome GTM-6 ([#233](https://github.com/naveenreddyalka/daari/issues/233))
+
+Templates under [gtm/discussions/](gtm/discussions/) (welcome, show-report,
+setup-help) plus `gh discussion create` instructions. Welcome thread is
+[#238](https://github.com/naveenreddyalka/daari/discussions/238). README and
+CONTRIBUTING link Discussions. Do not post a second welcome. Covered by
+`tests/unit/test_gtm_discussions.py`.
 
 ### OpenRouter gap roadmap (2026-08-26)
 
