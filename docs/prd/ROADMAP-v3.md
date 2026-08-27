@@ -111,6 +111,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 **Done when:** live agent mix shows ≥50% of prompt tokens served at L0/L1 or as local prefix, and the published page says so.
 
+**Shipped MVP (#223):** exact L0 on identical `tools` + full history; L1 stays off so a changed tool result cannot cosine-match a prior answer. Agent mix lives on the [load page](../developer/resources/benchmark-load.md). Prefix-embedding L1 is a later increment.
+
 ### G2 — OpenRouter-shaped L6 provider object
 
 **Outcome:** The same JSON Cursor already sends to OpenRouter (`provider.order`, `sort`, `zdr`, `data_collection`, `max_price`, `allow_fallbacks`) is honored when daari escalates to L6.
@@ -122,6 +124,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 **Done when:** a fixture request with `provider: { zdr: true, sort: "price" }` is visible in traces and rejected or routed correctly; OpenRouter integration test (mocked HTTP) covers passthrough.
 
+**Shipped MVP (#224):** parse on OpenAI + Anthropic; 400 when `zdr: true` and no slot declares ZDR; OpenRouter slot receives the object; `daari_meta` carries `provider_prefs`, `cost_usd`, `cached_tokens`.
+
 ### G3 — First-class OpenRouter backend (use them, don’t clone them)
 
 **Outcome:** `frontier.providers[].id: openrouter` is documented, tested, and the default L6 hop — BYOK keys still win when set.
@@ -132,6 +136,8 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 - `:floor` / `:nitro` on the **local** side as aliases: floor = smallest capable local tier; nitro = warmest / lowest-latency local backend (we already have warm-model preference).
 
 **Done when:** docs + mocked test + one live optional test (`OPENROUTER_API_KEY`) that is skipped in CI.
+
+**Shipped MVP (#225):** `openrouter_slot()` template, Referer/title headers, `daari_cost_usd=0` vs upstream `cost_usd`, local `:floor` / `:nitro` aliases.
 
 ### G4 — Cost-of-pass routing (stop sending every task to the biggest model)
 

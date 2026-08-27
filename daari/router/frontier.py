@@ -8,6 +8,11 @@ from typing import Any, AsyncIterator
 import httpx
 
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.gateway.provider_prefs import (
+    as_openrouter_payload,
+    is_openrouter_base,
+    usage_cost_and_cache,
+)
 from daari.observability.tokens import openai_token_usage
 from daari.router.anthropic_messages import (
     anthropic_headers,
@@ -59,13 +64,25 @@ class FrontierExecutor:
         return infer_frontier_kind(self.provider, self.base_url) == "anthropic"
 
     def _openai_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
-        return {
+        payload = {
             "model": self.default_model,
             "messages": self._build_messages(request),
             "temperature": request.temperature,
             "stream": stream,
             **request.sampling.openai_payload(),
         }
+        if request.provider is not None and (
+            self.provider == "openrouter" or is_openrouter_base(self.base_url)
+        ):
+            payload["provider"] = as_openrouter_payload(request.provider)
+        return payload
+
+    def _openai_headers(self) -> dict[str, str]:
+        if self.provider == "openrouter" or is_openrouter_base(self.base_url):
+            from daari.router.openrouter import openrouter_headers
+
+            return openrouter_headers(self.api_key or "")
+        return {"Authorization": f"Bearer {self.api_key}"}
 
     async def stream(
         self,
@@ -94,7 +111,7 @@ class FrontierExecutor:
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=True)
-            headers = {"Authorization": f"Bearer {self.api_key}"}
+            headers = self._openai_headers()
             path = "/chat/completions"
 
         async with httpx.AsyncClient(
@@ -151,7 +168,7 @@ class FrontierExecutor:
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=False)
-            headers = {"Authorization": f"Bearer {self.api_key}"}
+            headers = self._openai_headers()
             path = "/chat/completions"
 
         async def attempt() -> dict[str, Any]:
@@ -178,6 +195,10 @@ class FrontierExecutor:
         input_tokens, output_tokens, estimated = openai_token_usage(
             data, prompt_chars, content
         )
+        cost_usd, cached_tokens = usage_cost_and_cache(data)
+        provider_prefs = (
+            as_openrouter_payload(request.provider) if request.provider is not None else None
+        )
         return InternalResponse(
             content=content,
             model=model,
@@ -193,5 +214,9 @@ class FrontierExecutor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 usage_estimated=estimated,
+                cost_usd=cost_usd,
+                cached_tokens=cached_tokens,
+                provider_prefs=provider_prefs,
+                daari_cost_usd=0.0,
             ),
         )

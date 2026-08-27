@@ -41,7 +41,7 @@ Local models escalate on low confidence, latency budget miss, or capability gaps
 - Config: `routing.max_tier_for_chat`, `routing.no_frontier` (via project profile)
 - Headers: `X-Daari-Tier-Cap`, `X-Daari-No-Frontier`, `X-Daari-Tier-Override`
 
-Agent/`tool_calls` flows skip caches (see ADR-0004).
+Agent/`tool_calls` flows skip L1 and Lt/L2. Exact L0 is on for an identical full history + tools schema; changing the last tool result is a miss (ADR-0004 / G1).
 
 ## Knobs
 

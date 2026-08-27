@@ -143,6 +143,8 @@ class FrontierProviderConfig(BaseModel):
     weight: float = 1.0
     failure_threshold: int = 3
     cooldown_seconds: float = 30.0
+    # Zero-data-retention. Required when the client sends `provider.zdr`.
+    zdr: bool = False
 
 
 class FrontierSettings(RuntimeSettings):
@@ -607,7 +609,11 @@ class Settings(BaseSettings):
         return Path.home() / ".daari" / "org" / org_id / "shared-cache"
 
     def resolve_frontier_api_key(self) -> str | None:
-        return os.environ.get("DAARI_FRONTIER_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        return (
+            os.environ.get("DAARI_FRONTIER_API_KEY")
+            or os.environ.get("OPENROUTER_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+        )
 
 
 def _load_defaults_yaml() -> dict[str, Any]:
