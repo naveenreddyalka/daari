@@ -57,6 +57,8 @@ class RequestMeta(BaseModel):
     confirm_tool: bool = False
     rerun_command: bool = False
     stream_include_usage: bool = False
+    # Named boundaries.profiles overlay (X-Daari-Boundary-Profile / #171).
+    boundary_profile: str | None = None
 
 
 class InternalRequest(BaseModel):

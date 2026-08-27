@@ -26,6 +26,6 @@
 | Package | Purpose |
 |---------|---------|
 | `web-ui/` | Static dashboard (`daari web-ui serve`) |
-| `browser-extension/` | MV3 popup → local daemon |
+| `browser-extension/` | MV3 popup + content-script chat intercept → local daemon |
 
 Routing logic never lives in `packages/` — only the Python daemon routes.

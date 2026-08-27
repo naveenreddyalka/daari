@@ -175,6 +175,7 @@ pytest -m benchmark                 # optional latency checks
 | SSE metadata enrichment | [x] | stream chunks now include `daari_meta` tier/provider/model |
 | Browser extension MVP | [x] | MV3 popup UI in `packages/browser-extension/` sends prompts to local daemon (`:11435`) |
 | Browser extension options + error UX | [x] | API base URL options page + popup guidance when daemon is unreachable |
+| Browser extension content script | [x] | #171 — site profiles, intercept + boundary header, transparent fallback, session savings in popup |
 | Router integration prefixes | [x] | `@sourcegraph` / `@ghe` now route to integration providers before L3 |
 | Per-project profiles | [x] | `~/.daari/profiles/<hash|slug>.yaml` + `DAARI_PROFILE` support |
 | Skills loader stub | [x] | `~/.daari/skills/*.md` merged into system prompt prefix |
@@ -1096,6 +1097,14 @@ OpenAI and Anthropic adapters parse the client `provider` object onto
 HTTP 400. OpenRouter L6 slots receive the object on the outbound body.
 `daari_meta` records `provider_prefs`, `cost_usd`, and `cached_tokens`.
 Covered by `tests/unit/test_provider_object.py` (mocked HTTP, no live key).
+
+### Browser extension content script ([#171](https://github.com/naveenreddyalka/daari/issues/171))
+
+MV3 content script + site profiles intercept in-page chat widgets, route to
+local daari with `X-Daari-Boundary-Profile`, and fall through when the daemon
+is down or the boundary refuses. Popup shows session tier / estimated savings.
+Shipped demos: ports 8765 (fintech) and 8766 (docs support). See
+`packages/browser-extension/README.md`.
 
 ### Cost-of-pass + agent $0-tier G4 ([#243](https://github.com/naveenreddyalka/daari/issues/243))
 

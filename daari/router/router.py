@@ -47,9 +47,21 @@ def _guardrails_from_settings(settings: Settings) -> Any | None:
 
 
 def _boundaries_from_settings(settings: Settings) -> Any | None:
-    from daari.gateway.boundaries import default_local_judge, engine_from_settings
+    from daari.gateway.boundaries import (
+        BoundaryEngine,
+        default_local_judge,
+        engine_from_settings,
+    )
 
-    return engine_from_settings(settings, judge=default_local_judge)
+    engine = engine_from_settings(settings, judge=default_local_judge)
+    if engine is not None:
+        return engine
+    # Dormant engine: global gate off, but named profiles remain selectable via
+    # X-Daari-Boundary-Profile for the browser extension (#171).
+    block = settings.boundaries
+    if block.profiles:
+        return BoundaryEngine.from_settings(block, judge=default_local_judge)
+    return None
 
 
 def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
@@ -499,9 +511,15 @@ class Router:
         from daari.gateway.guardrails import blocked_response
 
         policy = _InputPolicy()
-        if self.boundaries is not None and getattr(self.boundaries, "enabled", False):
-            decision = await self.boundaries.classify(request)
-            mode = getattr(self.boundaries, "mode", "block")
+        from daari.gateway.boundaries import engine_for_request
+
+        boundaries = engine_for_request(
+            self.boundaries,
+            profile=getattr(request.meta, "boundary_profile", None),
+        )
+        if boundaries is not None and getattr(boundaries, "enabled", False):
+            decision = await boundaries.classify(request)
+            mode = getattr(boundaries, "mode", "block")
             policy.boundary_meta = decision.as_meta(mode=mode)
             add_step(
                 "boundary",
@@ -519,7 +537,7 @@ class Router:
 
                     policy.refusal = refused_response(
                         request,
-                        self.boundaries.settings.refuse_message,
+                        boundaries.settings.refuse_message,
                         decision,
                         mode=mode,
                     )

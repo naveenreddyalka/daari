@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Docs Support demo (daari site profile)</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; }
+      #support-thread { border: 1px solid #ccc; min-height: 8rem; padding: 0.75rem; margin-bottom: 0.75rem; }
+      .page-assistant { color: #666; }
+      .daari-ext-assistant { color: #0a7; margin-top: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Docs Support (demo)</h1>
+    <p>Local demo widget for the <code>docs-support</code> extension profile. Serve on port 8766.</p>
+    <div id="support-thread"></div>
+    <form id="support-form">
+      <textarea id="support-prompt" rows="3" placeholder="Ask about the product docs…"></textarea>
+      <button id="support-submit" type="submit">Ask</button>
+    </form>
+    <script>
+      document.getElementById("support-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = document.getElementById("support-prompt");
+        const prompt = (input.value || "").trim();
+        if (!prompt) return;
+        const bubble = document.createElement("div");
+        bubble.className = "page-assistant";
+        bubble.textContent = "[page backend] " + prompt;
+        document.getElementById("support-thread").appendChild(bubble);
+        input.value = "";
+      });
+    </script>
+  </body>
+</html>

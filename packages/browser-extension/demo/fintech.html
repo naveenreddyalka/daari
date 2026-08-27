@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fintech Assist demo (daari site profile)</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; }
+      #daari-chat-messages { border: 1px solid #ccc; min-height: 8rem; padding: 0.75rem; margin-bottom: 0.75rem; }
+      .page-assistant { color: #666; }
+      .daari-ext-assistant { color: #0a7; margin-top: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Credit Assist (demo)</h1>
+    <p>Local demo widget for the <code>fintech-assist</code> extension profile. Serve on port 8765.</p>
+    <div id="daari-chat-messages"></div>
+    <form id="daari-chat-form">
+      <textarea id="daari-chat-input" rows="3" placeholder="Ask about credit…"></textarea>
+      <button id="daari-chat-send" type="submit">Send</button>
+    </form>
+    <script>
+      document.getElementById("daari-chat-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = document.getElementById("daari-chat-input");
+        const prompt = (input.value || "").trim();
+        if (!prompt) return;
+        const bubble = document.createElement("div");
+        bubble.className = "page-assistant";
+        bubble.textContent = "[page backend] " + prompt;
+        document.getElementById("daari-chat-messages").appendChild(bubble);
+        input.value = "";
+      });
+    </script>
+  </body>
+</html>

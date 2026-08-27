@@ -324,6 +324,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
             x_daari_tools: str | None = Header(default=None, alias="X-Daari-Tools"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
+            x_daari_boundary_profile: str | None = Header(
+                default=None, alias="X-Daari-Boundary-Profile"
+            ),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
             confirm_tool = confirm_value in {"1", "true", "yes"}
@@ -340,6 +343,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             client_id = x_daari_client_id or (
                 "cursor" if "cursor" in user_agent.lower() else None
             )
+            boundary_profile = (x_daari_boundary_profile or "").strip() or None
             log_gateway_event(
                 "chat_completions_request",
                 {
@@ -365,6 +369,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
                 stream_include_usage=include_usage,
+                boundary_profile=boundary_profile,
             )
             # Virtual-key defaults (issue #111); headers keep precedence.
             from daari.server.auth import apply_auth_claims_to_meta

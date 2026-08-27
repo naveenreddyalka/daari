@@ -1,0 +1,66 @@
+# Example boundary profiles for browser-extension site targets (#171)
+#
+# Merge under `boundaries:` in ~/.daari/config.yaml (or PATCH /v1/daari/config).
+# The extension sends X-Daari-Boundary-Profile: <id> so each site uses its overlay.
+
+boundaries:
+  enabled: true
+  mode: block
+  active_profile: ""
+  refuse_message: >
+    This assistant can only help with in-product questions.
+  clear_out_threshold: 0.75
+  clear_in_threshold: 0.75
+  stages_b0: true
+  stages_b1: true
+  stages_b2: false
+  stages_b3: false
+  profiles:
+    fintech-assist:
+      product_name: "Credit Assist"
+      product_description: >
+        Helps members understand credit scores, credit cards, personal loans,
+        disputes, and account settings.
+      allow_topics:
+        - credit score
+        - credit card
+        - loan
+        - dispute
+        - account
+      deny_topics:
+        - python
+        - coding homework
+        - write a novel
+        - wedding
+        - medical diagnosis
+      examples_in:
+        - Why did my credit score drop?
+        - Which card is best for travel rewards?
+      examples_out:
+        - Write a Python web scraper
+        - Plan my wedding itinerary
+      refuse_message: >
+        I can only help with credit, cards, loans, and your account.
+    docs-support:
+      product_name: "Docs Support"
+      product_description: >
+        Answers questions about this product's documentation, setup, and APIs.
+      allow_topics:
+        - documentation
+        - setup
+        - install
+        - api
+        - configuration
+      deny_topics:
+        - wedding
+        - medical diagnosis
+        - write a novel
+        - homework essay
+      examples_in:
+        - How do I install the CLI?
+        - Where is the API reference?
+      examples_out:
+        - Plan my wedding itinerary
+        - Diagnose this rash
+      refuse_message: >
+        I only answer product documentation and setup questions.
