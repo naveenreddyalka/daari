@@ -22,7 +22,10 @@ boundaries:
   clear_in_threshold: 0.75
 ```
 
-When confident, set `mode: block`.
+When confident, set `mode: block`. Ambiguous prompts can take a local quorum
+(`stages_b2`, `quorum_votes`) and, if you enable it, a budget-capped frontier
+judge (`stages_b3`, `frontier_judge_daily_budget_usd`). B0 uses the L1 embedder
+for cosine scoring when embeddings are available.
 
 ## Verify
 

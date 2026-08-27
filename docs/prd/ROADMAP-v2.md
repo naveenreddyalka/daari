@@ -138,7 +138,7 @@ Goal: keep embedded B2C/SaaS chatbots inside the product domain (refuse free-Cha
 | Configurable on/off + definition | `boundaries.enabled`, `mode: warn\|block`, topics/examples/refuse_message via config + config editor |
 | B0 local classify | Topic/example overlap; clear out → `tier=boundary` before any model |
 | B1 local judge | Ambiguous → cheap local judgment |
-| B2/B3 | Quorum / optional frontier judge (off by default) |
+| B2/B3 | Quorum / optional frontier judge (#172) |
 | Observability | `daari_meta.boundary`, traces, `daari_boundary_decisions_total` |
 
 ## Related docs

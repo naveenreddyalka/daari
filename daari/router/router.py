@@ -46,10 +46,13 @@ def _guardrails_from_settings(settings: Settings) -> Any | None:
     return engine_from_settings(settings)
 
 
-def _boundaries_from_settings(settings: Settings) -> Any | None:
+def _boundaries_from_settings(settings: Settings, *, embedder: Any = None) -> Any | None:
     from daari.gateway.boundaries import default_local_judge, engine_from_settings
 
-    return engine_from_settings(settings, judge=default_local_judge)
+    engine = engine_from_settings(settings, judge=default_local_judge)
+    if engine is not None and embedder is not None:
+        engine.embedder = embedder
+    return engine
 
 
 def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
@@ -3313,7 +3316,7 @@ class AppContext:
             frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
             guardrails=_guardrails_from_settings(settings),
-            boundaries=_boundaries_from_settings(settings),
+            boundaries=_boundaries_from_settings(settings, embedder=embedder),
             capability_catalog=_catalog_from_settings(settings),
             otel_enabled=bool(settings.observability.otel),
             org_pool=org_pool_executor,

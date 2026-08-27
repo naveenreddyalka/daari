@@ -41,6 +41,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.ctx = AppContext.from_settings(resolved)
         app.state.ctx.virtual_key_store = vk_store
+        from daari.gateway.boundaries import startup_warnings
+        from daari.gateway.request_log import log_gateway_event
+
+        for warning in startup_warnings(resolved):
+            log_gateway_event("startup_warning", {"message": warning})
         app.state.ctx.start_org_learning_sync()
         app.state.ctx.start_backend_health()
         try:
