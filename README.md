@@ -12,8 +12,7 @@ Route Cursor, Claude Code, and any OpenAI-compatible client through local tiers 
 
 ```bash
 pip install daari
-daari onboard --yes
-daari serve
+daari onboard --yes --serve
 ```
 
 **Docker (bundles Ollama):**

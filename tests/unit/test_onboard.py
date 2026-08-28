@@ -151,6 +151,39 @@ class TestRunOnboard:
         )
         assert any(step == "daari serve" for step in report.next_steps)
 
+    def test_start_serve_runs_when_ready(self, settings):
+        called = {"serve": False}
+
+        report = run_onboard(
+            settings,
+            start_serve=True,
+            fetch_models_fn=lambda: ["llama3.2:3b", "nomic-embed-text"],
+            pull_fn=lambda _model: True,
+            doctor_fn=lambda *_a, **_k: [],
+            serve_fn=lambda: called.__setitem__("serve", True) or True,
+        )
+        assert called["serve"] is True
+        assert report.served is True
+        assert report.step("serve") is not None
+        assert report.step("serve").ok is True
+        assert "11435" in report.step("serve").detail
+        assert "daari serve" not in report.next_steps
+
+    def test_start_serve_skipped_when_not_ready(self, settings):
+        called = {"serve": False}
+
+        report = run_onboard(
+            settings,
+            start_serve=True,
+            fetch_models_fn=lambda: (_ for _ in ()).throw(ConnectionError("down")),
+            pull_fn=lambda _model: True,
+            doctor_fn=lambda *_a, **_k: [],
+            serve_fn=lambda: called.__setitem__("serve", True) or True,
+        )
+        assert called["serve"] is False
+        assert report.served is False
+        assert report.ready is False
+
 
 class TestOnboardCli:
     def test_onboard_command_forwards_flags(self, settings, monkeypatch):
@@ -170,12 +203,13 @@ class TestOnboardCli:
         monkeypatch.setattr("daari.cli.app.run_onboard", fake_onboard)
 
         result = CliRunner().invoke(
-            app, ["onboard", "--yes", "--no-pull", "--no-run-doctor", "--minimal"]
+            app, ["onboard", "--yes", "--no-pull", "--no-run-doctor", "--minimal", "--serve"]
         )
         assert result.exit_code == 0, result.output
         assert captured["pull"] is False
         assert captured["run_doctor"] is False
         assert captured["minimal"] is True
+        assert captured["start_serve"] is True
         assert "daari serve" in result.stdout
 
     def test_onboard_exits_nonzero_when_not_ready(self, settings, monkeypatch):
