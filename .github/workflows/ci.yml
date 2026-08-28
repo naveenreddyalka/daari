@@ -63,6 +63,22 @@ jobs:
       - name: Gateway app builds
         run: python -c "from daari.server.app import create_app; from daari.config.settings import Settings; create_app(Settings.load()); print('app ok')"
 
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Fresh-clone installer
+        run: RUN_DOCTOR=0 ./scripts/install.sh
+
+      - name: CLI from installer venv
+        run: .venv/bin/daari --help
+
   extension:
     runs-on: ubuntu-latest
     steps:
