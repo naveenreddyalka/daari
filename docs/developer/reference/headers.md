@@ -11,6 +11,7 @@
 | `X-Daari-Latency-Budget` | Max local latency (ms) |
 | `X-Daari-Client-Id` | Ledger attribution |
 | `X-Daari-Project` | Path for `.daari.yaml` discovery |
+| `X-Daari-Boundary-Profile` | Named `boundaries.profiles` overlay for this request (browser extension site profiles) |
 | `X-Daari-Tools` | Tool-related client hints |
 | `X-Daari-Confirm*` / `X-Daari-ReRun-Command` | Lt ask-gate confirmation |
 

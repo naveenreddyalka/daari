@@ -60,7 +60,7 @@ daari/                              # repo root
 ├── docs/                           # PRDs, ADRs, setup guides, release notes, tracker
 ├── scripts/                        # install.sh, demo.sh, bench.sh, tunnel.sh, autodev-local.sh
 ├── packages/
-│   ├── browser-extension/          # MV3 popup → local daemon (jsdom-tested)
+│   ├── browser-extension/          # MV3 popup + content-script site profiles → local daemon (jsdom-tested)
 │   └── web-ui/                     # Stats/savings/traces dashboard (jsdom-tested)
 ├── pyproject.toml
 ├── README.md
@@ -169,7 +169,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 |------|---------|--------|
 | `evals/routing/prompts.jsonl` | Golden prompt fixtures for routing evals | ✅ |
 | `packages/README.md` | Placeholder for future browser ext / web UI | ✅ |
-| `packages/browser-extension/` | Browser extension popup bridge + options page for daemon URL (`:11435` default) | ✅ |
+| `packages/browser-extension/` | MV3 popup + content-script site profiles → local daemon (`:11435`); session savings in popup | ✅ |
 | `packages/web-ui/README.md` | Web UI runtime docs (table + chart + auto-refresh controls) | ✅ |
 | `CONTEXT.md` | Agent/session handoff | ✅ |
 

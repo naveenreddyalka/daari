@@ -47,6 +47,79 @@ def _fintech_settings(**kwargs) -> BoundariesSettings:
     return BoundariesSettings.model_validate(data)
 
 
+def test_named_profile_overlay_via_engine_for_request():
+    settings = _fintech_settings(
+        allow_topics=[],
+        deny_topics=[],
+        profiles={
+            "fintech-assist": {
+                "allow_topics": ["credit score", "credit card"],
+                "deny_topics": ["wedding", "novel"],
+                "refuse_message": "credit only",
+            }
+        },
+    )
+    base = BoundaryEngine.from_settings(settings)
+    from daari.gateway.boundaries import engine_for_request
+
+    overlaid = engine_for_request(base, profile="fintech-assist")
+    assert overlaid is not None
+    decision = overlaid.classify_b0(_request("Plan my wedding itinerary"))
+    assert decision.label == "out"
+    in_decision = overlaid.classify_b0(_request("Why did my credit score drop?"))
+    assert in_decision.label == "in"
+
+
+@pytest.mark.asyncio
+async def test_router_applies_request_boundary_profile(tmp_path):
+    calls = {"n": 0}
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        calls["n"] += 1
+        return InternalResponse(
+            content="should-not-run",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    # Base gate dormant (no topics); named profile carries the deny list (#171).
+    engine = BoundaryEngine.from_settings(
+        _fintech_settings(
+            enabled=False,
+            allow_topics=[],
+            deny_topics=[],
+            profiles={
+                "fintech-assist": {
+                    "enabled": True,
+                    "mode": "block",
+                    "allow_topics": ["credit score"],
+                    "deny_topics": ["wedding"],
+                    "refuse_message": "credit only",
+                    "clear_out_threshold": 0.7,
+                    "clear_in_threshold": 0.7,
+                }
+            },
+        )
+    )
+    router = Router(
+        cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+        semantic_cache=SemanticCache(str(tmp_path / "l1"), NoopEmbedder(), enabled=False),
+        ollama=ollama,
+        ollama_l3=ollama,
+        ollama_l4=ollama,
+        ollama_l5=ollama,
+        metrics=Metrics(),
+        boundaries=engine,
+    )
+    req = _request("Plan my wedding")
+    req.meta.boundary_profile = "fintech-assist"
+    resp = await router.route(req)
+    assert calls["n"] == 0
+    assert resp.daari_meta.tier == "boundary"
+
+
 def test_disabled_engine_is_none():
     settings = Settings()
     assert settings.boundaries.enabled is False
