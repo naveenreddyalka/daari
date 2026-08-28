@@ -35,6 +35,12 @@ from daari.setup.tunnel import (
     parse_cloudflared_tunnel_url,
     wait_for_tunnel_health,
 )
+from daari.setup.service import (
+    UnsupportedPlatformError,
+    install_service,
+    service_status,
+    uninstall_service,
+)
 from daari.setup.wizard import run_setup_wizard
 
 app = typer.Typer(
@@ -51,7 +57,9 @@ web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
+service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
 app.add_typer(setup_app, name="setup")
+app.add_typer(service_app, name="service")
 app.add_typer(context_app, name="context")
 app.add_typer(org_cache_app, name="org-cache")
 app.add_typer(org_learning_app, name="org-learning")
@@ -912,6 +920,47 @@ def install(
     )
     if result.returncode != 0:
         raise typer.Exit(code=result.returncode)
+
+
+@service_app.command("install")
+def service_install() -> None:
+    """Write a user systemd unit or launchd plist. Does not start the service."""
+    try:
+        spec = install_service(get_settings())
+    except UnsupportedPlatformError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {spec.kind} unit: {spec.path}")
+    if spec.kind == "systemd":
+        typer.echo("Enable with: systemctl --user enable --now daari.service")
+    else:
+        typer.echo(f"Load with: launchctl load {spec.path}")
+    typer.echo(f"Logs: {spec.log_path}")
+
+
+@service_app.command("status")
+def service_status_cmd() -> None:
+    """Report whether the user service file exists."""
+    try:
+        state = service_status()
+    except UnsupportedPlatformError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(state)
+
+
+@service_app.command("uninstall")
+def service_uninstall() -> None:
+    """Remove the user unit/plist this command created."""
+    try:
+        removed = uninstall_service()
+    except UnsupportedPlatformError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    if removed:
+        typer.echo("Removed daari user service file.")
+    else:
+        typer.echo("No daari user service file found.")
 
 
 @setup_app.callback(invoke_without_command=True)

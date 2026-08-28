@@ -34,6 +34,7 @@
 | `daari setup --undo <tool>` | A.1 | Restore latest backup for tool |
 | `daari doctor` | A.1 | Health check |
 | `daari onboard` | A.1 | pip/brew first-run (no git clone) |
+| `daari service` | A.1 | user systemd / launchd stay-up (no root) |
 
 ---
 

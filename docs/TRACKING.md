@@ -33,7 +33,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | S2 Install CI gate (#257) | [x] | `install` job in `.github/workflows/ci.yml` |
 | S3 Default pull L3+embed (#258) | [x] | install.sh + doctor require embed when L1 on |
 | S4 Cursor tunnel one-liner (#259) | [x] | `daari setup cursor --tunnel --yes --daemonize` |
-| S5 `daari service` (#260) | [ ] | |
+| S5 `daari service` (#260) | [x] | user systemd / launchd unit files; no CI start |
 | S6 Windows/WSL (#261) | [ ] | |
 
 ---
@@ -99,7 +99,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1123 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1130 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1273,6 +1273,16 @@ Cursor, and returns without waiting on the tunnel. Missing `cloudflared`
 prints `brew install cloudflared`. `scripts/tunnel.sh --setup-cursor`
 delegates to the same command. Covered by
 `tests/unit/test_cursor_oneclick.py`.
+
+### User service install ([#260](https://github.com/naveenreddyalka/daari/issues/260))
+
+<!-- tracking:#260 -->
+
+`daari service install` writes a user systemd unit (`~/.config/systemd/user/daari.service`)
+or launchd plist (`~/Library/LaunchAgents/com.daari.gateway.plist`). Logs go to
+`~/.daari/serve.log`. `status` / `uninstall` operate on those files only — CI
+does not start a real service. Native Windows is refused with a WSL pointer
+(#261). Covered by `tests/unit/test_service.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

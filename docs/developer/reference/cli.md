@@ -10,6 +10,7 @@ Entry point: `daari` (Typer).
 | `stats` | Tier counters |
 | `doctor` | Health / suggest-models |
 | `install` | Convenience installer helpers |
+| `onboard` | pip/brew first-run (Ollama + default models) |
 | `feedback` | Record accept/reject |
 | `trace` | Show a request trace |
 | `report` | Savings / usage ledger |
@@ -42,5 +43,6 @@ Entry point: `daari` (Typer).
 | `project` | `init`, `show` |
 | `keys` | `create`, `list`, `revoke` |
 | `enterprise` | `bootstrap`, `policy-sync` |
+| `service` | `install`, `status`, `uninstall` (user systemd / launchd) |
 
 Use `daari <cmd> --help` for flags.

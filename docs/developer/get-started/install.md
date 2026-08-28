@@ -70,6 +70,19 @@ curl -fsS http://127.0.0.1:11435/ready
 daari doctor
 ```
 
+## Stay up without Docker
+
+`daari serve` in a terminal dies on logout. For a user-level stay-up path (no root):
+
+```bash
+daari service install
+# Linux:  systemctl --user enable --now daari.service
+# macOS:  launchctl load ~/Library/LaunchAgents/com.daari.gateway.plist
+daari service status
+```
+
+Logs: `~/.daari/serve.log`. `daari service uninstall` removes only the file this command created. Native Windows is not supported — use WSL2.
+
 ## Cursor over a tunnel
 
 ```bash
