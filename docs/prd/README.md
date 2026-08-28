@@ -9,7 +9,8 @@
 | [trust.md](trust.md) | Cache trust, token savings, latency/learned routing, budgets | Shipped |
 | [learning.md](learning.md) | Phase D: feedback loop, fine-tuning, collective stats, deploy | Shipped |
 | [intelligence.md](intelligence.md) | Prompt profiles, traces, draft injection, context optimizer | Shipped |
-| [enterprise.md](enterprise.md) | E1–E3 org cache & learning | E2/E3 tracer shipped; scale-out in ROADMAP-v2 |
+| [ENTERPRISE.md](ENTERPRISE.md) | Enterprise gap scan — scored gaps, next milestones | Maintained daily by the prd-cycle automation |
+| [phase-e-enterprise.md](phase-e-enterprise.md) | E1–E3 org cache & learning | E2/E3 tracer shipped; scale-out in ROADMAP-v2 |
 | [Routing spec](routing-spec.md) | Classifier, confidence, golden prompts | Implemented (spec retained) |
 | [Setup spec](setup-spec.md) | Install, recipes, undo | Implemented (spec retained) |
 | [integrations.md](integrations.md) | Provider framework & corp plugins | Partially implemented |

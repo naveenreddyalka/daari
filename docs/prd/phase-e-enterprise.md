@@ -1,5 +1,9 @@
 # Enterprise — distributed install, org cache, collective learning
 
+> Renamed from `enterprise.md` (2026-08-28) so the automation-maintained
+> [ENTERPRISE.md](ENTERPRISE.md) gap scan does not collide with this file on
+> case-insensitive filesystems (macOS).
+
 > **Status:** E1 config/runtime scaffold + E2/E3 MVP tracer bullets shipped. Full E1 fleet bootstrap (MDM bundles, signed policy push) is **not** built — it moved to [ROADMAP-v2 Train F4](ROADMAP-v2.md) along with Redis/Postgres backends, stateless replicas, Helm, SSO/RBAC.  
 > **Related:** [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · [integrations.md](integrations.md) · [PRD](PRD.md)
 

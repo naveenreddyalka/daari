@@ -272,7 +272,7 @@ Spec: [sources-integration.md](sources-integration.md) (subset of [IntegrationPr
 
 Spec: [integrations.md](integrations.md) · [ADR-0011](../adr/0011-pluggable-integration-providers.md)
 
-Corp API integrations only — fleet/cache/learning in **Phase E**: [enterprise.md](enterprise.md).
+Corp API integrations only — fleet/cache/learning in **Phase E**: [phase-e-enterprise.md](phase-e-enterprise.md).
 
 ---
 
@@ -288,7 +288,7 @@ Corp API integrations only — fleet/cache/learning in **Phase E**: [enterprise.
 | **E2** | L0-org / L1-org / CCS-org + self-hosted org cache service |
 | **E3** | Org feedback loop, shared routing profile, tier tuning |
 
-Spec: [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md)
+Spec: [phase-e-enterprise.md](phase-e-enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md)
 
 ---
 

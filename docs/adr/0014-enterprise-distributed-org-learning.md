@@ -67,7 +67,7 @@ L0 (local) → L0-org → L1 (local) → L1-org → CCS (local) → CCS-org → 
 - User/project can opt out: `X-Daari-No-Org-Cache`, `.daariignore` patterns
 - TTL and revocation controlled by org admin
 
-Implementation: org cache service (Redis/S3-compatible/self-hosted daari-cache) — **Phase E2**. Protocol in [enterprise.md](../prd/enterprise.md).
+Implementation: org cache service (Redis/S3-compatible/self-hosted daari-cache) — **Phase E2**. Protocol in [phase-e-enterprise.md](../prd/phase-e-enterprise.md).
 
 ### 3. Org collective learning
 
@@ -140,7 +140,7 @@ Enterprise API integrations (Sourcegraph, etc.) remain **Phase C3** — E builds
 
 ## Related
 
-- [enterprise.md](../prd/enterprise.md) — full spec
+- [phase-e-enterprise.md](../prd/phase-e-enterprise.md) — full spec
 - [ADR-0008](0008-developer-command-rules-and-context-cache.md) — CCS
 - [ADR-0012](0012-execution-policy.md) — policy before Lt
 - PRD user stories #78–#83
