@@ -144,6 +144,6 @@ Goal: keep embedded B2C/SaaS chatbots inside the product domain (refuse free-Cha
 ## Related docs
 
 - [ROADMAP.md](ROADMAP.md) (v1, Phases A–E — shipped)
-- [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · [ADR-0015](../adr/0015-product-boundaries.md)
+- [phase-e-enterprise.md](phase-e-enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · [ADR-0015](../adr/0015-product-boundaries.md)
 - [trust.md](trust.md) · [learning.md](learning.md) · [intelligence.md](intelligence.md)
 - [TRACKING.md](../TRACKING.md)

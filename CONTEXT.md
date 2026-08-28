@@ -39,7 +39,7 @@ Source-available **local cost optimizer** — routes work through cache → tool
 | L2-dev + CCS | [0008](docs/adr/0008-developer-command-rules-and-context-cache.md) |
 | Integration providers | [0011](docs/adr/0011-pluggable-integration-providers.md) |
 | Execution policy | [0012](docs/adr/0012-execution-policy.md) |
-| Enterprise (Phase E) | [0014](docs/adr/0014-enterprise-distributed-org-learning.md) · [enterprise.md](docs/prd/enterprise.md) |
+| Enterprise (Phase E) | [0014](docs/adr/0014-enterprise-distributed-org-learning.md) · [phase-e-enterprise.md](docs/prd/phase-e-enterprise.md) |
 | Monorepo | [0013](docs/adr/0013-monorepo-structure.md) |
 | Routing | [routing-spec](docs/prd/routing-spec.md) |
 | Setup | [setup-spec](docs/prd/setup-spec.md) |

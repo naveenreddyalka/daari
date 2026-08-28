@@ -226,7 +226,7 @@ Live factual queries (stories 62–68): [sources-integration.md](sources-integra
 82. As a **developer in an enterprise**, I want daari to **learn from org-wide feedback** (tier success, overrides, explicit ratings), so that routing improves for everyone in my company the more we use it.
 83. As an **enterprise admin**, I want **tenant-isolated** learning and cache (no cross-company data), with self-hosted control plane on our network, so that we meet compliance and data residency requirements.
 
-**Design:** [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · **Phase E1–E3** (after C3 / alongside Phase D)
+**Design:** [phase-e-enterprise.md](phase-e-enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md) · **Phase E1–E3** (after C3 / alongside Phase D)
 
 ## Implementation Decisions
 
@@ -621,7 +621,7 @@ Baseline for comparison: **all requests to frontier (L6)** — the default today
 | **E2** | Org cache client — L0-org, L1-org, CCS-org + self-hosted cache service |
 | **E3** | Org feedback aggregation, shared routing profile, tier tuning per tenant |
 
-Spec: [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md)
+Spec: [phase-e-enterprise.md](phase-e-enterprise.md) · [ADR-0014](../adr/0014-enterprise-distributed-org-learning.md)
 
 **Depends on:** Phase B+ (L1, CCS), C3 optional (corp APIs). **Orthogonal to** Phase D (personal / global OSS learning).
 
@@ -635,9 +635,9 @@ Spec: [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distri
 | **D2 — Local fine-tune** | Fine-tune/adapt small local model from user corrections (not train foundation models) | User-owned weights in `~/.daari/models/` |
 | **D3 — Opt-in collective** | Anonymized routing stats (tier success rates, latency) uploaded if user enables | No prompts/code unless explicitly opted in |
 | **D4 — Release defaults** | daari project uses aggregated opt-in stats to improve out-of-box routing for next version | OSS transparent; user consent required |
-| **E3 — Org learning** | Shared routing profile + tier tuning for **one tenant** | Admin-governed; see [enterprise.md](enterprise.md) |
+| **E3 — Org learning** | Shared routing profile + tier tuning for **one tenant** | Admin-governed; see [phase-e-enterprise.md](phase-e-enterprise.md) |
 
-**Enterprise org learning (Phase E3)** is separate — tenant-scoped, admin-governed, benefits all users **in one company**. See [enterprise.md](enterprise.md).
+**Enterprise org learning (Phase E3)** is separate — tenant-scoped, admin-governed, benefits all users **in one company**. See [phase-e-enterprise.md](phase-e-enterprise.md).
 
 **Out of scope for D:** training foundation models from scratch, mandatory cloud upload, using user code without explicit consent.
 
@@ -661,7 +661,7 @@ Spec: [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distri
 |-----|---------|
 | [ROADMAP.md](ROADMAP.md) | **Detailed phase plan** — languages, clients, tools per phase |
 | [integrations.md](integrations.md) | Provider framework, MCP, enterprise APIs |
-| [enterprise.md](enterprise.md) | **Phase E** — distributed install, org cache, org learning |
+| [phase-e-enterprise.md](phase-e-enterprise.md) | **Phase E** — distributed install, org cache, org learning |
 | [sources-integration.md](sources-integration.md) | Open APIs + Google |
 | [ADR-0012](../adr/0012-execution-policy.md) | Lt execution policy, CCS cache policy |
 | [routing-spec.md](routing-spec.md) | Classifier, confidence, golden prompts |
@@ -705,7 +705,7 @@ Spec: [enterprise.md](enterprise.md) · [ADR-0014](../adr/0014-enterprise-distri
 | Session grants ("allow for 1h") | ADR-0012 non-goal | C+ |
 | File-watch / auto re-run on save | Out of product scope | — |
 | Multi-user / RBAC | Enterprise control plane + profiles | E1+ |
-| Enterprise distributed / org cache / org learning | [enterprise.md](enterprise.md) Phase E | E1–E3 |
+| Enterprise distributed / org cache / org learning | [phase-e-enterprise.md](phase-e-enterprise.md) Phase E | E1–E3 |
 | Image / multimodal routing | Not in tier model | Future |
 
 **Minor follow-ups (optional, not blocking):** align routing pipeline diagram with full order (include CCS, L2-dev, L2-live); add user story for offline/no-network mode when L6/L2-live unavailable.
