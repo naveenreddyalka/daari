@@ -138,6 +138,7 @@ def _check_ollama(
         embedding_present = any(
             name == embedding_model or name.startswith(f"{embedding_model}:") for name in models
         )
+        embed_required = settings.cache.l1.enabled
         return [
             CheckResult(name="ollama", ok=True, detail=f"reachable at {base}"),
             CheckResult(
@@ -177,7 +178,7 @@ def _check_ollama(
                     f"{embedding_model} "
                     f"{'found' if embedding_present else 'missing — run: ollama pull ' + embedding_model + ' (required for L1 semantic cache)'}"
                 ),
-                optional=True,
+                optional=not embed_required,
             ),
         ]
     except Exception as exc:

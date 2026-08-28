@@ -31,7 +31,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 |------|--------|-------|
 | S1 `daari onboard` (#256) | [x] | pip/brew first-run without a git clone |
 | S2 Install CI gate (#257) | [x] | `install` job in `.github/workflows/ci.yml` |
-| S3 Default pull L3+embed (#258) | [ ] | |
+| S3 Default pull L3+embed (#258) | [x] | install.sh + doctor require embed when L1 on |
 | S4 Cursor tunnel one-liner (#259) | [ ] | |
 | S5 `daari service` (#260) | [ ] | |
 | S6 Windows/WSL (#261) | [ ] | |
@@ -99,7 +99,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1115 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1117 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1243,6 +1243,15 @@ https://ollama.com/download if down), pull L3 + embed when missing, run
 doctor, print `daari serve`. `daari install` still runs `scripts/install.sh`
 in a clone and falls back to onboard when that file is absent. Covered by
 `tests/unit/test_onboard.py`. Remaining setup train: #257–#261.
+
+### Default model stack ([#258](https://github.com/naveenreddyalka/daari/issues/258))
+
+<!-- tracking:#258 -->
+
+`scripts/install.sh` pulls L3 + `nomic-embed-text` unless `MINIMAL=1`.
+`daari install --minimal` / `daari onboard --minimal` skip embed. When L1 is
+enabled, `daari doctor` fails if the embedding model is missing. Covered by
+`tests/test_doctor.py` and `tests/unit/test_install_default_stack.py`.
 
 ### Install CI gate ([#257](https://github.com/naveenreddyalka/daari/issues/257))
 

@@ -875,6 +875,7 @@ def install(
     run_doctor: bool = typer.Option(True, "--run-doctor/--no-run-doctor", help="Run doctor at end."),
     pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
     pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
+    minimal: bool = typer.Option(False, "--minimal", help="Pull L3 only (skip embed)."),
 ) -> None:
     """Source-tree wrapper for install.sh; pip/brew falls back to onboard."""
     repo_root = Path(__file__).resolve().parents[2]
@@ -886,6 +887,7 @@ def install(
             run_doctor=run_doctor,
             pull_l4=pull_l4,
             pull_l5=pull_l5,
+            minimal=minimal,
         )
         _echo_onboard_report(report)
         if not report.ready:
@@ -897,6 +899,7 @@ def install(
             "RUN_DOCTOR": "1" if run_doctor else "0",
             "PULL_L4": "1" if pull_l4 else "0",
             "PULL_L5": "1" if pull_l5 else "0",
+            "MINIMAL": "1" if minimal else "0",
         }
     )
     merged_env = {**os.environ, **env}
