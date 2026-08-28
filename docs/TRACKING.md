@@ -25,6 +25,17 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | Cloud autodev secret (#226) | [ ] | HITL — cycle is a 6s no-op |
 | Dual-license (#227) | [ ] | HITL — keep NC until decided |
 
+### Setup / self-service
+
+| Item | Status | Notes |
+|------|--------|-------|
+| S1 `daari onboard` (#256) | [x] | pip/brew first-run without a git clone |
+| S2 Install CI gate (#257) | [ ] | TRACKING install-doctor row still `[~]` |
+| S3 Default pull L3+embed (#258) | [ ] | |
+| S4 Cursor tunnel one-liner (#259) | [ ] | |
+| S5 `daari service` (#260) | [ ] | |
+| S6 Windows/WSL (#261) | [ ] | |
+
 ---
 
 ## Phase A — Tracer bullet
@@ -88,7 +99,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1087 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1110 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -105,7 +116,8 @@ pytest -m benchmark                 # optional latency checks
 | `daari setup models` | [x] | `daari/setup/models.py` |
 | JSONC patch helpers | [x] | `daari/setup/jsonc.py` |
 | Setup tests | [x] | `tests/test_setup.py` |
-| `daari install` (Typer) | [x] | wrapper command to `scripts/install.sh` with `--run-doctor` |
+| `daari install` (Typer) | [x] | wrapper command to `scripts/install.sh` with `--run-doctor`; pip/brew falls back to onboard |
+| `daari onboard` | [x] | #256 — first-run without a git clone |
 | L6 frontier executor | [x] | `daari/router/frontier.py` — OpenAI-compat httpx |
 | Confidence scoring → L6 | [x] | `daari/router/confidence.py` — binary heuristic per routing-spec |
 
@@ -1221,6 +1233,16 @@ finished booting; a transient Ollama disconnect failed live integration tests
 without a retry. `scripts/autodev_local.py` polls `/ready` (then `/health`) with
 30s bounded backoff; `autodev-local.sh` kickstarts then waits, and retries
 integration tests once after 3s. Covered by `tests/unit/test_autodev_local.py`.
+
+### daari onboard ([#256](https://github.com/naveenreddyalka/daari/issues/256))
+
+<!-- tracking:#256 -->
+
+`daari onboard --yes` is the pip/brew first-run: probe Ollama (print
+https://ollama.com/download if down), pull L3 + embed when missing, run
+doctor, print `daari serve`. `daari install` still runs `scripts/install.sh`
+in a clone and falls back to onboard when that file is absent. Covered by
+`tests/unit/test_onboard.py`. Remaining setup train: #257–#261.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

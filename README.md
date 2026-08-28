@@ -12,7 +12,7 @@ Route Cursor, Claude Code, and any OpenAI-compatible client through local tiers 
 
 ```bash
 pip install daari
-ollama pull llama3.2:3b
+daari onboard --yes
 daari serve
 ```
 

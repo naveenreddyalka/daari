@@ -165,7 +165,24 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 ### G6 — v2 leftovers (do not let these jump the queue)
 
-Still worth doing, **after** G1–G3: extension content script (#171). B2/B3 (#172), multi-window budgets (#174), IdP-minted keys (#176), synonym verifier (#208), and stalled-auto-merge watch (#200) shipped. These are product, not the OpenRouter gap.
+Still worth doing, **after** G1–G3: extension content script (#171, shipped). B2/B3 (#172), multi-window budgets (#174), IdP-minted keys (#176), synonym verifier (#208), and stalled-auto-merge watch (#200) shipped. These are product, not the OpenRouter gap.
+
+### S — Setup / self-service (one-click in every environment)
+
+**Outcome:** The fastest honest path is one command in every supported environment. Docker Compose already is. pip/brew must not require a git clone or a manual `ollama pull` list.
+
+| Slice | Issue | Status |
+|-------|-------|--------|
+| S1 `daari onboard --yes` (pip/brew, no clone) | [#256](https://github.com/naveenreddyalka/daari/issues/256) | in this PR |
+| S2 CI-gate `install.sh` + mocked doctor | [#257](https://github.com/naveenreddyalka/daari/issues/257) | open |
+| S3 Default pull = L3 + embed (`--minimal` skips) | [#258](https://github.com/naveenreddyalka/daari/issues/258) | open |
+| S4 Cursor `--tunnel --yes --daemonize` | [#259](https://github.com/naveenreddyalka/daari/issues/259) | open |
+| S5 User systemd / launchd (`daari service`) | [#260](https://github.com/naveenreddyalka/daari/issues/260) | open |
+| S6 Windows/WSL first-run (honest docs) | [#261](https://github.com/naveenreddyalka/daari/issues/261) | open |
+
+F1 said `pip install daari` to a working router in under 5 minutes. Docker hits that. pip did not: `daari install` looked for `scripts/install.sh` and died. S1 is the pip/brew hole.
+
+**Done when:** a pip-only machine with Ollama running can `daari onboard --yes && daari serve` without cloning the repo, and TRACKING’s install-doctor row is CI-gated (S2).
 
 ---
 
@@ -187,7 +204,7 @@ Still worth doing, **after** G1–G3: extension content script (#171). B2/B3 (#1
 | Days 46–70 | **G4** cost-of-pass + agent $0-tier in TRACKING | The number we put on the homepage |
 | Days 71–90 | **G5** failover + models list + watchdog hygiene | Feels like a platform |
 
-auto-dev rule change: **P1 cards on this file outrank oldest P3.** If the queue is empty of G1–G5, then P3.
+auto-dev rule change: **P1 cards on this file outrank oldest P3.** If the queue is empty of G1–G5, run **S** (setup/self-service), then P3.
 
 ---
 
