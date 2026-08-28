@@ -415,22 +415,77 @@ class BoundaryEngine:
         return decision
 
 
-def engine_from_settings(settings: Any, *, judge: JudgeFn | None = None) -> BoundaryEngine | None:
+def _overlay_named_profile(
+    block: BoundariesSettings, profile_name: str
+) -> BoundariesSettings:
+    """Merge `boundaries.profiles[name]` onto the base block (issue #171)."""
+    name = (profile_name or "").strip()
+    profiles = getattr(block, "profiles", None) or {}
+    if not name or not isinstance(profiles, dict) or name not in profiles:
+        return block
+    overlay = profiles[name]
+    if not isinstance(overlay, dict):
+        return block
+    merged = block.model_dump()
+    merged.update({k: v for k, v in overlay.items() if k != "profiles"})
+    merged["active_profile"] = name
+    return BoundariesSettings.model_validate(merged)
+
+
+def engine_from_settings(
+    settings: Any,
+    *,
+    judge: JudgeFn | None = None,
+    profile: str | None = None,
+) -> BoundaryEngine | None:
     block = getattr(settings, "boundaries", None)
-    if block is None or not getattr(block, "enabled", False):
+    if block is None:
+        return None
+    # Request header X-Daari-Boundary-Profile selects a named overlay (#171).
+    requested = (profile or "").strip()
+    if requested:
+        block = _overlay_named_profile(block, requested)
+        if not block.enabled:
+            block = BoundariesSettings.model_validate(
+                {**block.model_dump(), "enabled": True}
+            )
+    elif not getattr(block, "enabled", False):
         return None
     if getattr(block, "mode", "block") == "off":
         return None
-    # Resolve named profile overlay
-    active = (getattr(block, "active_profile", None) or "").strip()
-    profiles = getattr(block, "profiles", None) or {}
-    if active and isinstance(profiles, dict) and active in profiles:
-        overlay = profiles[active]
-        if isinstance(overlay, dict):
-            merged = block.model_dump()
-            merged.update({k: v for k, v in overlay.items() if k != "profiles"})
-            block = BoundariesSettings.model_validate(merged)
+    if not requested:
+        active = (getattr(block, "active_profile", None) or "").strip()
+        if active:
+            block = _overlay_named_profile(block, active)
     return BoundaryEngine.from_settings(block, judge=judge)
+
+
+def engine_for_request(
+    base: BoundaryEngine | None,
+    *,
+    profile: str | None = None,
+) -> BoundaryEngine | None:
+    """Per-request profile overlay on an already-built engine (#171)."""
+    name = (profile or "").strip()
+    if not name:
+        if base is not None and getattr(base, "enabled", False):
+            return base
+        return None
+    if base is None:
+        return None
+    profiles = base.settings.profiles or {}
+    if name not in profiles:
+        if getattr(base, "enabled", False):
+            return base
+        return None
+    overlaid = _overlay_named_profile(base.settings, name)
+    if not overlaid.enabled:
+        overlaid = BoundariesSettings.model_validate(
+            {**overlaid.model_dump(), "enabled": True}
+        )
+    if overlaid.mode == "off":
+        return None
+    return BoundaryEngine.from_settings(overlaid, judge=base.judge)
 
 
 def refused_response(

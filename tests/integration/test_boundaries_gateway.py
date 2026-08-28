@@ -144,6 +144,52 @@ async def test_gateway_disabled_skips_boundary(settings):
 
 
 @pytest.mark.asyncio
+async def test_gateway_boundary_profile_header_selects_overlay(settings):
+    """X-Daari-Boundary-Profile applies a named overlay (#171)."""
+    settings.boundaries.enabled = False
+    settings.boundaries.mode = "block"
+    settings.boundaries.allow_topics = []
+    settings.boundaries.deny_topics = []
+    settings.boundaries.profiles = {
+        "fintech-assist": {
+            "allow_topics": ["credit score", "credit card"],
+            "deny_topics": ["wedding", "novel"],
+            "refuse_message": "I only help with credit questions.",
+            "clear_out_threshold": 0.7,
+            "clear_in_threshold": 0.7,
+            "stages_b0": True,
+            "stages_b1": True,
+        }
+    }
+    app, calls = _app_with_fake_model(settings)
+    assert app.state.ctx.router.boundaries is not None
+    transport = ASGITransport(app=app)
+    headers = {**META_HEADERS, "X-Daari-Boundary-Profile": "fintech-assist"}
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        blocked = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "Plan my wedding"}],
+            },
+            headers=headers,
+        )
+        allowed = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "Why did my credit score drop?"}],
+            },
+            headers=headers,
+        )
+    assert blocked.status_code == 200
+    assert blocked.json()["daari_meta"]["tier"] == "boundary"
+    assert allowed.status_code == 200
+    assert allowed.json()["daari_meta"]["tier"] in ("L3", "L4", "L5")
+    assert calls["n"] >= 1
+
+
+@pytest.mark.asyncio
 async def test_config_patch_rebuilds_boundary_engine(settings):
     settings.observability.config_editor = True
     _enable_fintech(settings, mode="warn")

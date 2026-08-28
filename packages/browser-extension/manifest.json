@@ -1,14 +1,34 @@
 {
   "manifest_version": 3,
   "name": "daari prompt bridge",
-  "version": "0.1.0",
-  "description": "Send quick prompts to local daari (localhost:11435).",
+  "version": "0.2.0",
+  "description": "Serve in-page chat widgets via local daari; popup bridge to localhost:11435.",
   "permissions": [
     "storage"
   ],
   "host_permissions": [
-    "http://127.0.0.1/*",
-    "http://localhost/*"
+    "http://127.0.0.1:11435/*",
+    "http://localhost:11435/*",
+    "http://127.0.0.1:8765/*",
+    "http://localhost:8765/*",
+    "http://127.0.0.1:8766/*",
+    "http://localhost:8766/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:8765/*",
+        "http://localhost:8765/*",
+        "http://127.0.0.1:8766/*",
+        "http://localhost:8766/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
   ],
   "options_page": "options.html",
   "action": {
