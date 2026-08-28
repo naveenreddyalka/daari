@@ -6,7 +6,9 @@ name: autodev-cycle
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    # Every 3h: one issue per run caps throughput at 8/day; the prd-cycle
+    # automation (docs/automations/prd-cycle.md) keeps the backlog stocked.
+    - cron: "0 */3 * * *"
   workflow_dispatch:
 
 permissions:

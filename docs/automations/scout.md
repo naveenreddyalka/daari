@@ -1,5 +1,8 @@
 # Automation draft: autodev scout (continuous improvement)
 
+> **Superseded by [prd-cycle.md](prd-cycle.md)** — the weekly survey grew into
+> a daily enterprise gap scan. Kept for reference; do not create both.
+
 Ready-to-create Cursor Automation.
 
 | Field | Value |
