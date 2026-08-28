@@ -44,7 +44,9 @@ A change is not done until the default suite passes.
 - Author every commit as `Naveen Reddy Alka <naveenreddy.alka@gmail.com>` (this repo's local `user.name` / `user.email`). Never use a work identity.
 - Conventional commits: `feat(scope): ...`, `fix(scope): ...`, `docs: ...`, `chore: ...`.
 - One PR per issue. Title: conventional-commit style; body must include `Closes #<issue>`, a summary, and the test output tail.
+- Before opening a PR, `git fetch origin main` and merge it if the branch is behind. If `docs/TRACKING.md` conflicts, keep **both** new `###` sections (they collide because every issue appends above `## How to update`).
 - Push branch, open PR against `main`, then enable auto-merge: `gh pr merge --auto --squash`.
+- Immediately after enabling auto-merge, check `gh pr view --json mergeStateStatus`. If it is `DIRTY` (or checks never start), merge `origin/main`, resolve, and push. Do not leave auto-merge waiting on required checks that will never run.
 - CI (`test` check) and review must pass before merge; do not bypass, do not force-push shared branches.
 
 ## Hard limits (human-only actions)

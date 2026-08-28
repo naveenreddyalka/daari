@@ -88,7 +88,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1080 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1087 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1200,6 +1200,19 @@ fast/quick) before the content-word substitution check. SYN-01–06 retain;
 all 18 near-miss rows still veto. Covered by
 `tests/unit/test_l1_verification_corpus.py`.
 
+### Stalled auto-merge watch ([#200](https://github.com/naveenreddyalka/daari/issues/200))
+
+<!-- tracking:#200 -->
+
+Conflicted auto-merge PRs never get CI (`DIRTY` / empty checks). AGENTS.md
+now requires merging `origin/main` before open and checking
+`mergeStateStatus` after `--auto`. `scripts/autodev_pr_watch.py` comments
+on the PR and files `auto-dev,regression` once; `autodev-cycle` runs it on
+the same 6h schedule (no `CURSOR_API_KEY` required). Covered by
+`tests/unit/test_autodev_pr_watch.py`.
+
+<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
+
 ---
 
 ## How to update
@@ -1208,3 +1221,4 @@ all 18 near-miss rows still veto. Covered by
 2. Refresh **Last updated** and pytest count after test changes.
 3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
 4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
+5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.

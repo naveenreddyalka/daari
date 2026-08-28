@@ -165,7 +165,7 @@ Until the backlog’s top card is “agent tokens stay on the machine,” we wil
 
 ### G6 — v2 leftovers (do not let these jump the queue)
 
-Still worth doing, **after** G1–G3: extension content script (#171), synonym verifier (#208), silent conflicted auto-merge (#200). B2/B3 (#172), multi-window budgets (#174), and IdP-minted keys (#176) shipped. These are product, not the OpenRouter gap.
+Still worth doing, **after** G1–G3: extension content script (#171). B2/B3 (#172), multi-window budgets (#174), IdP-minted keys (#176), synonym verifier (#208), and stalled-auto-merge watch (#200) shipped. These are product, not the OpenRouter gap.
 
 ---
 
