@@ -104,7 +104,36 @@ class TestDoctor:
         assert by_name["model"].ok is False
         assert doctor_exit_code(results) == 1
 
-    def test_embedding_model_missing_is_optional_hint(self, settings):
+    def test_embedding_model_missing_fails_when_l1_enabled(self, settings):
+        mock = MagicMock(spec=httpx.Client)
+        tags_response = MagicMock()
+        tags_response.status_code = 200
+        tags_response.json.return_value = {"models": [{"name": "llama3.2:3b"}]}
+        stats_response = MagicMock()
+        stats_response.status_code = 200
+        stats_response.json.return_value = {"total_requests": 0}
+        mock.get.side_effect = [tags_response, stats_response]
+
+        results = run_doctor(settings, httpx_client=mock)
+        by_name = {r.name: r for r in results}
+
+        assert by_name["embedding_model"].ok is False
+        assert by_name["embedding_model"].optional is False
+        assert "required for L1 semantic cache" in by_name["embedding_model"].detail
+        assert doctor_exit_code(results) == 1
+
+    def test_embedding_model_optional_when_l1_disabled(self, tmp_path):
+        settings = Settings.model_validate(
+            {
+                "server": {"host": "127.0.0.1", "port": 11435},
+                "models": {"l3": "llama3.2:3b"},
+                "ollama": {"base_url": "http://127.0.0.1:11434"},
+                "cache": {
+                    "l0": {"enabled": True, "path": str(tmp_path / "l0")},
+                    "l1": {"enabled": False, "path": str(tmp_path / "l1")},
+                },
+            }
+        )
         mock = MagicMock(spec=httpx.Client)
         tags_response = MagicMock()
         tags_response.status_code = 200
@@ -119,7 +148,6 @@ class TestDoctor:
 
         assert by_name["embedding_model"].ok is False
         assert by_name["embedding_model"].optional is True
-        assert "required for L1 semantic cache" in by_name["embedding_model"].detail
         assert doctor_exit_code(results) == 0
 
     def test_l4_model_missing_is_optional_hint(self, settings):

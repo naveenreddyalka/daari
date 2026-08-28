@@ -604,6 +604,12 @@ class TestSetupCLI:
         assert captured["env"]["RUN_DOCTOR"] == "0"
         assert captured["env"]["PULL_L4"] == "1"
         assert captured["env"]["PULL_L5"] == "1"
+        assert captured["env"]["MINIMAL"] == "0"
+
+        captured.clear()
+        result = runner.invoke(app, ["install", "--minimal"])
+        assert result.exit_code == 0
+        assert captured["env"]["MINIMAL"] == "1"
 
     def test_serve_org_flag_enables_org_mode(self, monkeypatch):
         captured = {}
