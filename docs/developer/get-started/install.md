@@ -62,6 +62,18 @@ daari serve
 
 Package: [pypi.org/project/daari](https://pypi.org/project/daari/) (`daari==1.2.0`).
 
+## Option E — Windows / WSL2
+
+Native Windows is **not** a supported first-run. Use WSL2:
+
+→ [install-windows.md](install-windows.md)
+
+```powershell
+wsl --install
+# then inside WSL, or:
+.\scripts\install.ps1
+```
+
 ## Verify
 
 ```bash

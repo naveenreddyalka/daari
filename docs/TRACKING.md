@@ -34,7 +34,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | S3 Default pull L3+embed (#258) | [x] | install.sh + doctor require embed when L1 on |
 | S4 Cursor tunnel one-liner (#259) | [x] | `daari setup cursor --tunnel --yes --daemonize` |
 | S5 `daari service` (#260) | [ ] | |
-| S6 Windows/WSL (#261) | [ ] | |
+| S6 Windows/WSL (#261) | [x] | install-windows.md + scripts/install.ps1 (WSL only) |
 
 ---
 
@@ -99,7 +99,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1123 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1126 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1273,6 +1273,15 @@ Cursor, and returns without waiting on the tunnel. Missing `cloudflared`
 prints `brew install cloudflared`. `scripts/tunnel.sh --setup-cursor`
 delegates to the same command. Covered by
 `tests/unit/test_cursor_oneclick.py`.
+
+### Windows / WSL first-run ([#261](https://github.com/naveenreddyalka/daari/issues/261))
+
+<!-- tracking:#261 -->
+
+Honest Windows path is WSL2. `docs/developer/get-started/install-windows.md`
+and `scripts/install.ps1` install via pip inside WSL and run
+`daari onboard --yes`. They do not claim a native-Windows daemon.
+Covered by `tests/unit/test_install_windows.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
