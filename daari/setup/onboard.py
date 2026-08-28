@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from daari.config.settings import Settings
+from daari.setup.daemon import ensure_local_daemon
 from daari.setup.doctor import doctor_exit_code
 from daari.setup.doctor import run_doctor as run_doctor_checks
 from daari.setup.models import fetch_ollama_models, model_present, pull_ollama_model
@@ -28,6 +29,7 @@ class OnboardReport:
     skipped: list[str] = field(default_factory=list)
     next_steps: list[str] = field(default_factory=list)
     ready: bool = False
+    served: bool = False
 
     def step(self, name: str) -> OnboardStep | None:
         for item in self.steps:
@@ -65,6 +67,8 @@ def run_onboard(
     pull_fn: Callable[[str], bool] | None = None,
     fetch_models_fn: Callable[[], list[str]] | None = None,
     doctor_fn: Callable[..., list] | None = None,
+    start_serve: bool = False,
+    serve_fn: Callable[[], bool] | None = None,
 ) -> OnboardReport:
     cfg = settings or Settings.load()
     report = OnboardReport()
@@ -141,5 +145,24 @@ def run_onboard(
     report.ready = py_ok and ollama_ok and pulls_ok and doctor_ok
     if not ollama_ok:
         report.next_steps.append(f"Install Ollama from {OLLAMA_DOWNLOAD_URL}")
-    report.next_steps.append("daari serve")
+    if start_serve and report.ready:
+        start = serve_fn or (lambda: ensure_local_daemon(cfg))
+        ok = start()
+        listen = f"http://{cfg.server.host}:{cfg.server.port}/v1"
+        report.served = ok
+        report.steps.append(
+            OnboardStep(
+                name="serve",
+                ok=ok,
+                detail=f"listening at {listen}" if ok else "failed to become healthy",
+            )
+        )
+        report.ready = report.ready and ok
+        if ok:
+            report.next_steps.append(listen)
+            report.next_steps.append(f"GET http://{cfg.server.host}:{cfg.server.port}/ready")
+        else:
+            report.next_steps.append("daari serve")
+    else:
+        report.next_steps.append("daari serve")
     return report

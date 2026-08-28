@@ -863,6 +863,11 @@ def onboard(
     pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
     pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
     minimal: bool = typer.Option(False, "--minimal", help="Pull L3 only (skip embed)."),
+    serve: bool = typer.Option(
+        False,
+        "--serve/--no-serve",
+        help="Start daari serve in the background after a successful onboard.",
+    ),
 ) -> None:
     """First-run for pip/brew: probe Ollama, pull default models, run doctor."""
     _ = yes
@@ -873,6 +878,7 @@ def onboard(
         pull_l4=pull_l4,
         pull_l5=pull_l5,
         minimal=minimal,
+        start_serve=serve,
     )
     _echo_onboard_report(report)
     if not report.ready:

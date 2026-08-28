@@ -35,6 +35,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | S4 Cursor tunnel one-liner (#259) | [x] | `daari setup cursor --tunnel --yes --daemonize` |
 | S5 `daari service` (#260) | [x] | user systemd / launchd unit files; no CI start |
 | S6 Windows/WSL (#261) | [x] | install-windows.md + scripts/install.ps1 (WSL only) |
+| S7 `onboard --serve` (#268) | [x] | background daemon after first-run |
 
 ---
 
@@ -99,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1133 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1135 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1292,6 +1293,15 @@ Honest Windows path is WSL2. `docs/developer/get-started/install-windows.md`
 and `scripts/install.ps1` install via pip inside WSL and run
 `daari onboard --yes`. They do not claim a native-Windows daemon.
 Covered by `tests/unit/test_install_windows.py`.
+
+### Onboard --serve ([#268](https://github.com/naveenreddyalka/daari/issues/268))
+
+<!-- tracking:#268 -->
+
+`daari onboard --yes --serve` starts the daemon in the background after a
+successful first-run (`ensure_local_daemon`) and prints the `/v1` URL plus
+`GET /ready`. Serve is skipped when Ollama is down. Default remains
+`--no-serve`. Covered by `tests/unit/test_onboard.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

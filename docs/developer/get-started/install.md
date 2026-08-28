@@ -39,8 +39,7 @@ daari serve
 brew tap naveenreddyalka/daari
 brew trust naveenreddyalka/daari
 brew install daari
-daari onboard --yes
-daari serve
+daari onboard --yes --serve
 ```
 
 `brew trust` is not optional — Homebrew 6 refuses to load formulae from
@@ -54,11 +53,10 @@ Tap: [naveenreddyalka/homebrew-daari](https://github.com/naveenreddyalka/homebre
 
 ```bash
 pip install daari
-daari onboard --yes
-daari serve
+daari onboard --yes --serve
 ```
 
-`daari onboard` probes Ollama (prints https://ollama.com/download if it is down), pulls L3 + the L1 embed model when missing, and runs `daari doctor`. `--minimal` pulls L3 only. `daari install` does the same when `scripts/install.sh` is not on disk (pip/brew). In a git clone it still runs the source installer (venv + editable install) and now also pulls `nomic-embed-text` unless `MINIMAL=1`. With L1 on, `daari doctor` fails if the embed model is missing.
+`daari onboard` probes Ollama (prints https://ollama.com/download if it is down), pulls L3 + the L1 embed model when missing, and runs `daari doctor`. `--serve` starts the daemon in the background (`http://127.0.0.1:11435/v1`). `--minimal` pulls L3 only. `daari install` does the same when `scripts/install.sh` is not on disk (pip/brew). In a git clone it still runs the source installer (venv + editable install) and now also pulls `nomic-embed-text` unless `MINIMAL=1`. With L1 on, `daari doctor` fails if the embed model is missing.
 
 Package: [pypi.org/project/daari](https://pypi.org/project/daari/) (`daari==1.2.0`).
 

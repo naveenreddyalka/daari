@@ -16,8 +16,7 @@
 
    ```bash
    pip install daari
-   daari onboard --yes
-   daari serve
+   daari onboard --yes --serve
    ```
 
    Or from PowerShell, run the helper (it only talks to WSL):
