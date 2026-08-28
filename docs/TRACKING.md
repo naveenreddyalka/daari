@@ -30,7 +30,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | Item | Status | Notes |
 |------|--------|-------|
 | S1 `daari onboard` (#256) | [x] | pip/brew first-run without a git clone |
-| S2 Install CI gate (#257) | [ ] | TRACKING install-doctor row still `[~]` |
+| S2 Install CI gate (#257) | [x] | `install` job in `.github/workflows/ci.yml` |
 | S3 Default pull L3+embed (#258) | [ ] | |
 | S4 Cursor tunnel one-liner (#259) | [ ] | |
 | S5 `daari service` (#260) | [ ] | |
@@ -99,7 +99,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1110 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1115 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -125,7 +125,7 @@ pytest -m benchmark                 # optional latency checks
 
 | Criterion | Status | Notes |
 |-----------|--------|-------|
-| `./install.sh && daari doctor` passes | [~] | run on fresh clone to confirm |
+| `./install.sh && daari doctor` passes | [x] | CI `install` job: `RUN_DOCTOR=0 ./scripts/install.sh` + `.venv/bin/daari --help`; doctor required checks stay in `tests/test_doctor.py` |
 | `daari setup cursor --dry-run` shows diff | [x] | covered by tests |
 | Low-confidence response escalates to L6 | [x] | when `frontier.enabled` + API key present |
 
@@ -1243,6 +1243,16 @@ https://ollama.com/download if down), pull L3 + embed when missing, run
 doctor, print `daari serve`. `daari install` still runs `scripts/install.sh`
 in a clone and falls back to onboard when that file is absent. Covered by
 `tests/unit/test_onboard.py`. Remaining setup train: #257–#261.
+
+### Install CI gate ([#257](https://github.com/naveenreddyalka/daari/issues/257))
+
+<!-- tracking:#257 -->
+
+The `install` GitHub Actions job runs `RUN_DOCTOR=0 ./scripts/install.sh` on a
+fresh checkout (no Ollama, no model pulls) and asserts `.venv/bin/daari --help`.
+`tests/unit/test_install_sh.py` execs the script with a fake `python3.12` /
+`ollama` and requires the job to stay in `ci.yml`. Doctor required checks
+remain in `tests/test_doctor.py` (already on the `test` job).
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

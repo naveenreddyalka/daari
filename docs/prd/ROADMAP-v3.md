@@ -174,7 +174,7 @@ Still worth doing, **after** G1–G3: extension content script (#171, shipped). 
 | Slice | Issue | Status |
 |-------|-------|--------|
 | S1 `daari onboard --yes` (pip/brew, no clone) | [#256](https://github.com/naveenreddyalka/daari/issues/256) | in this PR |
-| S2 CI-gate `install.sh` + mocked doctor | [#257](https://github.com/naveenreddyalka/daari/issues/257) | open |
+| S2 CI-gate `install.sh` + mocked doctor | [#257](https://github.com/naveenreddyalka/daari/issues/257) | in this PR |
 | S3 Default pull = L3 + embed (`--minimal` skips) | [#258](https://github.com/naveenreddyalka/daari/issues/258) | open |
 | S4 Cursor `--tunnel --yes --daemonize` | [#259](https://github.com/naveenreddyalka/daari/issues/259) | open |
 | S5 User systemd / launchd (`daari service`) | [#260](https://github.com/naveenreddyalka/daari/issues/260) | open |
