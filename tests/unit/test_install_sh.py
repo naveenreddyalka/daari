@@ -91,7 +91,8 @@ class TestInstallSh:
         repo, _bins, env = isolated_repo
         empty = tmp_path / "empty"
         empty.mkdir()
-        env = {**env, "PATH": _safe_path(empty)}
+        # Absolute bash + empty PATH: runners put python3.12 in /usr/bin next to bash.
+        env = {**env, "PATH": str(empty)}
         result = subprocess.run(
             [BASH, str(repo / "scripts" / "install.sh")],
             cwd=repo,
