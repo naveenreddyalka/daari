@@ -6,7 +6,16 @@ cd "$ROOT_DIR"
 
 SETUP_CURSOR=0
 if [[ "${1:-}" == "--setup-cursor" ]]; then
-  SETUP_CURSOR=1
+  echo "scripts/tunnel.sh --setup-cursor is deprecated."
+  echo "Prefer: daari setup cursor --tunnel --yes --daemonize"
+  if command -v daari >/dev/null 2>&1; then
+    exec daari setup cursor --tunnel --yes --daemonize
+  fi
+  if [[ -x ".venv/bin/daari" ]]; then
+    exec .venv/bin/daari setup cursor --tunnel --yes --daemonize
+  fi
+  echo "daari not on PATH. Install it, then re-run the command above." >&2
+  exit 1
 elif [[ "${1:-}" != "" ]]; then
   echo "Usage: scripts/tunnel.sh [--setup-cursor]" >&2
   exit 1

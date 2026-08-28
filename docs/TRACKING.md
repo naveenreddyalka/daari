@@ -32,7 +32,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | S1 `daari onboard` (#256) | [x] | pip/brew first-run without a git clone |
 | S2 Install CI gate (#257) | [x] | `install` job in `.github/workflows/ci.yml` |
 | S3 Default pull L3+embed (#258) | [x] | install.sh + doctor require embed when L1 on |
-| S4 Cursor tunnel one-liner (#259) | [ ] | |
+| S4 Cursor tunnel one-liner (#259) | [x] | `daari setup cursor --tunnel --yes --daemonize` |
 | S5 `daari service` (#260) | [ ] | |
 | S6 Windows/WSL (#261) | [ ] | |
 
@@ -99,7 +99,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1117 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1123 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1262,6 +1262,17 @@ fresh checkout (no Ollama, no model pulls) and asserts `.venv/bin/daari --help`.
 `tests/unit/test_install_sh.py` execs the script with a fake `python3.12` /
 `ollama` and requires the job to stay in `ci.yml`. Doctor required checks
 remain in `tests/test_doctor.py` (already on the `test` job).
+
+### Cursor tunnel one-liner ([#259](https://github.com/naveenreddyalka/daari/issues/259))
+
+<!-- tracking:#259 -->
+
+`daari setup cursor --tunnel --yes --daemonize` starts `daari serve` if
+`/health` is down, opens cloudflared, writes the public `/v1` URL into
+Cursor, and returns without waiting on the tunnel. Missing `cloudflared`
+prints `brew install cloudflared`. `scripts/tunnel.sh --setup-cursor`
+delegates to the same command. Covered by
+`tests/unit/test_cursor_oneclick.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

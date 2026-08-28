@@ -70,6 +70,14 @@ curl -fsS http://127.0.0.1:11435/ready
 daari doctor
 ```
 
+## Cursor over a tunnel
+
+```bash
+daari setup cursor --tunnel --yes --daemonize
+```
+
+Starts `daari serve` if needed, opens a Cloudflare quick tunnel, and writes the public base URL into Cursor. Requires `cloudflared` (`brew install cloudflared`).
+
 ## Next
 
 → [Quickstart](quickstart.md) · [First client](first-client.md)
