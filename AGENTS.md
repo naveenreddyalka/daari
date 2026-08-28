@@ -62,6 +62,7 @@ Never do these autonomously — stop and leave a comment on the issue/PR instead
 ## Failure protocol
 
 - Test failures you cannot fix within the issue scope: comment findings on the issue, remove `agent:working`, leave the branch pushed for a human.
+- Abandoned `agent:working` labels are swept automatically: `scripts/autodev_pr_watch.py` removes the label from issues with no update and no open PR for 24h. Keep long-running work visible by commenting on the issue or pushing the PR.
 - Flaky/environmental failure: retry once; if still failing, file a new issue labeled `auto-dev,regression` with logs.
 
 ## Code style
