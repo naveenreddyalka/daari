@@ -902,6 +902,10 @@ class Router:
         # are already in the cache key). Skip CCS / L1 / Lt — those are Ask
         # paths and must not serve a near-match over a different tool result.
         if agent_turn:
+            if not request.meta.no_cache and not cache_skip:
+                prefix_hit = await self._agent_prefix_l1(request, profile, started, cache_max_age)
+                if prefix_hit is not None:
+                    return prefix_hit
             return await self._route_generation(
                 request, request, profile, started, cache_skip=cache_skip
             )
@@ -1170,7 +1174,15 @@ class Router:
                 except Exception:
                     pass
             agent_turn = bool(request.tools) or request.has_tool_calls_in_history
-            if not agent_turn:
+            if agent_turn:
+                # G1b: learn the stable prefix (keyed by the exact tool-result
+                # suffix). Tool-call transcripts are never stored as answers.
+                if not response.tool_calls:
+                    try:
+                        await self.semantic_cache.put_agent_prefix(request, response)
+                    except Exception:
+                        pass
+            else:
                 try:
                     await self.semantic_cache.put(request, response)
                 except Exception:
@@ -1182,6 +1194,40 @@ class Router:
                         pass
         self._record(response, started)
         return response
+
+    async def _agent_prefix_l1(
+        self,
+        request: InternalRequest,
+        profile: PromptProfile | None,
+        started: float,
+        cache_max_age: float | None,
+    ) -> InternalResponse | None:
+        """G1b: L1 over the stable tool prefix; the tool-result suffix stays exact."""
+        try:
+            hit, similarity, source = await self.semantic_cache.nearest_agent_prefix(
+                request, max_age=cache_max_age
+            )
+        except Exception:
+            return None
+        threshold = self._l1_threshold_for_category(
+            profile.category if profile is not None else None
+        )
+        if hit is None or similarity < threshold:
+            add_step("agent_prefix_l1_lookup", hit=False, similarity=round(similarity, 4))
+            return None
+        if not self.semantic_cache.verify_for_serving(request, source):
+            add_step("l1_verification_rejected", similarity=round(similarity, 4))
+            return None
+        add_step("agent_prefix_l1_lookup", hit=True, similarity=round(similarity, 4))
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        hit.daari_meta.tier = "L1"
+        hit.daari_meta.cache_hit = True
+        hit.daari_meta.executor = "cache"
+        hit.daari_meta.provider_id = "cache"
+        hit.daari_meta.latency_ms = latency_ms
+        hit.daari_meta.task_type = "cache_hit"
+        self.metrics.record("L1", cache_hit=True, latency_ms=latency_ms)
+        return hit
 
     def _with_skills_prefix(self, request: InternalRequest) -> InternalRequest:
         if not self.skills_system_prefix:

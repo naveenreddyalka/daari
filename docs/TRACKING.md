@@ -1314,6 +1314,19 @@ label from open issues untouched for 24h with no open PR referencing them
 comment. Runs in the existing `stall-watch` job. Covered by
 `tests/unit/test_autodev_pr_watch.py`.
 
+### Agent prefix L1 ([#269](https://github.com/naveenreddyalka/daari/issues/269))
+
+<!-- tracking:#269 -->
+
+G1b turns L1 back on for agent turns, but only over the **stable prefix**
+(system + tools + history minus trailing `tool` results). The trailing tool
+results are hashed into the L1 lookup context, so an identical prefix with a
+different last tool result can never serve the previous answer; an identical
+prefix and tool result can hit L0 or prefix-L1 (`nearest_agent_prefix` /
+`put_agent_prefix` on `SemanticCache`). Turns that emit tool calls are
+still never stored as answers. ADR-0004 amended. Covered by
+`tests/integration/test_agent_prefix_l1.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
