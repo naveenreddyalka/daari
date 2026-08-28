@@ -11,7 +11,8 @@
 | Phase | Method | Notes |
 |-------|--------|-------|
 | **Phase A** | `./scripts/install.sh` in repo | Checks Python 3.12, venv, Ollama, pulls default model |
-| **Phase A.1** | `daari install` CLI command | Same logic as shell script |
+| **Phase A.1** | `daari install` CLI command | Same logic as shell script in a clone; **falls back to `daari onboard`** after pip/brew |
+| **Phase A.1** | `daari onboard --yes` | Pure-Python first-run: probe Ollama, pull L3 + embed, run doctor |
 | **Demo** | `./scripts/demo.sh` | One-command smoke: serve + curl + stats + setup dry-run |
 | **Future** | `brew install daari` / curl pipe | Requires domain + release artifacts — **not MVP** |
 
@@ -32,6 +33,7 @@
 | `daari setup --all` | B | Detect + run applicable recipes (non-interactive) |
 | `daari setup --undo <tool>` | A.1 | Restore latest backup for tool |
 | `daari doctor` | A.1 | Health check |
+| `daari onboard` | A.1 | pip/brew first-run (no git clone) |
 
 ---
 

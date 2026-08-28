@@ -39,7 +39,7 @@ daari serve
 brew tap naveenreddyalka/daari
 brew trust naveenreddyalka/daari
 brew install daari
-ollama pull llama3.2:3b
+daari onboard --yes
 daari serve
 ```
 
@@ -54,9 +54,11 @@ Tap: [naveenreddyalka/homebrew-daari](https://github.com/naveenreddyalka/homebre
 
 ```bash
 pip install daari
-ollama pull llama3.2:3b
+daari onboard --yes
 daari serve
 ```
+
+`daari onboard` probes Ollama (prints https://ollama.com/download if it is down), pulls L3 + the L1 embed model when missing, and runs `daari doctor`. `daari install` does the same when `scripts/install.sh` is not on disk (pip/brew). In a git clone it still runs the source installer (venv + editable install).
 
 Package: [pypi.org/project/daari](https://pypi.org/project/daari/) (`daari==1.2.0`).
 

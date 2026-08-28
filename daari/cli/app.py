@@ -28,6 +28,7 @@ from daari.server.app import create_app
 from daari.setup.context import clear_context_caches
 from daari.setup.doctor import doctor_exit_code, run_doctor
 from daari.setup.models import setup_models_interactive
+from daari.setup.onboard import OnboardReport, run_onboard
 from daari.setup.openai_compat import setup_frontier_key_hint, setup_openai_compat
 from daari.setup.tunnel import (
     parse_cloudflared_tunnel_url,
@@ -833,18 +834,63 @@ def doctor(
         raise typer.Exit(code=code)
 
 
+def _echo_onboard_report(report: OnboardReport) -> None:
+    for step in report.steps:
+        mark = "✓" if step.ok else "✗"
+        typer.echo(f"  {mark} {step.name}: {step.detail}")
+    if report.pulled:
+        typer.echo("Pulled: " + ", ".join(report.pulled))
+    if report.next_steps:
+        typer.echo("Next steps:")
+        for item in report.next_steps:
+            typer.echo(f"  {item}")
+
+
+@app.command()
+def onboard(
+    yes: bool = typer.Option(False, "--yes", help="Non-interactive (default path; no prompts)."),
+    run_doctor: bool = typer.Option(True, "--run-doctor/--no-run-doctor", help="Run doctor at end."),
+    pull: bool = typer.Option(True, "--pull/--no-pull", help="Pull missing default models."),
+    pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
+    pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
+    minimal: bool = typer.Option(False, "--minimal", help="Pull L3 only (skip embed)."),
+) -> None:
+    """First-run for pip/brew: probe Ollama, pull default models, run doctor."""
+    _ = yes
+    report = run_onboard(
+        get_settings(),
+        pull=pull,
+        run_doctor=run_doctor,
+        pull_l4=pull_l4,
+        pull_l5=pull_l5,
+        minimal=minimal,
+    )
+    _echo_onboard_report(report)
+    if not report.ready:
+        raise typer.Exit(code=1)
+
+
 @app.command("install")
 def install(
     run_doctor: bool = typer.Option(True, "--run-doctor/--no-run-doctor", help="Run doctor at end."),
     pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
     pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
 ) -> None:
-    """Typer wrapper for install.sh parity."""
+    """Source-tree wrapper for install.sh; pip/brew falls back to onboard."""
     repo_root = Path(__file__).resolve().parents[2]
     script = repo_root / "scripts" / "install.sh"
     if not script.is_file():
-        typer.echo(f"install script not found at {script}", err=True)
-        raise typer.Exit(code=1)
+        report = run_onboard(
+            get_settings(),
+            pull=True,
+            run_doctor=run_doctor,
+            pull_l4=pull_l4,
+            pull_l5=pull_l5,
+        )
+        _echo_onboard_report(report)
+        if not report.ready:
+            raise typer.Exit(code=1)
+        return
 
     env = dict(
         **{
