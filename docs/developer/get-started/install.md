@@ -58,7 +58,7 @@ daari onboard --yes
 daari serve
 ```
 
-`daari onboard` probes Ollama (prints https://ollama.com/download if it is down), pulls L3 + the L1 embed model when missing, and runs `daari doctor`. `daari install` does the same when `scripts/install.sh` is not on disk (pip/brew). In a git clone it still runs the source installer (venv + editable install).
+`daari onboard` probes Ollama (prints https://ollama.com/download if it is down), pulls L3 + the L1 embed model when missing, and runs `daari doctor`. `--minimal` pulls L3 only. `daari install` does the same when `scripts/install.sh` is not on disk (pip/brew). In a git clone it still runs the source installer (venv + editable install) and now also pulls `nomic-embed-text` unless `MINIMAL=1`. With L1 on, `daari doctor` fails if the embed model is missing.
 
 Package: [pypi.org/project/daari](https://pypi.org/project/daari/) (`daari==1.2.0`).
 

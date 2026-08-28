@@ -8,6 +8,8 @@ VENV="${REPO_ROOT}/.venv"
 RUN_DOCTOR="${RUN_DOCTOR:-1}"
 PULL_L4="${PULL_L4:-0}"
 PULL_L5="${PULL_L5:-0}"
+MINIMAL="${MINIMAL:-0}"
+EMBED_MODEL="${EMBED_MODEL:-nomic-embed-text}"
 
 cd "${REPO_ROOT}"
 
@@ -29,6 +31,12 @@ pip install -q -e ".[dev]"
 if command -v ollama >/dev/null 2>&1; then
   echo "==> Pulling default Ollama model (llama3.2:3b)"
   ollama pull llama3.2:3b || echo "Warning: ollama pull failed — run manually when Ollama is ready."
+  if [[ "${MINIMAL}" != "1" ]]; then
+    echo "==> Pulling L1 embedding model (${EMBED_MODEL})"
+    ollama pull "${EMBED_MODEL}" || echo "Warning: embed pull failed — L1 semantic cache needs: ollama pull ${EMBED_MODEL}"
+  else
+    echo "==> Skipping embed pull (MINIMAL=1). L1 needs: ollama pull ${EMBED_MODEL}"
+  fi
   if [[ "${PULL_L4}" == "1" ]]; then
     echo "==> Pulling optional L4 model (llama3.1:8b)"
     ollama pull llama3.1:8b || echo "Warning: optional L4 pull failed."
@@ -45,6 +53,7 @@ else
   echo "==> Ollama not found."
   echo "    Install from https://ollama.com then run:"
   echo "      ollama pull llama3.2:3b"
+  echo "      ollama pull nomic-embed-text  # L1 semantic cache"
   echo "      ollama pull llama3.1:8b      # optional L4"
   echo "      ollama pull llama3.1:70b     # optional L5"
 fi
