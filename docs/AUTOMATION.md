@@ -32,7 +32,7 @@ flowchart LR
 | Merge gate | branch protection on `main` (requires CI check `test`, strict, no force-push) + repo auto-merge | active |
 | Dev-cycle agent | Cursor Automation draft: [automations/dev-cycle.md](automations/dev-cycle.md); CI fallback: [.github/workflows/autodev.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/autodev.yml) | fallback committed; needs `CURSOR_API_KEY` secret or Automation creation |
 | PR review agent | [automations/pr-review.md](automations/pr-review.md) or enable Bugbot on cursor.com | draft |
-| Scout (continuous improvement) | [automations/scout.md](automations/scout.md) — weekly competitive survey files new `auto-dev` issues | draft |
+| PRD cycle (backlog replenishment) | [automations/prd-cycle.md](automations/prd-cycle.md) — daily enterprise gap scan maintains `docs/prd/ENTERPRISE.md` and files prioritized `auto-dev` issues (supersedes the weekly scout draft) | draft |
 | Local watchdog | `scripts/autodev-local.sh` + launchd (`com.daari.serve`, `com.daari.autodev`) | installed and validated |
 
 ## Local watchdog (Mac)
@@ -52,7 +52,7 @@ tail -f ~/.daari/autodev/watchdog.out.log
    - Add repo secret: `gh secret set CURSOR_API_KEY` (key from cursor.com/settings) → the scheduled workflow starts working, or
    - Create the Cursor Automation from [automations/dev-cycle.md](automations/dev-cycle.md) in the Agents Window.
 2. **PR review** — enable Bugbot for the repo on cursor.com/dashboard, or create the automation from [automations/pr-review.md](automations/pr-review.md).
-3. **Scout** — create the automation from [automations/scout.md](automations/scout.md).
+3. **PRD cycle** — create the automation from [automations/prd-cycle.md](automations/prd-cycle.md).
 
 ## Pausing / stopping
 
