@@ -1303,6 +1303,17 @@ successful first-run (`ensure_local_daemon`) and prints the `/v1` URL plus
 `GET /ready`. Serve is skipped when Ollama is down. Default remains
 `--no-serve`. Covered by `tests/unit/test_onboard.py`.
 
+### Stale agent:working sweep ([#272](https://github.com/naveenreddyalka/daari/issues/272))
+
+<!-- tracking:#272 -->
+
+A dev-cycle agent that dies mid-issue leaves `agent:working` behind, and the
+picker skips the issue forever. `scripts/autodev_pr_watch.py` now sweeps the
+label from open issues untouched for 24h with no open PR referencing them
+(branch `autodev/<n>-` or `#<n>` in the PR title/body), leaving a marker
+comment. Runs in the existing `stall-watch` job. Covered by
+`tests/unit/test_autodev_pr_watch.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

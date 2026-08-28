@@ -4,6 +4,10 @@
 GitHub will not build a test-merge for a conflicted PR, so required checks
 never start and `gh pr merge --auto` waits forever. This watcher comments
 on the PR and files a `auto-dev,regression` issue once per stall.
+
+It also sweeps abandoned `agent:working` labels (issue #272): an open issue
+untouched for the TTL with no open PR referencing it gets the label removed
+so the dev-cycle picker can claim it again.
 """
 
 from __future__ import annotations
@@ -16,8 +20,11 @@ from pathlib import Path
 from typing import Any
 
 STALL_MARKER = "autodev-pr-stall"
+SWEEP_MARKER = "autodev-stale-working"
 ISSUE_LABELS = "auto-dev,regression"
+WORKING_LABEL = "agent:working"
 DEFAULT_MIN_AGE_MINUTES = 15
+DEFAULT_SWEEP_TTL_HOURS = 24
 
 
 def parse_gh_time(raw: str | None) -> datetime | None:
@@ -108,24 +115,122 @@ def select_stalled(
     return out
 
 
+def _label_names(issue: dict[str, Any]) -> set[str]:
+    return {label.get("name", "") for label in issue.get("labels") or [] if isinstance(label, dict)}
+
+
+def pr_references_issue(pr: dict[str, Any], number: int) -> bool:
+    if (pr.get("headRefName") or "").startswith(f"autodev/{number}-"):
+        return True
+    token = f"#{number}"
+    return token in (pr.get("title") or "") or token in (pr.get("body") or "")
+
+
+def classify_stale_working(
+    issue: dict[str, Any],
+    *,
+    open_prs: list[dict[str, Any]],
+    now: datetime | None = None,
+    ttl_hours: int = DEFAULT_SWEEP_TTL_HOURS,
+) -> bool:
+    """True when an agent:working label looks abandoned and should be removed."""
+    if WORKING_LABEL not in _label_names(issue):
+        return False
+    if (issue.get("state") or "OPEN").upper() not in ("OPEN", ""):
+        return False
+    updated = parse_gh_time(issue.get("updatedAt"))
+    if updated is None:
+        return False
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    if (moment - updated).total_seconds() / 3600.0 < ttl_hours:
+        return False
+    number = int(issue["number"])
+    return not any(pr_references_issue(pr, number) for pr in open_prs)
+
+
+def render_sweep_comment(issue: dict[str, Any], ttl_hours: int) -> str:
+    return (
+        f"<!-- {SWEEP_MARKER} -->\n"
+        f"Removed `{WORKING_LABEL}`: no update on this issue and no open PR "
+        f"referencing it for over {ttl_hours}h. The issue is eligible for the "
+        "dev-cycle picker again.\n"
+        "Swept by `scripts/autodev_pr_watch.py` (#272)."
+    )
+
+
+def apply_sweep(
+    issues: list[dict[str, Any]],
+    *,
+    open_prs: list[dict[str, Any]],
+    now: datetime | None = None,
+    ttl_hours: int = DEFAULT_SWEEP_TTL_HOURS,
+    remove_label: Any = None,
+    comment: Any = None,
+    list_comments: Any = None,
+) -> list[int]:
+    """Remove abandoned agent:working labels. Returns swept issue numbers."""
+    swept: list[int] = []
+    for issue in issues:
+        if not classify_stale_working(issue, open_prs=open_prs, now=now, ttl_hours=ttl_hours):
+            continue
+        number = int(issue["number"])
+        comments = list_comments(number) if list_comments else []
+        if any(SWEEP_MARKER in (item.get("body") or "") for item in comments):
+            continue
+        if remove_label:
+            remove_label(number)
+        if comment:
+            comment(number, render_sweep_comment(issue, ttl_hours))
+        swept.append(number)
+    return swept
+
+
 def _gh_json(args: list[str]) -> Any:
     raw = subprocess.check_output(["gh", *args], text=True)
     return json.loads(raw) if raw.strip() else None
 
 
 def fetch_open_prs() -> list[dict[str, Any]]:
-    return _gh_json(
-        [
-            "pr",
-            "list",
-            "--state",
-            "open",
-            "--limit",
-            "50",
-            "--json",
-            "number,title,state,mergeStateStatus,autoMergeRequest,statusCheckRollup,createdAt,url",
-        ]
-    ) or []
+    return (
+        _gh_json(
+            [
+                "pr",
+                "list",
+                "--state",
+                "open",
+                "--limit",
+                "50",
+                "--json",
+                "number,title,state,mergeStateStatus,autoMergeRequest,statusCheckRollup,"
+                "createdAt,url,headRefName,body",
+            ]
+        )
+        or []
+    )
+
+
+def fetch_working_issues() -> list[dict[str, Any]]:
+    return (
+        _gh_json(
+            [
+                "issue",
+                "list",
+                "--state",
+                "open",
+                "--label",
+                WORKING_LABEL,
+                "--limit",
+                "50",
+                "--json",
+                "number,title,state,labels,updatedAt",
+            ]
+        )
+        or []
+    )
 
 
 def apply_alerts(
@@ -167,18 +272,21 @@ def _cli_comment(number: int, body: str) -> None:
 
 
 def _cli_list_issues(title: str) -> list[dict[str, Any]]:
-    rows = _gh_json(
-        [
-            "issue",
-            "list",
-            "--state",
-            "open",
-            "--search",
-            f"in:title {title}",
-            "--json",
-            "number,title",
-        ]
-    ) or []
+    rows = (
+        _gh_json(
+            [
+                "issue",
+                "list",
+                "--state",
+                "open",
+                "--search",
+                f"in:title {title}",
+                "--json",
+                "number,title",
+            ]
+        )
+        or []
+    )
     return [row for row in rows if row.get("title") == title]
 
 
@@ -198,6 +306,18 @@ def _cli_create_issue(title: str, body: str) -> None:
     )
 
 
+def _cli_remove_working_label(number: int) -> None:
+    subprocess.check_call(
+        ["gh", "issue", "edit", str(number), "--remove-label", WORKING_LABEL],
+    )
+
+
+def _cli_issue_comment(number: int, body: str) -> None:
+    subprocess.check_call(
+        ["gh", "issue", "comment", str(number), "--body", body],
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -214,14 +334,29 @@ def main(argv: list[str] | None = None) -> int:
         "--input-json",
         help="Read PR list from a file instead of `gh pr list`.",
     )
+    parser.add_argument(
+        "--sweep-ttl-hours",
+        type=int,
+        default=DEFAULT_SWEEP_TTL_HOURS,
+        help="Remove agent:working from issues untouched this long with no open PR.",
+    )
     args = parser.parse_args(argv)
     if args.input_json:
         prs = json.loads(Path(args.input_json).read_text(encoding="utf-8"))
+        issues = []
     else:
         prs = fetch_open_prs()
+        issues = fetch_working_issues()
     stalled = select_stalled(prs, min_age_minutes=args.min_age_minutes)
     for pr, reason in stalled:
         print(f"#{pr.get('number')} {reason} {pr.get('title')}")
+    stale = [
+        issue
+        for issue in issues
+        if classify_stale_working(issue, open_prs=prs, ttl_hours=args.sweep_ttl_hours)
+    ]
+    for issue in stale:
+        print(f"#{issue.get('number')} stale_working {issue.get('title')}")
     if not args.apply:
         return 0
     apply_alerts(
@@ -231,6 +366,14 @@ def main(argv: list[str] | None = None) -> int:
         list_comments=_cli_list_comments,
         create_issue=_cli_create_issue,
         list_issues=_cli_list_issues,
+    )
+    apply_sweep(
+        issues,
+        open_prs=prs,
+        ttl_hours=args.sweep_ttl_hours,
+        remove_label=_cli_remove_working_label,
+        comment=_cli_issue_comment,
+        list_comments=_cli_list_comments,
     )
     return 0
 
