@@ -26,6 +26,7 @@ from daari.enterprise.client import OrgLearningClient
 from daari.enterprise.service import create_org_cache_app
 from daari.server.app import create_app
 from daari.setup.context import clear_context_caches
+from daari.setup.daemon import ensure_local_daemon
 from daari.setup.doctor import doctor_exit_code, run_doctor
 from daari.setup.models import setup_models_interactive
 from daari.setup.onboard import OnboardReport, run_onboard
@@ -976,6 +977,11 @@ def setup_cursor(
         "--yes",
         help="Non-interactive: pull the L4 model automatically when missing.",
     ),
+    daemonize: bool = typer.Option(
+        False,
+        "--daemonize",
+        help="Start daari serve if needed and leave the tunnel running in the background.",
+    ),
 ) -> None:
     """Configure Cursor to use the daari OpenAI-compat gateway."""
     if tunnel and base_url:
@@ -984,6 +990,13 @@ def setup_cursor(
 
     resolved_base_url = _normalize_openai_base_url(base_url) if base_url else None
     tunnel_process: subprocess.Popen[str] | None = None
+
+    if daemonize and not ensure_local_daemon(get_settings()):
+        typer.echo(
+            "Could not start daari serve. Run `daari serve` in another terminal and retry.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     if tunnel:
         tunnel_from_env = os.environ.get("DAARI_TUNNEL_URL")
@@ -1027,6 +1040,12 @@ def setup_cursor(
 
     typer.echo("\nCursor now points to the HTTPS tunnel URL.")
     typer.echo("Inference remains local in your daari daemon; Cursor's HTTP hop is public.")
+    if daemonize:
+        typer.echo(
+            f"Tunnel left running in the background (pid {tunnel_process.pid}). "
+            "Stop it with: kill that pid."
+        )
+        return
     typer.echo("Keep this command running while using Cursor. Press Ctrl+C to stop the tunnel.")
 
     try:

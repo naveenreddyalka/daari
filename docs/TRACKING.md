@@ -32,7 +32,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | S1 `daari onboard` (#256) | [x] | pip/brew first-run without a git clone |
 | S2 Install CI gate (#257) | [ ] | TRACKING install-doctor row still `[~]` |
 | S3 Default pull L3+embed (#258) | [x] | install.sh + doctor require embed when L1 on |
-| S4 Cursor tunnel one-liner (#259) | [ ] | |
+| S4 Cursor tunnel one-liner (#259) | [x] | `daari setup cursor --tunnel --yes --daemonize` |
 | S5 `daari service` (#260) | [ ] | |
 | S6 Windows/WSL (#261) | [ ] | |
 
@@ -99,7 +99,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1112 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1118 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
 
 ---
 
@@ -1252,6 +1252,17 @@ in a clone and falls back to onboard when that file is absent. Covered by
 `daari install --minimal` / `daari onboard --minimal` skip embed. When L1 is
 enabled, `daari doctor` fails if the embedding model is missing. Covered by
 `tests/test_doctor.py` and `tests/unit/test_install_default_stack.py`.
+
+### Cursor tunnel one-liner ([#259](https://github.com/naveenreddyalka/daari/issues/259))
+
+<!-- tracking:#259 -->
+
+`daari setup cursor --tunnel --yes --daemonize` starts `daari serve` if
+`/health` is down, opens cloudflared, writes the public `/v1` URL into
+Cursor, and returns without waiting on the tunnel. Missing `cloudflared`
+prints `brew install cloudflared`. `scripts/tunnel.sh --setup-cursor`
+delegates to the same command. Covered by
+`tests/unit/test_cursor_oneclick.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

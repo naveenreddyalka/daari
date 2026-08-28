@@ -12,10 +12,10 @@
 Cursor cloud cannot call `127.0.0.1`. Use the tunnel helper:
 
 ```bash
-scripts/tunnel.sh --setup-cursor
+daari setup cursor --tunnel --yes --daemonize
 ```
 
-This starts daari if needed, opens a Cloudflare quick tunnel, configures Cursor Override OpenAI Base URL, and auto-enables `server.api_key` when unset.
+This starts `daari serve` if needed, opens a Cloudflare quick tunnel, configures Cursor Override OpenAI Base URL, and auto-enables `server.api_key` when unset. `scripts/tunnel.sh --setup-cursor` delegates to the same command.
 
 Manual:
 
