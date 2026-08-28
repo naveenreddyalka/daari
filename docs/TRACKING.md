@@ -1211,6 +1211,17 @@ on the PR and files `auto-dev,regression` once; `autodev-cycle` runs it on
 the same 6h schedule (no `CURSOR_API_KEY` required). Covered by
 `tests/unit/test_autodev_pr_watch.py`.
 
+### Local watchdog readiness poll ([#181](https://github.com/naveenreddyalka/daari/issues/181))
+
+<!-- tracking:#181 -->
+
+Issue #181 filed false positives: a single 5s `/health` probe marked the
+daemon unreachable while the same cycle's Cursor smoke passed once serve
+finished booting; a transient Ollama disconnect failed live integration tests
+without a retry. `scripts/autodev_local.py` polls `/ready` (then `/health`) with
+30s bounded backoff; `autodev-local.sh` kickstarts then waits, and retries
+integration tests once after 3s. Covered by `tests/unit/test_autodev_local.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

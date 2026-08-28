@@ -97,12 +97,11 @@ else
 fi
 
 # --- 2. Daemon health ---------------------------------------------------------
-if ! curl -sf --max-time 5 "$DAEMON_URL/health" > /dev/null; then
+if ! "$VENV/bin/python" "$REPO/scripts/autodev_local.py" ready "$DAEMON_URL" >> "$RUN_LOG" 2>&1; then
   log "daari serve not responding — kickstarting"
   launchctl kickstart -k "gui/$(id -u)/$SERVE_LABEL" 2>/dev/null || true
-  sleep 5
 fi
-if curl -sf --max-time 5 "$DAEMON_URL/health" > /dev/null; then
+if "$VENV/bin/python" "$REPO/scripts/autodev_local.py" wait "$DAEMON_URL" >> "$RUN_LOG" 2>&1; then
   log "daemon healthy at $DAEMON_URL"
 else
   log "FAIL: daemon unreachable at $DAEMON_URL"
@@ -112,7 +111,18 @@ fi
 # --- 3. Live Ollama integration tests -----------------------------------------
 if curl -sf --max-time 5 "$OLLAMA_URL/api/tags" > /dev/null; then
   log "Running live integration tests"
-  if OLLAMA_HOST="$OLLAMA_URL" "$VENV/bin/python" -m pytest -m integration -q >> "$RUN_LOG" 2>&1; then
+  INTEGRATION_OK=0
+  for attempt in 1 2; do
+    if OLLAMA_HOST="$OLLAMA_URL" "$VENV/bin/python" -m pytest -m integration -q >> "$RUN_LOG" 2>&1; then
+      INTEGRATION_OK=1
+      break
+    fi
+    if [ "$attempt" -eq 1 ]; then
+      log "WARN: live integration tests failed — retrying once after 3s (transient Ollama blip)"
+      sleep 3
+    fi
+  done
+  if [ "$INTEGRATION_OK" -eq 1 ]; then
     log "integration tests: PASS"
   else
     log "FAIL: live integration tests"
