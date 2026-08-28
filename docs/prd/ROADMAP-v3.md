@@ -177,8 +177,8 @@ Still worth doing, **after** G1–G3: extension content script (#171, shipped). 
 | S2 CI-gate `install.sh` + mocked doctor | [#257](https://github.com/naveenreddyalka/daari/issues/257) | shipped |
 | S3 Default pull = L3 + embed (`--minimal` skips) | [#258](https://github.com/naveenreddyalka/daari/issues/258) | shipped |
 | S4 Cursor `--tunnel --yes --daemonize` | [#259](https://github.com/naveenreddyalka/daari/issues/259) | shipped |
-| S5 User systemd / launchd (`daari service`) | [#260](https://github.com/naveenreddyalka/daari/issues/260) | in this PR |
-| S6 Windows/WSL first-run (honest docs) | [#261](https://github.com/naveenreddyalka/daari/issues/261) | open |
+| S5 User systemd / launchd (`daari service`) | [#260](https://github.com/naveenreddyalka/daari/issues/260) | shipped |
+| S6 Windows/WSL first-run (honest docs) | [#261](https://github.com/naveenreddyalka/daari/issues/261) | in this PR |
 
 F1 said `pip install daari` to a working router in under 5 minutes. Docker hits that. pip did not: `daari install` looked for `scripts/install.sh` and died. S1 is the pip/brew hole.
 
