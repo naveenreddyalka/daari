@@ -37,6 +37,18 @@ commercial license for any business use
 "enterprises run daari instead of LiteLLM (MIT)" is legally gated, whatever we
 ship. PyPI/ghcr publishing stays user-gated.
 
+**Loop health (2026-08-29): the autonomous dev loop is parked on human action**
+([#286](https://github.com/naveenreddyalka/daari/issues/286)). PRs
+[#281](https://github.com/naveenreddyalka/daari/pull/281)/[#283](https://github.com/naveenreddyalka/daari/pull/283)
+(the #269/#270 implementations) are green and mergeable but every CI run ends
+`action_required` awaiting manual approval, and no agent token can approve,
+label, or comment (403s verified). Issues #275–#289 sit **unlabeled** because
+`gh issue create --label` drops labels silently for this token, so the
+dev-cycle picker cannot see them. Until a human approves the held runs and
+applies the intended labels stated in each issue body, nothing below ships.
+[#285](https://github.com/naveenreddyalka/daari/issues/285) makes the stall
+watcher diagnose this failure mode correctly next time.
+
 ---
 
 ## Scored gap table
@@ -48,17 +60,22 @@ ship. PyPI/ghcr publishing stays user-gated.
 | 3 | **MCP tool governance** — `/mcp` ingress + egress have no per-key/team tool allow/deny, no audit rows, no `Mcp-Method`/`Mcp-Name` headers | 4 | 2 | [Portkey MCP Gateway GA](https://portkey.ai/docs/changelog/2026/january) (registry, RBAC per tool, logs); Kong MCP gateway | Tool calls carry the most sensitive payloads; governing them on-device beats shipping them to a hosted gateway. RBAC/audit/policy modules already exist to wire in | [#277](https://github.com/naveenreddyalka/daari/issues/277) (P2) |
 | 4 | **Cost-split response headers** — `daari_meta` has cost but no header contract FinOps tooling can scrape per response | 3 | 1 | [LiteLLM `x-litellm-response-cost-*`](https://docs.litellm.ai/release_notes/) (input/cache/output/reasoning split) | daari can also report **$ avoided** (frontier-implied vs $0 local) per response — a number no proxy can honestly print | [#278](https://github.com/naveenreddyalka/daari/issues/278) (P2) |
 | 5 | **Claude Desktop one-click** — Ollama 0.33 made Claude Desktop a third-party-gateway client; daari has no recipe | 3 | 2 | [Ollama 0.33](https://github.com/ollama/ollama/releases/tag/v0.33.0) | daari already ships an Ollama facade + recipe framework; pointing Claude Desktop at daari adds cache/routing/budgets Ollama alone lacks | [#279](https://github.com/naveenreddyalka/daari/issues/279) (P2) |
-| 6 | **A2A v1.0 gateway** — no Agent2Agent support (ingress agent card or egress governance) | 3 | 4 | [Kong Agent Gateway GA](https://konghq.com/blog/product-releases/kong-agent-gateway); A2A v1.0 under Linux Foundation, 150+ orgs | Local agents delegating over A2A would get routing/cache/policy without a cloud hop | Watch — revisit when a client daari serves speaks A2A |
-| 7 | **Router shadow evals** — no way to measure "would L6 have answered differently" on sampled live traffic before trusting a threshold change | 3 | 3 | [LiteLLM v1.98 auto-router shadow evals](https://docs.litellm.ai/release_notes/v1.98.0/v1-98-0) | daari already shadow-samples cache hits (false-hit rate); extending to tier decisions makes learned routing auditable | Backlog next run if #269 lands |
+| 6 | **A2A v1.0 gateway** — no Agent2Agent support (ingress agent card or egress governance) | 3 | 4 | [Kong Agent Gateway GA](https://konghq.com/blog/product-releases/kong-agent-gateway); [A2A joined the AAIF 2026-08-17](https://forkast.news/googles-a2a-protocol-joins-aaif-consolidating-the-agent-economys-protocol-layer-under-one-roof/) (governance only, no spec change) | Local agents delegating over A2A would get routing/cache/policy without a cloud hop | Watch — revisit when a client daari serves speaks A2A |
+| 7 | **Router shadow evals** — no way to measure "would L6 have answered differently" on sampled live traffic before trusting a threshold change | 3 | 3 | [LiteLLM v1.98 auto-router shadow evals](https://docs.litellm.ai/release_notes/v1.98.0/v1-98-0) | daari already shadow-samples cache hits (false-hit rate); extending to tier decisions makes learned routing auditable | Backlog once #269 merges (implementation done in stalled [PR #281](https://github.com/naveenreddyalka/daari/pull/281)) |
 | 8 | **Signed images + SBOM** — ghcr image unsigned, no SBOM/provenance | 3 | 2 | LiteLLM signs with cosign (v1.97+) | Table stakes for enterprise supply-chain review | Needs an issue that explicitly authorizes the workflow edit (AGENTS.md hard limit) |
-| 9 | **Secret references / vault-backed keys** — frontier + org keys live in env/config | 3 | 3 | [Portkey vault-backed credentials](https://portkey.ai/docs/changelog/2026/march.md) | Keys never leave the machine today; a local keyring/vault ref keeps that story while passing security review | Backlog |
-| 10 | **MCP 2026-07-28 depth** — version negotiated, but Tasks extension (long-running `tools/call`) and MRTR not implemented; Lt commands block the call | 2 | 3 | Cloudflare/New Relic stateless MCP writeups; [spec blog](https://blog.modelcontextprotocol.io/posts/2026-07-28/) | Long local commands (test suites, builds) are exactly what Tasks is for | Watch — adopt when client SDKs stabilize |
-| 11 | **Upgrade path doc** — no config-migration / version-upgrade guide for fleet operators | 3 | 2 | LiteLLM release notes discipline | Fleet bootstrap exists; operators need "upgrade N→N+1 safely" | Backlog next run |
+| 9 | **Secret references / vault-backed keys** — frontier + org keys live in env/config | 3 | 3 | [Portkey vault-backed credentials](https://portkey.ai/docs/changelog/2026/march.md) | Keys never leave the machine today; `secret://` refs resolved from keychain/exec/env-file keep that story while passing security review — no vault SDK needed | [#288](https://github.com/naveenreddyalka/daari/issues/288) (P3) |
+| 10 | **MCP Tasks extension** — `2026-07-28` negotiated, but long-running `tools/call` still blocks the request; no `tasks/get`/`update`/`cancel` | 3 | 3 | [All four Tier-1 SDKs now ship 2026-07-28 + Tasks](https://developers.googleblog.com/scaling-ai-agent-infrastructure-with-the-mcp-stateless-updates/) (Go v1.7.0 day-one, C# v2.0.0); [spec blog](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/) | Long local commands (test suites, builds) are exactly what Tasks is for — daari owns the executing process, so task state is local and survives client reconnects | [#289](https://github.com/naveenreddyalka/daari/issues/289) (P3) — SDK watch condition met |
+| 11 | **Upgrade path doc** — no config-migration / version-upgrade guide for fleet operators | 3 | 2 | LiteLLM release notes discipline; [Kong ships kongctl migration tooling for AI Gateway 2.0](https://konghq.com/blog/product-releases/kong-ai-gateway-2-0-agentic-ai) | Fleet bootstrap exists; operators need "upgrade N→N+1 safely" | [#287](https://github.com/naveenreddyalka/daari/issues/287) (P2) |
 | 12 | **Image/multimodal generation API** — chat vision routes; no `/v1/images` | 2 | 4 | [OpenRouter Image API (30+ models)](https://byteiota.com/openrouter-image-api-analytics-search-leaderboards/) | Local diffusion is a different product; only worth it if IDE clients start sending it | Non-goal for now |
 
-Open `auto-dev` backlog before this run: [#269](https://github.com/naveenreddyalka/daari/issues/269)
-(G1b agent prefix L1, P1), [#270](https://github.com/naveenreddyalka/daari/issues/270)
-(service install `--now`, P2) — both still the right next cards alongside rows 1–5.
+Open backlog after this run: [#269](https://github.com/naveenreddyalka/daari/issues/269)/[#270](https://github.com/naveenreddyalka/daari/issues/270)
+implemented in stalled PRs #281/#283 (see Loop health); rows 1–5 filed as
+#275–#279 (unlabeled — need human labels); this run filed
+[#285](https://github.com/naveenreddyalka/daari/issues/285) (stall triage, P2),
+[#287](https://github.com/naveenreddyalka/daari/issues/287) (upgrade doc, P2),
+[#288](https://github.com/naveenreddyalka/daari/issues/288) (secret refs, P3),
+[#289](https://github.com/naveenreddyalka/daari/issues/289) (MCP Tasks, P3),
+and the HITL unblock [#286](https://github.com/naveenreddyalka/daari/issues/286).
 
 ---
 
@@ -76,13 +93,30 @@ Open `auto-dev` backlog before this run: [#269](https://github.com/naveenreddyal
 5. **Every IDE/desktop client one-click** (row 5): Claude Desktop recipe next to
    Cursor/Claude Code/JetBrains/VS Code; setup friction stays daari's moat.
 
-Standing HITL asks: resolve licensing (#227); then PyPI/ghcr publishing + image
-signing (row 8).
+Standing HITL asks: **unpark the dev loop first
+([#286](https://github.com/naveenreddyalka/daari/issues/286) — every milestone
+above is gated on it)**; resolve licensing (#227); then PyPI/ghcr publishing +
+image signing (row 8).
 
 ---
 
 ## Changelog
 
+- **2026-08-29** — Loop-health run. Found the dev loop parked: PRs #281/#283
+  stalled on `action_required` CI approval, #275–#279 filed unlabeled (token
+  cannot label/comment — 403s verified); filed HITL unblock
+  [#286](https://github.com/naveenreddyalka/daari/issues/286) and stall-triage
+  fix [#285](https://github.com/naveenreddyalka/daari/issues/285). Outward
+  delta since 08-28: MCP Tasks Tier-1 SDK support shipped (watch condition met
+  → filed [#289](https://github.com/naveenreddyalka/daari/issues/289)); A2A
+  joined AAIF (governance only — keep watching); Kong AI Gateway 2.1 lands
+  August with custom-model cost management (row 4 stays relevant); Kong
+  shipped a Gemini streaming token double-count fix (checked daari: usage
+  derives from one accumulated response, not summed chunks); vLLM late-Aug
+  adds tiered KV-cache offload + Rust gRPC control plane; Ollama 0.33.2
+  bugfix-only; LiteLLM stable still v1.98.0; Portkey v2.18 adds `/v1/ocr`.
+  Converted watch rows 9/11 to issues
+  [#288](https://github.com/naveenreddyalka/daari/issues/288)/[#287](https://github.com/naveenreddyalka/daari/issues/287).
 - **2026-08-28** — First run. Created this PRD (renamed Phase-E spec to
   `phase-e-enterprise.md` to avoid macOS case collision). Outward scan: MCP
   `2026-07-28` stateless spec + Tasks/MRTR; A2A v1.0 (LF); Kong 3.14 A2A/MCP
