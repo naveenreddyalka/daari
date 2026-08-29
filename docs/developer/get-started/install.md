@@ -85,13 +85,13 @@ daari doctor
 `daari serve` in a terminal dies on logout. For a user-level stay-up path (no root):
 
 ```bash
-daari service install
-# Linux:  systemctl --user enable --now daari.service
-# macOS:  launchctl load ~/Library/LaunchAgents/com.daari.gateway.plist
+daari service install --now
 daari service status
 ```
 
-Logs: `~/.daari/serve.log`. `daari service uninstall` removes only the file this command created. Native Windows is not supported — use WSL2.
+`--now` writes the unit and enables/starts it (`systemctl --user enable --now daari.service` on Linux, `launchctl load -w` on macOS). Without `--now` the file is written and the command prints the enable hint for you to run yourself.
+
+Logs: `~/.daari/serve.log`. `daari service uninstall` removes only the file this command created; `daari service uninstall --now` stops and disables it first. Native Windows is not supported — use WSL2.
 
 ## Cursor over a tunnel
 

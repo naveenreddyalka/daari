@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,9 +12,15 @@ from daari.config.settings import Settings
 UNIT_NAME = "daari.service"
 PLIST_LABEL = "com.daari.gateway"
 
+ServiceRunner = Callable[[Sequence[str]], int]
+
 
 class UnsupportedPlatformError(RuntimeError):
     """Native Windows (and unknown platforms) have no user service template."""
+
+
+class ServiceCommandError(RuntimeError):
+    """systemctl / launchctl returned a non-zero exit code."""
 
 
 @dataclass(frozen=True)
@@ -22,6 +30,24 @@ class ServiceSpec:
     body: str
     working_directory: str
     log_path: Path
+    commands: tuple[tuple[str, ...], ...] = ()
+
+
+def default_runner(command: Sequence[str]) -> int:
+    return subprocess.run(list(command), check=False).returncode
+
+
+def _run_all(
+    commands: Sequence[Sequence[str]], runner: ServiceRunner | None
+) -> tuple[tuple[str, ...], ...]:
+    run = runner or (lambda command: default_runner(command))
+    executed: list[tuple[str, ...]] = []
+    for command in commands:
+        code = run(command)
+        executed.append(tuple(command))
+        if code != 0:
+            raise ServiceCommandError(f"`{' '.join(command)}` failed with exit code {code}")
+    return tuple(executed)
 
 
 def default_home() -> Path:
@@ -136,6 +162,8 @@ def install_service(
     home: Path | None = None,
     platform: str | None = None,
     daari_bin: Path | None = None,
+    now: bool = False,
+    runner: ServiceRunner | None = None,
 ) -> ServiceSpec:
     home = home or default_home()
     platform = platform or default_platform()
@@ -158,21 +186,46 @@ def install_service(
     path.parent.mkdir(parents=True, exist_ok=True)
     _workdir(home).mkdir(parents=True, exist_ok=True)
     path.write_text(body, encoding="utf-8")
+    commands = _run_all(_activate_commands(kind, path), runner) if now else ()
     return ServiceSpec(
         kind=kind,
         path=path,
         body=body,
         working_directory=str(_workdir(home)),
         log_path=_log_path(home),
+        commands=commands,
     )
 
 
-def uninstall_service(*, home: Path | None = None, platform: str | None = None) -> bool:
+def _activate_commands(kind: str, path: Path) -> tuple[tuple[str, ...], ...]:
+    if kind == "systemd":
+        return (
+            ("systemctl", "--user", "daemon-reload"),
+            ("systemctl", "--user", "enable", "--now", UNIT_NAME),
+        )
+    return (("launchctl", "load", "-w", str(path)),)
+
+
+def _deactivate_commands(kind: str, path: Path) -> tuple[tuple[str, ...], ...]:
+    if kind == "systemd":
+        return (("systemctl", "--user", "disable", "--now", UNIT_NAME),)
+    return (("launchctl", "unload", "-w", str(path)),)
+
+
+def uninstall_service(
+    *,
+    home: Path | None = None,
+    platform: str | None = None,
+    now: bool = False,
+    runner: ServiceRunner | None = None,
+) -> bool:
     home = home or default_home()
     platform = platform or default_platform()
-    _kind, path = _paths(home, platform)
+    kind, path = _paths(home, platform)
     if not path.is_file():
         return False
+    if now:
+        _run_all(_deactivate_commands(kind, path), runner)
     path.unlink()
     return True
 

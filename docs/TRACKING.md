@@ -1314,6 +1314,18 @@ label from open issues untouched for 24h with no open PR referencing them
 comment. Runs in the existing `stall-watch` job. Covered by
 `tests/unit/test_autodev_pr_watch.py`.
 
+### Service install --now ([#270](https://github.com/naveenreddyalka/daari/issues/270))
+
+<!-- tracking:#270 -->
+
+`daari service install --now` writes the same user unit as S5 and then enables
+and starts it (`systemctl --user daemon-reload` + `enable --now`, or
+`launchctl load -w <plist>`). `daari service uninstall --now` disables/unloads
+before removing the file. Commands go through an injectable `runner`
+(`default_runner`), so tests never touch a real service manager; a non-zero
+exit raises `ServiceCommandError` and the CLI exits 1. Without `--now`
+behavior is unchanged. Covered by `tests/unit/test_service.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

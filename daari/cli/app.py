@@ -36,6 +36,7 @@ from daari.setup.tunnel import (
     wait_for_tunnel_health,
 )
 from daari.setup.service import (
+    ServiceCommandError,
     UnsupportedPlatformError,
     install_service,
     service_status,
@@ -929,15 +930,23 @@ def install(
 
 
 @service_app.command("install")
-def service_install() -> None:
-    """Write a user systemd unit or launchd plist. Does not start the service."""
+def service_install(
+    now: bool = typer.Option(False, "--now", help="Enable and start the service after writing it."),
+) -> None:
+    """Write a user systemd unit or launchd plist, optionally enabling it with --now."""
     try:
-        spec = install_service(get_settings())
+        spec = install_service(get_settings(), now=now)
     except UnsupportedPlatformError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
+    except ServiceCommandError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote {spec.kind} unit: {spec.path}")
-    if spec.kind == "systemd":
+    if spec.commands:
+        for command in spec.commands:
+            typer.echo(f"Ran: {' '.join(command)}")
+    elif spec.kind == "systemd":
         typer.echo("Enable with: systemctl --user enable --now daari.service")
     else:
         typer.echo(f"Load with: launchctl load {spec.path}")
@@ -956,11 +965,16 @@ def service_status_cmd() -> None:
 
 
 @service_app.command("uninstall")
-def service_uninstall() -> None:
+def service_uninstall(
+    now: bool = typer.Option(False, "--now", help="Stop and disable the service before removing."),
+) -> None:
     """Remove the user unit/plist this command created."""
     try:
-        removed = uninstall_service()
+        removed = uninstall_service(now=now)
     except UnsupportedPlatformError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    except ServiceCommandError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     if removed:
