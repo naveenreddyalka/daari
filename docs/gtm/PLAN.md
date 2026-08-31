@@ -1,8 +1,8 @@
 # daari GTM plan
 
 > Status: executing (2026-08-26)  
-> Spine: **Approach C** — public launch for stars + installs now; commercial fleet later. License stays PolyForm Noncommercial until [#227](https://github.com/naveenreddyalka/daari/issues/227).  
-> Do not say “open source.” Say **source-available / local-first**.
+> Spine: **Approach C** — public launch for stars + installs now. License is Apache 2.0 ([ADR-0016](../adr/0016-apache-2-relicense.md) / [#227](https://github.com/naveenreddyalka/daari/issues/227)).  
+> Say **open source / local-first**. Do not describe the current license as source-available.
 
 ## KPI
 

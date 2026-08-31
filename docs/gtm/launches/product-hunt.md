@@ -14,7 +14,7 @@ Local-first LLM router — cache and local models before frontier APIs
 
 daari is a localhost execution router for Cursor, Claude Code, and any OpenAI-compatible client. It answers from exact/semantic cache, tools, and Ollama/MLX first. Frontier APIs are the last resort, with a savings report you can read.
 
-Not another 100-provider cloud proxy. You run it. Source-available under PolyForm Noncommercial (free for personal and research use; commercial use requires a license).
+Not another 100-provider cloud proxy. You run it. Apache 2.0 (OSI open source).
 
 **Links**
 
@@ -24,4 +24,4 @@ Not another 100-provider cloud proxy. You run it. Source-available under PolyFor
 
 **First comment (you, at launch)**
 
-Maker here. daari sits in front of Cursor as the base URL. Run the same request twice — the second is an L0 cache hit. License is PolyForm Noncommercial; I am not calling it OSI open source. Questions welcome.
+Maker here. daari sits in front of Cursor as the base URL. Run the same request twice — the second is an L0 cache hit. License is Apache 2.0. Questions welcome.

@@ -1,8 +1,8 @@
-# Welcome — daari v1.3.0 (source-available, local-first)
+# Welcome — daari v1.3.0 (Apache 2.0, local-first)
 
 daari is a **local-first execution router**: cache, tools, and on-device models before frontier APIs. It sits in front of Cursor, Claude Code, or any OpenAI-compatible client so repeat work does not leave the machine.
 
-This is the v1.3.0 announce thread. License is [PolyForm Noncommercial](https://github.com/naveenreddyalka/daari/blob/main/LICENSE) — personal and other noncommercial use is free; company use needs a commercial license. I am not calling it open source.
+This is the v1.3.0 announce thread. License is [Apache 2.0](https://github.com/naveenreddyalka/daari/blob/main/LICENSE).
 
 **Start here**
 

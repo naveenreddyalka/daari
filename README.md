@@ -4,7 +4,7 @@
 
 **Status:** v1.3.0 — [docs site](https://naveenreddyalka.github.io/daari/) · [tracker](docs/TRACKING.md) · [release notes](docs/RELEASE-v1.3.0.md)
 
-Route Cursor, Claude Code, and any OpenAI-compatible client through local tiers instead of paying frontier for repeat work. **Not a proxy** — a cost optimizer you run. Source-available under [PolyForm Noncommercial](LICENSE) (commercial use needs a license — [#227](https://github.com/naveenreddyalka/daari/issues/227)).
+Route Cursor, Claude Code, and any OpenAI-compatible client through local tiers instead of paying frontier for repeat work. **Not a proxy** — a cost optimizer you run. [Apache 2.0](LICENSE).
 
 ## Quick start
 
@@ -86,22 +86,14 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 
 ## Principles
 
-- **Source-available** — free for personal, educational, and other noncommercial use
+- **Open source** — Apache 2.0; run it, fork it, sell it
 - **Local-first** — on-device by default
 - **Cost-minimize** — cheapest capable path for every task
 - **AI optional** — many tasks use IDE/CLI tools, not models
 
 ## License
 
-Daari is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE):
-personal, educational, research, and other noncommercial use is free. Use by or
-for a business, or in any money-making activity, requires a commercial license —
-contact naveenreddy.alka@gmail.com.
-
-Required Notice: Copyright Naveen Reddy Alka (https://github.com/naveenreddyalka/daari)
-
-Releases up to and including v1.2.0 were published under Apache 2.0 and remain
-available under those terms.
+Daari is licensed under the [Apache License 2.0](LICENSE). Decision: [ADR-0016](docs/adr/0016-apache-2-relicense.md).
 
 ## Repo
 

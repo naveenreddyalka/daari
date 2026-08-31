@@ -31,7 +31,7 @@ DEFAULT_SHIPPED = (
 DEFAULT_WAITING = (
     "First public post (LocalLLaMA / r/cursor / Show HN)",
     "CURSOR_API_KEY so autodev-cycle is not a 6s no-op (#226)",
-    "License decision (#227)",
+    "Show HN Tue morning ET (draft in docs/gtm/launches/show-hn.md)",
 )
 
 

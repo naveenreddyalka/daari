@@ -31,11 +31,9 @@ Enterprise surface already shipped — deeper than ARCHITECTURE.md (v1.2.0) reco
 - **Proof:** 1135 mocked tests; published load (320 rps L0 / 61 ms p95), vs-LiteLLM
   (~27× on $0 tiers), cost-of-pass, and agent $0-tier (100% of 8) pages.
 
-**Adoption blockers that are HITL, not eng:** PolyForm NC license requires a
-commercial license for any business use
-([#227](https://github.com/naveenreddyalka/daari/issues/227)) — until resolved,
-"enterprises run daari instead of LiteLLM (MIT)" is legally gated, whatever we
-ship. PyPI/ghcr publishing stays user-gated.
+**Adoption blockers that are HITL, not eng:** the daemon is Apache 2.0
+([ADR-0016](../adr/0016-apache-2-relicense.md) / #227). PyPI/ghcr publishing
+stays user-gated.
 
 **Loop health (2026-08-30): doubly parked.** Park #1 (human action,
 [#286](https://github.com/naveenreddyalka/daari/issues/286)): PRs
@@ -102,8 +100,8 @@ restocking the backlog is worth less than making the loop able to see it.
 Standing HITL asks: **unpark the dev loop first — both parks**
 ([#286](https://github.com/naveenreddyalka/daari/issues/286) human approvals +
 labels, [#291](https://github.com/naveenreddyalka/daari/issues/291) picker off
-the search index; every milestone above is gated on them); resolve licensing
-(#227); then PyPI/ghcr publishing + image signing (row 8).
+the search index; every milestone above is gated on them); then PyPI/ghcr
+publishing + image signing (row 8). License is Apache 2.0 (#227).
 
 ---
 

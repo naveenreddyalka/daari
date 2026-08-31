@@ -8,10 +8,10 @@ LiteLLM is a **provider gateway**: one OpenAI-shaped API in front of 100+ cloud 
 | Default path | Cloud / configured backends | L0/L1 cache → tools → local → L6 |
 | Cache | Optional Redis/Qdrant | Built-in exact + semantic, measured false-hit rate |
 | IDE setup | DIY | `daari setup cursor` / Claude Code / JetBrains / VS Code |
-| License | MIT-class (OSI) | PolyForm Noncommercial (source-available; commercial use needs a license) |
+| License | MIT-class (OSI) | Apache 2.0 (OSI) |
 | Stars / mindshare | Category default | New |
 
-**Pick LiteLLM** if you need 100 providers, virtual keys across a team, and an MIT license.
+**Pick LiteLLM** if you need 100 providers and virtual keys across a team.
 
 **Pick daari** if Cursor or Claude Code is burning frontier tokens on work a cache or a 3B local model can do, and you want that path to be the default.
 

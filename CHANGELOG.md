@@ -4,13 +4,17 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
+### License
+
+- Relicensed the tree back to [Apache 2.0](LICENSE) ([#227](https://github.com/naveenreddyalka/daari/issues/227), [ADR-0016](docs/adr/0016-apache-2-relicense.md)). v1.3.0 as tagged remains PolyForm NC.
+
 ## [1.3.0] — 2026-08-17 · [notes](docs/RELEASE-v1.3.0.md)
 
 **Gateway completeness, hardening & relicense** — 51 commits: full agent surface (Responses, MCP, embeddings, vision), distributed rate limits, health-checked local backend pool, real token accounting, and a move to PolyForm Noncommercial 1.0.0.
 
 ### License change
 
-- **Relicensed from Apache 2.0 to [PolyForm Noncommercial 1.0.0](../LICENSE)** (#202): free for personal, educational, research, and other noncommercial use; commercial use requires a separate license (contact naveenreddy.alka@gmail.com). Releases through v1.2.0 remain available under Apache 2.0. CONTRIBUTING.md now includes a contributor relicense grant.
+- **Relicensed from Apache 2.0 to PolyForm Noncommercial 1.0.0** (#202): then-current `LICENSE` was NC; commercial use required a separate license. Releases through v1.2.0 remain Apache 2.0. Later reversed on `main` by #227.
 
 ### Gateway surface completion
 

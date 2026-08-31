@@ -35,7 +35,7 @@ def test_templates_are_license_honest_and_linkable():
         lower = text.lower()
         for claim in BANNED:
             assert claim not in lower, f"{path.name}: {claim}"
-        assert "polyform" in lower or "noncommercial" in lower or "source-available" in lower
+        assert "apache" in lower
         assert docs in text or repo in text
 
 
