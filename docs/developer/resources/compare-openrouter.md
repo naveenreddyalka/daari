@@ -8,7 +8,7 @@ OpenRouter is a **hosted marketplace** (400+ models, one key, price/latency rout
 | Default inference | Remote, billed | On-device $0 tiers first |
 | Model choice | Marketplace + provider object | Task-aware local tiers, then one L6 slot |
 | Privacy | Prompts leave the machine | Stay local until L6 |
-| License | Hosted product | PolyForm Noncommercial (source-available) |
+| License | Hosted product | Apache 2.0 |
 
 **Pick OpenRouter** when you want one key and many remote models.
 

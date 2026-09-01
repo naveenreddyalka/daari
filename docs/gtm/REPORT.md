@@ -22,8 +22,7 @@ No public post has gone out. Day-0 listing and copy are done. Audience numbers a
 
 - First public post (LocalLLaMA / r/cursor / Show HN)
 - CURSOR_API_KEY so autodev-cycle is not a 6s no-op (#226)
-- License decision (#227)
-- Auto-merge of #236 (drafts), #237 (this scoreboard), #239 (compare pages), #240 (shipping notes)
+- Show HN Tue morning ET (`docs/gtm/launches/show-hn.md`)
 
 ## Next
 

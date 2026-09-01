@@ -31,18 +31,11 @@ Enterprise surface already shipped — deeper than ARCHITECTURE.md (v1.2.0) reco
 - **Proof:** 1135 mocked tests; published load (320 rps L0 / 61 ms p95), vs-LiteLLM
   (~27× on $0 tiers), cost-of-pass, and agent $0-tier (100% of 8) pages.
 
-**Adoption blockers that are HITL, not eng:** the license blocker is
-**resolving but now conflicted** — the human's
-[PR #293](https://github.com/naveenreddyalka/daari/pull/293) (Apache 2.0
-relicense, ADR-0016, closes
-[#227](https://github.com/naveenreddyalka/daari/issues/227)) has all five
-checks green but went **`DIRTY`** on 2026-09-01: it edits `docs/TRACKING.md`
-and `docs/prd/ENTERPRISE.md`, which the daily PRD merges also touch, so every
-day it waits it re-conflicts. Rebase + merge it first, ahead of anything else.
-Once it lands, "enterprises run daari instead of LiteLLM (MIT)" is legally
-viable and distribution work (PyPI/ghcr publishing, image signing —
-[#295](https://github.com/naveenreddyalka/daari/issues/295)) becomes the front
-of the funnel. v1.3.0 as tagged remains PolyForm NC.
+**Adoption blockers that are HITL, not eng:** the daemon is Apache 2.0
+([ADR-0016](../adr/0016-apache-2-relicense.md) / #227). PyPI/ghcr publishing
+and image signing stay user-gated
+([#295](https://github.com/naveenreddyalka/daari/issues/295)). v1.3.0 as tagged
+remains PolyForm NC.
 
 **Positioning shift (recorded 2026-09-01):** Palo Alto Networks
 [acquired Portkey](https://www.paloaltonetworks.com/company/press/2026/palo-alto-networks-completes-acquisition-of-portkey-to-secure-ai-agents)
@@ -120,16 +113,13 @@ parked loop, so restraint remains the rule.
 5. **Every IDE/desktop client one-click** (row 5): Claude Desktop recipe next to
    Cursor/Claude Code/JetBrains/VS Code; setup friction stays daari's moat.
 
-Standing HITL asks, in order: **rebase + merge the Apache 2.0 relicense
-([PR #293](https://github.com/naveenreddyalka/daari/pull/293) — checks green
-but now `DIRTY` against `main`; it conflicts with the daily PRD merges on
-`docs/TRACKING.md` / `docs/prd/ENTERPRISE.md`, so the conflict grows every
-day it waits)**; **unpark the dev loop — both parks**
+Standing HITL asks: **unpark the dev loop — both parks**
 ([#286](https://github.com/naveenreddyalka/daari/issues/286) approve held runs
-\+ label #275–#297, [#291](https://github.com/naveenreddyalka/daari/issues/291)
++ label #275–#297, [#291](https://github.com/naveenreddyalka/daari/issues/291)
 picker off the search index; every milestone above is gated on them); then
 PyPI/ghcr publishing + image signing
-([#295](https://github.com/naveenreddyalka/daari/issues/295)).
+([#295](https://github.com/naveenreddyalka/daari/issues/295)). License is
+Apache 2.0 (#227).
 
 ---
 
