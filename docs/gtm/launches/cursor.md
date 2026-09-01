@@ -21,6 +21,6 @@ Docs: https://naveenreddyalka.github.io/daari/
 Cursor guide: https://naveenreddyalka.github.io/daari/developer/guides/clients/cursor/  
 Repo: https://github.com/naveenreddyalka/daari
 
-License: PolyForm Noncommercial (source-available). Personal use free; company use needs a commercial license.
+License: Apache 2.0.
 
 I am the author. Happy to debug a BYOK / tunnel setup in the comments.

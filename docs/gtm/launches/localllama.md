@@ -20,6 +20,6 @@ Docs: https://naveenreddyalka.github.io/daari/
 Repo: https://github.com/naveenreddyalka/daari  
 Same-machine bench vs LiteLLM: https://naveenreddyalka.github.io/daari/developer/resources/benchmark-vs-litellm/
 
-Source-available under PolyForm Noncommercial. Free for personal / research; commercial use needs a license. Not claiming OSI open source.
+Apache 2.0 (OSI open source).
 
 I use it as the Cursor base URL. What would make this useful on your box?

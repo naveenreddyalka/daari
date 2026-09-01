@@ -8,7 +8,7 @@ Ollama **runs a model**. daari **chooses a path**. daari uses Ollama as the L3�
 | Cache | None | L0 exact + L1 semantic |
 | Non-AI work | Still a model call | Lt — git, lint, IDE tools |
 | Clients | Ollama API / some IDE plugins | OpenAI + Anthropic + `daari setup <client>` |
-| License | MIT | PolyForm Noncommercial (source-available) |
+| License | MIT | Apache 2.0 |
 
 **Pick Ollama** if you only need “a model on localhost.”
 

@@ -30,3 +30,4 @@ Status: proposed | accepted | deprecated
 | ADR-0013 | Single-repo monorepo structure | accepted |
 | ADR-0014 | Enterprise distributed install, org cache, org learning | accepted |
 | ADR-0015 | Local-first product boundaries (scope gate) | accepted |
+| ADR-0016 | Relicense the tree to Apache 2.0 | accepted |

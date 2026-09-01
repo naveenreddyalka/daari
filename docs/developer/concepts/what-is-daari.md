@@ -1,6 +1,6 @@
 # What is daari?
 
-**daari** (Telugu: path, way) is a source-available **local-first LLM execution router**. One process on your machine owns policy, cache, tools, and model selection. Frontier APIs are a last resort. The current license is [PolyForm Noncommercial](https://github.com/naveenreddyalka/daari/blob/main/LICENSE).
+**daari** (Telugu: path, way) is an **open-source local-first LLM execution router** under [Apache 2.0](https://github.com/naveenreddyalka/daari/blob/main/LICENSE). One process on your machine owns policy, cache, tools, and model selection. Frontier APIs are a last resort.
 
 ## Router, not proxy
 

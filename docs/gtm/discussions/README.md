@@ -1,6 +1,6 @@
 # GitHub Discussions templates
 
-> Community surface for daari. License is [PolyForm Noncommercial](../../../LICENSE) — say **source-available / local-first**, never “open source.”
+> Community surface for daari. License is [Apache 2.0](../../../LICENSE) — say **open source / local-first**.
 > Docs: https://naveenreddyalka.github.io/daari/  
 > Repo: https://github.com/naveenreddyalka/daari
 
@@ -24,7 +24,7 @@ The welcome thread is already live (human-published, not a bot flood):
 gh discussion create \
   --repo naveenreddyalka/daari \
   --category "Announcements" \
-  --title "Welcome — daari v1.3.0 (source-available, local-first)" \
+  --title "Welcome — daari v1.3.0 (Apache 2.0, local-first)" \
   --body-file docs/gtm/discussions/welcome.md
 ```
 
