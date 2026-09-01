@@ -33,21 +33,32 @@ Enterprise surface already shipped — deeper than ARCHITECTURE.md (v1.2.0) reco
 
 **Adoption blockers that are HITL, not eng:** the daemon is Apache 2.0
 ([ADR-0016](../adr/0016-apache-2-relicense.md) / #227). PyPI/ghcr publishing
-stays user-gated.
+and image signing stay user-gated
+([#295](https://github.com/naveenreddyalka/daari/issues/295)). v1.3.0 as tagged
+remains PolyForm NC.
 
-**Loop health (2026-08-30): doubly parked.** Park #1 (human action,
-[#286](https://github.com/naveenreddyalka/daari/issues/286)): PRs
+**Positioning shift (recorded 2026-09-01):** Palo Alto Networks
+[acquired Portkey](https://www.paloaltonetworks.com/company/press/2026/palo-alto-networks-completes-acquisition-of-portkey-to-secure-ai-agents)
+(announced 04-30, closed 05-29) and is folding it in as the AI Gateway for
+Prisma AIRS — a CISO-led security platform play. Developer-first, self-hosted
+gateway buyers now face roadmap/packaging uncertainty there (the public
+product changelog has been quiet since April; the self-hosted enterprise
+gateway still ships, v2.19). daari's counter-pitch sharpens: Apache 2.0
+(once #293 lands), run-it-yourself, tokens never leave the building.
+
+**Loop health (2026-09-01): still doubly parked — day 4.** Park #1
+([#286](https://github.com/naveenreddyalka/daari/issues/286)): PRs
 [#281](https://github.com/naveenreddyalka/daari/pull/281)/[#283](https://github.com/naveenreddyalka/daari/pull/283)
-still await manual CI-run approval; issues #275–#279 and #285–#289 still
-**unlabeled** (token cannot label/comment — 403s verified 08-29). Park #2
-(new, [#291](https://github.com/naveenreddyalka/daari/issues/291)): GitHub's
-search index for this repo went stale — it returns 2 of 14 open items and
-zero matches for any label — and `gh issue list --label auto-dev` routes
-through GraphQL *search*, so the picker sees "backlog empty" and every
-scheduled `autodev-cycle` run no-ops green. Only the GraphQL repository
-connection (`repository.issues(labels:[...])`) returns correct data; #291
-moves the picker and the regression dedupe onto it. Even after a human
-unparks #286, the loop stays dead until #291 lands (or the index recovers).
+still `BLOCKED` on manual CI-run approval; issues #275–#279, #287–#289, #291,
+#294–#295, #297 still **unlabeled** (token cannot label/comment/reopen).
+Park #2 ([#291](https://github.com/naveenreddyalka/daari/issues/291)): search
+index still stale — `gh issue list --label auto-dev` returns **zero** of the
+4 actually-labeled issues (re-verified 09-01); only the GraphQL repository
+connection returns truth. No code PR has merged since 2026-08-28. Standing
+rule for every prd-cycle PR: **never use closes/fixes/resolves before an
+issue number in PR bodies** (that keyword auto-closed #285 with no code
+shipped; re-filed as
+[#294](https://github.com/naveenreddyalka/daari/issues/294)).
 
 ---
 
@@ -57,29 +68,34 @@ unparks #286, the loop stays dead until #291 lands (or the index recovers).
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
 | 1 | **OpenAI-compat local backend kind** — local tiers only speak Ollama/MLX; no first-class vLLM / llama.cpp server / LM Studio / SGLang slot | 5 | 2 | [Kong 3.14 added vLLM provider](https://konghq.com/blog/product-releases/kong-ai-gateway-3-14); LiteLLM 100+ providers | Enterprises standardize GPU pools on vLLM; daari's gateway-heavy topology (ROADMAP-v2 F4) is fiction without it. Pool/breaker plumbing (#170) already abstracts slots | [#275](https://github.com/naveenreddyalka/daari/issues/275) (P1) |
 | 2 | **SSE keepalive heartbeat** — no ping on streaming routes; cold model loads (30s+) send zero bytes and LBs/tunnels/IDEs time out | 4 | 1 | [LiteLLM v1.98 global + per-deployment keepalive](https://docs.litellm.ai/release_notes/) | daari sits behind cloudflared tunnels (Cursor BYOK) where idle timeouts are the default failure; local cold-start is our worst case, not theirs | [#276](https://github.com/naveenreddyalka/daari/issues/276) (P1) |
-| 3 | **MCP tool governance** — `/mcp` ingress + egress have no per-key/team tool allow/deny, no audit rows, no `Mcp-Method`/`Mcp-Name` headers | 4 | 2 | [Portkey MCP Gateway GA](https://portkey.ai/docs/changelog/2026/january) (registry, RBAC per tool, logs); Kong MCP gateway | Tool calls carry the most sensitive payloads; governing them on-device beats shipping them to a hosted gateway. RBAC/audit/policy modules already exist to wire in | [#277](https://github.com/naveenreddyalka/daari/issues/277) (P2) |
+| 3 | **MCP tool governance** — `/mcp` ingress + egress have no per-key/team tool allow/deny, no audit rows, no `Mcp-Method`/`Mcp-Name` headers | 4 | 2 | [Portkey MCP Gateway GA](https://portkey.ai/docs/changelog/2026/january) (registry, RBAC per tool, logs; v2.19 adds an [MCP Registry proxy](https://portkey.ai/docs/changelog/enterprise)); Kong MCP gateway | Tool calls carry the most sensitive payloads; governing them on-device beats shipping them to a hosted gateway. RBAC/audit/policy modules already exist to wire in | [#277](https://github.com/naveenreddyalka/daari/issues/277) (P2) |
 | 4 | **Cost-split response headers** — `daari_meta` has cost but no header contract FinOps tooling can scrape per response | 3 | 1 | [LiteLLM `x-litellm-response-cost-*`](https://docs.litellm.ai/release_notes/); [Kong cost analytics + `X-AI-RateLimit-Remaining-*` budget headers now documented](https://developer.konghq.com/metering-and-billing/cost-analytics/) | daari can also report **$ avoided** (frontier-implied vs $0 local) per response — a number no proxy can honestly print. Kong's remaining-budget header pattern is a natural scope add (daari already 429s with `Retry-After`) | [#278](https://github.com/naveenreddyalka/daari/issues/278) (P2) |
-| 5 | **Claude Desktop one-click** — Ollama 0.33 made Claude Desktop a third-party-gateway client; daari has no recipe | 3 | 2 | [Ollama 0.33](https://github.com/ollama/ollama/releases/tag/v0.33.0) | daari already ships an Ollama facade + recipe framework; pointing Claude Desktop at daari adds cache/routing/budgets Ollama alone lacks | [#279](https://github.com/naveenreddyalka/daari/issues/279) (P2) |
+| 5 | **Claude Desktop one-click** — Ollama 0.33 made Claude Desktop a third-party-gateway client; daari has no recipe | 3 | 2 | [Ollama 0.33](https://github.com/ollama/ollama/releases/tag/v0.33.0); [LiteLLM v1.99 `lite login --config-claude`](https://docs.litellm.ai/release_notes/v1.99.0/v1-99-0) wires Claude Code at login | daari already ships an Ollama facade + recipe framework; pointing Claude Desktop at daari adds cache/routing/budgets Ollama alone lacks | [#279](https://github.com/naveenreddyalka/daari/issues/279) (P2) |
 | 6 | **A2A v1.0 gateway** — no Agent2Agent support (ingress agent card or egress governance) | 3 | 4 | [Kong Agent Gateway GA](https://konghq.com/blog/product-releases/kong-agent-gateway); [A2A joined the AAIF 2026-08-17](https://forkast.news/googles-a2a-protocol-joins-aaif-consolidating-the-agent-economys-protocol-layer-under-one-roof/) (governance only, no spec change) | Local agents delegating over A2A would get routing/cache/policy without a cloud hop | Watch — revisit when a client daari serves speaks A2A |
-| 7 | **Router shadow evals** — no way to measure "would L6 have answered differently" on sampled live traffic before trusting a threshold change | 3 | 3 | [LiteLLM v1.98 auto-router shadow evals](https://docs.litellm.ai/release_notes/v1.98.0/v1-98-0) | daari already shadow-samples cache hits (false-hit rate); extending to tier decisions makes learned routing auditable | Backlog once #269 merges (implementation done in stalled [PR #281](https://github.com/naveenreddyalka/daari/pull/281)) |
-| 8 | **Signed images + SBOM** — ghcr image unsigned, no SBOM/provenance | 3 | 2 | LiteLLM signs with cosign (v1.97+) | Table stakes for enterprise supply-chain review | Needs an issue that explicitly authorizes the workflow edit (AGENTS.md hard limit) |
-| 9 | **Secret references / vault-backed keys** — frontier + org keys live in env/config | 3 | 3 | [Portkey vault-backed credentials](https://portkey.ai/docs/changelog/2026/march.md) | Keys never leave the machine today; `secret://` refs resolved from keychain/exec/env-file keep that story while passing security review — no vault SDK needed | [#288](https://github.com/naveenreddyalka/daari/issues/288) (P3) |
+| 7 | **Router shadow evals** — no way to measure "would L6 have answered differently" on sampled live traffic before trusting a threshold change | 3 | 3 | [LiteLLM v1.98 auto-router shadow evals](https://docs.litellm.ai/release_notes/v1.98.0/v1-98-0); v1.99 makes the complexity router operator-configurable (custom classifier plugins, tier sets) | daari already shadow-samples cache hits (false-hit rate); extending to tier decisions makes learned routing auditable | Backlog once #269 merges (implementation done in stalled [PR #281](https://github.com/naveenreddyalka/daari/pull/281)) |
+| 8 | **Signed images + SBOM** — ghcr image unsigned, no SBOM/provenance | 3 | 2 | LiteLLM signs with cosign (v1.97+) | Table stakes for enterprise supply-chain review; unsigned images undercut the local-first trust pitch. Apache 2.0 (PR #293) makes the image worth pulling | [#295](https://github.com/naveenreddyalka/daari/issues/295) (P2) — authorizes the `docker.yml` edit |
+| 9 | **Secret references / vault-backed keys** — frontier + org keys live in env/config | 3 | 3 | [Portkey vault-backed credentials](https://portkey.ai/docs/changelog/2026/march.md); v2.19 adds [OAuth client-credentials upstream auth](https://portkey.ai/docs/changelog/enterprise) (no static key stored) | Keys never leave the machine today; `secret://` refs resolved from keychain/exec/env-file keep that story while passing security review — no vault SDK needed. OAuth token-endpoint refs are a natural later scope | [#288](https://github.com/naveenreddyalka/daari/issues/288) (P3) |
 | 10 | **MCP Tasks extension** — `2026-07-28` negotiated, but long-running `tools/call` still blocks the request; no `tasks/get`/`update`/`cancel` | 3 | 3 | [All four Tier-1 SDKs now ship 2026-07-28 + Tasks](https://developers.googleblog.com/scaling-ai-agent-infrastructure-with-the-mcp-stateless-updates/) (Go v1.7.0 day-one, C# v2.0.0); [spec blog](https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/) | Long local commands (test suites, builds) are exactly what Tasks is for — daari owns the executing process, so task state is local and survives client reconnects | [#289](https://github.com/naveenreddyalka/daari/issues/289) (P3) — SDK watch condition met |
 | 11 | **Upgrade path doc** — no config-migration / version-upgrade guide for fleet operators | 3 | 2 | LiteLLM release notes discipline; [Kong ships kongctl migration tooling for AI Gateway 2.0](https://konghq.com/blog/product-releases/kong-ai-gateway-2-0-agentic-ai) | Fleet bootstrap exists; operators need "upgrade N→N+1 safely" | [#287](https://github.com/naveenreddyalka/daari/issues/287) (P2) |
 | 12 | **Image/multimodal generation API** — chat vision routes; no `/v1/images` | 2 | 4 | [OpenRouter Image API (30+ models)](https://byteiota.com/openrouter-image-api-analytics-search-leaderboards/) | Local diffusion is a different product; only worth it if IDE clients start sending it | Non-goal for now |
 | 13 | **MCP server-initiated events** — `2026-07-28` moved change notifications to an opt-in `subscriptions/listen` stream; daari's `/mcp` ingress has neither, and the [new MCP roadmap](https://blog.modelcontextprotocol.io/posts/mcp-roadmap/) makes server-initiated events + agent identity (DPoP/WIMSE) priority areas | 2 | 3 | MCP Tier-1 SDKs | List-changed notifications matter once daari fronts long-lived local tool servers; identity work is where enterprise MCP governance lands next | Watch — revisit when a daari-served client subscribes |
+| 14 | **Context compression before frontier fallback** — nothing shrinks a request before it escalates to a paid tier | 2 | 3 | [Portkey v2.19 Headroom plugin](https://portkey.ai/docs/changelog/enterprise) compresses request context to cut input-token cost | daari can compress with a **$0 local model** in the fallback path, so the paid-token savings are pure margin — Portkey pays a hosted model to save you money | Watch — needs data on frontier-escalation share of real traffic first |
+| 15 | **`reasoning_effort` silently dropped** — `ChatCompletionRequest` uses `extra="ignore"` and never declared the field (same defect class as #161/#224), so OpenAI clients asking for `high` effort get nothing: not forwarded to the frontier, not mapped to local think levels, invisible to the router | 4 | 2 | [LiteLLM v1.99 complexity router does per-model reasoning effort](https://docs.litellm.ai/release_notes/v1.99.0/v1-99-0) | Effort is a routing signal, not just passthrough: `high` can bias tier selection, and locally it maps to Ollama `think` (gpt-oss, Qwen3 thinking) at $0 — LiteLLM's only lever is a different paid deployment | [#297](https://github.com/naveenreddyalka/daari/issues/297) (P2) |
 
 Open backlog after this run: [#269](https://github.com/naveenreddyalka/daari/issues/269)/[#270](https://github.com/naveenreddyalka/daari/issues/270)
 implemented in stalled PRs #281/#283 (see Loop health); rows 1–5 filed as
-#275–#279, plus [#285](https://github.com/naveenreddyalka/daari/issues/285)
-(stall triage), [#287](https://github.com/naveenreddyalka/daari/issues/287)
+#275–#279, plus [#287](https://github.com/naveenreddyalka/daari/issues/287)
 (upgrade doc), [#288](https://github.com/naveenreddyalka/daari/issues/288)
 (secret refs), [#289](https://github.com/naveenreddyalka/daari/issues/289)
-(MCP Tasks) — all still unlabeled pending
+(MCP Tasks), [#291](https://github.com/naveenreddyalka/daari/issues/291)
+(picker off the search index, P1),
+[#294](https://github.com/naveenreddyalka/daari/issues/294) (stall triage),
+[#295](https://github.com/naveenreddyalka/daari/issues/295) (cosign + SBOM) —
+all still unlabeled pending
 [#286](https://github.com/naveenreddyalka/daari/issues/286). This run filed
-only [#291](https://github.com/naveenreddyalka/daari/issues/291) (picker off
-the search index, P1): with ten issues already queued behind a dead loop,
-restocking the backlog is worth less than making the loop able to see it.
+only [#297](https://github.com/naveenreddyalka/daari/issues/297) (row 15:
+`reasoning_effort` end-to-end); thirteen issues are already queued behind the
+parked loop, so restraint remains the rule.
 
 ---
 
@@ -97,16 +113,55 @@ restocking the backlog is worth less than making the loop able to see it.
 5. **Every IDE/desktop client one-click** (row 5): Claude Desktop recipe next to
    Cursor/Claude Code/JetBrains/VS Code; setup friction stays daari's moat.
 
-Standing HITL asks: **unpark the dev loop first — both parks**
-([#286](https://github.com/naveenreddyalka/daari/issues/286) human approvals +
-labels, [#291](https://github.com/naveenreddyalka/daari/issues/291) picker off
-the search index; every milestone above is gated on them); then PyPI/ghcr
-publishing + image signing (row 8). License is Apache 2.0 (#227).
+Standing HITL asks: **unpark the dev loop — both parks**
+([#286](https://github.com/naveenreddyalka/daari/issues/286) approve held runs
++ label #275–#297, [#291](https://github.com/naveenreddyalka/daari/issues/291)
+picker off the search index; every milestone above is gated on them); then
+PyPI/ghcr publishing + image signing
+([#295](https://github.com/naveenreddyalka/daari/issues/295)). License is
+Apache 2.0 (#227).
 
 ---
 
 ## Changelog
 
+- **2026-09-01** — Relicense PR
+  [#293](https://github.com/naveenreddyalka/daari/pull/293) went **`DIRTY`**:
+  it edits `docs/TRACKING.md`/`docs/prd/ENTERPRISE.md`, which the PRD merges
+  of 08-30/08-31 also touched — top HITL ask is now rebase + merge before the
+  conflict compounds. Recorded a missed positioning fact: **Palo Alto Networks
+  acquired Portkey** (closed 2026-05-29; now the Prisma AIRS AI Gateway) —
+  developer-first/self-hosted buyers face roadmap uncertainty there, which
+  sharpens daari's Apache-2.0 run-it-yourself pitch. Found and filed
+  [#297](https://github.com/naveenreddyalka/daari/issues/297) (new row 15):
+  `reasoning_effort` is silently dropped by `extra="ignore"` on
+  `/v1/chat/completions` — same defect class as #161/#224 — while LiteLLM
+  v1.99.0 (stable today: operator-configurable complexity router with custom
+  classifier plugins + per-model reasoning effort, `lite login
+  --config-claude`, batch billing, audit-on-by-default → notes on rows 5/7)
+  made effort a first-class routing input. Kong AI GW 2.1 still unreleased
+  (2.0.3 patch 08-31); Portkey gateway still v2.19; Ollama 0.33.2 / vLLM
+  0.28.0 unchanged. Both parks persist (day 4, re-verified); suite 1141 green.
+- **2026-08-31** — License blocker resolving: human opened
+  [PR #293](https://github.com/naveenreddyalka/daari/pull/293) relicensing the
+  tree to **Apache 2.0** (ADR-0016; checks green, awaiting merge) — top HITL
+  ask is now a one-click merge. Found that
+  [#285](https://github.com/naveenreddyalka/daari/issues/285) (stall triage)
+  was accidentally auto-closed by PRD PR
+  [#290](https://github.com/naveenreddyalka/daari/pull/290)'s closing keyword
+  with no code shipped; token cannot reopen → re-filed as
+  [#294](https://github.com/naveenreddyalka/daari/issues/294), and PRD PR
+  bodies must never use closing keywords. Converted row 8 to
+  [#295](https://github.com/naveenreddyalka/daari/issues/295) (cosign + SBOM +
+  provenance; explicitly authorizes the `docker.yml` edit) now that Apache 2.0
+  makes the ghcr image worth pulling. Both parks persist (re-verified: #281/
+  #283 still `BLOCKED`; label queries still return zero). Outward delta:
+  Portkey v2.19 (OAuth client-credentials upstream auth → row 9 note, Headroom
+  context compression → new watch row 14, MCP Registry proxy → row 3 note,
+  Deepgram STT/TTS, provider-reported cost billing); OpenRouter hosted MCP
+  server (`mcp.openrouter.ai`) + beta Batch API (removed all `openai/*:batch`
+  slugs 08-26); LiteLLM still v1.98 stable (v1.99-rc.2 08-30); Kong AI GW 2.1
+  still unreleased; Ollama 0.33.2, vLLM 0.28.0 unchanged.
 - **2026-08-30** — Found park #2: GitHub's search index for this repo went
   stale (2 of 14 open items indexed, zero label matches), and because
   `gh issue list --label` routes through GraphQL search, every scheduled
