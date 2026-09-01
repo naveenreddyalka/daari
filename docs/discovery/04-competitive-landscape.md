@@ -136,7 +136,7 @@ Closest stack today is **DIY**: LiteLLM + Ollama + shell scripts + manual Cursor
 
 ## Strategic choices (recommended)
 
-1. **License:** PolyForm Noncommercial 1.0.0 (relicensed from Apache 2.0 after v1.2.0) — free for noncommercial use, commercial licensing reserved  
+1. **License:** Apache 2.0 for the whole tree ([ADR-0016](../adr/0016-apache-2-relicense.md)); v1.3.0 shipped PolyForm NC then returned to OSI
 2. **Messaging:** "Open-source local execution router" — not "another LLM proxy"  
 3. **Integrate, don't compete:** Ollama as default backend; optional LiteLLM compat later if needed  
 4. **MVP proof metric:** % requests handled at L0/L1/L2/Lt with $0 marginal cost  

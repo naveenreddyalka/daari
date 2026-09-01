@@ -22,7 +22,7 @@ def test_compare_pages_exist_and_are_honest():
         text = path.read_text(encoding="utf-8")
         lower = text.lower()
         assert path.stat().st_size > 400, path.name
-        assert "polyform" in lower or "noncommercial" in lower
+        assert "apache" in lower
         for claim in BANNED:
             assert claim not in lower, f"{path.name}: {claim}"
         assert path.name in nav

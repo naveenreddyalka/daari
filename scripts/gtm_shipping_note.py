@@ -10,10 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = "https://naveenreddyalka.github.io/daari/"
 REPO = "https://github.com/naveenreddyalka/daari"
-LICENSE_LINE = (
-    "Source-available under PolyForm Noncommercial — personal/research free; "
-    "commercial use needs a license."
-)
+LICENSE_LINE = "Apache 2.0 — OSI open source."
 
 
 @dataclass(frozen=True)

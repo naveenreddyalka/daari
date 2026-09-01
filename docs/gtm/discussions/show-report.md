@@ -16,7 +16,7 @@ Paste a redacted `daari report` (Markdown is fine) if daari kept work on-device.
 
 Docs: https://naveenreddyalka.github.io/daari/  
 Repo: https://github.com/naveenreddyalka/daari  
-License: PolyForm Noncommercial (source-available). Personal use free; company use needs a commercial license.
+License: Apache 2.0.
 
 ```bash
 daari report

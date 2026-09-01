@@ -13,11 +13,10 @@ optimistic-locking fix for the shared Redis L1 cache), and **accounts for
 usage truthfully** (provider-reported token counts, per-model per-direction
 pricing, budgets charged to the key that spent them).
 
-**License change:** starting with this release daari is licensed under
-**PolyForm Noncommercial 1.0.0** — free for personal, educational, research,
-and other noncommercial use; commercial use requires a separate license
-(contact naveenreddy.alka@gmail.com). Releases through v1.2.0 remain
-available under Apache 2.0.
+**License change:** this tagged release shipped under
+**PolyForm Noncommercial 1.0.0**. `main` later returned to Apache 2.0
+([ADR-0016](adr/0016-apache-2-relicense.md)). Releases through v1.2.0 remain
+Apache 2.0.
 
 ## Highlights
 

@@ -1,6 +1,6 @@
 # Contributing to daari
 
-Thanks for your interest. daari is a source-available local-first LLM router (PolyForm Noncommercial) — contributions of all sizes are welcome.
+Thanks for your interest. daari is an Apache 2.0 local-first LLM router — contributions of all sizes are welcome.
 
 ## Quick start for contributors
 
@@ -44,8 +44,4 @@ Do **not** open a public issue — see [SECURITY.md](SECURITY.md).
 ## License
 
 By contributing you agree your contributions are licensed under the
-[PolyForm Noncommercial License 1.0.0](LICENSE), and you grant the maintainer
-(Naveen Reddy Alka) a perpetual, irrevocable right to relicense your
-contribution under other terms, including commercial and open-source licenses.
-This keeps commercial licensing and a possible future move back to a fully
-open-source license possible without tracking down every contributor.
+[Apache License 2.0](LICENSE).

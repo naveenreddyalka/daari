@@ -2,7 +2,7 @@
 
 | Term | Definition |
 |------|------------|
-| **daari** | Source-available local execution router (Telugu: path, way) |
+| **daari** | Apache 2.0 local execution router (Telugu: path, way) |
 | **Tier** | Level in the routing stack (L0–L6, Lt) |
 | **L0** | Exact cache — identical prompt → instant hit |
 | **L1** | Semantic cache — similar meaning → reused response |

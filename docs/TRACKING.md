@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-08-17 (v1.3.0 released — see [RELEASE-v1.3.0.md](RELEASE-v1.3.0.md))  
+> Last updated: 2026-08-31 (Apache 2.0 relicense — [ADR-0016](adr/0016-apache-2-relicense.md))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -23,7 +23,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | Shipping-note generator (#232) | [x] | #240 |
 | Discussions welcome (#233) | [x] | templates in `docs/gtm/discussions/`; welcome is #238 |
 | Cloud autodev secret (#226) | [ ] | HITL — cycle is a 6s no-op |
-| Dual-license (#227) | [ ] | HITL — keep NC until decided |
+| Dual-license (#227) | [x] | Full Apache 2.0 — [ADR-0016](adr/0016-apache-2-relicense.md) |
 
 ### Setup / self-service
 
@@ -1313,6 +1313,14 @@ label from open issues untouched for 24h with no open PR referencing them
 (branch `autodev/<n>-` or `#<n>` in the PR title/body), leaving a marker
 comment. Runs in the existing `stall-watch` job. Covered by
 `tests/unit/test_autodev_pr_watch.py`.
+
+### Relicense to Apache 2.0 ([#227](https://github.com/naveenreddyalka/daari/issues/227))
+
+<!-- tracking:#227 -->
+
+Human decision: whole tree Apache 2.0, not the NC/fleet hybrid. Recorded in
+[ADR-0016](adr/0016-apache-2-relicense.md). Public copy, PyPI classifier, and
+Homebrew `license` match. v1.3.0 as tagged stays PolyForm NC.
 
 ### Service install --now ([#270](https://github.com/naveenreddyalka/daari/issues/270))
 

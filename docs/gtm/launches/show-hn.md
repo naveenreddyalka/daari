@@ -23,6 +23,6 @@ Same `curl` twice: the second response is `"tier": "L0"` in `daari_meta`. `daari
 Docs: https://naveenreddyalka.github.io/daari/  
 Repo: https://github.com/naveenreddyalka/daari
 
-License is PolyForm Noncommercial (source-available). Personal / research use is free; a business needs a commercial license. Not OSI open source — saying that up front.
+License is Apache 2.0 (OSI open source).
 
 Happy to answer routing / cache-trust / Cursor BYOK questions here.

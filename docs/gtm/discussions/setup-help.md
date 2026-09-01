@@ -20,4 +20,4 @@ daari setup cursor --help
 - Docs home: https://naveenreddyalka.github.io/daari/
 - Repo: https://github.com/naveenreddyalka/daari
 
-License: PolyForm Noncommercial (source-available). I am the author. Happy to debug a tunnel or key issue here — do not paste secrets.
+License: Apache 2.0. I am the author. Happy to debug a tunnel or key issue here — do not paste secrets.
