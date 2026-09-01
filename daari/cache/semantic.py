@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import time
 from collections import OrderedDict
@@ -20,6 +21,32 @@ def extract_embed_text(request: InternalRequest) -> str:
         if message.content:
             parts.append(f"{message.role}:{message.content}")
     return "\n".join(parts)
+
+
+def _split_agent_messages(request: InternalRequest) -> tuple[list[Any], list[Any]]:
+    """Stable prefix vs the trailing tool results that change every agent turn."""
+    messages = request.messages
+    end = len(messages)
+    while end > 0 and messages[end - 1].role == "tool":
+        end -= 1
+    return messages[:end], messages[end:]
+
+
+def agent_prefix_text(request: InternalRequest) -> str:
+    """Embeddable text for the stable prefix (system + history minus tool results)."""
+    prefix, _ = _split_agent_messages(request)
+    return "\n".join(
+        f"{message.role}:{message.content}" for message in prefix if message.content
+    )
+
+
+def agent_suffix_hash(request: InternalRequest) -> str:
+    """Exact hash of the trailing tool results — a changed result must not reuse an answer."""
+    _, suffix = _split_agent_messages(request)
+    payload = json.dumps(
+        [[message.role, message.content or ""] for message in suffix], sort_keys=True
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def semantic_context_key(request: InternalRequest) -> str:
@@ -187,8 +214,46 @@ class SemanticCache:
             return True
         return self._verified(request, stored_text)
 
-    async def _nearest_entry(
+    def _agent_context_key(self, request: InternalRequest) -> str:
+        # The suffix hash is part of the key, so a changed last tool result can
+        # never cosine-match the answer produced from the previous one (G1b).
+        return "|".join(
+            ["agent-prefix", semantic_context_key(request), agent_suffix_hash(request)]
+        )
+
+    def _agent_prefix_text(self, request: InternalRequest) -> str:
+        text = agent_prefix_text(request)
+        if self.normalize_inputs:
+            return normalize_for_embedding(text) or text
+        return text
+
+    async def nearest_agent_prefix(
         self, request: InternalRequest, *, max_age: float | None = None
+    ) -> tuple[InternalResponse | None, float, str | None]:
+        return await self._nearest_entry(
+            request,
+            max_age=max_age,
+            context_key=self._agent_context_key(request),
+            text=self._agent_prefix_text(request),
+        )
+
+    async def put_agent_prefix(
+        self, request: InternalRequest, response: InternalResponse
+    ) -> None:
+        await self._put(
+            request,
+            response,
+            context_key=self._agent_context_key(request),
+            text=self._agent_prefix_text(request),
+        )
+
+    async def _nearest_entry(
+        self,
+        request: InternalRequest,
+        *,
+        max_age: float | None = None,
+        context_key: str | None = None,
+        text: str | None = None,
     ) -> tuple[InternalResponse | None, float, str | None]:
         """Best entry plus the prompt that produced it, for verification (#168).
 
@@ -198,7 +263,7 @@ class SemanticCache:
         if not self.enabled:
             return None, 0.0, None
 
-        text = self._embed_text(request)
+        text = text if text is not None else self._embed_text(request)
         if not text.strip():
             return None, 0.0, None
 
@@ -206,7 +271,7 @@ class SemanticCache:
         if embedding is None:
             return None, 0.0, None
 
-        context_key = semantic_context_key(request)
+        context_key = context_key or semantic_context_key(request)
         best_score = 0.0
         best_entry: dict[str, Any] | None = None
 
@@ -275,10 +340,20 @@ class SemanticCache:
         return removed
 
     async def put(self, request: InternalRequest, response: InternalResponse) -> None:
+        await self._put(request, response)
+
+    async def _put(
+        self,
+        request: InternalRequest,
+        response: InternalResponse,
+        *,
+        context_key: str | None = None,
+        text: str | None = None,
+    ) -> None:
         if not self.enabled:
             return
 
-        text = self._embed_text(request)
+        text = text if text is not None else self._embed_text(request)
         if not text.strip():
             return
 
@@ -297,7 +372,7 @@ class SemanticCache:
         entries = self._load_entries()
         entries.append(
             {
-                "context_key": semantic_context_key(request),
+                "context_key": context_key or semantic_context_key(request),
                 "embedding": embedding,
                 # Kept so a hit can be verified against the question that
                 # produced it, not just its embedding (#168).
