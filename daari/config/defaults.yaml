@@ -1,6 +1,8 @@
 server:
   host: 127.0.0.1
   port: 11435
+  # Idle seconds before streaming routes emit a keepalive frame. 0 disables.
+  sse_keepalive_seconds: 10
 
 models:
   l3: llama3.2:3b

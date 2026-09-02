@@ -25,6 +25,7 @@ from daari.gateway.internal import InternalRequest, InternalResponse, Message, R
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.response_store import ResponseStore
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.streaming import SSE_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
@@ -508,7 +509,14 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         tool_acc: dict[int, dict[str, str]] = {}
         tool_item_ids: dict[int, str] = {}
         try:
-            async for chunk in ctx.router.stream_openai_chunks(internal):
+            async for chunk in stream_with_keepalive(
+                ctx.router.stream_openai_chunks(internal),
+                interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                frame=SSE_KEEPALIVE_FRAME,
+            ):
+                if chunk == SSE_KEEPALIVE_FRAME:
+                    yield chunk
+                    continue
                 delta = _parse_chat_delta(chunk)
                 if not delta:
                     continue

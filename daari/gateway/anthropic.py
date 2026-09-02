@@ -14,6 +14,7 @@ from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
+from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.provider_prefs import (
     as_openrouter_payload,
     configured_frontier_slots,
@@ -262,7 +263,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
 
                 async def event_stream():
                     try:
-                        async for event in ctx.router.stream_anthropic_events(internal):
+                        async for event in stream_with_keepalive(
+                            ctx.router.stream_anthropic_events(internal),
+                            interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                        ):
                             yield event
                     except Exception as exc:
                         error_payload = {

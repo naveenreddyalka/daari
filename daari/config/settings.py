@@ -58,6 +58,16 @@ class ServerSettings(BaseModel):
     # Virtual keys (issue #111) are accepted alongside this master key.
     api_key: str = ""
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
+    sse_keepalive_seconds: float = Field(
+        default=10.0,
+        ge=0.0,
+        description=(
+            "Idle seconds before a streaming response emits a keepalive frame "
+            "(SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a "
+            "blank line on the NDJSON Ollama facade). Keeps proxies and SDK read "
+            "timeouts from dropping slow-to-first-token streams. 0 disables."
+        ),
+    )
 
 
 class ModelsSettings(BaseModel):

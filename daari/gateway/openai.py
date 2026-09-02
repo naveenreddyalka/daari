@@ -29,6 +29,7 @@ from daari.gateway.provider_prefs import (
     ZdrUnavailable,
 )
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
@@ -404,7 +405,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 async def event_stream() -> AsyncIterator[str]:
                     content_chars = 0
                     try:
-                        async for chunk in ctx.router.stream_openai_chunks(internal):
+                        async for chunk in stream_with_keepalive(
+                            ctx.router.stream_openai_chunks(internal),
+                            interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                        ):
                             if '"delta": {"content":' in chunk or '"delta":{"content":' in chunk:
                                 content_chars += 1
                             yield chunk
