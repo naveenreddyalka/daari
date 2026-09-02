@@ -63,7 +63,9 @@ def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
             "event": event,
             **payload,
         }
-        line = json.dumps(record, default=str) + "\n"
+        from daari.security.secret_refs import redact_secrets
+
+        line = redact_secrets(json.dumps(record, default=str)) + "\n"
         if _stdout_json:
             print(line, end="", flush=True)
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
