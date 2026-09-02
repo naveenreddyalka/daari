@@ -8,8 +8,10 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from daari import __version__
+from daari.enterprise.audit import AuditLog
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, Message
+from daari.gateway.mcp_policy import TOOL_DENIED, McpToolPolicy, audit_tool_call, resolve_policy
 from daari.router.router import AppContext
 
 JSONRPC_VERSION = "2.0"
@@ -181,13 +183,16 @@ def _provider_catalog(ctx: AppContext) -> list[dict[str, Any]]:
     return tools
 
 
-def _tool_catalog(ctx: AppContext) -> list[dict[str, Any]]:
-    return [*_core_catalog(), *_provider_catalog(ctx)]
+def _tool_catalog(ctx: AppContext, policy: McpToolPolicy | None = None) -> list[dict[str, Any]]:
+    catalog = [*_core_catalog(), *_provider_catalog(ctx)]
+    if policy is None:
+        return catalog
+    return [item for item in catalog if policy.allows(item["name"])]
 
 
-def _mcp_list_tools(ctx: AppContext) -> list[dict[str, Any]]:
+def _mcp_list_tools(ctx: AppContext, policy: McpToolPolicy | None = None) -> list[dict[str, Any]]:
     listed: list[dict[str, Any]] = []
-    for item in _tool_catalog(ctx):
+    for item in _tool_catalog(ctx, policy):
         if item["name"] == "health":
             continue
         listed.append(
@@ -229,6 +234,59 @@ def _rpc_response(request: Request, payload: dict[str, Any], *, status_code: int
 
 def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
+
+
+class _Governance:
+    """Per-request policy + audit sink for the MCP ingress (issue #277)."""
+
+    def __init__(self, request: Request, ctx: AppContext) -> None:
+        self.claims = getattr(request.state, "auth_claims", None)
+        self.policy = resolve_policy(self.claims, ctx.settings)
+        self._audit = AuditLog(ctx.settings.enterprise.audit_path)
+        # MCP 2026-07-28 lets infrastructure route/limit on these without
+        # parsing JSON-RPC; when a client sends them they govern too.
+        self.header_method = (request.headers.get("mcp-method") or "").strip()
+        self.header_name = (request.headers.get("mcp-name") or "").strip()
+
+    def denied_tool(self, name: str) -> str | None:
+        """Return the first tool name the caller may not call, else None."""
+        candidates = [self.header_name] if self.header_method in ("", "tools/call") else []
+        candidates.append(name)
+        for candidate in candidates:
+            if candidate and not self.policy.allows(candidate):
+                return candidate.strip().lower()
+        return None
+
+    def audit(self, *, tool: str, decision: str, transport: str) -> None:
+        audit_tool_call(
+            self._audit,
+            self.claims,
+            tool=tool.strip().lower(),
+            decision=decision,
+            method="tools/call",
+            transport=transport,
+        )
+
+    def check(self, name: str, *, transport: str) -> str | None:
+        """Audit the call and return the denied tool name, if any."""
+        denied = self.denied_tool(name)
+        if denied is not None:
+            self.audit(tool=denied, decision="deny", transport=transport)
+            return denied
+        self.audit(tool=name, decision="allow", transport=transport)
+        return None
+
+
+def _legacy_denied(name: str) -> JSONResponse:
+    payload = MCPQueryResponse(
+        ok=False,
+        tool="tools/call",
+        result={
+            "name": name,
+            "error": _error("MCP_ERR_TOOL_DENIED", f"Tool denied by policy: {name}", details={"tool": name}),
+        },
+    ).model_dump()
+    return JSONResponse(payload, status_code=403, headers=LEGACY_HEADERS)
 
 
 def _negotiate_protocol(params: Any) -> str:
@@ -307,11 +365,14 @@ class MCPGatewayAdapter(GatewayAdapter):
         async def mcp_query(body: MCPQueryRequest, request: Request) -> JSONResponse:
             ctx: AppContext = request.app.state.ctx
             tool = body.tool.strip().lower()
+            governance = _Governance(request, ctx)
             catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
 
             if tool in {"tools/list", "list_tools"}:
                 return _legacy(
-                    MCPQueryResponse(tool="tools/list", result={"tools": _tool_catalog(ctx)}).model_dump()
+                    MCPQueryResponse(
+                        tool="tools/list", result={"tools": _tool_catalog(ctx, governance.policy)}
+                    ).model_dump()
                 )
 
             if tool in {"tools/call", "call_tool"}:
@@ -339,6 +400,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                         ).model_dump()
                     )
                 normalized_name = name.strip().lower()
+                denied = governance.check(normalized_name, transport="rest")
+                if denied is not None:
+                    return _legacy_denied(denied)
                 schema = (catalog_by_name.get(normalized_name) or {}).get("input_schema")
                 if schema is not None:
                     validation_errors = _validate_input(schema, arguments)
@@ -373,6 +437,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                     ).model_dump()
                 )
 
+            denied = governance.check(tool, transport="rest")
+            if denied is not None:
+                return _legacy_denied(denied)
             response = await _run_tool(ctx, tool, body.input, body.args, model=body.model)
             return _legacy(response.model_dump())
 
@@ -404,6 +471,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                 return Response(status_code=202)
 
             ctx: AppContext = request.app.state.ctx
+            governance = _Governance(request, ctx)
             try:
                 if method == "initialize":
                     return _rpc_response(
@@ -422,7 +490,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                 if method == "tools/list":
                     return _rpc_response(
                         request,
-                        _jsonrpc_result(rpc_id, {"tools": _mcp_list_tools(ctx)}),
+                        _jsonrpc_result(rpc_id, {"tools": _mcp_list_tools(ctx, governance.policy)}),
                     )
                 if method == "tools/call":
                     name = str(params.get("name") or "").strip()
@@ -436,6 +504,17 @@ class MCPGatewayAdapter(GatewayAdapter):
                         return _rpc_response(
                             request,
                             _jsonrpc_error(rpc_id, INVALID_PARAMS, "arguments must be an object"),
+                        )
+                    denied = governance.check(name, transport="jsonrpc")
+                    if denied is not None:
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_error(
+                                rpc_id,
+                                TOOL_DENIED,
+                                f"Tool denied by policy: {denied}",
+                                data={"tool": denied},
+                            ),
                         )
                     catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
                     schema = (catalog_by_name.get(name.strip().lower()) or {}).get("input_schema")

@@ -100,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1201 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
+**Count:** 1221 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
 
 ---
 
@@ -1386,6 +1386,25 @@ repository-connection query with exact-title matching, and the surviving
 search-backed callsites in `autodev_pr_watch.py` carry audit comments
 explaining why their failure modes are safe. Covered by
 `tests/unit/test_autodev_backlog.py`.
+
+### MCP tool governance ([#277](https://github.com/naveenreddyalka/daari/issues/277))
+
+<!-- tracking:#277 -->
+
+`daari/gateway/mcp_policy.py` resolves a glob-style `allow` / `deny` tool
+policy per caller: `integrations.mcp_policy` (global default, governs the
+master key and open installs too) → `integrations.mcp_team_policies[<team>]`
+→ the virtual key's `metadata.mcp`. Denies accumulate, the narrowest `allow`
+wins, deny beats allow. `POST /mcp` returns JSON-RPC error `-32003` for a
+denied `tools/call`, the legacy `/v1/mcp/query` returns HTTP 403
+(`MCP_ERR_TOOL_DENIED`), and `tools/list` on both routes is filtered to the
+caller's allowed tools. Every ingress `tools/call` — allowed or denied —
+writes an `mcp.tools/call` row to the enterprise audit log (key/team, tool,
+decision, transport) and never the arguments. The egress client sends
+`Mcp-Method` / `Mcp-Name` (MCP 2026-07-28) on outbound requests; the ingress
+honours the same headers for policy when a client supplies them. Covered by
+`tests/unit/test_mcp_policy.py`, `tests/integration/test_mcp_governance.py`
+and an egress header case in `tests/unit/test_mcp_egress.py`.
 
 ### Cost-split and savings response headers ([#278](https://github.com/naveenreddyalka/daari/issues/278))
 

@@ -156,6 +156,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.gitlab.url` | str | *(required)* |  |
 | `integrations.gitlab.triggers` | list | `[]` |  |
 | `integrations.mcp_servers` | list | `[]` |  |
+| `integrations.mcp_policy.allow` | list | `[]` | MCP tool names (glob) the caller may call. Empty = every tool not denied. |
+| `integrations.mcp_policy.deny` | list | `[]` | MCP tool names (glob) the caller may never call. Deny beats allow. |
+| `integrations.mcp_team_policies` | dict | `{}` | Per-team MCP tool policy keyed by team name; layered on mcp_policy. |
 | `enterprise.enabled` | bool | `False` |  |
 | `enterprise.id` | str | None | `None` |  |
 | `enterprise.org_id` | str | None | `None` |  |
