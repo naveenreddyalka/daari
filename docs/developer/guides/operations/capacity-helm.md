@@ -15,6 +15,9 @@
 
 Chart: `deploy/helm/daari/`. Point Redis/Postgres/org pool via values. Image: `ghcr.io/naveenreddyalka/daari`.
 
+Moving an installed release to a new image tag (`helm upgrade --atomic`, rollback,
+what survives in Redis/Postgres): [Upgrade and config migration](upgrade.md).
+
 ## Next
 
-→ [Org cache](../features/org-cache.md)
+→ [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md)

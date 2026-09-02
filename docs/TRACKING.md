@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-01 (Claude Desktop recipe — [#279](https://github.com/naveenreddyalka/daari/issues/279))  
+> Last updated: 2026-09-01 (Upgrade guide — [#287](https://github.com/naveenreddyalka/daari/issues/287))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1243 passed** (2026-09-01) |
+| `pytest` (default, mocked) | **1272 passed** (2026-09-01) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1457,6 +1457,51 @@ profile complex and floor tier selection at L4. `daari_meta.reasoning_effort`
 and the profile trace step record the value. Covered by
 `tests/unit/test_reasoning_effort.py`, `tests/unit/test_sampling_params.py`,
 and cases in `tests/integration/test_gateway_flow.py`.
+
+### Upgrade and config migration guide ([#287](https://github.com/naveenreddyalka/daari/issues/287))
+
+<!-- tracking:#287 -->
+
+`docs/developer/guides/operations/upgrade.md` (nav: Operations) is the
+operator runbook for moving a fleet N → N+1: pip / Homebrew / Docker / Helm
+(`helm upgrade --atomic`) steps with the restart each needs, the config
+compatibility policy, the per-store survival table for `~/.daari/`
+(diskcache/Redis L0+L1 disposable and version-agnostic; `.sqlite3` ledgers,
+virtual keys, audit durable with additive in-place migrations; Postgres
+create-if-missing only), rollback, and fleet ordering (gateway first; the
+HMAC-signed policy bundle has no schema version and laptops ignore unknown
+keys, so skew is tolerated both ways). Config claims are pinned by three new
+tests in `tests/unit/test_settings.py`: unknown top-level YAML section fails
+`Settings.load()` (`BaseSettings` `extra="forbid"`), unknown nested key is
+ignored, wrong type fails. Cross-linked from `capacity-helm.md`.
+
+### Secret references for provider and org keys ([#288](https://github.com/naveenreddyalka/daari/issues/288))
+
+<!-- tracking:#288 -->
+
+Secret-bearing config values accept `secret://` URIs resolved once at daemon
+startup: `secret://env-file/<path>#<KEY>`, `secret://exec/<command>` (covers
+`op`/`vault`/`aws` CLIs), and `secret://keychain/<service>/<account>` (macOS
+`security`, Linux `secret-tool`) — all shell-outs, no new runtime dependency.
+Resolution lives in `daari/security/secret_refs.py`, is wired into
+`create_app()` (fatal on failure, message names the ref and config path, never
+the value), and registers resolved values so `log_gateway_event()` redacts
+them. `daari doctor` gains a `secret_refs` check verifying every configured
+ref resolves. Plain strings unchanged. Covered by
+`tests/unit/test_secret_refs.py` and `tests/test_doctor.py`.
+
+### Signed ghcr images with SBOM and provenance ([#295](https://github.com/naveenreddyalka/daari/issues/295))
+
+<!-- tracking:#295 -->
+
+`.github/workflows/docker.yml` (edit authorized by #295) now signs every image
+pushed on `main`/`v*` with cosign keyless (GitHub OIDC; `id-token: write`
+scoped to the build job only, signing by digest so all tags are covered) and
+attaches a Syft SBOM plus SLSA provenance via `docker/build-push-action`
+(`sbom: true`, `provenance: true`). PR builds still build without pushing and
+skip signing. Verify instructions (`cosign verify` with the expected identity
+and issuer, SBOM/provenance inspection) live in the docker-compose operations
+guide. Covered by `tests/unit/test_docker_supply_chain.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

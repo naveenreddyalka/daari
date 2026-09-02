@@ -394,7 +394,14 @@ def serve(
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
     typer.echo(f"daari serving on http://{bind_host}:{bind_port}/v1")
-    app_instance = create_app(settings)
+    from daari.security.secret_refs import SecretRefError
+
+    try:
+        app_instance = create_app(settings)
+    except SecretRefError as exc:
+        typer.echo(f"  ✗ secret_refs: {exc}", err=True)
+        typer.echo("Fix the ref (see: daari doctor) and retry.", err=True)
+        raise typer.Exit(code=1) from None
     uvicorn.run(
         app_instance,
         host=bind_host,
