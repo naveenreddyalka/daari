@@ -9,6 +9,7 @@ import yaml
 from daari.clients.registry import default_registry
 from daari.config.settings import Settings, get_settings
 from daari.setup.models import l4_model_present, pull_ollama_model
+from daari.setup.service import restart_hint
 
 
 def ensure_server_api_key(
@@ -153,7 +154,7 @@ def apply_cursor_setup(
             typer.echo(
                 "Generated a gateway API key (server.api_key in ~/.daari/config.yaml) — "
                 "the public tunnel now requires it. Restart the daemon to enforce: "
-                "launchctl kickstart -k gui/$(id -u)/com.daari.serve"
+                f"{restart_hint()} (or stop and re-run `daari serve`)."
             )
         else:
             typer.echo("Gateway API key already configured — Cursor will send it.")

@@ -91,6 +91,10 @@ daari service status
 
 `--now` writes the unit and enables/starts it (`systemctl --user enable --now daari.service` on Linux, `launchctl load -w` on macOS). Without `--now` the file is written and the command prints the enable hint for you to run yourself.
 
+`daari serve` reads `~/.daari/config.yaml` once at start, so after editing it run
+`daari service restart` (`systemctl --user restart daari.service` on Linux,
+`launchctl kickstart -k gui/$(id -u)/com.daari.gateway` on macOS).
+
 Logs: `~/.daari/serve.log`. `daari service uninstall` removes only the file this command created; `daari service uninstall --now` stops and disables it first. Native Windows is not supported — use WSL2.
 
 ## Cursor over a tunnel

@@ -362,6 +362,26 @@ class TestSetupCLI:
         assert result.exit_code == 0
         assert pulled == []
 
+    def test_setup_cursor_secure_hint_points_at_service_restart(
+        self, recipe, monkeypatch, tmp_path, capsys
+    ):
+        """Issue #323: the restart hint must not name the dev-watchdog launchd label."""
+        from daari.cli.setup_actions import apply_cursor_setup
+        from daari.config.settings import Settings
+
+        self._l4_registry(recipe, monkeypatch, tmp_path, present=True)
+        settings = Settings.model_validate(
+            {"cache": {"l0": {"enabled": True, "path": str(tmp_path / "l0")}}}
+        )
+        monkeypatch.setattr(
+            "daari.cli.setup_actions.ensure_server_api_key",
+            lambda cfg, config_path=None: ("generated-key", True),
+        )
+        apply_cursor_setup(settings=settings, secure=True, yes=True)
+        output = capsys.readouterr().out
+        assert "daari service restart" in output
+        assert "com.daari.serve" not in output
+
     def test_setup_cursor_ollama_unreachable_notes_only(self, recipe, monkeypatch, tmp_path):
         pulled = self._l4_registry(recipe, monkeypatch, tmp_path, present=None)
         runner = CliRunner()

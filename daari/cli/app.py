@@ -38,8 +38,10 @@ from daari.setup.tunnel import (
 )
 from daari.setup.service import (
     ServiceCommandError,
+    ServiceNotInstalledError,
     UnsupportedPlatformError,
     install_service,
+    restart_service,
     service_status,
     uninstall_service,
 )
@@ -984,6 +986,19 @@ def service_status_cmd() -> None:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(state)
+
+
+@service_app.command("restart")
+def service_restart_cmd() -> None:
+    """Restart the user service so config.yaml edits take effect."""
+    try:
+        commands = restart_service()
+    except (UnsupportedPlatformError, ServiceNotInstalledError, ServiceCommandError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    for command in commands:
+        typer.echo(f"Ran: {' '.join(command)}")
+    typer.echo("daari service restarted.")
 
 
 @service_app.command("uninstall")

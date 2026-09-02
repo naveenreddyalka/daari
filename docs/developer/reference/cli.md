@@ -43,6 +43,6 @@ Entry point: `daari` (Typer).
 | `project` | `init`, `show` |
 | `keys` | `create`, `list`, `revoke` |
 | `enterprise` | `bootstrap`, `policy-sync` |
-| `service` | `install`, `status`, `uninstall` (user systemd / launchd) |
+| `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 
 Use `daari <cmd> --help` for flags.

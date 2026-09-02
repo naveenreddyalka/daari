@@ -32,20 +32,22 @@ restart of the daemon.
 source .venv/bin/activate
 pip install --upgrade daari            # or: pip install -e ".[dev]" from a checkout
 daari doctor
+daari service restart
 ```
 
-Restart the user service: Linux `systemctl --user restart daari.service`;
-macOS `launchctl kickstart -k gui/$(id -u)/com.daari.gateway`
-(label from `daari/setup/service.py`). If you run `daari serve` by hand, stop
-and start it. `scripts/install.sh` is safe to re-run: it recreates the venv,
-reinstalls, and pulls only missing models; it never touches `~/.daari`.
+`daari service restart` runs `systemctl --user restart daari.service` on Linux
+and `launchctl kickstart -k gui/$(id -u)/com.daari.gateway` on macOS (label
+from `daari/setup/service.py`; it exits non-zero if `daari service install` was
+never run). If you run `daari serve` by hand, stop and start it.
+`scripts/install.sh` is safe to re-run: it recreates the venv, reinstalls, and
+pulls only missing models; it never touches `~/.daari`.
 
 ### Homebrew
 
 ```bash
 brew update && brew upgrade daari
 daari doctor
-launchctl kickstart -k gui/$(id -u)/com.daari.gateway
+daari service restart
 ```
 
 The formula lives in the `naveenreddyalka/daari` tap
