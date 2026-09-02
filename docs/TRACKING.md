@@ -1518,6 +1518,20 @@ skip signing. Verify instructions (`cosign verify` with the expected identity
 and issuer, SBOM/provenance inspection) live in the docker-compose operations
 guide. Covered by `tests/unit/test_docker_supply_chain.py`.
 
+### MCP Tasks extension ([#289](https://github.com/naveenreddyalka/daari/issues/289))
+
+<!-- tracking:#289 -->
+
+`POST /mcp` advertises `io.modelcontextprotocol/tasks` on protocol
+`2026-07-28+`. Clients that opt in via `_meta` get a `taskId` for eligible
+long-running `tools/call`s (`route` by default, or all tools when
+`threshold_ms > 0`); `tasks/get` / `tasks/update` / `tasks/cancel` poll and
+cooperatively cancel. Non-opt-in callers keep blocking behavior. Task state
+lives in-process with a diskcache directory (`integrations.mcp_tasks.path`).
+Governance audits still run before task creation. Docs:
+[mcp.md](developer/guides/clients/mcp.md). Covered by
+`tests/unit/test_mcp_tasks.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
