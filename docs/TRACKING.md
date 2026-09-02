@@ -1358,6 +1358,23 @@ that name apply the same as Ollama models. Failures trip the existing circuit
 breaker. Covered by `tests/unit/test_openai_executor.py` and
 `tests/unit/test_local_pool.py`.
 
+### Backlog picker off the search index ([#291](https://github.com/naveenreddyalka/daari/issues/291))
+
+<!-- tracking:#291 -->
+
+`scripts/autodev_backlog.py` picks the next `auto-dev` issue (`--pick`) or
+lists all eligible ones (`--list`) through the GraphQL **repository
+connection** only — never `search(` — because GitHub's search index lagged the
+repository on 2026-08-30 and the dev cycle silently exited on a "empty"
+backlog. Pick rules match AGENTS.md: P1 > P2 > P3, oldest first, skipping
+`agent:working` and issues with an open linked PR (shared matcher from
+`autodev_pr_watch.py`). The `autodev.yml` prompt now calls the script (edit
+authorized by #291), `autodev-local.sh` regression dedupe uses a
+repository-connection query with exact-title matching, and the surviving
+search-backed callsites in `autodev_pr_watch.py` carry audit comments
+explaining why their failure modes are safe. Covered by
+`tests/unit/test_autodev_backlog.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

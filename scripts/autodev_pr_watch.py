@@ -195,6 +195,8 @@ def _gh_json(args: list[str]) -> Any:
 
 
 def fetch_open_prs() -> list[dict[str, Any]]:
+    # Audited for #291: plain `gh pr list` (no --search/--label) reads the
+    # repository pullRequests connection, not the stale-prone search index.
     return (
         _gh_json(
             [
@@ -214,6 +216,9 @@ def fetch_open_prs() -> list[dict[str, Any]]:
 
 
 def fetch_working_issues() -> list[dict[str, Any]]:
+    # Audited for #291: `--label` routes through the search index, which can
+    # lag. Failure mode here is fail-safe — a stale index only postpones the
+    # agent:working sweep until the next 2h run; nothing is removed wrongly.
     return (
         _gh_json(
             [
@@ -272,6 +277,9 @@ def _cli_comment(number: int, body: str) -> None:
 
 
 def _cli_list_issues(title: str) -> list[dict[str, Any]]:
+    # Audited for #291: `--search` dedupe can miss on a stale index, but the
+    # primary dedupe is the PR-comment marker checked before this runs; the
+    # worst case is a visible duplicate stall issue, never a silent stall.
     rows = (
         _gh_json(
             [
