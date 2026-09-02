@@ -1457,6 +1457,34 @@ close/reopen or different token). Marker `<!-- autodev-pr-stall -->` and
 conflict-path merge-main guidance are unchanged. Covered by
 `tests/unit/test_autodev_pr_watch.py`.
 
+### Secret references for provider and org keys ([#288](https://github.com/naveenreddyalka/daari/issues/288))
+
+<!-- tracking:#288 -->
+
+Secret-bearing config values accept `secret://` URIs resolved once at daemon
+startup: `secret://env-file/<path>#<KEY>`, `secret://exec/<command>` (covers
+`op`/`vault`/`aws` CLIs), and `secret://keychain/<service>/<account>` (macOS
+`security`, Linux `secret-tool`) — all shell-outs, no new runtime dependency.
+Resolution lives in `daari/security/secret_refs.py`, is wired into
+`create_app()` (fatal on failure, message names the ref and config path, never
+the value), and registers resolved values so `log_gateway_event()` redacts
+them. `daari doctor` gains a `secret_refs` check verifying every configured
+ref resolves. Plain strings unchanged. Covered by
+`tests/unit/test_secret_refs.py` and `tests/test_doctor.py`.
+
+### Signed ghcr images with SBOM and provenance ([#295](https://github.com/naveenreddyalka/daari/issues/295))
+
+<!-- tracking:#295 -->
+
+`.github/workflows/docker.yml` (edit authorized by #295) now signs every image
+pushed on `main`/`v*` with cosign keyless (GitHub OIDC; `id-token: write`
+scoped to the build job only, signing by digest so all tags are covered) and
+attaches a Syft SBOM plus SLSA provenance via `docker/build-push-action`
+(`sbom: true`, `provenance: true`). PR builds still build without pushing and
+skip signing. Verify instructions (`cosign verify` with the expected identity
+and issuer, SBOM/provenance inspection) live in the docker-compose operations
+guide. Covered by `tests/unit/test_docker_supply_chain.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

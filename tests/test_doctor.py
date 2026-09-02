@@ -343,3 +343,38 @@ class TestCursorSetupDryRun:
     def test_registry_has_cursor(self):
         registry = default_registry()
         assert "cursor" in registry.list_ids()
+
+
+class TestDoctorSecretRefs:
+    """Issue #288: doctor verifies each configured secret:// ref resolves."""
+
+    def _down_client(self):
+        mock = MagicMock(spec=httpx.Client)
+        mock.get.side_effect = httpx.ConnectError("connection refused")
+        return mock
+
+    def test_no_refs_configured_is_ok(self, settings):
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["secret_refs"].ok is True
+        assert by_name["secret_refs"].optional is True
+        assert "none configured" in by_name["secret_refs"].detail
+
+    def test_resolvable_ref_reports_ok(self, tmp_path, settings):
+        env = tmp_path / "daari.env"
+        env.write_text("K=value\n", encoding="utf-8")
+        settings.enterprise.shared_cache_token = f"secret://env-file/{env}#K"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["secret_refs"].ok is True
+        assert "1 ref" in by_name["secret_refs"].detail
+        assert "value" != by_name["secret_refs"].detail
+
+    def test_unresolvable_ref_fails_and_names_it(self, tmp_path, settings):
+        ref = f"secret://env-file/{tmp_path}/absent.env#K"
+        settings.enterprise.shared_cache_token = ref
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["secret_refs"].ok is False
+        assert ref in by_name["secret_refs"].detail
+        assert doctor_exit_code(results) == 1

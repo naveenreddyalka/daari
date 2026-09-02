@@ -26,6 +26,11 @@ from daari.server.auth import extract_api_key, resolve_auth
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or Settings.load()
+    # Issue #288: resolve secret:// config values once, before anything can
+    # read them. A failed ref is fatal — the daemon must not start half-keyed.
+    from daari.security.secret_refs import resolve_settings_secrets
+
+    resolve_settings_secrets(resolved)
     configure_request_log(
         max_bytes=resolved.observability.request_log_max_bytes,
         backups=resolved.observability.request_log_backups,
