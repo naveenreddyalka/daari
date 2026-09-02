@@ -56,9 +56,15 @@ file_regression_issue() {
   local title="$1"
   local body_file="$2"
   # Dedupe: skip when an open regression issue with the same title exists.
+  # Reads the GraphQL repository connection instead of a search-backed
+  # `gh issue list` query: GitHub's search index can lag the repository
+  # (issue #291), and a stale index here silently files duplicates.
   local existing
-  existing=$(gh issue list --repo naveenreddyalka/daari --state open --label regression \
-    --search "in:title \"$title\"" --json number --jq 'length' 2>/dev/null || echo 0)
+  existing=$(gh api graphql \
+    -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){issues(states:OPEN,labels:["regression"],first:100){nodes{title}}}}' \
+    -F owner=naveenreddyalka -F name=daari \
+    --jq '.data.repository.issues.nodes[].title' 2>/dev/null \
+    | grep -Fxc "$title" || echo 0)
   if [ "${existing:-0}" -gt 0 ]; then
     log "Open regression issue already exists for: $title — skipping create."
     return
