@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Flag auto-merge PRs that are DIRTY or have no CI (issue #200).
+"""Flag auto-merge PRs that are stalled (issues #200, #294).
 
 GitHub will not build a test-merge for a conflicted PR, so required checks
-never start and `gh pr merge --auto` waits forever. This watcher comments
-on the PR and files a `auto-dev,regression` issue once per stall.
+never start and `gh pr merge --auto` waits forever. Empty check rollups can
+also mean workflow runs are held for approval (`action_required`) or never
+triggered (GITHUB_TOKEN-authored PRs). This watcher classifies the stall,
+comments on the PR, and files a `auto-dev,regression` issue once per stall.
 
 It also sweeps abandoned `agent:working` labels (issue #272): an open issue
 untouched for the TTL with no open PR referencing it gets the label removed
@@ -49,13 +51,30 @@ def age_minutes(pr: dict[str, Any], *, now: datetime | None = None) -> float:
     return max(0.0, (moment - created).total_seconds() / 60.0)
 
 
+def classify_workflow_stall(runs: list[dict[str, Any]]) -> str:
+    """Classify a non-conflict stall from Actions workflow runs for the head SHA."""
+    if not runs:
+        return "no-ci-triggered"
+    latest = max(runs, key=lambda row: row.get("created_at") or "")
+    if (latest.get("conclusion") or "") == "action_required":
+        return "awaiting-approval"
+    return "unknown"
+
+
+def _latest_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not runs:
+        return None
+    return max(runs, key=lambda row: row.get("created_at") or "")
+
+
 def classify_stall(
     pr: dict[str, Any],
     *,
     now: datetime | None = None,
     min_age_minutes: int = DEFAULT_MIN_AGE_MINUTES,
+    workflow_runs: list[dict[str, Any]] | None = None,
 ) -> str | None:
-    """Return 'dirty' or 'no_checks' when a PR is silently stuck."""
+    """Return conflict / awaiting-approval / no-ci-triggered / unknown when stuck."""
     if not pr.get("autoMergeRequest"):
         return None
     if (pr.get("state") or "").upper() not in ("OPEN", ""):
@@ -63,37 +82,84 @@ def classify_stall(
     if age_minutes(pr, now=now) < min_age_minutes:
         return None
     status = (pr.get("mergeStateStatus") or "").upper()
-    if status == "DIRTY":
-        return "dirty"
+    mergeable = (pr.get("mergeable") or "").upper()
+    if status == "DIRTY" or mergeable == "CONFLICTING":
+        return "conflict"
     checks = pr.get("statusCheckRollup") or []
-    if not checks:
-        return "no_checks"
-    return None
+    if checks:
+        return None
+    # Empty rollup: inspect workflow runs when provided; otherwise treat as
+    # no-ci until a fetcher supplies them (dry-run / unit paths).
+    if workflow_runs is None:
+        return "no-ci-triggered"
+    return classify_workflow_stall(workflow_runs)
 
 
 def already_alerted(comments: list[dict[str, Any]]) -> bool:
     return any(STALL_MARKER in (item.get("body") or "") for item in comments)
 
 
-def render_comment(pr: dict[str, Any], reason: str) -> str:
+def render_comment(
+    pr: dict[str, Any],
+    reason: str,
+    *,
+    workflow_runs: list[dict[str, Any]] | None = None,
+) -> str:
     number = pr.get("number")
     status = pr.get("mergeStateStatus") or "unknown"
-    if reason == "dirty":
+    mergeable = pr.get("mergeable") or "unknown"
+    latest = _latest_run(workflow_runs or [])
+    run_url = (latest or {}).get("html_url") or "(no run URL)"
+
+    if reason == "conflict":
         detail = (
-            f"PR #{number} is `mergeStateStatus: DIRTY` (conflicted). "
+            f"PR #{number} is stalled (classification: conflict). "
+            f"`mergeStateStatus={status}`, `mergeable={mergeable}`. "
             "GitHub will not start required checks, so auto-merge waits forever."
+        )
+        remedy = (
+            "Fix: merge `origin/main` into the branch, resolve conflicts "
+            "(often `docs/TRACKING.md`), push, and re-enable auto-merge."
+        )
+    elif reason == "awaiting-approval":
+        detail = (
+            f"PR #{number} is stalled (classification: awaiting-approval). "
+            "The latest workflow run concluded `action_required` (held for "
+            "manual approval), so auto-merge waits forever."
+        )
+        remedy = (
+            "Fix: a human must click *Approve and run* in the Actions tab "
+            f"for the held run: {run_url}."
+        )
+    elif reason == "no-ci-triggered":
+        detail = (
+            f"PR #{number} is stalled (classification: no-ci-triggered). "
+            f"No Actions workflow runs exist for head SHA "
+            f"`{pr.get('headRefOid') or 'unknown'}` "
+            f"(mergeStateStatus={status})."
+        )
+        remedy = (
+            "Fix: PRs authored with `GITHUB_TOKEN` never trigger "
+            "`pull_request` workflows. A human must close/reopen the PR, or "
+            "the PR must be opened with a different token that can trigger CI."
         )
     else:
         detail = (
-            f"PR #{number} has auto-merge enabled but no check runs "
-            f"(mergeStateStatus={status}). Likely a conflict or an out-of-date branch."
+            f"PR #{number} is stalled (classification: unknown). "
+            f"Auto-merge is enabled with an empty check rollup "
+            f"(mergeStateStatus={status}); workflow runs were present but "
+            "did not match a known stall pattern."
+        )
+        remedy = (
+            "Fix: inspect the Actions tab for the head SHA, then either "
+            f"re-run failed jobs ({run_url}) or merge `origin/main` if the "
+            "branch is behind."
         )
     return (
         f"<!-- {STALL_MARKER} -->\n"
         f"{detail}\n\n"
-        "Fix: merge `origin/main` into the branch, resolve conflicts "
-        "(often `docs/TRACKING.md`), push, and re-enable auto-merge.\n"
-        "Filed by `scripts/autodev_pr_watch.py` (#200)."
+        f"{remedy}\n"
+        "Filed by `scripts/autodev_pr_watch.py` (#200, #294)."
     )
 
 
@@ -106,12 +172,26 @@ def select_stalled(
     *,
     now: datetime | None = None,
     min_age_minutes: int = DEFAULT_MIN_AGE_MINUTES,
-) -> list[tuple[dict[str, Any], str]]:
-    out: list[tuple[dict[str, Any], str]] = []
+    fetch_workflow_runs: Any = None,
+) -> list[tuple[dict[str, Any], str, list[dict[str, Any]]]]:
+    out: list[tuple[dict[str, Any], str, list[dict[str, Any]]]] = []
     for pr in prs:
-        reason = classify_stall(pr, now=now, min_age_minutes=min_age_minutes)
+        runs: list[dict[str, Any]] = []
+        # Pre-check eligibility without runs so we only hit the API when needed.
+        preliminary = classify_stall(pr, now=now, min_age_minutes=min_age_minutes)
+        if preliminary is None:
+            continue
+        if preliminary == "conflict":
+            out.append((pr, "conflict", []))
+            continue
+        sha = pr.get("headRefOid") or ""
+        if fetch_workflow_runs and sha:
+            runs = fetch_workflow_runs(sha) or []
+        reason = classify_stall(
+            pr, now=now, min_age_minutes=min_age_minutes, workflow_runs=runs
+        )
         if reason:
-            out.append((pr, reason))
+            out.append((pr, reason, runs))
     return out
 
 
@@ -207,12 +287,30 @@ def fetch_open_prs() -> list[dict[str, Any]]:
                 "--limit",
                 "50",
                 "--json",
-                "number,title,state,mergeStateStatus,autoMergeRequest,statusCheckRollup,"
-                "createdAt,url,headRefName,body",
+                "number,title,state,mergeStateStatus,mergeable,autoMergeRequest,"
+                "statusCheckRollup,createdAt,url,headRefName,headRefOid,body",
             ]
         )
         or []
     )
+
+
+def fetch_workflow_runs(head_sha: str) -> list[dict[str, Any]]:
+    """List Actions runs for a commit SHA (issue #294 stall classification)."""
+    if not head_sha:
+        return []
+    payload = (
+        _gh_json(
+            [
+                "api",
+                f"repos/{{owner}}/{{repo}}/actions/runs?head_sha={head_sha}&per_page=20",
+            ]
+        )
+        or {}
+    )
+    if isinstance(payload, dict):
+        return list(payload.get("workflow_runs") or [])
+    return []
 
 
 def fetch_working_issues() -> list[dict[str, Any]]:
@@ -247,15 +345,21 @@ def apply_alerts(
     list_comments: Any = None,
     create_issue: Any = None,
     list_issues: Any = None,
+    fetch_workflow_runs: Any = None,
 ) -> list[int]:
     """Comment + file a regression issue for each new stall. Returns PR numbers."""
     alerted: list[int] = []
-    for pr, reason in select_stalled(prs, now=now, min_age_minutes=min_age_minutes):
+    for pr, reason, runs in select_stalled(
+        prs,
+        now=now,
+        min_age_minutes=min_age_minutes,
+        fetch_workflow_runs=fetch_workflow_runs,
+    ):
         number = int(pr["number"])
         comments = list_comments(number) if list_comments else []
         if already_alerted(comments):
             continue
-        body = render_comment(pr, reason)
+        body = render_comment(pr, reason, workflow_runs=runs)
         if comment:
             comment(number, body)
         title = render_issue_title(pr)
@@ -355,8 +459,12 @@ def main(argv: list[str] | None = None) -> int:
     else:
         prs = fetch_open_prs()
         issues = fetch_working_issues()
-    stalled = select_stalled(prs, min_age_minutes=args.min_age_minutes)
-    for pr, reason in stalled:
+    stalled = select_stalled(
+        prs,
+        min_age_minutes=args.min_age_minutes,
+        fetch_workflow_runs=None if args.input_json else fetch_workflow_runs,
+    )
+    for pr, reason, _runs in stalled:
         print(f"#{pr.get('number')} {reason} {pr.get('title')}")
     stale = [
         issue
@@ -374,6 +482,7 @@ def main(argv: list[str] | None = None) -> int:
         list_comments=_cli_list_comments,
         create_issue=_cli_create_issue,
         list_issues=_cli_list_issues,
+        fetch_workflow_runs=None if args.input_json else fetch_workflow_runs,
     )
     apply_sweep(
         issues,
