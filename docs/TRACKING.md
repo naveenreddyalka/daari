@@ -1473,7 +1473,6 @@ keys, so skew is tolerated both ways). Config claims are pinned by three new
 tests in `tests/unit/test_settings.py`: unknown top-level YAML section fails
 `Settings.load()` (`BaseSettings` `extra="forbid"`), unknown nested key is
 ignored, wrong type fails. Cross-linked from `capacity-helm.md`.
->>>>>>> origin/main
 
 ### Secret references for provider and org keys ([#288](https://github.com/naveenreddyalka/daari/issues/288))
 
