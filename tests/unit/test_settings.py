@@ -72,6 +72,32 @@ class TestSettings:
         with pytest.raises(Exception):
             Settings.model_validate({"server": {"port": "not-a-number"}})
 
+    # Upgrade-guide compatibility contract (issue #287): these pin what an
+    # operator can rely on when config.yaml and the daari version drift.
+    def test_unknown_top_level_key_fails_load(self, tmp_path):
+        config = tmp_path / "config.yaml"
+        config.write_text("server:\n  port: 11435\nnot_a_daari_section: {}\n", encoding="utf-8")
+        with pytest.raises(ValidationError) as excinfo:
+            Settings.load(config_path=config)
+        assert "not_a_daari_section" in str(excinfo.value)
+
+    def test_unknown_nested_key_is_ignored(self, tmp_path):
+        config = tmp_path / "config.yaml"
+        config.write_text(
+            "server:\n  port: 11436\n  future_option: true\ncache:\n  l0:\n    future_knob: 3\n",
+            encoding="utf-8",
+        )
+        settings = Settings.load(config_path=config)
+        assert settings.server.port == 11436
+        assert not hasattr(settings.server, "future_option")
+        assert not hasattr(settings.cache.l0, "future_knob")
+
+    def test_wrong_type_in_config_file_fails_load(self, tmp_path):
+        config = tmp_path / "config.yaml"
+        config.write_text("server:\n  port: eleven\n", encoding="utf-8")
+        with pytest.raises(ValidationError):
+            Settings.load(config_path=config)
+
     def test_load_merges_project_profile_by_cwd_hash(self, tmp_path, monkeypatch):
         repo = tmp_path / "repo"
         repo.mkdir()
