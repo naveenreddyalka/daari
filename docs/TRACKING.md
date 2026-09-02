@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-08-31 (Apache 2.0 relicense — [ADR-0016](adr/0016-apache-2-relicense.md))  
+> Last updated: 2026-09-01 (Claude Desktop recipe — [#279](https://github.com/naveenreddyalka/daari/issues/279))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1025 passed** (2026-08-26) |
+| `pytest` (default, mocked) | **1243 passed** (2026-09-01) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1405,6 +1405,24 @@ decision, transport) and never the arguments. The egress client sends
 honours the same headers for policy when a client supplies them. Covered by
 `tests/unit/test_mcp_policy.py`, `tests/integration/test_mcp_governance.py`
 and an egress header case in `tests/unit/test_mcp_egress.py`.
+
+### Claude Desktop one-click setup recipe ([#279](https://github.com/naveenreddyalka/daari/issues/279))
+
+<!-- tracking:#279 -->
+
+`daari setup claude-desktop [--dry-run] [--force]` (`daari/clients/claude_desktop/recipe.py`)
+writes a Claude Desktop third-party-inference configuration into the app's
+saved-configuration library (`~/Library/Application Support/Claude-3p/configLibrary/daari.json`
+on macOS; `%LOCALAPPDATA%` / `~/.config` equivalents elsewhere) using the
+documented flat keys: `inferenceProvider=gateway`, `inferenceGatewayBaseUrl`
+(server root — the app appends `/v1/messages`), `inferenceGatewayApiKey`,
+`inferenceGatewayAuthScheme=x-api-key`, and a pinned `inferenceModels` entry
+for `daari`. Backup + `daari setup --undo claude-desktop` restore (or removal
+when the recipe created the file), idempotent apply, registered in
+`default_registry()` so `daari setup all` includes it and skips cleanly when
+Claude Desktop is not installed. Docs: `docs/developer/guides/clients/claude-desktop.md`
+(manual Import-configuration fallback + MDM note), cross-linked from the MCP
+guide. Covered by `tests/unit/test_claude_desktop_recipe.py`.
 
 ### Cost-split and savings response headers ([#278](https://github.com/naveenreddyalka/daari/issues/278))
 

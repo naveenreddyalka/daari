@@ -189,6 +189,15 @@ def apply_claude_code_setup(
     apply_setup_recipe("claude-code", dry_run=dry_run, force=force, settings=settings)
 
 
+def apply_claude_desktop_setup(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    apply_setup_recipe("claude-desktop", dry_run=dry_run, force=force, settings=settings)
+
+
 def apply_all_setups(
     *,
     dry_run: bool = False,
