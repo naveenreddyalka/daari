@@ -1442,6 +1442,19 @@ streams. Contract documented in `docs/developer/reference/headers.md`.
 Covered by `tests/unit/test_cost_headers.py` and
 `tests/integration/test_cost_headers.py`.
 
+### Signed ghcr images with SBOM and provenance ([#295](https://github.com/naveenreddyalka/daari/issues/295))
+
+<!-- tracking:#295 -->
+
+`.github/workflows/docker.yml` (edit authorized by #295) now signs every image
+pushed on `main`/`v*` with cosign keyless (GitHub OIDC; `id-token: write`
+scoped to the build job only, signing by digest so all tags are covered) and
+attaches a Syft SBOM plus SLSA provenance via `docker/build-push-action`
+(`sbom: true`, `provenance: true`). PR builds still build without pushing and
+skip signing. Verify instructions (`cosign verify` with the expected identity
+and issuer, SBOM/provenance inspection) live in the docker-compose operations
+guide. Covered by `tests/unit/test_docker_supply_chain.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
