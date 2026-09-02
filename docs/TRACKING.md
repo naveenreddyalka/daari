@@ -100,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1164 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
+**Count:** 1185 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
 
 ---
 
