@@ -500,6 +500,19 @@ class McpServerSettings(BaseModel):
     triggers: list[str] = Field(default_factory=list)
 
 
+class McpToolPolicySettings(BaseModel):
+    """Glob-style MCP tool allow/deny lists (issue #277). Deny wins; empty allow = all."""
+
+    allow: list[str] = Field(
+        default_factory=list,
+        description="MCP tool names (glob) the caller may call. Empty = every tool not denied.",
+    )
+    deny: list[str] = Field(
+        default_factory=list,
+        description="MCP tool names (glob) the caller may never call. Deny beats allow.",
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -521,6 +534,16 @@ class IntegrationsSettings(BaseModel):
     )
     # F5 MCP egress: daari → external MCP servers.
     mcp_servers: list[McpServerSettings] = Field(default_factory=list)
+    # MCP ingress tool governance: global default, then per-team (by team name);
+    # a virtual key's `metadata.mcp` layers on top (issue #277).
+    mcp_policy: McpToolPolicySettings = Field(
+        default_factory=McpToolPolicySettings,
+        description="Default MCP tool policy for every caller, including the master key.",
+    )
+    mcp_team_policies: dict[str, McpToolPolicySettings] = Field(
+        default_factory=dict,
+        description="Per-team MCP tool policy keyed by team name; layered on mcp_policy.",
+    )
 
 
 class Settings(BaseSettings):

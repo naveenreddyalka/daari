@@ -36,6 +36,37 @@ async def test_tools_list(monkeypatch):
     assert result.daari_meta.provider_id == "mcp:demo"
 
 
+@pytest.mark.asyncio
+async def test_outbound_requests_carry_mcp_method_and_name_headers(monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}})
+
+    class Patched(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    await provider.execute(
+        InternalRequest(
+            messages=[Message(role="user", content="@mcp:demo get_forecast Paris")],
+            model="daari",
+        )
+    )
+    await provider.execute(
+        InternalRequest(messages=[Message(role="user", content="@mcp:demo tools/list")], model="daari")
+    )
+    call, listing = seen
+    assert call.headers["Mcp-Method"] == "tools/call"
+    assert call.headers["Mcp-Name"] == "get_forecast"
+    assert listing.headers["Mcp-Method"] == "tools/list"
+    assert "Mcp-Name" not in listing.headers
+
+
 def test_build_from_settings():
     providers = build_mcp_providers(
         [McpServerSettings(id="corp", url="http://corp/mcp")]

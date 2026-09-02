@@ -58,7 +58,12 @@ class McpEgressProvider(HttpIntegrationProvider):
 
         if tool in {"tools/list", "list"}:
             payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+            headers["Mcp-Method"] = "tools/list"
         else:
+            # MCP 2026-07-28 routing headers: let upstream gateways apply
+            # per-tool policy without parsing the JSON-RPC body (issue #277).
+            headers["Mcp-Method"] = "tools/call"
+            headers["Mcp-Name"] = tool
             payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
