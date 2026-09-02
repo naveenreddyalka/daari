@@ -55,6 +55,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.latency_budget_ms` | int | `0` |  |
 | `routing.warm_model_preference` | bool | `True` |  |
 | `routing.learned_router` | bool | `False` |  |
+| `routing.reasoning_effort_escalation` | bool | `False` |  |
 | `routing.org_pool.enabled` | bool | `False` |  |
 | `routing.org_pool.base_url` | str | `''` |  |
 | `routing.org_pool.model` | str | `''` |  |
@@ -159,6 +160,16 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_policy.allow` | list | `[]` | MCP tool names (glob) the caller may call. Empty = every tool not denied. |
 | `integrations.mcp_policy.deny` | list | `[]` | MCP tool names (glob) the caller may never call. Deny beats allow. |
 | `integrations.mcp_team_policies` | dict | `{}` | Per-team MCP tool policy keyed by team name; layered on mcp_policy. |
+| `integrations.mcp_tasks.enabled` | bool | `True` |  |
+| `integrations.mcp_tasks.long_running_tools` | list | `['route']` |  |
+| `integrations.mcp_tasks.threshold_ms` | int | `0` |  |
+| `integrations.mcp_tasks.path` | str | `'~/.daari/mcp-tasks'` |  |
+| `integrations.mcp_guardrails.enabled` | bool | `False` |  |
+| `integrations.mcp_guardrails.max_prompt_chars` | int | `0` |  |
+| `integrations.mcp_guardrails.injection_action` | str | `'block'` |  |
+| `integrations.mcp_guardrails.block_message` | str | `'Request blocked by daari guardrail.'` |  |
+| `integrations.mcp_guardrails.input_rules` | list | `[]` |  |
+| `integrations.mcp_guardrails.output_rules` | list | `[]` |  |
 | `enterprise.enabled` | bool | `False` |  |
 | `enterprise.id` | str | None | `None` |  |
 | `enterprise.org_id` | str | None | `None` |  |

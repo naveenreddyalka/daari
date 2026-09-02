@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (`daari service restart` — [#323](https://github.com/naveenreddyalka/daari/issues/323))  
+> Last updated: 2026-09-02 (MCP guardrails — [#317](https://github.com/naveenreddyalka/daari/issues/317))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1318 passed** (2026-09-02) |
+| `pytest` (default, mocked) | **1337 passed** (2026-09-02) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1547,6 +1547,26 @@ plist in `scripts/launchd/`, not the user service — and now says
 upgrade guide restart steps, CLI reference row, AUTOMATION.md label note.
 Covered by `tests/unit/test_service.py` (`TestRestart`, CLI cases) and
 `test_setup_cursor_secure_hint_points_at_service_restart`.
+
+### MCP guardrails on tools/call arguments and results ([#317](https://github.com/naveenreddyalka/daari/issues/317))
+
+<!-- tracking:#317 -->
+
+`integrations.mcp_guardrails` (same `GuardrailSettings` shape as chat, off by
+default) feeds a `GuardrailEngine` through `daari/gateway/mcp_guardrails.py`.
+`input_rules` run over flattened `tools/call` arguments before execution;
+`output_rules` run over every text item of the result after, including task
+results before they are stored. An input trip is JSON-RPC `-32003` with
+`data.{tool,rule,direction}` on `/mcp` and HTTP 403 `MCP_ERR_GUARDRAIL_BLOCKED`
+on `/v1/mcp/query`; an output block swaps the result for `block_message`
+(`isError: true`), redact rewrites in place. The egress client checks outbound
+arguments before posting and scrubs inbound results. Every trip writes an
+`mcp.guardrail` audit row (tool, rule, direction, action, transport — never the
+payload). `GuardrailEngine` gained `check_input_text` / `check_output_text`
+so chat and MCP share one rule evaluator. Docs:
+[mcp.md](developer/guides/clients/mcp.md). Covered by
+`tests/unit/test_mcp_guardrails.py` and
+`tests/integration/test_mcp_guardrails.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

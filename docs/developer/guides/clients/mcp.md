@@ -101,6 +101,49 @@ daari's MCP egress client sends the MCP 2026-07-28 routing headers
 `Mcp-Method` and `Mcp-Name` on outbound requests, and the ingress honours the
 same headers for policy when a client supplies them.
 
+## Tool guardrails (arguments and results)
+
+Policy decides *which* tools a caller may invoke; guardrails inspect *what
+flows through them*. `integrations.mcp_guardrails` has the same shape as the
+top-level [`guardrails`](../../reference/config.md) block and is off by
+default. When enabled, `input_rules` (plus `max_prompt_chars` and the built-in
+prompt-injection heuristics) run over the flattened `tools/call` arguments
+before execution, and `output_rules` run over the result after — the same
+`block` / `warn` / `redact` semantics chat requests get, applied on the machine
+where the tools run.
+
+```yaml
+integrations:
+  mcp_guardrails:
+    enabled: true
+    block_message: "Tool result withheld by daari guardrail."
+    input_rules:
+      - { name: no_rm_rf, pattern: 'rm\s+-rf', action: block }
+    output_rules:
+      - { name: secrets, kind: secret, action: redact }
+      - { name: pii, kind: pii, action: redact }
+```
+
+What the caller sees:
+
+- An input trip on `POST /mcp` is JSON-RPC error `-32003`
+  (`Tool call blocked by guardrail <rule>: <tool>`, `data` carries `tool`,
+  `rule` and `direction: input`). On `/v1/mcp/query` it is HTTP `403` with
+  `MCP_ERR_GUARDRAIL_BLOCKED` and the same fields under `details`.
+- An output `redact` rewrites every text item of the result in place
+  (`<aws_key>`, `<email>`, `<redacted>`, …). An output `block` replaces the
+  whole result with `block_message` and sets `isError: true` (legacy route:
+  `ok: false`). Task results (`tasks/get`) are checked the same way before
+  they are stored.
+- The egress client applies the same rules: outbound arguments are checked
+  before the request leaves the machine (a block returns a
+  `guardrail_blocked` warning instead of calling the server), and inbound
+  results are scrubbed before the model sees them.
+
+Every trip, input or output, appends an `mcp.guardrail` row to the audit log
+next to the `mcp.tools/call` decision rows: key id / team, tool, rule name,
+direction, action, transport. The payload itself is never written.
+
 ## Tasks (long-running tools/call)
 
 When the negotiated protocol is `2026-07-28` or newer, `initialize` advertises

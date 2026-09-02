@@ -558,6 +558,15 @@ class IntegrationsSettings(BaseModel):
     )
     # SEP-2663 Tasks for long-running tools/call (#289).
     mcp_tasks: McpTasksSettings = Field(default_factory=McpTasksSettings)
+    mcp_guardrails: GuardrailSettings = Field(
+        default_factory=GuardrailSettings,
+        description=(
+            "Guardrail rules applied to MCP tools/call arguments (input_rules) before "
+            "execution and to results (output_rules) after, on the /mcp ingress, the "
+            "legacy /v1/mcp/query route, and outbound calls to integrations.mcp_servers. "
+            "Same shape as top-level `guardrails`; off by default."
+        ),
+    )
 
 
 class Settings(BaseSettings):
