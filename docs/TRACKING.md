@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1025 passed** (2026-08-26) |
+| `pytest` (default, mocked) | **1243 passed** (2026-09-01) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1406,6 +1406,24 @@ honours the same headers for policy when a client supplies them. Covered by
 `tests/unit/test_mcp_policy.py`, `tests/integration/test_mcp_governance.py`
 and an egress header case in `tests/unit/test_mcp_egress.py`.
 
+### Claude Desktop one-click setup recipe ([#279](https://github.com/naveenreddyalka/daari/issues/279))
+
+<!-- tracking:#279 -->
+
+`daari setup claude-desktop [--dry-run] [--force]` (`daari/clients/claude_desktop/recipe.py`)
+writes a Claude Desktop third-party-inference configuration into the app's
+saved-configuration library (`~/Library/Application Support/Claude-3p/configLibrary/daari.json`
+on macOS; `%LOCALAPPDATA%` / `~/.config` equivalents elsewhere) using the
+documented flat keys: `inferenceProvider=gateway`, `inferenceGatewayBaseUrl`
+(server root — the app appends `/v1/messages`), `inferenceGatewayApiKey`,
+`inferenceGatewayAuthScheme=x-api-key`, and a pinned `inferenceModels` entry
+for `daari`. Backup + `daari setup --undo claude-desktop` restore (or removal
+when the recipe created the file), idempotent apply, registered in
+`default_registry()` so `daari setup all` includes it and skips cleanly when
+Claude Desktop is not installed. Docs: `docs/developer/guides/clients/claude-desktop.md`
+(manual Import-configuration fallback + MDM note), cross-linked from the MCP
+guide. Covered by `tests/unit/test_claude_desktop_recipe.py`.
+
 ### Cost-split and savings response headers ([#278](https://github.com/naveenreddyalka/daari/issues/278))
 
 <!-- tracking:#278 -->
@@ -1440,6 +1458,19 @@ keys, so skew is tolerated both ways). Config claims are pinned by three new
 tests in `tests/unit/test_settings.py`: unknown top-level YAML section fails
 `Settings.load()` (`BaseSettings` `extra="forbid"`), unknown nested key is
 ignored, wrong type fails. Cross-linked from `capacity-helm.md`.
+
+### Signed ghcr images with SBOM and provenance ([#295](https://github.com/naveenreddyalka/daari/issues/295))
+
+<!-- tracking:#295 -->
+
+`.github/workflows/docker.yml` (edit authorized by #295) now signs every image
+pushed on `main`/`v*` with cosign keyless (GitHub OIDC; `id-token: write`
+scoped to the build job only, signing by digest so all tags are covered) and
+attaches a Syft SBOM plus SLSA provenance via `docker/build-push-action`
+(`sbom: true`, `provenance: true`). PR builds still build without pushing and
+skip signing. Verify instructions (`cosign verify` with the expected identity
+and issuer, SBOM/provenance inspection) live in the docker-compose operations
+guide. Covered by `tests/unit/test_docker_supply_chain.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

@@ -27,6 +27,10 @@ Drop the `headers` object when the daemon has no API key.
 
 ## Claude Desktop
 
+This is the *tools* path. To route Claude Desktop's chat itself through daari
+(third-party gateway mode), see the [Claude Desktop guide](claude-desktop.md) —
+`daari setup claude-desktop`.
+
 `claude_desktop_config.json` (Claude Desktop) or Claude Code MCP settings:
 
 ```json

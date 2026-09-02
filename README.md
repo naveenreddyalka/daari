@@ -61,7 +61,7 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 - Opt-in, review-first anonymized stats export (`daari learn export-stats`) — metadata only, never prompts
 
 **Clients (one-click)**
-- Cursor (BYOK via tunnel + API-key auth), Claude Code (full tool passthrough), JetBrains AI Assistant (Ollama-compatible facade), VS Code, any OpenAI/Anthropic SDK
+- Cursor (BYOK via tunnel + API-key auth), Claude Code (full tool passthrough), Claude Desktop (third-party gateway mode), JetBrains AI Assistant (Ollama-compatible facade), VS Code, any OpenAI/Anthropic SDK
 - Per-project profiles (`.daari.yaml`): tier caps, no-frontier, latency budgets per repo
 
 **Observability & spend**
