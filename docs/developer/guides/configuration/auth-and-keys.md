@@ -81,6 +81,37 @@ enterprise:
 
 Mint and revoke events land in the audit log with the claim that caused them.
 
+## Secret references (`secret://`)
+
+Any secret-bearing config value (frontier provider keys, org tokens,
+Redis/Postgres URLs, OIDC client secrets) can be a `secret://` URI instead of
+plaintext (issue #288). Resolution happens once at daemon startup by shelling
+out — no vault SDK, no new dependency:
+
+```yaml
+frontier:
+  providers:
+    - id: openai
+      keys:
+        - secret://keychain/daari-frontier/naveen      # macOS security / Linux secret-tool
+enterprise:
+  shared_cache_token: secret://env-file//etc/daari/secrets.env#ORG_TOKEN
+cache:
+  redis_url: secret://exec/op read op://infra/daari-redis/url
+```
+
+- `secret://env-file/<path>#<KEY>` — `KEY=VALUE` line in a root-only file
+  (quotes and `export ` prefixes are stripped).
+- `secret://exec/<command>` — stdout of any operator command: `op read`,
+  `vault kv get -field=...`, `aws secretsmanager get-secret-value ...`.
+- `secret://keychain/<service>/<account>` — macOS Keychain via
+  `security find-generic-password`, Linux secret-service via `secret-tool`.
+
+A ref that fails to resolve is fatal at startup with a message naming the ref
+(never the value); `daari doctor` verifies every configured ref resolves.
+Resolved values are redacted from gateway logs. Plain string values keep
+working unchanged.
+
 ## Verify
 
 ```bash
@@ -88,6 +119,9 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:11435/v1/daari/stats
 # expect 401 when key required
 curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:11435/v1/daari/stats
 ```
+
+`daari doctor` includes a `secret_refs` row when any `secret://` value is
+configured.
 
 ## Next
 
