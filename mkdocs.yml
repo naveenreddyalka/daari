@@ -87,6 +87,7 @@ nav:
           - Doctor and health: developer/guides/operations/doctor-health.md
           - Docker Compose: developer/guides/operations/docker-compose.md
           - Capacity and Helm: developer/guides/operations/capacity-helm.md
+          - Upgrade and config migration: developer/guides/operations/upgrade.md
   - Tutorials:
       - Cursor BYOK tunnel: developer/tutorials/cursor-byok-tunnel.md
       - Zero-dollar loop: developer/tutorials/zero-dollar-dev-loop.md

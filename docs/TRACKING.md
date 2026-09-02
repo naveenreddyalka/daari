@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-08-31 (Apache 2.0 relicense — [ADR-0016](adr/0016-apache-2-relicense.md))  
+> Last updated: 2026-09-01 (Upgrade guide — [#287](https://github.com/naveenreddyalka/daari/issues/287))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -1423,6 +1423,23 @@ that chunk (or the keepalive frame) is ready; cost headers are never sent on
 streams. Contract documented in `docs/developer/reference/headers.md`.
 Covered by `tests/unit/test_cost_headers.py` and
 `tests/integration/test_cost_headers.py`.
+
+### Upgrade and config migration guide ([#287](https://github.com/naveenreddyalka/daari/issues/287))
+
+<!-- tracking:#287 -->
+
+`docs/developer/guides/operations/upgrade.md` (nav: Operations) is the
+operator runbook for moving a fleet N → N+1: pip / Homebrew / Docker / Helm
+(`helm upgrade --atomic`) steps with the restart each needs, the config
+compatibility policy, the per-store survival table for `~/.daari/`
+(diskcache/Redis L0+L1 disposable and version-agnostic; `.sqlite3` ledgers,
+virtual keys, audit durable with additive in-place migrations; Postgres
+create-if-missing only), rollback, and fleet ordering (gateway first; the
+HMAC-signed policy bundle has no schema version and laptops ignore unknown
+keys, so skew is tolerated both ways). Config claims are pinned by three new
+tests in `tests/unit/test_settings.py`: unknown top-level YAML section fails
+`Settings.load()` (`BaseSettings` `extra="forbid"`), unknown nested key is
+ignored, wrong type fails. Cross-linked from `capacity-helm.md`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
