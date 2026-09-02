@@ -13,7 +13,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.api_key` | str | `''` |  |
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
-| `server.sse_keepalive_seconds` | float | `10.0` | Idle SSE keepalive interval while waiting for the first model chunk (0=off). |
+| `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds before a streaming response emits a keepalive frame (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow-to-first-token streams. 0 disables. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |

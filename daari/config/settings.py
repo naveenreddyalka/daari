@@ -60,7 +60,13 @@ class ServerSettings(BaseModel):
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
     sse_keepalive_seconds: float = Field(
         default=10.0,
-        description="Idle SSE keepalive interval while waiting for the first model chunk (0=off).",
+        ge=0.0,
+        description=(
+            "Idle seconds before a streaming response emits a keepalive frame "
+            "(SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a "
+            "blank line on the NDJSON Ollama facade). Keeps proxies and SDK read "
+            "timeouts from dropping slow-to-first-token streams. 0 disables."
+        ),
     )
 
 
