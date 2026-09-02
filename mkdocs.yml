@@ -60,6 +60,7 @@ nav:
       - Clients:
           - Cursor: developer/guides/clients/cursor.md
           - Claude Code: developer/guides/clients/claude-code.md
+          - Claude Desktop: developer/guides/clients/claude-desktop.md
           - JetBrains: developer/guides/clients/intellij.md
           - VS Code: developer/guides/clients/vscode.md
           - OpenAI SDK: developer/guides/clients/openai-sdk.md

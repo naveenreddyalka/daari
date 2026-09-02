@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from daari.cli.setup_actions import (
     apply_all_setups,
     apply_claude_code_setup,
+    apply_claude_desktop_setup,
     apply_cursor_setup,
     apply_intellij_setup,
     apply_vscode_setup,
@@ -1197,6 +1198,23 @@ def setup_claude_code(
 ) -> None:
     """One-click: merge ANTHROPIC_BASE_URL env into ~/.claude/settings.json."""
     apply_claude_code_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("claude-desktop")
+def setup_claude_desktop(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show planned changes without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-apply even when already configured.",
+    ),
+) -> None:
+    """One-click: write a Claude Desktop third-party gateway config pointing at daari."""
+    apply_claude_desktop_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("all")
