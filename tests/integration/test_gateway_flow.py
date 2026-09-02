@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 
@@ -9,11 +10,29 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.streaming import SSE_KEEPALIVE_FRAME
 from daari.policy.engine import PolicyResult
 from daari.router.router import AppContext
 from daari.server.app import create_app
 from daari.tools.shell import ShellResult
 from tests.conftest import META_HEADERS, MOCK_MODEL_CONTENT, mock_all_ollama_executors
+
+
+KEEPALIVE_INTERVAL = 0.01
+KEEPALIVE_DELAY = 0.05
+
+
+@pytest.fixture
+def keepalive_settings(settings):
+    settings.server.sse_keepalive_seconds = KEEPALIVE_INTERVAL
+    return settings
+
+
+@pytest.fixture
+def keepalive_app(keepalive_settings):
+    application = create_app(keepalive_settings)
+    application.state.ctx = AppContext.from_settings(keepalive_settings)
+    return application
 
 
 @pytest.fixture
@@ -1693,3 +1712,104 @@ async def test_shadow_sampled_l1_hit_records_false_hit_evidence(app, monkeypatch
     assert sum(row["disagreements"] for row in shadow.values()) == 1
     assert diversity.json()["categories"], "diversity stats must be exposed"
     assert "cache_trust" in report.json()
+
+
+@pytest.mark.asyncio
+async def test_openai_stream_emits_keepalive_before_first_chunk(keepalive_app, monkeypatch):
+    async def delayed_chunks(_request: InternalRequest):
+        await asyncio.sleep(KEEPALIVE_DELAY)
+        yield 'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n'
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(keepalive_app.state.ctx.router, "stream_openai_chunks", delayed_chunks)
+    transport = ASGITransport(app=keepalive_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "stream": True,
+                "messages": [{"role": "user", "content": "keepalive smoke"}],
+            },
+        )
+
+    assert response.status_code == 200
+    text = response.text
+    assert SSE_KEEPALIVE_FRAME.strip() in text or ": keepalive" in text
+    assert text.index(": keepalive") < text.index("data:")
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_emits_keepalive_before_first_chunk(keepalive_app, monkeypatch):
+    async def delayed_events(_request: InternalRequest):
+        await asyncio.sleep(KEEPALIVE_DELAY)
+        yield 'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n'
+        yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+
+    monkeypatch.setattr(keepalive_app.state.ctx.router, "stream_anthropic_events", delayed_events)
+    transport = ASGITransport(app=keepalive_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "llama3.2:3b",
+                "stream": True,
+                "max_tokens": 32,
+                "messages": [{"role": "user", "content": "keepalive smoke"}],
+            },
+        )
+
+    assert response.status_code == 200
+    text = response.text
+    assert ": keepalive" in text
+    assert text.index(": keepalive") < text.index("event:")
+
+
+@pytest.mark.asyncio
+async def test_responses_stream_emits_keepalive_before_model_chunk(keepalive_app, monkeypatch):
+    async def delayed_chunks(_request: InternalRequest):
+        await asyncio.sleep(KEEPALIVE_DELAY)
+        yield 'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n'
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(keepalive_app.state.ctx.router, "stream_openai_chunks", delayed_chunks)
+    transport = ASGITransport(app=keepalive_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "llama3.2:3b",
+                "stream": True,
+                "input": "keepalive smoke",
+            },
+        )
+
+    assert response.status_code == 200
+    text = response.text
+    assert ": keepalive" in text
+    assert text.index(": keepalive") < text.index("response.output_text.delta")
+
+
+@pytest.mark.asyncio
+async def test_ollama_facade_stream_emits_keepalive_before_first_line(keepalive_app, monkeypatch):
+    async def delayed_chunks(_request: InternalRequest):
+        await asyncio.sleep(KEEPALIVE_DELAY)
+        yield 'data: {"choices":[{"index":0,"delta":{"content":"streamed"}}]}\n\n'
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(keepalive_app.state.ctx.router, "stream_openai_chunks", delayed_chunks)
+    transport = ASGITransport(app=keepalive_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/chat",
+            json={
+                "model": "llama3.2:3b",
+                "stream": True,
+                "messages": [{"role": "user", "content": "keepalive smoke"}],
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert body.startswith("\n") or "\n\n" in body[:4]
+    assert "streamed" in body

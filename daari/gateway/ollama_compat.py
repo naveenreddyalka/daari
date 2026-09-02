@@ -19,6 +19,7 @@ from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import ContentImage, InternalRequest, Message, RequestMeta
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.streaming import NDJSON_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
@@ -176,7 +177,14 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
                 async def ndjson_stream() -> AsyncIterator[str]:
                     try:
-                        async for sse_chunk in ctx.router.stream_openai_chunks(internal):
+                        async for sse_chunk in stream_with_keepalive(
+                            ctx.router.stream_openai_chunks(internal),
+                            interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                            frame=NDJSON_KEEPALIVE_FRAME,
+                        ):
+                            if sse_chunk == NDJSON_KEEPALIVE_FRAME:
+                                yield sse_chunk
+                                continue
                             deltas, done = _extract_content_deltas(sse_chunk)
                             for delta in deltas:
                                 yield _chat_line(client_model, delta, done=False)

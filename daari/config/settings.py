@@ -58,6 +58,10 @@ class ServerSettings(BaseModel):
     # Virtual keys (issue #111) are accepted alongside this master key.
     api_key: str = ""
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
+    sse_keepalive_seconds: float = Field(
+        default=10.0,
+        description="Idle SSE keepalive interval while waiting for the first model chunk (0=off).",
+    )
 
 
 class ModelsSettings(BaseModel):
