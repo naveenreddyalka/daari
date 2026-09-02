@@ -113,6 +113,8 @@ class ChatCompletionRequest(BaseModel):
     logprobs: Any | None = None
     # OpenRouter `provider` object (G2 / #224). extra="ignore" would drop it.
     provider: Any | None = None
+    # OpenAI reasoning_effort (o-series / gpt-5 clients). Same #161 pattern (#297).
+    reasoning_effort: Any | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:

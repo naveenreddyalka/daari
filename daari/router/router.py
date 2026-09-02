@@ -23,6 +23,7 @@ from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearni
 from daari.gateway.cost_headers import StreamOutcome
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.provider_prefs import ZdrUnavailable
+from daari.gateway.sampling import model_supports_thinking
 from daari.observability.metrics import Metrics
 from daari.observability.trace import TraceStore, add_step, end_trace, start_trace
 from daari.observability.tokens import ollama_token_usage, response_token_usage
@@ -225,6 +226,10 @@ class OllamaExecutor:
         response_format = request.sampling.ollama_format()
         if response_format:
             payload["format"] = response_format
+        # reasoning_effort → top-level think when the model supports levels (#297).
+        think = request.sampling.ollama_think()
+        if think is not None and model_supports_thinking(model):
+            payload["think"] = think
         return payload
 
     async def execute(self, request: InternalRequest) -> InternalResponse:
@@ -371,6 +376,7 @@ class Router:
         otel_enabled: bool = False,
         org_pool: OllamaExecutor | MLXExecutor | None = None,
         local_pool: Any | None = None,
+        reasoning_effort_escalation: bool = False,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -442,6 +448,7 @@ class Router:
         self.capability_catalog = capability_catalog
         self.otel_enabled = otel_enabled
         self.org_pool = org_pool
+        self.reasoning_effort_escalation = reasoning_effort_escalation
         self.local_pool = local_pool
 
     @property
@@ -578,13 +585,16 @@ class Router:
         return response
 
     async def route(self, request: InternalRequest) -> InternalResponse:
-        profile = build_prompt_profile(request)
+        profile = build_prompt_profile(
+            request, effort_escalation=self.reasoning_effort_escalation
+        )
         trace = start_trace() if self.trace_store is not None else None
         add_step(
             "profile",
             category=profile.category,
             complexity=profile.complexity,
             prompt_tokens_est=profile.prompt_tokens_est,
+            reasoning_effort=request.sampling.reasoning_effort,
         )
         profile = await self._apply_learned_route(request, profile)
         policy = await self._apply_input_policy(request, profile)
@@ -628,6 +638,8 @@ class Router:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:
             response.daari_meta.complexity = profile.complexity
+        if request.sampling.reasoning_effort and response.daari_meta.reasoning_effort is None:
+            response.daari_meta.reasoning_effort = request.sampling.reasoning_effort
         add_step(
             "served",
             tier=response.daari_meta.tier,
@@ -1281,13 +1293,16 @@ class Router:
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
         client_model = request.model or self.ollama_l3.default_model
-        profile = build_prompt_profile(request)
+        profile = build_prompt_profile(
+            request, effort_escalation=self.reasoning_effort_escalation
+        )
         trace = start_trace() if self.trace_store is not None else None
         add_step(
             "profile",
             category=profile.category,
             complexity=profile.complexity,
             prompt_tokens_est=profile.prompt_tokens_est,
+            reasoning_effort=request.sampling.reasoning_effort,
             stream=True,
         )
         profile = await self._apply_learned_route(request, profile)
@@ -1832,7 +1847,9 @@ class Router:
         await self._refresh_warm_models()
         # Parity with the OpenAI stream path (issue #101): category policies,
         # learned routing, and latency step-down all key off the profile.
-        profile = build_prompt_profile(request)
+        profile = build_prompt_profile(
+            request, effort_escalation=self.reasoning_effort_escalation
+        )
         profile = await self._apply_learned_route(request, profile)
         tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (issue #84: Claude Code tool turns) keep the full tool
@@ -2538,7 +2555,10 @@ class Router:
     def _choose_uncapped_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
     ) -> str:
-        policy = self._policy_for(profile or build_prompt_profile(request))
+        profile = profile or build_prompt_profile(
+            request, effort_escalation=self.reasoning_effort_escalation
+        )
+        policy = self._policy_for(profile)
         policy_tier = getattr(policy, "tier", None) if policy is not None else None
         if policy_tier in {"L3", "L4", "L5"}:
             return policy_tier
@@ -2549,27 +2569,36 @@ class Router:
         if words > 250:
             return "L4"
         if words <= 12:
-            return "L3"
-
-        l3_name = self.ollama_l3.default_model
-        l4_name = self.ollama_l4.default_model
-        l5_name = self.ollama_l5.default_model
-        l3_weight = self.model_weights.get(l3_name, {"latency": 0.8, "accuracy": 0.6})
-        l4_weight = self.model_weights.get(l4_name, {"latency": 0.5, "accuracy": 0.8})
-        l5_weight = self.model_weights.get(l5_name, {"latency": 0.2, "accuracy": 0.95})
-
-        if self.model_preference == "latency":
-            scores = {"L3": l3_weight.get("latency", 0.0), "L4": l4_weight.get("latency", 0.0), "L5": l5_weight.get("latency", 0.0)}
-        elif self.model_preference == "accuracy":
-            scores = {"L3": l3_weight.get("accuracy", 0.0), "L4": l4_weight.get("accuracy", 0.0), "L5": l5_weight.get("accuracy", 0.0)}
+            chosen = "L3"
         else:
-            # Balanced: blend both dimensions and pick the stronger score.
-            scores = {
-                "L3": 0.5 * l3_weight.get("latency", 0.0) + 0.5 * l3_weight.get("accuracy", 0.0),
-                "L4": 0.5 * l4_weight.get("latency", 0.0) + 0.5 * l4_weight.get("accuracy", 0.0),
-                "L5": 0.5 * l5_weight.get("latency", 0.0) + 0.5 * l5_weight.get("accuracy", 0.0),
-            }
-        return self._pick_with_warm_preference(scores)
+            l3_name = self.ollama_l3.default_model
+            l4_name = self.ollama_l4.default_model
+            l5_name = self.ollama_l5.default_model
+            l3_weight = self.model_weights.get(l3_name, {"latency": 0.8, "accuracy": 0.6})
+            l4_weight = self.model_weights.get(l4_name, {"latency": 0.5, "accuracy": 0.8})
+            l5_weight = self.model_weights.get(l5_name, {"latency": 0.2, "accuracy": 0.95})
+
+            if self.model_preference == "latency":
+                scores = {"L3": l3_weight.get("latency", 0.0), "L4": l4_weight.get("latency", 0.0), "L5": l5_weight.get("latency", 0.0)}
+            elif self.model_preference == "accuracy":
+                scores = {"L3": l3_weight.get("accuracy", 0.0), "L4": l4_weight.get("accuracy", 0.0), "L5": l5_weight.get("accuracy", 0.0)}
+            else:
+                # Balanced: blend both dimensions and pick the stronger score.
+                scores = {
+                    "L3": 0.5 * l3_weight.get("latency", 0.0) + 0.5 * l3_weight.get("accuracy", 0.0),
+                    "L4": 0.5 * l4_weight.get("latency", 0.0) + 0.5 * l4_weight.get("accuracy", 0.0),
+                    "L5": 0.5 * l5_weight.get("latency", 0.0) + 0.5 * l5_weight.get("accuracy", 0.0),
+                }
+            chosen = self._pick_with_warm_preference(scores)
+
+        # Optional: high reasoning_effort biases tier selection upward (#297).
+        if (
+            self.reasoning_effort_escalation
+            and (request.sampling.reasoning_effort or "").lower() == "high"
+            and chosen == "L3"
+        ):
+            return "L4"
+        return chosen
 
     # Small enough to only decide otherwise-tied choices (Trust PRD T3c).
     _WARM_BONUS = 0.001
@@ -3419,6 +3448,7 @@ class AppContext:
             otel_enabled=bool(settings.observability.otel),
             org_pool=org_pool_executor,
             local_pool=local_pool,
+            reasoning_effort_escalation=settings.routing.reasoning_effort_escalation,
         )
         if settings.observability.otel:
             from daari.observability.otel import configure_providers
