@@ -11,6 +11,12 @@ from daari import __version__
 from daari.enterprise.audit import AuditLog
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, Message
+from daari.gateway.mcp_guardrails import (
+    GUARDRAIL_BLOCKED,
+    LEGACY_ERROR_CODE,
+    McpGuardrails,
+    first_rule,
+)
 from daari.gateway.mcp_policy import TOOL_DENIED, McpToolPolicy, audit_tool_call, resolve_policy
 from daari.gateway.mcp_tasks import (
     client_opted_into_tasks,
@@ -244,12 +250,15 @@ def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
 
 
 class _Governance:
-    """Per-request policy + audit sink for the MCP ingress (issue #277)."""
+    """Per-request policy, guardrails and audit sink for the MCP ingress (#277, #317)."""
 
-    def __init__(self, request: Request, ctx: AppContext) -> None:
+    def __init__(self, request: Request, ctx: AppContext, *, transport: str) -> None:
         self.claims = getattr(request.state, "auth_claims", None)
         self.policy = resolve_policy(self.claims, ctx.settings)
         self._audit = AuditLog(ctx.settings.enterprise.audit_path)
+        self.guardrails = McpGuardrails.from_settings(
+            ctx.settings, audit=self._audit, claims=self.claims, transport=transport
+        )
         # MCP 2026-07-28 lets infrastructure route/limit on these without
         # parsing JSON-RPC; when a client sends them they govern too.
         self.header_method = (request.headers.get("mcp-method") or "").strip()
@@ -282,6 +291,38 @@ class _Governance:
             return denied
         self.audit(tool=name, decision="allow", transport=transport)
         return None
+
+    def tripped_rule(self, name: str, arguments: Any) -> str | None:
+        """Run input guardrails over the arguments; return the blocking rule name."""
+        result = self.guardrails.check_arguments(name.strip().lower(), arguments)
+        return first_rule(result) if result.blocked else None
+
+    def guard_tool_result(self, name: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.guardrails.check_tool_result(name.strip().lower(), payload)[0]
+
+    def guard_legacy(self, tool_response: MCPQueryResponse) -> MCPQueryResponse:
+        if not tool_response.ok:
+            return tool_response
+        result, outcome = self.guardrails.check_legacy_result(tool_response.tool, tool_response.result)
+        if not outcome.hits:
+            return tool_response
+        return tool_response.model_copy(update={"result": result, "ok": not outcome.blocked})
+
+
+def _legacy_guardrail_blocked(name: str, rule: str) -> JSONResponse:
+    payload = MCPQueryResponse(
+        ok=False,
+        tool="tools/call",
+        result={
+            "name": name,
+            "error": _error(
+                LEGACY_ERROR_CODE,
+                f"Tool call blocked by guardrail {rule}: {name}",
+                details={"tool": name, "rule": rule, "direction": "input"},
+            ),
+        },
+    ).model_dump()
+    return JSONResponse(payload, status_code=403, headers=LEGACY_HEADERS)
 
 
 def _legacy_denied(name: str) -> JSONResponse:
@@ -448,7 +489,7 @@ class MCPGatewayAdapter(GatewayAdapter):
         async def mcp_query(body: MCPQueryRequest, request: Request) -> JSONResponse:
             ctx: AppContext = request.app.state.ctx
             tool = body.tool.strip().lower()
-            governance = _Governance(request, ctx)
+            governance = _Governance(request, ctx, transport="rest")
             catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
 
             if tool in {"tools/list", "list_tools"}:
@@ -504,8 +545,11 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 },
                             ).model_dump()
                         )
-                tool_response = await _run_tool(
-                    ctx, name, arguments.get("input"), arguments, model=body.model
+                rule = governance.tripped_rule(normalized_name, arguments)
+                if rule is not None:
+                    return _legacy_guardrail_blocked(normalized_name, rule)
+                tool_response = governance.guard_legacy(
+                    await _run_tool(ctx, name, arguments.get("input"), arguments, model=body.model)
                 )
                 return _legacy(
                     MCPQueryResponse(
@@ -523,7 +567,12 @@ class MCPGatewayAdapter(GatewayAdapter):
             denied = governance.check(tool, transport="rest")
             if denied is not None:
                 return _legacy_denied(denied)
-            response = await _run_tool(ctx, tool, body.input, body.args, model=body.model)
+            rule = governance.tripped_rule(tool, {"input": body.input, **body.args})
+            if rule is not None:
+                return _legacy_guardrail_blocked(tool, rule)
+            response = governance.guard_legacy(
+                await _run_tool(ctx, tool, body.input, body.args, model=body.model)
+            )
             return _legacy(response.model_dump())
 
         @router.post("/mcp")
@@ -554,7 +603,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                 return Response(status_code=202)
 
             ctx: AppContext = request.app.state.ctx
-            governance = _Governance(request, ctx)
+            governance = _Governance(request, ctx, transport="jsonrpc")
             try:
                 if method == "initialize":
                     protocol = _negotiate_protocol(params)
@@ -618,6 +667,18 @@ class MCPGatewayAdapter(GatewayAdapter):
                                     _text_result(json.dumps(validation_errors), is_error=True),
                                 ),
                             )
+                    normalized_name = name.strip().lower()
+                    rule = governance.tripped_rule(normalized_name, arguments)
+                    if rule is not None:
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_error(
+                                rpc_id,
+                                GUARDRAIL_BLOCKED,
+                                f"Tool call blocked by guardrail {rule}: {normalized_name}",
+                                data={"tool": normalized_name, "rule": rule, "direction": "input"},
+                            ),
+                        )
                     task_cfg = ctx.settings.integrations.mcp_tasks
                     store = getattr(ctx, "mcp_task_store", None)
                     if (
@@ -636,7 +697,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                             tool_response = await _run_tool(
                                 ctx, name, arguments.get("input"), arguments, model=None
                             )
-                            return _tool_call_result_payload(name, tool_response)
+                            return governance.guard_tool_result(
+                                name, _tool_call_result_payload(name, tool_response)
+                            )
 
                         await spawn_tool_task(store, task, _runner)
                         return _rpc_response(
@@ -646,10 +709,10 @@ class MCPGatewayAdapter(GatewayAdapter):
                     tool_response = await _run_tool(
                         ctx, name, arguments.get("input"), arguments, model=None
                     )
-                    return _rpc_response(
-                        request,
-                        _jsonrpc_result(rpc_id, _tool_call_result_payload(name, tool_response)),
+                    payload = governance.guard_tool_result(
+                        name, _tool_call_result_payload(name, tool_response)
                     )
+                    return _rpc_response(request, _jsonrpc_result(rpc_id, payload))
                 return _rpc_response(
                     request,
                     _jsonrpc_error(rpc_id, METHOD_NOT_FOUND, f"Method not found: {method}"),

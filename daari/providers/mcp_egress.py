@@ -12,7 +12,8 @@ from typing import Any
 
 import httpx
 
-from daari.gateway.internal import InternalRequest, InternalResponse
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+from daari.gateway.mcp_guardrails import McpGuardrails, first_rule
 from daari.providers.integrations import HttpIntegrationProvider
 
 
@@ -25,13 +26,29 @@ class McpServerConfig:
 
 
 class McpEgressProvider(HttpIntegrationProvider):
-    def __init__(self, server: McpServerConfig) -> None:
+    def __init__(self, server: McpServerConfig, guardrails: McpGuardrails | None = None) -> None:
         super().__init__(
             id=f"mcp:{server.id}",
             base_url=server.url.rstrip("/"),
             token_env_var="",
         )
         self.server = server
+        # Same rules as the ingress (#317): outbound arguments are checked before
+        # they leave the machine, results before they reach the model.
+        self.guardrails = guardrails or McpGuardrails(transport="egress")
+
+    def _guardrail_blocked(self, request: InternalRequest, tool: str, rule: str) -> InternalResponse:
+        return InternalResponse(
+            content=f"{self.id} call to {tool} blocked by guardrail {rule}.",
+            model=request.model,
+            daari_meta=DaariMeta(
+                tier=self.tier,
+                executor="integration",
+                provider_id=self.id,
+                task_type="tool",
+                warning="guardrail_blocked",
+            ),
+        )
 
     async def health(self) -> bool:
         return True
@@ -64,14 +81,15 @@ class McpEgressProvider(HttpIntegrationProvider):
             # per-tool policy without parsing the JSON-RPC body (issue #277).
             headers["Mcp-Method"] = "tools/call"
             headers["Mcp-Name"] = tool
+            arguments = {"query": arg_text} if arg_text else {}
+            checked = self.guardrails.check_arguments(tool, arguments)
+            if checked.blocked:
+                return self._guardrail_blocked(request, tool, first_rule(checked))
             payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "tools/call",
-                "params": {
-                    "name": tool,
-                    "arguments": {"query": arg_text} if arg_text else {},
-                },
+                "params": {"name": tool, "arguments": arguments},
             }
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -81,7 +99,8 @@ class McpEgressProvider(HttpIntegrationProvider):
             if "error" in data:
                 return self._failure(request, RuntimeError(str(data["error"])))
             result = data.get("result", data)
-            return self._ok_response(request, self.id, str(result)[:4000])
+            text, _outcome = self.guardrails.check_result_text(tool, str(result)[:4000])
+            return self._ok_response(request, self.id, text)
         except Exception as exc:  # noqa: BLE001
             return self._failure(request, exc)
 
@@ -92,7 +111,9 @@ def _entry_get(entry: Any, key: str, default: Any = None) -> Any:
     return getattr(entry, key, default)
 
 
-def build_mcp_providers(servers: list[Any]) -> list[McpEgressProvider]:
+def build_mcp_providers(
+    servers: list[Any], guardrails: McpGuardrails | None = None
+) -> list[McpEgressProvider]:
     providers: list[McpEgressProvider] = []
     for entry in servers or []:
         if isinstance(entry, McpServerConfig):
@@ -108,5 +129,5 @@ def build_mcp_providers(servers: list[Any]) -> list[McpEgressProvider]:
             continue
         if not cfg.triggers:
             cfg.triggers = [f"@mcp:{cfg.id}", f"@mcp {cfg.id}"]
-        providers.append(McpEgressProvider(cfg))
+        providers.append(McpEgressProvider(cfg, guardrails=guardrails))
     return providers

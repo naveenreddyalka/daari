@@ -84,10 +84,16 @@ class GuardrailEngine:
     block_message: str = "Request blocked by daari guardrail."
 
     def check_input(self, request: InternalRequest) -> GuardrailResult:
-        result = GuardrailResult(request=request)
+        text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
+        result = self.check_input_text(text)
+        result.request = request
+        return result
+
+    def check_input_text(self, text: str) -> GuardrailResult:
+        """Run the input rules over raw text (chat prompts, MCP tool arguments)."""
+        result = GuardrailResult()
         if not self.enabled:
             return result
-        text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
         # Allowlist short-circuit: if any allow rule matches, skip denies.
         for rule in self.input_rules:
             if rule.kind == "allow" and rule.pattern and re.search(rule.pattern, text, re.I):
@@ -136,10 +142,19 @@ class GuardrailEngine:
         return result
 
     def check_output(self, response: InternalResponse) -> GuardrailResult:
-        result = GuardrailResult(response=response)
-        if not self.enabled:
-            return result
         text = response.content or ""
+        rewritten, result = self.check_output_text(text)
+        result.response = (
+            response.model_copy(update={"content": rewritten}) if rewritten != text else response
+        )
+        return result
+
+    def check_output_text(self, text: str) -> tuple[str, GuardrailResult]:
+        """Run the output rules over raw text. Returns (rewritten_text, result);
+        a block returns `block_message` as the text."""
+        result = GuardrailResult()
+        if not self.enabled:
+            return text, result
         rewritten = text
         for rule in self.output_rules:
             if rule.kind == "secret" or rule.name == "secrets":
@@ -151,10 +166,7 @@ class GuardrailEngine:
                         result.hits.append(hit)
                         if rule.action == "block":
                             result.blocked = True
-                            result.response = response.model_copy(
-                                update={"content": self.block_message}
-                            )
-                            return result
+                            return self.block_message, result
                         if rule.action == "warn":
                             result.warning = f"guardrail:secret:{kind}"
                         if rule.action == "redact":
@@ -171,10 +183,7 @@ class GuardrailEngine:
                     result.hits.append(hit)
                     if rule.action == "block":
                         result.blocked = True
-                        result.response = response.model_copy(
-                            update={"content": self.block_message}
-                        )
-                        return result
+                        return self.block_message, result
                     if rule.action == "warn":
                         result.warning = "guardrail:pii"
                     if rule.action == "redact":
@@ -186,22 +195,20 @@ class GuardrailEngine:
                 result.hits.append(hit)
                 if rule.action == "block":
                     result.blocked = True
-                    result.response = response.model_copy(
-                        update={"content": self.block_message}
-                    )
-                    return result
+                    return self.block_message, result
                 if rule.action == "warn":
                     result.warning = f"guardrail:{rule.name}"
                 if rule.action == "redact":
                     rewritten = re.sub(rule.pattern, "<redacted>", rewritten, flags=re.I)
-
-        if rewritten != text:
-            result.response = response.model_copy(update={"content": rewritten})
-        return result
+        return rewritten, result
 
 
 def engine_from_settings(settings: Any) -> GuardrailEngine | None:
-    block = getattr(settings, "guardrails", None)
+    return engine_from_block(getattr(settings, "guardrails", None))
+
+
+def engine_from_block(block: Any) -> GuardrailEngine | None:
+    """Build an engine from any `GuardrailSettings`-shaped block (chat or MCP)."""
     if block is None or not getattr(block, "enabled", False):
         return None
     input_rules = [
