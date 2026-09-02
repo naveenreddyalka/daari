@@ -1816,3 +1816,155 @@ async def test_ollama_facade_stream_emits_keepalive_before_first_line(keepalive_
     body = response.text
     assert body.startswith("\n") or "\n\n" in body[:4]
     assert "streamed" in body
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_accepted_and_recorded(app, monkeypatch):
+    """#297: reasoning_effort is not dropped; daari_meta records it."""
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        assert request.sampling.reasoning_effort == "high"
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", fake_execute)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "reason carefully"}],
+                "reasoning_effort": "high",
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_mapped_on_thinking_local_tier(settings, monkeypatch):
+    """#297: thinking-capable local models get Ollama think= from effort."""
+    settings.models.l3 = "gpt-oss:20b"
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    settings.routing.max_tier_for_chat = "L3"
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    captured: list[InternalRequest] = []
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        captured.append(request)
+        # Exercise the real payload builder for think mapping.
+        payload = application.state.ctx.router.ollama._payload(
+            request, "gpt-oss:20b", stream=False
+        )
+        assert payload.get("think") == "medium"
+        return InternalResponse(
+            content="thoughtful",
+            model="gpt-oss:20b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hello there friend"}],
+                "reasoning_effort": "medium",
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    assert captured[0].sampling.reasoning_effort == "medium"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_effort_forwarded_on_frontier_fallback(settings, monkeypatch):
+    """#297: L6 openai_payload includes reasoning_effort unchanged."""
+    settings.frontier.enabled = True
+    settings.frontier.confidence_threshold = 0.99
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def short_local(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    frontier_bodies: list[dict] = []
+
+    async def fake_l6(
+        request: InternalRequest,
+        *,
+        escalated_from: str,
+        local_confidence: float,
+    ) -> InternalResponse:
+        from daari.router.frontier import FrontierExecutor
+
+        # Use the real payload builder against a stub executor.
+        stub = FrontierExecutor(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            default_model="gpt-4o-mini",
+            provider="openai",
+        )
+        frontier_bodies.append(stub._openai_payload(request, stream=False))
+        return InternalResponse(
+            content="Frontier answer with enough detail for the user.",
+            model="gpt-4o-mini",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="openai",
+                latency_ms=20,
+                escalated_from=escalated_from,
+                confidence=local_confidence,
+            ),
+        )
+
+    for tier in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        monkeypatch.setattr(getattr(application.state.ctx.router, tier), "execute", short_local)
+    monkeypatch.setattr(application.state.ctx.router.frontier, "execute", fake_l6)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate please"}],
+                "reasoning_effort": "high",
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["tier"] == "L6"
+    assert frontier_bodies[0]["reasoning_effort"] == "high"

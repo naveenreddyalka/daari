@@ -1442,6 +1442,22 @@ streams. Contract documented in `docs/developer/reference/headers.md`.
 Covered by `tests/unit/test_cost_headers.py` and
 `tests/integration/test_cost_headers.py`.
 
+### Honor reasoning_effort ([#297](https://github.com/naveenreddyalka/daari/issues/297))
+
+<!-- tracking:#297 -->
+
+`ChatCompletionRequest.reasoning_effort` is declared (no longer dropped by
+`extra="ignore"`). `SamplingParams` carries it to frontier via
+`openai_payload()`, and maps it to Ollama's top-level `think`
+(`minimal` → omit; `low`/`medium`/`high` → same) when the local model name
+looks thinking-capable (`gpt-oss`, `qwen3`, `thinking`, `deepseek-r1`);
+other models ignore it without error. Optional
+`routing.reasoning_effort_escalation` (default false) lets `high` mark the
+profile complex and floor tier selection at L4. `daari_meta.reasoning_effort`
+and the profile trace step record the value. Covered by
+`tests/unit/test_reasoning_effort.py`, `tests/unit/test_sampling_params.py`,
+and cases in `tests/integration/test_gateway_flow.py`.
+
 ### Stall classification for action_required / suppressed CI ([#294](https://github.com/naveenreddyalka/daari/issues/294))
 
 <!-- tracking:#294 -->

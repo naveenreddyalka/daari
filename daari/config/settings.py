@@ -252,6 +252,9 @@ class RoutingSettings(RuntimeSettings):
     # Use the trained personal classifier (`daari learn train-router`) to
     # override heuristic categorization when confident (Trust PRD Train 4).
     learned_router: bool = False
+    # When True, client reasoning_effort=high biases local tier selection
+    # upward (and marks the profile complex). Default off (#297).
+    reasoning_effort_escalation: bool = False
     # Org inference pool (device-local → org pool → frontier).
     org_pool: OrgPoolSettings = Field(default_factory=OrgPoolSettings)
     local_pool: LocalPoolSettings = Field(default_factory=LocalPoolSettings)

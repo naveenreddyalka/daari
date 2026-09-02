@@ -123,6 +123,8 @@ class DaariMeta(BaseModel):
     provider_prefs: dict | None = None
     # G3: local path is always $0; L6 rows keep upstream cost in cost_usd.
     daari_cost_usd: float | None = None
+    # Client reasoning_effort when present (#297).
+    reasoning_effort: str | None = None
 
 
 class InternalResponse(BaseModel):

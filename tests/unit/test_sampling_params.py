@@ -63,6 +63,50 @@ class TestOpenAIPassthrough:
     def test_nothing_is_sent_when_nothing_was_asked_for(self):
         assert SamplingParams().openai_payload() == {}
 
+    def test_reasoning_effort_reaches_openai_payload(self):
+        payload = SamplingParams(reasoning_effort="high").openai_payload()
+        assert payload["reasoning_effort"] == "high"
+
+
+class TestReasoningEffort:
+    """OpenAI reasoning_effort → frontier passthrough + Ollama think (#297)."""
+
+    def test_from_openai_body_keeps_effort(self):
+        params = SamplingParams.from_openai_body({"reasoning_effort": "medium"})
+        assert params.reasoning_effort == "medium"
+
+    def test_invalid_effort_shapes_are_dropped(self):
+        assert SamplingParams.from_openai_body({"reasoning_effort": 3}).reasoning_effort is None
+        assert SamplingParams.from_openai_body({"reasoning_effort": ""}).reasoning_effort is None
+
+    def test_ollama_think_mapping(self):
+        # minimal → omit (lowest / no explicit think); low/medium/high map 1:1.
+        assert SamplingParams(reasoning_effort="minimal").ollama_think() is None
+        assert SamplingParams(reasoning_effort="low").ollama_think() == "low"
+        assert SamplingParams(reasoning_effort="medium").ollama_think() == "medium"
+        assert SamplingParams(reasoning_effort="high").ollama_think() == "high"
+
+    def test_unknown_effort_string_is_omitted_from_think(self):
+        assert SamplingParams(reasoning_effort="ultra").ollama_think() is None
+
+    def test_effort_splits_the_cache(self):
+        assert (
+            SamplingParams(reasoning_effort="low").cache_fingerprint()
+            != SamplingParams(reasoning_effort="high").cache_fingerprint()
+        )
+
+    def test_effort_does_not_warn_locally(self):
+        # Models without thinking support ignore silently (AC3).
+        assert SamplingParams(reasoning_effort="high").unsupported_locally() == []
+
+    def test_model_supports_thinking_heuristic(self):
+        from daari.gateway.sampling import model_supports_thinking
+
+        assert model_supports_thinking("gpt-oss:20b")
+        assert model_supports_thinking("qwen3:8b")
+        assert model_supports_thinking("deepseek-r1:thinking")
+        assert not model_supports_thinking("llama3.2:3b")
+
 
 class TestWarnings:
     def test_presence_penalty_warns_on_a_local_model(self):
