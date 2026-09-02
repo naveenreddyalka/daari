@@ -39,6 +39,8 @@ flowchart LR
 
 Every 2h (`com.daari.autodev`): pull `main` → reinstall if `pyproject.toml` changed → restart `daari serve` (kept alive by `com.daari.serve`) → run `pytest -m integration` against live Ollama → Cursor-shaped streaming smoke (18 tools + `input_text`) → on failure, file a deduped GitHub issue labeled `auto-dev,regression`.
 
+`com.daari.serve` is this dev-machine watchdog plist (`scripts/launchd/`), not the user service `daari service install` writes — that one is `com.daari.gateway` and is restarted with `daari service restart`.
+
 ```bash
 scripts/autodev-local.sh              # run one cycle now
 scripts/autodev-local.sh --install    # install + start launchd agents

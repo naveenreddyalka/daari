@@ -11,10 +11,13 @@ from daari.setup.service import (
     PLIST_LABEL,
     UNIT_NAME,
     ServiceCommandError,
+    ServiceNotInstalledError,
     UnsupportedPlatformError,
     install_service,
     render_launchd_plist,
     render_systemd_unit,
+    restart_hint,
+    restart_service,
     service_status,
     uninstall_service,
 )
@@ -231,7 +234,73 @@ class TestActivateNow:
         assert runner.calls == []
 
 
+class TestRestart:
+    def test_linux_restart_uses_systemctl(self, tmp_path, settings):
+        home = tmp_path / "home"
+        install_service(settings, home=home, platform="linux", daari_bin=Path("/opt/daari/bin/daari"))
+        runner = RecordingRunner()
+        executed = restart_service(home=home, platform="linux", runner=runner)
+        assert runner.calls == [("systemctl", "--user", "restart", UNIT_NAME)]
+        assert executed == tuple(runner.calls)
+
+    def test_macos_restart_kickstarts_gateway_label(self, tmp_path, settings):
+        home = tmp_path / "home"
+        install_service(settings, home=home, platform="darwin", daari_bin=Path("/opt/daari/bin/daari"))
+        runner = RecordingRunner()
+        restart_service(home=home, platform="darwin", runner=runner, uid=501)
+        assert runner.calls == [("launchctl", "kickstart", "-k", f"gui/501/{PLIST_LABEL}")]
+        # The dev watchdog plist (scripts/launchd/com.daari.serve.plist) is a
+        # different unit; the user service must never be addressed by that label.
+        assert "com.daari.serve" not in " ".join(runner.calls[0])
+
+    def test_restart_without_installed_service_raises(self, tmp_path):
+        runner = RecordingRunner()
+        with pytest.raises(ServiceNotInstalledError, match="daari service install"):
+            restart_service(home=tmp_path / "home", platform="linux", runner=runner)
+        assert runner.calls == []
+
+    def test_restart_failure_raises_command_error(self, tmp_path, settings):
+        home = tmp_path / "home"
+        install_service(settings, home=home, platform="linux", daari_bin=Path("/opt/daari/bin/daari"))
+        with pytest.raises(ServiceCommandError, match="restart"):
+            restart_service(home=home, platform="linux", runner=RecordingRunner(returncode=1))
+
+    def test_restart_on_windows_is_refused(self, tmp_path):
+        with pytest.raises(UnsupportedPlatformError, match="WSL"):
+            restart_service(home=tmp_path / "home", platform="win32", runner=RecordingRunner())
+
+    def test_restart_hint_names_the_cli(self):
+        assert restart_hint() == "daari service restart"
+
+
 class TestServiceCli:
+    def test_restart_cli_runs_platform_command(self, tmp_path, settings, monkeypatch):
+        home = tmp_path / "home"
+        runner = RecordingRunner()
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        monkeypatch.setattr("daari.setup.service.default_home", lambda: home)
+        monkeypatch.setattr("daari.setup.service.default_platform", lambda: "linux")
+        monkeypatch.setattr(
+            "daari.setup.service.default_daari_bin",
+            lambda: Path("/opt/daari/bin/daari"),
+        )
+        monkeypatch.setattr("daari.setup.service.default_runner", lambda command: runner(command))
+
+        cli = CliRunner()
+        assert cli.invoke(app, ["service", "install"]).exit_code == 0
+        result = cli.invoke(app, ["service", "restart"])
+        assert result.exit_code == 0, result.output
+        assert ("systemctl", "--user", "restart", UNIT_NAME) in runner.calls
+        assert "Ran: systemctl --user restart daari.service" in result.stdout
+
+    def test_restart_cli_without_service_exits_nonzero(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("daari.setup.service.default_home", lambda: tmp_path / "home")
+        monkeypatch.setattr("daari.setup.service.default_platform", lambda: "linux")
+        monkeypatch.setattr("daari.setup.service.default_runner", lambda command: 0)
+        result = CliRunner().invoke(app, ["service", "restart"])
+        assert result.exit_code == 1
+        assert "daari service install" in result.output
+
     def test_install_status_uninstall(self, tmp_path, settings, monkeypatch):
         home = tmp_path / "home"
         monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)

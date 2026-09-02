@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,10 @@ class UnsupportedPlatformError(RuntimeError):
 
 class ServiceCommandError(RuntimeError):
     """systemctl / launchctl returned a non-zero exit code."""
+
+
+class ServiceNotInstalledError(RuntimeError):
+    """No unit/plist written by `daari service install` exists for this user."""
 
 
 @dataclass(frozen=True)
@@ -56,6 +61,16 @@ def default_home() -> Path:
 
 def default_platform() -> str:
     return sys.platform
+
+
+def default_uid() -> int:
+    getuid = getattr(os, "getuid", None)
+    return getuid() if getuid else 0
+
+
+def restart_hint() -> str:
+    """What to tell users who must bounce the daemon after a config change."""
+    return "daari service restart"
 
 
 def default_daari_bin() -> Path:
@@ -210,6 +225,33 @@ def _deactivate_commands(kind: str, path: Path) -> tuple[tuple[str, ...], ...]:
     if kind == "systemd":
         return (("systemctl", "--user", "disable", "--now", UNIT_NAME),)
     return (("launchctl", "unload", "-w", str(path)),)
+
+
+def _restart_commands(kind: str, uid: int) -> tuple[tuple[str, ...], ...]:
+    if kind == "systemd":
+        return (("systemctl", "--user", "restart", UNIT_NAME),)
+    # `kickstart -k` kills and relaunches the job in the user's GUI domain; the
+    # label is the one render_launchd_plist() wrote, not the dev watchdog's.
+    return (("launchctl", "kickstart", "-k", f"gui/{uid}/{PLIST_LABEL}"),)
+
+
+def restart_service(
+    *,
+    home: Path | None = None,
+    platform: str | None = None,
+    runner: ServiceRunner | None = None,
+    uid: int | None = None,
+) -> tuple[tuple[str, ...], ...]:
+    """Restart the user service; the daemon reads config once, so this applies edits."""
+    home = home or default_home()
+    platform = platform or default_platform()
+    kind, path = _paths(home, platform)
+    if not path.is_file():
+        raise ServiceNotInstalledError(
+            f"No daari user service at {path}. Install it first: daari service install --now"
+        )
+    uid = default_uid() if uid is None else uid
+    return _run_all(_restart_commands(kind, uid), runner)
 
 
 def uninstall_service(

@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-01 (Upgrade guide — [#287](https://github.com/naveenreddyalka/daari/issues/287))  
+> Last updated: 2026-09-02 (`daari service restart` — [#323](https://github.com/naveenreddyalka/daari/issues/323))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -33,7 +33,7 @@ Scoreboard lands in [#229](https://github.com/naveenreddyalka/daari/issues/229).
 | S2 Install CI gate (#257) | [x] | `install` job in `.github/workflows/ci.yml` |
 | S3 Default pull L3+embed (#258) | [x] | install.sh + doctor require embed when L1 on |
 | S4 Cursor tunnel one-liner (#259) | [x] | `daari setup cursor --tunnel --yes --daemonize` |
-| S5 `daari service` (#260) | [x] | user systemd / launchd unit files; no CI start |
+| S5 `daari service` (#260) | [x] | user systemd / launchd unit files; no CI start; `restart` added in #323 |
 | S6 Windows/WSL (#261) | [x] | install-windows.md + scripts/install.ps1 (WSL only) |
 | S7 `onboard --serve` (#268) | [x] | background daemon after first-run |
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1272 passed** (2026-09-01) |
+| `pytest` (default, mocked) | **1318 passed** (2026-09-02) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1531,6 +1531,22 @@ lives in-process with a diskcache directory (`integrations.mcp_tasks.path`).
 Governance audits still run before task creation. Docs:
 [mcp.md](developer/guides/clients/mcp.md). Covered by
 `tests/unit/test_mcp_tasks.py`.
+
+### `daari service restart` + Cursor tunnel hint label fix ([#323](https://github.com/naveenreddyalka/daari/issues/323))
+
+<!-- tracking:#323 -->
+
+`daari service restart` (`restart_service()` in `daari/setup/service.py`) runs
+`systemctl --user restart daari.service` on Linux and
+`launchctl kickstart -k gui/<uid>/com.daari.gateway` on macOS, refuses native
+Windows like its siblings, and raises `ServiceNotInstalledError` (CLI exit 1
+with the install hint) when no unit/plist exists. The `daari setup cursor
+--secure` post-key message used to name `com.daari.serve` — the dev-watchdog
+plist in `scripts/launchd/`, not the user service — and now says
+`daari service restart` via `restart_hint()`. Docs: install stay-up section,
+upgrade guide restart steps, CLI reference row, AUTOMATION.md label note.
+Covered by `tests/unit/test_service.py` (`TestRestart`, CLI cases) and
+`test_setup_cursor_secure_hint_points_at_service_restart`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
