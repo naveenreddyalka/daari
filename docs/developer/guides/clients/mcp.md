@@ -101,6 +101,39 @@ daari's MCP egress client sends the MCP 2026-07-28 routing headers
 `Mcp-Method` and `Mcp-Name` on outbound requests, and the ingress honours the
 same headers for policy when a client supplies them.
 
+## Tasks (long-running tools/call)
+
+When the negotiated protocol is `2026-07-28` or newer, `initialize` advertises
+the `io.modelcontextprotocol/tasks` capability. Clients opt in per call:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "route",
+    "arguments": {"input": "run the suite"},
+    "_meta": {"io.modelcontextprotocol/tasks": true}
+  }
+}
+```
+
+Eligible tools (default: `route`, or any tool when
+`integrations.mcp_tasks.threshold_ms > 0`) return a `taskId` immediately;
+poll with `tasks/get`, acknowledge state with `tasks/update`, and stop work
+with `tasks/cancel`. Calls without the `_meta` opt-in keep today's blocking
+behavior. Governance (#277) still audits the call before a task is created.
+
+```yaml
+integrations:
+  mcp_tasks:
+    enabled: true
+    long_running_tools: [route]
+    threshold_ms: 0
+    path: ~/.daari/mcp-tasks
+```
+
 ## Deprecated alias
 
 `POST /v1/mcp/query` remains for older callers. Responses include

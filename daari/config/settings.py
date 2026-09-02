@@ -513,6 +513,15 @@ class McpToolPolicySettings(BaseModel):
     )
 
 
+class McpTasksSettings(BaseModel):
+    """SEP-2663 Tasks extension for long-running tools/call (#289)."""
+
+    enabled: bool = True
+    long_running_tools: list[str] = Field(default_factory=lambda: ["route"])
+    threshold_ms: int = Field(default=0, ge=0)
+    path: str = "~/.daari/mcp-tasks"
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -544,6 +553,8 @@ class IntegrationsSettings(BaseModel):
         default_factory=dict,
         description="Per-team MCP tool policy keyed by team name; layered on mcp_policy.",
     )
+    # SEP-2663 Tasks for long-running tools/call (#289).
+    mcp_tasks: McpTasksSettings = Field(default_factory=McpTasksSettings)
 
 
 class Settings(BaseSettings):

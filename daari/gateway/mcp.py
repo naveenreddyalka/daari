@@ -12,6 +12,13 @@ from daari.enterprise.audit import AuditLog
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, Message
 from daari.gateway.mcp_policy import TOOL_DENIED, McpToolPolicy, audit_tool_call, resolve_policy
+from daari.gateway.mcp_tasks import (
+    client_opted_into_tasks,
+    create_task_result,
+    initialize_capabilities,
+    spawn_tool_task,
+    tool_should_become_task,
+)
 from daari.router.router import AppContext
 
 JSONRPC_VERSION = "2.0"
@@ -355,6 +362,82 @@ async def _run_tool(
     )
 
 
+def _tool_call_result_payload(name: str, tool_response: MCPQueryResponse) -> dict[str, Any]:
+    if not tool_response.ok:
+        err = (
+            tool_response.result.get("error")
+            if isinstance(tool_response.result, dict)
+            else tool_response.result
+        )
+        return _text_result(json.dumps(err), is_error=True)
+    if name.strip().lower() == "stats":
+        text = json.dumps(tool_response.result)
+    elif isinstance(tool_response.result, dict) and "content" in tool_response.result:
+        text = str(tool_response.result.get("content") or "")
+    else:
+        text = json.dumps(tool_response.result)
+    return _text_result(text)
+
+
+async def _handle_tasks_get(
+    ctx: AppContext, request: Request, rpc_id: Any, params: dict[str, Any]
+) -> Response:
+    store = getattr(ctx, "mcp_task_store", None)
+    task_id = str(params.get("taskId") or params.get("task_id") or "").strip()
+    if store is None or not task_id:
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, INVALID_PARAMS, "Missing taskId"),
+        )
+    task = store.get(task_id)
+    if task is None:
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
+        )
+    return _rpc_response(request, _jsonrpc_result(rpc_id, store.as_public(task)))
+
+
+async def _handle_tasks_update(
+    ctx: AppContext, request: Request, rpc_id: Any, params: dict[str, Any]
+) -> Response:
+    """Report current state (input-required flow minimum for #289)."""
+    store = getattr(ctx, "mcp_task_store", None)
+    task_id = str(params.get("taskId") or params.get("task_id") or "").strip()
+    if store is None or not task_id:
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, INVALID_PARAMS, "Missing taskId"),
+        )
+    task = store.get(task_id)
+    if task is None:
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
+        )
+    # Input-required acknowledgement: echo status; no mutation required for MVP.
+    return _rpc_response(request, _jsonrpc_result(rpc_id, store.as_public(task)))
+
+
+async def _handle_tasks_cancel(
+    ctx: AppContext, request: Request, rpc_id: Any, params: dict[str, Any]
+) -> Response:
+    store = getattr(ctx, "mcp_task_store", None)
+    task_id = str(params.get("taskId") or params.get("task_id") or "").strip()
+    if store is None or not task_id:
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, INVALID_PARAMS, "Missing taskId"),
+        )
+    task = store.request_cancel(task_id)
+    if task is None:
+        return _rpc_response(
+            request,
+            _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
+        )
+    return _rpc_response(request, _jsonrpc_result(rpc_id, store.as_public(task)))
+
+
 class MCPGatewayAdapter(GatewayAdapter):
     id = "mcp"
 
@@ -474,13 +557,14 @@ class MCPGatewayAdapter(GatewayAdapter):
             governance = _Governance(request, ctx)
             try:
                 if method == "initialize":
+                    protocol = _negotiate_protocol(params)
                     return _rpc_response(
                         request,
                         _jsonrpc_result(
                             rpc_id,
                             {
-                                "protocolVersion": _negotiate_protocol(params),
-                                "capabilities": {"tools": {"listChanged": False}},
+                                "protocolVersion": protocol,
+                                "capabilities": initialize_capabilities(protocol),
                                 "serverInfo": {"name": "daari", "version": __version__},
                             },
                         ),
@@ -492,6 +576,12 @@ class MCPGatewayAdapter(GatewayAdapter):
                         request,
                         _jsonrpc_result(rpc_id, {"tools": _mcp_list_tools(ctx, governance.policy)}),
                     )
+                if method == "tasks/get":
+                    return await _handle_tasks_get(ctx, request, rpc_id, params)
+                if method == "tasks/update":
+                    return await _handle_tasks_update(ctx, request, rpc_id, params)
+                if method == "tasks/cancel":
+                    return await _handle_tasks_cancel(ctx, request, rpc_id, params)
                 if method == "tools/call":
                     name = str(params.get("name") or "").strip()
                     if not name:
@@ -528,26 +618,38 @@ class MCPGatewayAdapter(GatewayAdapter):
                                     _text_result(json.dumps(validation_errors), is_error=True),
                                 ),
                             )
+                    task_cfg = ctx.settings.integrations.mcp_tasks
+                    store = getattr(ctx, "mcp_task_store", None)
+                    if (
+                        task_cfg.enabled
+                        and store is not None
+                        and client_opted_into_tasks(params)
+                        and tool_should_become_task(
+                            name,
+                            long_running_tools=list(task_cfg.long_running_tools),
+                            threshold_ms=int(task_cfg.threshold_ms),
+                        )
+                    ):
+                        task = store.create(tool=name.strip().lower())
+
+                        async def _runner() -> dict[str, Any]:
+                            tool_response = await _run_tool(
+                                ctx, name, arguments.get("input"), arguments, model=None
+                            )
+                            return _tool_call_result_payload(name, tool_response)
+
+                        await spawn_tool_task(store, task, _runner)
+                        return _rpc_response(
+                            request,
+                            _jsonrpc_result(rpc_id, create_task_result(task)),
+                        )
                     tool_response = await _run_tool(
                         ctx, name, arguments.get("input"), arguments, model=None
                     )
-                    if not tool_response.ok:
-                        err = (
-                            tool_response.result.get("error")
-                            if isinstance(tool_response.result, dict)
-                            else tool_response.result
-                        )
-                        return _rpc_response(
-                            request,
-                            _jsonrpc_result(rpc_id, _text_result(json.dumps(err), is_error=True)),
-                        )
-                    if name.strip().lower() == "stats":
-                        text = json.dumps(tool_response.result)
-                    elif isinstance(tool_response.result, dict) and "content" in tool_response.result:
-                        text = str(tool_response.result.get("content") or "")
-                    else:
-                        text = json.dumps(tool_response.result)
-                    return _rpc_response(request, _jsonrpc_result(rpc_id, _text_result(text)))
+                    return _rpc_response(
+                        request,
+                        _jsonrpc_result(rpc_id, _tool_call_result_payload(name, tool_response)),
+                    )
                 return _rpc_response(
                     request,
                     _jsonrpc_error(rpc_id, METHOD_NOT_FOUND, f"Method not found: {method}"),
