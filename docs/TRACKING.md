@@ -100,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1185 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
+**Count:** 1201 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
 
 ---
 
@@ -1386,6 +1386,24 @@ repository-connection query with exact-title matching, and the surviving
 search-backed callsites in `autodev_pr_watch.py` carry audit comments
 explaining why their failure modes are safe. Covered by
 `tests/unit/test_autodev_backlog.py`.
+
+### Cost-split and savings response headers ([#278](https://github.com/naveenreddyalka/daari/issues/278))
+
+<!-- tracking:#278 -->
+
+`daari/gateway/cost_headers.py` puts `x-daari-response-cost` (USD spent; `0`
+for every local tier, provider `usage.cost` or `pricing.models` × tokens for
+L6), `x-daari-response-cost-avoided` (frontier-implied USD for a $0 serve, on
+the `daari report` chars/4 × `usage.frontier_price_per_1k_tokens` basis),
+`x-daari-tier` and `x-daari-cache` (`hit|miss|draft`) on every non-streaming
+`/v1/chat/completions` and `/v1/messages` response. `DaariMeta.draft` now
+records L1 draft injection so the cache header can say `draft`. Streams get
+tier/cache through a `StreamOutcome` the router fills before its first chunk
+and a `DeferredHeadersStreamingResponse` that holds the HTTP start line until
+that chunk (or the keepalive frame) is ready; cost headers are never sent on
+streams. Contract documented in `docs/developer/reference/headers.md`.
+Covered by `tests/unit/test_cost_headers.py` and
+`tests/integration/test_cost_headers.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

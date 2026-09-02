@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
@@ -29,6 +29,11 @@ from daari.gateway.provider_prefs import (
     ZdrUnavailable,
 )
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.cost_headers import (
+    DeferredHeadersStreamingResponse,
+    StreamOutcome,
+    response_cost_headers,
+)
 from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
@@ -402,11 +407,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 except UnsupportedCapability as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+                outcome = StreamOutcome()
+
                 async def event_stream() -> AsyncIterator[str]:
                     content_chars = 0
                     try:
                         async for chunk in stream_with_keepalive(
-                            ctx.router.stream_openai_chunks(internal),
+                            ctx.router.stream_openai_chunks(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
                         ):
                             if '"delta": {"content":' in chunk or '"delta":{"content":' in chunk:
@@ -425,10 +432,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             },
                         )
 
-                return StreamingResponse(
+                return DeferredHeadersStreamingResponse(
                     event_stream(),
                     media_type="text/event-stream",
                     headers=OPENAI_SSE_HEADERS,
+                    late_headers=outcome.headers,
                 )
 
             try:
@@ -455,13 +463,22 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
             prompt_chars = sum(len(message.content or "") for message in body.messages)
-            return _openai_completion_body(
+            payload = _openai_completion_body(
                 body=body,
                 result_content=result.content,
                 result_model=result.model,
                 daari_meta=result.daari_meta.model_dump(exclude_none=True),
                 include_daari_meta=include_daari_meta,
                 usage=response_token_usage(result, prompt_chars),
+            )
+            return JSONResponse(
+                payload,
+                headers=response_cost_headers(
+                    result.daari_meta,
+                    ctx.settings,
+                    prompt_chars=prompt_chars,
+                    completion_chars=len(result.content or ""),
+                ),
             )
 
         @router.post("/v1/embeddings")

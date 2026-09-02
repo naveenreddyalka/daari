@@ -112,6 +112,9 @@ async def test_draft_injected_for_near_miss(tmp_path):
     assert len(drafts) == 1
     assert "The seeded prior answer about caches." in drafts[0].content
     assert response.daari_meta.tier == "L3"
+    # #278: the response advertises that a cached draft assisted generation.
+    assert response.daari_meta.draft is True
+    assert response.daari_meta.cache_hit is False
 
 
 @pytest.mark.asyncio
@@ -120,9 +123,10 @@ async def test_no_draft_below_band(tmp_path):
     router = _router(tmp_path, seen=seen)
     await router.semantic_cache.put(_request("seed prompt"), _seed_response())
 
-    await router.route(_request("far prompt"))
+    response = await router.route(_request("far prompt"))
 
     assert _draft_messages(seen["l3_request"]) == []
+    assert response.daari_meta.draft is False
 
 
 @pytest.mark.asyncio

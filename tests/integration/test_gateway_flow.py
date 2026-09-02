@@ -1444,7 +1444,7 @@ async def test_router_gitlab_prefix_routes_before_l3(app, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_anthropic_stream_falls_back_to_non_stream(app, monkeypatch):
-    async def broken_stream(_request: InternalRequest):
+    async def broken_stream(_request: InternalRequest, *, outcome=None):
         raise RuntimeError("stream broke")
         yield
 
@@ -1716,7 +1716,7 @@ async def test_shadow_sampled_l1_hit_records_false_hit_evidence(app, monkeypatch
 
 @pytest.mark.asyncio
 async def test_openai_stream_emits_keepalive_before_first_chunk(keepalive_app, monkeypatch):
-    async def delayed_chunks(_request: InternalRequest):
+    async def delayed_chunks(_request: InternalRequest, *, outcome=None):
         await asyncio.sleep(KEEPALIVE_DELAY)
         yield 'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n'
         yield "data: [DONE]\n\n"
@@ -1737,11 +1737,14 @@ async def test_openai_stream_emits_keepalive_before_first_chunk(keepalive_app, m
     text = response.text
     assert SSE_KEEPALIVE_FRAME.strip() in text or ": keepalive" in text
     assert text.index(": keepalive") < text.index("data:")
+    # #278: headers left on the keepalive frame, before the router chose a tier.
+    assert "x-daari-tier" not in response.headers
+    assert "x-daari-response-cost" not in response.headers
 
 
 @pytest.mark.asyncio
 async def test_anthropic_stream_emits_keepalive_before_first_chunk(keepalive_app, monkeypatch):
-    async def delayed_events(_request: InternalRequest):
+    async def delayed_events(_request: InternalRequest, *, outcome=None):
         await asyncio.sleep(KEEPALIVE_DELAY)
         yield 'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n'
         yield 'event: message_stop\ndata: {"type":"message_stop"}\n\n'
