@@ -48,6 +48,23 @@ def test_filter_drops_incapable_tiers():
     assert kept == ["L4", "L5"]
 
 
+def test_filter_keeps_tier_when_openai_slot_model_has_capability():
+    catalog = CapabilityCatalog(
+        models={
+            "tiny": frozenset(),
+            "vllm-model": frozenset({"tools"}),
+        }
+    )
+    kept = filter_tiers_by_capability(
+        ["L3", "L4"],
+        tier_models={"L3": "tiny", "L4": "tiny"},
+        catalog=catalog,
+        required={"tools"},
+        extra_models={"L4": ["vllm-model"]},
+    )
+    assert kept == ["L4"]
+
+
 def test_suggest_models_scales_with_ram():
     assert suggest_models_for_vram(8)["l3"] == "llama3.2:1b"
     assert "14b" in suggest_models_for_vram(32)["l5"]

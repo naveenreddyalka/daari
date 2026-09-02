@@ -304,6 +304,129 @@ async def test_ready_degraded_when_some_backends_down(settings, monkeypatch):
     assert any(item["id"] == "b" and not item["healthy"] for item in body["backends"])
 
 
+class TestOpenAIKind:
+    @pytest.mark.asyncio
+    async def test_health_probe_uses_v1_models(self, monkeypatch):
+        seen: list[str] = []
+
+        async def capture(url: str, timeout: float = 2.0) -> str:
+            seen.append(url)
+            return "ok"
+
+        monkeypatch.setattr("daari.router.local_pool.check_model_backend", capture)
+        pool = LocalBackendPool(
+            slots=[
+                LocalBackendSlot(
+                    id="vllm-a",
+                    base_url="http://127.0.0.1:8000",
+                    kind="openai",
+                    model="meta-llama/Llama-3.1-8B",
+                    tiers=["L4"],
+                )
+            ]
+        )
+        await pool.check_health()
+        assert seen == ["http://127.0.0.1:8000/v1/models"]
+
+    @pytest.mark.asyncio
+    async def test_serves_l4_and_sets_backend_id(self, monkeypatch):
+        from daari.router.openai_executor import OpenAICompatExecutor
+
+        seen: dict = {}
+
+        def handler(request):
+            import httpx
+
+            seen["path"] = request.url.path
+            seen["body"] = request.read()
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {"role": "assistant", "content": "from-vllm"},
+                            "finish_reason": "stop",
+                        }
+                    ]
+                },
+            )
+
+        transport = __import__("httpx").MockTransport(handler)
+        original = __import__("httpx").AsyncClient
+
+        def patched_client(*args, **kwargs):
+            kwargs["transport"] = transport
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr("daari.router.openai_executor.httpx.AsyncClient", patched_client)
+
+        template = OllamaExecutor(base_url="http://ollama", default_model="llama3.1:8b", tier="L4")
+        pool = LocalBackendPool(
+            slots=[
+                LocalBackendSlot(
+                    id="vllm-a",
+                    base_url="http://127.0.0.1:8000",
+                    kind="openai",
+                    model="meta-llama/Llama-3.1-8B",
+                    tiers=["L4"],
+                )
+            ]
+        )
+        bound = pool.bind_executor(template=template, slot=pool.slots[0])
+        assert isinstance(bound, OpenAICompatExecutor)
+        response = await pool.execute(
+            "L4",
+            InternalRequest(messages=[], model="llama3.1:8b"),
+            template=template,
+        )
+        assert response.content == "from-vllm"
+        assert response.daari_meta.backend_id == "vllm-a"
+        assert response.daari_meta.executor == "openai"
+        assert seen["path"] == "/v1/chat/completions"
+        assert b"meta-llama/Llama-3.1-8B" in seen["body"]
+
+    @pytest.mark.asyncio
+    async def test_failure_trips_circuit_breaker(self):
+        template = OllamaExecutor(base_url="http://ollama", default_model="m", tier="L4")
+
+        async def fail(_request):
+            raise RuntimeError("vllm down")
+
+        pool = LocalBackendPool(
+            slots=[
+                LocalBackendSlot(
+                    id="vllm-a",
+                    base_url="http://127.0.0.1:8000",
+                    kind="openai",
+                    model="meta-llama/Llama-3.1-8B",
+                    tiers=["L4"],
+                    breaker=CircuitBreaker(failure_threshold=1, cooldown_seconds=60),
+                )
+            ]
+        )
+        bound = pool.bind_executor(slot=pool.slots[0], template=template)
+        bound.execute = fail  # type: ignore[method-assign]
+        with pytest.raises(BackendUnavailable):
+            await pool.execute(
+                "L4",
+                InternalRequest(messages=[], model="m"),
+                executors={"vllm-a": bound},
+            )
+        assert pool.slots[0].breaker.failures >= 1
+        assert pool.slots[0].breaker.state == "open"
+
+
+def test_openai_kind_accepted_in_settings():
+    entry = LocalBackendSettings(
+        id="vllm-a",
+        kind="openai",
+        base_url="http://127.0.0.1:8000",
+        model="meta-llama/Llama-3.1-8B",
+        tiers=["L4"],
+    )
+    assert entry.kind == "openai"
+
+
 def test_metrics_label_chosen_backend():
     metrics = Metrics()
     metrics.record("L3", latency_ms=5, backend_id="gpu-a")

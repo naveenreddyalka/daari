@@ -100,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1135 passed (`pytest -m "not integration and not benchmark"`, 2026-08-27)
+**Count:** 1164 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
 
 ---
 
@@ -1346,6 +1346,17 @@ before removing the file. Commands go through an injectable `runner`
 (`default_runner`), so tests never touch a real service manager; a non-zero
 exit raises `ServiceCommandError` and the CLI exits 1. Without `--now`
 behavior is unchanged. Covered by `tests/unit/test_service.py`.
+
+### OpenAI-compat local backend kind ([#275](https://github.com/naveenreddyalka/daari/issues/275))
+
+<!-- tracking:#275 -->
+
+`routing.local_pool.backends[].kind: openai` binds an OpenAI-compat executor
+(`POST /v1/chat/completions`, stream converted to Ollama events) and probes
+`GET /v1/models`. The slot `model` is sent to the server; capability tags on
+that name apply the same as Ollama models. Failures trip the existing circuit
+breaker. Covered by `tests/unit/test_openai_executor.py` and
+`tests/unit/test_local_pool.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

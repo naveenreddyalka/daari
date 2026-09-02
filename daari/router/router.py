@@ -462,11 +462,18 @@ class Router:
         required = required_capabilities(request)
         if not required:
             return tiers
+        extra_models: dict[str, list[str]] = {}
+        if self.local_pool is not None:
+            for slot in self.local_pool.slots:
+                if slot.kind == "openai" and slot.model:
+                    for slot_tier in slot.tiers:
+                        extra_models.setdefault(slot_tier, []).append(slot.model)
         kept = filter_tiers_by_capability(
             tiers,
             tier_models=self._tier_models(),
             catalog=self.capability_catalog,
             required=required,
+            extra_models=extra_models,
         )
         if kept != tiers:
             add_step(

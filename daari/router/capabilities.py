@@ -60,14 +60,16 @@ def filter_tiers_by_capability(
     tier_models: dict[str, str],
     catalog: CapabilityCatalog,
     required: set[str],
+    extra_models: dict[str, list[str]] | None = None,
 ) -> list[str]:
     """Drop tiers whose model lacks any required capability. Empty required → no-op."""
     if not required:
         return list(tiers)
+    extras = extra_models or {}
     kept: list[str] = []
     for tier in tiers:
-        model = tier_models.get(tier, "")
-        if catalog.supports(model, required):
+        candidates = [tier_models.get(tier, ""), *extras.get(tier, [])]
+        if any(model and catalog.supports(model, required) for model in candidates):
             kept.append(tier)
     return kept
 
@@ -121,6 +123,10 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         if getattr(provider, "zdr", False):
             caps.append("zdr")
         add(provider.model, provider.id, caps)
+    pool = getattr(getattr(settings, "routing", None), "local_pool", None)
+    for entry in getattr(pool, "backends", None) or []:
+        if getattr(entry, "kind", "") == "openai" and getattr(entry, "model", ""):
+            add(entry.model, "openai", catalog.for_model(entry.model))
     return cards
 
 
