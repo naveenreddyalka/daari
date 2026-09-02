@@ -40,6 +40,8 @@ routing:
   # behavior (long prompts may route to L4/L5). Per-request X-Daari-Tier-Cap
   # header wins over this value. Cursor users who prefer latency can set L3.
   max_tier_for_chat:
+  # When true, reasoning_effort=high biases local tier selection upward (#297).
+  reasoning_effort_escalation: false
 
 frontier:
   enabled: false

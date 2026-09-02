@@ -76,7 +76,9 @@ def categorize(text: str) -> str:
     return "chat"
 
 
-def build_prompt_profile(request: InternalRequest) -> PromptProfile:
+def build_prompt_profile(
+    request: InternalRequest, *, effort_escalation: bool = False
+) -> PromptProfile:
     last_user = ""
     for message in reversed(request.messages):
         if message.role == "user" and message.content:
@@ -93,6 +95,12 @@ def build_prompt_profile(request: InternalRequest) -> PromptProfile:
         complexity = "trivial"
     else:
         complexity = "standard"
+
+    # Optional routing hint: high reasoning_effort means the client declared
+    # the request hard (#297). Default off so behaviour stays unchanged.
+    effort = (request.sampling.reasoning_effort or "").strip().lower()
+    if effort_escalation and effort == "high" and complexity != "complex":
+        complexity = "complex"
 
     return PromptProfile(
         category=categorize(last_user),

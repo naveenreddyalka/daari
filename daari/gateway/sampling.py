@@ -29,6 +29,31 @@ from pydantic import BaseModel, ConfigDict
 _REPEAT_PENALTY_CENTRE = 1.0
 _REPEAT_PENALTY_SCALE = 0.5
 
+# OpenAI reasoning_effort → Ollama top-level `think` (#297).
+# `minimal` omits the field (lowest / default behaviour). Unknown strings omit.
+_REASONING_EFFORT_TO_THINK: dict[str, str | None] = {
+    "minimal": None,
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+}
+
+# Name markers for Ollama models that accept think levels (gpt-oss, Qwen3, …).
+_THINKING_MODEL_MARKERS = ("gpt-oss", "qwen3", "thinking", "deepseek-r1")
+
+
+def model_supports_thinking(model: str) -> bool:
+    """True when a local model is known (or tagged) to accept Ollama `think`."""
+    lowered = (model or "").lower()
+    return any(marker in lowered for marker in _THINKING_MODEL_MARKERS)
+
+
+def normalize_reasoning_effort(raw: Any) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip().lower()
+    return text or None
+
 
 class SamplingParams(BaseModel):
     """Generation controls, in OpenAI's vocabulary."""
@@ -46,6 +71,8 @@ class SamplingParams(BaseModel):
     tool_choice: str | None = None
     n: int | None = None
     logprobs: bool | None = None
+    # Client reasoning_effort (minimal|low|medium|high); forwarded / mapped (#297).
+    reasoning_effort: str | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -90,6 +117,7 @@ class SamplingParams(BaseModel):
             tool_choice=tool_choice,
             n=body.get("n"),
             logprobs=body.get("logprobs"),
+            reasoning_effort=normalize_reasoning_effort(body.get("reasoning_effort")),
         )
 
     @classmethod
@@ -170,6 +198,15 @@ class SamplingParams(BaseModel):
         """Ollama takes JSON mode as a top-level `format`, not an option."""
         return "json" if self.response_format_json else None
 
+    def ollama_think(self) -> str | None:
+        """Map reasoning_effort to Ollama's top-level `think`, or None to omit."""
+        effort = normalize_reasoning_effort(self.reasoning_effort)
+        if effort is None:
+            return None
+        if effort not in _REASONING_EFFORT_TO_THINK:
+            return None
+        return _REASONING_EFFORT_TO_THINK[effort]
+
     def openai_payload(self) -> dict[str, Any]:
         """Parameters to forward verbatim to an OpenAI-compatible provider.
 
@@ -177,7 +214,14 @@ class SamplingParams(BaseModel):
         strict providers reject an unknown field with a 400.
         """
         payload: dict[str, Any] = {}
-        for name in ("max_tokens", "top_p", "seed", "presence_penalty", "frequency_penalty"):
+        for name in (
+            "max_tokens",
+            "top_p",
+            "seed",
+            "presence_penalty",
+            "frequency_penalty",
+            "reasoning_effort",
+        ):
             value = getattr(self, name)
             if value is not None:
                 payload[name] = value
@@ -203,7 +247,14 @@ class SamplingParams(BaseModel):
     def honored_fields(self) -> dict[str, Any]:
         """Only what actually reaches a backend, for cache keying."""
         data: dict[str, Any] = {}
-        for name in ("max_tokens", "top_p", "top_k", "seed", "frequency_penalty"):
+        for name in (
+            "max_tokens",
+            "top_p",
+            "top_k",
+            "seed",
+            "frequency_penalty",
+            "reasoning_effort",
+        ):
             value = getattr(self, name)
             if value is not None:
                 data[name] = value
