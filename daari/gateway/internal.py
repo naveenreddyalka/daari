@@ -85,6 +85,9 @@ class InternalRequest(BaseModel):
 class DaariMeta(BaseModel):
     tier: str
     cache_hit: bool = False
+    # An L1 near-miss was injected as a draft to steer generation (#21);
+    # surfaced as `x-daari-cache: draft` (#278).
+    draft: bool = False
     executor: str
     provider_id: str | None = None
     tool: str | None = None

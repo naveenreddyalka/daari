@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
@@ -14,6 +14,11 @@ from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
+from daari.gateway.cost_headers import (
+    DeferredHeadersStreamingResponse,
+    StreamOutcome,
+    response_cost_headers,
+)
 from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.provider_prefs import (
     as_openrouter_payload,
@@ -260,11 +265,12 @@ class AnthropicGatewayAdapter(GatewayAdapter):
 
             if body.stream:
                 internal.stream = True
+                outcome = StreamOutcome()
 
                 async def event_stream():
                     try:
                         async for event in stream_with_keepalive(
-                            ctx.router.stream_anthropic_events(internal),
+                            ctx.router.stream_anthropic_events(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
                         ):
                             yield event
@@ -313,7 +319,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0}, 'daari_meta': fallback_meta})}\n\n"
                         yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop', 'daari_meta': fallback_meta})}\n\n"
 
-                return StreamingResponse(event_stream(), media_type="text/event-stream")
+                return DeferredHeadersStreamingResponse(
+                    event_stream(), media_type="text/event-stream", late_headers=outcome.headers
+                )
 
             try:
                 result = await ctx.router.route(internal)
@@ -338,12 +346,22 @@ class AnthropicGatewayAdapter(GatewayAdapter):
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
-            return AnthropicMessageResponse(
+            payload = AnthropicMessageResponse(
                 id=f"msg_{uuid.uuid4().hex[:12]}",
                 model=result.model,
                 content=[AnthropicTextBlock(text=result.content)],
                 daari_meta=result.daari_meta.model_dump(),
             ).model_dump()
+            prompt_chars = sum(len(message.content or "") for message in internal.messages)
+            return JSONResponse(
+                payload,
+                headers=response_cost_headers(
+                    result.daari_meta,
+                    ctx.settings,
+                    prompt_chars=prompt_chars,
+                    completion_chars=len(result.content or ""),
+                ),
+            )
 
         @router.post("/v1/messages/count_tokens")
         async def count_tokens(body: AnthropicRequest) -> dict[str, int]:
