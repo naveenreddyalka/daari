@@ -180,6 +180,39 @@ class TestCLI:
         assert key.team_name == "eng"
         assert any(w.duration == "7d" for w in key.budget_windows)
 
+    def test_create_with_mcp_tool_policy(self, tmp_path, monkeypatch):
+        from daari.config.settings import Settings
+
+        settings = Settings()
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        runner = CliRunner()
+        created = runner.invoke(
+            cli_app,
+            [
+                "keys",
+                "create",
+                "bot",
+                "--mcp-allow",
+                "route",
+                "--mcp-allow",
+                "mcp_*",
+                "--mcp-deny",
+                "mcp_prod",
+            ],
+        )
+        assert created.exit_code == 0, created.output
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        store = VirtualKeyStore(settings.virtual_keys_path)
+        key = store.list()[0]
+        assert key.metadata["mcp"] == {"allow": ["route", "mcp_*"], "deny": ["mcp_prod"]}
+
+        plain = runner.invoke(cli_app, ["keys", "create", "plain"])
+        assert plain.exit_code == 0, plain.output
+        plain_key = next(k for k in store.list() if k.name == "plain")
+        assert "mcp" not in plain_key.metadata
+
     def test_report_by_team_rolls_up_clients(self, tmp_path):
         from daari.auth.virtual_keys import VirtualKeyStore
 

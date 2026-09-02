@@ -86,6 +86,16 @@ def keys_create(
         "--window",
         help="Extra duration=max_usd window (e.g. 7d=5). Repeatable.",
     ),
+    mcp_allow: list[str] = typer.Option(
+        [],
+        "--mcp-allow",
+        help="MCP tool the key may call (glob, e.g. mcp_*). Repeatable; empty = all.",
+    ),
+    mcp_deny: list[str] = typer.Option(
+        [],
+        "--mcp-deny",
+        help="MCP tool the key may never call (glob). Repeatable; deny wins.",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import parse_window_flag
@@ -94,6 +104,9 @@ def keys_create(
     settings = get_settings()
     store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
     extra = [parse_window_flag(item) for item in window]
+    metadata: dict | None = None
+    if mcp_allow or mcp_deny:
+        metadata = {"mcp": {"allow": list(mcp_allow), "deny": list(mcp_deny)}}
     created = store.create(
         name,
         daily_budget_usd=daily_budget,
@@ -104,6 +117,7 @@ def keys_create(
         client_id=client_id,
         team=team,
         budget_windows=extra or None,
+        metadata=metadata,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
