@@ -23,6 +23,7 @@
 |---------|---------|
 | `server` | host/port, api_key, virtual_keys |
 | `models` / `ollama` / `mlx` | Local backends |
+| `routing.local_pool` | Multi-host pool; `kind: openai` for vLLM / llama.cpp / LM Studio ([guide](vllm-local-tier.md)) |
 | `cache` | L0/L1, disk\|redis |
 | `routing` | prefer, confidence, caps |
 | `frontier` | L6 providers, budgets, PII |
@@ -34,4 +35,4 @@ Full table: [Config reference](../../reference/config.md) (generated).
 
 ## Next
 
-→ [Project profiles](project-profiles.md) · [Auth and keys](auth-and-keys.md)
+→ [Project profiles](project-profiles.md) · [Auth and keys](auth-and-keys.md) · [vLLM / llama.cpp local tier](vllm-local-tier.md)

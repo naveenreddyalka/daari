@@ -88,6 +88,17 @@ class LocalBackendPool:
         slot.outstanding = max(0, slot.outstanding - 1)
 
     def bind_executor(self, slot: LocalBackendSlot, template: Any) -> Any:
+        if slot.kind == "openai":
+            from daari.router.openai_executor import OpenAICompatExecutor
+
+            return OpenAICompatExecutor(
+                base_url=slot.base_url.rstrip("/"),
+                default_model=slot.model or getattr(template, "default_model", ""),
+                tier=getattr(template, "tier", "L4"),
+                timeout=getattr(template, "timeout", 120.0),
+                retry=getattr(template, "retry", None),
+                metrics=getattr(template, "metrics", None),
+            )
         if not is_dataclass(template) or isinstance(template, type):
             return template
         bound = replace(template, base_url=slot.base_url.rstrip("/"))
@@ -133,6 +144,8 @@ class LocalBackendPool:
                     backend_id=slot.id,
                     strategy=self.strategy,
                 )
+                if slot.model:
+                    request = request.model_copy(update={"model": slot.model})
                 response = await executor.execute(request)
                 slot.breaker.record_success()
                 slot.requests += 1
@@ -200,7 +213,7 @@ class LocalBackendPool:
         for slot in self.slots:
             probe = (
                 f"{slot.base_url.rstrip('/')}/v1/models"
-                if slot.kind == "mlx"
+                if slot.kind in ("mlx", "openai")
                 else f"{slot.base_url.rstrip('/')}/api/version"
             )
             result = await check_model_backend(probe)
