@@ -20,6 +20,7 @@ from daari.cache.verify import build_verifier
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
+from daari.gateway.cost_headers import StreamOutcome
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.provider_prefs import ZdrUnavailable
 from daari.observability.metrics import Metrics
@@ -1005,9 +1006,12 @@ class Router:
                 ),
             ]
             add_step("draft_injected", similarity=round(draft_similarity, 4))
-        return await self._route_generation(
+        generated = await self._route_generation(
             gen_request, request, profile, started, cache_skip=cache_skip
         )
+        if draft_response is not None and not generated.daari_meta.cache_hit:
+            generated.daari_meta.draft = True
+        return generated
 
     async def _resolve_deterministic_tier(
         self,
@@ -1259,11 +1263,20 @@ class Router:
         candidates.sort(reverse=True)
         return candidates[0][1]
 
-    async def stream_openai_chunks(self, request: InternalRequest) -> AsyncIterator[str]:
-        """Emit OpenAI-compatible SSE chunks (strict shape for Cursor and other clients)."""
+    async def stream_openai_chunks(
+        self, request: InternalRequest, *, outcome: StreamOutcome | None = None
+    ) -> AsyncIterator[str]:
+        """Emit OpenAI-compatible SSE chunks (strict shape for Cursor and other clients).
+
+        `outcome`, when given, is filled with the served tier and cache state
+        before the first chunk is yielded so the gateway can send them as
+        response headers (#278).
+        """
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
 
+        outcome = outcome if outcome is not None else StreamOutcome()
+        draft_used = False
         started = time.perf_counter()
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
@@ -1351,6 +1364,7 @@ class Router:
                 "stream_refused",
                 {"tier": policy.refusal_tier, "model": client_model},
             )
+            outcome.note(policy.refusal_tier)
             for chunk in terminal_stream(policy.refusal.content):
                 yield chunk
             add_step("served", tier=policy.refusal_tier, cache_hit=False, latency_ms=0)
@@ -1369,6 +1383,7 @@ class Router:
                 log_gateway_event(
                     "stream_deterministic_tier", {"tier": tier, "model": client_model}
                 )
+                outcome.note(tier, cache_hit=deterministic.daari_meta.cache_hit)
                 for chunk in terminal_stream(deterministic.content):
                     yield chunk
                 latency_ms = int((time.perf_counter() - started) * 1000)
@@ -1402,6 +1417,7 @@ class Router:
                         client_id=request.meta.client_id,
                     )
                 log_gateway_event("stream_cache_hit", {"tier": "L0", "model": client_model})
+                outcome.note("L0", cache_hit=True)
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={'content': cached.content}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
@@ -1452,6 +1468,7 @@ class Router:
                             client_id=request.meta.client_id,
                         )
                     log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
+                    outcome.note("L1", cache_hit=True)
                     yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                     yield f"data: {json.dumps(chunk_payload(delta={'content': nearest_response.content}))}\n\n"
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
@@ -1474,6 +1491,7 @@ class Router:
                             content=_draft_hint(nearest_response.content, nearest_similarity),
                         ),
                     ]
+                    draft_used = True
                     add_step("draft_injected", similarity=round(nearest_similarity, 4))
 
         last_error: Exception | None = None
@@ -1611,6 +1629,7 @@ class Router:
                 add_step("escalate", to="L6", local_confidence=confidence, relay=True)
                 log_gateway_event("stream_frontier_relay", {"from": tier, "to": "L6"})
                 relayed: list[str] = []
+                outcome.note("L6", draft=draft_used)
                 try:
                     l6_request = await self._frontier_request(stream_request)
                     yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
@@ -1673,6 +1692,7 @@ class Router:
             served_model = served.daari_meta.model or served.model or ollama_model
             rewritten = served.content != streamed_text
             completion_chars = len(served.content) if rewritten else tier_completion_chars
+            outcome.note(served_tier, draft=draft_used)
             if rewritten:
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
@@ -1794,13 +1814,17 @@ class Router:
                 deduped.append(tier)
         return self._filter_capable_tiers(deduped, request)
 
-    async def stream_anthropic_events(self, request: InternalRequest) -> AsyncIterator[str]:
+    async def stream_anthropic_events(
+        self, request: InternalRequest, *, outcome: StreamOutcome | None = None
+    ) -> AsyncIterator[str]:
         """Emit Anthropic-compatible SSE events with daari metadata.
 
         Parity with the OpenAI stream path (issue #5): tier fallback via
         _stream_tier_chain, message sanitization before Ollama, and chars/4
-        usage estimates instead of hardcoded zeros.
+        usage estimates instead of hardcoded zeros. `outcome` is filled with
+        the served tier before the first event (#278).
         """
+        outcome = outcome if outcome is not None else StreamOutcome()
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
 
@@ -1889,6 +1913,7 @@ class Router:
         policy = await self._apply_input_policy(request, profile)
         if policy.refusal is not None:
             log_gateway_event("anthropic_stream_refused", {"tier": policy.refusal_tier})
+            outcome.note(policy.refusal_tier)
             for event in terminal_events(policy.refusal.content, policy.refusal_tier):
                 yield event
             return
@@ -1905,6 +1930,7 @@ class Router:
             if deterministic is not None:
                 tier = deterministic.daari_meta.tier
                 log_gateway_event("anthropic_stream_deterministic_tier", {"tier": tier})
+                outcome.note(tier, cache_hit=deterministic.daari_meta.cache_hit)
                 for event in terminal_events(deterministic.content, tier):
                     yield event
                 if self.usage_ledger is not None:
@@ -2119,6 +2145,7 @@ class Router:
                 served = self._apply_output_policy(served)
 
             if served.content != streamed_text and not tool_use_sent:
+                outcome.note(served.daari_meta.tier or tier)
                 for event in terminal_events(served.content, served.daari_meta.tier or tier):
                     yield event
                 log_gateway_event(
@@ -2138,6 +2165,7 @@ class Router:
                 pending.append(message_start)
                 pending.append(text_block_start(block_index))
                 text_block_open = True
+            outcome.note(tier)
             for chunk in pending:
                 yield chunk
             if text_block_open:
