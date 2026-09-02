@@ -834,7 +834,7 @@ def doctor(
         typer.echo(f"Suggested L5: {suggestion['l5']}")
         typer.echo(suggestion["note"])
         return
-    settings = get_settings()
+    settings = Settings.load(resolve_secrets=False)
     resolved_tunnel_url = tunnel_url
     if tunnel and not resolved_tunnel_url:
         resolved_tunnel_url = os.environ.get("DAARI_TUNNEL_URL")

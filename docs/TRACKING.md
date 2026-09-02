@@ -1442,6 +1442,20 @@ streams. Contract documented in `docs/developer/reference/headers.md`.
 Covered by `tests/unit/test_cost_headers.py` and
 `tests/integration/test_cost_headers.py`.
 
+### Secret references for provider and org keys ([#288](https://github.com/naveenreddyalka/daari/issues/288))
+
+<!-- tracking:#288 -->
+
+Config strings may use `secret://env-file/<path>#<KEY>`, `secret://exec/<cmd>`,
+or `secret://keychain/<service>/<account>` (macOS `security` / Linux
+`secret-tool`) instead of plaintext. Resolution runs once in `Settings.load`
+and `AppContext.from_settings`; failures raise `SecretRefError` naming the
+ref, never the value. Resolved values are redacted in `log_gateway_event` and
+trace storage. `daari doctor` checks every configured ref. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md),
+[security.md](developer/resources/security.md). Covered by
+`tests/unit/test_secret_refs.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

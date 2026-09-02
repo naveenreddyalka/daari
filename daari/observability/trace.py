@@ -93,6 +93,9 @@ class TraceStore:
         if not self.enabled:
             return
         try:
+            from daari.security.secret_refs import redact_secrets
+
+            steps = redact_secrets(trace.steps)
             with self._lock, self._connect() as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO traces (trace_id, ts, tier, category, steps)"
@@ -102,7 +105,7 @@ class TraceStore:
                         datetime.now(timezone.utc).isoformat(),
                         tier,
                         category,
-                        json.dumps(trace.steps),
+                        json.dumps(steps),
                     ),
                 )
                 conn.execute(

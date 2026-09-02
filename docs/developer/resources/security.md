@@ -9,6 +9,13 @@ Summary of [SECURITY.md](https://github.com/naveenreddyalka/daari/blob/main/SECU
 3. Org cache/learning — bearer tokens; cross-org leakage is in scope
 4. Frontier escalation — only on L6; optional PII scrub
 
+## Secrets at rest
+
+Prefer `secret://` references in `~/.daari/config.yaml` over plaintext keys
+(env-file, OS keychain/`secret-tool`, or an exec command such as `op read`).
+Resolution is once at startup; `daari doctor` verifies every configured ref.
+See [Auth and keys](../guides/configuration/auth-and-keys.md#secret-references-secret).
+
 ## Report vulnerabilities
 
 Use [GitHub Security Advisories](https://github.com/naveenreddyalka/daari/security/advisories/new) — do not open public issues.

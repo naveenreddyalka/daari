@@ -81,6 +81,33 @@ enterprise:
 
 Mint and revoke events land in the audit log with the claim that caused them.
 
+## Secret references (`secret://`)
+
+Provider keys, the master API key, OIDC/HMAC secrets, and Redis/Postgres URLs
+can use a `secret://` URI instead of plaintext. Values resolve **once at daemon
+start** (and in `daari doctor`); failures are fatal and name the ref without
+logging the secret.
+
+```yaml
+server:
+  api_key: secret://env-file//etc/daari/secrets.env#DAARI_API_KEY
+
+frontier:
+  providers:
+    - id: openai
+      model: gpt-4o-mini
+      # Or set via DAARI_FRONTIER_API_KEY / OPENAI_API_KEY as today.
+```
+
+| Scheme | Example | Resolver |
+|--------|---------|----------|
+| `env-file` | `secret://env-file//root/keys.env#OPENAI_API_KEY` | `KEY=value` lines in a file (absolute path uses a double slash after `env-file`) |
+| `exec` | `secret://exec/op read op://vault/item/credential` | stdout of a shell command (`op`, `vault`, `aws`, …) |
+| `keychain` | `secret://keychain/daari/frontier` | macOS `security find-generic-password`, Linux `secret-tool lookup` |
+
+Plain strings keep working. Resolved values are redacted in gateway event logs
+and traces. See [Security](../../resources/security.md).
+
 ## Verify
 
 ```bash

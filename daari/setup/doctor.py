@@ -36,12 +36,14 @@ def run_doctor(
 ) -> list[CheckResult]:
     """Run health checks. Returns list of results (required + optional)."""
     results: list[CheckResult] = []
-    cfg = settings or Settings.load()
+    # Keep secret:// URIs unresolved so the secret_refs check can verify them.
+    cfg = settings if settings is not None else Settings.load(resolve_secrets=False)
     if cursor_configured is None:
         cursor_configured = _detect_cursor_configured()
 
     results.append(_check_python())
     results.append(_check_config(cfg))
+    results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_frontier(cfg))
@@ -82,6 +84,37 @@ def _check_config(settings: Settings) -> CheckResult:
         return CheckResult(name="config", ok=True, detail=detail)
     except Exception as exc:
         return CheckResult(name="config", ok=False, detail=str(exc))
+
+
+def _check_secret_refs(settings: Settings) -> CheckResult:
+    """Verify every configured secret:// URI resolves (#288)."""
+    from daari.security.secret_refs import SecretRefError, collect_secret_refs, resolve_secret_ref
+
+    refs = collect_secret_refs(settings.model_dump())
+    if not refs:
+        return CheckResult(
+            name="secret_refs",
+            ok=True,
+            detail="no secret:// refs configured",
+            optional=True,
+        )
+    failures: list[str] = []
+    for path, uri in refs:
+        try:
+            resolve_secret_ref(uri)
+        except SecretRefError as exc:
+            failures.append(f"{path}: {exc}")
+    if failures:
+        return CheckResult(
+            name="secret_refs",
+            ok=False,
+            detail="; ".join(failures),
+        )
+    return CheckResult(
+        name="secret_refs",
+        ok=True,
+        detail=f"{len(refs)} secret:// ref(s) resolve",
+    )
 
 
 def _check_ollama(

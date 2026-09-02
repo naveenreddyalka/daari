@@ -58,10 +58,15 @@ def _rotate_if_needed() -> None:
 def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
     """Append JSON lines for Cursor/BYOK debugging."""
     try:
+        from daari.security.secret_refs import redact_secrets
+
+        safe_payload = redact_secrets(payload)
+        if not isinstance(safe_payload, dict):
+            safe_payload = payload
         record = {
             "ts": datetime.now(UTC).isoformat(),
             "event": event,
-            **payload,
+            **safe_payload,
         }
         line = json.dumps(record, default=str) + "\n"
         if _stdout_json:

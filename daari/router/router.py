@@ -3154,6 +3154,14 @@ class AppContext:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> AppContext:
+        from daari.security.secret_refs import collect_secret_refs, resolve_tree
+
+        # Resolve secret:// once before wiring executors / clients (#288).
+        # Skip re-validate when there are no refs so callers that mutate the
+        # same Settings instance after from_settings keep working.
+        dumped = settings.model_dump()
+        if collect_secret_refs(dumped):
+            settings = Settings.model_validate(resolve_tree(dumped))
         l0_path = settings.l0_cache_path
         l1_path = settings.l1_cache_path
         context_path = settings.context_store_path

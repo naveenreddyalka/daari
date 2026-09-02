@@ -573,7 +573,7 @@ class Settings(BaseSettings):
     skills_system_prefix: str = ""
 
     @classmethod
-    def load(cls, config_path: Path | None = None) -> Settings:
+    def load(cls, config_path: Path | None = None, *, resolve_secrets: bool = True) -> Settings:
         defaults = _load_defaults_yaml()
         file_data: dict[str, Any] = {}
         path = config_path or Path.home() / ".daari" / "config.yaml"
@@ -589,7 +589,12 @@ class Settings(BaseSettings):
             merged["enterprise"] = _deep_merge(merged.get("enterprise", {}), merged["org"])
             merged.pop("org", None)
         merged["skills_system_prefix"] = _load_skills_system_prefix()
-        return cls.model_validate(merged)
+        settings = cls.model_validate(merged)
+        if resolve_secrets:
+            from daari.security.secret_refs import resolve_tree
+
+            return cls.model_validate(resolve_tree(settings.model_dump()))
+        return settings
 
     @property
     def l0_cache_path(self) -> Path:
