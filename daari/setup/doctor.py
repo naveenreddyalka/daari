@@ -42,6 +42,7 @@ def run_doctor(
 
     results.append(_check_python())
     results.append(_check_config(cfg))
+    results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_frontier(cfg))
@@ -82,6 +83,38 @@ def _check_config(settings: Settings) -> CheckResult:
         return CheckResult(name="config", ok=True, detail=detail)
     except Exception as exc:
         return CheckResult(name="config", ok=False, detail=str(exc))
+
+
+def _check_secret_refs(settings: Settings) -> CheckResult:
+    """Issue #288: every configured secret:// ref must resolve before serve."""
+    from daari.security.secret_refs import SecretRefError, iter_secret_refs, resolve_secret_ref
+
+    refs = iter_secret_refs(settings)
+    if not refs:
+        return CheckResult(
+            name="secret_refs",
+            ok=True,
+            detail="none configured (values may use secret://env-file|exec|keychain)",
+            optional=True,
+        )
+    failures: list[str] = []
+    for path, ref in refs:
+        try:
+            resolve_secret_ref(ref, register=False)
+        except SecretRefError as exc:
+            failures.append(f"{path}: {exc}")
+    if failures:
+        return CheckResult(
+            name="secret_refs",
+            ok=False,
+            detail="; ".join(failures),
+        )
+    return CheckResult(
+        name="secret_refs",
+        ok=True,
+        detail=f"{len(refs)} ref(s) resolve",
+        optional=True,
+    )
 
 
 def _check_ollama(

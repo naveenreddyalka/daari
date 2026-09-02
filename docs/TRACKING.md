@@ -1459,6 +1459,21 @@ tests in `tests/unit/test_settings.py`: unknown top-level YAML section fails
 `Settings.load()` (`BaseSettings` `extra="forbid"`), unknown nested key is
 ignored, wrong type fails. Cross-linked from `capacity-helm.md`.
 
+### Secret references for provider and org keys ([#288](https://github.com/naveenreddyalka/daari/issues/288))
+
+<!-- tracking:#288 -->
+
+Secret-bearing config values accept `secret://` URIs resolved once at daemon
+startup: `secret://env-file/<path>#<KEY>`, `secret://exec/<command>` (covers
+`op`/`vault`/`aws` CLIs), and `secret://keychain/<service>/<account>` (macOS
+`security`, Linux `secret-tool`) — all shell-outs, no new runtime dependency.
+Resolution lives in `daari/security/secret_refs.py`, is wired into
+`create_app()` (fatal on failure, message names the ref and config path, never
+the value), and registers resolved values so `log_gateway_event()` redacts
+them. `daari doctor` gains a `secret_refs` check verifying every configured
+ref resolves. Plain strings unchanged. Covered by
+`tests/unit/test_secret_refs.py` and `tests/test_doctor.py`.
+
 ### Signed ghcr images with SBOM and provenance ([#295](https://github.com/naveenreddyalka/daari/issues/295))
 
 <!-- tracking:#295 -->
