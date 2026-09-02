@@ -29,7 +29,7 @@ from daari.gateway.provider_prefs import (
     ZdrUnavailable,
 )
 from daari.gateway.sampling import SamplingParams
-from daari.gateway.streaming import NDJSON_KEEPALIVE_FRAME, stream_with_keepalive
+from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
