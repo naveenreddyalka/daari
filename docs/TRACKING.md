@@ -1458,6 +1458,21 @@ and the profile trace step record the value. Covered by
 `tests/unit/test_reasoning_effort.py`, `tests/unit/test_sampling_params.py`,
 and cases in `tests/integration/test_gateway_flow.py`.
 
+### Stall classification for action_required / suppressed CI ([#294](https://github.com/naveenreddyalka/daari/issues/294))
+
+<!-- tracking:#294 -->
+
+`scripts/autodev_pr_watch.py` now inspects Actions workflow runs for the PR
+head SHA when auto-merge is enabled and the check rollup is empty, and
+classifies the stall as `conflict` (`DIRTY` / `mergeable=CONFLICTING`),
+`awaiting-approval` (latest run `conclusion=action_required`),
+`no-ci-triggered` (no runs for the SHA — typical of `GITHUB_TOKEN`-authored
+PRs), or `unknown`. The filed issue/comment body states the classification
+and the matching remedy (merge main; Approve and run with run URL;
+close/reopen or different token). Marker `<!-- autodev-pr-stall -->` and
+conflict-path merge-main guidance are unchanged. Covered by
+`tests/unit/test_autodev_pr_watch.py`.
+
 ### Upgrade and config migration guide ([#287](https://github.com/naveenreddyalka/daari/issues/287))
 
 <!-- tracking:#287 -->
