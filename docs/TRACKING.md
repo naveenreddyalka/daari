@@ -100,7 +100,7 @@ pytest -m benchmark                 # optional latency checks
 
 **Gaps (planned):** L6 live API integration test (optional, requires frontier key/model); richer streaming metadata.
 
-**Count:** 1164 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
+**Count:** 1185 passed (`pytest -m "not integration and not benchmark"`, 2026-09-01)
 
 ---
 
@@ -1357,6 +1357,18 @@ behavior is unchanged. Covered by `tests/unit/test_service.py`.
 that name apply the same as Ollama models. Failures trip the existing circuit
 breaker. Covered by `tests/unit/test_openai_executor.py` and
 `tests/unit/test_local_pool.py`.
+
+### SSE keepalive heartbeat on streaming routes ([#276](https://github.com/naveenreddyalka/daari/issues/276))
+
+<!-- tracking:#276 -->
+
+`server.sse_keepalive_seconds` (default 10, `0` disables) drives a shared
+`stream_with_keepalive()` helper that emits SSE comment frames (`: keepalive`)
+while waiting for the first model chunk on `/v1/chat/completions`,
+`/v1/messages`, `/v1/responses`, and the Ollama NDJSON facade (blank-line
+no-op). Keepalives stop after the first upstream chunk. Covered by
+`tests/unit/test_streaming_keepalive.py` and keepalive integration cases in
+`tests/integration/test_gateway_flow.py`.
 
 ### Backlog picker off the search index ([#291](https://github.com/naveenreddyalka/daari/issues/291))
 

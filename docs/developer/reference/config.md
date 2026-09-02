@@ -13,6 +13,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.api_key` | str | `''` |  |
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
+| `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds before a streaming response emits a keepalive frame (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow-to-first-token streams. 0 disables. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |
@@ -41,16 +42,16 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `cache.l1.ttl_seconds` | float | `0.0` |  |
 | `cache.l1.embed_cache_size` | int | `512` |  |
 | `cache.l1.normalize_inputs` | bool | `True` |  |
-| `cache.l1.verify` | str | `'lexical'` | Second-stage check before serving a semantic hit, because a cosine threshold alone cannot separate a paraphrase from a near-miss. `none` serves any hit above the threshold; `lexical` (default) vetoes hits whose numbers, units, or negation differ; `model` additionally asks a local model to confirm equivalence. |
+| `cache.l1.verify` | Literal | `'lexical'` | Second-stage check before serving a semantic hit, because a cosine threshold alone cannot separate a paraphrase from a near-miss. `none` serves any hit above the threshold; `lexical` (default) vetoes hits whose numbers, units, or negation differ; `model` additionally asks a local model to confirm equivalence. |
 | `cache.l1.shadow_sample_rate` | float | `0.05` |  |
-| `cache.backend` | str | `'disk'` |  |
+| `cache.backend` | Literal | `'disk'` |  |
 | `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` |  |
 | `cache.redis_prefix` | str | `'daari:l0:'` |  |
 | `cache.redis_l1_prefix` | str | `'daari:l1:'` |  |
-| `routing.prefer` | str | `'balanced'` |  |
+| `routing.prefer` | Literal | `'balanced'` |  |
 | `routing.confidence_threshold` | float | `0.7` |  |
 | `routing.category_policies` | dict | `{}` |  |
-| `routing.max_tier_for_chat` | str | None | `None` |  |
+| `routing.max_tier_for_chat` | Optional | `None` |  |
 | `routing.latency_budget_ms` | int | `0` |  |
 | `routing.warm_model_preference` | bool | `True` |  |
 | `routing.learned_router` | bool | `False` |  |
@@ -66,7 +67,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.model` | str | `'gpt-4o-mini'` |  |
 | `frontier.confidence_threshold` | float | `0.7` |  |
 | `frontier.base_url` | str | `'https://api.openai.com/v1'` |  |
-| `frontier.providers` | list | `[]` | Ordered L6 slots. Each may set `zdr: true` (G2). |
+| `frontier.providers` | list | `[]` |  |
 | `frontier.daily_budget_usd` | float | `0.0` |  |
 | `frontier.monthly_budget_usd` | float | `0.0` |  |
 | `frontier.soft_budget_ratio` | float | `0.8` |  |
@@ -101,7 +102,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.prometheus` | bool | `True` |  |
 | `observability.otel` | bool | `False` |  |
 | `observability.config_editor` | bool | `False` |  |
-| `observability.backend` | str | `'sqlite'` |  |
+| `observability.backend` | Literal | `'sqlite'` |  |
 | `observability.postgres_url` | str | `''` |  |
 | `observability.structured_json_logs` | bool | `False` |  |
 | `observability.stateless` | bool | `False` |  |
@@ -129,7 +130,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `guardrails.input_rules` | list | `[]` |  |
 | `guardrails.output_rules` | list | `[]` |  |
 | `boundaries.enabled` | bool | `False` |  |
-| `boundaries.mode` | str | `'block'` |  |
+| `boundaries.mode` | Literal | `'block'` |  |
 | `boundaries.product_name` | str | `''` |  |
 | `boundaries.product_description` | str | `''` |  |
 | `boundaries.allow_topics` | list | `[]` |  |
@@ -195,8 +196,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.sso.admin_min_role` | str | `'admin'` |  |
 | `enterprise.sso.mint_virtual_key_on_login` | bool | `False` |  |
 | `enterprise.sso.mapping_claim` | str | `'groups'` |  |
-| `enterprise.sso.key_mappings` | dict | `{}` | claim value → budget/RPM/tier/boundary |
-| `enterprise.sso.default_policy` | object | `None` |  |
+| `enterprise.sso.key_mappings` | dict | `{}` |  |
+| `enterprise.sso.default_policy` | daari.enterprise.config.SsoKeyPolicy | None | `None` |  |
 | `enterprise.sso.deny_unmapped` | bool | `False` |  |
 | `enterprise.audit_path` | str | `'~/.daari/audit/audit.sqlite3'` |  |
 | `skills_system_prefix` | str | `''` |  |
