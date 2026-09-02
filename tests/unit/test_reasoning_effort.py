@@ -12,7 +12,7 @@ from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.openai import ChatCompletionRequest, _prepare_internal_request
 from daari.gateway.sampling import SamplingParams
 from daari.router.profile import build_prompt_profile
-from daari.router.router import AppContext, OllamaExecutor, Router
+from daari.router.router import AppContext, OllamaExecutor
 from daari.server.app import create_app
 from tests.conftest import META_HEADERS
 from tests.unit.test_tier_cap import _router
