@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-01 (Claude Desktop recipe — [#279](https://github.com/naveenreddyalka/daari/issues/279))  
+> Last updated: 2026-09-01 (Upgrade guide — [#287](https://github.com/naveenreddyalka/daari/issues/287))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1243 passed** (2026-09-01) |
+| `pytest` (default, mocked) | **1272 passed** (2026-09-01) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1456,6 +1456,24 @@ and the matching remedy (merge main; Approve and run with run URL;
 close/reopen or different token). Marker `<!-- autodev-pr-stall -->` and
 conflict-path merge-main guidance are unchanged. Covered by
 `tests/unit/test_autodev_pr_watch.py`.
+
+### Upgrade and config migration guide ([#287](https://github.com/naveenreddyalka/daari/issues/287))
+
+<!-- tracking:#287 -->
+
+`docs/developer/guides/operations/upgrade.md` (nav: Operations) is the
+operator runbook for moving a fleet N → N+1: pip / Homebrew / Docker / Helm
+(`helm upgrade --atomic`) steps with the restart each needs, the config
+compatibility policy, the per-store survival table for `~/.daari/`
+(diskcache/Redis L0+L1 disposable and version-agnostic; `.sqlite3` ledgers,
+virtual keys, audit durable with additive in-place migrations; Postgres
+create-if-missing only), rollback, and fleet ordering (gateway first; the
+HMAC-signed policy bundle has no schema version and laptops ignore unknown
+keys, so skew is tolerated both ways). Config claims are pinned by three new
+tests in `tests/unit/test_settings.py`: unknown top-level YAML section fails
+`Settings.load()` (`BaseSettings` `extra="forbid"`), unknown nested key is
+ignored, wrong type fails. Cross-linked from `capacity-helm.md`.
+>>>>>>> origin/main
 
 ### Secret references for provider and org keys ([#288](https://github.com/naveenreddyalka/daari/issues/288))
 
