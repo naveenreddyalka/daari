@@ -94,7 +94,7 @@ def _check_secret_refs(settings: Settings) -> CheckResult:
         return CheckResult(
             name="secret_refs",
             ok=True,
-            detail="none configured (values may use secret://env-file|exec|keychain)",
+            detail="none configured (values may use secret://env-file|exec|keychain|oauth)",
             optional=True,
         )
     failures: list[str] = []

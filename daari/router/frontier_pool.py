@@ -20,6 +20,7 @@ from daari.observability.trace import add_step
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.retry import RetryPolicy, is_retryable, status_of
 from daari.router.frontier import FrontierExecutor
+from daari.security.secret_refs import SecretRefError, current_secret
 
 
 @dataclass
@@ -42,12 +43,13 @@ class ProviderSlot:
             self._key_cycle = itertools.cycle(order)
 
     def pick_key(self) -> str | None:
+        # secret://oauth keys re-mint near expiry (#321); plain keys pass through.
         if not self.keys:
-            return self.executor.api_key
+            return current_secret(self.executor.api_key)
         # Weighted: duplicate entries by rounded weight, then cycle.
         if self.weight <= 0:
-            return next(self._key_cycle)
-        return next(self._key_cycle)
+            return current_secret(next(self._key_cycle))
+        return current_secret(next(self._key_cycle))
 
 
 @dataclass
@@ -104,7 +106,15 @@ class FrontierPool:
                     state=slot.breaker.state,
                 )
                 continue
-            key = slot.pick_key()
+            try:
+                key = slot.pick_key()
+            except SecretRefError as exc:
+                # Token refresh failed: fail closed on this provider and let
+                # the next slot try rather than sending an expired credential.
+                slot.breaker.record_failure()
+                errors.append(f"{slot.id}:SecretRefError")
+                add_step("frontier_fail", provider=slot.id, error_type="SecretRefError", error=str(exc)[:200])
+                continue
             if not key:
                 errors.append(f"{slot.id}:no_key")
                 continue

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from daari.cache.exact import cache_key
 from daari.cache.semantic import extract_embed_text, semantic_context_key
 from daari.gateway.internal import InternalRequest, InternalResponse
+from daari.security.secret_refs import current_secret
 
 
 def org_l0_key(request: InternalRequest) -> str:
@@ -37,9 +38,11 @@ class OrgCacheClient:
     similarity_threshold: float = 0.88
 
     def _auth_headers(self) -> dict[str, str]:
-        if not self.token:
+        # secret://oauth org tokens re-mint near expiry (#321).
+        token = current_secret(self.token)
+        if not token:
             return {}
-        return {"Authorization": f"Bearer {self.token}"}
+        return {"Authorization": f"Bearer {token}"}
 
     async def _request_with_retries(
         self,
@@ -208,9 +211,10 @@ class OrgLearningClient:
     transport: httpx.AsyncBaseTransport | None = None
 
     def _auth_headers(self) -> dict[str, str]:
-        if not self.token:
+        token = current_secret(self.token)
+        if not token:
             return {}
-        return {"Authorization": f"Bearer {self.token}"}
+        return {"Authorization": f"Bearer {token}"}
 
     async def post_feedback(self, feedback: OrgLearningFeedback) -> None:
         if not self.enabled:

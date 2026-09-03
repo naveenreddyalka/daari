@@ -106,11 +106,52 @@ cache:
   `vault kv get -field=...`, `aws secretsmanager get-secret-value ...`.
 - `secret://keychain/<service>/<account>` — macOS Keychain via
   `security find-generic-password`, Linux secret-service via `secret-tool`.
+- `secret://oauth/<token-url>?client_id=<id>&client_secret=<secret-ref>[&scope=…]`
+  — no static upstream key at all; see below.
 
 A ref that fails to resolve is fatal at startup with a message naming the ref
 (never the value); `daari doctor` verifies every configured ref resolves.
 Resolved values are redacted from gateway logs. Plain string values keep
 working unchanged.
+
+### OAuth client credentials (`secret://oauth`)
+
+Enterprises that front OpenAI/Anthropic with an internal token service (workload
+identity federation, OAuth client-credentials upstream auth) never want a
+long-lived provider key on a laptop. The `oauth` scheme performs an RFC 6749
+client-credentials grant against your token endpoint and uses the returned
+`access_token` as the credential (#321):
+
+```yaml
+frontier:
+  providers:
+    - id: openai
+      base_url: https://llm-proxy.corp.example.com/v1
+      keys:
+        - secret://oauth/https://idp.corp.example.com/oauth2/token?client_id=daari-laptops&client_secret=secret://keychain/daari-idp/client-secret&scope=llm.invoke&audience=https://llm-proxy.corp.example.com
+```
+
+- `client_id` (required) and `client_secret` (required) — the secret **must** be
+  another `secret://` ref (`env-file`, `exec` or `keychain`); a plaintext secret
+  in the URL is rejected. Percent-encode a nested ref that contains `&`, `+` or
+  spaces.
+- `scope`, `audience`, `resource` — optional, passed through verbatim for token
+  services that require them.
+- `auth=basic|post` — how the client authenticates to the token endpoint. Default
+  `basic` (HTTP Basic, which RFC 6749 requires every server to support);
+  `post` sends `client_id`/`client_secret` in the form body for IdPs configured
+  for `client_secret_post`.
+- `refresh_margin=<seconds>` — re-mint this long before `expires_in` (default 60).
+  A response without `expires_in` is treated as a one-hour token.
+
+The token is minted on the machine that uses it and cached in memory until
+expiry minus the margin. Refresh is lazy: the next place that reads the
+credential — frontier key rotation before each L6 attempt, org cache/learning
+clients before each call — picks up a fresh token, with concurrent readers
+sharing one token request. A refresh that fails (non-2xx, malformed body,
+network error) raises with the endpoint in the message — never the secret or
+token — and the L6 attempt fails over to the next provider rather than sending
+an expired credential.
 
 ## Verify
 
