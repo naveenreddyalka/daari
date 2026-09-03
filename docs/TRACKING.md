@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1379 passed** (2026-09-02) |
+| `pytest` (default, mocked) | **1411 passed** (2026-09-02) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1623,6 +1623,24 @@ headers (shared `usd_string`). Docs: headers reference "Budget headers",
 budgets-frontier guide. Covered by `tests/unit/test_budget_headers.py` and the
 `test_budget_headers_*` / `test_no_budget_means_no_budget_headers` cases in
 the gateway flow suite.
+
+### `secret://oauth` resolver — client-credentials upstream auth ([#321](https://github.com/naveenreddyalka/daari/issues/321))
+
+**Status:** Done (2026-09-02). New `secret://oauth/<token-url>?client_id=…&client_secret=<secret-ref>`
+scheme in `daari/security/secret_refs.py` performs an RFC 6749
+client-credentials grant (HTTP Basic by default, `auth=post` optional; `scope`,
+`audience`, `resource` passthrough) and caches the access token until
+`expires_in` minus `refresh_margin` (default 60s), serialising concurrent
+refreshes behind one lock. The client secret must itself be an
+env-file/exec/keychain ref — inline secrets are rejected. Tokens resolve to a
+`RefreshableSecret` (`str` subclass carrying its ref) so the values written
+into settings stay plain strings everywhere; `current_secret()` re-mints on
+read and is wired into `ProviderSlot.pick_key` (every L6 attempt) and the org
+cache/learning clients' bearer headers. A failed refresh raises
+`SecretRefError` naming the endpoint (never the secret) and the frontier pool
+fails over instead of sending a stale token. No new dependency (httpx already
+in tree). Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md#oauth-client-credentials-secretoauth).
+Covered by `tests/unit/test_secret_refs_oauth.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
