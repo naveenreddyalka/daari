@@ -56,6 +56,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.warm_model_preference` | bool | `True` |  |
 | `routing.learned_router` | bool | `False` |  |
 | `routing.reasoning_effort_escalation` | bool | `False` |  |
+| `routing.shadow_sample_rate` | float | `0.0` | Fraction of local-tier responses replayed in the background at shadow_compare_tier to measure tier divergence. 0 disables. |
+| `routing.shadow_compare_tier` | Literal | `''` | Tier to replay sampled requests at. Empty = highest configured local tier; L6 requires shadow_daily_usd > 0. |
+| `routing.shadow_daily_usd` | float | `0.0` | Daily spend cap for L6 shadow replays. 0 forbids L6 shadow runs. |
 | `routing.org_pool.enabled` | bool | `False` |  |
 | `routing.org_pool.base_url` | str | `''` |  |
 | `routing.org_pool.model` | str | `''` |  |

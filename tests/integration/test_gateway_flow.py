@@ -1857,6 +1857,58 @@ async def test_no_budget_means_no_budget_headers(settings, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_shadow_sampled_tier_decision_records_divergence(app, monkeypatch):
+    """Issue #318: a sampled L3 answer is replayed at the top local tier in the
+    background; divergence lands in learn stats + report, the client sees nothing."""
+    import asyncio
+
+    class AnswerEmbedder:
+        async def embed(self, text: str) -> list[float] | None:
+            return [1.0, 0.0] if "small-model" in text else [0.0, 1.0]
+
+    router = app.state.ctx.router
+    router.semantic_cache.embedder = AnswerEmbedder()
+    router.tier_shadow_sample_rate = 1.0
+    seen_models: list[str] = []
+
+    async def by_model(request: InternalRequest) -> InternalResponse:
+        seen_models.append(request.model)
+        content = "small-model answer" if request.model == "llama3.2:3b" else "big-model answer"
+        return InternalResponse(
+            content=content,
+            model=request.model,
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=2),
+        )
+
+    mock_all_ollama_executors(monkeypatch, router, by_model)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        served = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "Define a mutex"}]},
+            headers=META_HEADERS,
+        )
+        assert served.json()["daari_meta"]["tier"] == "L3"
+        assert served.json()["choices"][0]["message"]["content"] == "small-model answer"
+        await asyncio.gather(*router._shadow_tasks)
+
+        stats = await client.get("/v1/daari/learn/stats")
+        report = await client.get("/v1/daari/report")
+        metrics = await client.get("/v1/daari/stats")
+
+    assert seen_models == ["llama3.2:3b", "llama3.1:70b"]
+    tier_shadow = stats.json()["tier_shadow"]
+    assert sum(row["samples"] for row in tier_shadow.values()) == 1
+    assert sum(row["agreements"] for row in tier_shadow.values()) == 0
+    assert report.json()["tier_divergence"] == tier_shadow
+    # Only the served L3 answer is a learned-routing outcome; the shadow run is not.
+    outcomes = stats.json()["categories"]
+    assert {tier for rows in outcomes.values() for tier in rows} == {"L3"}
+    assert metrics.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_openai_stream_emits_keepalive_before_first_chunk(keepalive_app, monkeypatch):
     async def delayed_chunks(_request: InternalRequest, *, outcome=None):
         await asyncio.sleep(KEEPALIVE_DELAY)

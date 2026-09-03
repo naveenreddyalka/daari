@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from daari.enterprise.config import OrgSettings
 
@@ -255,9 +255,40 @@ class RoutingSettings(RuntimeSettings):
     # When True, client reasoning_effort=high biases local tier selection
     # upward (and marks the profile complex). Default off (#297).
     reasoning_effort_escalation: bool = False
+    # Shadow evals for tier decisions (#318): replay this fraction of requests
+    # served by a local tier at a comparison tier in the background and record
+    # answer divergence per category. 0 disables.
+    shadow_sample_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of local-tier responses replayed in the background at "
+            "shadow_compare_tier to measure tier divergence. 0 disables."
+        ),
+    )
+    # "" = highest configured local tier. L6 is only honoured while
+    # shadow_daily_usd > 0 so shadow traffic can never spend unbounded.
+    shadow_compare_tier: Literal["", "L3", "L4", "L5", "L6"] = Field(
+        default="",
+        description=(
+            "Tier to replay sampled requests at. Empty = highest configured local "
+            "tier; L6 requires shadow_daily_usd > 0."
+        ),
+    )
+    shadow_daily_usd: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Daily spend cap for L6 shadow replays. 0 forbids L6 shadow runs.",
+    )
     # Org inference pool (device-local → org pool → frontier).
     org_pool: OrgPoolSettings = Field(default_factory=OrgPoolSettings)
     local_pool: LocalPoolSettings = Field(default_factory=LocalPoolSettings)
+
+    @field_validator("shadow_compare_tier", mode="before")
+    @classmethod
+    def _upper_tier(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
 
 
 class ToolsSettings(BaseModel):
