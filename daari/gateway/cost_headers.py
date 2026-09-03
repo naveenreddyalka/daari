@@ -36,6 +36,10 @@ def _decimal(value: float) -> str:
     return text or "0"
 
 
+# Shared with the budget headers (#319) so every USD header formats alike.
+usd_string = _decimal
+
+
 def _cache_state(*, cache_hit: bool, draft: bool) -> str:
     if cache_hit:
         return "hit"

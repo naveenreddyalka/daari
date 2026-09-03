@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (tier shadow evals — [#318](https://github.com/naveenreddyalka/daari/issues/318))  
+> Last updated: 2026-09-02 (budget-remaining headers — [#319](https://github.com/naveenreddyalka/daari/issues/319))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1353 passed** (2026-09-02) |
+| `pytest` (default, mocked) | **1368 passed** (2026-09-02) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1588,6 +1588,26 @@ so chat and MCP share one rule evaluator. Docs:
 [mcp.md](developer/guides/clients/mcp.md). Covered by
 `tests/unit/test_mcp_guardrails.py` and
 `tests/integration/test_mcp_guardrails.py`.
+
+### Budget-remaining response headers ([#319](https://github.com/naveenreddyalka/daari/issues/319))
+
+<!-- tracking:#319 -->
+
+`daari/auth/budgets.py` gained `WindowStatus` / `budget_status` /
+`tightest_window` / `reset_epoch` / `window_header_label`
+(`first_exceeded_window` now builds on them). The auth middleware evaluates
+every effective key+team window once per request and, for virtual keys with at
+least one budget, adds `x-daari-budget-remaining` / `-limit` / `-window`
+(`1d`, `1mo`, `7d`, `12h`) / `-reset` (epoch seconds = `reset_at`) / `-scope`
+(`key`|`team`) for the window with the least USD left — on every 2xx, streams
+included. The budget-exhausted `402` keeps its body and status (pinned since
+#174/#158) and now carries the same headers with remaining `0` plus
+`Retry-After` until reset. No budget ⇒ no headers; master key unchanged.
+Rendering lives in `daari/gateway/budget_headers.py` next to the #308 cost
+headers (shared `usd_string`). Docs: headers reference "Budget headers",
+budgets-frontier guide. Covered by `tests/unit/test_budget_headers.py` and the
+`test_budget_headers_*` / `test_no_budget_means_no_budget_headers` cases in
+the gateway flow suite.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

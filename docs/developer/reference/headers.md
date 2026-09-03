@@ -32,6 +32,34 @@ bodies. Values agree with `daari_meta` on the same response.
 
 Values are plain decimal strings (`0`, `0.0004`), never scientific notation.
 
+## Budget headers
+
+Requests authenticated with a virtual key that has at least one budget window
+(its own or inherited from its team) also report how much frontier budget is
+left, so clients and FinOps tooling can self-throttle to $0 local tiers before
+the `402`. Only the **tightest** window is reported: the one with the least USD
+remaining across key and team scopes.
+
+| Header | Value |
+|--------|-------|
+| `x-daari-budget-remaining` | USD left in the tightest window (`0` when exhausted). Same decimal format as the cost headers. |
+| `x-daari-budget-limit` | That window's cap in USD. |
+| `x-daari-budget-window` | Window duration: `1d`, `1mo`, or the configured `7d` / `12h`. |
+| `x-daari-budget-reset` | Epoch seconds when the window resets — the same instant as the `402` body's `reset_at`. |
+| `x-daari-budget-scope` | `key` or `team` — which cap is the tightest. |
+
+Rules:
+
+- Sent on every 2xx from an authenticated route, streaming included: budget
+  state is known before the first byte, unlike per-response cost.
+- A budget-exhausted `402` (`budget_exceeded`) carries the same five headers
+  with remaining `0`, plus `Retry-After` in seconds until the reset — the same
+  shape as the rate-limit `429`.
+- No budget window for the caller ⇒ none of these headers. Master-key and
+  open single-user installs are unchanged.
+- Only frontier (L6) spend counts toward `remaining`; local tiers and cache
+  hits are free, so the denominator is real spend.
+
 ## Streaming contract
 
 Headers must leave before the first byte, so streams report only what the
@@ -45,3 +73,5 @@ router knows by then:
 - `x-daari-response-cost` and `x-daari-response-cost-avoided` are **never**
   sent on streams — usage is unknown until the last chunk. Use the ledger
   (`daari report`, `/v1/daari/report`) for streamed spend.
+- The `x-daari-budget-*` headers **are** sent on streams; they describe the
+  caller's budget before this request, not this request's cost.
