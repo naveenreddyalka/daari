@@ -75,7 +75,7 @@ The chart is `deploy/helm/daari/`; the image tag is `image.tag` in
 
 ```bash
 helm upgrade daari deploy/helm/daari \
-  --reuse-values --set image.tag=1.3.0 \
+  --reuse-values --set image.tag=1.4.0 \
   --atomic --timeout 5m
 ```
 
