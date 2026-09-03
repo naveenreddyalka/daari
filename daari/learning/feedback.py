@@ -36,6 +36,15 @@ CREATE TABLE IF NOT EXISTS shadow_checks (
     similarity REAL,
     agreed INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tier_shadow_checks (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    category TEXT,
+    served_tier TEXT NOT NULL,
+    compare_tier TEXT NOT NULL,
+    similarity REAL,
+    agreed INTEGER NOT NULL
+);
 """
 
 
@@ -185,6 +194,78 @@ class FeedbackStore:
             }
             for category, samples, disagreements, avg_sim in rows
         }
+
+    def record_tier_shadow(
+        self,
+        *,
+        category: str | None,
+        served_tier: str,
+        compare_tier: str,
+        similarity: float,
+        agreed: bool,
+    ) -> None:
+        """#318: outcome of replaying a local-tier answer at a comparison tier."""
+        if not self.enabled:
+            return
+        try:
+            with self._lock, self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO tier_shadow_checks"
+                    " (ts, category, served_tier, compare_tier, similarity, agreed)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        datetime.now(timezone.utc).isoformat(),
+                        category,
+                        served_tier,
+                        compare_tier,
+                        float(similarity),
+                        1 if agreed else 0,
+                    ),
+                )
+        except Exception:
+            pass
+
+    def tier_shadow_stats(self, days: int = 7) -> dict[str, dict[str, Any]]:
+        """Per-category tier divergence: how often the comparison tier agreed."""
+        if not self.enabled:
+            return {}
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days))).isoformat()
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT category, served_tier, compare_tier, COUNT(*),"
+                    " SUM(agreed), SUM(similarity)"
+                    " FROM tier_shadow_checks WHERE ts >= ?"
+                    " GROUP BY category, served_tier, compare_tier",
+                    (cutoff,),
+                ).fetchall()
+        except Exception:
+            return {}
+        stats: dict[str, dict[str, Any]] = {}
+        for category, served, compare, samples, agreements, sim_total in rows:
+            entry = stats.setdefault(
+                category or "unknown",
+                {
+                    "samples": 0,
+                    "agreements": 0,
+                    "_similarity_total": 0.0,
+                    "compare_tiers": {},
+                    "served_tiers": {},
+                },
+            )
+            entry["samples"] += samples
+            entry["agreements"] += agreements or 0
+            entry["_similarity_total"] += sim_total or 0.0
+            entry["compare_tiers"][compare] = entry["compare_tiers"].get(compare, 0) + samples
+            entry["served_tiers"][served] = entry["served_tiers"].get(served, 0) + samples
+        for entry in stats.values():
+            samples = entry["samples"]
+            agree_rate = round(entry["agreements"] / samples, 4) if samples else 0.0
+            sim_total = entry.pop("_similarity_total")
+            entry["agree_rate"] = agree_rate
+            entry["divergence_rate"] = round(1.0 - agree_rate, 4) if samples else 0.0
+            entry["avg_answer_similarity"] = round(sim_total / samples, 4) if samples else None
+        return stats
 
     def outcomes(self, limit: int = 50) -> list[dict[str, Any]]:
         if not self.enabled:

@@ -51,6 +51,9 @@ Unlike most proxies, daari tracks:
 
 Inspect via `daari report`, web UI cache-trust panel, or `/v1/daari/cache/diversity`.
 
+The same shadow-sampling idea audits **tier decisions** too: see
+[Shadow evals for tier decisions](routing-tiers.md#shadow-evals-for-tier-decisions).
+
 ## Org caches
 
 Optional org service (`daari org-cache serve`) adds L0-org / L1-org after local miss. See [Org cache guide](../guides/features/org-cache.md).

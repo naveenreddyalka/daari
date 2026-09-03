@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable
 
@@ -29,6 +30,7 @@ from daari.observability.trace import TraceStore, add_step, end_trace, start_tra
 from daari.observability.tokens import ollama_token_usage, response_token_usage
 from daari.observability.usage import UsageLedger
 from daari.policy.engine import PolicyEngine
+from daari.pricing import cost_usd
 from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
 from daari.providers.registry import ProviderRegistry
 from daari.rules.dev_commands import DevCommandMatch, match_dev_command
@@ -351,6 +353,9 @@ class Router:
         learned_router: Any | None = None,
         *,
         l1_shadow_sample_rate: float = 0.0,
+        tier_shadow_sample_rate: float = 0.0,
+        tier_shadow_compare_tier: str = "",
+        tier_shadow_daily_usd: float = 0.0,
         latency_budget_ms: int = 0,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
@@ -425,6 +430,11 @@ class Router:
         self._shadow_rng = shadow_rng or random.random
         self._shadow_tasks: set[Any] = set()
         self._shadow_stats_cache: tuple[float, dict[str, Any]] | None = None
+        # Tier shadow evals (#318): share the rng and task set with the L1 check.
+        self.tier_shadow_sample_rate = max(0.0, min(1.0, tier_shadow_sample_rate))
+        self.tier_shadow_compare_tier = (tier_shadow_compare_tier or "").upper()
+        self.tier_shadow_daily_usd = max(0.0, float(tier_shadow_daily_usd))
+        self._tier_shadow_spend: tuple[str, float] = ("", 0.0)
         self.l1_draft_threshold = l1_draft_threshold
         self.context_optimizer_enabled = context_optimizer_enabled
         self.context_max_history = context_max_history
@@ -657,6 +667,7 @@ class Router:
         self._ledger_record(request, response)
         self._feedback_record(profile, response)
         self._example_record(request, profile, response)
+        self._maybe_tier_shadow(request, profile, response)
         return response
 
     _MODEL_TIERS = {"L3", "L4", "L5", "L6"}
@@ -874,6 +885,132 @@ class Router:
                 agreed=similarity >= self._SHADOW_AGREE_SIMILARITY,
             )
             self._shadow_stats_cache = None
+        except Exception:
+            pass
+
+    # --- Tier shadow evals (#318) -------------------------------------------
+
+    _LOCAL_TIERS = ("L3", "L4", "L5")
+
+    @property
+    def tier_shadow_spend_usd(self) -> float:
+        """Estimated L6 shadow spend so far today (in-memory; never in the ledger)."""
+        today = datetime.now(timezone.utc).date().isoformat()
+        day, spent = self._tier_shadow_spend
+        return spent if day == today else 0.0
+
+    def _add_tier_shadow_spend(self, usd: float) -> None:
+        today = datetime.now(timezone.utc).date().isoformat()
+        self._tier_shadow_spend = (today, self.tier_shadow_spend_usd + max(0.0, usd))
+
+    def _highest_local_tier(self) -> str:
+        models = {tier: self._executor_for_tier(tier).default_model for tier in self._LOCAL_TIERS}
+        if models["L5"] != models["L4"]:
+            return "L5"
+        if models["L4"] != models["L3"]:
+            return "L4"
+        return "L3"
+
+    def _tier_shadow_target(self, served_tier: str) -> str | None:
+        """Comparison tier for a served local tier, or None when nothing to compare."""
+        target = self.tier_shadow_compare_tier or self._highest_local_tier()
+        if target == "L6":
+            if self.tier_shadow_daily_usd <= 0 or self.frontier is None:
+                return None
+            if not getattr(self.frontier, "api_key", None):
+                return None
+            if self.tier_shadow_spend_usd >= self.tier_shadow_daily_usd:
+                return None
+            return target
+        if target not in self._LOCAL_TIERS or target == served_tier:
+            return None
+        served_model = self._executor_for_tier(served_tier).default_model
+        if self._executor_for_tier(target).default_model == served_model:
+            return None
+        return target
+
+    def _maybe_tier_shadow(
+        self,
+        request: InternalRequest,
+        profile: PromptProfile | None,
+        response: InternalResponse,
+    ) -> None:
+        """Sample local-tier answers for background replay at a comparison tier."""
+        meta = response.daari_meta
+        if (
+            self.feedback_store is None
+            or self.tier_shadow_sample_rate <= 0.0
+            or meta.tier not in self._LOCAL_TIERS
+            or meta.cache_hit
+            or not response.content.strip()
+            or request.tools
+            or self._shadow_rng() >= self.tier_shadow_sample_rate
+        ):
+            return
+        target = self._tier_shadow_target(meta.tier)
+        if target is None:
+            return
+        category = (
+            profile.category if profile is not None else build_prompt_profile(request).category
+        )
+        try:
+            task = asyncio.create_task(
+                self._tier_shadow_check(request, response.content, meta.tier, target, category)
+            )
+        except RuntimeError:
+            return
+        self._shadow_tasks.add(task)
+        task.add_done_callback(self._shadow_tasks.discard)
+
+    async def _tier_shadow_check(
+        self,
+        request: InternalRequest,
+        served_content: str,
+        served_tier: str,
+        compare_tier: str,
+        category: str,
+    ) -> None:
+        """Runs outside the serving path: executors only, so no cache write, no
+        ledger row, no learned-routing outcome is produced by the shadow answer."""
+        try:
+            replay = request.model_copy(deep=True)
+            if compare_tier == "L6":
+                l6_request = await self._frontier_request(replay)
+                shadow = await self.frontier.execute(
+                    l6_request, escalated_from=served_tier, local_confidence=1.0
+                )
+                prompt_chars = sum(len(m.content or "") for m in l6_request.messages)
+                tokens_in, tokens_out, _ = response_token_usage(shadow, prompt_chars)
+                self._add_tier_shadow_spend(
+                    cost_usd(
+                        shadow.daari_meta.model or shadow.model,
+                        tokens_in,
+                        tokens_out,
+                        self.pricing,
+                        fallback_per_1k=self.frontier_price_per_1k_tokens,
+                    )
+                )
+            else:
+                executor = self._executor_for_tier(compare_tier)
+                replay.model = executor.default_model
+                shadow = await executor.execute(replay)
+            if not shadow.content.strip():
+                return
+            embedder = self.semantic_cache.embedder
+            served_vec = await embedder.embed(served_content)
+            shadow_vec = await embedder.embed(shadow.content)
+            if served_vec is None or shadow_vec is None:
+                return
+            similarity = cosine_similarity(served_vec, shadow_vec)
+            agreed = similarity >= self._SHADOW_AGREE_SIMILARITY
+            self.feedback_store.record_tier_shadow(
+                category=category,
+                served_tier=served_tier,
+                compare_tier=compare_tier,
+                similarity=similarity,
+                agreed=agreed,
+            )
+            self.metrics.record_tier_shadow(agreed=agreed)
         except Exception:
             pass
 
@@ -1752,6 +1889,10 @@ class Router:
                     )
                 except Exception:
                     pass
+            if not tool_calls_sent:
+                if not served.daari_meta.tier:
+                    served.daari_meta.tier = tier
+                self._maybe_tier_shadow(request, profile, served)
             if (
                 self.example_store is not None
                 and not tool_calls_sent
@@ -3425,6 +3566,9 @@ class AppContext:
             tuner=tuner,
             example_store=example_store,
             l1_shadow_sample_rate=settings.cache.l1.shadow_sample_rate,
+            tier_shadow_sample_rate=settings.routing.shadow_sample_rate,
+            tier_shadow_compare_tier=settings.routing.shadow_compare_tier,
+            tier_shadow_daily_usd=settings.routing.shadow_daily_usd,
             model_profile_store=model_profile_store,
             warm_tracker=warm_tracker,
             learned_router=learned_router,

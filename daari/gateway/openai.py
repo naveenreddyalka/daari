@@ -753,11 +753,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             # Trust PRD T1d: false-hit rates + answer diversity per category.
             trust: dict[str, Any] = {}
             feedback = ctx.router.feedback_store
+            payload["tier_divergence"] = {}
             if feedback is not None:
                 try:
                     trust["false_hit_rates"] = feedback.shadow_stats(days=max(1, days))
                 except Exception:
                     trust["false_hit_rates"] = {}
+                # #318: per-category tier divergence from shadow replays.
+                try:
+                    payload["tier_divergence"] = feedback.tier_shadow_stats(days=max(1, days))
+                except Exception:
+                    pass
             try:
                 trust["diversity"] = ctx.router.semantic_cache.diversity_stats()
             except Exception:
@@ -784,10 +790,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 shadow = store.shadow_stats(days=max(1, days))
             except Exception:
                 shadow = {}
+            try:
+                tier_shadow = store.tier_shadow_stats(days=max(1, days))
+            except Exception:
+                tier_shadow = {}
             return {
                 "days": max(1, days),
                 "categories": store.stats(days=max(1, days)),
                 "shadow": shadow,
+                "tier_shadow": tier_shadow,
             }
 
         @router.post("/v1/daari/feedback")

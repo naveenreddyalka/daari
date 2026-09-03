@@ -43,6 +43,31 @@ Local models escalate on low confidence, latency budget miss, or capability gaps
 
 Agent/`tool_calls` flows skip L1 and Lt/L2. Exact L0 is on for an identical full history + tools schema; changing the last tool result is a miss (ADR-0004 / G1).
 
+## Shadow evals for tier decisions
+
+"Would a bigger model have answered differently?" is measurable without
+changing what users see. With `routing.shadow_sample_rate > 0`, that fraction
+of responses served by a local tier (L3–L5, not cache hits, not tool flows) is
+replayed in a background task at a comparison tier and the two answers are
+compared with the same embedder/cosine path the L1 shadow check uses. The
+served response is never delayed or altered; the replay is executor-only, so it
+writes nothing to the caches, adds no usage-ledger row, and is not a
+learned-routing outcome.
+
+- `routing.shadow_compare_tier` — empty (default) means the highest configured
+  local tier, so measuring routing quality costs $0. `L6` replays against the
+  frontier and is honoured only while `routing.shadow_daily_usd > 0`; the
+  in-memory daily estimate stops replays at the cap.
+- A replay against the same model as the one that served (e.g. a single-model
+  install) is skipped — there is nothing to compare.
+
+Results land per category in the feedback store next to the cache false-hit
+rate: `daari learn stats` prints a "Tier divergence" table (samples, agree%,
+diverge%, comparison tier), `daari report` / `GET /v1/daari/report` carry
+`tier_divergence`, `GET /v1/daari/learn/stats` carries `tier_shadow`, and
+Prometheus exports `daari_tier_shadow_samples_total{agreed="true|false"}`.
+Default off; tests set the rate explicitly so the suite stays deterministic.
+
 ## Knobs
 
 See [Config overview](../guides/configuration/overview.md) and [Config reference](../reference/config.md).
