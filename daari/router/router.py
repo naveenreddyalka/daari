@@ -1485,7 +1485,14 @@ class Router:
                 "choices": [choice],
             }
 
-        def usage_chunk(completion_len: int) -> str:
+        def usage_chunk(completion_len: int, *, tokens: tuple[int, int] | None = None) -> str:
+            # `tokens` carries provider-reported (input, output) counts when the
+            # backend surfaced them (#320); otherwise fall back to chars/4.
+            if tokens is not None:
+                prompt_tokens, completion_tokens = max(0, tokens[0]), max(0, tokens[1])
+            else:
+                prompt_tokens = max(1, prompt_chars // 4)
+                completion_tokens = max(0, completion_len // 4)
             payload = {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
@@ -1493,9 +1500,9 @@ class Router:
                 "model": client_model,
                 "choices": [],
                 "usage": {
-                    "prompt_tokens": max(1, prompt_chars // 4),
-                    "completion_tokens": max(0, completion_len // 4),
-                    "total_tokens": max(1, (prompt_chars + completion_len) // 4),
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
                 },
             }
             return f"data: {json.dumps(payload)}\n\n"
@@ -1855,7 +1862,12 @@ class Router:
                 yield role_chunk
             finish_reason = "tool_calls" if tool_calls_sent else "stop"
             yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
-            yield usage_chunk(completion_chars)
+            # One usage figure feeds the client-visible usage chunk and the
+            # ledger row, so both see the provider's final count once (#320).
+            stream_in, stream_out, usage_estimated = response_token_usage(served, prompt_chars)
+            yield usage_chunk(
+                completion_chars, tokens=None if usage_estimated else (stream_in, stream_out)
+            )
             yield "data: [DONE]\n\n"
 
             latency_ms = int((time.perf_counter() - started) * 1000)
@@ -1864,7 +1876,6 @@ class Router:
             streamed_text = served.content
             self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
             if self.usage_ledger is not None:
-                stream_in, stream_out, _ = response_token_usage(served, prompt_chars)
                 self.usage_ledger.record(
                     tier=tier,
                     cache_hit=False,
@@ -2125,23 +2136,26 @@ class Router:
                 "model": model_name,
                 "stream": True,
             }
-            message_start = sse(
-                "message_start",
-                {
-                    "type": "message_start",
-                    "message": {
-                        "id": message_id,
-                        "type": "message",
-                        "role": "assistant",
-                        "model": model_name,
-                        "content": [],
-                        "stop_reason": None,
-                        "stop_sequence": None,
-                        "usage": {"input_tokens": input_tokens, "output_tokens": 0},
+            def message_start_event(prompt_tokens: int) -> str:
+                return sse(
+                    "message_start",
+                    {
+                        "type": "message_start",
+                        "message": {
+                            "id": message_id,
+                            "type": "message",
+                            "role": "assistant",
+                            "model": model_name,
+                            "content": [],
+                            "stop_reason": None,
+                            "stop_sequence": None,
+                            "usage": {"input_tokens": prompt_tokens, "output_tokens": 0},
+                        },
+                        "daari_meta": meta,
                     },
-                    "daari_meta": meta,
-                },
-            )
+                )
+
+            message_start = message_start_event(input_tokens)
 
             def text_block_start(index: int) -> str:
                 return sse(
@@ -2167,8 +2181,16 @@ class Router:
             tool_use_sent = False
             completion_chars = 0
             tier_text_parts: list[str] = []
+            reported_usage: tuple[int, int] | None = None
             try:
                 async for event in stream_executor.stream(stream_request):
+                    if event.get("prompt_eval_count") is not None:
+                        # Last report wins: cumulative-usage providers would
+                        # otherwise be summed into a many-fold overcount (#320).
+                        reported_usage = (
+                            int(event.get("prompt_eval_count") or 0),
+                            int(event.get("eval_count") or 0),
+                        )
                     message = event.get("message", {})
                     delta = message.get("content", "")
                     raw_tool_calls = message.get("tool_calls")
@@ -2282,8 +2304,32 @@ class Router:
                     executor="ollama",
                     provider_id=f"ollama:{tier.lower()}",
                     model=model_name,
+                    input_tokens=reported_usage[0] if reported_usage else None,
+                    output_tokens=reported_usage[1] if reported_usage else None,
+                    usage_estimated=reported_usage is None,
                 ),
             )
+
+            def record_served(response: InternalResponse, latency_ms: int) -> None:
+                # Exactly one ledger row per streamed message, mirroring
+                # stream_openai_chunks (#320).
+                served_tier = response.daari_meta.tier or tier
+                self.metrics.record(served_tier, cache_hit=False, latency_ms=latency_ms)
+                if self.usage_ledger is None:
+                    return
+                tokens_in, tokens_out, _ = response_token_usage(response, prompt_chars)
+                self.usage_ledger.record(
+                    tier=served_tier,
+                    cache_hit=False,
+                    prompt_chars=prompt_chars,
+                    completion_chars=len(response.content or ""),
+                    client_id=request.meta.client_id,
+                    model=response.daari_meta.model or response.model,
+                    provider=response.daari_meta.provider_id,
+                    input_tokens=tokens_in,
+                    output_tokens=tokens_out,
+                )
+
             # Events are buffered until the tier completes, so the confidence
             # ladder, org pool, and L6 can run before the client sees anything,
             # and output guardrails can rewrite the text (#154, #155).
@@ -2306,12 +2352,14 @@ class Router:
                 outcome.note(served.daari_meta.tier or tier)
                 for event in terminal_events(served.content, served.daari_meta.tier or tier):
                     yield event
+                latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                record_served(served, latency_ms)
                 log_gateway_event(
                     "anthropic_stream_done",
                     {
                         "tier": served.daari_meta.tier or tier,
                         "ollama_model": served.daari_meta.model or model_name,
-                        "latency_ms": int((time.perf_counter() - stream_started) * 1000),
+                        "latency_ms": latency_ms,
                         "completion_chars": len(served.content),
                         "rewritten": True,
                         "agent_flow": agent_flow,
@@ -2324,6 +2372,13 @@ class Router:
                 pending.append(text_block_start(block_index))
                 text_block_open = True
             outcome.note(tier)
+            if reported_usage is not None and pending and pending[0] == message_start:
+                # Events were buffered, so the real prompt count is known
+                # before message_start reaches the client.
+                pending[0] = message_start_event(reported_usage[0])
+            output_tokens = (
+                reported_usage[1] if reported_usage is not None else max(0, completion_chars // 4)
+            )
             for chunk in pending:
                 yield chunk
             if text_block_open:
@@ -2336,11 +2391,15 @@ class Router:
                         "stop_reason": "tool_use" if tool_use_sent else "end_turn",
                         "stop_sequence": None,
                     },
-                    "usage": {"output_tokens": max(0, completion_chars // 4)},
+                    # Cumulative per the Anthropic contract: the single delta
+                    # carries the final total.
+                    "usage": {"output_tokens": output_tokens},
                     "daari_meta": meta,
                 },
             )
             yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
+            latency_ms = int((time.perf_counter() - stream_started) * 1000)
+            record_served(served, latency_ms)
             # Mirror chat_completions_stream_done (issue #101) so the final
             # outcome of a fallback chain is visible in cursor-requests.log.
             log_gateway_event(
@@ -2348,7 +2407,7 @@ class Router:
                 {
                     "tier": tier,
                     "ollama_model": model_name,
-                    "latency_ms": int((time.perf_counter() - stream_started) * 1000),
+                    "latency_ms": latency_ms,
                     "completion_chars": completion_chars,
                     "tool_use": tool_use_sent,
                     "agent_flow": agent_flow,
