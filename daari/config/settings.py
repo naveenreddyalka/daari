@@ -416,6 +416,28 @@ class TraceSettings(BaseModel):
     max_entries: int = 200
 
 
+class RetentionSettings(BaseModel):
+    """How long on-disk stores keep rows. 0 = forever (upgrade-safe default)."""
+
+    traces_days: int = Field(default=0, ge=0)
+    ledger_days: int = Field(default=0, ge=0)
+    audit_days: int = Field(default=0, ge=0)
+    shadow_days: int = Field(default=0, ge=0)
+    tasks_days: int = Field(default=0, ge=0)
+
+    @property
+    def enabled(self) -> bool:
+        return any(
+            (
+                self.traces_days,
+                self.ledger_days,
+                self.audit_days,
+                self.shadow_days,
+                self.tasks_days,
+            )
+        )
+
+
 class ObservabilitySettings(RuntimeSettings):
     # Gateway request log rotation; 0 max bytes disables rotation.
     request_log_max_bytes: int = Field(default=5 * 1024 * 1024, ge=0)
@@ -435,6 +457,8 @@ class ObservabilitySettings(RuntimeSettings):
     structured_json_logs: bool = False
     # Hint that redis+postgres backends are in use (no local request state).
     stateless: bool = False
+    # #332: per-store retention. 0 days keeps rows forever.
+    retention: RetentionSettings = Field(default_factory=RetentionSettings)
 
 
 class LearningSettings(BaseModel):

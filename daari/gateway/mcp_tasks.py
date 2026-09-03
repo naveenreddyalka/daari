@@ -142,6 +142,26 @@ class McpTaskStore:
             payload["status"] = STATUS_INPUT_REQUIRED
         return payload
 
+    def prune_older_than(self, cutoff_epoch: float, *, dry_run: bool = False) -> int:
+        ids: set[str] = set()
+        for task_id, task in list(self._tasks.items()):
+            if task.created_at < cutoff_epoch:
+                ids.add(task_id)
+        if self._disk is not None:
+            for key in list(self._disk):
+                raw = self._disk.get(key)
+                if isinstance(raw, dict) and float(raw.get("created_at") or 0) < cutoff_epoch:
+                    ids.add(str(key))
+        if not dry_run:
+            for task_id in ids:
+                self._tasks.pop(task_id, None)
+                if self._disk is not None:
+                    try:
+                        del self._disk[task_id]
+                    except Exception:
+                        pass
+        return len(ids)
+
     def _persist(self, task: McpTask) -> None:
         if self._disk is None:
             return

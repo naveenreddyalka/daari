@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1451 passed** (2026-09-03) |
+| `pytest` (default, mocked) | **1466 passed** (2026-09-03) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1667,6 +1667,18 @@ in the dev loop: prd-cycle refills are pickable by `autodev_backlog.py` the
 moment they are filed. Docs: [AUTOMATION.md](AUTOMATION.md#issue-labels).
 Covered by `tests/unit/test_apply_intended_labels.py` (parser, allowlist,
 idempotence, CLI, workflow shape).
+
+### Retention policy and prune for traces, ledger, audit, shadow, tasks ([#332](https://github.com/naveenreddyalka/daari/issues/332))
+
+<!-- tracking:#332 -->
+**Status:** Done (2026-09-03). `observability.retention.{traces,ledger,audit,shadow,tasks}_days`
+defaults to 0 (keep forever). `daari prune [--dry-run]` and a daily
+`daari serve` background sweep delete older rows on SQLite and Postgres
+(traces + ledger). Audit prune writes a `retention.prune` summary row after
+the delete. Sweep failures log `retention.sweep_failed` and never raise.
+Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
+[upgrade.md](developer/guides/operations/upgrade.md). Covered by
+`tests/unit/test_retention.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
