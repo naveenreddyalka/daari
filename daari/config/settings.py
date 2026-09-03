@@ -624,6 +624,19 @@ class IntegrationsSettings(BaseModel):
     )
 
 
+class AlertSettings(BaseModel):
+    """Operator webhooks for budget thresholds (#333). Empty URL disables."""
+
+    budget_webhook_url: str = ""
+    budget_thresholds: list[float] = Field(default_factory=lambda: [0.8, 1.0])
+
+    @field_validator("budget_thresholds")
+    @classmethod
+    def _thresholds(cls, value: list[float]) -> list[float]:
+        cleaned = sorted({float(item) for item in value if 0 < float(item) <= 1.0})
+        return cleaned or [0.8, 1.0]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAARI_", env_nested_delimiter="__")
 
@@ -648,6 +661,7 @@ class Settings(BaseSettings):
     boundaries: BoundariesSettings = Field(default_factory=BoundariesSettings)
     integrations: IntegrationsSettings = Field(default_factory=IntegrationsSettings)
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
+    alerts: AlertSettings = Field(default_factory=AlertSettings)
     skills_system_prefix: str = ""
 
     @classmethod
