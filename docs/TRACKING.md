@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1353 passed** (2026-09-02) |
+| `pytest` (default, mocked) | **1364 passed** (2026-09-02) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1588,6 +1588,21 @@ so chat and MCP share one rule evaluator. Docs:
 [mcp.md](developer/guides/clients/mcp.md). Covered by
 `tests/unit/test_mcp_guardrails.py` and
 `tests/integration/test_mcp_guardrails.py`.
+
+### Streaming usage accounting counts once ([#320](https://github.com/naveenreddyalka/daari/issues/320))
+
+**Status:** Done (2026-09-02). Locked the "one ledger row per streamed request"
+contract with `tests/integration/test_streaming_usage.py` across the OpenAI SSE
+path, `/v1/messages`, the `/api/chat` NDJSON facade, and client cancellation,
+for backends that report usage on a final chunk, as running totals, or not at
+all. Defects the tests surfaced and fixed: streamed `/v1/messages` never wrote a
+ledger row (or a metrics sample) and emitted chars/4 usage even when Ollama
+reported real counts; `OpenAICompatExecutor.stream` dropped the `usage` block
+(and never asked for it — now sends `stream_options.include_usage`); the Ollama
+facade's final line hard-coded `prompt_eval_count`/`eval_count` to 0; and the
+OpenAI stream's client-visible `usage` chunk ignored reported counts. Running
+totals are handled by keeping the last report, never summing. Docs:
+[savings-report.md](developer/guides/observability/savings-report.md).
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 

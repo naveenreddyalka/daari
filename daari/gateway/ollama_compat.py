@@ -61,7 +61,14 @@ def _model_entry(name: str) -> dict[str, Any]:
     }
 
 
-def _chat_line(model: str, content: str, *, done: bool, done_reason: str | None = None) -> str:
+def _chat_line(
+    model: str,
+    content: str,
+    *,
+    done: bool,
+    done_reason: str | None = None,
+    usage: tuple[int, int] | None = None,
+) -> str:
     payload: dict[str, Any] = {
         "model": model,
         "created_at": _now_iso(),
@@ -69,22 +76,25 @@ def _chat_line(model: str, content: str, *, done: bool, done_reason: str | None 
         "done": done,
     }
     if done:
+        prompt_tokens, completion_tokens = usage if usage is not None else (0, 0)
         payload["done_reason"] = done_reason or "stop"
         payload.update(
             {
                 "total_duration": 0,
                 "load_duration": 0,
-                "prompt_eval_count": 0,
-                "eval_count": 0,
+                "prompt_eval_count": prompt_tokens,
+                "eval_count": completion_tokens,
             }
         )
     return json.dumps(payload) + "\n"
 
 
-def _extract_content_deltas(sse_chunk: str) -> tuple[list[str], bool]:
-    """Pull assistant content deltas out of an OpenAI-style SSE chunk string."""
+def _extract_content_deltas(sse_chunk: str) -> tuple[list[str], bool, tuple[int, int] | None]:
+    """Pull assistant content deltas, the [DONE] marker, and any usage report
+    out of an OpenAI-style SSE chunk string."""
     deltas: list[str] = []
     done = False
+    usage: tuple[int, int] | None = None
     for line in sse_chunk.splitlines():
         line = line.strip()
         if not line.startswith("data:"):
@@ -101,7 +111,13 @@ def _extract_content_deltas(sse_chunk: str) -> tuple[list[str], bool]:
             content = (choice.get("delta") or {}).get("content")
             if isinstance(content, str) and content:
                 deltas.append(content)
-    return deltas, done
+        reported = parsed.get("usage")
+        if isinstance(reported, dict):
+            usage = (
+                int(reported.get("prompt_tokens") or 0),
+                int(reported.get("completion_tokens") or 0),
+            )
+    return deltas, done, usage
 
 
 class OllamaCompatGatewayAdapter(GatewayAdapter):
@@ -176,6 +192,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             if body.stream:
 
                 async def ndjson_stream() -> AsyncIterator[str]:
+                    # The router emits its usage chunk right before [DONE]; the
+                    # last report wins so the final NDJSON line carries the
+                    # provider's real counts (#320).
+                    usage: tuple[int, int] | None = None
                     try:
                         async for sse_chunk in stream_with_keepalive(
                             ctx.router.stream_openai_chunks(internal),
@@ -185,11 +205,13 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                             if sse_chunk == NDJSON_KEEPALIVE_FRAME:
                                 yield sse_chunk
                                 continue
-                            deltas, done = _extract_content_deltas(sse_chunk)
+                            deltas, done, reported = _extract_content_deltas(sse_chunk)
+                            if reported is not None:
+                                usage = reported
                             for delta in deltas:
                                 yield _chat_line(client_model, delta, done=False)
                             if done:
-                                yield _chat_line(client_model, "", done=True)
+                                yield _chat_line(client_model, "", done=True, usage=usage)
                     except Exception as exc:
                         yield json.dumps({"error": str(exc), "done": True}) + "\n"
 

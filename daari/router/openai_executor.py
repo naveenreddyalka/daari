@@ -62,6 +62,10 @@ class OpenAICompatExecutor:
                 continue
             messages.append(data)
         payload: dict[str, Any] = {"model": model, "messages": messages, "stream": stream}
+        if stream:
+            # vLLM / llama.cpp / LM Studio only send token counts on a stream
+            # when asked; without this the ledger falls back to chars/4 (#320).
+            payload["stream_options"] = {"include_usage": True}
         if request.tools:
             payload["tools"] = request.tools
         if request.temperature is not None:
@@ -145,5 +149,13 @@ class OpenAICompatExecutor:
                     }
                     if delta.get("tool_calls"):
                         message["tool_calls"] = delta["tool_calls"]
-                    yield {"message": message, "done": False}
+                    event: dict[str, Any] = {"message": message, "done": False}
+                    # Whether the backend sends one usage-only chunk before
+                    # [DONE] or running totals on every chunk, each report is
+                    # passed through as-is; the router keeps the last one.
+                    usage = chunk.get("usage")
+                    if isinstance(usage, dict):
+                        event["prompt_eval_count"] = int(usage.get("prompt_tokens") or 0)
+                        event["eval_count"] = int(usage.get("completion_tokens") or 0)
+                    yield event
         yield {"message": {"role": "assistant", "content": ""}, "done": True}
