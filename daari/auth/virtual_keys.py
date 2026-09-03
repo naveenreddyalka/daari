@@ -8,14 +8,64 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+_RELATIVE_EXPIRY = re.compile(r"^(\d+)([mhd])$")
+_NEVER_EXPIRES = {"", "never", "none", "0"}
+
+
+def expiry_from(raw: str | None, *, now: datetime | None = None) -> str | None:
+    """Turn `30d` / `12h` / `45m` / ISO-8601 into a UTC ISO timestamp (#331).
+
+    None, empty, or `never` mean the key does not expire. Relative durations
+    must be positive; ISO values without a zone are taken as UTC.
+    """
+    value = (raw or "").strip()
+    if value.lower() in _NEVER_EXPIRES:
+        return None
+    current = now if now is not None else datetime.now(timezone.utc)
+    match = _RELATIVE_EXPIRY.match(value.lower())
+    if match:
+        amount, unit = int(match.group(1)), match.group(2)
+        if amount <= 0:
+            raise ValueError(f"expiry must be positive: {raw!r}")
+        delta = {
+            "m": timedelta(minutes=amount),
+            "h": timedelta(hours=amount),
+            "d": timedelta(days=amount),
+        }
+        return (current + delta[unit]).isoformat()
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(
+            f"unsupported expiry {raw!r} — use <n>m, <n>h, <n>d, or an ISO-8601 timestamp"
+        ) from None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _is_past(iso: str | None, now: datetime | None = None) -> bool:
+    if not iso:
+        return False
+    try:
+        when = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    current = now if now is not None else datetime.now(timezone.utc)
+    return when <= current
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS teams (
@@ -31,6 +81,7 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     prefix TEXT NOT NULL,
     created_at TEXT NOT NULL,
     revoked_at TEXT,
+    expires_at TEXT,
     daily_budget_usd REAL NOT NULL DEFAULT 0,
     monthly_budget_usd REAL NOT NULL DEFAULT 0,
     rpm INTEGER NOT NULL DEFAULT 0,
@@ -81,6 +132,19 @@ class VirtualKey:
     team_name: str | None = None
     budget_windows: tuple[BudgetWindow, ...] = field(default_factory=tuple)
     metadata: dict[str, Any] = field(default_factory=dict)
+    # ISO-8601 UTC; None = never expires (#331).
+    expires_at: str | None = None
+
+    def is_expired(self, now: datetime | None = None) -> bool:
+        return _is_past(self.expires_at, now)
+
+    def status(self, now: datetime | None = None) -> str:
+        """`revoked` beats `expired` beats `active` — revocation is explicit."""
+        if self.revoked:
+            return "revoked"
+        if self.is_expired(now):
+            return "expired"
+        return "active"
 
 
 @dataclass(frozen=True)
@@ -145,6 +209,9 @@ class VirtualKeyStore:
             conn.execute(
                 "ALTER TABLE virtual_keys ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
             )
+        if "expires_at" not in cols:
+            # NULL for every pre-#331 key: existing keys never expire.
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN expires_at TEXT")
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -243,11 +310,14 @@ class VirtualKeyStore:
         team: str | None = None,
         budget_windows: list[BudgetWindow] | None = None,
         metadata: dict[str, Any] | None = None,
+        expires_at: str | None = None,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
         from daari.auth.budgets import windows_from_flat
 
+        # Normalise whatever the caller passed (relative or ISO) once, here.
+        expires_at = expiry_from(expires_at)
         plaintext = f"dk_{secrets.token_urlsafe(32)}"
         key_id = secrets.token_hex(8)
         prefix = plaintext[:10]
@@ -263,8 +333,8 @@ class VirtualKeyStore:
             conn.execute(
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
-                " team_id, budget_windows_json, metadata_json)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " team_id, budget_windows_json, metadata_json, expires_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -280,6 +350,7 @@ class VirtualKeyStore:
                     team_row.team_id if team_row else None,
                     self._windows_json(windows),
                     json.dumps(metadata or {}),
+                    expires_at,
                 ),
             )
         return CreatedKey(
@@ -297,6 +368,7 @@ class VirtualKeyStore:
                 team_name=team_row.name if team_row else None,
                 budget_windows=windows,
                 metadata=dict(metadata or {}),
+                expires_at=expires_at,
             ),
             plaintext=plaintext,
         )
@@ -360,12 +432,15 @@ class VirtualKeyStore:
         *,
         team_name: str | None = None,
         metadata: dict[str, Any] | None = None,
+        expires_at: str | None = None,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
             from daari.auth.budgets import windows_from_flat
 
-            windows = windows_from_flat(daily_usd=float(row[3] or 0), monthly_usd=float(row[4] or 0))
+            windows = windows_from_flat(
+                daily_usd=float(row[3] or 0), monthly_usd=float(row[4] or 0)
+            )
         parsed = metadata or {}
         return VirtualKey(
             key_id=row[0],
@@ -382,6 +457,7 @@ class VirtualKeyStore:
             team_name=team_name,
             budget_windows=windows,
             metadata=parsed,
+            expires_at=expires_at,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -391,13 +467,17 @@ class VirtualKeyStore:
             rows = conn.execute(
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
-                " v.budget_windows_json, v.metadata_json, t.name FROM virtual_keys v"
+                " v.budget_windows_json, v.metadata_json, t.name, v.expires_at"
+                " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
             ).fetchall()
         return [
             self._key_from_row(
-                r[:12], team_name=r[13], metadata=_parse_metadata(r[12])
+                r[:12],
+                team_name=r[13],
+                metadata=_parse_metadata(r[12]),
+                expires_at=r[14],
             )
             for r in rows
         ]
@@ -410,7 +490,8 @@ class VirtualKeyStore:
             row = conn.execute(
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
-                " v.budget_windows_json, v.metadata_json, t.name FROM virtual_keys v"
+                " v.budget_windows_json, v.metadata_json, t.name, v.expires_at"
+                " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ?",
                 (digest,),
@@ -418,7 +499,10 @@ class VirtualKeyStore:
         if row is None or row[9] is not None:
             return None
         return self._key_from_row(
-            row[:12], team_name=row[13], metadata=_parse_metadata(row[12])
+            row[:12],
+            team_name=row[13],
+            metadata=_parse_metadata(row[12]),
+            expires_at=row[14],
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:
@@ -435,9 +519,7 @@ class VirtualKeyStore:
             ).fetchone()[0]
             if count >= key.rpm:
                 return False
-            conn.execute(
-                "INSERT INTO key_hits (key_id, ts) VALUES (?, ?)", (key.key_id, now)
-            )
+            conn.execute("INSERT INTO key_hits (key_id, ts) VALUES (?, ?)", (key.key_id, now))
             return True
 
     def to_dict(self, key: VirtualKey) -> dict[str, Any]:
@@ -455,6 +537,8 @@ class VirtualKeyStore:
             "team_id": key.team_id,
             "team": key.team_name,
             "budget_windows": [w.as_dict() for w in key.budget_windows],
+            "expires_at": key.expires_at,
+            "status": key.status(),
         }
 
     def report_by_team(self, clients: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EnterpriseCacheSettings(BaseModel):
@@ -28,6 +28,19 @@ class SsoKeyPolicy(BaseModel):
     team: str | None = None
     boundary_profile: str | None = None
     budget_windows: list[dict[str, Any]] = Field(default_factory=list)
+    # Relative duration (`8h`, `30d`) or ISO-8601. Empty = never expires (#331).
+    key_ttl: str | None = None
+
+    @field_validator("key_ttl")
+    @classmethod
+    def _known_ttl(cls, value: str | None) -> str | None:
+        if value is None or not str(value).strip():
+            return None
+        from daari.auth.virtual_keys import expiry_from
+
+        raw = str(value).strip()
+        expiry_from(raw)
+        return raw
 
 
 class SsoSettings(BaseModel):

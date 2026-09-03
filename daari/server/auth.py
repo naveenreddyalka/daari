@@ -54,6 +54,13 @@ def resolve_auth(
     if store is not None and store.enabled and supplied:
         key = store.resolve(supplied)
         if key is not None:
+            if key.is_expired():
+                return AuthClaims(
+                    kind="expired",
+                    key_id=key.key_id,
+                    client_id=key.client_id or key.key_id,
+                    virtual_key=key,
+                )
             return AuthClaims(
                 kind="virtual",
                 key_id=key.key_id,

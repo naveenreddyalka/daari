@@ -103,6 +103,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     return await call_next(request)
                 except Exception:
                     pass
+            if claims is not None and claims.kind == "expired":
+                from daari.enterprise.audit import AuditLog
+
+                expires_at = (
+                    claims.virtual_key.expires_at if claims.virtual_key is not None else None
+                )
+                AuditLog(resolved.enterprise.audit_path).record(
+                    actor=claims.client_id or claims.key_id or "unknown",
+                    role="key",
+                    action="auth.key_expired",
+                    detail={"key_id": claims.key_id, "expires_at": expires_at},
+                )
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": {
+                            "type": "authentication_error",
+                            "code": "key_expired",
+                            "message": "Virtual API key has expired.",
+                        }
+                    },
+                )
             if claims is None:
                 return JSONResponse(
                     status_code=401,

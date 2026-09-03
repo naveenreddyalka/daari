@@ -65,7 +65,8 @@ def _metadata(sso: SsoSettings, claim_value: str, policy: SsoKeyPolicy) -> dict[
 def find_sso_key(store: VirtualKeyStore, subject: str) -> VirtualKey | None:
     client_id = f"sso:{subject}"
     for key in store.list():
-        if key.client_id == client_id and not key.revoked:
+        # Expired SSO keys are treated as absent so the next login remints (#331).
+        if key.client_id == client_id and not key.revoked and not key.is_expired():
             return key
     return None
 
@@ -85,11 +86,7 @@ def sync_sso_virtual_key(
 
     if existing is not None:
         stored = (existing.metadata or {}).get("claim_value")
-        if (
-            stored
-            and stored != DEFAULT_CLAIM
-            and stored not in current
-        ):
+        if stored and stored != DEFAULT_CLAIM and stored not in current:
             store.revoke(existing.key_id)
             audit.record(
                 actor=subject,
@@ -116,9 +113,7 @@ def sync_sso_virtual_key(
                     "claim_value": (existing.metadata or {}).get("claim_value"),
                 },
             )
-        raise UnmappedSsoPolicy(
-            f"no SSO key policy for {sso.mapping_claim}={list(current)}"
-        )
+        raise UnmappedSsoPolicy(f"no SSO key policy for {sso.mapping_claim}={list(current)}")
 
     meta = _metadata(sso, claim_value or DEFAULT_CLAIM, policy)
     if existing is None:
@@ -133,6 +128,7 @@ def sync_sso_virtual_key(
             team=policy.team,
             budget_windows=_windows(policy) or None,
             metadata=meta,
+            expires_at=policy.key_ttl,
         )
         audit.record(
             actor=subject,

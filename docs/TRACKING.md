@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1428 passed** (2026-09-03) |
+| `pytest` (default, mocked) | **1451 passed** (2026-09-03) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1641,6 +1641,18 @@ cache/learning clients' bearer headers. A failed refresh raises
 fails over instead of sending a stale token. No new dependency (httpx already
 in tree). Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md#oauth-client-credentials-secretoauth).
 Covered by `tests/unit/test_secret_refs_oauth.py`.
+
+### Virtual key expiry (`expires_at` + SSO `key_ttl`) ([#331](https://github.com/naveenreddyalka/daari/issues/331))
+
+<!-- tracking:#331 -->
+**Status:** Done (2026-09-03). Virtual keys gain an additive `expires_at` column
+(NULL = never; existing keys unaffected). `daari keys create --expires 30d|12h|ISO`
+sets it; `keys list` shows expiry and `active` / `expired` / `revoked`. Auth
+rejects expired keys with 401 `key_expired` (distinct from invalid/revoked) and
+writes `auth.key_expired`. SSO `key_policy.key_ttl` mints a TTL; `find_sso_key`
+treats an expired SSO key as absent so the next login remints. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_key_expiry.py`.
 
 ### Issue auto-labeler — intended labels applied at filing time ([#330](https://github.com/naveenreddyalka/daari/issues/330))
 
