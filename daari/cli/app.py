@@ -99,17 +99,29 @@ def keys_create(
         "--mcp-deny",
         help="MCP tool the key may never call (glob). Repeatable; deny wins.",
     ),
+    expires: str | None = typer.Option(
+        None,
+        "--expires",
+        help="Expiry: 30d, 12h, 45m, ISO-8601, or never (default).",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import parse_window_flag
-    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.auth.virtual_keys import VirtualKeyStore, expiry_from
 
     settings = get_settings()
-    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    store = VirtualKeyStore(
+        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
+    )
     extra = [parse_window_flag(item) for item in window]
     metadata: dict | None = None
     if mcp_allow or mcp_deny:
         metadata = {"mcp": {"allow": list(mcp_allow), "deny": list(mcp_deny)}}
+    try:
+        expires_at = expiry_from(expires)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     created = store.create(
         name,
         daily_budget_usd=daily_budget,
@@ -121,10 +133,12 @@ def keys_create(
         team=team,
         budget_windows=extra or None,
         metadata=metadata,
+        expires_at=expires_at,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
     typer.echo(f"prefix: {created.key.prefix}…")
+    typer.echo(f"expires: {created.key.expires_at or 'never'}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -136,18 +150,22 @@ def keys_list() -> None:
     from daari.auth.virtual_keys import VirtualKeyStore
 
     settings = get_settings()
-    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    store = VirtualKeyStore(
+        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
+    )
     keys = store.list()
     if not keys:
         typer.echo("No virtual keys.")
         return
     typer.echo(
-        f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'tier':<4} revoked"
+        f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} "
+        f"{'tier':<4} {'expires':<25} status"
     )
     for key in keys:
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
-            f"{key.tpm:>7} {(key.tier_cap or '-'):<4} {'yes' if key.revoked else 'no'}"
+            f"{key.tpm:>7} {(key.tier_cap or '-'):<4} "
+            f"{(key.expires_at or 'never'):<25} {key.status()}"
         )
 
 
@@ -157,7 +175,9 @@ def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys 
     from daari.auth.virtual_keys import VirtualKeyStore
 
     settings = get_settings()
-    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    store = VirtualKeyStore(
+        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
+    )
     if store.revoke(key_id):
         typer.echo(f"Revoked {key_id}")
     else:
@@ -177,7 +197,9 @@ def keys_team_create(
     from daari.auth.virtual_keys import VirtualKeyStore
 
     settings = get_settings()
-    store = VirtualKeyStore(settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled)
+    store = VirtualKeyStore(
+        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
+    )
     extra = [parse_window_flag(item) for item in window]
     team = store.create_team(
         name,
@@ -259,9 +281,7 @@ def enterprise_policy_sync(
             err=True,
         )
         raise typer.Exit(code=1)
-    data, raw, signature = fetch_org_config(
-        url, token=settings.enterprise.org_token or ""
-    )
+    data, raw, signature = fetch_org_config(url, token=settings.enterprise.org_token or "")
     secret = settings.enterprise.config_signing_secret
     if not insecure and not verify_signature(raw, signature, secret):
         typer.echo("Policy sync signature invalid.", err=True)
@@ -284,9 +304,7 @@ def project_init(
         raise typer.Exit(code=1)
     target.write_text(TEMPLATE, encoding="utf-8")
     typer.echo(f"Wrote {target}")
-    typer.echo(
-        "Clients opt in with the X-Daari-Project header pointing anywhere inside the repo."
-    )
+    typer.echo("Clients opt in with the X-Daari-Project header pointing anywhere inside the repo.")
 
 
 @project_app.command("show")
@@ -445,7 +463,11 @@ def _build_org_learning_client(settings: Settings) -> OrgLearningClient:
         raise typer.BadParameter(
             "org learning URL is not configured (set org.learning_url or enterprise.learning_url)."
         )
-    token = settings.enterprise.learning_token or settings.enterprise.org_token or settings.enterprise.shared_cache_token
+    token = (
+        settings.enterprise.learning_token
+        or settings.enterprise.org_token
+        or settings.enterprise.shared_cache_token
+    )
     return OrgLearningClient(
         base_url=url,
         token=token,
@@ -610,7 +632,9 @@ def trace(
         _emit_or_write(trace_markdown(payload), out)
         return
 
-    typer.echo(f"trace {payload['trace_id']}  tier={payload.get('tier')}  category={payload.get('category')}")
+    typer.echo(
+        f"trace {payload['trace_id']}  tier={payload.get('tier')}  category={payload.get('category')}"
+    )
     for step in payload.get("steps", []):
         detail = step.get("detail") or {}
         detail_text = "  ".join(f"{key}={value}" for key, value in detail.items())
@@ -685,8 +709,7 @@ def report(
             typer.echo("No per-client usage recorded yet.")
         else:
             typer.echo(
-                f"{'client':<14} {'requests':>9} {'cache hits':>11} "
-                f"{'frontier':>9} {'saved $':>9}"
+                f"{'client':<14} {'requests':>9} {'cache hits':>11} {'frontier':>9} {'saved $':>9}"
             )
             for entry in clients:
                 typer.echo(
@@ -702,8 +725,7 @@ def report(
             typer.echo("No per-team usage recorded yet.")
         else:
             typer.echo(
-                f"{'team':<14} {'requests':>9} {'cache hits':>11} "
-                f"{'frontier':>9} {'saved $':>9}"
+                f"{'team':<14} {'requests':>9} {'cache hits':>11} {'frontier':>9} {'saved $':>9}"
             )
             for entry in teams:
                 typer.echo(
@@ -774,7 +796,9 @@ def serve_web_ui(
 
 @app.command()
 def profile(
-    show: bool = typer.Option(False, "--show", help="Print the stored profile without re-benchmarking"),
+    show: bool = typer.Option(
+        False, "--show", help="Print the stored profile without re-benchmarking"
+    ),
     models: str | None = typer.Option(
         None, help="Comma-separated models to benchmark (default: configured L3/L4/L5)"
     ),
@@ -808,9 +832,7 @@ def profile(
             dict.fromkeys([settings.models.l3, settings.models.l4, settings.models.l5])
         )
     typer.echo(f"Benchmarking {len(target_models)} model(s) — one short generation each...")
-    results = _asyncio.run(
-        benchmark_models(settings.ollama.base_url.rstrip("/"), target_models)
-    )
+    results = _asyncio.run(benchmark_models(settings.ollama.base_url.rstrip("/"), target_models))
     if not results:
         typer.echo("No models could be benchmarked. Is Ollama running?", err=True)
         raise typer.Exit(code=1)
@@ -895,7 +917,9 @@ def _echo_onboard_report(report: OnboardReport) -> None:
 @app.command()
 def onboard(
     yes: bool = typer.Option(False, "--yes", help="Non-interactive (default path; no prompts)."),
-    run_doctor: bool = typer.Option(True, "--run-doctor/--no-run-doctor", help="Run doctor at end."),
+    run_doctor: bool = typer.Option(
+        True, "--run-doctor/--no-run-doctor", help="Run doctor at end."
+    ),
     pull: bool = typer.Option(True, "--pull/--no-pull", help="Pull missing default models."),
     pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
     pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
@@ -924,7 +948,9 @@ def onboard(
 
 @app.command("install")
 def install(
-    run_doctor: bool = typer.Option(True, "--run-doctor/--no-run-doctor", help="Run doctor at end."),
+    run_doctor: bool = typer.Option(
+        True, "--run-doctor/--no-run-doctor", help="Run doctor at end."
+    ),
     pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
     pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
     minimal: bool = typer.Option(False, "--minimal", help="Pull L3 only (skip embed)."),
@@ -1135,7 +1161,9 @@ def setup_cursor(
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1) from exc
             if not wait_for_tunnel_health(tunnel_url):
-                typer.echo(f"Tunnel URL discovered but health probe failed: {tunnel_url}/health", err=True)
+                typer.echo(
+                    f"Tunnel URL discovered but health probe failed: {tunnel_url}/health", err=True
+                )
                 if tunnel_process.poll() is None:
                     tunnel_process.terminate()
                 raise typer.Exit(code=1)
@@ -1539,7 +1567,9 @@ def learn_examples(
     typer.echo(f"{total} examples captured, {accepted} accepted\n")
     typer.echo(f"{'trace_id':<18} {'tier':<5} {'category':<13} {'accepted':<9} completion")
     for row in rows:
-        preview = (row["completion"][:47] + "...") if len(row["completion"]) > 50 else row["completion"]
+        preview = (
+            (row["completion"][:47] + "...") if len(row["completion"]) > 50 else row["completion"]
+        )
         preview = preview.replace("\n", " ")
         accepted_mark = "yes" if row["accepted"] else "-"
         typer.echo(
@@ -1597,14 +1627,10 @@ def learn_train_router(
     floor = min_samples if min_samples is not None else settings.learning.router_min_samples
     out_path = out or settings.learning.router_model_path
     try:
-        result = _asyncio.run(
-            train_router(store, embedder, out_path=out_path, min_samples=floor)
-        )
+        result = _asyncio.run(train_router(store, embedder, out_path=out_path, min_samples=floor))
     except RouterTrainingError as exc:
         typer.echo(f"Cannot train: {exc}", err=True)
-        typer.echo(
-            "Enable learning.capture_examples and route more requests first.", err=True
-        )
+        typer.echo("Enable learning.capture_examples and route more requests first.", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Trained on {result['samples']} examples:")
     for category, count in sorted(result["categories"].items()):
@@ -1671,9 +1697,7 @@ def learn_deploy(
     backend: str = typer.Option(
         "mlx", help="mlx (serve adapter directly) or ollama (fuse + GGUF + create)"
     ),
-    name: str = typer.Option(
-        "daari-tuned", "--name", help="Ollama model name for the fused model"
-    ),
+    name: str = typer.Option("daari-tuned", "--name", help="Ollama model name for the fused model"),
     tier: str = typer.Option("L3", help="daari tier the config snippet targets"),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print the deploy steps without running them"
