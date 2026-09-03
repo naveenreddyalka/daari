@@ -44,6 +44,12 @@ The org `frontier.*` caps above remain an outer ceiling. A key over budget gets
 }
 ```
 
+Clients do not have to wait for the `402`. Every successful response to a
+budgeted key carries `x-daari-budget-remaining` / `-limit` / `-window` /
+`-reset` / `-scope` for the window it will hit first (least USD left across
+key and team), and the `402` repeats them with remaining `0` plus
+`Retry-After`. See [Response headers](../../reference/headers.md#budget-headers).
+
 Existing keys that only have `daily_budget_usd` / `monthly_budget_usd` are
 migrated to `day` / `month` windows on first open; behavior is unchanged.
 
