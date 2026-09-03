@@ -1,0 +1,32 @@
+name: issue-labeler
+
+# Issue #330: apply the "**Intended labels:**" first line of an issue body as
+# real labels, so backlog refills from the prd-cycle automation (whose token
+# cannot label) are pickable by scripts/autodev_backlog.py at filing time.
+# Allowlisted label names only; never creates labels; never agent:working.
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: issue-labeler-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply intended labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python scripts/apply_intended_labels.py --event "$GITHUB_EVENT_PATH"
