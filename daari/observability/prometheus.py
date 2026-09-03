@@ -197,4 +197,16 @@ def render_prometheus(
                 continue
             lines.append(f"daari_backend_requests_total{_labels(backend=backend_id)} {int(count)}")
 
+    alerts = snap.get("budget_alerts") or {}
+    if alerts:
+        lines.append(
+            "# HELP daari_budget_alerts_total Budget threshold crossings notified, by scope and threshold."
+        )
+        lines.append("# TYPE daari_budget_alerts_total counter")
+        for key, count in alerts.items():
+            scope, _, threshold = str(key).partition(":")
+            lines.append(
+                f"daari_budget_alerts_total{_labels(scope=scope, threshold=threshold)} {int(count)}"
+            )
+
     return "\n".join(lines) + "\n"

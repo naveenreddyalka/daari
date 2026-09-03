@@ -40,6 +40,7 @@ class Metrics:
     upstream_retries: int = 0
     backends: dict[str, int] = field(default_factory=dict)
     tier_shadow: dict[str, int] = field(default_factory=dict)
+    budget_alerts: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -98,6 +99,11 @@ class Metrics:
         with self._lock:
             self.tier_shadow[key] = self.tier_shadow.get(key, 0) + 1
 
+    def record_budget_alert(self, *, scope: str, threshold: float) -> None:
+        key = f"{scope}:{threshold:g}"
+        with self._lock:
+            self.budget_alerts[key] = self.budget_alerts.get(key, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -125,4 +131,5 @@ class Metrics:
                 "upstream_retries": self.upstream_retries,
                 "backends": dict(self.backends),
                 "tier_shadow": dict(self.tier_shadow),
+                "budget_alerts": dict(self.budget_alerts),
             }
