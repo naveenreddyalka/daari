@@ -642,6 +642,27 @@ def trace(
 
 
 @app.command()
+def prune(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print per-store counts that would be deleted; change nothing."
+    ),
+) -> None:
+    """Apply observability.retention windows to traces, ledger, audit, shadow checks, tasks."""
+    from daari.observability.retention import run_sweep
+
+    settings = get_settings()
+    results = run_sweep(settings, dry_run=dry_run)
+    if not results:
+        typer.echo("Prune failed — see gateway log (retention.sweep_failed).")
+        raise typer.Exit(code=1)
+    typer.echo(("dry-run " if dry_run else "") + "prune")
+    for row in results:
+        status = "skipped (keep forever)" if row.skipped else f"{row.deleted} row(s)"
+        extra = f"  cutoff={row.cutoff}" if row.cutoff else ""
+        typer.echo(f"  {row.store:<8} {status}{extra}")
+
+
+@app.command()
 def report(
     days: int = typer.Option(7, help="Number of days to include"),
     host: str | None = typer.Option(None, help="Daemon host"),

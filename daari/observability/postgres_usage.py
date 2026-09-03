@@ -253,3 +253,23 @@ class PostgresUsageLedger:
                 totals["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         totals["estimated_saved_usd"] = round(totals["estimated_saved_usd"], 4)
         return {"enabled": True, "days": list(per_day.values()), "totals": totals}
+
+    def prune_before_day(self, cutoff_day: str, *, dry_run: bool = False) -> int:
+        if not self.enabled:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM usage WHERE day < %s", (cutoff_day,))
+                    usage = cur.fetchone()[0]
+                    cur.execute(
+                        "SELECT COUNT(*) FROM client_usage WHERE day < %s", (cutoff_day,)
+                    )
+                    clients = cur.fetchone()[0]
+                    if not dry_run and (usage or clients):
+                        cur.execute("DELETE FROM usage WHERE day < %s", (cutoff_day,))
+                        cur.execute("DELETE FROM client_usage WHERE day < %s", (cutoff_day,))
+                conn.commit()
+                return int(usage) + int(clients)
+        except Exception:
+            return 0

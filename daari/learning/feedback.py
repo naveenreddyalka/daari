@@ -294,3 +294,21 @@ class FeedbackStore:
             }
             for row in rows
         ]
+
+    def prune_shadow_before(self, cutoff: str, *, dry_run: bool = False) -> int:
+        if not self.enabled:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                shadow = conn.execute(
+                    "SELECT COUNT(*) FROM shadow_checks WHERE ts < ?", (cutoff,)
+                ).fetchone()[0]
+                tier = conn.execute(
+                    "SELECT COUNT(*) FROM tier_shadow_checks WHERE ts < ?", (cutoff,)
+                ).fetchone()[0]
+                if not dry_run and (shadow or tier):
+                    conn.execute("DELETE FROM shadow_checks WHERE ts < ?", (cutoff,))
+                    conn.execute("DELETE FROM tier_shadow_checks WHERE ts < ?", (cutoff,))
+                return int(shadow) + int(tier)
+        except Exception:
+            return 0
