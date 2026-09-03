@@ -1656,6 +1656,18 @@ moment they are filed. Docs: [AUTOMATION.md](AUTOMATION.md#issue-labels).
 Covered by `tests/unit/test_apply_intended_labels.py` (parser, allowlist,
 idempotence, CLI, workflow shape).
 
+### Retention policy and prune for traces, ledger, audit, shadow, tasks ([#332](https://github.com/naveenreddyalka/daari/issues/332))
+
+<!-- tracking:#332 -->
+**Status:** Done (2026-09-03). `observability.retention.{traces,ledger,audit,shadow,tasks}_days`
+defaults to 0 (keep forever). `daari prune [--dry-run]` and a daily
+`daari serve` background sweep delete older rows on SQLite and Postgres
+(traces + ledger). Audit prune writes a `retention.prune` summary row after
+the delete. Sweep failures log `retention.sweep_failed` and never raise.
+Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
+[upgrade.md](developer/guides/operations/upgrade.md). Covered by
+`tests/unit/test_retention.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

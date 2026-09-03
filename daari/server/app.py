@@ -53,11 +53,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log_gateway_event("startup_warning", {"message": warning})
         app.state.ctx.start_org_learning_sync()
         app.state.ctx.start_backend_health()
+        app.state.ctx.start_retention_sweep()
         try:
             yield
         finally:
             await app.state.ctx.stop_backend_health()
             await app.state.ctx.stop_org_learning_sync()
+            await app.state.ctx.stop_retention_sweep()
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.state.virtual_key_store = vk_store

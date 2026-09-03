@@ -355,6 +355,24 @@ class UsageLedger:
             table="client_usage",
         )
 
+    def prune_before_day(self, cutoff_day: str, *, dry_run: bool = False) -> int:
+        if not self.enabled:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                usage = conn.execute(
+                    "SELECT COUNT(*) FROM usage WHERE day < ?", (cutoff_day,)
+                ).fetchone()[0]
+                clients = conn.execute(
+                    "SELECT COUNT(*) FROM client_usage WHERE day < ?", (cutoff_day,)
+                ).fetchone()[0]
+                if not dry_run and (usage or clients):
+                    conn.execute("DELETE FROM usage WHERE day < ?", (cutoff_day,))
+                    conn.execute("DELETE FROM client_usage WHERE day < ?", (cutoff_day,))
+                return int(usage) + int(clients)
+        except Exception:
+            return 0
+
     def report(self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002) -> dict[str, Any]:
         if not self.enabled:
             return {"enabled": False, "days": [], "totals": _empty_totals()}

@@ -84,3 +84,17 @@ class AuditLog:
             ]
         except Exception:
             return []
+
+    def prune_before(self, cutoff: str, *, dry_run: bool = False) -> int:
+        if not self.enabled:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM audit WHERE ts < ?", (cutoff,)
+                ).fetchone()[0]
+                if not dry_run and count:
+                    conn.execute("DELETE FROM audit WHERE ts < ?", (cutoff,))
+                return int(count)
+        except Exception:
+            return 0

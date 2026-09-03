@@ -3208,6 +3208,7 @@ class AppContext:
     mcp_task_store: Any | None = None
     org_learning_sync_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
     backend_health_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
+    retention_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -3381,6 +3382,34 @@ class AppContext:
         except asyncio.CancelledError:
             pass
         self.org_learning_sync_task = None
+
+    def start_retention_sweep(self) -> None:
+        if not self.settings.observability.retention.enabled:
+            return
+        if self.retention_task is not None and not self.retention_task.done():
+            return
+
+        async def _sweep_loop() -> None:
+            from daari.observability.retention import RETENTION_SWEEP_SECONDS, run_sweep
+
+            try:
+                while True:
+                    await asyncio.to_thread(run_sweep, self.settings)
+                    await asyncio.sleep(RETENTION_SWEEP_SECONDS)
+            except asyncio.CancelledError:
+                return
+
+        self.retention_task = asyncio.create_task(_sweep_loop())
+
+    async def stop_retention_sweep(self) -> None:
+        if self.retention_task is None:
+            return
+        self.retention_task.cancel()
+        try:
+            await self.retention_task
+        except asyncio.CancelledError:
+            pass
+        self.retention_task = None
 
     @classmethod
     def from_settings(cls, settings: Settings) -> AppContext:

@@ -149,3 +149,17 @@ class TraceStore:
             {"trace_id": row[0], "ts": row[1], "tier": row[2], "category": row[3]}
             for row in rows
         ]
+
+    def prune_before(self, cutoff: str, *, dry_run: bool = False) -> int:
+        if not self.enabled:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM traces WHERE ts < ?", (cutoff,)
+                ).fetchone()[0]
+                if not dry_run and count:
+                    conn.execute("DELETE FROM traces WHERE ts < ?", (cutoff,))
+                return int(count)
+        except Exception:
+            return 0

@@ -130,3 +130,18 @@ class PostgresTraceStore:
             ]
         except Exception:
             return []
+
+    def prune_before(self, cutoff: str, *, dry_run: bool = False) -> int:
+        if not self.enabled:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT COUNT(*) FROM traces WHERE ts < %s", (cutoff,))
+                    count = cur.fetchone()[0]
+                    if not dry_run and count:
+                        cur.execute("DELETE FROM traces WHERE ts < %s", (cutoff,))
+                conn.commit()
+                return int(count)
+        except Exception:
+            return 0
