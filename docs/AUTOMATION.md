@@ -33,6 +33,7 @@ flowchart LR
 | Dev-cycle agent | Cursor Automation draft: [automations/dev-cycle.md](automations/dev-cycle.md); CI fallback: [.github/workflows/autodev.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/autodev.yml) | fallback committed; needs `CURSOR_API_KEY` secret or Automation creation |
 | PR review agent | [automations/pr-review.md](automations/pr-review.md) or enable Bugbot on cursor.com | draft |
 | PRD cycle (backlog replenishment) | [automations/prd-cycle.md](automations/prd-cycle.md) — daily enterprise gap scan maintains `docs/prd/ENTERPRISE.md` and files prioritized `auto-dev` issues (supersedes the weekly scout draft) | draft |
+| Issue labeler | [.github/workflows/issue-labeler.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/issue-labeler.yml) + `scripts/apply_intended_labels.py` — applies the `**Intended labels:**` first line of new/edited issues (#330) | active |
 | Local watchdog | `scripts/autodev-local.sh` + launchd (`com.daari.serve`, `com.daari.autodev`) | installed and validated |
 
 ## Local watchdog (Mac)
@@ -71,6 +72,20 @@ tail -f ~/.daari/autodev/watchdog.out.log
 - Local regressions → issues labeled `regression` (deduped by title per commit).
 - You only need to look at GitHub notifications for: blocked PRs, `regression` issues, red CI on main.
 - Stalled auto-merge (`DIRTY` / no checks): `scripts/autodev_pr_watch.py` comments on the PR and files `auto-dev,regression` (#200). Runs in `autodev-cycle` without `CURSOR_API_KEY`.
+
+## Issue labels
+
+The prd-cycle automation's token cannot apply labels (`addLabelsToLabelable`
+returns FORBIDDEN), so every issue it files opens with a line like
+`**Intended labels: \`auto-dev\`, \`P2\`**`. Since #330 the `issue-labeler`
+workflow applies that line automatically on `opened`/`edited`, using the
+repository's own `GITHUB_TOKEN` with `issues: write` as its only permission.
+Keep writing the line — it is the contract. Rules: only the first non-empty
+body line is read; only `auto-dev`, `P1`–`P3`, `bug`, `regression`,
+`documentation`, `enhancement` are applied; unknown names are skipped (never
+created); `agent:working` is never pre-applied because it is the agent's own
+claim marker. Re-run by hand with
+`python scripts/apply_intended_labels.py --issue <n>`.
 
 ## Safety rails
 

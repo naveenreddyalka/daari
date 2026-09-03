@@ -41,7 +41,10 @@ keep the autonomous dev loop fed with the next most valuable work.
    a short "path to enterprise-grade" ranking of the next 5 milestones, and a
    changelog line for this run. Keep it under ~300 lines; prune stale rows.
 5. Convert the top gaps into at most 5 new GitHub issues per run, labeled
-   auto-dev plus P1/P2/P3 by (impact - effort). Each issue: context with
+   auto-dev plus P1/P2/P3 by (impact - effort). Always make the first body
+   line `**Intended labels: \`auto-dev\`, \`P<n>\`**` — the issue-labeler
+   workflow (#330) applies it, so a token that cannot label still yields a
+   pickable issue. Each issue: context with
    links, why daari can do it better local-first, concrete acceptance
    criteria an agent can verify, files likely touched, test command. Dedupe
    against all open issues before filing; skip anything already covered.

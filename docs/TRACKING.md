@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1411 passed** (2026-09-02) |
+| `pytest` (default, mocked) | **1451 passed** (2026-09-03) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1653,6 +1653,20 @@ writes `auth.key_expired`. SSO `key_policy.key_ttl` mints a TTL; `find_sso_key`
 treats an expired SSO key as absent so the next login remints. Docs:
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
 `tests/unit/test_key_expiry.py`.
+
+### Issue auto-labeler — intended labels applied at filing time ([#330](https://github.com/naveenreddyalka/daari/issues/330))
+
+**Status:** Done (2026-09-03). `scripts/apply_intended_labels.py` parses the
+`**Intended labels:**` first line of an issue body, intersects it with a hard
+allowlist (`auto-dev`, `P1`–`P3`, `bug`, `regression`, `documentation`,
+`enhancement` — never `agent:working`) and adds the missing ones via
+`gh api`; it never creates labels and is idempotent. The explicitly authorized
+`.github/workflows/issue-labeler.yml` runs it on `issues: opened, edited` with
+`issues: write` as its only permission. Removes the last recurring human step
+in the dev loop: prd-cycle refills are pickable by `autodev_backlog.py` the
+moment they are filed. Docs: [AUTOMATION.md](AUTOMATION.md#issue-labels).
+Covered by `tests/unit/test_apply_intended_labels.py` (parser, allowlist,
+idempotence, CLI, workflow shape).
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
