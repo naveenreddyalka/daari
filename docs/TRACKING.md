@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1466 passed** (2026-09-03) |
+| `pytest` (default, mocked) | **1475 passed** (2026-09-03) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1667,6 +1667,19 @@ in the dev loop: prd-cycle refills are pickable by `autodev_backlog.py` the
 moment they are filed. Docs: [AUTOMATION.md](AUTOMATION.md#issue-labels).
 Covered by `tests/unit/test_apply_intended_labels.py` (parser, allowlist,
 idempotence, CLI, workflow shape).
+
+### Budget alert webhooks at soft thresholds ([#333](https://github.com/naveenreddyalka/daari/issues/333))
+
+<!-- tracking:#333 -->
+**Status:** Done (2026-09-03). `alerts.budget_webhook_url` + `budget_thresholds`
+(default `[0.8, 1.0]`) POST a JSON payload when a request pushes a key/team
+window across a ratio. Delivery is a background task; failures log
+`budget.alert_failed` and never delay the response. In-memory dedupe per
+`(scope, id, window, threshold, reset_epoch)` until reset (multi-replica
+caveat documented). Audit `budget.alert`; Prometheus
+`daari_budget_alerts_total{scope,threshold}`. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#operator-alerts).
+Covered by `tests/unit/test_budget_alerts.py`.
 
 ### Retention policy and prune for traces, ledger, audit, shadow, tasks ([#332](https://github.com/naveenreddyalka/daari/issues/332))
 

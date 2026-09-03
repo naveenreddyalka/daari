@@ -50,6 +50,40 @@ budgeted key carries `x-daari-budget-remaining` / `-limit` / `-window` /
 key and team), and the `402` repeats them with remaining `0` plus
 `Retry-After`. See [Response headers](../../reference/headers.md#budget-headers).
 
+### Operator alerts
+
+A webhook fires when a request *pushes* a key or team window across a
+threshold (default 80% and 100%). Empty URL disables. The POST is a
+background task: a down hook is logged (`budget.alert_failed`) and never
+delays or fails the chat response.
+
+```yaml
+alerts:
+  budget_webhook_url: https://hooks.example/daari-budget   # Slack / ntfy / PagerDuty
+  budget_thresholds: [0.8, 1.0]
+```
+
+Payload (never includes key material):
+
+```json
+{
+  "scope": "key",
+  "id": "a1b2c3d4",
+  "name": "ci-bot",
+  "window": "daily",
+  "limit_usd": 5.0,
+  "spent_usd": 4.12,
+  "remaining_usd": 0.88,
+  "threshold": 0.8,
+  "reset_epoch": 1756944000
+}
+```
+
+Each `(scope, id, window, threshold, reset_epoch)` fires at most once until
+that window resets. Dedupe is in-memory on the process that handled the
+request — two replicas can notify twice. Each fire writes a `budget.alert`
+audit row and increments `daari_budget_alerts_total{scope,threshold}`.
+
 Existing keys that only have `daily_budget_usd` / `monthly_budget_usd` are
 migrated to `day` / `month` windows on first open; behavior is unchanged.
 

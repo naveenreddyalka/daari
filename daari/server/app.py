@@ -54,6 +54,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ctx.start_org_learning_sync()
         app.state.ctx.start_backend_health()
         app.state.ctx.start_retention_sweep()
+        from daari.enterprise.audit import AuditLog
+        from daari.observability.budget_alerts import BudgetAlerter
+
+        app.state.budget_alerter = BudgetAlerter(
+            webhook_url=resolved.alerts.budget_webhook_url,
+            thresholds=tuple(resolved.alerts.budget_thresholds),
+            audit=AuditLog(resolved.enterprise.audit_path),
+            metrics=app.state.ctx.metrics,
+        )
         try:
             yield
         finally:
@@ -136,6 +145,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             budget_response_headers: dict[str, str] = {}
+            ledger = None
+            statuses: list = []
+            team = None
+            team_ids: list = []
+            client = ""
+            pricing = None
+            fallback = 0.002
             if claims.kind == "virtual" and claims.virtual_key is not None and store is not None:
                 # Per-key frontier budget, charged to the key that caused the
                 # spend. Billing against global spend let one key exhaust every
@@ -188,6 +204,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if budget_response_headers and 200 <= response.status_code < 300:
                 for header, value in budget_response_headers.items():
                     response.headers.setdefault(header, value)
+            alerter = getattr(request.app.state, "budget_alerter", None)
+            if (
+                alerter is not None
+                and getattr(alerter, "enabled", False)
+                and claims.kind == "virtual"
+                and claims.virtual_key is not None
+                and store is not None
+                and ledger is not None
+            ):
+                after = budget_status(
+                    claims.virtual_key,
+                    team,
+                    ledger,
+                    client_id=client,
+                    team_client_ids=team_ids,
+                    pricing=pricing,
+                    fallback_per_1k=fallback,
+                )
+                import asyncio
+
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        alerter.notify,
+                        statuses,
+                        after,
+                        key=claims.virtual_key,
+                        team=team,
+                    )
+                )
             return response
 
     open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics"}
