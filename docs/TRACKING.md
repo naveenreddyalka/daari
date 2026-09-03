@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (tier shadow evals — [#318](https://github.com/naveenreddyalka/daari/issues/318))  
+> Last updated: 2026-09-02 (budget-remaining headers — [#319](https://github.com/naveenreddyalka/daari/issues/319))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1353 passed** (2026-09-02) |
+| `pytest` (default, mocked) | **1368 passed** (2026-09-02) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
