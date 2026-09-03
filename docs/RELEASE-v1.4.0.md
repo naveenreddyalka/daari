@@ -96,7 +96,7 @@ On top of that, the gateway gained MCP tool governance and guardrails, `secret:/
 
 ## Validation
 
-- Default suite: **1471 passed** (`pytest -m "not integration and not benchmark" -q`) on this branch
+- Default suite: **1480 passed** (`pytest -m "not integration and not benchmark" -q`) on this branch
 - Supply-chain path: `docker.yml` cosign + SBOM + provenance steps present; verified against [RELEASING.md](RELEASING.md)
 - No tag / GitHub release / PyPI / ghcr publish from the preparing agent
 
