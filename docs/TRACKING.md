@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (MCP guardrails — [#317](https://github.com/naveenreddyalka/daari/issues/317))  
+> Last updated: 2026-09-02 (tier shadow evals — [#318](https://github.com/naveenreddyalka/daari/issues/318))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -237,7 +237,7 @@ Debug log: `~/.daari/cursor-requests.log` (request shape, tier attempts, `conten
 
 | Layer | Result |
 |-------|--------|
-| `pytest` (default, mocked) | **1337 passed** (2026-09-02) |
+| `pytest` (default, mocked) | **1353 passed** (2026-09-02) |
 | Manual Cursor Ask E2E | ✅ math question + follow-up |
 | Log verification | ✅ `tools_stripped`, `stream_fallback_ok`, `content_chunks` > 0 |
 
@@ -1547,6 +1547,27 @@ plist in `scripts/launchd/`, not the user service — and now says
 upgrade guide restart steps, CLI reference row, AUTOMATION.md label note.
 Covered by `tests/unit/test_service.py` (`TestRestart`, CLI cases) and
 `test_setup_cursor_secure_hint_points_at_service_restart`.
+
+### Shadow evals for tier decisions ([#318](https://github.com/naveenreddyalka/daari/issues/318))
+
+<!-- tracking:#318 -->
+
+`routing.shadow_sample_rate` (default 0) samples responses served by a local
+tier (not cache hits, not tool flows) and replays them in a background task at
+`routing.shadow_compare_tier` — empty = highest configured local tier, `L6`
+only while `routing.shadow_daily_usd > 0` (in-memory daily estimate via
+`cost_usd`, never the ledger). Answer similarity uses the L1 shadow-check
+embedder/cosine path; `FeedbackStore.record_tier_shadow` / `tier_shadow_stats`
+(new `tier_shadow_checks` table, additive) give per-category samples, agree
+rate, divergence rate, compare/served tier counts. Replays are executor-only:
+no cache write, no ledger row, no learned-routing outcome; served responses are
+never delayed or altered. Surfaced in `daari learn stats` ("Tier divergence"),
+`daari report` + `/v1/daari/report` (`tier_divergence`),
+`/v1/daari/learn/stats` (`tier_shadow`), Prometheus
+`daari_tier_shadow_samples_total{agreed}`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_tier_shadow.py` and
+`test_shadow_sampled_tier_decision_records_divergence` in the gateway flow suite.
 
 ### MCP guardrails on tools/call arguments and results ([#317](https://github.com/naveenreddyalka/daari/issues/317))
 

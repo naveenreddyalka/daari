@@ -724,6 +724,18 @@ def report(
                 f" ({row['disagreements']}/{row['samples']} sampled hits)"
             )
 
+    divergence = payload.get("tier_divergence") or {}
+    if divergence:
+        typer.echo("")
+        typer.echo("tier divergence (shadow-replayed local answers vs comparison tier):")
+        for category in sorted(divergence):
+            row = divergence[category]
+            compare = ",".join(sorted(row.get("compare_tiers") or {}))
+            typer.echo(
+                f"  {category:<14} {row['divergence_rate'] * 100:>5.1f}% diverged"
+                f" ({row['agreements']}/{row['samples']} agreed vs {compare})"
+            )
+
 
 @web_ui_app.command("serve")
 def serve_web_ui(
@@ -1412,6 +1424,18 @@ def learn_stats(days: int = typer.Option(7, help="Evidence window in days")) -> 
             typer.echo(
                 f"{category:<14} {row['samples']:>8} {row['disagreements']:>9} "
                 f"{row['false_hit_rate'] * 100:>10.1f}%"
+            )
+    tier_shadow = store.tier_shadow_stats(days=days)
+    if tier_shadow:
+        typer.echo("")
+        typer.echo("Tier divergence (shadow-sampled local tiers vs comparison tier):")
+        typer.echo(f"{'category':<14} {'compare':<8} {'samples':>8} {'agree%':>7} {'diverge%':>9}")
+        for category in sorted(tier_shadow):
+            row = tier_shadow[category]
+            compare = ",".join(sorted(row["compare_tiers"]))
+            typer.echo(
+                f"{category:<14} {compare:<8} {row['samples']:>8} "
+                f"{row['agree_rate'] * 100:>6.1f}% {row['divergence_rate'] * 100:>8.1f}%"
             )
 
 

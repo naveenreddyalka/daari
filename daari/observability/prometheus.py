@@ -67,6 +67,16 @@ def render_prometheus(
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
 
+    lines.append(
+        "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "
+        "comparison tier, by whether the answers agreed."
+    )
+    lines.append("# TYPE daari_tier_shadow_samples_total counter")
+    shadow = snap.get("tier_shadow") or {}
+    for key, label in (("agree", "true"), ("disagree", "false")):
+        if key in shadow:
+            lines.append(f"daari_tier_shadow_samples_total{_labels(agreed=label)} {shadow[key]}")
+
     lines.append("# HELP daari_guardrail_trips_total Guardrail actions taken.")
     lines.append("# TYPE daari_guardrail_trips_total counter")
     for action, count in snap["guardrails"].items():

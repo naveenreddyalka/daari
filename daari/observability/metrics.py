@@ -39,6 +39,7 @@ class Metrics:
     cache_false_hits_avoided: int = 0
     upstream_retries: int = 0
     backends: dict[str, int] = field(default_factory=dict)
+    tier_shadow: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -91,6 +92,12 @@ class Metrics:
         with self._lock:
             self.upstream_retries += 1
 
+    def record_tier_shadow(self, *, agreed: bool) -> None:
+        """A sampled local-tier answer was replayed at a comparison tier (#318)."""
+        key = "agree" if agreed else "disagree"
+        with self._lock:
+            self.tier_shadow[key] = self.tier_shadow.get(key, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -117,4 +124,5 @@ class Metrics:
                 "cache_false_hits_avoided": self.cache_false_hits_avoided,
                 "upstream_retries": self.upstream_retries,
                 "backends": dict(self.backends),
+                "tier_shadow": dict(self.tier_shadow),
             }
