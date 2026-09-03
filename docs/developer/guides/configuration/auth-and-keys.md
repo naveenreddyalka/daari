@@ -17,11 +17,12 @@ Tunnel setup (`daari setup cursor --tunnel`) auto-generates a key when unset.
 
 ```bash
 daari keys create --name alice --daily-budget 5
+daari keys create --name ci --expires 30d
 daari keys list
 daari keys revoke <key_id>
 ```
 
-Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, TPM, tier caps.
+Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, TPM, tier caps, and an optional expiry (`--expires 30d|12h|45m` or an ISO-8601 timestamp). Existing keys with no expiry never expire. An expired key is a 401 `key_expired` (distinct from invalid/revoked) and writes an `auth.key_expired` audit row. `daari keys list` shows `expires` and a `status` of `active` / `expired` / `revoked`.
 
 ```bash
 daari keys create --name ci --rpm 60 --tpm 40000
@@ -74,6 +75,7 @@ enterprise:
         boundary_profile: fintech
       contractors:
         tier_cap: L3
+        key_ttl: 8h
     default_policy:
       tier_cap: L3
     deny_unmapped: false

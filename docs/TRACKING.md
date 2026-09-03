@@ -1642,6 +1642,18 @@ fails over instead of sending a stale token. No new dependency (httpx already
 in tree). Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md#oauth-client-credentials-secretoauth).
 Covered by `tests/unit/test_secret_refs_oauth.py`.
 
+### Virtual key expiry (`expires_at` + SSO `key_ttl`) ([#331](https://github.com/naveenreddyalka/daari/issues/331))
+
+<!-- tracking:#331 -->
+**Status:** Done (2026-09-03). Virtual keys gain an additive `expires_at` column
+(NULL = never; existing keys unaffected). `daari keys create --expires 30d|12h|ISO`
+sets it; `keys list` shows expiry and `active` / `expired` / `revoked`. Auth
+rejects expired keys with 401 `key_expired` (distinct from invalid/revoked) and
+writes `auth.key_expired`. SSO `key_policy.key_ttl` mints a TTL; `find_sso_key`
+treats an expired SSO key as absent so the next login remints. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_key_expiry.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
