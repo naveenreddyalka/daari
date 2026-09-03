@@ -4,9 +4,10 @@ Human-gated by design — agents prepare, a maintainer pulls the trigger.
 
 ## Checklist
 
-1. Bump `version` in `pyproject.toml`; move `CHANGELOG.md` Unreleased → new section.
-2. Write `docs/RELEASE-vX.Y.Z.md` (scope, highlights, validation results).
-3. Merge via PR (4 CI checks). Then tag + GitHub release:
+1. Bump `version` in `pyproject.toml` and `daari.__version__`; move `CHANGELOG.md` Unreleased → new section.
+2. Write `docs/RELEASE-vX.Y.Z.md` (scope, highlights, validation results). Put **Human steps remaining** at the top — agents must not tag, create a GitHub release, or publish.
+3. Verify this file against current workflows (especially `docker.yml` cosign / SBOM / provenance from #311).
+4. Merge via PR (CI checks). Then tag + GitHub release:
 
    ```bash
    git tag vX.Y.Z && git push origin vX.Y.Z
@@ -19,9 +20,22 @@ Human-gated by design — agents prepare, a maintainer pulls the trigger.
 |----------|----------|---------|------|
 | PyPI package | `publish.yml` | GitHub release published (or manual dispatch, incl. TestPyPI) | Trusted publisher registered 2026-08-13 |
 | Docker image | `docker.yml` | tag push → `ghcr.io/naveenreddyalka/daari:vX.Y.Z` + `latest` on main | ghcr package visibility (first publish creates it) |
+| Image signature | `docker.yml` (cosign keyless) | same push as the image (non-PR) | OIDC `id-token: write`; signs `IMAGE@DIGEST` |
+| SBOM + provenance | `docker.yml` (`sbom: true`, `provenance: true` on build-push) | attached to the pushed image | no-op on PR builds (`push: false`) |
 | Docs site | `docs-site.yml` | push to main | GitHub Pages (auto-enabled) |
 
 The build job runs `twine check --strict` on the sdist/wheel before any upload.
+
+### Verify a signed image (after the tag push)
+
+```bash
+cosign verify \
+  --certificate-identity-regexp 'https://github.com/naveenreddyalka/daari/.github/workflows/docker.yml@.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/naveenreddyalka/daari:vX.Y.Z
+```
+
+Inspect SBOM / provenance attestations with `docker buildx imagetools inspect` or `cosign download sbom` / `cosign download attestation` against the image digest from the `docker.yml` run.
 
 ## PyPI trusted publisher
 

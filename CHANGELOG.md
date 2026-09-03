@@ -4,9 +4,21 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 
 ## [Unreleased]
 
-### License
+## [1.4.0] — 2026-09-03 · [notes](docs/RELEASE-v1.4.0.md)
 
-- Relicensed the tree back to [Apache 2.0](LICENSE) ([#227](https://github.com/naveenreddyalka/daari/issues/227), [ADR-0016](docs/adr/0016-apache-2-relicense.md)). v1.3.0 as tagged remains PolyForm NC.
+**Apache 2.0, supply chain & enterprise gateway** — ~70 commits since v1.3.0: Apache 2.0 relicense, cosign-signed ghcr images with SBOM/provenance, MCP governance/guardrails/Tasks, `secret://` (+ oauth), OpenAI-compat local backends, FinOps headers, fleet upgrade guide. See [RELEASE-v1.4.0.md](docs/RELEASE-v1.4.0.md).
+
+### License & supply chain
+
+- Relicensed the tree back to [Apache 2.0](LICENSE) ([#227](https://github.com/naveenreddyalka/daari/issues/227) / [#293](https://github.com/naveenreddyalka/daari/pull/293), [ADR-0016](docs/adr/0016-apache-2-relicense.md)). v1.3.0 as tagged remains PolyForm NC.
+- Signed ghcr images with cosign (keyless), Syft SBOM, and SLSA provenance ([#311](https://github.com/naveenreddyalka/daari/pull/311)).
+
+### MCP, routing & FinOps (selected)
+
+- MCP tool governance (#307), guardrails on tools/call (#325), Tasks extension (#315)
+- `secret://` refs (#314) and `secret://oauth` (#329); cost-split (#308) and budget-remaining (#327) headers; stream usage counted once (#328)
+- OpenAI-compat local backend kind (#303); shadow evals (#326); `reasoning_effort` (#312); SSE keepalive (#304); agent prefix L1 (#299)
+- Fleet upgrade guide (#316); retention/prune (#338); virtual key expiry (#337); `daari service` install/restart (#266/#300/#324)
 
 ## [1.3.0] — 2026-08-17 · [notes](docs/RELEASE-v1.3.0.md)
 
@@ -130,7 +142,9 @@ All notable changes to daari. Format loosely follows [Keep a Changelog](https://
 
 - Initial release: local-first routing chain (L0 → CCS → L1 → L2/Lt → L3/L4/L5 → optional L6), OpenAI + Anthropic + MCP gateways, execution policy, setup recipes (Cursor/IntelliJ/VS Code/claude-code), doctor/install/demo tooling, Sourcegraph/GHE/GitLab providers, routing evals GP-01–GP-20
 
-[Unreleased]: https://github.com/naveenreddyalka/daari/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/naveenreddyalka/daari/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/naveenreddyalka/daari/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/naveenreddyalka/daari/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/naveenreddyalka/daari/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/naveenreddyalka/daari/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/naveenreddyalka/daari/compare/v1.1.0...v1.1.1
