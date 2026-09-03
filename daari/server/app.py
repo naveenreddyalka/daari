@@ -111,6 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         }
                     },
                 )
+            budget_response_headers: dict[str, str] = {}
             if claims.kind == "virtual" and claims.virtual_key is not None and store is not None:
                 # Per-key frontier budget, charged to the key that caused the
                 # spend. Billing against global spend let one key exhaust every
@@ -119,7 +120,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ctx = getattr(request.app.state, "ctx", None)
                 ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
                 if ledger is not None and getattr(ledger, "enabled", False):
-                    from daari.auth.budgets import first_exceeded_window
+                    from daari.auth.budgets import budget_error, budget_status, tightest_window
+                    from daari.gateway.budget_headers import budget_headers, retry_after_seconds
 
                     client = claims.client_id or claims.key_id or ""
                     pricing = getattr(resolved, "pricing", None)
@@ -127,7 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     key = claims.virtual_key
                     team = store.get_team(key.team_id) if key is not None else None
                     team_ids = store.team_client_ids(team.team_id) if team is not None else []
-                    error = first_exceeded_window(
+                    statuses = budget_status(
                         key,
                         team,
                         ledger,
@@ -136,13 +138,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         pricing=pricing,
                         fallback_per_1k=fallback,
                     )
-                    if error is not None:
+                    exceeded = next((status for status in statuses if status.exceeded), None)
+                    if exceeded is not None:
+                        # #319: the 402 carries the same budget headers as a 2xx
+                        # (remaining 0) plus Retry-After from the window reset.
+                        headers = budget_headers(exceeded)
+                        headers["Retry-After"] = str(retry_after_seconds(exceeded))
                         return JSONResponse(
                             status_code=402,
-                            content={"error": error},
+                            content={
+                                "error": budget_error(
+                                    client_id=client,
+                                    window=exceeded.window,
+                                    spend=exceeded.spend,
+                                    scope=exceeded.scope,
+                                )
+                            },
+                            headers=headers,
                         )
+                    tightest = tightest_window(statuses)
+                    if tightest is not None:
+                        budget_response_headers = budget_headers(tightest)
             request.state.auth_claims = claims
-            return await call_next(request)
+            response = await call_next(request)
+            if budget_response_headers and 200 <= response.status_code < 300:
+                for header, value in budget_response_headers.items():
+                    response.headers.setdefault(header, value)
+            return response
 
     open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics"}
 

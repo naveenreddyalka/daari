@@ -1714,6 +1714,148 @@ async def test_shadow_sampled_l1_hit_records_false_hit_evidence(app, monkeypatch
     assert "cache_trust" in report.json()
 
 
+def _budgeted_app(settings, tmp_path, *, daily_usd: float = 1.0, team_month_usd: float = 0.0):
+    """Issue #319: master key + one virtual key with a daily budget (+ optional team)."""
+    from daari.auth.virtual_keys import BudgetWindow, VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    team = None
+    if team_month_usd > 0:
+        store.create_team("eng", budget_windows=[BudgetWindow("month", team_month_usd)])
+        team = "eng"
+        store.create("teammate", client_id="key-b", team=team)
+    created = store.create("agent", client_id="key-a", daily_budget_usd=daily_usd, team=team)
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    application.state.ctx.router.usage_ledger = ledger
+
+    async def local_answer(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    application.state.ctx.router.ollama.execute = local_answer
+    return application, ledger, {"Authorization": f"Bearer {created.plaintext}"}
+
+
+def _frontier_spend(ledger, client_id: str, usd: float) -> None:
+    ledger.record(tier="L6", client_id=client_id, model="", input_tokens=int(usd / 0.002 * 1000))
+
+
+@pytest.mark.asyncio
+async def test_budget_headers_count_down_and_402_carries_contract(settings, tmp_path):
+    app, ledger, headers = _budgeted_app(settings, tmp_path, daily_usd=1.0)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "one"}]},
+            headers=headers,
+        )
+        _frontier_spend(ledger, "key-a", 0.25)
+        second = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "two"}]},
+            headers=headers,
+        )
+        _frontier_spend(ledger, "key-a", 0.75)
+        exhausted = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "three"}]},
+            headers=headers,
+        )
+
+    assert first.status_code == 200
+    assert first.headers["x-daari-budget-remaining"] == "1"
+    assert first.headers["x-daari-budget-limit"] == "1"
+    assert first.headers["x-daari-budget-window"] == "1d"
+    assert first.headers["x-daari-budget-scope"] == "key"
+    assert int(first.headers["x-daari-budget-reset"]) > 0
+    assert second.status_code == 200
+    assert second.headers["x-daari-budget-remaining"] == "0.75"
+
+    assert exhausted.status_code == 402
+    assert exhausted.json()["error"]["type"] == "budget_exceeded"
+    assert exhausted.headers["x-daari-budget-remaining"] == "0"
+    assert exhausted.headers["x-daari-budget-limit"] == "1"
+    assert exhausted.headers["x-daari-budget-window"] == "1d"
+    assert exhausted.headers["x-daari-budget-reset"] == first.headers["x-daari-budget-reset"]
+    assert int(exhausted.headers["retry-after"]) >= 1
+    reset_epoch = int(exhausted.headers["x-daari-budget-reset"])
+    body_reset = exhausted.json()["error"]["reset_at"]
+    from datetime import datetime
+
+    assert int(datetime.fromisoformat(body_reset).timestamp()) == reset_epoch
+
+
+@pytest.mark.asyncio
+async def test_budget_headers_report_tightest_window_across_key_and_team(settings, tmp_path):
+    app, ledger, headers = _budgeted_app(settings, tmp_path, daily_usd=5.0, team_month_usd=10.0)
+    _frontier_spend(ledger, "key-a", 1.0)
+    _frontier_spend(ledger, "key-b", 8.5)  # another team member's spend counts for the team window
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "team"}]},
+            headers=headers,
+        )
+    assert response.status_code == 200
+    assert response.headers["x-daari-budget-scope"] == "team"
+    assert response.headers["x-daari-budget-window"] == "1mo"
+    assert response.headers["x-daari-budget-limit"] == "10"
+    assert response.headers["x-daari-budget-remaining"] == "0.5"
+
+
+@pytest.mark.asyncio
+async def test_budget_headers_present_on_streams(settings, tmp_path):
+    app, _ledger, headers = _budgeted_app(settings, tmp_path, daily_usd=2.0)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [{"role": "user", "content": "stream me"}],
+            },
+            headers=headers,
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["x-daari-budget-remaining"] == "2"
+    assert response.headers["x-daari-budget-window"] == "1d"
+
+
+@pytest.mark.asyncio
+async def test_no_budget_means_no_budget_headers(settings, tmp_path):
+    app, _ledger, headers = _budgeted_app(settings, tmp_path, daily_usd=0.0)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        virtual = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "free"}]},
+            headers=headers,
+        )
+        master = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "master"}]},
+            headers={"Authorization": "Bearer master"},
+        )
+    for response in (virtual, master):
+        assert response.status_code == 200
+        assert not any(name.startswith("x-daari-budget") for name in response.headers)
+
+
 @pytest.mark.asyncio
 async def test_shadow_sampled_tier_decision_records_divergence(app, monkeypatch):
     """Issue #318: a sampled L3 answer is replayed at the top local tier in the

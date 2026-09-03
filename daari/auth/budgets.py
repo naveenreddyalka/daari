@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Literal
 
@@ -33,6 +34,16 @@ def window_label(duration: str) -> str:
         return "daily"
     if canonical == "month":
         return "monthly"
+    return canonical
+
+
+def window_header_label(duration: str) -> str:
+    """`x-daari-budget-window` value: `1d`, `1mo`, or the raw `7d` / `12h` form."""
+    canonical = normalize_duration(duration)
+    if canonical == "day":
+        return "1d"
+    if canonical == "month":
+        return "1mo"
     return canonical
 
 
@@ -96,6 +107,11 @@ def reset_at(duration: str, *, now: datetime | None = None) -> str:
         delta = timedelta(hours=amount) if unit == "h" else timedelta(days=amount)
         return (moment + delta).isoformat()
     return moment.isoformat()
+
+
+def reset_epoch(duration: str, *, now: datetime | None = None) -> int:
+    """`reset_at` as epoch seconds, for the `x-daari-budget-reset` header."""
+    return int(datetime.fromisoformat(reset_at(duration, now=now)).timestamp())
 
 
 def ledger_window(duration: str) -> tuple[str, int | None]:
@@ -179,6 +195,63 @@ def spend_for_window(
     return total
 
 
+@dataclass(frozen=True)
+class WindowStatus:
+    """One effective budget window measured against current spend (#319)."""
+
+    window: BudgetWindow
+    scope: Scope
+    spend: float
+    now: datetime | None = field(default=None, compare=False)
+
+    @property
+    def remaining(self) -> float:
+        return max(0.0, float(self.window.max_usd) - float(self.spend))
+
+    @property
+    def exceeded(self) -> bool:
+        return float(self.spend) >= float(self.window.max_usd)
+
+    @property
+    def reset_at(self) -> str:
+        return reset_at(self.window.duration, now=self.now)
+
+    @property
+    def reset_epoch(self) -> int:
+        return reset_epoch(self.window.duration, now=self.now)
+
+
+def budget_status(
+    key: VirtualKey,
+    team: Team | None,
+    ledger: Any,
+    *,
+    client_id: str,
+    team_client_ids: list[str],
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+    now: datetime | None = None,
+) -> list[WindowStatus]:
+    """Spend vs cap for every effective window, in `effective_windows` order."""
+    statuses: list[WindowStatus] = []
+    for window, scope in effective_windows(key, team):
+        ids = team_client_ids if scope == "team" else [client_id]
+        spend = spend_for_window(
+            ledger, ids, window.duration, pricing=pricing, fallback_per_1k=fallback_per_1k
+        )
+        statuses.append(WindowStatus(window=window, scope=scope, spend=spend, now=now))
+    return statuses
+
+
+def tightest_window(statuses: Iterable[WindowStatus]) -> WindowStatus | None:
+    """The window a client will hit first: least USD remaining (first wins ties)."""
+    best: WindowStatus | None = None
+    for status in statuses:
+        if best is None or status.remaining < best.remaining:
+            best = status
+    return best
+
+
 def first_exceeded_window(
     key: VirtualKey,
     team: Team | None,
@@ -189,13 +262,18 @@ def first_exceeded_window(
     pricing: Any = None,
     fallback_per_1k: float = 0.002,
 ) -> dict[str, Any] | None:
-    for window, scope in effective_windows(key, team):
-        ids = team_client_ids if scope == "team" else [client_id]
-        spend = spend_for_window(
-            ledger, ids, window.duration, pricing=pricing, fallback_per_1k=fallback_per_1k
-        )
-        if spend >= window.max_usd:
-            return budget_error(
-                client_id=client_id, window=window, spend=spend, scope=scope
-            )
-    return None
+    statuses = budget_status(
+        key,
+        team,
+        ledger,
+        client_id=client_id,
+        team_client_ids=team_client_ids,
+        pricing=pricing,
+        fallback_per_1k=fallback_per_1k,
+    )
+    exceeded = next((status for status in statuses if status.exceeded), None)
+    if exceeded is None:
+        return None
+    return budget_error(
+        client_id=client_id, window=exceeded.window, spend=exceeded.spend, scope=exceeded.scope
+    )
