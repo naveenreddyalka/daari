@@ -31,6 +31,14 @@ CREATE TABLE IF NOT EXISTS client_usage (
     completion_chars INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, client_id, tier)
 );
+CREATE TABLE IF NOT EXISTS budget_window_state (
+    scope TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    duration TEXT NOT NULL,
+    period_id TEXT NOT NULL,
+    carry_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+    PRIMARY KEY (scope, scope_id, duration)
+);
 """
 
 
@@ -253,6 +261,55 @@ class PostgresUsageLedger:
                 totals["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
         totals["estimated_saved_usd"] = round(totals["estimated_saved_usd"], 4)
         return {"enabled": True, "days": list(per_day.values()), "totals": totals}
+
+    def get_budget_window_state(
+        self, scope: str, scope_id: str, duration: str
+    ) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT period_id, carry_usd FROM budget_window_state"
+                        " WHERE scope = %s AND scope_id = %s AND duration = %s",
+                        (scope, scope_id, duration),
+                    )
+                    row = cur.fetchone()
+        except Exception:
+            return None
+        if row is None:
+            return None
+        return {"period_id": row[0], "carry_usd": float(row[1] or 0.0)}
+
+    def put_budget_window_state(
+        self,
+        scope: str,
+        scope_id: str,
+        duration: str,
+        *,
+        period_id: str,
+        carry_usd: float,
+    ) -> None:
+        if not self.enabled:
+            return
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO budget_window_state
+                            (scope, scope_id, duration, period_id, carry_usd)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (scope, scope_id, duration) DO UPDATE SET
+                            period_id = EXCLUDED.period_id,
+                            carry_usd = EXCLUDED.carry_usd
+                        """,
+                        (scope, scope_id, duration, period_id, float(carry_usd)),
+                    )
+                conn.commit()
+        except Exception:
+            pass
 
     def prune_before_day(self, cutoff_day: str, *, dry_run: bool = False) -> int:
         if not self.enabled:

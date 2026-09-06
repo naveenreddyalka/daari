@@ -1693,6 +1693,17 @@ Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
 
+### Opt-in budget window rollover ([#344](https://github.com/naveenreddyalka/daari/issues/344))
+
+<!-- tracking:#344 -->
+**Status:** Done (2026-09-06). Per-window `rollover: true` (default off) carries
+unused headroom into the next period's effective limit, capped at
+`rollover_cap_multiple` (default 2×). Carry is persisted on
+`budget_window_state` in the SQLite and Postgres usage ledgers. Headers, 402
+bodies, and budget alert webhooks use the effective limit. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_budget_rollover.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
