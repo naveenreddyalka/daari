@@ -1693,6 +1693,15 @@ Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
 
+### Audit log list and JSONL export ([#345](https://github.com/naveenreddyalka/daari/issues/345))
+
+<!-- tracking:#345 -->
+**Status:** Done (2026-09-06). `daari audit list` (`--limit`/`--actor`/
+`--action` prefix/`--since`/`--json`) and `daari audit export --format jsonl`
+stream newest-first rows from `enterprise.audit_path` in seq batches. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_audit_cli.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
