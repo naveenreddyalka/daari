@@ -1693,6 +1693,16 @@ Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
 
+### ChatGPT Desktop via Ollama facade generate/embed ([#343](https://github.com/naveenreddyalka/daari/issues/343))
+
+<!-- tracking:#343 -->
+**Status:** Done (2026-09-06). Ollama facade gains `/api/generate`
+(stream NDJSON + non-stream, same router/ledger path as `/api/chat`) and
+`/api/embed` + legacy `/api/embeddings` (shared `embeddings_api` helper with
+`/v1/embeddings`). Unknown Ollama 0.34 fields are ignored (`extra="ignore"`).
+Recipe: [chatgpt-desktop.md](developer/guides/clients/chatgpt-desktop.md)
+(11435 vs 11434). Covered by `tests/integration/test_ollama_compat.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
