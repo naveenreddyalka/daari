@@ -68,6 +68,14 @@ diverge%, comparison tier), `daari report` / `GET /v1/daari/report` carry
 Prometheus exports `daari_tier_shadow_samples_total{agreed="true|false"}`.
 Default off; tests set the rate explicitly so the suite stays deterministic.
 
+## Stall escalation
+
+`routing.stall_escalation.enabled` (default off) looks only at the request's
+tool history. Three identical calls (same name and normalized arguments) in
+the last six tool calls, or three consecutive error tool results, bump the
+chosen tier by one. `X-Daari-Tier-Cap` and `routing.max_tier_for_chat` still
+win. The event is `stall_escalation` with the pattern and repeat count.
+
 ## Knobs
 
 See [Config overview](../guides/configuration/overview.md) and [Config reference](../reference/config.md).

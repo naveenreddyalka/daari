@@ -2162,3 +2162,71 @@ async def test_reasoning_effort_forwarded_on_frontier_fallback(settings, monkeyp
     assert response.status_code == 200
     assert response.json()["daari_meta"]["tier"] == "L6"
     assert frontier_bodies[0]["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_stall_escalation_lands_one_tier_higher(settings, monkeypatch):
+    """Three identical tool calls bump a short prompt from L3 to L4."""
+    settings.routing.stall_escalation.enabled = True
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[str] = []
+
+    def bind(tier: str, model: str):
+        async def fake_execute(request: InternalRequest, _model: str = model) -> InternalResponse:
+            seen.append(_model)
+            return InternalResponse(
+                content="A confident answer with plenty of length to avoid escalation.",
+                model=_model,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    executor="ollama",
+                    provider_id="ollama",
+                    model=_model,
+                    latency_ms=1,
+                ),
+            )
+
+        return fake_execute
+
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l3, "execute", bind("L3", "llama3.2:3b")
+    )
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l4, "execute", bind("L4", "llama3.1:8b")
+    )
+
+    messages = [{"role": "user", "content": "hi"}]
+    for index in range(3):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"call_{index}",
+                        "type": "function",
+                        "function": {"name": "read_file", "arguments": '{"path": "a.py"}'},
+                    }
+                ],
+            }
+        )
+        messages.append({"role": "tool", "content": "print('hello')", "tool_call_id": f"call_{index}"})
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        stalled = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": messages, "tools": _demo_tools()},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+        fresh = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "hi"}]},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+
+    assert stalled.status_code == 200
+    assert stalled.json()["daari_meta"]["tier"] == "L4"
+    assert fresh.json()["daari_meta"]["tier"] == "L3"
+    assert seen == ["llama3.1:8b", "llama3.2:3b"]

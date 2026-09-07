@@ -382,6 +382,9 @@ class Router:
         org_pool: OllamaExecutor | MLXExecutor | None = None,
         local_pool: Any | None = None,
         reasoning_effort_escalation: bool = False,
+        stall_escalation: bool = False,
+        stall_repeats: int = 3,
+        stall_window: int = 6,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -459,6 +462,9 @@ class Router:
         self.otel_enabled = otel_enabled
         self.org_pool = org_pool
         self.reasoning_effort_escalation = reasoning_effort_escalation
+        self.stall_escalation = bool(stall_escalation)
+        self.stall_repeats = max(1, int(stall_repeats))
+        self.stall_window = max(1, int(stall_window))
         self.local_pool = local_pool
 
     @property
@@ -2672,7 +2678,42 @@ class Router:
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
         tier = self._apply_latency_budget(tier, request, profile)
         capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
-        return capable[0] if capable else tier
+        chosen = capable[0] if capable else tier
+        return self._apply_stall_escalation(request, chosen)
+
+    def _apply_stall_escalation(self, request: InternalRequest, tier: str) -> str:
+        if not self.stall_escalation or tier not in {"L3", "L4", "L5"}:
+            return tier
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.stall import bump_tier, detect_stall
+
+        match = detect_stall(
+            request.messages,
+            repeats=self.stall_repeats,
+            window=self.stall_window,
+        )
+        if match is None:
+            return tier
+        nxt = bump_tier(tier, frontier=self._frontier_reachable(request))
+        if nxt is None or nxt == tier:
+            return tier
+        cap = self._effective_tier_cap(request)
+        if cap in self._TIER_ORDER and (
+            nxt == "L6"
+            or nxt in self._TIER_ORDER
+            and self._TIER_ORDER.index(nxt) > self._TIER_ORDER.index(cap)
+        ):
+            return tier
+        log_gateway_event(
+            "stall_escalation",
+            {
+                "pattern": match.pattern,
+                "count": match.count,
+                "from": tier,
+                "to": nxt,
+            },
+        )
+        return nxt
 
     def _nitro_tier(self, request: InternalRequest) -> str:
         """Warmest / lowest-latency capable local backend (`:nitro`)."""
@@ -3686,6 +3727,9 @@ class AppContext:
             org_pool=org_pool_executor,
             local_pool=local_pool,
             reasoning_effort_escalation=settings.routing.reasoning_effort_escalation,
+            stall_escalation=settings.routing.stall_escalation.enabled,
+            stall_repeats=settings.routing.stall_escalation.repeats,
+            stall_window=settings.routing.stall_escalation.window,
         )
         if settings.observability.otel:
             from daari.observability.otel import configure_providers

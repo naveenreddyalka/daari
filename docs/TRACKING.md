@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (budget-remaining headers — [#319](https://github.com/naveenreddyalka/daari/issues/319))  
+> Last updated: 2026-09-07 (stall escalation — [#357](https://github.com/naveenreddyalka/daari/issues/357))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -1692,6 +1692,19 @@ the delete. Sweep failures log `retention.sweep_failed` and never raise.
 Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
+
+### Stall escalation for a stuck agent loop ([#357](https://github.com/naveenreddyalka/daari/issues/357))
+
+<!-- tracking:#357 -->
+**Status:** Done (2026-09-07). `routing.stall_escalation` (default off; repeats
+3, window 6) reads the request's tool history only. N identical calls (name +
+normalized arguments) in the last window, or N consecutive error tool results,
+bump the heuristic tier by one. `X-Daari-Tier-Cap` and
+`routing.max_tier_for_chat` still win. Logged as `stall_escalation` with
+pattern and count. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#stall-escalation).
+Covered by `tests/unit/test_stall.py` and
+`tests/integration/test_gateway_flow.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
