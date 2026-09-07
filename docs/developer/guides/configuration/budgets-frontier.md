@@ -109,11 +109,48 @@ pricing:
 ```
 
 Names match on longest prefix, so a `gpt-4o` entry also prices
-`gpt-4o-2024-08-06`. Anything unmatched falls back to the flat
+`gpt-4o-2024-08-06`. A vendor prefix resolves the same way:
+`anthropic.claude-fable-5-1` and `models/gemini-3.8-flash` use the shipped
+id. Anything unmatched falls back to the flat
 `usage.frontier_price_per_1k_tokens`, which ignores direction and will misprice a
 model whose output rate differs sharply from its input rate. `daari doctor` warns
 about models being billed at that fallback, so add an entry when you adopt a new
 model or your budgets will drift from your real invoice.
+
+### Shipped list prices (captured 2026-09-07)
+
+The default table still includes the 2024 entries (`gpt-4o`, `gpt-4o-mini`,
+`claude-3-5-sonnet`, `claude-3-5-haiku`, `claude-3-opus`) at their previous
+rates. Current flagship and workhorse models, USD per 1M tokens:
+
+| Model | Input | Cached input | Output | Source |
+|-------|------:|-------------:|-------:|--------|
+| `claude-fable-5-1` | 10.00 | 0.25 | 50.00 | [Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview) |
+| `claude-opus-5` | 5.00 | 0.50 | 25.00 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) |
+| `claude-sonnet-5` | 2.00 | 0.20 | 10.00 | Anthropic pricing |
+| `claude-haiku-4-5` | 1.00 | 0.10 | 5.00 | Anthropic pricing |
+| `gpt-6-astra` | 10.00 | 1.00 | 50.00 | OpenAI standard short-context tier |
+| `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | 20.00 | OpenAI promo through 2026-11-21 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)) |
+| `gpt-5.6-terra` | 2.00 | 0.20 | 12.00 | OpenAI API pricing |
+| `gpt-5.6-luna` | 0.20 | 0.02 | 1.20 | OpenAI API pricing |
+| `gemini-3.8-flash` | 0.75 | 0.075 | 3.75 | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) intro rate through 2026-12-31 |
+
+`gpt-5.6` is the Sol alias. Longer keys win, so `gpt-5.6-luna` is not priced
+as Sol. Gemini 3.8 Flash's published standard rate becomes $1.50 / $7.50 on
+2027-01-01; the shipped default is the intro rate in effect now. Override
+`pricing.models` when that date passes or when a provider changes a quote.
+
+### Known limitation: GPT-6 Astra long-context surcharge
+
+Threshold pricing is out of scope. `gpt-6-astra` is billed at the short-context
+list rate ($10 input / $1 cached / $50 output per 1M) regardless of prompt
+length.
+
+OpenAI reprices the **entire** request once input exceeds 272K tokens: 2× input
+and cached-input, 1.5× output ($20 / $2 / $75). Operators budgeting 1M-context
+Astra traffic will see daari spend, budget remaining, and cost headers below
+the invoice for those calls. Set a higher `pricing.models` override if that
+traffic is the common case.
 
 ## Providers / fallback
 
