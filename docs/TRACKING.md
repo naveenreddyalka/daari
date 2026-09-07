@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (budget-remaining headers — [#319](https://github.com/naveenreddyalka/daari/issues/319))  
+> Last updated: 2026-09-07 (session affinity — [#356](https://github.com/naveenreddyalka/daari/issues/356))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -1692,6 +1692,20 @@ the delete. Sweep failures log `retention.sweep_failed` and never raise.
 Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
+
+### Session affinity across tool-turn continuations ([#356](https://github.com/naveenreddyalka/daari/issues/356))
+
+<!-- tracking:#356 -->
+**Status:** Done (2026-09-07). `routing.session_affinity` (default off) pins the
+served tier for a session. Tool-result continuations and an unchanged user-turn
+prefix replay the pin; a new human turn re-routes. Session key is
+`X-Daari-Session` or OpenAI `user`, else a conversation-prefix hash, with
+`routing.session_affinity_ttl_seconds` (default 1800). Tier cap, an open
+circuit, a down model, confidence escalation, and context-length failover
+override the pin (`session_pin` / `session_pin_override`). Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#session-affinity).
+Covered by `tests/unit/test_session_affinity.py` and
+`tests/integration/test_gateway_flow.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
