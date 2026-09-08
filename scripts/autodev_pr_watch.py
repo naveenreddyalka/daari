@@ -10,6 +10,10 @@ comments on the PR, and files a `auto-dev,regression` issue once per stall.
 It also sweeps abandoned `agent:working` labels (issue #272): an open issue
 untouched for the TTL with no open PR referencing it gets the label removed
 so the dev-cycle picker can claim it again.
+
+Issue #368: merge ``origin/main`` into ``BEHIND`` auto-merge PRs (union-merge
+``docs/TRACKING.md``) and approve first-party bot workflow runs held on
+``action_required`` so a park drains without a human *Update branch* click.
 """
 
 from __future__ import annotations
@@ -25,6 +29,14 @@ from typing import Any
 STALL_MARKER = "autodev-pr-stall"
 BLOCKED_MARKER = "autodev-blocked"
 SWEEP_MARKER = "autodev-stale-working"
+BEHIND_FAIL_MARKER = "autodev-behind-update-failed"
+TRACKING_APPEND = (
+    "<!-- tracking-append: add the next ### section above "
+    "## How to update; on conflict keep both -->"
+)
+HOW_TO_UPDATE = "## How to update"
+_TRACKING_SECTION = re.compile(r"(^### .+?)(?=^### |\Z)", re.M | re.S)
+_TRACKING_ID = re.compile(r"<!-- tracking:#(\d+) -->")
 ISSUE_LABELS = "auto-dev,regression"
 WORKING_LABEL = "agent:working"
 DEFAULT_MIN_AGE_MINUTES = 15
@@ -529,6 +541,219 @@ def _cli_issue_comment(number: int, body: str) -> None:
     )
 
 
+def _head_before_how(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.startswith(HOW_TO_UPDATE):
+            break
+        lines.append(line)
+    return "".join(lines)
+
+
+def _clean_tracking_section(block: str) -> str:
+    block = re.sub(r"<!-- tracking-append:.*?-->", "", block, flags=re.S)
+    return block.rstrip().rstrip("-").rstrip() + "\n\n"
+
+
+def merge_tracking_keep_both(ours: str, theirs: str) -> str:
+    """Keep both ``###`` tracking sections. ``theirs`` is incoming main."""
+
+    def sections(text: str) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for match in _TRACKING_SECTION.finditer(_head_before_how(text)):
+            block = match.group(1)
+            tid = _TRACKING_ID.search(block)
+            if tid:
+                out[tid.group(1)] = _clean_tracking_section(block)
+        return out
+
+    missing = {
+        tid: block for tid, block in sections(ours).items() if tid not in sections(theirs)
+    }
+    if not missing:
+        return theirs
+    insert = "".join(missing.values())
+    if TRACKING_APPEND in theirs:
+        return theirs.replace(TRACKING_APPEND, insert + TRACKING_APPEND, 1)
+    lines = theirs.splitlines(keepends=True)
+    out: list[str] = []
+    inserted = False
+    for line in lines:
+        if not inserted and line.startswith(HOW_TO_UPDATE):
+            out.append(insert)
+            out.append(TRACKING_APPEND + "\n\n---\n\n")
+            inserted = True
+        out.append(line)
+    return "".join(out)
+
+
+def plan_behind_updates(
+    prs: list[dict[str, Any]],
+    *,
+    comments_by_number: dict[int, list[dict[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
+    comments_by_number = comments_by_number or {}
+    planned: list[dict[str, Any]] = []
+    for pr in prs:
+        if not pr.get("autoMergeRequest"):
+            continue
+        if (pr.get("state") or "OPEN").upper() not in ("OPEN", ""):
+            continue
+        if (pr.get("mergeStateStatus") or "").upper() != "BEHIND":
+            continue
+        if (pr.get("mergeable") or "").upper() == "CONFLICTING":
+            continue
+        number = int(pr["number"])
+        comments = comments_by_number.get(number) or []
+        if any(BEHIND_FAIL_MARKER in (item.get("body") or "") for item in comments):
+            continue
+        planned.append(pr)
+    return planned
+
+
+def apply_behind_updates(
+    prs: list[dict[str, Any]],
+    *,
+    dry_run: bool = False,
+    merge_main: Any = None,
+    list_comments: Any = None,
+    comment: Any = None,
+) -> list[int]:
+    comments_by_number: dict[int, list[dict[str, Any]]] = {}
+    if list_comments:
+        for pr in prs:
+            comments_by_number[int(pr["number"])] = list_comments(int(pr["number"]))
+    planned = plan_behind_updates(prs, comments_by_number=comments_by_number)
+    if dry_run:
+        return [int(pr["number"]) for pr in planned]
+    updated: list[int] = []
+    for pr in planned:
+        number = int(pr["number"])
+        branch = pr.get("headRefName") or ""
+        result = merge_main(branch) if merge_main else "conflict"
+        if result == "updated":
+            updated.append(number)
+        elif comment:
+            comment(
+                number,
+                f"<!-- {BEHIND_FAIL_MARKER} -->\n"
+                f"Failed to merge `origin/main` into `{branch}`; left the "
+                "branch untouched. Filed by `scripts/autodev_pr_watch.py` (#368).\n",
+            )
+    return updated
+
+
+def approve_first_party_runs(
+    runs: list[dict[str, Any]],
+    *,
+    repo_full_name: str,
+    approve: Any = None,
+) -> list[int]:
+    approved: list[int] = []
+    for run in runs:
+        held = (run.get("conclusion") or "") == "action_required" or (
+            run.get("status") or ""
+        ) == "waiting"
+        if not held:
+            continue
+        head = ((run.get("head_repository") or {}).get("full_name") or "").lower()
+        if head and head != repo_full_name.lower():
+            continue
+        run_id = run.get("id")
+        if run_id is None or not approve:
+            continue
+        approve(int(run_id))
+        approved.append(int(run_id))
+    return approved
+
+
+def _cli_merge_main(branch: str) -> str:
+    if not branch:
+        return "conflict"
+    repo = Path(
+        subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip()
+    )
+    slug = branch.replace("/", "-")
+    work = repo / ".worktrees" / f"behind-{slug}"
+    try:
+        if work.exists():
+            subprocess.call(["git", "worktree", "remove", "--force", str(work)])
+        subprocess.check_call(["git", "fetch", "origin", "main", branch])
+        subprocess.check_call(["git", "worktree", "add", "--force", str(work), f"origin/{branch}"])
+        git_ident = [
+            "-c",
+            "user.name=Naveen Reddy Alka",
+            "-c",
+            "user.email=naveenreddy.alka@gmail.com",
+        ]
+        merge = subprocess.run(
+            ["git", *git_ident, "merge", "origin/main", "--no-edit"],
+            cwd=work,
+            check=False,
+        )
+        if merge.returncode != 0:
+            unmerged = subprocess.check_output(
+                ["git", "diff", "--name-only", "--diff-filter=U"],
+                cwd=work,
+                text=True,
+            ).split()
+            if unmerged != ["docs/TRACKING.md"]:
+                subprocess.call(["git", "merge", "--abort"], cwd=work)
+                return "conflict"
+            ours = subprocess.check_output(
+                ["git", "show", ":2:docs/TRACKING.md"], cwd=work, text=True
+            )
+            theirs = subprocess.check_output(
+                ["git", "show", ":3:docs/TRACKING.md"], cwd=work, text=True
+            )
+            (work / "docs" / "TRACKING.md").write_text(
+                merge_tracking_keep_both(ours, theirs), encoding="utf-8"
+            )
+            subprocess.check_call(["git", "add", "docs/TRACKING.md"], cwd=work)
+            subprocess.check_call(["git", *git_ident, "commit", "--no-edit"], cwd=work)
+        subprocess.check_call(["git", "push", "origin", f"HEAD:{branch}"], cwd=work)
+        return "updated"
+    except subprocess.CalledProcessError:
+        return "conflict"
+    finally:
+        subprocess.call(["git", "worktree", "remove", "--force", str(work)])
+
+
+def _cli_approve_run(run_id: int) -> None:
+    subprocess.run(
+        [
+            "gh",
+            "api",
+            "--method",
+            "POST",
+            f"repos/{{owner}}/{{repo}}/actions/runs/{run_id}/approve",
+        ],
+        check=False,
+    )
+
+
+def _repo_full_name() -> str:
+    raw = subprocess.check_output(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+        text=True,
+    )
+    return raw.strip()
+
+
+def fetch_held_runs() -> list[dict[str, Any]]:
+    held: list[dict[str, Any]] = []
+    for query in ("status=waiting", "status=completed"):
+        payload = (
+            _gh_json(
+                ["api", f"repos/{{owner}}/{{repo}}/actions/runs?{query}&per_page=30"]
+            )
+            or {}
+        )
+        if isinstance(payload, dict):
+            held.extend(payload.get("workflow_runs") or [])
+    return held
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -572,8 +797,29 @@ def main(argv: list[str] | None = None) -> int:
     ]
     for issue in stale:
         print(f"#{issue.get('number')} stale_working {issue.get('title')}")
+    comments_by_number: dict[int, list[dict[str, Any]]] = {}
+    if not args.input_json:
+        for pr in prs:
+            if (pr.get("mergeStateStatus") or "").upper() == "BEHIND":
+                comments_by_number[int(pr["number"])] = _cli_list_comments(int(pr["number"]))
+    behind = plan_behind_updates(prs, comments_by_number=comments_by_number)
+    for pr in behind:
+        print(f"#{pr.get('number')} behind_update {pr.get('title')}")
     if not args.apply:
         return 0
+    apply_behind_updates(
+        prs,
+        dry_run=False,
+        merge_main=_cli_merge_main,
+        list_comments=_cli_list_comments,
+        comment=_cli_comment,
+    )
+    if not args.input_json:
+        approve_first_party_runs(
+            fetch_held_runs(),
+            repo_full_name=_repo_full_name(),
+            approve=_cli_approve_run,
+        )
     apply_alerts(
         prs,
         min_age_minutes=args.min_age_minutes,
