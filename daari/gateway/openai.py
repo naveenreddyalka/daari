@@ -16,7 +16,6 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
 from daari.gateway.internal import (
-    DaariMeta,
     InternalRequest,
     InternalResponse,
     Message,
