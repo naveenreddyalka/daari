@@ -1780,6 +1780,15 @@ pattern and count. Docs:
 Covered by `tests/unit/test_stall.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### MCP egress follows tools/list nextCursor ([#358](https://github.com/naveenreddyalka/daari/issues/358))
+
+<!-- tracking:#358 -->
+**Status:** Done (2026-09-07). Egress `tools/list` follows `nextCursor` until
+absent, aggregates tools in first-seen order, and de-duplicates by name.
+A page cap (20) and a 15s listing timeout stop an infinite-cursor upstream.
+Single-page servers are unchanged. Guardrail result checks see the aggregated
+catalog. Covered by `tests/unit/test_mcp_egress.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
