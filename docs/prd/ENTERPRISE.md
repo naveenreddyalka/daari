@@ -11,45 +11,56 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-06)
+## Where daari stands (verified in-tree, 2026-09-08)
 
-**The label HITL is over.** The 09-03 refill (#330–#333) shipped the same day:
-issue auto-labeler workflow ([#336](https://github.com/naveenreddyalka/daari/pull/336)),
-virtual key + SSO credential expiry ([#337](https://github.com/naveenreddyalka/daari/pull/337)),
-retention windows + `daari prune` ([#338](https://github.com/naveenreddyalka/daari/pull/338)),
-and budget threshold webhooks ([#339](https://github.com/naveenreddyalka/daari/pull/339)).
-This run's four issues were auto-labeled within seconds of filing — no human
-label step remains in the loop.
+**Nine done PRs are parked on Actions approval — fifth consecutive day.**
+The 09-07 refill (#355–#358) was implemented within hours as PRs
+[#360](https://github.com/naveenreddyalka/daari/pull/360)–[#363](https://github.com/naveenreddyalka/daari/pull/363),
+then held on `action_required` exactly like
+[#340](https://github.com/naveenreddyalka/daari/pull/340) and
+[#347](https://github.com/naveenreddyalka/daari/pull/347)–[#350](https://github.com/naveenreddyalka/daari/pull/350)
+before them. No feature code has merged since 09-03. Loop hygiene stays
+healthy: one stall issue per new PR (#364–#367), one comment each, no re-pick
+spam.
 
-**One park:** PR [#340](https://github.com/naveenreddyalka/daari/pull/340)
-(v1.4.0 release-notes prep, closes #334) is `BLOCKED` — its CI run concluded
-`action_required` and the agent token cannot approve held runs. The stall
-watcher filed [#341](https://github.com/naveenreddyalka/daari/issues/341), and
-the cycle then re-picked #341 ~a dozen times, posting duplicate blocked
-comments — that loop defect is now [#342](https://github.com/naveenreddyalka/daari/issues/342).
-Human fix: **Approve and run** on
-[run 33815553913](https://github.com/naveenreddyalka/daari/actions/runs/33815553913),
-then tag v1.4.0 once #340 merges.
+**The drain itself is now a hazard.** Branch protection requires up-to-date
+branches (five PRs already show `BEHIND`), so approving one run merges one PR
+and strands the other eight — each then needs a branch update, a fresh CI run,
+and *another* manual approval. Worst case the human clicks through ~9 rounds.
+Two mitigations, in order of value: **relax the Actions approval policy for
+repo-workflow bot PRs** (one setting, ends the park class), and the new
+auto-drain issue filed this run (the PR watcher merges `origin/main` into
+`BEHIND` auto-merge PRs itself —
+[#368](https://github.com/naveenreddyalka/daari/issues/368), gap table row 2).
 
-Longer-standing surface (see 08-28→09-03 scans): Apache 2.0
+Longer-standing surface (see 08-28→09-07 scans): Apache 2.0
 ([ADR-0016](../adr/0016-apache-2-relicense.md)), virtual keys + multi-window
-budgets + teams + per-key RPM/TPM + key/SSO expiry, SSO/OIDC + IdP-minted keys,
-RBAC, append-only audit, retention/prune, policy sync, fleet bootstrap,
-Redis L0/L1 + Postgres ledger/traces, Helm + Grafana, Prometheus + OTel GenAI,
-budget headers + threshold webhooks, guardrails + PII scrub (chat + MCP), MCP
-ingress (2026-07-28, Tasks) + egress governance with per-key/team tool
-governance, `secret://` refs incl. OAuth client-credentials, Responses API,
-`/v1/embeddings`, Ollama facade, OpenAI-compat local backends
-(vLLM/llama.cpp/LM Studio), OpenRouter `provider` object, per-model +
-cached-input pricing, context-length failover + compression, circuit breakers,
-signed images + SBOM. Proof: 1141+ mocked tests; published load (320 rps L0 /
-61 ms p95), vs-LiteLLM, cost-of-pass pages.
+budgets + teams + per-key RPM/TPM/**in-flight caps** + key/SSO expiry,
+SSO/OIDC + IdP-minted keys, RBAC, append-only audit, retention/prune, policy
+sync, fleet bootstrap, Redis L0/L1 + Postgres ledger/traces, Helm + Grafana,
+Prometheus + OTel GenAI, budget headers + threshold webhooks, guardrails +
+PII scrub (chat + MCP), MCP ingress (2026-07-28, Tasks) + egress governance
+with per-key/team tool governance, `secret://` refs incl. OAuth
+client-credentials, Responses API, `/v1/embeddings`, Ollama facade,
+OpenAI-compat local backends (vLLM/llama.cpp/LM Studio), OpenRouter
+`provider` object, per-model + cached-input pricing, context-length failover +
+compression, circuit breakers, signed images + SBOM, shadow evals. Proof:
+1141+ mocked tests; published load (320 rps L0 / 61 ms p95), vs-LiteLLM,
+cost-of-pass pages. Parked in the nine PRs above: v1.4.0 prep, stall re-pick
+dedupe, ChatGPT Desktop facade, budget rollover, audit export, pricing
+refresh, session affinity, stall escalation, MCP `tools/list` pagination.
 
-**Positioning (unchanged):** Palo Alto Networks
-[acquired Portkey](https://www.paloaltonetworks.com/company/press/2026/palo-alto-networks-completes-acquisition-of-portkey-to-secure-ai-agents)
-(now the Prisma AIRS AI Gateway; public product changelog quiet since April) —
-developer-first/self-hosted buyers face roadmap uncertainty there. daari's
-counter-pitch: Apache 2.0, run-it-yourself, tokens never leave the building.
+**Positioning:** Portkey is the PANW Prisma AIRS AI Gateway (changelog quiet
+since April). LiteLLM's routing offensive continues as a daily blog cadence:
+[per-hop classifier compression](https://docs.litellm.ai/blog/auto-router-per-hop-compression)
+(09-05), [subtask/phase routing](https://docs.litellm.ai/blog/subtask-type-routing)
+(09-07, experimental — explore/verify/implement phases each routed to a
+different tier; Opus-fixed quality at 46% less cost on a SWE-bench subset),
+[stall escalation](https://docs.litellm.ai/blog/auto-router-stall-escalation)
+(09-08 — the feature daari has parked in #362). Customization stays metered
+behind the `auto_router` enterprise license. daari's counter-pitch is
+unchanged and sharpening: routing *is* the Apache 2.0 core, run-it-yourself,
+tokens never leave the building.
 
 ---
 
@@ -57,92 +68,94 @@ counter-pitch: Apache 2.0, run-it-yourself, tokens never leave the building.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Stall re-pick spam** — a human-gated stall issue (#341) gets re-picked every cycle; ~12 duplicate blocked comments in 3 days, every scheduled run wasted while parked | 4 | 1 | n/a (loop health) | Parked time should cost nothing; one blocked comment per distinct blocked state, then skip until PR state changes | [#342](https://github.com/naveenreddyalka/daari/issues/342) (P1) |
-| 2 | **ChatGPT Desktop as a client** — Ollama v0.34 lets ChatGPT Desktop run local models via Ollama; daari's facade lacks `/api/generate` + `/api/embed` and has no recipe | 4 | 2 | [Ollama v0.34.0-rc1](https://github.com/ollama/ollama/releases/tag/v0.34.0-rc1) (direct, ungoverned) | The highest-distribution desktop AI app hard-wired to localhost Ollama — only a local facade can front it with cache/routing/budgets/traces; same trick as the JetBrains facade | [#343](https://github.com/naveenreddyalka/daari/issues/343) (P2) |
-| 3 | **Budget rollover** — unused window headroom evaporates at reset; LiteLLM v1.100 **stable** ships opt-in rollover as a headline (watch condition met) | 3 | 2 | [LiteLLM v1.100.0](https://docs.litellm.ai/release_notes/v1.100.0/v1-100-0) | Budget state lives on the operator's box; rollover is local math at reset, and #319/#327 headers + #333 webhooks reflect it for free | [#344](https://github.com/naveenreddyalka/daari/issues/344) (P2) |
-| 4 | **Audit read path** — audit rows are written (keys, MCP governance, budget alerts, prune) but there is no CLI or export; compliance answer today is "open the SQLite file" | 3 | 1 | [LiteLLM audit default-on + UI](https://docs.litellm.ai/release_notes/v1.99.0/v1-99-0); [Portkey log export w/ field restrictions](https://portkey.ai/docs/changelog/backend) | The trail never left the box — export is a local file read, no vendor data processor; closes record → retain (#332) → **review/export** | [#345](https://github.com/naveenreddyalka/daari/issues/345) (P2) |
-| 5 | **v1.4.0 unshipped** — prep PR #340 done but held on manual CI approval; pyproject + last tag still v1.3.0 while main holds relicense, signed images, MCP governance, FinOps loop | 3 | 1 | n/a (distribution) | First release a company can legally adopt (Apache 2.0) and verify (cosign) | HITL: approve [run 33815553913](https://github.com/naveenreddyalka/daari/actions/runs/33815553913), let #340 merge (issue #334), then tag |
-| 6 | **Batch API** — no `/v1/batches`; agents and eval pipelines increasingly submit batch jobs | 4 | 4 | [OpenRouter Batch API (beta)](https://openrouter.ai/docs); LiteLLM e2e batch billing | Drain batches through idle local tiers overnight at $0 — no cloud gateway can copy it. MCP Tasks store (#315) is the template | File when a daari-served client sends batches; sketch first |
-| 7 | **Gemini-native facade** — no `/v1beta` `generateContent`; Gemini CLI and Gemini-native SDK agents cannot point at daari | 3 | 4 | Nobody self-hosted; OpenRouter translates server-side | Same dialect-facade trick as Ollama/Anthropic | Watch — file when a target client is confirmed |
-| 8 | **MCP agent identity + server events** — roadmap now names [WIF (SEP-1933)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) + DPoP (SEP-1932) + ID-JAG; LiteLLM v1.100 added RFC 7662 introspection for MCP session tokens | 3 | 3 | MCP Tier-1 SDKs; LiteLLM MCP session hardening | Workload JWTs (K8s/SPIFFE) as inbound auth fit fleets that already resent pasted keys; `secret://oauth` (#329) + key expiry (#337) are the groundwork | Watch — file when SEP-1933 merges to spec or a fleet asks |
-| 9 | **A2A gateway** — no Agent2Agent ingress card or egress governance | 3 | 4 | [Kong Agent Gateway](https://konghq.com/blog/product-releases/kong-agent-gateway); A2A under AAIF | Local agents delegating over A2A would get routing/cache/policy without a cloud hop | Watch — revisit when a client daari serves speaks A2A |
-| 10 | **Admin console for keys/teams/budgets** — web dashboard read-only; management is CLI-only | 3 | 4 | LiteLLM admin UI (key management end-to-end) | CLI-first fits operators; a UI matters at org rollout scale | Watch — wait for operator demand |
-| 11 | **Per-request cost/quality hint in body** — OpenRouter's new Auto router takes `cost_tier` (low→max) in the request; daari has `X-Daari-Tier-Cap` header + project profiles, no body param | 2 | 2 | [OpenRouter Auto router](https://openrouter.ai/blog/announcements/introducing-the-new-auto-router/) | Header + `.daari.yaml` cover most cases; body-param parity is polish for SDKs that can't set headers | Watch — file if a client integration hits the header limitation |
-| 12 | **Image/multimodal generation API** — chat vision routes; no `/v1/images` | 2 | 4 | OpenRouter Image API | Local diffusion is a different product | Non-goal for now |
+| 1 | **Nine done PRs parked on Actions approval** — v1.4.0 prep + both refills (09-06, 09-07) held on `action_required`; fifth consecutive day; strict up-to-date branch protection makes the drain itself ~9 manual rounds | 5 | 0 | n/a (policy) | n/a — human-only | HITL: **relax bot-PR Actions approval policy** (preferred, ends the class) or approve held runs for [#340](https://github.com/naveenreddyalka/daari/pull/340), [#347](https://github.com/naveenreddyalka/daari/pull/347)–[#350](https://github.com/naveenreddyalka/daari/pull/350), [#360](https://github.com/naveenreddyalka/daari/pull/360)–[#363](https://github.com/naveenreddyalka/daari/pull/363) as they re-queue; then tag v1.4.0 |
+| 2 | **PR watcher can't drain a park** — `autodev_pr_watch.py` classifies and comments but never remediates; `BEHIND` auto-merge PRs wait for a human to click *Update branch* nine times | 4 | 2 | n/a (loop plumbing) | Makes the backlog self-draining the moment approval lands (or the policy relaxes) | [#368](https://github.com/naveenreddyalka/daari/issues/368) (P2) |
+| 3 | **Budget alert double-fire on multi-replica** — webhook dedupe is in-process (`budget_alerts.py` docstring caveat); an HA fleet pages twice per threshold | 3 | 2 | LiteLLM (Redis-backed alert state) | Redis is already in the stack (L0/L1); one `SET NX EX` per crossing makes alerts exactly-once per fleet | [#369](https://github.com/naveenreddyalka/daari/issues/369) (P2) |
+| 4 | **Agent-loop routing parity — implemented, parked**: pricing refresh [#360](https://github.com/naveenreddyalka/daari/pull/360), session affinity [#361](https://github.com/naveenreddyalka/daari/pull/361), stall escalation [#362](https://github.com/naveenreddyalka/daari/pull/362), MCP pagination [#363](https://github.com/naveenreddyalka/daari/pull/363) | 4 | 0 | LiteLLM v1.101-rc.1 (behind enterprise license) | Free + local prompt-cache TTFT win | Unpark row 1; nothing left to build |
+| 5 | **Subtask/phase routing** — no per-agent-phase tiering (explore/verify/implement); LiteLLM's 09-07 experiment matched fixed-Opus quality at 46% less cost | 4 | 3 | [LiteLLM subtask classifier](https://docs.litellm.ai/blog/subtask-type-routing) (experimental) | Phase detection from tool history is stateless and local; explore-phase turns are exactly what $0 local tiers are for — the cost win compounds | Watch — file after #361/#362 merge (builds on their tool-history machinery; filing now guarantees conflicts with parked router PRs) |
+| 6 | **Batch API** — no `/v1/batches`; agents and eval pipelines increasingly submit batch jobs | 4 | 4 | OpenRouter Batch API (beta); LiteLLM e2e batch billing | Drain batches through idle local tiers overnight at $0 — no cloud gateway can copy it. MCP Tasks store (#315) is the template | File when a daari-served client sends batches; sketch first |
+| 7 | **MCP semantic tool search** — big tool catalogs drown agent context; no server-side relevance ranking | 3 | 3 | LiteLLM `mcp_tool_search` (embedding-ranked) | `/v1/embeddings` + local embed models → $0 ranking on-box | Watch — file after #363 lands and a daari-served client hits a large catalog |
+| 8 | **Global admission control** — per-key in-flight caps shipped (#169, `rate_limit.py`); missing only a worker-level cap / fast 503 when local backends saturate across keys | 2 | 3 | [LiteLLM `max_in_flight_requests_per_worker`](https://docs.litellm.ai/release_notes/v1.101.0rc1/v1-101-0-rc-1) | Local GPUs saturate long before the gateway; failing fast beats queueing into timeout | Watch — file when a load report shows queue collapse, or with the next HA milestone |
+| 9 | **MCP agent identity** — [WIF SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) + DPoP SEP-1932 both still **draft** (re-checked 09-08) | 3 | 3 | MCP Tier-1 SDKs; LiteLLM MCP session RFC 7662 | Workload JWTs (K8s/SPIFFE) as inbound auth fit fleets; `secret://oauth` + key expiry are the groundwork | Watch — file when SEP-1933 merges or a fleet asks |
+| 10 | **Gemini-native facade** — no `/v1beta` `generateContent`; Gemini CLI can't point at daari | 3 | 4 | Nobody self-hosted | Same dialect-facade trick as Ollama/Anthropic | Watch — file when a target client is confirmed |
+| 11 | **A2A gateway** — no Agent2Agent ingress/egress governance | 3 | 4 | Kong Agent Gateway | Local agents delegating over A2A get routing/cache/policy without a cloud hop | Watch — revisit when a daari-served client speaks A2A |
+| 12 | **Admin console** — web dashboard read-only; key/team/budget management is CLI-only | 3 | 4 | LiteLLM admin UI | CLI-first fits operators; a UI matters at org rollout scale | Watch — wait for operator demand |
+| 13 | **Off-peak pricing windows** — some providers discount by time window; daari prices flat per model | 2 | 2 | LiteLLM `off_peak_pricing` | Local math at cost time; pairs with rollover (#349) | Watch — file when a provider daari routes to publishes off-peak rates |
+| 14 | **Per-request `cost_tier` body param** — OpenRouter Auto router takes it in-body; daari has `X-Daari-Tier-Cap` header + profiles | 2 | 2 | OpenRouter Auto router | Header + `.daari.yaml` cover most cases | Watch — file if a client can't set headers |
+| 15 | **Image/multimodal generation API** — chat vision routes; no `/v1/images` | 2 | 4 | OpenRouter Image API | Local diffusion is a different product | Non-goal for now |
 
 Open backlog after this run:
-[#342](https://github.com/naveenreddyalka/daari/issues/342) (stall re-pick, P1),
-[#343](https://github.com/naveenreddyalka/daari/issues/343) (ChatGPT Desktop facade, P2),
-[#344](https://github.com/naveenreddyalka/daari/issues/344) (budget rollover, P2),
-[#345](https://github.com/naveenreddyalka/daari/issues/345) (audit export, P2) —
-all auto-labeled at filing; plus human-gated
-[#334](https://github.com/naveenreddyalka/daari/issues/334)/[#341](https://github.com/naveenreddyalka/daari/issues/341)
-(PR #340 approval).
+[#368](https://github.com/naveenreddyalka/daari/issues/368) (PR-watch
+auto-drain, P2) and [#369](https://github.com/naveenreddyalka/daari/issues/369)
+(budget-alert fleet dedupe, P2) — both auto-labeled at filing — are the only
+*pickable* items; every other open
+issue has a parked PR or is a stall tracker (#341, #351–#354, #364–#367 — all
+resolve with the approvals in row 1). Deliberately filed 2 of the 5-issue
+budget: with nine PRs parked, more issues would only manufacture conflicting
+parked branches.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Unpark and ship v1.4.0** (row 5, HITL + #334): one human click on the held
-   CI run merges #340; then tag. First Apache-2.0, cosign-verifiable release —
-   distribution is the bottleneck, not features.
-2. **Make parked time free** (row 1, #342): a human-gated stall should cost
-   one comment, not every scheduled run. Protects the loop's economics for
-   every future hold.
-3. **Win the desktop client beachhead** (row 2, #343): ChatGPT Desktop via the
-   Ollama facade + `/api/generate`/`/api/embed` completes facade coverage and
-   adds the largest-distribution client daari can serve.
-4. **FinOps completeness** (rows 3–4, #344/#345): rollover makes tight budgets
-   honest; the audit read path turns "we log admin actions" into a compliance
-   answer with a SIEM-ready export.
-5. **Agent-identity groundwork** (row 8, watch): when SEP-1933/WIF lands,
-   accept workload JWTs inbound — key expiry (#337) and `secret://oauth`
-   (#329) already put daari ahead of the curve here.
+1. **Unpark the pipeline** (row 1, human-only): relax the Actions approval
+   policy for repo-workflow bot PRs — five parks in eleven days, nine PRs
+   deep, and strict branch protection turns the drain into ~9 manual rounds.
+   One policy change ends the class; approving runs one-by-one is the slow
+   alternative. Then tag v1.4.0.
+2. **Make the loop self-draining** (row 2,
+   [#368](https://github.com/naveenreddyalka/daari/issues/368)): the PR watcher merges
+   `origin/main` into `BEHIND` auto-merge PRs (union-merging
+   `docs/TRACKING.md`) so the stack drains itself once checks can run.
+3. **Ship the parked agent-loop routing suite** (row 4): pricing accuracy,
+   session affinity, stall escalation, MCP pagination are all done — they beat
+   LiteLLM's enterprise-licensed equivalents at $0 the moment they merge.
+4. **Phase routing is the next routing frontier** (row 5, watch): LiteLLM's
+   subtask experiment validates daari's core thesis — most agent turns are
+   cheap-model turns. File immediately after #361/#362 merge.
+5. **Fleet-grade correctness polish** (row 3,
+   [#369](https://github.com/naveenreddyalka/daari/issues/369)): exactly-once budget
+   alerts on multi-replica; pairs with the HA/observability story that
+   retention (#338) and webhooks (#339) started.
 
-Standing HITL asks: **approve CI run
-[33815553913](https://github.com/naveenreddyalka/daari/actions/runs/33815553913)**
-(unblocks #340 → #334 → v1.4.0), then **tag + release v1.4.0** (agent cannot
-tag/publish). Consider relaxing the Actions approval policy for bot-authored
-PRs — this is the third `action_required` park.
+Standing HITL asks: **relax bot-PR Actions approval** (or approve the nine
+held runs), close stall issues #341/#351–#354/#364–#367 after merges, then
+**tag + release v1.4.0** (agent cannot tag/publish).
 
 ---
 
 ## Changelog
 
-- **2026-09-06** — **Label HITL ended:** #330–#333 shipped 09-03 (labeler,
-  key expiry, retention, budget webhooks); this run's issues self-labeled in
-  seconds. One park: PR #340 (v1.4.0 prep) held on manual CI approval; the
-  cycle re-picked stall issue #341 ~12 times with duplicate comments → filed
-  [#342](https://github.com/naveenreddyalka/daari/issues/342) (stall re-pick
-  dedupe, P1). Outward: **Ollama v0.34.0-rc1** (ChatGPT Desktop runs local
-  models via Ollama → [#343](https://github.com/naveenreddyalka/daari/issues/343)
-  facade recipe + `/api/generate`/`/api/embed`); **LiteLLM v1.100.0 stable**
-  (budget rollover headline → watch row condition met →
-  [#344](https://github.com/naveenreddyalka/daari/issues/344); MCP session
-  RFC 7662 introspection + RS256 → row 8 note; spend-logs read cap — daari's
-  trace/ledger reads verified already bounded); **MCP roadmap** centers WIF
-  SEP-1933 + DPoP SEP-1932 (row 8); **OpenRouter** market-data Auto router
-  with `cost_tier` body param (new watch row 11; daari's header + profiles
-  cover it). Audit read-path gap verified in-tree (no CLI/export) →
-  [#345](https://github.com/naveenreddyalka/daari/issues/345). Four shipped
-  rows pruned; Kong quiet (2.0.3); Portkey enterprise still v2.20.
-- **2026-09-03** — Second full drain in two days: #317–#321 shipped overnight
-  (PRs #324–#329). Refill: #330 auto-labeler, #331 key expiry, #332
-  retention, #333 budget webhooks, #334 v1.4.0 prep. New rows: batch API,
-  rollover watch, Gemini facade watch.
-- **2026-09-02** — Backlog drained; table rebuilt. Human unparked both parks
-  and merged #293 (Apache 2.0); loop shipped 15 PRs in ~36h (#299–#316).
-  Refiled: #317 MCP tool guardrails, #318 shadow evals, #319 budget headers,
-  #320 streaming-usage pin, #321 `secret://oauth`. Outward: Kong AI GW 2.0 GA,
-  Portkey v2.20 (MCP guardrails, WIF), LiteLLM v1.99 stable.
-- **2026-09-01** — Relicense PR #293 went `DIRTY`; recorded the Palo Alto
-  Networks/Portkey acquisition fact; filed #297 (`reasoning_effort` dropped —
-  shipped next day as #312).
-- **2026-08-31** — Human opened Apache 2.0 relicense PR #293. Found #285
-  auto-closed by a PRD PR closing keyword → re-filed as #294; standing rule:
-  no closing keywords in PRD PR bodies. Converted row 8 → #295 (cosign+SBOM).
-- **2026-08-30** — Found park #2: GitHub search index stale; filed #291
-  (picker onto GraphQL). MCP roadmap → watch row.
-- **2026-08-29** — Found park #1: PRs stalled on `action_required`, issues
-  unlabeled (token 403) → filed #285/#286 (HITL unblock), #287–#289.
-- **2026-08-28** — First run. Created this PRD; filed #275–#279.
+- **2026-09-08** — **Park deepened: nine PRs held** (#340, #347–#350,
+  #360–#363 — the entire 09-07 refill implemented within hours, then parked;
+  fifth consecutive day). Identified the drain hazard: strict up-to-date
+  branch protection means sequential approve/update rounds. Filed
+  [#368](https://github.com/naveenreddyalka/daari/issues/368) **PR-watch
+  auto-drain** (P2) and
+  [#369](https://github.com/naveenreddyalka/daari/issues/369) **budget-alert
+  fleet dedupe** (P2); deliberately stopped at 2/5 issues to avoid
+  manufacturing conflicting parked PRs.
+  Outward: LiteLLM blog cadence — per-hop classifier compression (09-05),
+  **subtask/phase routing** (09-07, new watch row 5), stall escalation post
+  (09-08, parity already parked in #362); Ollama still v0.34.0-rc1; Kong
+  quiet (2.0.3); SEP-1933 still draft; OpenRouter adds STT
+  timestamps/segments, workspace members API, guardrail training-consent
+  flags. Inward verified: per-key in-flight caps already shipped (#169) —
+  admission-control row corrected; `budget_alerts.py` dedupe is in-process
+  (docstring caveat confirmed).
+- **2026-09-07** — Full park (five PRs). Outward: LiteLLM v1.101.0-rc.1
+  routing offensive metered behind `auto_router` enterprise license; Claude
+  Fable 5.1 + GPT-6 Astra at $10/$50. Filed #355 pricing (P1), #356 session
+  affinity, #357 stall escalation, #358 MCP pagination.
+- **2026-09-06** — Label HITL ended (labeler #336 works). One park (#340);
+  stall issue #341 re-picked ~12× → filed #342 dedupe, #343 ChatGPT Desktop
+  facade, #344 budget rollover, #345 audit read path.
+- **2026-09-03** — Second full drain in two days (#317–#321 → PRs #324–#329
+  overnight). Refill: #330 auto-labeler, #331 key expiry, #332 retention,
+  #333 budget webhooks, #334 v1.4.0 prep.
+- **2026-09-02** — Backlog drained; human unparked both parks; Apache 2.0
+  merged; loop shipped 15 PRs in ~36h (#299–#316). Refiled #317–#321.
+- **2026-08-28→09-01** (condensed) — Created this PRD; discovered the
+  `action_required` park class, the stale search index (→ GraphQL reads), the
+  closing-keyword hazard, the PANW/Portkey acquisition; filed #275–#279,
+  #285–#289, #294–#297.

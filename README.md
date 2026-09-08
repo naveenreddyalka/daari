@@ -2,7 +2,7 @@
 
 > **Local-first execution router** — cache, tools, and local models before frontier APIs.
 
-**Status:** v1.3.0 — [docs site](https://naveenreddyalka.github.io/daari/) · [tracker](docs/TRACKING.md) · [release notes](docs/RELEASE-v1.3.0.md)
+**Status:** v1.4.0 — [docs site](https://naveenreddyalka.github.io/daari/) · [tracker](docs/TRACKING.md) · [release notes](docs/RELEASE-v1.4.0.md)
 
 Route Cursor, Claude Code, and any OpenAI-compatible client through local tiers instead of paying frontier for repeat work. **Not a proxy** — a cost optimizer you run. [Apache 2.0](LICENSE).
 
