@@ -255,6 +255,24 @@ class RoutingSettings(RuntimeSettings):
     # When True, client reasoning_effort=high biases local tier selection
     # upward (and marks the profile complex). Default off (#297).
     reasoning_effort_escalation: bool = False
+    # Keep an agent session on the model that planned the task across tool
+    # continuations. Default off — unshipped behavior is unchanged (#356).
+    session_affinity: bool = Field(
+        default=False,
+        description=(
+            "When true, a tool-result continuation or an unchanged user-turn "
+            "prefix reuses the session's prior tier instead of re-running "
+            "rules. A new human turn re-routes. Default off."
+        ),
+    )
+    session_affinity_ttl_seconds: float = Field(
+        default=1800.0,
+        ge=0.0,
+        description=(
+            "How long a session pin is reused. 0 keeps the pin until process "
+            "restart. Ignored unless session_affinity is true."
+        ),
+    )
     # Shadow evals for tier decisions (#318): replay this fraction of requests
     # served by a local tier at a comparison tier in the background and record
     # answer divergence per category. 0 disables.

@@ -115,6 +115,8 @@ class ChatCompletionRequest(BaseModel):
     provider: Any | None = None
     # OpenAI reasoning_effort (o-series / gpt-5 clients). Same #161 pattern (#297).
     reasoning_effort: Any | None = None
+    # Stable end-user id. Used as a session key when routing.session_affinity is on.
+    user: str | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
@@ -326,6 +328,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
             x_daari_latency_budget: str | None = Header(default=None, alias="X-Daari-Latency-Budget"),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
+            x_daari_session: str | None = Header(default=None, alias="X-Daari-Session"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
@@ -373,6 +376,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tier_cap=x_daari_tier_cap,
                 latency_budget_ms=latency_budget_ms,
                 client_id=client_id,
+                user=(body.user or "").strip() or None,
+                session_id=(x_daari_session or "").strip() or None,
                 no_frontier=x_daari_no_frontier == "true",
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
