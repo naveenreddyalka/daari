@@ -68,6 +68,19 @@ diverge%, comparison tier), `daari report` / `GET /v1/daari/report` carry
 Prometheus exports `daari_tier_shadow_samples_total{agreed="true|false"}`.
 Default off; tests set the rate explicitly so the suite stays deterministic.
 
+## Session affinity
+
+`routing.session_affinity` (default off) keeps an agent loop on the model that
+planned the task. A continuation — tool results after an assistant tool-call,
+or the same user-turn prefix — replays that tier. A new human turn re-routes.
+
+Session identity is `X-Daari-Session` or the OpenAI `user` field when present,
+otherwise a hash of the user/system prefix. Pins expire after
+`routing.session_affinity_ttl_seconds` (default 30 minutes). Confidence
+failure, context-length failover, an open circuit, a down model, and
+`X-Daari-Tier-Cap` beat the pin. Hits log `session_pin`; overrides log
+`session_pin_override`.
+
 ## Stall escalation
 
 `routing.stall_escalation.enabled` (default off) looks only at the request's

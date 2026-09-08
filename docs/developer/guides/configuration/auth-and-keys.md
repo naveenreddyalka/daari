@@ -83,6 +83,20 @@ enterprise:
 
 Mint and revoke events land in the audit log with the claim that caused them.
 
+### Review and export
+
+```bash
+daari audit list --limit 50
+daari audit list --actor alice --action budget. --since 7d --json
+daari audit export --format jsonl --since 30d --out /tmp/daari-audit.jsonl
+daari audit export --format jsonl --since 7d | jq -c 'select(.action|startswith("keys."))'
+```
+
+Rows are newest-first. Export streams JSONL (`seq`, `ts`, `actor`, `role`,
+`action`, `detail`) without loading the whole table — suitable for SIEM
+ingestion. The store is `enterprise.audit_path` (default
+`~/.daari/audit/audit.sqlite3`).
+
 ## Secret references (`secret://`)
 
 Any secret-bearing config value (frontier provider keys, org tokens,

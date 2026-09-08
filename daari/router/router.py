@@ -385,6 +385,8 @@ class Router:
         stall_escalation: bool = False,
         stall_repeats: int = 3,
         stall_window: int = 6,
+        session_affinity: bool = False,
+        session_affinity_ttl_seconds: float = 1800.0,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -465,6 +467,10 @@ class Router:
         self.stall_escalation = bool(stall_escalation)
         self.stall_repeats = max(1, int(stall_repeats))
         self.stall_window = max(1, int(stall_window))
+        self.session_affinity = bool(session_affinity)
+        from daari.router.session_affinity import SessionPinStore
+
+        self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
         self.local_pool = local_pool
 
     @property
@@ -1324,6 +1330,7 @@ class Router:
             else:
                 raise
         response = await self._maybe_escalate(gen_request, response, started, profile=profile)
+        self._finish_session_pin(request, response)
         if (
             not request.meta.no_cache
             and not cache_skip
@@ -1855,6 +1862,7 @@ class Router:
 
             served_tier = served.daari_meta.tier or tier
             served_model = served.daari_meta.model or served.model or ollama_model
+            self._finish_session_pin(request, served)
             rewritten = served.content != streamed_text
             completion_chars = len(served.content) if rewritten else tier_completion_chars
             outcome.note(served_tier, draft=draft_used)
@@ -2356,6 +2364,7 @@ class Router:
 
             if served.content != streamed_text and not tool_use_sent:
                 outcome.note(served.daari_meta.tier or tier)
+                self._finish_session_pin(request, served)
                 for event in terminal_events(served.content, served.daari_meta.tier or tier):
                     yield event
                 latency_ms = int((time.perf_counter() - stream_started) * 1000)
@@ -2378,6 +2387,14 @@ class Router:
                 pending.append(text_block_start(block_index))
                 text_block_open = True
             outcome.note(tier)
+            self._finish_session_pin(
+                request,
+                InternalResponse(
+                    content=streamed_text,
+                    model=model_name,
+                    daari_meta=DaariMeta(tier=tier, executor="ollama", model=model_name),
+                ),
+            )
             if reported_usage is not None and pending and pending[0] == message_start:
                 # Events were buffered, so the real prompt count is known
                 # before message_start reaches the client.
@@ -2657,6 +2674,111 @@ class Router:
             return cap
         return tier
 
+    def _session_pin_tier(self, request: InternalRequest) -> str | None:
+        """Replay a continuation pin, or None so heuristics run.
+
+        Tier cap, an open circuit, and a down pinned model beat the pin.
+        Confidence and context-length failover still run after the pin is used.
+        """
+        if not self.session_affinity:
+            return None
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.session_affinity import (
+            conversation_prefix_hash,
+            is_continuation,
+            session_key,
+        )
+
+        prefix = conversation_prefix_hash(request.messages)
+        key = session_key(request.meta, prefix)
+        pin = self.session_pins.get(key)
+        if pin is None or not is_continuation(request.messages, pin):
+            return None
+        available, reason = self._pinned_tier_available(pin.tier)
+        if not available:
+            self._log_session_pin_override(request, pin.tier, None, reason or "unavailable")
+            return None
+        cap = self._effective_tier_cap(request)
+        capped = self._cap_tier(pin.tier, cap)
+        if capped != pin.tier:
+            self._log_session_pin_override(request, pin.tier, capped, "tier_cap")
+            request.meta.session_pinned_tier = capped
+            return capped
+        request.meta.session_pinned_tier = pin.tier
+        log_gateway_event(
+            "session_pin",
+            {
+                "tier": pin.tier,
+                "model": pin.model,
+                "session": key,
+            },
+        )
+        return pin.tier
+
+    def _pinned_tier_available(self, tier: str) -> tuple[bool, str | None]:
+        if tier == "L6":
+            if self.frontier is None:
+                return False, "unavailable"
+            return True, None
+        pool = self.local_pool
+        if pool is None or not pool.slots_for(tier):
+            return True, None
+        slots = pool.slots_for(tier)
+        if slots and all(not slot.breaker.allow() for slot in slots):
+            return False, "circuit_open"
+        if not pool._eligible(tier, warm_models=self._warm_models):
+            return False, "unavailable"
+        return True, None
+
+    def _log_session_pin_override(
+        self,
+        request: InternalRequest,
+        pinned: str,
+        served: str | None,
+        reason: str,
+    ) -> None:
+        from daari.gateway.request_log import log_gateway_event
+
+        log_gateway_event(
+            "session_pin_override",
+            {
+                "from": pinned,
+                "to": served,
+                "reason": reason,
+                "session": getattr(request.meta, "session_id", None)
+                or getattr(request.meta, "user", None),
+            },
+        )
+
+    def _finish_session_pin(self, request: InternalRequest, response: InternalResponse) -> None:
+        if not self.session_affinity:
+            return
+        served = response.daari_meta.tier
+        pinned = request.meta.session_pinned_tier
+        if pinned and served != pinned:
+            warning = response.daari_meta.warning or ""
+            if "context_too_long" in warning:
+                reason = "context_length"
+            elif response.daari_meta.escalated_from or "confidence" in warning:
+                reason = "confidence"
+            elif "unavailable" in warning or "fell_back" in warning:
+                reason = "unavailable"
+            else:
+                reason = "escalation"
+            self._log_session_pin_override(request, pinned, served, reason)
+        if served not in {"L3", "L4", "L5", "L6"}:
+            return
+        from daari.router.session_affinity import conversation_prefix_hash, session_key
+
+        prefix = conversation_prefix_hash(request.messages)
+        key = session_key(request.meta, prefix)
+        self.session_pins.put(
+            key,
+            tier=served,
+            model=response.daari_meta.model or response.model,
+            prefix_hash=prefix,
+        )
+
     def _choose_initial_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
     ) -> str:
@@ -2674,6 +2796,13 @@ class Router:
             # Still respect capability filter for explicit overrides when possible.
             capable = self._filter_capable_tiers([override, "L5", "L4", "L3"], request)
             return capable[0] if capable else override
+        pinned = self._session_pin_tier(request)
+        if pinned is not None:
+            capable = self._filter_capable_tiers([pinned, "L5", "L4", "L3"], request)
+            chosen = capable[0] if capable else pinned
+            if chosen != pinned:
+                self._log_session_pin_override(request, pinned, chosen, "capability")
+            return chosen
         tier = self._choose_uncapped_tier(request, profile)
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
         tier = self._apply_latency_budget(tier, request, profile)
@@ -3730,6 +3859,8 @@ class AppContext:
             stall_escalation=settings.routing.stall_escalation.enabled,
             stall_repeats=settings.routing.stall_escalation.repeats,
             stall_window=settings.routing.stall_escalation.window,
+            session_affinity=settings.routing.session_affinity,
+            session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
         )
         if settings.observability.otel:
             from daari.observability.otel import configure_providers

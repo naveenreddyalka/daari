@@ -104,9 +104,18 @@ CREATE INDEX IF NOT EXISTS idx_key_hits_key_ts ON key_hits(key_id, ts);
 class BudgetWindow:
     duration: str
     max_usd: float
+    rollover: bool = False
+    rollover_cap_multiple: float = 2.0
 
     def as_dict(self) -> dict[str, Any]:
-        return {"duration": self.duration, "max_usd": float(self.max_usd)}
+        payload: dict[str, Any] = {
+            "duration": self.duration,
+            "max_usd": float(self.max_usd),
+        }
+        if self.rollover:
+            payload["rollover"] = True
+            payload["rollover_cap_multiple"] = float(self.rollover_cap_multiple)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -192,7 +201,21 @@ class VirtualKeyStore:
             except (TypeError, ValueError):
                 continue
             if duration and max_usd > 0:
-                out.append(BudgetWindow(duration, max_usd))
+                rollover = bool(item.get("rollover") or False)
+                try:
+                    cap = float(item.get("rollover_cap_multiple") or 2.0)
+                except (TypeError, ValueError):
+                    cap = 2.0
+                if cap <= 1.0:
+                    cap = 2.0
+                out.append(
+                    BudgetWindow(
+                        duration,
+                        max_usd,
+                        rollover=rollover,
+                        rollover_cap_multiple=cap,
+                    )
+                )
         return tuple(out)
 
     def _migrate(self, conn: sqlite3.Connection) -> None:

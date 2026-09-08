@@ -53,7 +53,12 @@ class RequestMeta(BaseModel):
     # Max acceptable local-model latency in ms (X-Daari-Latency-Budget).
     latency_budget_ms: int | None = None
     client_id: str | None = None
-    boundary_profile: str | None = None
+    # OpenAI `user` or an explicit session id. Used only when session affinity
+    # is on; absent values leave cache keys unchanged.
+    user: str | None = None
+    session_id: str | None = None
+    # Set when a continuation replayed a pin. Not part of the cache key.
+    session_pinned_tier: str | None = None
     no_frontier: bool = False
     confirm_tool: bool = False
     rerun_command: bool = False

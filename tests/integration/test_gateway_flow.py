@@ -2230,3 +2230,89 @@ async def test_stall_escalation_lands_one_tier_higher(settings, monkeypatch):
     assert stalled.json()["daari_meta"]["tier"] == "L4"
     assert fresh.json()["daari_meta"]["tier"] == "L3"
     assert seen == ["llama3.1:8b", "llama3.2:3b"]
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(
+    settings, monkeypatch
+):
+    """A tool-result turn stays on the pinned model; a new user turn re-routes."""
+    settings.routing.session_affinity = True
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[str] = []
+
+    def bind(tier: str, model: str):
+        async def fake_execute(request: InternalRequest, _model: str = model) -> InternalResponse:
+            seen.append(_model)
+            return InternalResponse(
+                content="A confident answer with plenty of length to avoid escalation.",
+                model=_model,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    executor="ollama",
+                    provider_id="ollama",
+                    model=_model,
+                    latency_ms=1,
+                ),
+            )
+
+        return fake_execute
+
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l3, "execute", bind("L3", "llama3.2:3b")
+    )
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l4, "execute", bind("L4", "llama3.1:8b")
+    )
+
+    long_user = "please explain this " + "word " * 300
+    tools = _demo_tools()
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "user": "agent-1", "messages": [{"role": "user", "content": long_user}]},
+            headers=META_HEADERS,
+        )
+        follow = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "agent-1",
+                "tools": tools,
+                "messages": [
+                    {"role": "user", "content": long_user},
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_abc123",
+                                "type": "function",
+                                "function": {"name": "read_file", "arguments": "{}"},
+                            }
+                        ],
+                    },
+                    {"role": "tool", "content": "print('hello')", "tool_call_id": "call_abc123"},
+                ],
+            },
+            headers=META_HEADERS,
+        )
+        fresh = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "agent-1",
+                "messages": [{"role": "user", "content": "short ask"}],
+            },
+            headers=META_HEADERS,
+        )
+
+    assert first.status_code == 200
+    assert first.json()["daari_meta"]["tier"] == "L4"
+    assert follow.status_code == 200
+    assert follow.json()["daari_meta"]["model"] == "llama3.1:8b"
+    assert follow.json()["daari_meta"]["tier"] == "L4"
+    assert fresh.json()["daari_meta"]["tier"] == "L3"
+    assert seen == ["llama3.1:8b", "llama3.1:8b", "llama3.2:3b"]

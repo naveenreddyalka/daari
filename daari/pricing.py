@@ -23,16 +23,43 @@ class ResolvedPrice:
     is_fallback: bool = False
 
 
+def matching_model_key(model: str, keys: object) -> str | None:
+    """Longest configured key that prices or describes `model`.
+
+    Providers append dated suffixes (`claude-fable-5-1-20260901`) and wrap
+    ids in a vendor prefix (`anthropic.claude-fable-5-1`, `models/gemini-3.8-flash`).
+    A longer key always wins so `gpt-5.6` does not swallow `gpt-5.6-luna`.
+    """
+    key_list = list(keys)
+    if not model or not key_list:
+        return None
+    matches: list[str] = []
+    for candidate in _model_id_candidates(model):
+        matches.extend(key for key in key_list if candidate == key or candidate.startswith(key))
+    if not matches:
+        return None
+    return max(matches, key=len)
+
+
+def _model_id_candidates(model: str) -> list[str]:
+    candidates = [model]
+    for sep in (".", "/"):
+        if sep not in model:
+            continue
+        tail = model.rsplit(sep, 1)[-1]
+        if tail and tail not in candidates:
+            candidates.append(tail)
+    return candidates
+
+
 def resolve_price(model: str | None, pricing: object, *, fallback_per_1k: float) -> ResolvedPrice:
     """Price for `model`, falling back to the flat per-1k rate when unknown."""
     table = getattr(pricing, "models", None) or {}
-    entry = table.get(model) if model else None
-    if entry is None and model:
-        # Providers append dated or versioned suffixes (gpt-4o-2026-05-13);
-        # fall back to the longest configured prefix match.
-        matches = [key for key in table if model.startswith(key)]
-        if matches:
-            entry = table[max(matches, key=len)]
+    entry = None
+    if model:
+        key = matching_model_key(model, table)
+        if key is not None:
+            entry = table[key]
     if entry is not None:
         return ResolvedPrice(
             input_per_1m=float(_field(entry, "input_per_1m")),

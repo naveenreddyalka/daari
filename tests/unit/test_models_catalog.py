@@ -44,6 +44,22 @@ def test_local_cards_include_capability_tags():
     assert "vision" in by_id[settings.models.l5]["capabilities"]
 
 
+def test_l6_cards_include_known_frontier_capabilities():
+    settings = Settings.model_validate(
+        {
+            "frontier": {
+                "enabled": True,
+                "providers": [
+                    {"id": "anthropic", "model": "claude-fable-5-1"},
+                ],
+            }
+        }
+    )
+    cards = openai_model_cards(settings)
+    card = next(item for item in cards if item["id"] == "claude-fable-5-1")
+    assert {"tools", "json", "vision", "long_context"} <= set(card["capabilities"])
+
+
 def test_l6_cards_include_zdr_when_configured():
     settings = Settings.model_validate(
         {
