@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS client_usage (
     output_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, client_id, tier, model)
 );
+CREATE TABLE IF NOT EXISTS budget_window_state (
+    scope TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    duration TEXT NOT NULL,
+    period_id TEXT NOT NULL,
+    carry_usd REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (scope, scope_id, duration)
+);
 """
 
 # Ledgers created before #156 lack the token and model columns, and their
@@ -99,6 +107,18 @@ class UsageLedger:
                 f"SELECT {', '.join(carried)} FROM {table}_pre_tokens"
             )
             conn.execute(f"DROP TABLE {table}_pre_tokens")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS budget_window_state (
+                scope TEXT NOT NULL,
+                scope_id TEXT NOT NULL,
+                duration TEXT NOT NULL,
+                period_id TEXT NOT NULL,
+                carry_usd REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (scope, scope_id, duration)
+            )
+            """
+        )
 
     def record(
         self,
@@ -354,6 +374,50 @@ class UsageLedger:
             fallback_per_1k=fallback_per_1k,
             table="client_usage",
         )
+
+    def get_budget_window_state(
+        self, scope: str, scope_id: str, duration: str
+    ) -> dict[str, Any] | None:
+        if not self.enabled:
+            return None
+        try:
+            with self._lock, self._connect() as conn:
+                row = conn.execute(
+                    "SELECT period_id, carry_usd FROM budget_window_state"
+                    " WHERE scope = ? AND scope_id = ? AND duration = ?",
+                    (scope, scope_id, duration),
+                ).fetchone()
+        except Exception:
+            return None
+        if row is None:
+            return None
+        return {"period_id": row[0], "carry_usd": float(row[1] or 0.0)}
+
+    def put_budget_window_state(
+        self,
+        scope: str,
+        scope_id: str,
+        duration: str,
+        *,
+        period_id: str,
+        carry_usd: float,
+    ) -> None:
+        if not self.enabled:
+            return
+        try:
+            with self._lock, self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO budget_window_state (scope, scope_id, duration, period_id, carry_usd)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(scope, scope_id, duration) DO UPDATE SET
+                        period_id = excluded.period_id,
+                        carry_usd = excluded.carry_usd
+                    """,
+                    (scope, scope_id, duration, period_id, float(carry_usd)),
+                )
+        except Exception:
+            pass
 
     def prune_before_day(self, cutoff_day: str, *, dry_run: bool = False) -> int:
         if not self.enabled:

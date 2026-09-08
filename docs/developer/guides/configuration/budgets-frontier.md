@@ -44,6 +44,24 @@ The org `frontier.*` caps above remain an outer ceiling. A key over budget gets
 }
 ```
 
+### Window rollover (opt-in)
+
+By default unused headroom disappears at reset. Set `rollover: true` on a
+window so leftover USD carries into the next period's **effective** limit:
+
+```json
+{ "duration": "month", "max_usd": 100, "rollover": true, "rollover_cap_multiple": 2.0 }
+```
+
+CLI: `daari keys create bot --window month=100:rollover`.
+
+At each period boundary, unused headroom (`prev_effective − spent`, floor 0)
+becomes carry. Effective limit is `min(base + carry, base × rollover_cap_multiple)`
+(default cap **2×** the base) so idle keys cannot accumulate forever. Carry is
+persisted on the usage ledger (`budget_window_state`) so SQLite and Postgres
+replicas agree. Headers, `402` bodies, and budget alert webhooks all report the
+**effective** limit and remaining.
+
 Clients do not have to wait for the `402`. Every successful response to a
 budgeted key carries `x-daari-budget-remaining` / `-limit` / `-window` /
 `-reset` / `-scope` for the window it will hit first (least USD left across

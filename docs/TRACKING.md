@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-07 (frontier pricing refresh — [#355](https://github.com/naveenreddyalka/daari/issues/355))  
+> Last updated: 2026-09-02 (budget-remaining headers — [#319](https://github.com/naveenreddyalka/daari/issues/319))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -1692,6 +1692,50 @@ the delete. Sweep failures log `retention.sweep_failed` and never raise.
 Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
+
+### Draft v1.4.0 release notes and version bump ([#334](https://github.com/naveenreddyalka/daari/issues/334))
+
+<!-- tracking:#334 -->
+**Status:** Done (2026-09-03). Prep-only release package: `docs/RELEASE-v1.4.0.md`
+(Apache 2.0 + cosign/SBOM lead, human tag/release steps at top, upgrade notes
+→ [upgrade.md](developer/guides/operations/upgrade.md) #316), `pyproject.toml` /
+`daari.__version__` / README / CHANGELOG bumped to **1.4.0**, `docs/RELEASING.md`
+verified against `docker.yml` cosign + SBOM + provenance. **No** git tag, GitHub
+release, or PyPI/ghcr publish from the agent. Covered by
+`tests/unit/test_release_v140_prep.py`.
+
+### Skip human-gated stall re-picks ([#342](https://github.com/naveenreddyalka/daari/issues/342))
+
+<!-- tracking:#342 -->
+**Status:** Done (2026-09-06). Stall findings comments carry
+`<!-- autodev-blocked: <classification> run=<id> -->` (helpers in
+`scripts/autodev_pr_watch.py`). `scripts/autodev_backlog.py::pick` skips
+issues whose body has `autodev-pr-stall` when the latest blocked marker
+matches the referenced PR's current fingerprint; a new CI run, cleared
+block, or closed/merged PR re-eligibilizes the issue. At most one
+findings comment per distinct fingerprint (`post_blocked_findings_if_new`).
+Covered by `tests/unit/test_autodev_backlog.py` and
+`tests/unit/test_autodev_pr_watch.py`.
+
+### Opt-in budget window rollover ([#344](https://github.com/naveenreddyalka/daari/issues/344))
+
+<!-- tracking:#344 -->
+**Status:** Done (2026-09-06). Per-window `rollover: true` (default off) carries
+unused headroom into the next period's effective limit, capped at
+`rollover_cap_multiple` (default 2×). Carry is persisted on
+`budget_window_state` in the SQLite and Postgres usage ledgers. Headers, 402
+bodies, and budget alert webhooks use the effective limit. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_budget_rollover.py`.
+
+### Audit log list and JSONL export ([#345](https://github.com/naveenreddyalka/daari/issues/345))
+
+<!-- tracking:#345 -->
+**Status:** Done (2026-09-06). `daari audit list` (`--limit`/`--actor`/
+`--action` prefix/`--since`/`--json`) and `daari audit export --format jsonl`
+stream newest-first rows from `enterprise.audit_path` in seq batches. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_audit_cli.py`.
 
 ### Shipped pricing and capability tables for the September 2026 frontier lineup ([#355](https://github.com/naveenreddyalka/daari/issues/355))
 

@@ -16,17 +16,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 STALL_MARKER = "autodev-pr-stall"
+BLOCKED_MARKER = "autodev-blocked"
 SWEEP_MARKER = "autodev-stale-working"
 ISSUE_LABELS = "auto-dev,regression"
 WORKING_LABEL = "agent:working"
 DEFAULT_MIN_AGE_MINUTES = 15
 DEFAULT_SWEEP_TTL_HOURS = 24
+
+# <!-- autodev-blocked: awaiting-approval run=123 -->
+_BLOCKED_MARKER_RE = re.compile(
+    rf"<!--\s*{re.escape(BLOCKED_MARKER)}:\s*([^\s>]+(?:\s+[^\s>]+)*)\s*-->"
+)
 
 
 def parse_gh_time(raw: str | None) -> datetime | None:
@@ -97,6 +104,98 @@ def classify_stall(
 
 def already_alerted(comments: list[dict[str, Any]]) -> bool:
     return any(STALL_MARKER in (item.get("body") or "") for item in comments)
+
+
+def blocked_fingerprint(
+    classification: str, *, run_id: str | int | None = None, sha: str | None = None
+) -> str:
+    """Machine-readable blocked-state fingerprint (issue #342)."""
+    if run_id is not None and str(run_id) != "":
+        return f"{classification} run={run_id}"
+    if sha:
+        return f"{classification} sha={sha}"
+    return classification
+
+
+def render_blocked_marker(
+    classification: str, *, run_id: str | int | None = None, sha: str | None = None
+) -> str:
+    return f"<!-- {BLOCKED_MARKER}: {blocked_fingerprint(classification, run_id=run_id, sha=sha)} -->"
+
+
+def parse_blocked_fingerprint(text: str) -> str | None:
+    match = _BLOCKED_MARKER_RE.search(text or "")
+    return match.group(1).strip() if match else None
+
+
+def latest_blocked_fingerprint(comments: list[dict[str, Any]]) -> str | None:
+    """Most recent autodev-blocked marker among issue/PR comments."""
+    for item in reversed(comments):
+        fingerprint = parse_blocked_fingerprint(item.get("body") or "")
+        if fingerprint:
+            return fingerprint
+    return None
+
+
+def already_blocked_for_state(comments: list[dict[str, Any]], fingerprint: str) -> bool:
+    return any(parse_blocked_fingerprint(item.get("body") or "") == fingerprint for item in comments)
+
+
+def fingerprint_for_blocked_stall(
+    pr: dict[str, Any],
+    *,
+    workflow_runs: list[dict[str, Any]] | None = None,
+    now: datetime | None = None,
+    min_age_minutes: int = DEFAULT_MIN_AGE_MINUTES,
+) -> str | None:
+    """Current blocked fingerprint for a PR, or None when not human-gated stalled."""
+    reason = classify_stall(
+        pr, now=now, min_age_minutes=min_age_minutes, workflow_runs=workflow_runs
+    )
+    if reason is None:
+        return None
+    latest = _latest_run(workflow_runs or [])
+    run_id = (latest or {}).get("id")
+    sha = pr.get("headRefOid")
+    if reason == "awaiting-approval":
+        return blocked_fingerprint(reason, run_id=run_id)
+    if reason == "no-ci-triggered":
+        return blocked_fingerprint(reason, sha=sha)
+    return blocked_fingerprint(reason, run_id=run_id, sha=sha)
+
+
+def render_blocked_findings(
+    classification: str,
+    *,
+    run_id: str | int | None = None,
+    sha: str | None = None,
+    detail: str,
+) -> str:
+    marker = render_blocked_marker(classification, run_id=run_id, sha=sha)
+    return (
+        f"{marker}\n"
+        "## Findings (blocked — human action required)\n\n"
+        f"{detail}\n"
+    )
+
+
+def post_blocked_findings_if_new(
+    *,
+    list_comments: Any,
+    comment: Any,
+    classification: str,
+    detail: str,
+    run_id: str | int | None = None,
+    sha: str | None = None,
+) -> bool:
+    """Post at most one blocked-findings comment per distinct fingerprint. Returns True if posted."""
+    fingerprint = blocked_fingerprint(classification, run_id=run_id, sha=sha)
+    comments = list_comments() if list_comments else []
+    if already_blocked_for_state(comments, fingerprint):
+        return False
+    if comment:
+        comment(render_blocked_findings(classification, run_id=run_id, sha=sha, detail=detail))
+    return True
 
 
 def render_comment(
