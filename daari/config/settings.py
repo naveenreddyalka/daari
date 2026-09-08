@@ -201,6 +201,29 @@ class CategoryPolicy(BaseModel):
     latency_budget_ms: int | None = None
 
 
+class StallEscalationSettings(BaseModel):
+    """Bump a stuck agent loop one tier from request-visible history (#357)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, N identical tool calls in the last window, or N "
+            "consecutive error tool results, escalate the chosen tier by one. "
+            "Default off."
+        ),
+    )
+    repeats: int = Field(
+        default=3,
+        ge=1,
+        description="Identical calls or consecutive error results required to stall.",
+    )
+    window: int = Field(
+        default=6,
+        ge=1,
+        description="How many recent tool calls are inspected for identical repeats.",
+    )
+
+
 class OrgPoolSettings(BaseModel):
     """Shared org GPU inference pool between local L5 and frontier L6 (issue #118)."""
 
@@ -255,6 +278,28 @@ class RoutingSettings(RuntimeSettings):
     # When True, client reasoning_effort=high biases local tier selection
     # upward (and marks the profile complex). Default off (#297).
     reasoning_effort_escalation: bool = False
+    stall_escalation: StallEscalationSettings = Field(
+        default_factory=StallEscalationSettings,
+        description="Stuck-loop bump from tool-call history. Off unless enabled.",
+    )
+    # Keep an agent session on the model that planned the task across tool
+    # continuations. Default off — unshipped behavior is unchanged (#356).
+    session_affinity: bool = Field(
+        default=False,
+        description=(
+            "When true, a tool-result continuation or an unchanged user-turn "
+            "prefix reuses the session's prior tier instead of re-running "
+            "rules. A new human turn re-routes. Default off."
+        ),
+    )
+    session_affinity_ttl_seconds: float = Field(
+        default=1800.0,
+        ge=0.0,
+        description=(
+            "How long a session pin is reused. 0 keeps the pin until process "
+            "restart. Ignored unless session_affinity is true."
+        ),
+    )
     # Shadow evals for tier decisions (#318): replay this fraction of requests
     # served by a local tier at a comparison tier in the background and record
     # answer divergence per category. 0 disables.
@@ -371,15 +416,41 @@ class ModelPrice(BaseModel):
     cached_input_per_1m: float | None = None
 
 
-# List prices captured 2026-08-11. These move, so treat the table as a
+# List prices captured 2026-09-07. These move, so treat the table as a
 # convenience default: anything in `pricing.models` overrides an entry here,
 # and unpriced models fall back to frontier.price_per_1k_tokens.
+# Threshold pricing (GPT-6 Astra above 272K input) is not applied here —
+# see docs/developer/guides/configuration/budgets-frontier.md.
 _DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
     "gpt-4o": {"input_per_1m": 2.50, "output_per_1m": 10.00, "cached_input_per_1m": 1.25},
     "gpt-4o-mini": {"input_per_1m": 0.15, "output_per_1m": 0.60, "cached_input_per_1m": 0.075},
     "claude-3-5-sonnet": {"input_per_1m": 3.00, "output_per_1m": 15.00},
     "claude-3-5-haiku": {"input_per_1m": 0.80, "output_per_1m": 4.00},
     "claude-3-opus": {"input_per_1m": 15.00, "output_per_1m": 75.00},
+    # Anthropic, https://platform.claude.com/docs/en/about-claude/pricing
+    # Fable 5.1 cache reads are 0.025x input ($0.25), not the usual 0.1x.
+    "claude-fable-5-1": {
+        "input_per_1m": 10.00,
+        "output_per_1m": 50.00,
+        "cached_input_per_1m": 0.25,
+    },
+    "claude-opus-5": {"input_per_1m": 5.00, "output_per_1m": 25.00, "cached_input_per_1m": 0.50},
+    "claude-sonnet-5": {"input_per_1m": 2.00, "output_per_1m": 10.00, "cached_input_per_1m": 0.20},
+    "claude-haiku-4-5": {"input_per_1m": 1.00, "output_per_1m": 5.00, "cached_input_per_1m": 0.10},
+    # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
+    # Sol is the promotional rate published through 2026-11-21 ($4/$20).
+    "gpt-6-astra": {"input_per_1m": 10.00, "output_per_1m": 50.00, "cached_input_per_1m": 1.00},
+    "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
+    "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
+    "gpt-5.6-terra": {"input_per_1m": 2.00, "output_per_1m": 12.00, "cached_input_per_1m": 0.20},
+    "gpt-5.6-luna": {"input_per_1m": 0.20, "output_per_1m": 1.20, "cached_input_per_1m": 0.02},
+    # Google Gemini API intro rate through 2026-12-31 ($1.50/$7.50 after).
+    # https://ai.google.dev/gemini-api/docs/pricing
+    "gemini-3.8-flash": {
+        "input_per_1m": 0.75,
+        "output_per_1m": 3.75,
+        "cached_input_per_1m": 0.075,
+    },
 }
 
 
@@ -390,9 +461,10 @@ class PricingSettings(BaseModel):
         },
         description=(
             "Per-model, per-direction USD rates per 1M tokens. Keys match on "
-            "longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06`. Models "
-            "absent here fall back to `usage.frontier_price_per_1k_tokens`; run "
-            "`daari doctor` to list models being billed at the fallback rate."
+            "longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a "
+            "vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. "
+            "Models absent here fall back to `usage.frontier_price_per_1k_tokens`; "
+            "run `daari doctor` to list models being billed at the fallback rate."
         ),
     )
 

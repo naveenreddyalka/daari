@@ -188,6 +188,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
             x_daari_tools: str | None = Header(default=None, alias="X-Daari-Tools"),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
+            x_daari_session: str | None = Header(default=None, alias="X-Daari-Session"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
         ) -> Any:
             confirm_value = (x_daari_confirm or x_daari_confirm_tool or "").strip().lower()
@@ -235,6 +236,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
                 client_id=x_daari_client_id,
+                session_id=(x_daari_session or "").strip() or None,
             )
             from daari.server.auth import apply_auth_claims_to_meta
 

@@ -224,6 +224,93 @@ def test_default_pricing_table_covers_the_default_frontier_model():
     assert price.is_fallback is False, "the shipped default model should be priced"
 
 
+def test_shipped_legacy_prices_are_unchanged():
+    settings = Settings()
+    expected = {
+        "gpt-4o": (2.50, 10.00, 1.25),
+        "gpt-4o-mini": (0.15, 0.60, 0.075),
+        "claude-3-5-sonnet": (3.00, 15.00, None),
+        "claude-3-5-haiku": (0.80, 4.00, None),
+        "claude-3-opus": (15.00, 75.00, None),
+    }
+    for model, (inp, out, cached) in expected.items():
+        price = resolve_price(model, settings.pricing, fallback_per_1k=0.002)
+        assert price.is_fallback is False
+        assert price.input_per_1m == pytest.approx(inp)
+        assert price.output_per_1m == pytest.approx(out)
+        assert price.cached_input_per_1m == (
+            pytest.approx(cached) if cached is not None else None
+        )
+
+
+def test_resolve_price_covers_september_2026_frontier_lineup():
+    """List prices as published on 2026-09-07 (see budgets-frontier.md)."""
+    settings = Settings()
+    expected = {
+        # https://platform.claude.com/docs/en/models/fable-5-1/overview
+        "claude-fable-5-1": (10.0, 50.0, 0.25),
+        # https://platform.claude.com/docs/en/about-claude/pricing
+        "claude-opus-5": (5.0, 25.0, 0.50),
+        "claude-sonnet-5": (2.0, 10.0, 0.20),
+        "claude-haiku-4-5": (1.0, 5.0, 0.10),
+        # OpenAI API price table, standard short-context tier
+        "gpt-6-astra": (10.0, 50.0, 1.00),
+        "gpt-5.6": (4.0, 20.0, 0.40),
+        "gpt-5.6-sol": (4.0, 20.0, 0.40),
+        "gpt-5.6-terra": (2.0, 12.0, 0.20),
+        "gpt-5.6-luna": (0.20, 1.20, 0.02),
+        # https://ai.google.dev/gemini-api/docs/pricing — intro rate through 2026-12-31
+        "gemini-3.8-flash": (0.75, 3.75, 0.075),
+    }
+    for model, (inp, out, cached) in expected.items():
+        price = resolve_price(model, settings.pricing, fallback_per_1k=0.002)
+        assert price.is_fallback is False, model
+        assert price.input_per_1m == pytest.approx(inp), model
+        assert price.output_per_1m == pytest.approx(out), model
+        assert price.cached_input_per_1m == pytest.approx(cached), model
+
+
+def test_resolve_price_matches_dated_and_provider_prefixed_aliases():
+    settings = Settings()
+    dated = resolve_price(
+        "claude-fable-5-1-20260901", settings.pricing, fallback_per_1k=0.002
+    )
+    bedrock = resolve_price(
+        "anthropic.claude-fable-5-1", settings.pricing, fallback_per_1k=0.002
+    )
+    regional = resolve_price(
+        "us.anthropic.claude-fable-5-1", settings.pricing, fallback_per_1k=0.002
+    )
+    gemini = resolve_price(
+        "models/gemini-3.8-flash", settings.pricing, fallback_per_1k=0.002
+    )
+    for price in (dated, bedrock, regional, gemini):
+        assert price.is_fallback is False
+    assert dated.cached_input_per_1m == pytest.approx(0.25)
+    assert bedrock.input_per_1m == pytest.approx(10.0)
+    assert regional.output_per_1m == pytest.approx(50.0)
+    assert gemini.input_per_1m == pytest.approx(0.75)
+    # Longer specific keys still win over a family prefix.
+    luna = resolve_price("gpt-5.6-luna", settings.pricing, fallback_per_1k=0.002)
+    assert luna.input_per_1m == pytest.approx(0.20)
+
+
+def test_doctor_does_not_warn_for_priced_september_2026_models():
+    from daari.pricing import pricing_warnings
+
+    settings = Settings()
+    settings.frontier.enabled = True
+    for model in (
+        "claude-fable-5-1",
+        "gpt-6-astra",
+        "gemini-3.8-flash",
+        "claude-fable-5-1-20260901",
+        "anthropic.claude-fable-5-1",
+    ):
+        settings.frontier.model = model
+        assert pricing_warnings(settings) == [], model
+
+
 # --- API surface ------------------------------------------------------------
 
 

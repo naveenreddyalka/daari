@@ -317,3 +317,93 @@ def test_apply_alerts_fetches_runs_for_empty_rollup(watch):
     assert fetched == ["abc123deadbeef"]
     assert "classification: awaiting-approval" in commented[0][1]
     assert "actions/runs/42" in commented[0][1]
+
+
+def test_blocked_marker_round_trip(watch):
+    marker = watch.render_blocked_marker("awaiting-approval", run_id=33815553913)
+    assert "autodev-blocked" in marker
+    assert "awaiting-approval" in marker
+    assert "run=33815553913" in marker
+    assert watch.parse_blocked_fingerprint(marker) == "awaiting-approval run=33815553913"
+
+
+def test_blocked_fingerprint_for_awaiting_approval(watch):
+    pr = _pr(mergeStateStatus="BLOCKED", mergeable="MERGEABLE", statusCheckRollup=[])
+    runs = [
+        {
+            "id": 99,
+            "conclusion": "action_required",
+            "created_at": "2026-08-27T21:10:00Z",
+            "html_url": "https://github.com/o/r/actions/runs/99",
+        }
+    ]
+    assert (
+        watch.fingerprint_for_blocked_stall(pr, workflow_runs=runs, now=NOW)
+        == "awaiting-approval run=99"
+    )
+
+
+def test_blocked_fingerprint_none_when_not_stalled(watch):
+    pr = _pr(
+        mergeStateStatus="CLEAN",
+        mergeable="MERGEABLE",
+        statusCheckRollup=[{"name": "test", "status": "COMPLETED"}],
+    )
+    assert watch.fingerprint_for_blocked_stall(pr, workflow_runs=[], now=NOW) is None
+
+
+def test_render_blocked_findings_includes_marker(watch):
+    body = watch.render_blocked_findings(
+        "awaiting-approval",
+        run_id=42,
+        detail="Human must approve the held workflow run.",
+    )
+    assert watch.parse_blocked_fingerprint(body) == "awaiting-approval run=42"
+    assert "Findings (blocked" in body
+    assert "Human must approve" in body
+
+
+def test_already_blocked_for_state_dedupes_same_fingerprint(watch):
+    comments = [
+        {"body": watch.render_blocked_findings("awaiting-approval", run_id=42, detail="once")},
+    ]
+    assert watch.already_blocked_for_state(comments, "awaiting-approval run=42")
+    assert not watch.already_blocked_for_state(comments, "awaiting-approval run=99")
+
+
+def test_post_blocked_findings_once_per_state(watch):
+    posted: list[str] = []
+    comments: list[dict] = []
+
+    def list_comments():
+        return list(comments)
+
+    def comment(body: str):
+        posted.append(body)
+        comments.append({"body": body})
+
+    first = watch.post_blocked_findings_if_new(
+        list_comments=list_comments,
+        comment=comment,
+        classification="awaiting-approval",
+        run_id=42,
+        detail="first",
+    )
+    second = watch.post_blocked_findings_if_new(
+        list_comments=list_comments,
+        comment=comment,
+        classification="awaiting-approval",
+        run_id=42,
+        detail="duplicate",
+    )
+    third = watch.post_blocked_findings_if_new(
+        list_comments=list_comments,
+        comment=comment,
+        classification="awaiting-approval",
+        run_id=43,
+        detail="new run",
+    )
+    assert first is True and second is False and third is True
+    assert len(posted) == 2
+    assert watch.parse_blocked_fingerprint(posted[0]) == "awaiting-approval run=42"
+    assert watch.parse_blocked_fingerprint(posted[1]) == "awaiting-approval run=43"
