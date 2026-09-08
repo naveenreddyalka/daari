@@ -16,7 +16,6 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
 from daari.gateway.internal import (
-    DaariMeta,
     InternalRequest,
     InternalResponse,
     Message,
@@ -33,6 +32,12 @@ from daari.gateway.cost_headers import (
     DeferredHeadersStreamingResponse,
     StreamOutcome,
     response_cost_headers,
+)
+from daari.gateway.embeddings_api import (
+    compute_embeddings,
+    embedding_texts,
+    openai_embeddings_payload,
+    resolve_embedding_model,
 )
 from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.request_log import log_gateway_event
@@ -72,19 +77,6 @@ class ChatMessage(BaseModel):
 class EmbeddingsRequest(BaseModel):
     model: str = ""
     input: str | list[str]
-
-
-def _embedding_texts(value: str | list[str]) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    return [str(item) for item in value]
-
-
-def _embedding_cache_request(model: str, text: str) -> InternalRequest:
-    return InternalRequest(
-        messages=[Message(role="user", content=text)],
-        model=f"__embed__:{model}",
-    )
 
 
 class ChatCompletionRequest(BaseModel):
@@ -491,71 +483,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/embeddings")
         async def embeddings(body: EmbeddingsRequest, request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            configured = ctx.settings.cache.l1.embedding_model
-            requested = (body.model or "").strip() or "daari"
-            if requested not in {"daari", configured}:
-                raise HTTPException(
-                    status_code=400, detail=f"unknown embedding model: {requested}"
-                )
-            model = configured
-            embedder = ctx.router.semantic_cache.embedder
-            texts = _embedding_texts(body.input)
-            vectors: list[list[float]] = []
-            cache_hits = 0
-            for text in texts:
-                cached = ctx.router.cache.get(_embedding_cache_request(model, text))
-                if cached is not None:
-                    vectors.append(json.loads(cached.content))
-                    cache_hits += 1
-                    continue
-                embedding = await embedder.embed(text, model=model)
-                if embedding is None:
-                    raise HTTPException(
-                        status_code=502, detail=f"embedding model {model} returned no vector"
-                    )
-                ctx.router.cache.put(
-                    _embedding_cache_request(model, text),
-                    InternalResponse(
-                        content=json.dumps(embedding),
-                        model=model,
-                        daari_meta=DaariMeta(
-                            tier="embed",
-                            cache_hit=False,
-                            executor="ollama",
-                            provider_id="ollama",
-                            model=model,
-                        ),
-                    ),
-                )
-                vectors.append(embedding)
-            prompt_chars = sum(len(text) for text in texts)
-            ctx.metrics.record(
-                "embed",
-                cache_hit=bool(texts) and cache_hits == len(texts),
-                latency_ms=0,
-            )
-            if ctx.router.usage_ledger is not None:
-                ctx.router.usage_ledger.record(
-                    tier="embed",
-                    cache_hit=bool(texts) and cache_hits == len(texts),
-                    prompt_chars=prompt_chars,
-                    model=model,
-                    provider="ollama",
-                    input_tokens=estimate_tokens(prompt_chars),
-                    output_tokens=0,
-                )
-            return {
-                "object": "list",
-                "data": [
-                    {"object": "embedding", "index": index, "embedding": vector}
-                    for index, vector in enumerate(vectors)
-                ],
-                "model": model,
-                "usage": {
-                    "prompt_tokens": estimate_tokens(prompt_chars),
-                    "total_tokens": estimate_tokens(prompt_chars),
-                },
-            }
+            model = resolve_embedding_model(ctx, body.model)
+            texts = embedding_texts(body.input)
+            vectors = await compute_embeddings(ctx, texts, model=model)
+            return openai_embeddings_payload(model, vectors, texts)
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
