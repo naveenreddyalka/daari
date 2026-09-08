@@ -81,6 +81,14 @@ failure, context-length failover, an open circuit, a down model, and
 `X-Daari-Tier-Cap` beat the pin. Hits log `session_pin`; overrides log
 `session_pin_override`.
 
+## Stall escalation
+
+`routing.stall_escalation.enabled` (default off) looks only at the request's
+tool history. Three identical calls (same name and normalized arguments) in
+the last six tool calls, or three consecutive error tool results, bump the
+chosen tier by one. `X-Daari-Tier-Cap` and `routing.max_tier_for_chat` still
+win. The event is `stall_escalation` with the pattern and repeat count.
+
 ## Knobs
 
 See [Config overview](../guides/configuration/overview.md) and [Config reference](../reference/config.md).
