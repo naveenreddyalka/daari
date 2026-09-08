@@ -54,6 +54,7 @@ tail -f ~/.daari/autodev/watchdog.out.log
 1. **Cloud dev cycle** — either:
    - Add repo secret: `gh secret set CURSOR_API_KEY` (key from cursor.com/settings) → the scheduled workflow starts working, or
    - Create the Cursor Automation from [automations/dev-cycle.md](automations/dev-cycle.md) in the Agents Window.
+   - Also `gh secret set AUTODEV_GH_TOKEN` (fine-grained PAT, this repo, contents/PRs/actions write) so bot-opened PRs are not held for Actions approval.
 2. **PR review** — enable Bugbot for the repo on cursor.com/dashboard, or create the automation from [automations/pr-review.md](automations/pr-review.md).
 3. **PRD cycle** — create the automation from [automations/prd-cycle.md](automations/prd-cycle.md).
 
@@ -72,6 +73,8 @@ tail -f ~/.daari/autodev/watchdog.out.log
 - Local regressions → issues labeled `regression` (deduped by title per commit).
 - You only need to look at GitHub notifications for: blocked PRs, `regression` issues, red CI on main.
 - Stalled auto-merge (`DIRTY` / no checks): `scripts/autodev_pr_watch.py` comments on the PR and files `auto-dev,regression` (#200). Runs in `autodev-cycle` without `CURSOR_API_KEY`.
+- `BEHIND` auto-merge PRs: the same watcher merges `origin/main` (keeps both `docs/TRACKING.md` `###` sections) and approves first-party `action_required` runs so a park drains without a human *Update branch* click (#368).
+- Bot-PR approval gate (GitHub 2026-06-11): PRs opened with `GITHUB_TOKEN` (`github-actions[bot]`) need *Approve and run* on every synchronize. Set repo secret `AUTODEV_GH_TOKEN` to a fine-grained PAT (contents + PRs + actions, this repo only) so autodev opens PRs as a write-access user and CI starts on its own. Until that secret exists the workflow falls back to `GITHUB_TOKEN`.
 
 ## Issue labels
 

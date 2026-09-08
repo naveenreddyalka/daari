@@ -295,3 +295,9 @@ def test_non_stall_issues_unaffected_by_blocked_helpers():
         ],
         current_fingerprint="awaiting-approval run=1",
     )
+
+
+def test_workflow_uses_user_pat_so_bot_prs_skip_approval_gate():
+    text = (REPO_ROOT / ".github" / "workflows" / "autodev.yml").read_text(encoding="utf-8")
+    assert "AUTODEV_GH_TOKEN" in text
+    assert "secrets.AUTODEV_GH_TOKEN || secrets.GITHUB_TOKEN" in text

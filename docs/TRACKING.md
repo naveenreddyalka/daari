@@ -1717,6 +1717,17 @@ findings comment per distinct fingerprint (`post_blocked_findings_if_new`).
 Covered by `tests/unit/test_autodev_backlog.py` and
 `tests/unit/test_autodev_pr_watch.py`.
 
+### PR-watch auto-drain of BEHIND auto-merge PRs ([#368](https://github.com/naveenreddyalka/daari/issues/368))
+
+<!-- tracking:#368 -->
+**Status:** Done (2026-09-08). `scripts/autodev_pr_watch.py` merges `origin/main`
+into `BEHIND` auto-merge PRs (keep-both `docs/TRACKING.md`), skips a second
+attempt after a failed push marker, and approves first-party
+`action_required` workflow runs. `autodev.yml` uses `AUTODEV_GH_TOKEN` when
+set so new PRs are not attributed to `github-actions[bot]` (GitHub's
+2026-06-11 bot-PR approval gate has no repo-level opt-out). Covered by
+`tests/unit/test_autodev_pr_watch.py` and `tests/unit/test_autodev_backlog.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

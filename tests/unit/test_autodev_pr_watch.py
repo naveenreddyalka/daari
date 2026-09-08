@@ -407,3 +407,152 @@ def test_post_blocked_findings_once_per_state(watch):
     assert len(posted) == 2
     assert watch.parse_blocked_fingerprint(posted[0]) == "awaiting-approval run=42"
     assert watch.parse_blocked_fingerprint(posted[1]) == "awaiting-approval run=43"
+
+
+def test_behind_automerge_is_planned_for_update(watch):
+    pr = _pr(mergeStateStatus="BEHIND", mergeable="MERGEABLE", statusCheckRollup=[{"name": "test"}])
+    assert watch.plan_behind_updates([pr]) == [pr]
+
+
+def test_dirty_pr_is_not_planned_for_update(watch):
+    assert watch.plan_behind_updates([_pr()]) == []
+
+
+def test_up_to_date_and_no_automerge_are_noop(watch):
+    clean = _pr(mergeStateStatus="CLEAN", mergeable="MERGEABLE", statusCheckRollup=[{"name": "test"}])
+    no_auto = _pr(
+        mergeStateStatus="BEHIND",
+        mergeable="MERGEABLE",
+        autoMergeRequest=None,
+        statusCheckRollup=[{"name": "test"}],
+    )
+    assert watch.plan_behind_updates([clean, no_auto]) == []
+
+
+def test_failed_behind_update_does_not_thrash(watch):
+    pr = _pr(mergeStateStatus="BEHIND", mergeable="MERGEABLE", statusCheckRollup=[{"name": "test"}])
+    comments = [{"body": f"<!-- {watch.BEHIND_FAIL_MARKER} --> push failed"}]
+    assert watch.plan_behind_updates([pr], comments_by_number={250: comments}) == []
+
+
+def test_tracking_collision_keeps_both_sections(watch):
+    ours = (
+        "# Tracking\n\n"
+        "### Skip stalls ([#342](x))\n\n"
+        "<!-- tracking:#342 -->\n"
+        "branch section\n\n"
+        "<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->\n\n"
+        "---\n\n"
+        "## How to update\n\n"
+        "1. Keep both.\n"
+    )
+    theirs = (
+        "# Tracking\n\n"
+        "### Draft v1.4.0 ([#334](x))\n\n"
+        "<!-- tracking:#334 -->\n"
+        "main section\n\n"
+        "<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->\n\n"
+        "---\n\n"
+        "## How to update\n\n"
+        "1. Keep both.\n"
+    )
+    merged = watch.merge_tracking_keep_both(ours, theirs)
+    assert "<!-- tracking:#334 -->" in merged
+    assert "<!-- tracking:#342 -->" in merged
+    assert merged.count("\n## How to update\n") == 1
+    assert merged.index("tracking:#334") < merged.index("tracking:#342")
+
+
+def test_dry_run_behind_update_does_not_push(watch):
+    pr = _pr(
+        mergeStateStatus="BEHIND",
+        mergeable="MERGEABLE",
+        statusCheckRollup=[{"name": "test"}],
+        headRefName="autodev/342-skip",
+    )
+    pushed: list[str] = []
+    planned = watch.apply_behind_updates(
+        [pr],
+        dry_run=True,
+        merge_main=lambda branch: pushed.append(branch) or "updated",
+        list_comments=lambda _n: [],
+        comment=lambda _n, _b: None,
+    )
+    assert planned == [250]
+    assert pushed == []
+
+
+def test_apply_behind_updates_pushes_once(watch):
+    pr = _pr(
+        mergeStateStatus="BEHIND",
+        mergeable="MERGEABLE",
+        statusCheckRollup=[{"name": "test"}],
+        headRefName="autodev/342-skip",
+    )
+    pushed: list[str] = []
+    updated = watch.apply_behind_updates(
+        [pr],
+        dry_run=False,
+        merge_main=lambda branch: pushed.append(branch) or "updated",
+        list_comments=lambda _n: [],
+        comment=lambda _n, _b: None,
+    )
+    assert updated == [250]
+    assert pushed == ["autodev/342-skip"]
+
+
+def test_apply_behind_updates_other_conflict_does_not_push(watch):
+    pr = _pr(
+        mergeStateStatus="BEHIND",
+        mergeable="MERGEABLE",
+        statusCheckRollup=[{"name": "test"}],
+        headRefName="autodev/342-skip",
+    )
+    comments: list[tuple[int, str]] = []
+    updated = watch.apply_behind_updates(
+        [pr],
+        dry_run=False,
+        merge_main=lambda _branch: "conflict",
+        list_comments=lambda _n: [],
+        comment=lambda n, body: comments.append((n, body)),
+    )
+    assert updated == []
+    assert comments and watch.BEHIND_FAIL_MARKER in comments[0][1]
+
+
+def test_approve_first_party_bot_run(watch):
+    approved: list[int] = []
+    runs = [
+        {
+            "id": 99,
+            "conclusion": "action_required",
+            "event": "pull_request",
+            "html_url": "https://github.com/naveenreddyalka/daari/actions/runs/99",
+            "head_repository": {"full_name": "naveenreddyalka/daari"},
+            "actor": {"login": "github-actions[bot]"},
+        }
+    ]
+    watch.approve_first_party_runs(
+        runs,
+        repo_full_name="naveenreddyalka/daari",
+        approve=lambda run_id: approved.append(run_id),
+    )
+    assert approved == [99]
+
+
+def test_approve_skips_fork_runs(watch):
+    approved: list[int] = []
+    runs = [
+        {
+            "id": 100,
+            "conclusion": "action_required",
+            "head_repository": {"full_name": "evil/daari"},
+            "actor": {"login": "github-actions[bot]"},
+        }
+    ]
+    watch.approve_first_party_runs(
+        runs,
+        repo_full_name="naveenreddyalka/daari",
+        approve=lambda run_id: approved.append(run_id),
+    )
+    assert approved == []
