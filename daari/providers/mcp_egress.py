@@ -7,6 +7,7 @@ Minimal JSON-RPC over HTTP (streamable HTTP / simple POST). Configured via
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -25,6 +26,11 @@ class McpServerConfig:
     triggers: list[str] = field(default_factory=list)
 
 
+# A misbehaving upstream that always returns nextCursor must not hang listing.
+LIST_PAGE_CAP = 20
+LIST_TIMEOUT_SECONDS = 15.0
+
+
 class McpEgressProvider(HttpIntegrationProvider):
     def __init__(self, server: McpServerConfig, guardrails: McpGuardrails | None = None) -> None:
         super().__init__(
@@ -36,6 +42,8 @@ class McpEgressProvider(HttpIntegrationProvider):
         # Same rules as the ingress (#317): outbound arguments are checked before
         # they leave the machine, results before they reach the model.
         self.guardrails = guardrails or McpGuardrails(transport="egress")
+        self.list_page_cap = LIST_PAGE_CAP
+        self.list_timeout_seconds = LIST_TIMEOUT_SECONDS
 
     def _guardrail_blocked(self, request: InternalRequest, tool: str, rule: str) -> InternalResponse:
         return InternalResponse(
@@ -74,8 +82,14 @@ class McpEgressProvider(HttpIntegrationProvider):
             headers["Authorization"] = f"Bearer {self.server.token}"
 
         if tool in {"tools/list", "list"}:
-            payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
             headers["Mcp-Method"] = "tools/list"
+            try:
+                tools = await self._list_tools(headers)
+            except Exception as exc:  # noqa: BLE001
+                return self._failure(request, exc)
+            catalog = {"tools": tools}
+            text, _outcome = self.guardrails.check_result_text(tool, str(catalog)[:4000])
+            return self._ok_response(request, self.id, text)
         else:
             # MCP 2026-07-28 routing headers: let upstream gateways apply
             # per-tool policy without parsing the JSON-RPC body (issue #277).
@@ -103,6 +117,47 @@ class McpEgressProvider(HttpIntegrationProvider):
             return self._ok_response(request, self.id, text)
         except Exception as exc:  # noqa: BLE001
             return self._failure(request, exc)
+
+    async def _list_tools(self, headers: dict[str, str]) -> list[dict[str, Any]]:
+        """Follow tools/list nextCursor until absent, capped so a bad upstream stops."""
+        tools: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        cursor: str | None = None
+        started = time.monotonic()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for page in range(self.list_page_cap):
+                if page and time.monotonic() - started >= self.list_timeout_seconds:
+                    break
+                params: dict[str, Any] = {}
+                if cursor:
+                    params["cursor"] = cursor
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": page + 1,
+                    "method": "tools/list",
+                    "params": params,
+                }
+                response = await client.post(self.base_url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                if "error" in data:
+                    raise RuntimeError(str(data["error"]))
+                result = data.get("result", data)
+                if not isinstance(result, dict):
+                    break
+                for tool in result.get("tools") or []:
+                    if not isinstance(tool, dict):
+                        continue
+                    name = str(tool.get("name") or "")
+                    if name and name in seen:
+                        continue
+                    if name:
+                        seen.add(name)
+                    tools.append(tool)
+                cursor = result.get("nextCursor") or None
+                if not cursor:
+                    break
+        return tools
 
 
 def _entry_get(entry: Any, key: str, default: Any = None) -> Any:

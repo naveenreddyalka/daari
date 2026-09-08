@@ -14,6 +14,29 @@ from daari.gateway.internal import InternalRequest
 
 KNOWN_CAPABILITIES = ("tools", "json", "vision", "long_context")
 
+# Provider-documented capabilities for shipped frontier ids (issue #355).
+# Prefix / vendor-alias lookup lives in `known_model_capabilities`.
+# Claude Fable 5.1 / Opus 5 / Sonnet 5: tools, vision, 1M context, JSON
+# (https://platform.claude.com/docs/en/models/overview).
+# GPT-6 Astra and the GPT-5.6 family: tools, JSON, image input, ≥1M context.
+# Gemini 3.8 Flash: tools, JSON, native image/audio/video, 1M context
+# (https://ai.google.dev/gemini-api/docs/latest-model).
+_FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
+    name: frozenset({"tools", "json", "vision", "long_context"})
+    for name in (
+        "claude-fable-5-1",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-haiku-4-5",
+        "gpt-6-astra",
+        "gpt-5.6",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gemini-3.8-flash",
+    )
+}
+
 
 class UnsupportedCapability(Exception):
     """The request needs a capability no configured local model declares."""
@@ -32,11 +55,30 @@ class CapabilityCatalog:
     default: frozenset[str] = field(default_factory=lambda: frozenset())
 
     def for_model(self, model: str) -> frozenset[str]:
-        return self.models.get(model, self.default)
+        if model in self.models:
+            return self.models[model]
+        known = known_model_capabilities(model)
+        if known:
+            return known
+        return self.default
 
     def supports(self, model: str, required: Iterable[str]) -> bool:
         caps = self.for_model(model)
         return all(cap in caps for cap in required)
+
+
+def known_model_capabilities(model: str) -> frozenset[str]:
+    """Shipped capability tags for a frontier model id, or empty if unknown.
+
+    Dated snapshots and vendor-prefixed aliases (`anthropic.claude-fable-5-1`)
+    resolve through the same longest-key match as pricing.
+    """
+    from daari.pricing import matching_model_key
+
+    key = matching_model_key(model, _FRONTIER_CAPABILITIES)
+    if key is None:
+        return frozenset()
+    return _FRONTIER_CAPABILITIES[key]
 
 
 def required_capabilities(request: InternalRequest) -> set[str]:
@@ -119,7 +161,8 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
             )
         ]
     for provider in providers:
-        caps = ["tools", "json"]
+        known = known_model_capabilities(provider.model)
+        caps = list(known) if known else ["tools", "json"]
         if getattr(provider, "zdr", False):
             caps.append("zdr")
         add(provider.model, provider.id, caps)

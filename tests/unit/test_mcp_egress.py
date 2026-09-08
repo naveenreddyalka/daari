@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -65,6 +67,101 @@ async def test_outbound_requests_carry_mcp_method_and_name_headers(monkeypatch):
     assert call.headers["Mcp-Name"] == "get_forecast"
     assert listing.headers["Mcp-Method"] == "tools/list"
     assert "Mcp-Name" not in listing.headers
+
+
+def _patched_client(handler):
+    class Patched(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    return Patched
+
+
+@pytest.mark.asyncio
+async def test_tools_list_follows_next_cursor_and_dedupes(monkeypatch):
+    seen_cursors: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        cursor = (body.get("params") or {}).get("cursor")
+        seen_cursors.append(cursor)
+        if cursor is None:
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "tools": [{"name": "alpha"}, {"name": "beta"}],
+                        "nextCursor": "page-2",
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "result": {
+                    "tools": [{"name": "beta"}, {"name": "gamma"}],
+                },
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    result = await provider.execute(
+        InternalRequest(
+            messages=[Message(role="user", content="@mcp:demo tools/list")],
+            model="daari",
+        )
+    )
+    assert seen_cursors == [None, "page-2"]
+    assert result.content.index("alpha") < result.content.index("beta") < result.content.index("gamma")
+    assert result.content.count("beta") == 1
+
+
+@pytest.mark.asyncio
+async def test_tools_list_stops_on_page_cap_and_timeout(monkeypatch):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": calls["n"],
+                "result": {
+                    "tools": [{"name": f"tool-{calls['n']}"}],
+                    "nextCursor": "forever",
+                },
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    provider.list_page_cap = 3
+    result = await provider.execute(
+        InternalRequest(
+            messages=[Message(role="user", content="@mcp:demo list")],
+            model="daari",
+        )
+    )
+    assert calls["n"] == 3
+    assert "tool-1" in result.content and "tool-3" in result.content
+
+    calls["n"] = 0
+    provider.list_page_cap = 20
+    provider.list_timeout_seconds = 0
+    await provider.execute(
+        InternalRequest(
+            messages=[Message(role="user", content="@mcp:demo list")],
+            model="daari",
+        )
+    )
+    assert calls["n"] == 1
 
 
 def test_build_from_settings():
