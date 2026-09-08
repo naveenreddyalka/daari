@@ -23,7 +23,7 @@ BUDGET_SCOPE_HEADER = "x-daari-budget-scope"
 def budget_headers(status: WindowStatus) -> dict[str, str]:
     return {
         BUDGET_REMAINING_HEADER: usd_string(status.remaining),
-        BUDGET_LIMIT_HEADER: usd_string(float(status.window.max_usd)),
+        BUDGET_LIMIT_HEADER: usd_string(float(status.limit)),
         BUDGET_WINDOW_HEADER: window_header_label(status.window.duration),
         BUDGET_RESET_HEADER: str(status.reset_epoch),
         BUDGET_SCOPE_HEADER: status.scope,
