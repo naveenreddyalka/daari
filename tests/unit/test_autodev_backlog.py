@@ -163,3 +163,135 @@ def test_workflow_prompt_references_backlog_script():
     text = (REPO_ROOT / ".github" / "workflows" / "autodev.yml").read_text(encoding="utf-8")
     assert "scripts/autodev_backlog.py" in text
     assert "gh issue list --label auto-dev" not in text
+
+
+def _stall_body(pr_number=340, run_id=33815553913):
+    return (
+        "<!-- autodev-pr-stall -->\n"
+        f"PR #{pr_number} is stalled (classification: awaiting-approval). "
+        "The latest workflow run concluded `action_required`.\n"
+        f"Fix: Approve and run: https://github.com/o/r/actions/runs/{run_id}."
+    )
+
+
+def test_extract_stall_pr_number():
+    module = _load_module()
+    assert module.extract_stall_pr_number(_stall_body(340)) == 340
+    assert module.extract_stall_pr_number("no stall here") is None
+
+
+def test_should_skip_human_gated_stall_when_marker_matches():
+    module = _load_module()
+    issue = _issue(
+        341,
+        labels=("auto-dev", "P1", "regression"),
+        title="[autodev] stalled auto-merge PR #340",
+    )
+    issue["body"] = _stall_body()
+    comments = [
+        {
+            "body": (
+                "<!-- autodev-blocked: awaiting-approval run=33815553913 -->\n"
+                "## Findings (blocked — human action required)\n"
+            )
+        }
+    ]
+    assert module.should_skip_human_gated_stall(
+        issue,
+        comments=comments,
+        current_fingerprint="awaiting-approval run=33815553913",
+    )
+
+
+def test_should_not_skip_stall_without_blocked_comment():
+    module = _load_module()
+    issue = _issue(341, labels=("auto-dev", "P1", "regression"))
+    issue["body"] = _stall_body()
+    assert not module.should_skip_human_gated_stall(
+        issue,
+        comments=[{"body": "still investigating"}],
+        current_fingerprint="awaiting-approval run=33815553913",
+    )
+
+
+def test_should_not_skip_when_fingerprint_changed():
+    module = _load_module()
+    issue = _issue(341, labels=("auto-dev", "P1", "regression"))
+    issue["body"] = _stall_body()
+    comments = [
+        {
+            "body": "<!-- autodev-blocked: awaiting-approval run=33815553913 -->\nfindings"
+        }
+    ]
+    # New CI run → different fingerprint → eligible again
+    assert not module.should_skip_human_gated_stall(
+        issue,
+        comments=comments,
+        current_fingerprint="awaiting-approval run=99999999",
+    )
+    # PR no longer blocked
+    assert not module.should_skip_human_gated_stall(
+        issue,
+        comments=comments,
+        current_fingerprint=None,
+    )
+
+
+def test_pick_skips_human_gated_stall_matching_state():
+    module = _load_module()
+    stall = _issue(341, labels=("auto-dev", "P1", "regression"), created="2026-09-01T00:00:00Z")
+    stall["body"] = _stall_body()
+    other = _issue(342, labels=("auto-dev", "P1"), created="2026-09-05T00:00:00Z")
+    other["body"] = "normal work"
+
+    comments_by_issue = {
+        341: [
+            {
+                "body": "<!-- autodev-blocked: awaiting-approval run=33815553913 -->\nfindings"
+            }
+        ],
+        342: [],
+    }
+    fingerprints = {341: "awaiting-approval run=33815553913"}
+
+    picked = module.pick(
+        [stall, other],
+        open_prs=[],
+        comments_by_issue=comments_by_issue,
+        blocked_fingerprints=fingerprints,
+    )
+    assert picked["number"] == 342
+
+
+def test_pick_re_eligible_after_state_change():
+    module = _load_module()
+    stall = _issue(341, labels=("auto-dev", "P1", "regression"))
+    stall["body"] = _stall_body()
+    comments_by_issue = {
+        341: [
+            {
+                "body": "<!-- autodev-blocked: awaiting-approval run=33815553913 -->\nfindings"
+            }
+        ],
+    }
+    # Same old comment, but PR now has a new run id → pick the stall again
+    picked = module.pick(
+        [stall],
+        open_prs=[],
+        comments_by_issue=comments_by_issue,
+        blocked_fingerprints={341: "awaiting-approval run=999"},
+    )
+    assert picked is not None and picked["number"] == 341
+
+
+def test_non_stall_issues_unaffected_by_blocked_helpers():
+    module = _load_module()
+    issue = _issue(50, labels=("auto-dev", "P1"))
+    issue["body"] = "regular feature work"
+    assert not module.should_skip_human_gated_stall(
+        issue,
+        comments=[
+            {"body": "<!-- autodev-blocked: awaiting-approval run=1 -->\nspurious"}
+        ],
+        current_fingerprint="awaiting-approval run=1",
+    )
