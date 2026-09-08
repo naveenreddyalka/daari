@@ -1737,6 +1737,22 @@ stream newest-first rows from `enterprise.audit_path` in seq batches. Docs:
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
 `tests/unit/test_audit_cli.py`.
 
+### Shipped pricing and capability tables for the September 2026 frontier lineup ([#355](https://github.com/naveenreddyalka/daari/issues/355))
+
+<!-- tracking:#355 -->
+**Status:** Done (2026-09-07). Default `pricing.models` now includes Claude
+Fable 5.1 ($10/$50, cache $0.25), Opus 5, Sonnet 5, Haiku 4.5, GPT-6 Astra
+($10/$50, cache $1), the GPT-5.6 family (Sol promo through 2026-11-21), and
+Gemini 3.8 Flash intro rate ($0.75/$3.75, cache $0.075 through 2026-12-31).
+Dated and vendor-prefixed ids (`claude-fable-5-1-20260901`,
+`anthropic.claude-fable-5-1`) resolve via longest key. Known frontier
+capabilities advertise tools/json/vision/long_context. GPT-6 Astra's >272K
+input surcharge is documented as out of scope. Existing 2024 entries are
+unchanged. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#shipped-list-prices-captured-2026-09-07).
+Covered by `tests/unit/test_token_accounting.py` and
+`tests/unit/test_capabilities.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---

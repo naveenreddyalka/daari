@@ -76,6 +76,29 @@ def test_catalog_from_settings_defaults():
     assert "tools" in catalog.for_model("llama3.2:3b")
 
 
+def test_known_frontier_models_declare_provider_capabilities():
+    """Shipped capability data for the September 2026 lineup (issue #355)."""
+    from daari.router.capabilities import known_model_capabilities
+
+    expected = {
+        "claude-fable-5-1",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "gpt-6-astra",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gemini-3.8-flash",
+    }
+    for model in expected:
+        caps = known_model_capabilities(model)
+        assert {"tools", "json", "vision", "long_context"} <= set(caps), model
+    dated = known_model_capabilities("claude-fable-5-1-20260901")
+    bedrock = known_model_capabilities("anthropic.claude-fable-5-1")
+    assert "vision" in dated
+    assert "long_context" in bedrock
+
+
 @pytest.mark.asyncio
 async def test_router_skips_tier_without_tools(tmp_path):
     catalog = CapabilityCatalog(
