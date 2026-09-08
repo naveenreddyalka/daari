@@ -60,6 +60,7 @@ org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.
 web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
+audit_app = typer.Typer(help="Read and export the local admin audit log.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
 app.add_typer(setup_app, name="setup")
@@ -70,6 +71,7 @@ app.add_typer(org_learning_app, name="org-learning")
 app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
+app.add_typer(audit_app, name="audit")
 
 
 @keys_app.command("create")
@@ -214,6 +216,102 @@ def keys_team_create(
 
 
 app.add_typer(enterprise_app, name="enterprise")
+
+
+def _audit_log_from_settings():
+    from daari.enterprise.audit import AuditLog
+
+    settings = get_settings()
+    return AuditLog(settings.enterprise.audit_path)
+
+
+@audit_app.command("list")
+def audit_list(
+    limit: int = typer.Option(50, "--limit", help="Max rows (newest first)."),
+    actor: str | None = typer.Option(None, "--actor", help="Exact actor match."),
+    action: str | None = typer.Option(
+        None, "--action", help="Action prefix match (e.g. budget.)."
+    ),
+    since: str | None = typer.Option(
+        None, "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Print JSON array."),
+) -> None:
+    """Print recent audit rows (issue #345)."""
+    from daari.enterprise.audit import parse_since
+
+    log = _audit_log_from_settings()
+    if not log.enabled:
+        typer.echo("Audit log is disabled or could not be opened.", err=True)
+        raise typer.Exit(code=1)
+    cutoff = None
+    if since:
+        try:
+            cutoff = parse_since(since)
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+    rows = log.list(limit=limit, actor=actor, action=action, since=cutoff)
+    if not rows:
+        typer.echo("No audit rows.")
+        return
+    if as_json:
+        typer.echo(json.dumps(rows, indent=2))
+        return
+    for row in rows:
+        detail = json.dumps(row["detail"], separators=(",", ":"))
+        typer.echo(
+            f"{row['seq']}\t{row['ts']}\t{row['actor']}\t{row['role']}\t{row['action']}\t{detail}"
+        )
+
+
+@audit_app.command("export")
+def audit_export(
+    format: str = typer.Option("jsonl", "--format", help="Export format (jsonl)."),
+    since: str | None = typer.Option(
+        None, "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
+    ),
+    actor: str | None = typer.Option(None, "--actor", help="Exact actor match."),
+    action: str | None = typer.Option(
+        None, "--action", help="Action prefix match (e.g. budget.)."
+    ),
+    out: Path | None = typer.Option(None, "--out", help="Write to FILE (default stdout)."),
+) -> None:
+    """Stream audit rows as JSONL for SIEM ingestion (issue #345)."""
+    from daari.enterprise.audit import parse_since
+
+    if format.strip().lower() != "jsonl":
+        typer.echo("Only --format jsonl is supported.", err=True)
+        raise typer.Exit(code=1)
+    log = _audit_log_from_settings()
+    if not log.enabled:
+        typer.echo("Audit log is disabled or could not be opened.", err=True)
+        raise typer.Exit(code=1)
+    cutoff = None
+    if since:
+        try:
+            cutoff = parse_since(since)
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+    handle = out.open("w", encoding="utf-8") if out is not None else None
+    try:
+        count = 0
+        for row in log.iter_rows(actor=actor, action=action, since=cutoff, batch_size=500):
+            line = json.dumps(row, separators=(",", ":"), sort_keys=True)
+            if handle is not None:
+                handle.write(line + "\n")
+            else:
+                typer.echo(line)
+            count += 1
+        if count == 0 and handle is None:
+            # Empty store: stay quiet on stdout so SIEM pipelines get zero lines.
+            pass
+        if out is not None:
+            typer.echo(f"Wrote {count} rows to {out}", err=True)
+    finally:
+        if handle is not None:
+            handle.close()
 
 
 @enterprise_app.command("bootstrap")
