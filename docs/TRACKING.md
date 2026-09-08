@@ -1717,17 +1717,7 @@ findings comment per distinct fingerprint (`post_blocked_findings_if_new`).
 Covered by `tests/unit/test_autodev_backlog.py` and
 `tests/unit/test_autodev_pr_watch.py`.
 
-<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
-
----
-
-## How to update
-
-1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
-2. Refresh **Last updated** and pytest count after test changes.
-3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
-4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
-5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
+<!-- tracking-append: add the next ### section above
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
