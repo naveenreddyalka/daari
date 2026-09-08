@@ -20,7 +20,7 @@ DEFAULT_THRESHOLDS = (0.8, 1.0)
 
 
 def _ratio(status: WindowStatus) -> float:
-    cap = float(status.window.max_usd)
+    cap = float(status.limit)
     if cap <= 0:
         return 0.0
     return float(status.spend) / cap
@@ -90,7 +90,7 @@ class BudgetAlerter:
             "id": scope_id,
             "name": name,
             "window": window_label(status.window.duration),
-            "limit_usd": float(status.window.max_usd),
+            "limit_usd": float(status.limit),
             "spent_usd": round(float(status.spend), 6),
             "remaining_usd": round(status.remaining, 6),
             "threshold": float(threshold),
