@@ -218,3 +218,175 @@ async def test_anthropic_system_blocks_accepted(app, monkeypatch):
     assert response.status_code == 200
     assert seen["messages"][0].role == "system"
     assert "block system prompt" in (seen["messages"][0].content or "")
+
+
+@pytest.mark.asyncio
+async def test_generate_non_stream_routes_through_daari(app, monkeypatch):
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", _fake_execute())
+    payload = {
+        "model": "daari",
+        "stream": False,
+        "prompt": "ollama generate smoke",
+        "tool_search": {"enabled": True},
+        "response_compaction": {"max_tokens": 100},
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/generate", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response"] == "hello from daari"
+    assert body["done"] is True
+    assert body["daari_meta"]["tier"] == "L3"
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_emits_ndjson_lines(app, monkeypatch):
+    _mock_stream_executor(monkeypatch, app.state.ctx.router, "streamed generate text")
+    payload = {"model": "daari", "prompt": "generate stream smoke"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/generate", json=payload)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    lines = [json.loads(line) for line in response.text.strip().splitlines()]
+    content = "".join(line["response"] for line in lines if not line["done"])
+    assert "streamed generate text" in content
+    assert lines[-1]["done"] is True
+    assert lines[-1]["done_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_default_true(app, monkeypatch):
+    _mock_stream_executor(monkeypatch, app.state.ctx.router, "default generate stream")
+    payload = {"model": "daari", "prompt": "default stream check"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/generate", json=payload)
+
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+
+
+@pytest.mark.asyncio
+async def test_generate_records_client_id_in_ledger(app, monkeypatch):
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", _fake_execute())
+    payload = {"model": "daari", "stream": False, "prompt": "client attribution"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/generate",
+            json=payload,
+            headers={"X-Daari-Client-Id": "chatgpt-desktop"},
+        )
+
+    assert response.status_code == 200
+    ledger = app.state.ctx.router.usage_ledger
+    if ledger is not None and ledger.enabled:
+        clients = {row["client_id"] for row in ledger.by_client()}
+        assert "chatgpt-desktop" in clients
+
+
+@pytest.mark.asyncio
+async def test_generate_repeat_hits_cache(app, monkeypatch):
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", _fake_execute("cached generate"))
+    payload = {
+        "model": "daari",
+        "stream": False,
+        "prompt": "identical generate prompt for l0",
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/api/generate", json=payload)
+        second = await client.post("/api/generate", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["daari_meta"]["cache_hit"] is True
+    assert second.json()["daari_meta"]["tier"] == "L0"
+
+
+@pytest.mark.asyncio
+async def test_chat_unknown_ollama_034_fields_ignored(app, monkeypatch):
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", _fake_execute())
+    payload = {
+        "model": "daari",
+        "stream": False,
+        "messages": [{"role": "user", "content": "compat fields"}],
+        "tool_search": True,
+        "response_compaction": {"enabled": True},
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/chat", json=payload)
+
+    assert response.status_code == 200
+
+
+class _RecordingEmbedder:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+        self.calls.append(text)
+        return [0.1, 0.2, 0.3]
+
+
+@pytest.mark.asyncio
+async def test_embed_returns_embeddings_list(app):
+    embedder = _RecordingEmbedder()
+    app.state.ctx.settings.cache.l1.enabled = True
+    app.state.ctx.router.semantic_cache.embedder = embedder
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/embed",
+            json={"model": "daari", "input": ["one", "two"]},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["embeddings"] == [[0.1, 0.2, 0.3], [0.1, 0.2, 0.3]]
+    assert embedder.calls == ["one", "two"]
+
+
+@pytest.mark.asyncio
+async def test_embeddings_legacy_prompt_shape(app):
+    embedder = _RecordingEmbedder()
+    app.state.ctx.settings.cache.l1.enabled = True
+    app.state.ctx.router.semantic_cache.embedder = embedder
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/embeddings",
+            json={"model": "daari", "prompt": "legacy prompt"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["embedding"] == [0.1, 0.2, 0.3]
+    assert embedder.calls == ["legacy prompt"]
+
+
+@pytest.mark.asyncio
+async def test_embed_unknown_model_is_400(app):
+    embedder = _RecordingEmbedder()
+    app.state.ctx.router.semantic_cache.embedder = embedder
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/embed",
+            json={"model": "totally-unknown", "input": "x"},
+        )
+
+    assert response.status_code == 400
+    assert embedder.calls == []
