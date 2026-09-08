@@ -21,13 +21,18 @@ TEAM = Team(team_id="t1", name="eng")
 
 
 def _status(
-    spend: float, *, cap: float = 10.0, scope: str = "key", duration: str = "day"
+    spend: float,
+    *,
+    cap: float = 10.0,
+    scope: str = "key",
+    duration: str = "day",
+    now: datetime = NOW,
 ) -> WindowStatus:
     return WindowStatus(
         window=BudgetWindow(duration, cap),
         scope=scope,  # type: ignore[arg-type]
         spend=spend,
-        now=NOW,
+        now=now,
     )
 
 
@@ -129,3 +134,90 @@ class TestAlerter:
     def test_empty_url_never_posts(self):
         alerter = BudgetAlerter(webhook_url="")
         assert alerter.notify([_status(0)], [_status(10)], key=KEY, team=None) == []
+
+
+class FakeRedis:
+    """In-memory SET NX EX stand-in shared by replica alerters."""
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+        self.calls: list[dict] = []
+
+    def set(self, name: str, value: str, nx: bool = False, ex: int | None = None):
+        self.calls.append({"name": name, "value": value, "nx": nx, "ex": ex})
+        if nx and name in self.store:
+            return None
+        self.store[name] = value
+        return True
+
+
+class BoomRedis:
+    def set(self, name: str, value: str, nx: bool = False, ex: int | None = None):
+        raise ConnectionError("redis down")
+
+
+def _counting_alerter(*, redis: object | None = None) -> tuple[BudgetAlerter, list]:
+    hits: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hits.append(request)
+        return httpx.Response(204)
+
+    alerter = BudgetAlerter(
+        webhook_url="https://hooks.example/budget",
+        transport=httpx.MockTransport(handler),
+        redis=redis,
+    )
+    return alerter, hits
+
+
+class TestRedisFleetDedupe:
+    def test_two_replicas_deliver_one_webhook(self):
+        shared = FakeRedis()
+        first, hits_a = _counting_alerter(redis=shared)
+        second, hits_b = _counting_alerter(redis=shared)
+        first.notify([_status(7.0)], [_status(8.2)], key=KEY, team=None)
+        second.notify([_status(7.0)], [_status(8.2)], key=KEY, team=None)
+        assert len(hits_a) + len(hits_b) == 1
+        assert len(shared.calls) == 2
+        assert all(call["nx"] is True for call in shared.calls)
+        stamp = first._dedupe_key(_status(8.2), KEY.key_id, 0.8)
+        key = shared.calls[0]["name"]
+        assert all(str(part) in key for part in stamp)
+        expected_ttl = int(stamp[-1]) - int(NOW.timestamp())
+        assert shared.calls[0]["ex"] == expected_ttl
+
+    def test_different_threshold_delivers_again(self):
+        shared = FakeRedis()
+        alerter, hits = _counting_alerter(redis=shared)
+        alerter.notify([_status(7.0)], [_status(8.2)], key=KEY, team=None)
+        alerter.notify([_status(8.2)], [_status(10.5)], key=KEY, team=None)
+        assert len(hits) == 2
+        assert {call["name"] for call in shared.calls} == set(shared.store)
+
+    def test_window_reset_delivers_again(self):
+        shared = FakeRedis()
+        alerter, hits = _counting_alerter(redis=shared)
+        later = datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc)
+        alerter.notify([_status(7.0)], [_status(8.2)], key=KEY, team=None)
+        alerter.notify(
+            [_status(7.0, now=later)],
+            [_status(8.2, now=later)],
+            key=KEY,
+            team=None,
+        )
+        assert len(hits) == 2
+        assert len(shared.store) == 2
+
+    def test_redis_error_still_delivers_and_logs(self, monkeypatch):
+        events: list[tuple[str, dict]] = []
+        monkeypatch.setattr(
+            "daari.gateway.request_log.log_gateway_event",
+            lambda name, detail=None: events.append((name, detail or {})),
+        )
+        alerter, hits = _counting_alerter(redis=BoomRedis())
+        alerter.notify([_status(7.0)], [_status(8.2)], key=KEY, team=None)
+        assert len(hits) == 1
+        names = [name for name, _detail in events]
+        assert "budget.alert_dedupe_degraded" in names
+        assert "budget.alert" in names
