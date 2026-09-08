@@ -1704,6 +1704,19 @@ verified against `docker.yml` cosign + SBOM + provenance. **No** git tag, GitHub
 release, or PyPI/ghcr publish from the agent. Covered by
 `tests/unit/test_release_v140_prep.py`.
 
+### Skip human-gated stall re-picks ([#342](https://github.com/naveenreddyalka/daari/issues/342))
+
+<!-- tracking:#342 -->
+**Status:** Done (2026-09-06). Stall findings comments carry
+`<!-- autodev-blocked: <classification> run=<id> -->` (helpers in
+`scripts/autodev_pr_watch.py`). `scripts/autodev_backlog.py::pick` skips
+issues whose body has `autodev-pr-stall` when the latest blocked marker
+matches the referenced PR's current fingerprint; a new CI run, cleared
+block, or closed/merged PR re-eligibilizes the issue. At most one
+findings comment per distinct fingerprint (`post_blocked_findings_if_new`).
+Covered by `tests/unit/test_autodev_backlog.py` and
+`tests/unit/test_autodev_pr_watch.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
