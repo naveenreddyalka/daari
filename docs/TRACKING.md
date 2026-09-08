@@ -1812,6 +1812,17 @@ set so new PRs are not attributed to `github-actions[bot]` (GitHub's
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
+### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
+
+<!-- tracking:#369 -->
+**Status:** Done (2026-09-08). When `cache.backend=redis`, `BudgetAlerter`
+claims each `(scope, id, window, threshold, reset_epoch)` crossing with
+`SET NX EX` (TTL through window reset) before the webhook POST, so replicas
+notify once. No Redis keeps the in-process `_seen` path. Redis errors still
+deliver and log `budget.alert_dedupe_degraded`. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#operator-alerts).
+Covered by `tests/unit/test_budget_alerts.py`.
+
 ---
 
 ## How to update

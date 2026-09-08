@@ -98,9 +98,14 @@ Payload (never includes key material):
 ```
 
 Each `(scope, id, window, threshold, reset_epoch)` fires at most once until
-that window resets. Dedupe is in-memory on the process that handled the
-request — two replicas can notify twice. Each fire writes a `budget.alert`
-audit row and increments `daari_budget_alerts_total{scope,threshold}`.
+that window resets. With `cache.backend: redis` (the same Redis as L0/L1 and
+rate limits), the fleet claims that tuple with `SET NX EX` before delivery;
+the TTL runs until the window reset so keys expire on their own. Without
+Redis, dedupe stays in-memory on the process that handled the request — two
+replicas can notify twice. A Redis error still delivers the alert and logs
+`budget.alert_dedupe_degraded` (never drop a page because the claim store
+is down). Each fire writes a `budget.alert` audit row and increments
+`daari_budget_alerts_total{scope,threshold}`.
 
 Existing keys that only have `daily_budget_usd` / `monthly_budget_usd` are
 migrated to `day` / `month` windows on first open; behavior is unchanged.

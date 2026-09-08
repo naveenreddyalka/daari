@@ -57,11 +57,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from daari.enterprise.audit import AuditLog
         from daari.observability.budget_alerts import BudgetAlerter
 
+        cache = resolved.cache
+        redis_url = ""
+        if getattr(cache, "backend", "disk") == "redis":
+            redis_url = getattr(cache, "redis_url", "") or ""
         app.state.budget_alerter = BudgetAlerter(
             webhook_url=resolved.alerts.budget_webhook_url,
             thresholds=tuple(resolved.alerts.budget_thresholds),
             audit=AuditLog(resolved.enterprise.audit_path),
             metrics=app.state.ctx.metrics,
+            redis_url=redis_url,
         )
         try:
             yield
