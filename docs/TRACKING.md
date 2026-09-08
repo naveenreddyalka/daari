@@ -1693,6 +1693,17 @@ Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
 
+### Draft v1.4.0 release notes and version bump ([#334](https://github.com/naveenreddyalka/daari/issues/334))
+
+<!-- tracking:#334 -->
+**Status:** Done (2026-09-03). Prep-only release package: `docs/RELEASE-v1.4.0.md`
+(Apache 2.0 + cosign/SBOM lead, human tag/release steps at top, upgrade notes
+→ [upgrade.md](developer/guides/operations/upgrade.md) #316), `pyproject.toml` /
+`daari.__version__` / README / CHANGELOG bumped to **1.4.0**, `docs/RELEASING.md`
+verified against `docker.yml` cosign + SBOM + provenance. **No** git tag, GitHub
+release, or PyPI/ghcr publish from the agent. Covered by
+`tests/unit/test_release_v140_prep.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
