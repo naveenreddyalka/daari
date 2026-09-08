@@ -1693,6 +1693,17 @@ Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
 [upgrade.md](developer/guides/operations/upgrade.md). Covered by
 `tests/unit/test_retention.py`.
 
+### Draft v1.4.0 release notes and version bump ([#334](https://github.com/naveenreddyalka/daari/issues/334))
+
+<!-- tracking:#334 -->
+**Status:** Done (2026-09-03). Prep-only release package: `docs/RELEASE-v1.4.0.md`
+(Apache 2.0 + cosign/SBOM lead, human tag/release steps at top, upgrade notes
+→ [upgrade.md](developer/guides/operations/upgrade.md) #316), `pyproject.toml` /
+`daari.__version__` / README / CHANGELOG bumped to **1.4.0**, `docs/RELEASING.md`
+verified against `docker.yml` cosign + SBOM + provenance. **No** git tag, GitHub
+release, or PyPI/ghcr publish from the agent. Covered by
+`tests/unit/test_release_v140_prep.py`.
+
 ### Skip human-gated stall re-picks ([#342](https://github.com/naveenreddyalka/daari/issues/342))
 
 <!-- tracking:#342 -->
@@ -1705,6 +1716,18 @@ block, or closed/merged PR re-eligibilizes the issue. At most one
 findings comment per distinct fingerprint (`post_blocked_findings_if_new`).
 Covered by `tests/unit/test_autodev_backlog.py` and
 `tests/unit/test_autodev_pr_watch.py`.
+
+<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
+
+---
+
+## How to update
+
+1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
+2. Refresh **Last updated** and pytest count after test changes.
+3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
+4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
+5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
