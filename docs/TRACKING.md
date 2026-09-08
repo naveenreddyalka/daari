@@ -1717,8 +1717,6 @@ findings comment per distinct fingerprint (`post_blocked_findings_if_new`).
 Covered by `tests/unit/test_autodev_backlog.py` and
 `tests/unit/test_autodev_pr_watch.py`.
 
-<!-- tracking-append: add the next ### section above
-
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ---
