@@ -58,6 +58,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.reasoning_effort_escalation` | bool | `False` |  |
 | `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
 | `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin is reused. 0 keeps the pin until process restart. Ignored unless session_affinity is true. |
+| `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |
+| `routing.stall_escalation.repeats` | int | `3` | Identical calls or consecutive error results required to stall. |
+| `routing.stall_escalation.window` | int | `6` | How many recent tool calls are inspected for identical repeats. |
 | `routing.shadow_sample_rate` | float | `0.0` | Fraction of local-tier responses replayed in the background at shadow_compare_tier to measure tier divergence. 0 disables. |
 | `routing.shadow_compare_tier` | Literal | `''` | Tier to replay sampled requests at. Empty = highest configured local tier; L6 requires shadow_daily_usd > 0. |
 | `routing.shadow_daily_usd` | float | `0.0` | Daily spend cap for L6 shadow replays. 0 forbids L6 shadow runs. |

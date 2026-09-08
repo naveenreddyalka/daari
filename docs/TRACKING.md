@@ -1767,6 +1767,28 @@ override the pin (`session_pin` / `session_pin_override`). Docs:
 Covered by `tests/unit/test_session_affinity.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Stall escalation for a stuck agent loop ([#357](https://github.com/naveenreddyalka/daari/issues/357))
+
+<!-- tracking:#357 -->
+**Status:** Done (2026-09-07). `routing.stall_escalation` (default off; repeats
+3, window 6) reads the request's tool history only. N identical calls (name +
+normalized arguments) in the last window, or N consecutive error tool results,
+bump the heuristic tier by one. `X-Daari-Tier-Cap` and
+`routing.max_tier_for_chat` still win. Logged as `stall_escalation` with
+pattern and count. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#stall-escalation).
+Covered by `tests/unit/test_stall.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### MCP egress follows tools/list nextCursor ([#358](https://github.com/naveenreddyalka/daari/issues/358))
+
+<!-- tracking:#358 -->
+**Status:** Done (2026-09-07). Egress `tools/list` follows `nextCursor` until
+absent, aggregates tools in first-seen order, and de-duplicates by name.
+A page cap (20) and a 15s listing timeout stop an infinite-cursor upstream.
+Single-page servers are unchanged. Guardrail result checks see the aggregated
+catalog. Covered by `tests/unit/test_mcp_egress.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))

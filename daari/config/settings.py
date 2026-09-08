@@ -201,6 +201,29 @@ class CategoryPolicy(BaseModel):
     latency_budget_ms: int | None = None
 
 
+class StallEscalationSettings(BaseModel):
+    """Bump a stuck agent loop one tier from request-visible history (#357)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, N identical tool calls in the last window, or N "
+            "consecutive error tool results, escalate the chosen tier by one. "
+            "Default off."
+        ),
+    )
+    repeats: int = Field(
+        default=3,
+        ge=1,
+        description="Identical calls or consecutive error results required to stall.",
+    )
+    window: int = Field(
+        default=6,
+        ge=1,
+        description="How many recent tool calls are inspected for identical repeats.",
+    )
+
+
 class OrgPoolSettings(BaseModel):
     """Shared org GPU inference pool between local L5 and frontier L6 (issue #118)."""
 
@@ -255,6 +278,10 @@ class RoutingSettings(RuntimeSettings):
     # When True, client reasoning_effort=high biases local tier selection
     # upward (and marks the profile complex). Default off (#297).
     reasoning_effort_escalation: bool = False
+    stall_escalation: StallEscalationSettings = Field(
+        default_factory=StallEscalationSettings,
+        description="Stuck-loop bump from tool-call history. Off unless enabled.",
+    )
     # Keep an agent session on the model that planned the task across tool
     # continuations. Default off — unshipped behavior is unchanged (#356).
     session_affinity: bool = Field(
