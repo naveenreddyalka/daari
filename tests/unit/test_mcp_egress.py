@@ -208,7 +208,6 @@ def _tools_catalog(n: int = 50) -> list[dict]:
 
 @pytest.mark.asyncio
 async def test_tool_search_threshold_gating_skips_embedder():
-    from daari.gateway.mcp_policy import McpToolPolicy
     from daari.gateway.mcp_tool_search import ToolSearchSettings, maybe_rank_tools
 
     embedder = _AxisEmbedder()
