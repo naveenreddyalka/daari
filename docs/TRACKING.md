@@ -1849,6 +1849,17 @@ and caches only scanned text. Tool-call streams stay exempt. Docs:
 `tests/unit/test_stream_guardrails.py`, `tests/unit/test_stream_policy_parity.py`,
 and `tests/integration/test_gateway_flow.py`.
 
+### Tamper-evident audit hash chain ([#378](https://github.com/naveenreddyalka/daari/issues/378))
+
+<!-- tracking:#378 -->
+**Status:** Done (2026-09-09). Every new audit row stores `prev_hash` /
+`row_hash` (SHA-256 over canonical seq/ts/actor/role/action/detail/prev_hash;
+genesis `0`×64). `daari audit verify [--json]` walks oldest-first; legacy
+(null-hash) rows counted; exits non-zero on `hash_mismatch` / `seq_gap`.
+Export JSONL includes both hash fields. Retention prune re-anchors the chain.
+Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
+Covered by `tests/unit/test_audit_cli.py`.
+
 ---
 
 ## How to update
