@@ -177,6 +177,34 @@ integrations:
     path: ~/.daari/mcp-tasks
 ```
 
+## Semantic tool search
+
+When an upstream MCP server's aggregated `tools/list` catalog grows past a
+threshold (default 40 after cursor pagination), small local models suffer —
+tool lists burn context and degrade choice quality. Opt in:
+
+```yaml
+integrations:
+  mcp_tool_search:
+    enabled: true
+    min_catalog_size: 40
+    top_k: 40
+```
+
+daari ranks tools by cosine similarity between `(name + description)` and a
+query, using the same local embed path as L1 (`cache.l1.embedding_model`).
+Embeddings are cached per `(server, tool name, description hash)`.
+
+**Query heuristic** (at listing time): trailing text after
+`@mcp … tools/list` / `list` (e.g. `@mcp:demo tools/list weather`), else the
+most recent user/tool message content. Empty query or an embed failure leaves
+the (post-governance) catalog unranked and logs `mcp_tool_search_degraded` —
+never an error to the client.
+
+`integrations.mcp_policy` allow/deny runs **before** ranking, so search cannot
+resurface a denied tool. Off by default; catalogs at or under
+`min_catalog_size` are unchanged.
+
 ## Deprecated alias
 
 `POST /v1/mcp/query` remains for older callers. Responses include
