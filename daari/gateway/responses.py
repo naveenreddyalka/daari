@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import extract_images
 from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
@@ -330,6 +331,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
             )
+            apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
 
             apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))

@@ -1821,6 +1821,16 @@ Unknown windows are left alone; `X-Daari-Tier-Cap` still wins. Trace/event
 [routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
 Covered by `tests/unit/test_context_window.py`.
 
+### OpenRouter cost_tier body mapping ([#388](https://github.com/naveenreddyalka/daari/issues/388))
+
+<!-- tracking:#388 -->
+**Status:** Done (2026-09-09). OpenAI / Anthropic / Responses accept `cost_tier`
+and `plugins: [{id: "auto-router", cost_tier}]`. Map `low`→L3, `medium`→L4,
+`high`→L5, `xhigh`/`max`→L6 onto `meta.tier_cap`. `X-Daari-Tier-Cap` wins;
+unknown values log `cost_tier_ignored`. Anthropic now also reads the header.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_cost_tier.py` and `tests/integration/test_gateway_flow.py`.
+
 ### Vision hop for tool-result images ([#397](https://github.com/naveenreddyalka/daari/issues/397))
 
 <!-- tracking:#397 -->

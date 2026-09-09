@@ -6,7 +6,7 @@
 | `X-Daari-Meta: true` | Embed `daari_meta` in JSON responses |
 | `X-Daari-No-Cache` | Skip L0/L1 |
 | `X-Daari-Tier-Override` | Force a tier |
-| `X-Daari-Tier-Cap` | Cap local tier (e.g. `L3`) |
+| `X-Daari-Tier-Cap` | Cap local tier (e.g. `L3`). Beats body `cost_tier`. |
 | `X-Daari-No-Frontier` | Forbid L6 |
 | `X-Daari-Latency-Budget` | Max local latency (ms) |
 | `X-Daari-Client-Id` | Ledger attribution |
