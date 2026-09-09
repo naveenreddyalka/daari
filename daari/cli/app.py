@@ -360,6 +360,33 @@ def audit_export(
             handle.close()
 
 
+@audit_app.command("verify")
+def audit_verify(
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable result for CI/SIEM."),
+) -> None:
+    """Verify the SHA-256 audit hash chain (issue #378)."""
+    log = _audit_log_from_settings()
+    if not log.enabled:
+        typer.echo("Audit log is disabled or could not be opened.", err=True)
+        raise typer.Exit(code=1)
+    result = log.verify()
+    payload = result.as_dict()
+    if as_json:
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    elif result.ok:
+        typer.echo(
+            f"OK: {result.total} rows ({result.legacy} legacy, {result.chained} chained)"
+        )
+    else:
+        typer.echo(
+            f"TAMPER at seq={result.broken_seq}: {result.reason} "
+            f"(total={result.total}, legacy={result.legacy}, chained={result.chained})",
+            err=True,
+        )
+    if not result.ok:
+        raise typer.Exit(code=1)
+
+
 @enterprise_app.command("bootstrap")
 def enterprise_bootstrap(
     org_config: str = typer.Option(

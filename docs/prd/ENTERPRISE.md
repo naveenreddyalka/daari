@@ -62,8 +62,7 @@ LiteLLM is monetizing (phase routing, stream guardrails, tool search).
 | 2 | **Guardrails force full stream buffering** — `_can_relay_frontier_stream` returns False with guardrails on; every streamed answer buffers before the first byte (verified `router.py` ~3127) | 4 | 3 | [LiteLLM v1.102-dev streaming post_call guardrails](https://github.com/BerriAI/litellm/pull/38788) | Rules are regex + local PII scrub — incremental scanning is microseconds per chunk, no guardrail API hop | **Done [#375](https://github.com/naveenreddyalka/daari/issues/375)** |
 | 3 | **MCP semantic tool search** — pagination (#363) means aggregated catalogs of hundreds of tools now reach small local models, which are most hurt by tool flooding | 4 | 3 | LiteLLM `mcp_tool_search` (v1.101 stable, embedding-ranked) | `/v1/embeddings` + local embed models → $0 ranking, tool descriptions never leave the box | **Filed [#376](https://github.com/naveenreddyalka/daari/issues/376)** (P2) |
 | 4 | **No zero-downtime key rotation** — revoke+create is a hard cutover losing budgets/team/policy identity; SOC 2-style rotation schedules expect overlap | 3 | 2 | LiteLLM key regenerate | Rotation is a local state transition + audit row; completes the on-box credential lifecycle with expiry (#331) | **Done [#377](https://github.com/naveenreddyalka/daari/issues/377)** |
-| 5 | **Audit log is not tamper-evident** — SQLite rows editable by anyone with disk access; export shows no trace | 3 | 2 | Nobody (LiteLLM/Kong audit is plain DB rows) | Self-hosted audit needs tamper-evidence *more* than SaaS; SHA-256 hash chain is stdlib-only | **Filed [#378](https://github.com/naveenreddyalka/daari/issues/378)** (P2) |
-| 6 | **Batch API** — no `/v1/batches`; agents and eval pipelines increasingly submit batch jobs | 4 | 4 | OpenRouter Batch API (beta); LiteLLM e2e batch billing | Drain batches through idle local tiers overnight at $0 — no cloud gateway can copy it. MCP Tasks store (#315) is the template | Watch — file when a daari-served client sends batches; sketch first |
+| 5 | **Audit log is not tamper-evident** — SQLite rows editable by anyone with disk access; export shows no trace | 3 | 2 | Nobody (LiteLLM/Kong audit is plain DB rows) | Self-hosted audit needs tamper-evidence *more* than SaaS; SHA-256 hash chain is stdlib-only | **Done [#378](https://github.com/naveenreddyalka/daari/issues/378)** || 6 | **Batch API** — no `/v1/batches`; agents and eval pipelines increasingly submit batch jobs | 4 | 4 | OpenRouter Batch API (beta); LiteLLM e2e batch billing | Drain batches through idle local tiers overnight at $0 — no cloud gateway can copy it. MCP Tasks store (#315) is the template | Watch — file when a daari-served client sends batches; sketch first |
 | 7 | **MCP agent identity** — [WIF SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) + DPoP SEP-1932 both still **draft** (re-checked 09-09); MCP roadmap makes agent identity a priority area | 3 | 3 | MCP Tier-1 SDKs; LiteLLM MCP session RFC 7662 + ID-JAG relay | Workload JWTs (K8s/SPIFFE) as inbound auth fit fleets; `secret://oauth` + key expiry are the groundwork | Watch — file when SEP-1933 merges or a fleet asks |
 | 8 | **Gemini-native facade** — no `/v1beta` `generateContent`; Gemini CLI can't point at daari | 3 | 4 | Nobody self-hosted | Same dialect-facade trick as Ollama/Anthropic | Watch — file when a target client is confirmed |
 | 9 | **A2A gateway** — no Agent2Agent ingress/egress governance | 3 | 4 | Kong Agent Gateway | Local agents delegating over A2A get routing/cache/policy without a cloud hop | Watch — revisit when a daari-served client speaks A2A |
@@ -75,9 +74,8 @@ LiteLLM is monetizing (phase routing, stream guardrails, tool search).
 | 15 | **Image/multimodal generation API** — chat vision routes; no `/v1/images` | 2 | 4 | OpenRouter Image API | Local diffusion is a different product | Non-goal for now |
 
 Open backlog after this run:
-[#376](https://github.com/naveenreddyalka/daari/issues/376) MCP
-tool search, [#378](https://github.com/naveenreddyalka/daari/issues/378) audit
-hash chain — remaining P2 after #374/#375/#377.
+[#376](https://github.com/naveenreddyalka/daari/issues/376) MCP tool search
+— remaining open P2 while #377/#378 ship.
 
 ---
 
