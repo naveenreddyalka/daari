@@ -1810,6 +1810,17 @@ set so new PRs are not attributed to `github-actions[bot]` (GitHub's
 2026-06-11 bot-PR approval gate has no repo-level opt-out). Covered by
 `tests/unit/test_autodev_pr_watch.py` and `tests/unit/test_autodev_backlog.py`.
 
+### Pre-dispatch context-window escalation ([#385](https://github.com/naveenreddyalka/daari/issues/385))
+
+<!-- tracking:#385 -->
+**Status:** Done (2026-09-09). `routing.context_window_escalation` (default on)
+compares `prompt_tokens_est` to per-tier `routing.context_windows` × buffer
+0.95 and picks the cheapest higher local tier that fits before the first hop.
+Unknown windows are left alone; `X-Daari-Tier-Cap` still wins. Trace/event
+`context_window_escalation`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_context_window.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
