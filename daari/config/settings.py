@@ -657,6 +657,17 @@ class GuardrailSettings(BaseModel):
             "so a secret spanning two deltas is caught. Ignored when buffered."
         ),
     )
+    # Off by default: chat tool payloads reach the model unchecked (MCP has its
+    # own path). When on, role=tool / tool_result content is scanned with output
+    # rules before execute; cache keys use the redacted text (#387).
+    scan_tool_results: bool = Field(
+        default=False,
+        description=(
+            "When true, scan OpenAI role=tool and Anthropic tool_result message "
+            "contents with output rules (secrets/PII/deny) before the model hop. "
+            "System/user/assistant messages are unchanged. Default off."
+        ),
+    )
 
 
 class BoundariesSettings(RuntimeSettings):

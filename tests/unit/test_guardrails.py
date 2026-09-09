@@ -178,6 +178,7 @@ class TestRouterIntegration:
 class TestSettings:
     def test_defaults_off(self):
         assert Settings().guardrails.enabled is False
+        assert Settings().guardrails.scan_tool_results is False
 
     def test_engine_from_settings(self):
         settings = Settings()
@@ -189,3 +190,137 @@ class TestSettings:
         engine = engine_from_settings(settings)
         assert engine is not None and engine.enabled
         assert engine.max_prompt_chars == 100
+        assert engine.scan_tool_results is False
+
+
+LEAKED_AWS = "AKIAIOSFODNN7EXAMPLE"
+
+
+def _tool_turn(secret: str) -> InternalRequest:
+    return InternalRequest(
+        messages=[
+            Message(role="system", content="you are helpful"),
+            Message(role="user", content="read the key file"),
+            Message(
+                role="assistant",
+                content=None,
+                tool_calls=[{"id": "c1", "function": {"name": "read", "arguments": "{}"}}],
+            ),
+            Message(role="tool", content=f"key={secret}", tool_call_id="c1"),
+        ],
+        model="daari",
+        tools=[{"type": "function", "function": {"name": "read"}}],
+    )
+
+
+class TestScanToolResults:
+    def test_default_off_leaves_tool_secret(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+        )
+        request = _tool_turn(LEAKED_AWS)
+        result = engine.check_tool_results(request)
+        assert not result.tripped
+        assert request.messages[-1].content == f"key={LEAKED_AWS}"
+
+    def test_redact_rewrites_only_tool_messages(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_tool_results=True,
+            output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+        )
+        request = _tool_turn(LEAKED_AWS)
+        user_before = request.messages[1].content
+        assistant_before = request.messages[2].content
+        system_before = request.messages[0].content
+        result = engine.check_tool_results(request)
+        assert result.tripped
+        assert not result.blocked
+        assert LEAKED_AWS not in (request.messages[-1].content or "")
+        assert "<aws_key>" in (request.messages[-1].content or "")
+        assert request.messages[0].content == system_before
+        assert request.messages[1].content == user_before
+        assert request.messages[2].content == assistant_before
+
+    def test_block_sets_blocked(self):
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_tool_results=True,
+            output_rules=[
+                GuardrailRule(name="secrets", kind="secret", action="block")
+            ],
+            block_message="tool blocked",
+        )
+        result = engine.check_tool_results(_tool_turn(LEAKED_AWS))
+        assert result.blocked
+
+    @pytest.mark.asyncio
+    async def test_redact_before_execute_and_cache_key(self, tmp_path):
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_tool_results=True,
+            output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+        )
+        cache = ExactCache(str(tmp_path / "l0"), enabled=True)
+        seen: list[str] = []
+
+        async def fake_execute(request: InternalRequest) -> InternalResponse:
+            tool = next(m.content or "" for m in request.messages if m.role == "tool")
+            seen.append(tool)
+            return InternalResponse(
+                content=f"saw:{tool}",
+                model="llama3.2:3b",
+                daari_meta=DaariMeta(
+                    tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+                ),
+            )
+
+        ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+        ollama.execute = fake_execute  # type: ignore[method-assign]
+        router = Router(
+            cache=cache,
+            semantic_cache=SemanticCache(
+                str(tmp_path / "l1"), NoopEmbedder(), enabled=False
+            ),
+            ollama=ollama,
+            metrics=Metrics(),
+            frontier=None,
+            frontier_enabled=False,
+            guardrails=engine,
+            trace_store=TraceStore(tmp_path / "traces.sqlite3"),
+        )
+        request = _tool_turn(LEAKED_AWS)
+        result = await router.route(request)
+        assert seen and LEAKED_AWS not in seen[0]
+        assert "<aws_key>" in seen[0]
+        assert LEAKED_AWS not in result.content
+        cached = cache.get(request)
+        assert cached is not None
+        assert LEAKED_AWS not in cached.content
+
+    @pytest.mark.asyncio
+    async def test_block_never_calls_model(self, tmp_path):
+        engine = GuardrailEngine(
+            enabled=True,
+            scan_tool_results=True,
+            output_rules=[
+                GuardrailRule(name="secrets", kind="secret", action="block")
+            ],
+            block_message="tool blocked",
+        )
+        metrics = Metrics()
+        router = _router(tmp_path, engine, metrics)
+        called = False
+
+        async def boom(request):
+            nonlocal called
+            called = True
+            raise AssertionError("model must not run")
+
+        router.ollama_l3.execute = boom  # type: ignore[method-assign]
+        result = await router.route(_tool_turn(LEAKED_AWS))
+        assert called is False
+        assert result.content == "tool blocked"
+        assert result.daari_meta.tier == "guardrail"
+        assert metrics.guardrails.get("block") == 1

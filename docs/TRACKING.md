@@ -1883,6 +1883,18 @@ Export JSONL includes both hash fields. Retention prune re-anchors the chain.
 Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
 Covered by `tests/unit/test_audit_cli.py`.
 
+### Scan chat tool-result messages ([#387](https://github.com/naveenreddyalka/daari/issues/387))
+
+<!-- tracking:#387 -->
+**Status:** Done (2026-09-09). Opt-in `guardrails.scan_tool_results` (default
+off). When on, OpenAI `role=tool` and Anthropic-converted `tool_result`
+contents run through input + output-style rules before the model hop: `block`
+refuses with `block_message` (stream or JSON); `redact` rewrites the tool
+message in place so execute and cache keys never see the secret.
+System/user/assistant unchanged; MCP `tools/call` scanning unchanged. Docs:
+[guardrails.md](developer/guides/features/guardrails.md). Covered by
+`tests/unit/test_guardrails.py` and `tests/unit/test_stream_policy_parity.py`.
+
 ---
 
 ## How to update

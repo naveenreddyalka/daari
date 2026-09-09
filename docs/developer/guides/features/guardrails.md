@@ -15,6 +15,11 @@ guardrails:
   # keeps L6 frontier relay eligible (#375).
   stream_mode: incremental
   stream_holdback_chars: 256
+  # Off by default. When on, OpenAI role=tool / Anthropic tool_result contents
+  # are scanned with output rules (secrets/PII) before the model hop; redact
+  # rewrites in place (cache keys use scrubbed text), block refuses the turn.
+  # System/user/assistant are unchanged. MCP tools/call scanning is separate.
+  scan_tool_results: true
   input_rules: []
   output_rules: []   # empty + enabled → default secret+PII redact
 ```

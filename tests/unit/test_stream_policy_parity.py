@@ -277,6 +277,63 @@ async def test_anthropic_stream_incremental_redacts(tmp_path):
     assert "message_stop" in body
 
 
+def _tool_request(secret: str) -> InternalRequest:
+    return InternalRequest(
+        messages=[
+            Message(role="user", content="use the tool"),
+            Message(
+                role="assistant",
+                content=None,
+                tool_calls=[{"id": "c1", "function": {"name": "read", "arguments": "{}"}}],
+            ),
+            Message(role="tool", content=f"secret={secret}", tool_call_id="c1"),
+        ],
+        model="daari",
+        tools=[{"type": "function", "function": {"name": "read"}}],
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_scan_tool_results_redacts_before_model(tmp_path):
+    engine = GuardrailEngine(
+        enabled=True,
+        scan_tool_results=True,
+        output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+    )
+    seen: list[str] = []
+
+    class _Capturing(_Executor):
+        async def stream(self, request, **kwargs):  # type: ignore[override]
+            tool = next(m.content or "" for m in request.messages if m.role == "tool")
+            seen.append(tool)
+            async for chunk in super().stream(request, **kwargs):
+                yield chunk
+
+    executor = _Capturing(text="ok")
+    router = _router(tmp_path, executor, guardrails=engine)
+    body = await _collect(router.stream_openai_chunks(_tool_request(LEAKED_SECRET)))
+    assert executor.stream_calls == 1
+    assert seen and LEAKED_SECRET not in seen[0]
+    assert "<aws_key>" in seen[0]
+    assert "ok" in _openai_text(body)
+
+
+@pytest.mark.asyncio
+async def test_stream_scan_tool_results_block_skips_model(tmp_path):
+    engine = GuardrailEngine(
+        enabled=True,
+        scan_tool_results=True,
+        output_rules=[GuardrailRule(name="secrets", kind="secret", action="block")],
+        block_message="Blocked by policy.",
+    )
+    executor = _Executor()
+    router = _router(tmp_path, executor, guardrails=engine)
+    body = await _collect(router.stream_openai_chunks(_tool_request(LEAKED_SECRET)))
+    assert executor.stream_calls == 0
+    assert "Blocked by policy." in _openai_text(body)
+    assert body.rstrip().endswith("data: [DONE]")
+
+
 # --- frontier escalation ----------------------------------------------------
 
 
