@@ -224,6 +224,37 @@ class StallEscalationSettings(BaseModel):
     )
 
 
+class PhaseRoutingSettings(BaseModel):
+    """Tier agent turns by explore / implement / verify phase from tool history (#374)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, the last window of tool-call names classifies the turn "
+            "as explore / implement / verify and adjusts the heuristic tier. "
+            "Default off."
+        ),
+    )
+    window: int = Field(
+        default=6,
+        ge=1,
+        description="How many recent tool-call names are classified for phase.",
+    )
+    # Relative ladder deltas (int) or absolute tier labels (L3|L4|L5).
+    explore: int | str = Field(
+        default=-1,
+        description="Tier adjustment for explore-phase turns. Default -1 (floor L3).",
+    )
+    implement: int | str = Field(
+        default=0,
+        description="Tier adjustment for implement-phase turns. Default 0.",
+    )
+    verify: int | str = Field(
+        default=0,
+        description="Tier adjustment for verify-phase turns. Default 0.",
+    )
+
+
 class OrgPoolSettings(BaseModel):
     """Shared org GPU inference pool between local L5 and frontier L6 (issue #118)."""
 
@@ -281,6 +312,12 @@ class RoutingSettings(RuntimeSettings):
     stall_escalation: StallEscalationSettings = Field(
         default_factory=StallEscalationSettings,
         description="Stuck-loop bump from tool-call history. Off unless enabled.",
+    )
+    phase_routing: PhaseRoutingSettings = Field(
+        default_factory=PhaseRoutingSettings,
+        description=(
+            "Subtask/phase tier adjustment from tool-call names. Off unless enabled."
+        ),
     )
     # Keep an agent session on the model that planned the task across tool
     # continuations. Default off — unshipped behavior is unchanged (#356).

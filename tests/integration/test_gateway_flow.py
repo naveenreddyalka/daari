@@ -2233,6 +2233,142 @@ async def test_stall_escalation_lands_one_tier_higher(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_phase_routing_explore_drops_one_tier(settings, monkeypatch):
+    """Explore-phase tool history routes a long prompt one tier below L4."""
+    settings.routing.phase_routing.enabled = True
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[str] = []
+
+    def bind(tier: str, model: str):
+        async def fake_execute(request: InternalRequest, _model: str = model) -> InternalResponse:
+            seen.append(_model)
+            return InternalResponse(
+                content="A confident answer with plenty of length to avoid escalation.",
+                model=_model,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    executor="ollama",
+                    provider_id="ollama",
+                    model=_model,
+                    latency_ms=1,
+                ),
+            )
+
+        return fake_execute
+
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l3, "execute", bind("L3", "llama3.2:3b")
+    )
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l4, "execute", bind("L4", "llama3.1:8b")
+    )
+
+    long_user = "please explain this " + "word " * 300
+    messages: list[dict] = [{"role": "user", "content": long_user}]
+    for index, name in enumerate(("read_file", "list_dir", "search_code")):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"call_{index}",
+                        "type": "function",
+                        "function": {"name": name, "arguments": "{}"},
+                    }
+                ],
+            }
+        )
+        messages.append({"role": "tool", "content": "ok", "tool_call_id": f"call_{index}"})
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        explore = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": messages, "tools": _demo_tools()},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+        plain = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": long_user}]},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+
+    assert explore.status_code == 200
+    assert explore.json()["daari_meta"]["tier"] == "L3"
+    assert plain.json()["daari_meta"]["tier"] == "L4"
+    assert seen == ["llama3.2:3b", "llama3.1:8b"]
+
+
+@pytest.mark.asyncio
+async def test_phase_routing_stall_overrides_explore_downgrade(settings, monkeypatch):
+    """Stall escalation beats an explore-phase downgrade."""
+    settings.routing.phase_routing.enabled = True
+    settings.routing.stall_escalation.enabled = True
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[str] = []
+
+    def bind(tier: str, model: str):
+        async def fake_execute(request: InternalRequest, _model: str = model) -> InternalResponse:
+            seen.append(_model)
+            return InternalResponse(
+                content="A confident answer with plenty of length to avoid escalation.",
+                model=_model,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    executor="ollama",
+                    provider_id="ollama",
+                    model=_model,
+                    latency_ms=1,
+                ),
+            )
+
+        return fake_execute
+
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l3, "execute", bind("L3", "llama3.2:3b")
+    )
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l4, "execute", bind("L4", "llama3.1:8b")
+    )
+
+    # Long prompt → L4; explore would drop to L3; three identical reads stall back to L4.
+    long_user = "please explain this " + "word " * 300
+    messages: list[dict] = [{"role": "user", "content": long_user}]
+    for index in range(3):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"call_{index}",
+                        "type": "function",
+                        "function": {"name": "read_file", "arguments": '{"path": "a.py"}'},
+                    }
+                ],
+            }
+        )
+        messages.append(
+            {"role": "tool", "content": "print('hello')", "tool_call_id": f"call_{index}"}
+        )
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": messages, "tools": _demo_tools()},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["tier"] == "L4"
+    assert seen == ["llama3.1:8b"]
+
+
+@pytest.mark.asyncio
 async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(
     settings, monkeypatch
 ):
