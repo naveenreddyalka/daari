@@ -657,6 +657,17 @@ class GuardrailSettings(BaseModel):
             "so a secret spanning two deltas is caught. Ignored when buffered."
         ),
     )
+    # Off by default: chat tool payloads reach the model unchecked (MCP has its
+    # own path). When on, role=tool / tool_result content is scanned with output
+    # rules before execute; cache keys use the redacted text (#387).
+    scan_tool_results: bool = Field(
+        default=False,
+        description=(
+            "When true, scan OpenAI role=tool and Anthropic tool_result message "
+            "contents with output rules (secrets/PII/deny) before the model hop. "
+            "System/user/assistant messages are unchanged. Default off."
+        ),
+    )
 
 
 class BoundariesSettings(RuntimeSettings):
@@ -724,6 +735,28 @@ class McpTasksSettings(BaseModel):
     path: str = "~/.daari/mcp-tasks"
 
 
+class McpToolSearchSettings(BaseModel):
+    """Rank large aggregated MCP tool catalogs with local embeddings (#376)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true and the catalog exceeds min_catalog_size, rank tools by "
+            "embedding similarity and return top_k. Default off — listing is unchanged."
+        ),
+    )
+    min_catalog_size: int = Field(
+        default=40,
+        ge=1,
+        description="Catalogs at or under this size are returned unranked.",
+    )
+    top_k: int = Field(
+        default=40,
+        ge=1,
+        description="Maximum tools returned after ranking.",
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -757,6 +790,12 @@ class IntegrationsSettings(BaseModel):
     )
     # SEP-2663 Tasks for long-running tools/call (#289).
     mcp_tasks: McpTasksSettings = Field(default_factory=McpTasksSettings)
+    mcp_tool_search: McpToolSearchSettings = Field(
+        default_factory=McpToolSearchSettings,
+        description=(
+            "Semantic ranking for large MCP tools/list catalogs (#376). Off by default."
+        ),
+    )
     mcp_guardrails: GuardrailSettings = Field(
         default_factory=GuardrailSettings,
         description=(
