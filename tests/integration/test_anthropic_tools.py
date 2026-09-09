@@ -84,6 +84,33 @@ class TestConversion:
         assert len(expanded) == 1
         assert expanded[0].role == "tool"
         assert expanded[0].content == "file contents here"
+        assert expanded[0].images == []
+
+    def test_tool_result_image_blocks_are_kept(self):
+        png = (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        )
+        message = AnthropicMessageIn(
+            role="user",
+            content=[
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_1",
+                    "content": [
+                        {"type": "text", "text": "screenshot"},
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/png", "data": png},
+                        },
+                    ],
+                },
+            ],
+        )
+        expanded = anthropic_message_to_internal(message)
+        assert expanded[0].role == "tool"
+        assert expanded[0].content == "screenshot"
+        assert len(expanded[0].images) == 1
+        assert expanded[0].images[0].data == png
 
     def test_plain_string_message_unchanged(self):
         message = AnthropicMessageIn(role="user", content="just chatting")
