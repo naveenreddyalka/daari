@@ -159,6 +159,7 @@ async def test_openai_stream_final_usage_chunk_recorded_once(app, monkeypatch):
         "completion_tokens": COMPLETION_TOKENS,
         "total_tokens": PROMPT_TOKENS + COMPLETION_TOKENS,
         "cost": 0.0,
+        "prompt_tokens_details": {"cached_tokens": 0},
     }
 
 
@@ -208,6 +209,8 @@ async def test_anthropic_stream_records_usage_once(app, monkeypatch):
     # delta we emit carries the final total, not a per-chunk increment.
     assert deltas[0]["usage"]["output_tokens"] == COMPLETION_TOKENS
     assert deltas[0]["usage"]["cost"] == 0.0
+    # Unknown / local generate: omit cache_read_input_tokens rather than invent 0.
+    assert "cache_read_input_tokens" not in deltas[0]["usage"]
 
 
 @pytest.mark.asyncio

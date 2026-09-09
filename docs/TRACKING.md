@@ -1952,6 +1952,17 @@ tool history; a new user message re-profiles. Trace/event
 [routing-tiers.md](developer/concepts/routing-tiers.md#classify-user-turn).
 Covered by `tests/unit/test_session_affinity.py`.
 
+### Streamed usage cached_tokens ([#399](https://github.com/naveenreddyalka/daari/issues/399))
+
+<!-- tracking:#399 -->
+**Status:** Done (2026-09-09). Final OpenAI stream usage always includes
+`prompt_tokens_details.cached_tokens` (`0` when unknown; L0/L1 equals
+`prompt_tokens`; L6 from `daari_meta.cached_tokens`). Anthropic
+`message_delta.usage` adds `cache_read_input_tokens` only when known and
+non-zero. Docs: [headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_stream_usage_cost.py`, `tests/integration/test_streaming_usage.py`,
+and `tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update
