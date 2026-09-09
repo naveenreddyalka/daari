@@ -125,7 +125,9 @@ L5=131072) times `context_window_escalation_buffer` (0.95). A proven overflow
 picks the cheapest higher local tier with a known window that fits. Unknown
 windows are left alone. `X-Daari-Tier-Cap` still wins. Trace/event:
 `context_window_escalation`. Post-error `context_length_failover` stays as
-the safety net.
+the safety net. The same table is advertised as `context_length` on local
+tier cards from `GET /v1/models` (#400); unknown windows are omitted.
+Frontier/L6 cards are never overwritten from this table.
 
 ## Knobs
 
