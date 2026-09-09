@@ -216,6 +216,67 @@ async def test_stream_output_guardrail_redacts_and_skips_cache(tmp_path):
         assert LEAKED_SECRET not in cached.content, "secret must not be cached"
 
 
+@pytest.mark.asyncio
+async def test_stream_incremental_redacts_split_secret_and_skips_cache(tmp_path):
+    """Holdback scanner catches an AWS key split across two stream deltas (#375)."""
+    executor = _Executor(text=f"the access key is {LEAKED_SECRET} keep it safe")
+    cache = ExactCache(str(tmp_path / "l0"), enabled=True)
+    engine = _guardrails()
+    engine.stream_mode = "incremental"
+    engine.stream_holdback_chars = 256
+    router = Router(
+        cache=cache,
+        semantic_cache=SemanticCache(str(tmp_path / "l1"), NoopEmbedder(), enabled=False),
+        ollama=executor,
+        ollama_l3=executor,
+        ollama_l4=executor,
+        ollama_l5=executor,
+        metrics=Metrics(),
+        guardrails=engine,
+    )
+    request = _request("give me the key")
+    body = await _collect(router.stream_openai_chunks(request))
+    text = _openai_text(body)
+    assert LEAKED_SECRET not in text
+    assert "<aws_key>" in text
+    assert body.rstrip().endswith("data: [DONE]")
+    cached = cache.get(request)
+    if cached is not None:
+        assert LEAKED_SECRET not in cached.content
+
+
+@pytest.mark.asyncio
+async def test_stream_incremental_block_terminates_cleanly(tmp_path):
+    engine = GuardrailEngine(
+        enabled=True,
+        output_rules=[
+            GuardrailRule(name="deny-leak", kind="deny", pattern=r"TOPSECRET", action="block")
+        ],
+        block_message="Blocked by policy.",
+        stream_mode="incremental",
+        stream_holdback_chars=8,
+    )
+    executor = _Executor(text="safe prefix TOPSECRET trailing")
+    router = _router(tmp_path, executor, guardrails=engine)
+    body = await _collect(router.stream_openai_chunks(_request("leak please")))
+    text = _openai_text(body)
+    assert "TOPSECRET" not in text
+    assert "Blocked by policy." in text
+    assert body.rstrip().endswith("data: [DONE]")
+
+
+@pytest.mark.asyncio
+async def test_anthropic_stream_incremental_redacts(tmp_path):
+    engine = _guardrails()
+    engine.stream_mode = "incremental"
+    executor = _Executor(text=f"the access key is {LEAKED_SECRET} keep it safe")
+    router = _router(tmp_path, executor, guardrails=engine)
+    body = await _collect(router.stream_anthropic_events(_request("give me the key")))
+    assert LEAKED_SECRET not in _anthropic_text(body)
+    assert "<aws_key>" in _anthropic_text(body)
+    assert "message_stop" in body
+
+
 # --- frontier escalation ----------------------------------------------------
 
 

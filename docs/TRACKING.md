@@ -1837,6 +1837,18 @@ requests are unchanged. Docs:
 Covered by `tests/unit/test_phase_routing.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Incremental streaming output guardrails ([#375](https://github.com/naveenreddyalka/daari/issues/375))
+
+<!-- tracking:#375 -->
+**Status:** Done (2026-09-09). `guardrails.stream_mode` (`buffered` default |
+`incremental`) with `stream_holdback_chars` (default 256). Incremental mode
+scans SSE deltas through a holdback window so secrets spanning chunks never
+leak, keeps L6 frontier relay eligible, records hits like the buffered path,
+and caches only scanned text. Tool-call streams stay exempt. Docs:
+[guardrails.md](developer/guides/features/guardrails.md). Covered by
+`tests/unit/test_stream_guardrails.py`, `tests/unit/test_stream_policy_parity.py`,
+and `tests/integration/test_gateway_flow.py`.
+
 ### MCP semantic tool search ([#376](https://github.com/naveenreddyalka/daari/issues/376))
 
 <!-- tracking:#376 -->
