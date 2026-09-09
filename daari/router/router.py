@@ -390,6 +390,7 @@ class Router:
         phase_map: dict[str, int | str] | None = None,
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
+        classify_user_turn: bool = False,
         context_window_escalation: bool = True,
         context_window_buffer: float = 0.95,
         context_windows: dict[str, int] | None = None,
@@ -479,9 +480,11 @@ class Router:
 
         self.phase_map = dict(phase_map) if phase_map is not None else default_phase_map()
         self.session_affinity = bool(session_affinity)
-        from daari.router.session_affinity import SessionPinStore
+        from daari.router.session_affinity import ProfilePinStore, SessionPinStore
 
         self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.classify_user_turn = bool(classify_user_turn)
+        self.profile_pins = ProfilePinStore(ttl_seconds=session_affinity_ttl_seconds)
         self.context_window_escalation = bool(context_window_escalation)
         self.context_window_buffer = float(context_window_buffer)
         self.context_windows = dict(context_windows) if context_windows else {}
@@ -669,10 +672,15 @@ class Router:
         return response
 
     async def route(self, request: InternalRequest) -> InternalResponse:
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
+        profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
+        if reused:
+            add_step(
+                "classify_user_turn",
+                reused=True,
+                category=profile.category,
+                complexity=profile.complexity,
+            )
         add_step(
             "profile",
             category=profile.category,
@@ -680,7 +688,9 @@ class Router:
             prompt_tokens_est=profile.prompt_tokens_est,
             reasoning_effort=request.sampling.reasoning_effort,
         )
-        profile = await self._apply_learned_route(request, profile)
+        if not reused:
+            profile = await self._apply_learned_route(request, profile)
+            self._remember_user_turn_profile(request, profile)
         policy = await self._apply_input_policy(request, profile)
         boundary_meta = policy.boundary_meta
         input_warning = policy.warning
@@ -1505,10 +1515,15 @@ class Router:
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
         client_model = request.model or self.ollama_l3.default_model
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
+        profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
+        if reused:
+            add_step(
+                "classify_user_turn",
+                reused=True,
+                category=profile.category,
+                complexity=profile.complexity,
+            )
         add_step(
             "profile",
             category=profile.category,
@@ -1517,7 +1532,9 @@ class Router:
             reasoning_effort=request.sampling.reasoning_effort,
             stream=True,
         )
-        profile = await self._apply_learned_route(request, profile)
+        if not reused:
+            profile = await self._apply_learned_route(request, profile)
+            self._remember_user_turn_profile(request, profile)
 
         def finish_trace(tier: str | None) -> None:
             if trace is not None:
@@ -2159,10 +2176,10 @@ class Router:
         await self._refresh_warm_models()
         # Parity with the OpenAI stream path (issue #101): category policies,
         # learned routing, and latency step-down all key off the profile.
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
-        profile = await self._apply_learned_route(request, profile)
+        profile, reused = self._resolve_prompt_profile(request)
+        if not reused:
+            profile = await self._apply_learned_route(request, profile)
+            self._remember_user_turn_profile(request, profile)
         tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (issue #84: Claude Code tool turns) keep the full tool
         # protocol; plain chat gets sanitization + context optimization.
@@ -2918,6 +2935,103 @@ class Router:
         if self._TIER_ORDER.index(tier) > self._TIER_ORDER.index(cap):
             return cap
         return tier
+
+    def _resolve_prompt_profile(
+        self, request: InternalRequest
+    ) -> tuple[PromptProfile, bool]:
+        """Build or reuse a profile. Returns (profile, reused).
+
+        When `classify_user_turn` is on, a tool-result continuation reuses the
+        prior user-turn category/complexity (#389). prompt_tokens_est still
+        reflects the full message list so context-window escalation sees size.
+        """
+        if not self.classify_user_turn:
+            return (
+                build_prompt_profile(
+                    request, effort_escalation=self.reasoning_effort_escalation
+                ),
+                False,
+            )
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.session_affinity import (
+            conversation_prefix_hash,
+            is_tool_continuation,
+            session_key,
+            user_turn_prefix,
+        )
+
+        prefix = conversation_prefix_hash(request.messages)
+        key = session_key(request.meta, prefix)
+        tokens_est = max(
+            1, sum(len(message.content or "") for message in request.messages) // 4
+        )
+        if is_tool_continuation(request.messages):
+            pin = self.profile_pins.get(key)
+            if pin is not None and pin.prefix_hash == prefix:
+                profile = PromptProfile(
+                    category=pin.category,
+                    complexity=pin.complexity,
+                    prompt_tokens_est=tokens_est,
+                )
+                log_gateway_event(
+                    "classify_user_turn",
+                    {
+                        "reused": True,
+                        "category": profile.category,
+                        "complexity": profile.complexity,
+                        "session": key,
+                    },
+                )
+                return profile, True
+            # No pin yet: classify from the user-turn prefix only.
+            prefix_request = request.model_copy(
+                update={"messages": user_turn_prefix(request.messages)}
+            )
+            base = build_prompt_profile(
+                prefix_request, effort_escalation=self.reasoning_effort_escalation
+            )
+            profile = PromptProfile(
+                category=base.category,
+                complexity=base.complexity,
+                prompt_tokens_est=tokens_est,
+            )
+            log_gateway_event(
+                "classify_user_turn",
+                {
+                    "reused": True,
+                    "category": profile.category,
+                    "complexity": profile.complexity,
+                    "session": key,
+                    "source": "prefix",
+                },
+            )
+            self.profile_pins.put(
+                key,
+                category=profile.category,
+                complexity=profile.complexity,
+                prefix_hash=prefix,
+            )
+            return profile, True
+        profile = build_prompt_profile(
+            request, effort_escalation=self.reasoning_effort_escalation
+        )
+        return profile, False
+
+    def _remember_user_turn_profile(
+        self, request: InternalRequest, profile: PromptProfile
+    ) -> None:
+        if not self.classify_user_turn:
+            return
+        from daari.router.session_affinity import conversation_prefix_hash, session_key
+
+        prefix = conversation_prefix_hash(request.messages)
+        key = session_key(request.meta, prefix)
+        self.profile_pins.put(
+            key,
+            category=profile.category,
+            complexity=profile.complexity,
+            prefix_hash=prefix,
+        )
 
     def _session_pin_tier(self, request: InternalRequest) -> str | None:
         """Replay a continuation pin, or None so heuristics run.
@@ -4232,6 +4346,7 @@ class AppContext:
             },
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
+            classify_user_turn=settings.routing.classify_user_turn,
             context_window_escalation=settings.routing.context_window_escalation,
             context_window_buffer=settings.routing.context_window_escalation_buffer,
             context_windows=dict(settings.routing.context_windows or {}),

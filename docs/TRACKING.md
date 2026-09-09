@@ -1920,6 +1920,18 @@ System/user/assistant unchanged; MCP `tools/call` scanning unchanged. Docs:
 [guardrails.md](developer/guides/features/guardrails.md). Covered by
 `tests/unit/test_guardrails.py` and `tests/unit/test_stream_policy_parity.py`.
 
+### Skip re-profiling on tool-result continuations ([#389](https://github.com/naveenreddyalka/daari/issues/389))
+
+<!-- tracking:#389 -->
+**Status:** Done (2026-09-09). Opt-in `routing.classify_user_turn` (default
+off). Tool-result continuations reuse the prior user-turn category/complexity
+instead of re-running `build_prompt_profile`; `prompt_tokens_est` still
+reflects full message size. Phase routing and stall escalation still inspect
+tool history; a new user message re-profiles. Trace/event
+`classify_user_turn` with `reused: true`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#classify-user-turn).
+Covered by `tests/unit/test_session_affinity.py`.
+
 ---
 
 ## How to update
