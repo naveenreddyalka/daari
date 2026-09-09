@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
 from daari.gateway.internal import (
     InternalRequest,
@@ -109,6 +110,9 @@ class ChatCompletionRequest(BaseModel):
     reasoning_effort: Any | None = None
     # Stable end-user id. Used as a session key when routing.session_affinity is on.
     user: str | None = None
+    # OpenRouter Auto `cost_tier` / `plugins: [{id: auto-router}]` (#388).
+    cost_tier: str | None = None
+    plugins: list[Any] | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
@@ -376,6 +380,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 stream_include_usage=include_usage,
                 boundary_profile=boundary_profile,
             )
+            apply_cost_tier(body, meta)
             # Virtual-key defaults (issue #111); headers keep precedence.
             from daari.server.auth import apply_auth_claims_to_meta
 
