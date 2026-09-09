@@ -337,6 +337,23 @@ class RoutingSettings(RuntimeSettings):
             "restart. Ignored unless session_affinity is true."
         ),
     )
+    context_window_escalation: bool = Field(
+        default=True,
+        description=(
+            "When true, pick a higher local tier before the first hop if the "
+            "prompt estimate exceeds that tier's known context window (#385)."
+        ),
+    )
+    context_window_escalation_buffer: float = Field(
+        default=0.95,
+        ge=0.0,
+        le=1.0,
+        description="Escalate when estimated tokens exceed window * buffer.",
+    )
+    context_windows: dict[str, int] = Field(
+        default_factory=lambda: {"L3": 8192, "L4": 32768, "L5": 131072},
+        description="Known context windows (tokens) per local tier. Missing = unknown, left alone.",
+    )
     # Shadow evals for tier decisions (#318): replay this fraction of requests
     # served by a local tier at a comparison tier in the background and record
     # answer divergence per category. 0 disables.
