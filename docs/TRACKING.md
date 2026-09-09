@@ -1823,6 +1823,20 @@ deliver and log `budget.alert_dedupe_degraded`. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#operator-alerts).
 Covered by `tests/unit/test_budget_alerts.py`.
 
+### Subtask/phase routing from tool history ([#374](https://github.com/naveenreddyalka/daari/issues/374))
+
+<!-- tracking:#374 -->
+**Status:** Done (2026-09-09). `routing.phase_routing` (default off; window 6)
+classifies the last N tool-call names as explore / implement / verify and
+applies a configurable tier delta (defaults `explore: -1`, floor L3;
+`implement`/`verify: 0`). Stall escalation beats a phase downgrade; session
+affinity pins the phase-adjusted served tier; `X-Daari-Tier-Cap` and
+`routing.max_tier_for_chat` still cap. Trace/event `phase_route`. Non-agent
+requests are unchanged. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#phase-routing).
+Covered by `tests/unit/test_phase_routing.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update

@@ -58,7 +58,7 @@ LiteLLM is monetizing (phase routing, stream guardrails, tool search).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Subtask/phase routing** — no per-agent-phase tiering (explore/verify/implement); LiteLLM's 09-07 experiment matched fixed-Opus quality at 46% less cost; session affinity + stall escalation (the groundwork) merged 09-08 | 4 | 3 | [LiteLLM subtask classifier](https://docs.litellm.ai/blog/subtask-type-routing) (experimental, enterprise-licensed) | Phase detection from tool history is stateless and on-box; explore turns are exactly what $0 local tiers are for | **Filed [#374](https://github.com/naveenreddyalka/daari/issues/374)** (P2) |
+| 1 | **Subtask/phase routing** — no per-agent-phase tiering (explore/verify/implement); LiteLLM's 09-07 experiment matched fixed-Opus quality at 46% less cost; session affinity + stall escalation (the groundwork) merged 09-08 | 4 | 3 | [LiteLLM subtask classifier](https://docs.litellm.ai/blog/subtask-type-routing) (experimental, enterprise-licensed) | Phase detection from tool history is stateless and on-box; explore turns are exactly what $0 local tiers are for | **Done [#374](https://github.com/naveenreddyalka/daari/issues/374)** |
 | 2 | **Guardrails force full stream buffering** — `_can_relay_frontier_stream` returns False with guardrails on; every streamed answer buffers before the first byte (verified `router.py` ~3127) | 4 | 3 | [LiteLLM v1.102-dev streaming post_call guardrails](https://github.com/BerriAI/litellm/pull/38788) | Rules are regex + local PII scrub — incremental scanning is microseconds per chunk, no guardrail API hop | **Filed [#375](https://github.com/naveenreddyalka/daari/issues/375)** (P2) |
 | 3 | **MCP semantic tool search** — pagination (#363) means aggregated catalogs of hundreds of tools now reach small local models, which are most hurt by tool flooding | 4 | 3 | LiteLLM `mcp_tool_search` (v1.101 stable, embedding-ranked) | `/v1/embeddings` + local embed models → $0 ranking, tool descriptions never leave the box | **Filed [#376](https://github.com/naveenreddyalka/daari/issues/376)** (P2) |
 | 4 | **No zero-downtime key rotation** — revoke+create is a hard cutover losing budgets/team/policy identity; SOC 2-style rotation schedules expect overlap | 3 | 2 | LiteLLM key regenerate | Rotation is a local state transition + audit row; completes the on-box credential lifecycle with expiry (#331) | **Filed [#377](https://github.com/naveenreddyalka/daari/issues/377)** (P2) |
@@ -75,7 +75,6 @@ LiteLLM is monetizing (phase routing, stream guardrails, tool search).
 | 15 | **Image/multimodal generation API** — chat vision routes; no `/v1/images` | 2 | 4 | OpenRouter Image API | Local diffusion is a different product | Non-goal for now |
 
 Open backlog after this run:
-[#374](https://github.com/naveenreddyalka/daari/issues/374) phase routing,
 [#375](https://github.com/naveenreddyalka/daari/issues/375) streaming
 guardrails, [#376](https://github.com/naveenreddyalka/daari/issues/376) MCP
 tool search, [#377](https://github.com/naveenreddyalka/daari/issues/377) key
