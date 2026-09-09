@@ -390,6 +390,9 @@ class Router:
         phase_map: dict[str, int | str] | None = None,
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
+        context_window_escalation: bool = True,
+        context_window_buffer: float = 0.95,
+        context_windows: dict[str, int] | None = None,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -479,6 +482,9 @@ class Router:
         from daari.router.session_affinity import SessionPinStore
 
         self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.context_window_escalation = bool(context_window_escalation)
+        self.context_window_buffer = float(context_window_buffer)
+        self.context_windows = dict(context_windows) if context_windows else {}
         self.local_pool = local_pool
 
     @property
@@ -2984,14 +2990,17 @@ class Router:
             chosen = capable[0] if capable else pinned
             if chosen != pinned:
                 self._log_session_pin_override(request, pinned, chosen, "capability")
-            return chosen
+            chosen = self._apply_context_window_escalation(request, profile, chosen)
+            return self._cap_tier(chosen, self._effective_tier_cap(request))
         tier = self._choose_uncapped_tier(request, profile)
         tier = self._apply_phase_routing(request, tier)
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
         tier = self._apply_latency_budget(tier, request, profile)
         capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
         chosen = capable[0] if capable else tier
-        return self._apply_stall_escalation(request, chosen)
+        chosen = self._apply_stall_escalation(request, chosen)
+        chosen = self._apply_context_window_escalation(request, profile, chosen)
+        return self._cap_tier(chosen, self._effective_tier_cap(request))
 
     def _apply_phase_routing(self, request: InternalRequest, tier: str) -> str:
         """Downgrade/upgrade from tool-history phase; stall may undo later."""
@@ -3023,6 +3032,53 @@ class Router:
         add_step("phase_route", **detail)
         log_gateway_event("phase_route", detail)
         return nxt
+
+    def _context_window_fits(self, tier: str, estimated: int) -> bool | None:
+        """True / False when the window is known; None when unknown (#385)."""
+        window = int(self.context_windows.get(tier) or 0)
+        if window <= 0:
+            return None
+        buffer = self.context_window_buffer if self.context_window_buffer > 0 else 1.0
+        return estimated <= int(window * buffer)
+
+    def _apply_context_window_escalation(
+        self,
+        request: InternalRequest,
+        profile: PromptProfile | None,
+        tier: str,
+    ) -> str:
+        """Bump to a tier that can hold the prompt before the first local hop (#385)."""
+        if not self.context_window_escalation or profile is None:
+            return tier
+        if tier not in self._TIER_ORDER:
+            return tier
+        estimated = int(profile.prompt_tokens_est or 0)
+        if estimated <= 0:
+            return tier
+        if self._context_window_fits(tier, estimated) is not False:
+            return tier
+        start = self._TIER_ORDER.index(tier) + 1
+        chosen = tier
+        for candidate in self._TIER_ORDER[start:]:
+            fits = self._context_window_fits(candidate, estimated)
+            if fits is None:
+                return tier
+            chosen = candidate
+            if fits:
+                break
+        if chosen == tier:
+            return tier
+        from daari.gateway.request_log import log_gateway_event
+
+        detail = {
+            "from": tier,
+            "to": chosen,
+            "prompt_tokens_est": estimated,
+            "window": int(self.context_windows.get(chosen) or 0),
+        }
+        add_step("context_window_escalation", **detail)
+        log_gateway_event("context_window_escalation", detail)
+        return chosen
 
     def _apply_stall_escalation(self, request: InternalRequest, tier: str) -> str:
         if not self.stall_escalation or tier not in {"L3", "L4", "L5"}:
@@ -4084,6 +4140,9 @@ class AppContext:
             },
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
+            context_window_escalation=settings.routing.context_window_escalation,
+            context_window_buffer=settings.routing.context_window_escalation_buffer,
+            context_windows=dict(settings.routing.context_windows or {}),
         )
         if settings.observability.otel:
             from daari.observability.otel import configure_providers

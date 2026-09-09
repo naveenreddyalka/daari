@@ -99,10 +99,21 @@ heuristic pick alone. Each phase maps to a relative delta or absolute tier
 (`explore: -1`, `implement: 0`, `verify: 0` by default; floor L3).
 
 Composition: heuristic → phase → tier cap → latency budget → capability
-filter → stall. Stall escalation beats a phase downgrade. Session affinity
-pins the *phase-adjusted* served tier on continuations (no re-classify).
+filter → stall → context-window escalation → cap again. Stall beats a phase
+downgrade. Session affinity pins the *phase-adjusted* served tier on
+continuations (no re-classify); a context-window bump is not pinned.
 Non-agent requests (no tools, no tool history) are unchanged. Trace step and
 event: `phase_route` (phase, signals, delta, from, to).
+
+## Context-window escalation
+
+`routing.context_window_escalation` (default on) compares
+`prompt_tokens_est` to `routing.context_windows` (defaults L3=8192, L4=32768,
+L5=131072) times `context_window_escalation_buffer` (0.95). A proven overflow
+picks the cheapest higher local tier with a known window that fits. Unknown
+windows are left alone. `X-Daari-Tier-Cap` still wins. Trace/event:
+`context_window_escalation`. Post-error `context_length_failover` stays as
+the safety net.
 
 ## Knobs
 
