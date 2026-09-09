@@ -2452,3 +2452,43 @@ async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(
     assert follow.json()["daari_meta"]["tier"] == "L4"
     assert fresh.json()["daari_meta"]["tier"] == "L3"
     assert seen == ["llama3.1:8b", "llama3.1:8b", "llama3.2:3b"]
+
+
+@pytest.mark.asyncio
+async def test_incremental_stream_guardrail_redacts_split_aws_key(settings, monkeypatch):
+    """stream_mode=incremental redacts an AWS key split across SSE deltas (#375)."""
+    settings.guardrails.enabled = True
+    settings.guardrails.stream_mode = "incremental"
+    settings.guardrails.stream_holdback_chars = 256
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    parts = [f"the access key is {secret[:10]}", f"{secret[10:]} keep it safe"]
+
+    async def fake_stream(request: InternalRequest):
+        for part in parts:
+            yield {"message": {"content": part}}
+        yield {"message": {"content": ""}, "done": True}
+
+    monkeypatch.setattr(application.state.ctx.router.ollama_l3, "stream", fake_stream)
+    monkeypatch.setattr(application.state.ctx.router.ollama_l4, "stream", fake_stream)
+    monkeypatch.setattr(application.state.ctx.router.ollama_l5, "stream", fake_stream)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [{"role": "user", "content": "give me the key"}],
+            },
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert secret not in body
+    assert "<aws_key>" in body
+    assert "data: [DONE]" in body

@@ -143,6 +143,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `guardrails.block_message` | str | `'Request blocked by daari guardrail.'` |  |
 | `guardrails.input_rules` | list | `[]` |  |
 | `guardrails.output_rules` | list | `[]` |  |
+| `guardrails.stream_mode` | str | `'buffered'` | `buffered` scans the full answer before the first SSE byte; `incremental` scans with a holdback window and keeps frontier relay eligible (#375). |
+| `guardrails.stream_holdback_chars` | int | `256` | Characters held back before emission in incremental mode. Ignored when buffered. |
 | `boundaries.enabled` | bool | `False` |  |
 | `boundaries.mode` | Literal | `'block'` |  |
 | `boundaries.product_name` | str | `''` |  |

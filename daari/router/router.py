@@ -546,6 +546,41 @@ class Router:
         if warning:
             add_step("guardrail_warning", warning=warning)
 
+    def _incremental_output_scanner(self) -> Any | None:
+        """Holdback scanner when guardrails.stream_mode=incremental (#375)."""
+        engine = self.guardrails
+        if engine is None or not getattr(engine, "enabled", False):
+            return None
+        if not getattr(engine, "output_rules", None):
+            return None
+        if getattr(engine, "stream_mode", "buffered") != "incremental":
+            return None
+        from daari.gateway.guardrails import IncrementalOutputScanner
+
+        return IncrementalOutputScanner(
+            engine,
+            holdback=int(getattr(engine, "stream_holdback_chars", 256) or 256),
+        )
+
+    def _record_stream_guardrail(self, scanner: Any) -> None:
+        hits = list(getattr(scanner, "hits", []) or [])
+        warning = getattr(scanner, "warning", None)
+        if not hits and not warning:
+            return
+        self._apply_guardrail_hits(hits, warning=warning)
+        from daari.gateway.request_log import log_gateway_event
+
+        log_gateway_event(
+            "stream_guardrail",
+            {
+                "hits": [
+                    {"stage": h.stage, "rule": h.rule, "action": h.action} for h in hits
+                ],
+                "blocked": bool(getattr(scanner, "blocked", False)),
+                "warning": warning,
+            },
+        )
+
     async def _apply_input_policy(
         self, request: InternalRequest, profile: PromptProfile
     ) -> _InputPolicy:
@@ -1809,6 +1844,7 @@ class Router:
                 add_step("escalate", to="L6", local_confidence=confidence, relay=True)
                 log_gateway_event("stream_frontier_relay", {"from": tier, "to": "L6"})
                 relayed: list[str] = []
+                scanner = self._incremental_output_scanner()
                 outcome.note("L6", draft=draft_used)
                 try:
                     l6_request = await self._frontier_request(stream_request)
@@ -1817,15 +1853,42 @@ class Router:
                         l6_request, escalated_from=tier, local_confidence=confidence
                     ):
                         relayed.append(delta)
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+                        if scanner is not None:
+                            release = scanner.push(delta)
+                            if release.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                            if release.blocked:
+                                self._record_stream_guardrail(scanner)
+                                break
+                        else:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
                 except Exception as exc:
                     log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
                     # Nothing was emitted yet if the failure came before the
                     # first delta; otherwise the partial answer stands.
                     if not relayed:
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
-                        relayed.append(streamed_text)
-                relayed_text = "".join(relayed)
+                        if scanner is not None:
+                            release = scanner.push(streamed_text)
+                            if release.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                            flush = scanner.flush()
+                            if flush.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                            self._record_stream_guardrail(scanner)
+                            relayed.append(scanner.scanned_text)
+                        else:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
+                            relayed.append(streamed_text)
+                if scanner is not None and not scanner.blocked:
+                    flush = scanner.flush()
+                    if flush.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                    self._record_stream_guardrail(scanner)
+                    relayed_text = scanner.scanned_text
+                elif scanner is not None:
+                    relayed_text = scanner.scanned_text
+                else:
+                    relayed_text = "".join(relayed)
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
                 yield usage_chunk(len(relayed_text))
                 yield "data: [DONE]\n\n"
@@ -1862,10 +1925,45 @@ class Router:
                         {"from": tier, "to": escalated.daari_meta.tier},
                     )
                     served = escalated
-            # Output guardrails run before the first byte reaches the client
-            # and before cache write-back, so a redacted secret cannot be
-            # served or persisted (#154).
-            if not tool_calls_sent and served.content.strip():
+            # Output guardrails: buffered scans the full answer before the first
+            # client byte; incremental replays deltas through a holdback scanner
+            # so secrets spanning chunks never leak (#154, #375).
+            scanner = (
+                self._incremental_output_scanner()
+                if not tool_calls_sent and served.content.strip()
+                else None
+            )
+            incremental_emitted = False
+            if scanner is not None and served.content == streamed_text:
+                # Local (or non-rewritten escalate) text — scan delta-by-delta.
+                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                for part in tier_text_parts:
+                    release = scanner.push(part)
+                    if release.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                    if release.blocked:
+                        break
+                if not scanner.blocked:
+                    flush = scanner.flush()
+                    if flush.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                self._record_stream_guardrail(scanner)
+                served = served.model_copy(update={"content": scanner.scanned_text})
+                incremental_emitted = True
+            elif scanner is not None:
+                # Escalated answer arrived as one blob — still scan with holdback.
+                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                release = scanner.push(served.content)
+                if release.text:
+                    yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                if not scanner.blocked:
+                    flush = scanner.flush()
+                    if flush.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                self._record_stream_guardrail(scanner)
+                served = served.model_copy(update={"content": scanner.scanned_text})
+                incremental_emitted = True
+            elif not tool_calls_sent and served.content.strip():
                 served = self._apply_output_policy(served)
 
             served_tier = served.daari_meta.tier or tier
@@ -1874,7 +1972,9 @@ class Router:
             rewritten = served.content != streamed_text
             completion_chars = len(served.content) if rewritten else tier_completion_chars
             outcome.note(served_tier, draft=draft_used)
-            if rewritten:
+            if incremental_emitted:
+                pass  # content already yielded through the scanner
+            elif rewritten:
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
             elif content_sent:
@@ -2354,7 +2454,7 @@ class Router:
 
             # Events are buffered until the tier completes, so the confidence
             # ladder, org pool, and L6 can run before the client sees anything,
-            # and output guardrails can rewrite the text (#154, #155).
+            # and output guardrails can rewrite the text (#154, #155, #375).
             if not tool_use_sent and streamed_text.strip():
                 try:
                     escalated = await self._maybe_escalate(
@@ -2368,7 +2468,81 @@ class Router:
                         {"from": tier, "to": escalated.daari_meta.tier},
                     )
                     served = escalated
-                served = self._apply_output_policy(served)
+                scanner = self._incremental_output_scanner()
+                if scanner is not None and served.content == streamed_text:
+                    # Replay local deltas through the holdback scanner.
+                    out_events: list[str] = [message_start, text_block_start(0)]
+                    for part in tier_text_parts:
+                        release = scanner.push(part)
+                        if release.text:
+                            out_events.append(
+                                sse(
+                                    "content_block_delta",
+                                    {
+                                        "type": "content_block_delta",
+                                        "index": 0,
+                                        "delta": {"type": "text_delta", "text": release.text},
+                                        "daari_meta": meta,
+                                    },
+                                )
+                            )
+                        if release.blocked:
+                            break
+                    if not scanner.blocked:
+                        flush = scanner.flush()
+                        if flush.text:
+                            out_events.append(
+                                sse(
+                                    "content_block_delta",
+                                    {
+                                        "type": "content_block_delta",
+                                        "index": 0,
+                                        "delta": {"type": "text_delta", "text": flush.text},
+                                        "daari_meta": meta,
+                                    },
+                                )
+                            )
+                    self._record_stream_guardrail(scanner)
+                    served = served.model_copy(update={"content": scanner.scanned_text})
+                    outcome.note(served.daari_meta.tier or tier)
+                    self._finish_session_pin(request, served)
+                    for event in out_events:
+                        yield event
+                    yield block_stop(0)
+                    yield sse(
+                        "message_delta",
+                        {
+                            "type": "message_delta",
+                            "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                            "usage": {
+                                "output_tokens": max(0, len(served.content) // 4)
+                            },
+                        },
+                    )
+                    yield sse("message_stop", {"type": "message_stop"})
+                    latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                    record_served(served, latency_ms)
+                    log_gateway_event(
+                        "anthropic_stream_done",
+                        {
+                            "tier": served.daari_meta.tier or tier,
+                            "ollama_model": served.daari_meta.model or model_name,
+                            "latency_ms": latency_ms,
+                            "completion_chars": len(served.content),
+                            "rewritten": served.content != streamed_text,
+                            "agent_flow": agent_flow,
+                            "incremental": True,
+                        },
+                    )
+                    return
+                if scanner is not None:
+                    scanner.push(served.content)
+                    if not scanner.blocked:
+                        scanner.flush()
+                    self._record_stream_guardrail(scanner)
+                    served = served.model_copy(update={"content": scanner.scanned_text})
+                else:
+                    served = self._apply_output_policy(served)
 
             if served.content != streamed_text and not tool_use_sent:
                 outcome.note(served.daari_meta.tier or tier)
@@ -3178,7 +3352,9 @@ class Router:
             return False
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
             if getattr(self.guardrails, "output_rules", None):
-                return False
+                # Incremental mode scans relay deltas with a holdback (#375).
+                if getattr(self.guardrails, "stream_mode", "buffered") != "incremental":
+                    return False
         if not self._frontier_reachable(request):
             return False
         if self._frontier_budget_state() == "exceeded":

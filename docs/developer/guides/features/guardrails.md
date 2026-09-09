@@ -10,6 +10,11 @@ guardrails:
   max_prompt_chars: 100000
   injection_action: block
   block_message: "Request blocked by daari guardrail."
+  # buffered (default) = scan the full answer before the first SSE byte.
+  # incremental = holdback window so secrets spanning chunks never leak; also
+  # keeps L6 frontier relay eligible (#375).
+  stream_mode: incremental
+  stream_holdback_chars: 256
   input_rules: []
   output_rules: []   # empty + enabled → default secret+PII redact
 ```
