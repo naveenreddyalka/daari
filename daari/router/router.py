@@ -385,6 +385,9 @@ class Router:
         stall_escalation: bool = False,
         stall_repeats: int = 3,
         stall_window: int = 6,
+        phase_routing: bool = False,
+        phase_window: int = 6,
+        phase_map: dict[str, int | str] | None = None,
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
     ) -> None:
@@ -467,6 +470,11 @@ class Router:
         self.stall_escalation = bool(stall_escalation)
         self.stall_repeats = max(1, int(stall_repeats))
         self.stall_window = max(1, int(stall_window))
+        self.phase_routing = bool(phase_routing)
+        self.phase_window = max(1, int(phase_window))
+        from daari.router.phase import default_phase_map
+
+        self.phase_map = dict(phase_map) if phase_map is not None else default_phase_map()
         self.session_affinity = bool(session_affinity)
         from daari.router.session_affinity import SessionPinStore
 
@@ -2978,11 +2986,43 @@ class Router:
                 self._log_session_pin_override(request, pinned, chosen, "capability")
             return chosen
         tier = self._choose_uncapped_tier(request, profile)
+        tier = self._apply_phase_routing(request, tier)
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
         tier = self._apply_latency_budget(tier, request, profile)
         capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
         chosen = capable[0] if capable else tier
         return self._apply_stall_escalation(request, chosen)
+
+    def _apply_phase_routing(self, request: InternalRequest, tier: str) -> str:
+        """Downgrade/upgrade from tool-history phase; stall may undo later."""
+        if not self.phase_routing or tier not in self._TIER_ORDER:
+            return tier
+        # Non-agent requests (no tools, no tool history) are untouched.
+        if not request.tools and not request.has_tool_calls_in_history:
+            return tier
+        from daari.gateway.request_log import log_gateway_event
+        from daari.observability.trace import add_step
+        from daari.router.phase import adjust_tier, classify_phase
+
+        match = classify_phase(request.messages, window=self.phase_window)
+        if match is None:
+            return tier
+        nxt = adjust_tier(tier, match.phase, self.phase_map)
+        if nxt == tier:
+            # Still record a zero-delta classification for observability.
+            delta = 0
+        else:
+            delta = self._TIER_ORDER.index(nxt) - self._TIER_ORDER.index(tier)
+        detail = {
+            "phase": match.phase,
+            "signals": list(match.signals),
+            "delta": delta,
+            "from": tier,
+            "to": nxt,
+        }
+        add_step("phase_route", **detail)
+        log_gateway_event("phase_route", detail)
+        return nxt
 
     def _apply_stall_escalation(self, request: InternalRequest, tier: str) -> str:
         if not self.stall_escalation or tier not in {"L3", "L4", "L5"}:
@@ -4035,6 +4075,13 @@ class AppContext:
             stall_escalation=settings.routing.stall_escalation.enabled,
             stall_repeats=settings.routing.stall_escalation.repeats,
             stall_window=settings.routing.stall_escalation.window,
+            phase_routing=settings.routing.phase_routing.enabled,
+            phase_window=settings.routing.phase_routing.window,
+            phase_map={
+                "explore": settings.routing.phase_routing.explore,
+                "implement": settings.routing.phase_routing.implement,
+                "verify": settings.routing.phase_routing.verify,
+            },
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
         )

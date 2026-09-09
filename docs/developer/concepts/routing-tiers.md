@@ -89,6 +89,21 @@ the last six tool calls, or three consecutive error tool results, bump the
 chosen tier by one. `X-Daari-Tier-Cap` and `routing.max_tier_for_chat` still
 win. The event is `stall_escalation` with the pattern and repeat count.
 
+## Phase routing
+
+`routing.phase_routing.enabled` (default off) classifies the last
+`routing.phase_routing.window` (default 6) tool-call names as `explore`
+(read/search/list/fetch/grep), `implement` (edit/write/apply/replace/patch),
+or `verify` (test/run/build/lint). Unknown or empty history leaves the
+heuristic pick alone. Each phase maps to a relative delta or absolute tier
+(`explore: -1`, `implement: 0`, `verify: 0` by default; floor L3).
+
+Composition: heuristic → phase → tier cap → latency budget → capability
+filter → stall. Stall escalation beats a phase downgrade. Session affinity
+pins the *phase-adjusted* served tier on continuations (no re-classify).
+Non-agent requests (no tools, no tool history) are unchanged. Trace step and
+event: `phase_route` (phase, signals, delta, from, to).
+
 ## Knobs
 
 See [Config overview](../guides/configuration/overview.md) and [Config reference](../reference/config.md).

@@ -61,6 +61,11 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |
 | `routing.stall_escalation.repeats` | int | `3` | Identical calls or consecutive error results required to stall. |
 | `routing.stall_escalation.window` | int | `6` | How many recent tool calls are inspected for identical repeats. |
+| `routing.phase_routing.enabled` | bool | `False` | When true, classify the last window of tool-call names as explore / implement / verify and adjust the heuristic tier. Default off. |
+| `routing.phase_routing.window` | int | `6` | How many recent tool-call names are classified for phase. |
+| `routing.phase_routing.explore` | int \| str | `-1` | Relative ladder delta or absolute `L3`/`L4`/`L5` for explore-phase turns. Floor L3. |
+| `routing.phase_routing.implement` | int \| str | `0` | Relative delta or absolute tier for implement-phase turns. |
+| `routing.phase_routing.verify` | int \| str | `0` | Relative delta or absolute tier for verify-phase turns. |
 | `routing.shadow_sample_rate` | float | `0.0` | Fraction of local-tier responses replayed in the background at shadow_compare_tier to measure tier divergence. 0 disables. |
 | `routing.shadow_compare_tier` | Literal | `''` | Tier to replay sampled requests at. Empty = highest configured local tier; L6 requires shadow_daily_usd > 0. |
 | `routing.shadow_daily_usd` | float | `0.0` | Daily spend cap for L6 shadow replays. 0 forbids L6 shadow runs. |
