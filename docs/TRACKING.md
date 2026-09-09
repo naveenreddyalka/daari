@@ -1870,6 +1870,19 @@ and caches only scanned text. Tool-call streams stay exempt. Docs:
 `tests/unit/test_stream_guardrails.py`, `tests/unit/test_stream_policy_parity.py`,
 and `tests/integration/test_gateway_flow.py`.
 
+### MCP semantic tool search ([#376](https://github.com/naveenreddyalka/daari/issues/376))
+
+<!-- tracking:#376 -->
+**Status:** Done (2026-09-09). `integrations.mcp_tool_search` (default off;
+`min_catalog_size` 40, `top_k` 40) ranks aggregated egress `tools/list`
+catalogs by local embedding similarity when over the threshold. Query is
+trailing text after `@mcp … tools/list`, else recent user/tool message text.
+Governance allow/deny runs before ranking; embed failures log
+`mcp_tool_search_degraded` and return the unranked catalog. Tool embeddings
+are cached per `(server, name, description hash)`. Docs:
+[mcp.md](developer/guides/clients/mcp.md#semantic-tool-search). Covered by
+`tests/unit/test_mcp_egress.py`.
+
 ### Zero-downtime virtual key rotation ([#377](https://github.com/naveenreddyalka/daari/issues/377))
 
 <!-- tracking:#377 -->
