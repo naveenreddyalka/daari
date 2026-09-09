@@ -161,13 +161,14 @@ def keys_list() -> None:
         return
     typer.echo(
         f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} "
-        f"{'tier':<4} {'expires':<25} status"
+        f"{'tier':<4} {'expires':<25} {'grace_until':<25} status"
     )
     for key in keys:
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
             f"{key.tpm:>7} {(key.tier_cap or '-'):<4} "
-            f"{(key.expires_at or 'never'):<25} {key.status()}"
+            f"{(key.expires_at or 'never'):<25} "
+            f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
 
 
@@ -185,6 +186,51 @@ def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys 
     else:
         typer.echo(f"No active key {key_id}")
         raise typer.Exit(code=1)
+
+
+@keys_app.command("rotate")
+def keys_rotate(
+    key_id: str = typer.Argument(..., help="key_id from `daari keys list`"),
+    grace: str = typer.Option(
+        "24h",
+        "--grace",
+        help="Overlap window for the old secret (24h default; 0 = immediate cutover).",
+    ),
+) -> None:
+    """Mint a new secret for the same key identity with a grace overlap (#377)."""
+    import os
+
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings = get_settings()
+    store = VirtualKeyStore(
+        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
+    )
+    try:
+        created = store.rotate(key_id, grace=grace)
+    except KeyError:
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1) from None
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"key_id:      {created.key.key_id}")
+    typer.echo(f"name:        {created.key.name}")
+    typer.echo(f"prefix:      {created.key.prefix}…")
+    typer.echo(f"grace_until: {created.key.previous_expires_at}")
+    typer.echo("")
+    typer.echo("Store this token now — it will not be shown again:")
+    typer.echo(created.plaintext)
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="keys.rotate",
+        detail={
+            "key_id": created.key.key_id,
+            "grace": grace,
+            "grace_until": created.key.previous_expires_at,
+        },
+    )
 
 
 @keys_app.command("team-create")

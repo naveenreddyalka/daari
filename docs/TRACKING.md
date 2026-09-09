@@ -1849,6 +1849,18 @@ and caches only scanned text. Tool-call streams stay exempt. Docs:
 `tests/unit/test_stream_guardrails.py`, `tests/unit/test_stream_policy_parity.py`,
 and `tests/integration/test_gateway_flow.py`.
 
+### Zero-downtime virtual key rotation ([#377](https://github.com/naveenreddyalka/daari/issues/377))
+
+<!-- tracking:#377 -->
+**Status:** Done (2026-09-09). `daari keys rotate <key_id> [--grace 24h]`
+mints a new secret for the same key identity; budgets/team/policies/RPM/TPM
+untouched. Old secret authenticates until grace ends (`--grace 0` immediate),
+then rejects as expired via the #331 path. Both secrets share one budget and
+rate-limit bucket. `keys.rotate` audit row (no secret material). `keys list`
+shows `grace_until`. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_key_rotate.py`.
+
 ### Tamper-evident audit hash chain ([#378](https://github.com/naveenreddyalka/daari/issues/378))
 
 <!-- tracking:#378 -->
