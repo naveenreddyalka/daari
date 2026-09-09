@@ -71,7 +71,9 @@ router knows by then:
   whose first chunk arrives after the interval gets its headers on the
   keepalive frame, without tier or cache.
 - `x-daari-response-cost` and `x-daari-response-cost-avoided` are **never**
-  sent on streams — usage is unknown until the last chunk. Use the ledger
-  (`daari report`, `/v1/daari/report`) for streamed spend.
+  sent on streams — usage is unknown until the last chunk. The final OpenAI
+  usage chunk and Anthropic `message_delta.usage` carry `cost` (USD; `0` local,
+  L6 from `cost_usd()` / provider `usage.cost`). Use the ledger
+  (`daari report`, `/v1/daari/report`) for aggregates.
 - The `x-daari-budget-*` headers **are** sent on streams; they describe the
   caller's budget before this request, not this request's cost.

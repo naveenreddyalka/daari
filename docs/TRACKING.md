@@ -1906,6 +1906,30 @@ Export JSONL includes both hash fields. Retention prune re-anchors the chain.
 Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
 Covered by `tests/unit/test_audit_cli.py`.
 
+### Streamed usage.cost on the final usage chunk ([#386](https://github.com/naveenreddyalka/daari/issues/386))
+
+<!-- tracking:#386 -->
+**Status:** Done (2026-09-09). The OpenAI `chat.completion.chunk` usage object
+and Anthropic `message_delta.usage` include `cost` (USD float). Local / L0 / L1
+are `$0`; L6 uses the same `cost_usd()` / provider-reported figure as
+`x-daari-response-cost` on non-stream responses. Stream cost headers stay
+absent (usage is unknown at the HTTP start line). Docs:
+[headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_stream_usage_cost.py`, `tests/integration/test_streaming_usage.py`,
+and `tests/integration/test_gateway_flow.py`.
+
+### Scan chat tool-result messages ([#387](https://github.com/naveenreddyalka/daari/issues/387))
+
+<!-- tracking:#387 -->
+**Status:** Done (2026-09-09). Opt-in `guardrails.scan_tool_results` (default
+off). When on, OpenAI `role=tool` and Anthropic-converted `tool_result`
+contents run through input + output-style rules before the model hop: `block`
+refuses with `block_message` (stream or JSON); `redact` rewrites the tool
+message in place so execute and cache keys never see the secret.
+System/user/assistant unchanged; MCP `tools/call` scanning unchanged. Docs:
+[guardrails.md](developer/guides/features/guardrails.md). Covered by
+`tests/unit/test_guardrails.py` and `tests/unit/test_stream_policy_parity.py`.
+
 ---
 
 ## How to update

@@ -21,7 +21,7 @@ from daari.cache.verify import build_verifier
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
-from daari.gateway.cost_headers import StreamOutcome
+from daari.gateway.cost_headers import StreamOutcome, stream_usage_cost
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.provider_prefs import ZdrUnavailable
 from daari.gateway.sampling import model_supports_thinking
@@ -640,6 +640,19 @@ class Router:
                 policy.refusal_tier = "guardrail"
                 return policy
             policy.warning = inbound.warning or policy.warning
+            # Opt-in scan of role=tool / tool_result payloads (#387). Mutates
+            # request in place on redact so cache keys and execute see scrubbed text.
+            if getattr(self.guardrails, "scan_tool_results", False):
+                tool_scan = self.guardrails.check_tool_results(request)
+                if tool_scan.hits:
+                    self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
+                if tool_scan.blocked:
+                    policy.refusal = blocked_response(
+                        request, self.guardrails.block_message
+                    )
+                    policy.refusal_tier = "guardrail"
+                    return policy
+                policy.warning = tool_scan.warning or policy.warning
         return policy
 
     def _apply_output_policy(self, response: InternalResponse) -> InternalResponse:
@@ -1547,7 +1560,13 @@ class Router:
                 "choices": [choice],
             }
 
-        def usage_chunk(completion_len: int, *, tokens: tuple[int, int] | None = None) -> str:
+        def usage_chunk(
+            completion_len: int,
+            *,
+            tokens: tuple[int, int] | None = None,
+            stream_tier: str | None = None,
+            served: InternalResponse | None = None,
+        ) -> str:
             # `tokens` carries provider-reported (input, output) counts when the
             # backend surfaced them (#320); otherwise fall back to chars/4.
             if tokens is not None:
@@ -1565,6 +1584,12 @@ class Router:
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "total_tokens": prompt_tokens + completion_tokens,
+                    "cost": self._stream_usage_cost(
+                        stream_tier,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        served=served,
+                    ),
                 },
             }
             return f"data: {json.dumps(payload)}\n\n"
@@ -1591,6 +1616,10 @@ class Router:
             add_step("served", tier=policy.refusal_tier, cache_hit=False, latency_ms=0)
             finish_trace(policy.refusal_tier)
             return
+        # Tool-result scan (#387) mutates `request` in place after the deep copy
+        # above; agent flows must see the redacted tool payloads downstream.
+        if agent_flow:
+            stream_request.messages = [m.model_copy(deep=True) for m in request.messages]
 
         # Deterministic tiers (Lt tools, L2 rules, live fetch, integrations)
         # answer without a model and were unreachable while streaming (#155).
@@ -1642,7 +1671,7 @@ class Router:
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={'content': cached.content}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                yield usage_chunk(len(cached.content))
+                yield usage_chunk(len(cached.content), stream_tier="L0")
                 yield "data: [DONE]\n\n"
                 add_step("served", tier="L0", cache_hit=True, latency_ms=latency_ms)
                 finish_trace("L0")
@@ -1693,7 +1722,7 @@ class Router:
                     yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                     yield f"data: {json.dumps(chunk_payload(delta={'content': nearest_response.content}))}\n\n"
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                    yield usage_chunk(len(nearest_response.content))
+                    yield usage_chunk(len(nearest_response.content), stream_tier="L1")
                     yield "data: [DONE]\n\n"
                     add_step("served", tier="L1", cache_hit=True, latency_ms=latency_ms)
                     finish_trace("L1")
@@ -1896,7 +1925,7 @@ class Router:
                 else:
                     relayed_text = "".join(relayed)
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                yield usage_chunk(len(relayed_text))
+                yield usage_chunk(len(relayed_text), stream_tier="L6")
                 yield "data: [DONE]\n\n"
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
@@ -1994,7 +2023,10 @@ class Router:
             # ledger row, so both see the provider's final count once (#320).
             stream_in, stream_out, usage_estimated = response_token_usage(served, prompt_chars)
             yield usage_chunk(
-                completion_chars, tokens=None if usage_estimated else (stream_in, stream_out)
+                completion_chars,
+                tokens=None if usage_estimated else (stream_in, stream_out),
+                stream_tier=served_tier,
+                served=served,
             )
             yield "data: [DONE]\n\n"
 
@@ -2199,7 +2231,14 @@ class Router:
                     {
                         "type": "message_delta",
                         "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                        "usage": {"output_tokens": max(0, len(text) // 4)},
+                        "usage": {
+                            "output_tokens": max(0, len(text) // 4),
+                            "cost": self._stream_usage_cost(
+                                tier_label,
+                                prompt_tokens=input_tokens,
+                                completion_tokens=max(0, len(text) // 4),
+                            ),
+                        },
                         "daari_meta": event_meta,
                     },
                 ),
@@ -2214,6 +2253,8 @@ class Router:
             for event in terminal_events(policy.refusal.content, policy.refusal_tier):
                 yield event
             return
+        if agent_flow:
+            stream_request.messages = [m.model_copy(deep=True) for m in request.messages]
 
         stream_started = time.perf_counter()
 
@@ -2521,7 +2562,13 @@ class Router:
                             "type": "message_delta",
                             "delta": {"stop_reason": "end_turn", "stop_sequence": None},
                             "usage": {
-                                "output_tokens": max(0, len(served.content) // 4)
+                                "output_tokens": max(0, len(served.content) // 4),
+                                "cost": self._stream_usage_cost(
+                                    served.daari_meta.tier or tier,
+                                    prompt_tokens=input_tokens,
+                                    completion_tokens=max(0, len(served.content) // 4),
+                                    served=served,
+                                ),
                             },
                         },
                     )
@@ -2604,7 +2651,17 @@ class Router:
                     },
                     # Cumulative per the Anthropic contract: the single delta
                     # carries the final total.
-                    "usage": {"output_tokens": output_tokens},
+                    "usage": {
+                        "output_tokens": output_tokens,
+                        "cost": self._stream_usage_cost(
+                            served.daari_meta.tier or tier,
+                            prompt_tokens=(
+                                reported_usage[0] if reported_usage is not None else input_tokens
+                            ),
+                            completion_tokens=output_tokens,
+                            served=served,
+                        ),
+                    },
                     "daari_meta": meta,
                 },
             )
@@ -3525,6 +3582,34 @@ class Router:
 
     def _frontier_budget_exceeded(self) -> bool:
         return self._frontier_budget_state() == "exceeded"
+
+    def _stream_usage_cost(
+        self,
+        tier: str | None,
+        *,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        served: InternalResponse | None = None,
+    ) -> float:
+        reported = None
+        model = None
+        cached = 0
+        billed = tier
+        if served is not None:
+            reported = served.daari_meta.cost_usd
+            model = served.daari_meta.model or served.model
+            cached = int(served.daari_meta.cached_tokens or 0)
+            billed = served.daari_meta.tier or billed
+        return stream_usage_cost(
+            tier=billed,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            pricing=self.pricing,
+            fallback_per_1k=self.frontier_price_per_1k_tokens,
+            cached_input_tokens=cached,
+            reported_cost=reported,
+        )
 
     def _record(self, response: InternalResponse, started: float) -> None:
         self._emit_org_feedback("", response)

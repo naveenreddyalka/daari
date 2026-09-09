@@ -455,6 +455,13 @@ async def test_stream_l0_cache_hit_on_repeat(app, monkeypatch):
     assert '"finish_reason": "stop"' in second.text or '"finish_reason":"stop"' in second.text
     assert stats["tiers"].get("L0", {}).get("cache_hits") == 1
     assert stats["tiers"].get("L3", {}).get("count") == 1
+    usage_chunks = [
+        json.loads(line[len("data: ") :])
+        for line in second.text.splitlines()
+        if line.startswith("data: ") and "[DONE]" not in line
+    ]
+    costs = [p["usage"]["cost"] for p in usage_chunks if p.get("usage")]
+    assert costs and costs[-1] == 0.0
 
 
 @pytest.mark.asyncio
@@ -1252,6 +1259,7 @@ async def test_anthropic_stream_reports_estimated_usage(app, monkeypatch):
     # "stream this" = 11 chars -> 2 input tokens; "Hello world" = 11 chars -> 2 output tokens
     assert message_start["message"]["usage"]["input_tokens"] == 2
     assert message_delta["usage"]["output_tokens"] == 2
+    assert message_delta["usage"]["cost"] == 0.0
 
 
 @pytest.mark.asyncio

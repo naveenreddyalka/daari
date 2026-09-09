@@ -85,11 +85,50 @@ class GuardrailEngine:
     # buffered = collect then scan (default); incremental = holdback window (#375).
     stream_mode: Literal["buffered", "incremental"] = "buffered"
     stream_holdback_chars: int = 256
+    # When on, scan role=tool messages with output rules before the model hop (#387).
+    scan_tool_results: bool = False
 
     def check_input(self, request: InternalRequest) -> GuardrailResult:
         text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
         result = self.check_input_text(text)
         result.request = request
+        return result
+
+    def check_tool_results(self, request: InternalRequest) -> GuardrailResult:
+        """Scan OpenAI `role=tool` / Anthropic-converted tool_result messages.
+
+        Opt-in via `scan_tool_results`. Uses output-style rules (secrets/PII/deny)
+        so a leaked secret in a tool payload is redacted or blocked before execute
+        and before cache keys are computed. System/user/assistant are untouched.
+        """
+        result = GuardrailResult(request=request)
+        if not self.enabled or not self.scan_tool_results:
+            return result
+        rewritten_any = False
+        for index, message in enumerate(request.messages):
+            if message.role != "tool":
+                continue
+            text = message.content or ""
+            # Input deny/injection on tool payload (parity with MCP args path).
+            inbound = self.check_input_text(text)
+            if inbound.hits:
+                result.hits.extend(inbound.hits)
+                result.warning = result.warning or inbound.warning
+            if inbound.blocked:
+                result.blocked = True
+                return result
+            rewritten, outbound = self.check_output_text(text)
+            if outbound.hits:
+                result.hits.extend(outbound.hits)
+                result.warning = result.warning or outbound.warning
+            if outbound.blocked:
+                result.blocked = True
+                return result
+            if rewritten != text:
+                request.messages[index] = message.model_copy(update={"content": rewritten})
+                rewritten_any = True
+        if rewritten_any:
+            result.request = request
         return result
 
     def check_input_text(self, text: str) -> GuardrailResult:
@@ -353,6 +392,7 @@ def engine_from_block(block: Any) -> GuardrailEngine | None:
         ]
     stream_mode = getattr(block, "stream_mode", "buffered") or "buffered"
     holdback = int(getattr(block, "stream_holdback_chars", 256) or 256)
+    scan_tool = bool(getattr(block, "scan_tool_results", False))
     return GuardrailEngine(
         enabled=True,
         input_rules=input_rules,
@@ -362,6 +402,7 @@ def engine_from_block(block: Any) -> GuardrailEngine | None:
         block_message=block.block_message or GuardrailEngine.block_message,
         stream_mode=stream_mode,  # type: ignore[arg-type]
         stream_holdback_chars=max(0, holdback),
+        scan_tool_results=scan_tool,
     )
 
 
