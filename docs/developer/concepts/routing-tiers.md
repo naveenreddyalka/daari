@@ -81,6 +81,14 @@ failure, context-length failover, an open circuit, a down model, and
 `X-Daari-Tier-Cap` beat the pin. Hits log `session_pin`; overrides log
 `session_pin_override`.
 
+## User-turn classification
+
+`routing.classify_user_turn` (default off) reuses the previous category and
+complexity on a tool-result continuation (no new user text). Token estimate
+is still recomputed. A new user message re-profiles. Phase routing and stall
+escalation still inspect tool history. Event/trace: `classify_user_turn`
+(`reused: true` on skipped turns).
+
 ## Stall escalation
 
 `routing.stall_escalation.enabled` (default off) looks only at the request's

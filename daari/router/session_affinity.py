@@ -100,6 +100,45 @@ def conversation_prefix_hash(messages: list[Message]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+@dataclass(frozen=True)
+class ProfilePin:
+    category: str
+    complexity: str
+    expires_at: float
+
+
+class ProfilePinStore:
+    """Last category/complexity per session for classify_user_turn (#389)."""
+
+    def __init__(
+        self,
+        ttl_seconds: float = 1800.0,
+        *,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self.ttl_seconds = max(0.0, float(ttl_seconds))
+        self._clock = clock or time.monotonic
+        self._pins: dict[str, ProfilePin] = {}
+
+    def get(self, key: str) -> ProfilePin | None:
+        pin = self._pins.get(key)
+        if pin is None:
+            return None
+        if self.ttl_seconds > 0 and self._clock() >= pin.expires_at:
+            self._pins.pop(key, None)
+            return None
+        return pin
+
+    def put(self, key: str, *, category: str, complexity: str) -> None:
+        now = self._clock()
+        expires = now + self.ttl_seconds if self.ttl_seconds > 0 else float("inf")
+        self._pins[key] = ProfilePin(
+            category=category,
+            complexity=complexity,
+            expires_at=expires,
+        )
+
+
 def session_key(meta: object, prefix_hash: str) -> str:
     """Client session or user when present, otherwise the conversation prefix."""
     session = str(getattr(meta, "session_id", None) or "").strip()

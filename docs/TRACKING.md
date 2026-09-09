@@ -1821,6 +1821,17 @@ Unknown windows are left alone; `X-Daari-Tier-Cap` still wins. Trace/event
 [routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
 Covered by `tests/unit/test_context_window.py`.
 
+### Skip re-profiling on tool-result continuations ([#389](https://github.com/naveenreddyalka/daari/issues/389))
+
+<!-- tracking:#389 -->
+**Status:** Done (2026-09-09). Opt-in `routing.classify_user_turn` (default
+off) reuses the previous category/complexity on a tool-result continuation.
+Token estimate stays fresh. A new user message re-profiles. Phase routing and
+stall escalation still see tool history. Event/trace `classify_user_turn`
+(`reused: true` on skipped turns). Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#user-turn-classification).
+Covered by `tests/unit/test_classify_user_turn.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))

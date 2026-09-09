@@ -337,6 +337,14 @@ class RoutingSettings(RuntimeSettings):
             "restart. Ignored unless session_affinity is true."
         ),
     )
+    classify_user_turn: bool = Field(
+        default=False,
+        description=(
+            "When true, tool-result continuations reuse the prior category and "
+            "complexity instead of re-running the profiler (#389). A new user "
+            "message re-profiles. Phase routing and stall still see tool history."
+        ),
+    )
     context_window_escalation: bool = Field(
         default=True,
         description=(

@@ -390,6 +390,7 @@ class Router:
         phase_map: dict[str, int | str] | None = None,
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
+        classify_user_turn: bool = False,
         context_window_escalation: bool = True,
         context_window_buffer: float = 0.95,
         context_windows: dict[str, int] | None = None,
@@ -482,6 +483,10 @@ class Router:
         from daari.router.session_affinity import SessionPinStore
 
         self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.classify_user_turn = bool(classify_user_turn)
+        from daari.router.session_affinity import ProfilePinStore
+
+        self.profile_pins = ProfilePinStore(ttl_seconds=session_affinity_ttl_seconds)
         self.context_window_escalation = bool(context_window_escalation)
         self.context_window_buffer = float(context_window_buffer)
         self.context_windows = dict(context_windows) if context_windows else {}
@@ -669,9 +674,7 @@ class Router:
         return response
 
     async def route(self, request: InternalRequest) -> InternalResponse:
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
+        profile = self._prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         add_step(
             "profile",
@@ -1505,9 +1508,7 @@ class Router:
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
         client_model = request.model or self.ollama_l3.default_model
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
+        profile = self._prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         add_step(
             "profile",
@@ -2144,9 +2145,7 @@ class Router:
         await self._refresh_warm_models()
         # Parity with the OpenAI stream path (issue #101): category policies,
         # learned routing, and latency step-down all key off the profile.
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
+        profile = self._prompt_profile(request)
         profile = await self._apply_learned_route(request, profile)
         tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (issue #84: Claude Code tool turns) keep the full tool
@@ -2880,6 +2879,51 @@ class Router:
         if self._TIER_ORDER.index(tier) > self._TIER_ORDER.index(cap):
             return cap
         return tier
+
+    def _prompt_profile(self, request: InternalRequest) -> PromptProfile:
+        """Build or reuse category/complexity. Token estimate is always fresh."""
+        fresh = build_prompt_profile(
+            request, effort_escalation=self.reasoning_effort_escalation
+        )
+        if not self.classify_user_turn:
+            return fresh
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.session_affinity import (
+            conversation_prefix_hash,
+            is_tool_continuation,
+            session_key,
+        )
+
+        key = session_key(request.meta, conversation_prefix_hash(request.messages))
+        reused = False
+        if is_tool_continuation(request.messages):
+            pin = self.profile_pins.get(key)
+            if pin is not None:
+                fresh = PromptProfile(
+                    category=pin.category,
+                    complexity=pin.complexity,
+                    prompt_tokens_est=fresh.prompt_tokens_est,
+                )
+                reused = True
+        if not reused:
+            self.profile_pins.put(
+                key, category=fresh.category, complexity=fresh.complexity
+            )
+        log_gateway_event(
+            "classify_user_turn",
+            {
+                "reused": reused,
+                "category": fresh.category,
+                "complexity": fresh.complexity,
+            },
+        )
+        add_step(
+            "classify_user_turn",
+            reused=reused,
+            category=fresh.category,
+            complexity=fresh.complexity,
+        )
+        return fresh
 
     def _session_pin_tier(self, request: InternalRequest) -> str | None:
         """Replay a continuation pin, or None so heuristics run.
@@ -4166,6 +4210,7 @@ class AppContext:
             },
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
+            classify_user_turn=settings.routing.classify_user_turn,
             context_window_escalation=settings.routing.context_window_escalation,
             context_window_buffer=settings.routing.context_window_escalation_buffer,
             context_windows=dict(settings.routing.context_windows or {}),
