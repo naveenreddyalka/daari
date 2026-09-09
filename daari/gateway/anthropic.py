@@ -94,12 +94,14 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
                 }
             )
         elif block_type == "tool_result":
-            result_text = content_to_text(block.get("content")) or ""
+            raw = block.get("content")
+            result_text = content_to_text(raw) or ""
             tool_results.append(
                 Message(
                     role="tool",
                     content=result_text,
                     tool_call_id=block.get("tool_use_id"),
+                    images=extract_images(raw),
                 )
             )
         else:

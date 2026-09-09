@@ -78,6 +78,33 @@ class TestVisionCapability:
         )
         assert "vision" in required_capabilities(req)
 
+    def test_images_on_a_tool_result_require_vision(self):
+        req = InternalRequest(
+            messages=[
+                Message(role="user", content="look at this"),
+                Message(
+                    role="tool",
+                    content="screenshot",
+                    tool_call_id="c1",
+                    images=[ContentImage(data=TINY_PNG, media_type="image/png")],
+                ),
+            ],
+            model="daari",
+            tools=[{"type": "function", "function": {"name": "shot"}}],
+        )
+        assert "vision" in required_capabilities(req)
+
+    def test_text_tool_result_does_not_require_vision(self):
+        req = InternalRequest(
+            messages=[
+                Message(role="user", content="look at this"),
+                Message(role="tool", content="just text", tool_call_id="c1"),
+            ],
+            model="daari",
+            tools=[{"type": "function", "function": {"name": "read"}}],
+        )
+        assert "vision" not in required_capabilities(req)
+
     def test_a_text_prompt_that_mentions_image_url_does_not(self):
         """The old detector matched the substring in already-flattened text."""
         req = InternalRequest(

@@ -1831,6 +1831,16 @@ unknown values log `cost_tier_ignored`. Anthropic now also reads the header.
 Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
 `tests/unit/test_cost_tier.py` and `tests/integration/test_gateway_flow.py`.
 
+### Vision hop for tool-result images ([#397](https://github.com/naveenreddyalka/daari/issues/397))
+
+<!-- tracking:#397 -->
+**Status:** Done (2026-09-09). Anthropic `tool_result` image blocks populate
+`Message.images` (OpenAI `role=tool` parts already did). `required_capabilities`
+then requires `vision` and the existing catalog filter hops off text-only L3.
+Event `modality_escalation`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_multimodal.py` and `tests/integration/test_anthropic_tools.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))

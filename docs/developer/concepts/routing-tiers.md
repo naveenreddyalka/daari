@@ -36,7 +36,7 @@ flowchart TD
 
 ## Escalation
 
-Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/json). Caps:
+Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/json). Image blocks on user **or tool-result** messages require `vision` (#397); hops log `modality_escalation`. Caps:
 
 - Config: `routing.max_tier_for_chat`, `routing.no_frontier` (via project profile)
 - Headers: `X-Daari-Tier-Cap`, `X-Daari-No-Frontier`, `X-Daari-Tier-Override`
