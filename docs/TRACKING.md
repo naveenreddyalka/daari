@@ -1973,6 +1973,17 @@ Docs: [routing-tiers.md](developer/concepts/routing-tiers.md#context-window-esca
 Covered by `tests/unit/test_models_catalog.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Derive length hops from context_windows only ([#401](https://github.com/naveenreddyalka/daari/issues/401))
+
+<!-- tracking:#401 -->
+**Status:** Done (2026-09-09). Removed the 24k-char `long_context` inference
+from `required_capabilities`. Prompt length hops solely via
+`routing.context_windows` × buffer (#385), so capability filter and
+context-window escalation no longer disagree. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_capabilities.py` and
+`tests/unit/test_context_window.py`.
+
 ---
 
 ## How to update

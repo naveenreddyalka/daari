@@ -31,6 +31,15 @@ def test_required_capabilities_detects_tools():
     assert "tools" in required_capabilities(req)
 
 
+def test_long_prompt_does_not_require_long_context_capability():
+    """#401: length hops use context_windows (#385), not a 24k-char capability."""
+    req = InternalRequest(
+        messages=[Message(role="user", content="x" * 30_000)],
+        model="daari",
+    )
+    assert "long_context" not in required_capabilities(req)
+
+
 def test_filter_drops_incapable_tiers():
     catalog = CapabilityCatalog(
         models={

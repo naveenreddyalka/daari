@@ -127,7 +127,9 @@ windows are left alone. `X-Daari-Tier-Cap` still wins. Trace/event:
 `context_window_escalation`. Post-error `context_length_failover` stays as
 the safety net. The same table is advertised as `context_length` on local
 tier cards from `GET /v1/models` (#400); unknown windows are omitted.
-Frontier/L6 cards are never overwritten from this table.
+Frontier/L6 cards are never overwritten from this table. Capability
+`long_context` is no longer inferred from a 24k-char threshold (#401) —
+this escalation path is the single length hop.
 
 ## Knobs
 
