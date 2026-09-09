@@ -179,6 +179,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_tasks.long_running_tools` | list | `['route']` |  |
 | `integrations.mcp_tasks.threshold_ms` | int | `0` |  |
 | `integrations.mcp_tasks.path` | str | `'~/.daari/mcp-tasks'` |  |
+| `integrations.mcp_tool_search.enabled` | bool | `False` | When true and the catalog exceeds `min_catalog_size`, rank tools by local embedding similarity and return `top_k` (#376). |
+| `integrations.mcp_tool_search.min_catalog_size` | int | `40` | Catalogs at or under this size are returned unranked. |
+| `integrations.mcp_tool_search.top_k` | int | `40` | Maximum tools returned after ranking. |
 | `integrations.mcp_guardrails.enabled` | bool | `False` |  |
 | `integrations.mcp_guardrails.max_prompt_chars` | int | `0` |  |
 | `integrations.mcp_guardrails.injection_action` | str | `'block'` |  |

@@ -3978,12 +3978,19 @@ class AppContext:
             providers.register(live_provider)
         from daari.enterprise.audit import AuditLog
         from daari.gateway.mcp_guardrails import McpGuardrails
+        from daari.gateway.mcp_policy import McpToolPolicy
         from daari.providers.mcp_egress import build_mcp_providers
 
         egress_guardrails = McpGuardrails.from_settings(
             settings, audit=AuditLog(settings.enterprise.audit_path), transport="egress"
         )
-        mcp_providers = build_mcp_providers(settings.integrations.mcp_servers, egress_guardrails)
+        mcp_providers = build_mcp_providers(
+            settings.integrations.mcp_servers,
+            egress_guardrails,
+            tool_search=settings.integrations.mcp_tool_search,
+            embedder=embedder,
+            tool_policy=McpToolPolicy.from_mapping(settings.integrations.mcp_policy),
+        )
         mcp_triggers: dict[str, list[str]] = {}
         for mcp_provider in mcp_providers:
             providers.register(mcp_provider)
