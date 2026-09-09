@@ -91,6 +91,32 @@ def response_cost_headers(
     }
 
 
+def stream_usage_cost(
+    *,
+    tier: str | None,
+    model: str | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    pricing: object | None = None,
+    fallback_per_1k: float = 0.002,
+    cached_input_tokens: int = 0,
+    reported_cost: float | None = None,
+) -> float:
+    """USD for a streamed usage object. Local tiers are $0; L6 matches headers."""
+    if (tier or "").upper() != FRONTIER_TIER:
+        return 0.0
+    if reported_cost is not None:
+        return float(reported_cost)
+    return cost_usd(
+        model,
+        int(prompt_tokens),
+        int(completion_tokens),
+        pricing,
+        fallback_per_1k=fallback_per_1k,
+        cached_input_tokens=int(cached_input_tokens),
+    )
+
+
 @dataclass
 class StreamOutcome:
     """What the router decided for a streamed request, filled before its first chunk."""

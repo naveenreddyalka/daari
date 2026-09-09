@@ -318,7 +318,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         }
                         yield f"event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n"
                         yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0, 'daari_meta': fallback_meta})}\n\n"
-                        yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0}, 'daari_meta': fallback_meta})}\n\n"
+                        yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0, 'cost': 0.0}, 'daari_meta': fallback_meta})}\n\n"
                         yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop', 'daari_meta': fallback_meta})}\n\n"
 
                 return DeferredHeadersStreamingResponse(
