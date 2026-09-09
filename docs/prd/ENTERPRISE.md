@@ -11,46 +11,34 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-09)
+## Where daari stands (verified in-tree, 2026-09-09 pm)
 
-**The park is over and v1.4.0 shipped.** All nine held PRs merged on 09-08
-(#340, #347–#350, #360–#363, plus the auto-drain fix
-[#372](https://github.com/naveenreddyalka/daari/pull/372) and Redis alert
-dedupe [#371](https://github.com/naveenreddyalka/daari/pull/371)), the human
-tagged and released **v1.4.0** the same evening, and every stall-tracker issue
-closed. The backlog was completely empty at the start of this run — refilled
-with five issues below. Loop plumbing hardened: `autodev_pr_watch.py` now
-merges `origin/main` into `BEHIND` auto-merge PRs and approves first-party
-held runs; `autodev.yml` prefers an `AUTODEV_GH_TOKEN` PAT so future bot PRs
-skip GitHub's 2026-06-11 approval gate (secret not yet set — HITL below).
+**v1.4.0 is out and the morning refill shipped.** Phase routing (#380),
+incremental stream guardrails (#381), key rotation (#383), and the audit hash
+chain (#384) merged the same day they were filed. The only leftover from that
+set is [#376](https://github.com/naveenreddyalka/daari/issues/376) (MCP
+semantic tool search) — PR [#382](https://github.com/naveenreddyalka/daari/pull/382)
+is open/`DIRTY` (needs `origin/main`). Eligible backlog was empty; this run
+refills it.
 
-Shipped surface (see 08-28→09-08 scans for provenance): Apache 2.0
-([ADR-0016](../adr/0016-apache-2-relicense.md)), virtual keys + multi-window
-budgets (opt-in rollover) + teams + per-key RPM/TPM + **global in-flight cap
-with queue and 503 + Retry-After (#169)** + key/SSO expiry, SSO/OIDC +
-IdP-minted keys, RBAC, append-only audit with `list`/JSONL export,
-retention/prune, policy sync, fleet bootstrap, Redis L0/L1 + Postgres
-ledger/traces, Helm + Grafana, Prometheus + OTel GenAI, budget headers +
-threshold webhooks (Redis-deduped across replicas), guardrails + PII scrub
-(chat + MCP ingress/egress + per-key/team tool governance), MCP ingress
-(2026-07-28, Tasks) + egress with full `nextCursor` pagination, `secret://`
-refs incl. OAuth client-credentials, Responses API, `/v1/embeddings`, Ollama
-facade incl. `/api/generate`+`/api/embed` (ChatGPT Desktop recipe),
-OpenAI-compat local backends (vLLM/llama.cpp/LM Studio), OpenRouter
-`provider` object, September-2026 frontier pricing + capabilities, session
-affinity, stall escalation, context-length failover + compression, circuit
-breakers, signed images + SBOM, shadow evals. Proof: 1555 mocked tests;
-published load (320 rps L0 / 61 ms p95), vs-LiteLLM, cost-of-pass pages.
+Shipped surface (08-28→09-09): Apache 2.0, virtual keys + multi-window
+budgets + teams + per-key RPM/TPM + global in-flight cap (#169) + key/SSO
+expiry + `daari keys rotate`, SSO/OIDC, RBAC, hash-chained audit +
+`list`/`export`/`verify`, retention, policy sync, fleet bootstrap, Redis
+L0/L1 + Postgres ledger, Helm/Grafana, Prometheus + OTel, budget webhooks
+(Redis-deduped), guardrails (chat + MCP, incremental stream mode), MCP
+ingress/egress + pagination, session affinity, stall escalation, phase
+routing, Responses API, embeddings, Ollama facade (`/api/generate`+embed),
+OpenAI-compat local backends, OpenRouter `provider` object, agent prefix
+L0/L1. Proof: 1588+ mocked tests; 320 rps L0 / 61 ms p95.
 
-**Positioning:** Portkey is the PANW Prisma AIRS AI Gateway (public changelog
-quiet since April). Kong AI Gateway quiet (2.0.3, 08-31). LiteLLM shipped
-**v1.101.0 stable** (heuristic/hybrid auto-router, semantic MCP tool search,
-off-peak pricing, per-worker admission control — routing customization still
-metered behind the `auto_router` enterprise license) and its v1.102-dev line
-adds **post_call guardrails on streaming responses**. daari's counter-pitch
-is unchanged: routing *is* the Apache 2.0 core, run-it-yourself, tokens never
-leave the building — and the 09-09 refill targets exactly the three fronts
-LiteLLM is monetizing (phase routing, stream guardrails, tool search).
+**Positioning:** Portkey changelog still quiet (PANW Prisma AIRS). Kong AI
+Gateway quiet (2.0.3). LiteLLM's Auto-Router blog now sells
+[pre-dispatch context-window escalation and modality routing](https://docs.litellm.ai/blog/auto-router-more-routing-configurations)
+(09-01) plus `classification_mode: user_turn`; v1.97 adds
+`scan_only_tool_results`. OpenRouter Batch API is documented and `cost_tier`
+is GA on Auto. Routing customization stays metered behind LiteLLM's
+`auto_router` license. daari's pitch: the same knobs, Apache 2.0, $0 local.
 
 ---
 
@@ -58,89 +46,64 @@ LiteLLM is monetizing (phase routing, stream guardrails, tool search).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Subtask/phase routing** — no per-agent-phase tiering (explore/verify/implement); LiteLLM's 09-07 experiment matched fixed-Opus quality at 46% less cost; session affinity + stall escalation (the groundwork) merged 09-08 | 4 | 3 | [LiteLLM subtask classifier](https://docs.litellm.ai/blog/subtask-type-routing) (experimental, enterprise-licensed) | Phase detection from tool history is stateless and on-box; explore turns are exactly what $0 local tiers are for | **Done [#374](https://github.com/naveenreddyalka/daari/issues/374)** |
-| 2 | **Guardrails force full stream buffering** — `_can_relay_frontier_stream` returns False with guardrails on; every streamed answer buffers before the first byte (verified `router.py` ~3127) | 4 | 3 | [LiteLLM v1.102-dev streaming post_call guardrails](https://github.com/BerriAI/litellm/pull/38788) | Rules are regex + local PII scrub — incremental scanning is microseconds per chunk, no guardrail API hop | **Done [#375](https://github.com/naveenreddyalka/daari/issues/375)** |
-| 3 | **MCP semantic tool search** — pagination (#363) means aggregated catalogs of hundreds of tools now reach small local models, which are most hurt by tool flooding | 4 | 3 | LiteLLM `mcp_tool_search` (v1.101 stable, embedding-ranked) | `/v1/embeddings` + local embed models → $0 ranking, tool descriptions never leave the box | **Done [#376](https://github.com/naveenreddyalka/daari/issues/376)** |
-| 4 | **No zero-downtime key rotation** — revoke+create is a hard cutover losing budgets/team/policy identity; SOC 2-style rotation schedules expect overlap | 3 | 2 | LiteLLM key regenerate | Rotation is a local state transition + audit row; completes the on-box credential lifecycle with expiry (#331) | **Done [#377](https://github.com/naveenreddyalka/daari/issues/377)** || 5 | **Audit log is not tamper-evident** — SQLite rows editable by anyone with disk access; export shows no trace | 3 | 2 | Nobody (LiteLLM/Kong audit is plain DB rows) | Self-hosted audit needs tamper-evidence *more* than SaaS; SHA-256 hash chain is stdlib-only | **Filed [#378](https://github.com/naveenreddyalka/daari/issues/378)** (P2) |
-| 6 | **Batch API** — no `/v1/batches`; agents and eval pipelines increasingly submit batch jobs | 4 | 4 | OpenRouter Batch API (beta); LiteLLM e2e batch billing | Drain batches through idle local tiers overnight at $0 — no cloud gateway can copy it. MCP Tasks store (#315) is the template | Watch — file when a daari-served client sends batches; sketch first |
-| 7 | **MCP agent identity** — [WIF SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) + DPoP SEP-1932 both still **draft** (re-checked 09-09); MCP roadmap makes agent identity a priority area | 3 | 3 | MCP Tier-1 SDKs; LiteLLM MCP session RFC 7662 + ID-JAG relay | Workload JWTs (K8s/SPIFFE) as inbound auth fit fleets; `secret://oauth` + key expiry are the groundwork | Watch — file when SEP-1933 merges or a fleet asks |
-| 8 | **Gemini-native facade** — no `/v1beta` `generateContent`; Gemini CLI can't point at daari | 3 | 4 | Nobody self-hosted | Same dialect-facade trick as Ollama/Anthropic | Watch — file when a target client is confirmed |
-| 9 | **A2A gateway** — no Agent2Agent ingress/egress governance | 3 | 4 | Kong Agent Gateway | Local agents delegating over A2A get routing/cache/policy without a cloud hop | Watch — revisit when a daari-served client speaks A2A |
-| 10 | **Admin console** — web dashboard read-only; key/team/budget management is CLI-only | 3 | 4 | LiteLLM admin UI | CLI-first fits operators; a UI matters at org rollout scale | Watch — wait for operator demand |
-| 11 | **Off-peak pricing windows** — some providers discount by time window; daari prices flat per model | 2 | 2 | LiteLLM `off_peak_pricing` (v1.101 stable) | Local math at cost time; pairs with rollover (#349) | Watch — file when a provider daari routes to publishes off-peak rates |
-| 12 | **Per-request `cost_tier` body param** — OpenRouter Auto router GA'd it in-body; daari has `X-Daari-Tier-Cap` header + profiles | 2 | 2 | OpenRouter Auto router | Header + `.daari.yaml` cover most cases | Watch — file if a client can't set headers |
-| 13 | **Streamed live cost** — LiteLLM puts `usage.cost` on the final streamed usage chunk; daari streams a usage chunk without cost (cost headers can't carry a post-stream figure) | 2 | 2 | LiteLLM spend controls | Cost math is already local (#278); one field on the existing usage chunk | Watch — file when a streaming client asks for live spend |
-| 14 | **Ollama 0.34 facade parity** — 0.34 (rc3) adds OpenAI-compat client tool search and response compaction; daari's facade tolerates unknown fields (`extra="ignore"`) but hasn't been verified against the GA surface | 2 | 2 | Ollama upstream | Facade recipe is daari's ChatGPT Desktop path (#343) | Watch — verify `/api` parity when 0.34.0 GAs |
-| 15 | **Image/multimodal generation API** — chat vision routes; no `/v1/images` | 2 | 4 | OpenRouter Image API | Local diffusion is a different product | Non-goal for now |
+| 1 | **Context-window hop is reactive** — `_choose_initial_tier` does not compare `prompt_tokens_est` to the tier window; failover runs only after a local 400 (`failover.py`) | 4 | 3 | [LiteLLM context-window escalation](https://docs.litellm.ai/blog/auto-router-more-routing-configurations) (default on) | Token-count compare, no classifier; saves the failed local generate the IDE feels as TTFT | **Filed [#385](https://github.com/naveenreddyalka/daari/issues/385)** (P2) |
+| 2 | **Streamed usage has no `cost`** — `usage_chunk()` emits tokens only; `X-Daari-Cost` cannot carry a post-stream figure | 3 | 2 | LiteLLM spend controls | `cost_usd()` already local (#278); local tiers are $0 | **Filed [#386](https://github.com/naveenreddyalka/daari/issues/386)** (P2) |
+| 3 | **Chat tool results skip guardrails** — MCP `check_tool_result` exists; OpenAI `role=tool` / Anthropic `tool_result` reach the model unchecked | 3 | 2 | LiteLLM `scan_only_tool_results` (v1.97) | Same regex/PII engine; secrets in tool payloads never enter context or L0 | **Filed [#387](https://github.com/naveenreddyalka/daari/issues/387)** (P2) |
+| 4 | **No in-body `cost_tier`** — OpenRouter Auto clients send `cost_tier` / `plugins.auto-router`; daari only reads `X-Daari-Tier-Cap` | 3 | 2 | OpenRouter Auto router | Map onto the existing L3–L6 cap; header still wins | **Filed [#388](https://github.com/naveenreddyalka/daari/issues/388)** (P2) |
+| 5 | **Every tool turn re-profiles** — `build_prompt_profile` runs on continuations; `session_affinity` (default off) pins tier but still pays the profiler | 3 | 2 | LiteLLM `classification_mode: user_turn` | Message-list signal already in `session_affinity.is_tool_result` | **Filed [#389](https://github.com/naveenreddyalka/daari/issues/389)** (P2) |
+| 6 | **MCP semantic tool search** — large aggregated catalogs vs small local models | 4 | 3 | LiteLLM `mcp_tool_search` | Local embeddings, $0 ranking | **In flight [#376](https://github.com/naveenreddyalka/daari/issues/376)** / [PR #382](https://github.com/naveenreddyalka/daari/pull/382) |
+| 7 | **Batch API** — no `/v1/batches` | 4 | 4 | OpenRouter Batch API | Idle local tiers overnight at $0; MCP Tasks (#315) is the template | Watch — sketch when a daari client submits batches |
+| 8 | **MCP agent identity** — [SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) still **draft** (re-checked 09-09 pm) | 3 | 3 | MCP Tier-1 SDKs | `secret://oauth` + key expiry are ready | Watch — file when SEP-1933 merges |
+| 9 | **Gemini-native facade** — no `/v1beta` `generateContent` | 3 | 4 | Nobody self-hosted | Same dialect-facade as Ollama/Anthropic | Watch — file when a target client is confirmed |
+| 10 | **A2A / admin UI / off-peak / `/v1/images`** | 2–3 | 2–4 | Kong / LiteLLM / OpenRouter | Unchanged; no new client demand this run | Watch / non-goal |
+| 11 | **Ollama 0.34 facade** — still rc (ChatGPT Desktop, client tool search, compaction); facade uses `extra="ignore"` | 2 | 2 | Ollama upstream | #343 recipe | Watch — verify when 0.34.0 GAs |
 
-Open backlog after this run:
-[#378](https://github.com/naveenreddyalka/daari/issues/378) audit hash chain
-— remaining P2 after #374–#377.
+Morning rows 1–5 from 09-09 (#374–#378) shipped except #376. Pruned from the
+active table.
+
+Open backlog after this run: #376 (PR in flight) plus
+[#385](https://github.com/naveenreddyalka/daari/issues/385)–[#389](https://github.com/naveenreddyalka/daari/issues/389).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Ship the routing/guardrail counter-offensive** (rows 1–3,
-   [#374](https://github.com/naveenreddyalka/daari/issues/374)–[#376](https://github.com/naveenreddyalka/daari/issues/376)):
-   phase routing, incremental stream guardrails, and semantic tool search are
-   the three features LiteLLM is monetizing behind its enterprise license —
-   daari ships them Apache 2.0, on-box, at $0 marginal cost.
-2. **Complete the credential lifecycle** (rows 4–5,
-   [#377](https://github.com/naveenreddyalka/daari/issues/377)/[#378](https://github.com/naveenreddyalka/daari/issues/378)):
-   zero-downtime rotation and tamper-evident audit close the two remaining
-   SOC 2-shaped holes in the keys/audit story.
-3. **End the approval-gate class for good** (HITL): set the
-   `AUTODEV_GH_TOKEN` secret (a user PAT) so autodev PRs stop being
-   `github-actions[bot]`-attributed; merge the green release-chore PR
+1. **Land #376** (merge [PR #382](https://github.com/naveenreddyalka/daari/pull/382)
+   after it picks up `main`) so semantic tool search ships with the rest of
+   the morning LiteLLM-parity set.
+2. **Stop wasting the first local hop** ([#385](https://github.com/naveenreddyalka/daari/issues/385)):
+   pre-dispatch context-window escalation is the routing feature LiteLLM just
+   blogged; daari can do it with a token estimate.
+3. **Spend + safety on the agent loop**
+   ([#386](https://github.com/naveenreddyalka/daari/issues/386)/[#387](https://github.com/naveenreddyalka/daari/issues/387)):
+   live `usage.cost` and tool-result guardrails are what Cursor-shaped
+   clients already expect.
+4. **Drop-in for OpenRouter bodies**
+   ([#388](https://github.com/naveenreddyalka/daari/issues/388)/[#389](https://github.com/naveenreddyalka/daari/issues/389)):
+   `cost_tier` + user-turn classification so a migrated client does not
+   silently climb the ladder every tool turn.
+5. **HITL leftovers:** set `AUTODEV_GH_TOKEN`; merge
    [#373](https://github.com/naveenreddyalka/daari/pull/373) (brew formula
-   for v1.4.0).
-4. **Batch API when demand lands** (row 6): idle local tiers overnight at $0
-   is the single most defensible cost story daari hasn't told yet.
-5. **Agent identity when the spec settles** (row 7): SEP-1933 is a named MCP
-   roadmap priority; `secret://oauth` and key expiry mean daari can move
-   within days of the merge.
+   for v1.4.0). Batch API stays watch.
 
-Standing HITL asks: set `AUTODEV_GH_TOKEN` (repo secret, user PAT with
-contents+PR scope); merge [#373](https://github.com/naveenreddyalka/daari/pull/373)
-(all checks green; brew formula for the v1.4.0 release you tagged).
+Standing HITL asks: `AUTODEV_GH_TOKEN` (user PAT, contents+PR); merge #373.
 
 ---
 
 ## Changelog
 
-- **2026-09-09** — **Park over, v1.4.0 released, backlog refilled.** All nine
-  held PRs merged 09-08 plus auto-drain (#372) and alert dedupe (#371); human
-  tagged v1.4.0. Backlog was empty — filed
-  [#374](https://github.com/naveenreddyalka/daari/issues/374) phase routing,
-  [#375](https://github.com/naveenreddyalka/daari/issues/375) incremental
-  streaming guardrails (verified: guardrails currently disable the stream
-  relay and force full buffering),
-  [#376](https://github.com/naveenreddyalka/daari/issues/376) MCP semantic
-  tool search, [#377](https://github.com/naveenreddyalka/daari/issues/377)
-  key rotation, [#378](https://github.com/naveenreddyalka/daari/issues/378)
-  audit hash chain (all P2). Outward: LiteLLM v1.101.0 stable + v1.102-dev
-  streaming guardrails; vLLM v0.29.0 (MRV2 default, queue admission flags);
-  Ollama 0.34.0-rc3 (ChatGPT Desktop, new watch row 14); Kong quiet;
-  SEP-1933 still draft; OpenRouter GA'd Responses + `cost_tier`. Inward
-  corrections: **global in-flight cap already shipped** (#169 — admission
-  row pruned); Anthropic gateway accepts unknown content blocks (no parity
-  defect). New HITL: set `AUTODEV_GH_TOKEN`, merge #373.
-- **2026-09-08** — Park deepened to nine PRs (fifth day). Named the drain
-  hazard (strict up-to-date protection ⇒ ~9 manual rounds). Filed #368
-  auto-drain + #369 alert dedupe; stopped at 2/5 issues deliberately.
-  Outward: LiteLLM subtask/phase routing blog (09-07), stall-escalation post.
-- **2026-09-07** — Full park (five PRs). LiteLLM v1.101-rc.1 routing
-  offensive behind `auto_router` license; Fable 5.1 + GPT-6 Astra at $10/$50.
-  Filed #355 pricing (P1), #356 session affinity, #357 stall escalation,
-  #358 MCP pagination.
-- **2026-09-06** — Label HITL ended (labeler #336). One park (#340); stall
-  re-pick spam → #342 dedupe, #343 ChatGPT Desktop facade, #344 budget
-  rollover, #345 audit read path.
-- **2026-09-03** — Second drain in two days. Refill: #330 labeler, #331 key
-  expiry, #332 retention, #333 budget webhooks, #334 v1.4.0 prep.
-- **2026-09-02** — Backlog drained; Apache 2.0 merged; 15 PRs in ~36h.
-- **2026-08-28→09-01** (condensed) — Created this PRD; discovered the
-  `action_required` park class, the stale search index (→ GraphQL reads), the
-  closing-keyword hazard, the PANW/Portkey acquisition; filed #275–#279,
-  #285–#289, #294–#297.
+- **2026-09-09 pm** — Morning refill #374/#375/#377/#378 merged (PRs
+  #380/#381/#383/#384). Eligible backlog empty except #376/`DIRTY` #382.
+  Outward: LiteLLM context-window + modality blog; `user_turn` classifier
+  mode; v1.97 `scan_only_tool_results`; OpenRouter Batch docs + GA
+  `cost_tier`; SEP-1933 still draft; Ollama 0.34 still rc. Inward verified:
+  `usage_chunk()` has no `cost`; tool-role messages skip guardrails; no
+  `cost_tier` parse; context failover is post-error only. Filed
+  [#385](https://github.com/naveenreddyalka/daari/issues/385)–[#389](https://github.com/naveenreddyalka/daari/issues/389)
+  (all P2).
+- **2026-09-09** — Park over, v1.4.0 released. Filed #374–#378.
+- **2026-09-08** — Nine-PR park; filed #368 auto-drain + #369 alert dedupe.
+- **2026-09-07** — Filed #355–#358 (pricing, affinity, stall, MCP pages).
+- **2026-09-06** — #342–#345 (stall dedupe, ChatGPT Desktop, rollover, audit).
+- **2026-09-03→09-02** — Labeler, expiry, retention, webhooks; Apache 2.0.
+- **2026-08-28→09-01** (condensed) — Created this PRD; park class; PANW/Portkey.
