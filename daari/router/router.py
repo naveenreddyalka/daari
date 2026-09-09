@@ -529,6 +529,17 @@ class Router:
                 before=tiers,
                 after=kept,
             )
+            if "vision" in required:
+                from daari.gateway.request_log import log_gateway_event
+
+                log_gateway_event(
+                    "modality_escalation",
+                    {
+                        "from": next((tier for tier in tiers if tier not in kept), None),
+                        "to": kept[0] if kept else None,
+                        "required": sorted(required),
+                    },
+                )
         if not kept:
             # A vision request on a text-only stack used to run anyway and answer
             # as if no image was sent (#164). Refuse rather than silently degrade.
