@@ -337,6 +337,17 @@ class RoutingSettings(RuntimeSettings):
             "restart. Ignored unless session_affinity is true."
         ),
     )
+    # When on, tool-result continuations reuse the prior user-turn category /
+    # complexity instead of re-running build_prompt_profile (#389). Default off.
+    classify_user_turn: bool = Field(
+        default=False,
+        description=(
+            "When true, a tool-result continuation (no new user text) reuses "
+            "the previous profile's category/complexity. Phase routing and "
+            "stall escalation still inspect tool history. A new user message "
+            "re-profiles. Default off."
+        ),
+    )
     context_window_escalation: bool = Field(
         default=True,
         description=(
