@@ -117,6 +117,25 @@ def stream_usage_cost(
     )
 
 
+def stream_cached_tokens(
+    *,
+    tier: str | None,
+    prompt_tokens: int = 0,
+    cached_from_meta: int | None = None,
+) -> int:
+    """Cached prompt tokens for a streamed usage object (#399).
+
+    L0/L1 hits report the full prompt as cached. L6 uses provider meta when
+    present. Unknown / local generate → 0.
+    """
+    label = (tier or "").upper()
+    if label in {"L0", "L1"}:
+        return max(0, int(prompt_tokens))
+    if cached_from_meta is not None:
+        return max(0, int(cached_from_meta))
+    return 0
+
+
 @dataclass
 class StreamOutcome:
     """What the router decided for a streamed request, filled before its first chunk."""

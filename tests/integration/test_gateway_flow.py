@@ -462,6 +462,17 @@ async def test_stream_l0_cache_hit_on_repeat(app, monkeypatch):
     ]
     costs = [p["usage"]["cost"] for p in usage_chunks if p.get("usage")]
     assert costs and costs[-1] == 0.0
+    cached = [
+        p["usage"]["prompt_tokens_details"]["cached_tokens"]
+        for p in usage_chunks
+        if p.get("usage") and p["usage"].get("prompt_tokens_details")
+    ]
+    prompts = [
+        p["usage"]["prompt_tokens"]
+        for p in usage_chunks
+        if p.get("usage")
+    ]
+    assert cached and prompts and cached[-1] == prompts[-1]
 
 
 @pytest.mark.asyncio

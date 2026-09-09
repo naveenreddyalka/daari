@@ -21,7 +21,7 @@ from daari.cache.verify import build_verifier
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
-from daari.gateway.cost_headers import StreamOutcome, stream_usage_cost
+from daari.gateway.cost_headers import StreamOutcome, stream_cached_tokens, stream_usage_cost
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.provider_prefs import ZdrUnavailable
 from daari.gateway.sampling import model_supports_thinking
@@ -1618,6 +1618,13 @@ class Router:
                         completion_tokens=completion_tokens,
                         served=served,
                     ),
+                    "prompt_tokens_details": {
+                        "cached_tokens": self._stream_cached_tokens(
+                            stream_tier,
+                            prompt_tokens=prompt_tokens,
+                            served=served,
+                        )
+                    },
                 },
             }
             return f"data: {json.dumps(payload)}\n\n"
@@ -2259,14 +2266,11 @@ class Router:
                     {
                         "type": "message_delta",
                         "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                        "usage": {
-                            "output_tokens": max(0, len(text) // 4),
-                            "cost": self._stream_usage_cost(
-                                tier_label,
-                                prompt_tokens=input_tokens,
-                                completion_tokens=max(0, len(text) // 4),
-                            ),
-                        },
+                        "usage": self._anthropic_stream_usage(
+                            tier_label,
+                            prompt_tokens=input_tokens,
+                            output_tokens=max(0, len(text) // 4),
+                        ),
                         "daari_meta": event_meta,
                     },
                 ),
@@ -2589,15 +2593,12 @@ class Router:
                         {
                             "type": "message_delta",
                             "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                            "usage": {
-                                "output_tokens": max(0, len(served.content) // 4),
-                                "cost": self._stream_usage_cost(
-                                    served.daari_meta.tier or tier,
-                                    prompt_tokens=input_tokens,
-                                    completion_tokens=max(0, len(served.content) // 4),
-                                    served=served,
-                                ),
-                            },
+                            "usage": self._anthropic_stream_usage(
+                                served.daari_meta.tier or tier,
+                                prompt_tokens=input_tokens,
+                                output_tokens=max(0, len(served.content) // 4),
+                                served=served,
+                            ),
                         },
                     )
                     yield sse("message_stop", {"type": "message_stop"})
@@ -2679,17 +2680,14 @@ class Router:
                     },
                     # Cumulative per the Anthropic contract: the single delta
                     # carries the final total.
-                    "usage": {
-                        "output_tokens": output_tokens,
-                        "cost": self._stream_usage_cost(
-                            served.daari_meta.tier or tier,
-                            prompt_tokens=(
-                                reported_usage[0] if reported_usage is not None else input_tokens
-                            ),
-                            completion_tokens=output_tokens,
-                            served=served,
+                    "usage": self._anthropic_stream_usage(
+                        served.daari_meta.tier or tier,
+                        prompt_tokens=(
+                            reported_usage[0] if reported_usage is not None else input_tokens
                         ),
-                    },
+                        output_tokens=output_tokens,
+                        served=served,
+                    ),
                     "daari_meta": meta,
                 },
             )
@@ -3735,6 +3733,49 @@ class Router:
             cached_input_tokens=cached,
             reported_cost=reported,
         )
+
+    def _stream_cached_tokens(
+        self,
+        tier: str | None,
+        *,
+        prompt_tokens: int = 0,
+        served: InternalResponse | None = None,
+    ) -> int:
+        meta_cached = None
+        billed = tier
+        if served is not None:
+            meta_cached = served.daari_meta.cached_tokens
+            billed = served.daari_meta.tier or billed
+        return stream_cached_tokens(
+            tier=billed,
+            prompt_tokens=prompt_tokens,
+            cached_from_meta=meta_cached,
+        )
+
+    def _anthropic_stream_usage(
+        self,
+        tier: str | None,
+        *,
+        prompt_tokens: int,
+        output_tokens: int,
+        served: InternalResponse | None = None,
+    ) -> dict[str, Any]:
+        """message_delta.usage: cost always; cache_read_input_tokens when known (#399)."""
+        usage: dict[str, Any] = {
+            "output_tokens": output_tokens,
+            "cost": self._stream_usage_cost(
+                tier,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=output_tokens,
+                served=served,
+            ),
+        }
+        cached = self._stream_cached_tokens(
+            tier, prompt_tokens=prompt_tokens, served=served
+        )
+        if cached:
+            usage["cache_read_input_tokens"] = cached
+        return usage
 
     def _record(self, response: InternalResponse, started: float) -> None:
         self._emit_org_feedback("", response)
