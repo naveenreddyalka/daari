@@ -32,7 +32,15 @@ LIST_TIMEOUT_SECONDS = 15.0
 
 
 class McpEgressProvider(HttpIntegrationProvider):
-    def __init__(self, server: McpServerConfig, guardrails: McpGuardrails | None = None) -> None:
+    def __init__(
+        self,
+        server: McpServerConfig,
+        guardrails: McpGuardrails | None = None,
+        *,
+        tool_search: Any = None,
+        embedder: Any = None,
+        tool_policy: Any = None,
+    ) -> None:
         super().__init__(
             id=f"mcp:{server.id}",
             base_url=server.url.rstrip("/"),
@@ -44,6 +52,12 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.guardrails = guardrails or McpGuardrails(transport="egress")
         self.list_page_cap = LIST_PAGE_CAP
         self.list_timeout_seconds = LIST_TIMEOUT_SECONDS
+        from daari.gateway.mcp_tool_search import ToolEmbeddingCache, settings_from_block
+
+        self.tool_search = settings_from_block(tool_search)
+        self.embedder = embedder
+        self.tool_policy = tool_policy
+        self._tool_embed_cache = ToolEmbeddingCache()
 
     def _guardrail_blocked(self, request: InternalRequest, tool: str, rule: str) -> InternalResponse:
         return InternalResponse(
@@ -87,6 +101,18 @@ class McpEgressProvider(HttpIntegrationProvider):
                 tools = await self._list_tools(headers)
             except Exception as exc:  # noqa: BLE001
                 return self._failure(request, exc)
+            from daari.gateway.mcp_tool_search import extract_list_query, maybe_rank_tools
+
+            query = extract_list_query(arg_text=arg_text, messages=request.messages)
+            tools = await maybe_rank_tools(
+                tools,
+                query=query,
+                settings=self.tool_search,
+                policy=self.tool_policy,
+                embedder=self.embedder,
+                server_id=self.server.id,
+                cache=self._tool_embed_cache,
+            )
             catalog = {"tools": tools}
             text, _outcome = self.guardrails.check_result_text(tool, str(catalog)[:4000])
             return self._ok_response(request, self.id, text)
@@ -167,7 +193,12 @@ def _entry_get(entry: Any, key: str, default: Any = None) -> Any:
 
 
 def build_mcp_providers(
-    servers: list[Any], guardrails: McpGuardrails | None = None
+    servers: list[Any],
+    guardrails: McpGuardrails | None = None,
+    *,
+    tool_search: Any = None,
+    embedder: Any = None,
+    tool_policy: Any = None,
 ) -> list[McpEgressProvider]:
     providers: list[McpEgressProvider] = []
     for entry in servers or []:
@@ -184,5 +215,13 @@ def build_mcp_providers(
             continue
         if not cfg.triggers:
             cfg.triggers = [f"@mcp:{cfg.id}", f"@mcp {cfg.id}"]
-        providers.append(McpEgressProvider(cfg, guardrails=guardrails))
+        providers.append(
+            McpEgressProvider(
+                cfg,
+                guardrails=guardrails,
+                tool_search=tool_search,
+                embedder=embedder,
+                tool_policy=tool_policy,
+            )
+        )
     return providers
