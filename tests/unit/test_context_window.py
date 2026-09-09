@@ -66,3 +66,22 @@ def test_fitting_prompt_stays_on_l3(tmp_path):
     )
     profile = PromptProfile(category="chat", complexity="standard", prompt_tokens_est=200)
     assert router._choose_initial_tier(_request(), profile) == "L3"
+
+
+def test_under_24k_chars_but_over_l3_window_still_escalates(tmp_path):
+    """#401: context-window escalation alone hops; no 24k-char capability gate."""
+    # ~20k chars ≈ 5k tokens under the old 24k threshold, but over a tiny L3 window.
+    text = "word " * 4000
+    assert len(text) < 24_000
+    router = _router(
+        tmp_path,
+        context_window_escalation=True,
+        context_windows={"L3": 100, "L4": 8000, "L5": 32000},
+        context_window_buffer=0.95,
+    )
+    profile = PromptProfile(
+        category="chat",
+        complexity="standard",
+        prompt_tokens_est=max(1, len(text) // 4),
+    )
+    assert router._choose_initial_tier(_request(text), profile) == "L4"

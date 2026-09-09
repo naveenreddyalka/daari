@@ -82,7 +82,12 @@ def known_model_capabilities(model: str) -> frozenset[str]:
 
 
 def required_capabilities(request: InternalRequest) -> set[str]:
-    """Infer capabilities the request needs from its shape."""
+    """Infer capabilities the request needs from its shape.
+
+    Length / context-window hops use `routing.context_windows` via
+    context-window escalation (#385 / #401), not a separate long_context
+    char threshold here.
+    """
     needed: set[str] = set()
     if request.tools or request.has_tool_calls_in_history:
         needed.add("tools")
@@ -90,9 +95,6 @@ def required_capabilities(request: InternalRequest) -> set[str]:
         needed.add("vision")
     if request.sampling.response_format_json:
         needed.add("json")
-    prompt_chars = sum(len(message.content or "") for message in request.messages)
-    if prompt_chars > 24_000:  # ~6k tokens
-        needed.add("long_context")
     return needed
 
 
