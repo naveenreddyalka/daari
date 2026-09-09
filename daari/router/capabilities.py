@@ -124,28 +124,54 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
     created = int(time.time())
     cards: list[dict[str, Any]] = []
     seen: set[str] = set()
+    windows = _context_windows(settings)
 
-    def add(model_id: str, owned_by: str, caps: Iterable[str]) -> None:
+    def add(
+        model_id: str,
+        owned_by: str,
+        caps: Iterable[str],
+        *,
+        context_length: int | None = None,
+    ) -> None:
         if not model_id or model_id in seen:
             return
         seen.add(model_id)
-        cards.append(
-            {
-                "id": model_id,
-                "object": "model",
-                "created": created,
-                "owned_by": owned_by,
-                "capabilities": sorted(set(caps)),
-            }
-        )
+        card: dict[str, Any] = {
+            "id": model_id,
+            "object": "model",
+            "created": created,
+            "owned_by": owned_by,
+            "capabilities": sorted(set(caps)),
+        }
+        # Omit unknown windows — never invent 0 (#400).
+        if context_length is not None and int(context_length) > 0:
+            card["context_length"] = int(context_length)
+        cards.append(card)
 
     local_union: set[str] = set()
     for model_id in (settings.models.l3, settings.models.l4, settings.models.l5):
         local_union |= set(catalog.for_model(model_id))
-    add("daari", "daari", local_union)
-    add(settings.models.l3, "ollama", catalog.for_model(settings.models.l3))
-    add(settings.models.l4, "ollama", catalog.for_model(settings.models.l4))
-    add(settings.models.l5, "ollama", catalog.for_model(settings.models.l5))
+    # Virtual "daari" can land on any local tier; advertise the largest known window.
+    daari_window = max(windows.values()) if windows else None
+    add("daari", "daari", local_union, context_length=daari_window)
+    add(
+        settings.models.l3,
+        "ollama",
+        catalog.for_model(settings.models.l3),
+        context_length=windows.get("L3"),
+    )
+    add(
+        settings.models.l4,
+        "ollama",
+        catalog.for_model(settings.models.l4),
+        context_length=windows.get("L4"),
+    )
+    add(
+        settings.models.l5,
+        "ollama",
+        catalog.for_model(settings.models.l5),
+        context_length=windows.get("L5"),
+    )
     embed = settings.cache.l1.embedding_model
     add(embed, "ollama", ("embed",))
 
@@ -165,12 +191,33 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         caps = list(known) if known else ["tools", "json"]
         if getattr(provider, "zdr", False):
             caps.append("zdr")
+        # Frontier cards: never overwrite with the local context_windows table.
         add(provider.model, provider.id, caps)
     pool = getattr(getattr(settings, "routing", None), "local_pool", None)
     for entry in getattr(pool, "backends", None) or []:
         if getattr(entry, "kind", "") == "openai" and getattr(entry, "model", ""):
-            add(entry.model, "openai", catalog.for_model(entry.model))
+            tiers = [str(t).upper() for t in (getattr(entry, "tiers", None) or [])]
+            lengths = [windows[t] for t in tiers if t in windows]
+            add(
+                entry.model,
+                "openai",
+                catalog.for_model(entry.model),
+                context_length=max(lengths) if lengths else None,
+            )
     return cards
+
+
+def _context_windows(settings: Any) -> dict[str, int]:
+    raw = getattr(getattr(settings, "routing", None), "context_windows", None) or {}
+    out: dict[str, int] = {}
+    for key, value in raw.items():
+        try:
+            length = int(value)
+        except (TypeError, ValueError):
+            continue
+        if length > 0:
+            out[str(key).upper()] = length
+    return out
 
 
 def catalog_from_settings(settings: Any) -> CapabilityCatalog:

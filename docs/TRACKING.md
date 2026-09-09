@@ -1963,6 +1963,16 @@ non-zero. Docs: [headers.md](developer/reference/headers.md). Covered by
 `tests/unit/test_stream_usage_cost.py`, `tests/integration/test_streaming_usage.py`,
 and `tests/integration/test_gateway_flow.py`.
 
+### Advertise context_windows on GET /v1/models ([#400](https://github.com/naveenreddyalka/daari/issues/400))
+
+<!-- tracking:#400 -->
+**Status:** Done (2026-09-09). Local tier cards from `openai_model_cards` /
+`GET /v1/models` include `context_length` from `routing.context_windows`
+when known (omit if missing). Frontier/L6 cards are not overwritten.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_models_catalog.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update

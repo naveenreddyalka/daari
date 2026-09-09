@@ -977,6 +977,9 @@ async def test_openai_models_list(app):
     assert payload["object"] == "list"
     assert any(item["id"] == "daari" for item in payload["data"])
     assert all("capabilities" in item for item in payload["data"])
+    l3_id = app.state.ctx.settings.models.l3
+    l3_card = next(item for item in payload["data"] if item["id"] == l3_id)
+    assert l3_card["context_length"] == app.state.ctx.settings.routing.context_windows["L3"]
     assert model_response.status_code == 200
     assert model_response.json()["id"] == "daari"
     assert "capabilities" in model_response.json()

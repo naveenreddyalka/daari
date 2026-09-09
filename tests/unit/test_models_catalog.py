@@ -79,3 +79,36 @@ def test_l6_cards_include_zdr_when_configured():
     l6 = next(card for card in cards if card["id"] == "openrouter/auto")
     assert "zdr" in l6["capabilities"]
     assert l6["owned_by"] == "openrouter"
+
+
+def test_local_cards_include_context_length_from_routing():
+    settings = Settings()
+    cards = openai_model_cards(settings)
+    by_id = {card["id"]: card for card in cards}
+    assert by_id[settings.models.l3]["context_length"] == 8192
+    assert by_id[settings.models.l4]["context_length"] == 32768
+    assert by_id[settings.models.l5]["context_length"] == 131072
+    assert by_id["daari"]["context_length"] == 131072
+
+
+def test_unknown_context_window_is_omitted():
+    settings = Settings.model_validate({"routing": {"context_windows": {"L4": 32768}}})
+    cards = openai_model_cards(settings)
+    by_id = {card["id"]: card for card in cards}
+    assert "context_length" not in by_id[settings.models.l3]
+    assert by_id[settings.models.l4]["context_length"] == 32768
+    assert "context_length" not in by_id[settings.models.l5]
+
+
+def test_frontier_cards_do_not_get_local_context_windows():
+    settings = Settings.model_validate(
+        {
+            "frontier": {
+                "enabled": True,
+                "providers": [{"id": "anthropic", "model": "claude-fable-5-1"}],
+            }
+        }
+    )
+    cards = openai_model_cards(settings)
+    card = next(item for item in cards if item["id"] == "claude-fable-5-1")
+    assert "context_length" not in card

@@ -59,6 +59,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
 | `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin is reused. 0 keeps the pin until process restart. Ignored unless session_affinity is true. |
 | `routing.classify_user_turn` | bool | `False` | When true, tool-result continuations reuse the prior user-turn category/complexity instead of re-profiling (#389). Phase/stall still see tool history. Default off. |
+| `routing.context_window_escalation` | bool | `True` | Pre-dispatch hop when prompt estimate exceeds a tier's known window × buffer (#385). |
+| `routing.context_window_escalation_buffer` | float | `0.95` | Escalate when estimated tokens exceed window × buffer. |
+| `routing.context_windows` | dict | `{L3:8192,L4:32768,L5:131072}` | Known context windows (tokens) per local tier. Also advertised as `context_length` on `GET /v1/models` local cards (#400). Missing = omit. |
 | `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |
 | `routing.stall_escalation.repeats` | int | `3` | Identical calls or consecutive error results required to stall. |
 | `routing.stall_escalation.window` | int | `6` | How many recent tool calls are inspected for identical repeats. |
