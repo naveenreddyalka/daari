@@ -585,6 +585,24 @@ class GuardrailSettings(BaseModel):
     block_message: str = "Request blocked by daari guardrail."
     input_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
     output_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
+    # buffered keeps today's collect-then-scan streams; incremental holds a
+    # trailing window so secrets spanning chunk boundaries never leak (#375).
+    stream_mode: Literal["buffered", "incremental"] = Field(
+        default="buffered",
+        description=(
+            "How output guardrails apply to SSE streams. buffered (default) "
+            "scans the full answer before the first byte; incremental scans "
+            "with a holdback window and keeps frontier relay eligible."
+        ),
+    )
+    stream_holdback_chars: int = Field(
+        default=256,
+        ge=0,
+        description=(
+            "Characters held back before emission in incremental stream_mode "
+            "so a secret spanning two deltas is caught. Ignored when buffered."
+        ),
+    )
 
 
 class BoundariesSettings(RuntimeSettings):

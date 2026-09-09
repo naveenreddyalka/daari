@@ -1823,6 +1823,18 @@ deliver and log `budget.alert_dedupe_degraded`. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#operator-alerts).
 Covered by `tests/unit/test_budget_alerts.py`.
 
+### Incremental streaming output guardrails ([#375](https://github.com/naveenreddyalka/daari/issues/375))
+
+<!-- tracking:#375 -->
+**Status:** Done (2026-09-09). `guardrails.stream_mode` (`buffered` default |
+`incremental`) with `stream_holdback_chars` (default 256). Incremental mode
+scans SSE deltas through a holdback window so secrets spanning chunks never
+leak, keeps L6 frontier relay eligible, records hits like the buffered path,
+and caches only scanned text. Tool-call streams stay exempt. Docs:
+[guardrails.md](developer/guides/features/guardrails.md). Covered by
+`tests/unit/test_stream_guardrails.py`, `tests/unit/test_stream_policy_parity.py`,
+and `tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update
