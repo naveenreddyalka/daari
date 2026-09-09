@@ -640,6 +640,19 @@ class Router:
                 policy.refusal_tier = "guardrail"
                 return policy
             policy.warning = inbound.warning or policy.warning
+            # Opt-in scan of role=tool / tool_result payloads (#387). Mutates
+            # request in place on redact so cache keys and execute see scrubbed text.
+            if getattr(self.guardrails, "scan_tool_results", False):
+                tool_scan = self.guardrails.check_tool_results(request)
+                if tool_scan.hits:
+                    self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
+                if tool_scan.blocked:
+                    policy.refusal = blocked_response(
+                        request, self.guardrails.block_message
+                    )
+                    policy.refusal_tier = "guardrail"
+                    return policy
+                policy.warning = tool_scan.warning or policy.warning
         return policy
 
     def _apply_output_policy(self, response: InternalResponse) -> InternalResponse:
@@ -1591,6 +1604,10 @@ class Router:
             add_step("served", tier=policy.refusal_tier, cache_hit=False, latency_ms=0)
             finish_trace(policy.refusal_tier)
             return
+        # Tool-result scan (#387) mutates `request` in place after the deep copy
+        # above; agent flows must see the redacted tool payloads downstream.
+        if agent_flow:
+            stream_request.messages = [m.model_copy(deep=True) for m in request.messages]
 
         # Deterministic tiers (Lt tools, L2 rules, live fetch, integrations)
         # answer without a model and were unreachable while streaming (#155).
@@ -2214,6 +2231,8 @@ class Router:
             for event in terminal_events(policy.refusal.content, policy.refusal_tier):
                 yield event
             return
+        if agent_flow:
+            stream_request.messages = [m.model_copy(deep=True) for m in request.messages]
 
         stream_started = time.perf_counter()
 
