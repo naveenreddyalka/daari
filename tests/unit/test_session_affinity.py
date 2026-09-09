@@ -172,3 +172,115 @@ async def test_expired_pin_reroutes(tmp_path):
     now[0] = 200.0
     follow = await router.route(_continuation("short ask"))
     assert follow.daari_meta.tier == "L3"
+
+
+HUGE_TOOL = "x" * 9000  # ~2250 tokens → would flip complexity to complex alone
+
+
+@pytest.mark.asyncio
+async def test_classify_user_turn_reuses_profile_on_tool_continuation(tmp_path, monkeypatch):
+    from daari.observability.trace import TraceStore
+    from daari.router.profile import build_prompt_profile
+
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    router = _router(tmp_path, affinity=False)
+    router.classify_user_turn = True
+    router.trace_store = TraceStore(tmp_path / "traces.sqlite3")
+
+    first = await router.route(_request("write a small helper", user="u1"))
+    first_profile = build_prompt_profile(
+        InternalRequest(messages=[Message(role="user", content="write a small helper")], model="daari")
+    )
+    assert first.daari_meta.task_type == first_profile.category
+    assert first.daari_meta.complexity == first_profile.complexity
+
+    follow = _continuation("write a small helper", user="u1")
+    # Inflate the tool payload so a fresh profile would become complex.
+    follow.messages[-1] = Message(
+        role="tool", content=HUGE_TOOL, tool_call_id="call_1"
+    )
+    fresh = build_prompt_profile(follow)
+    assert fresh.complexity == "complex"
+
+    second = await router.route(follow)
+    assert second.daari_meta.task_type == first_profile.category
+    assert second.daari_meta.complexity == first_profile.complexity
+    assert any(
+        event == "classify_user_turn" and payload.get("reused") is True
+        for event, payload in events
+    )
+    stored = router.trace_store.get(second.daari_meta.trace_id)
+    steps = [s["step"] for s in stored["steps"]]
+    assert "classify_user_turn" in steps
+
+
+@pytest.mark.asyncio
+async def test_classify_user_turn_new_user_message_reprofiles(tmp_path, monkeypatch):
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    router = _router(tmp_path, affinity=False)
+    router.classify_user_turn = True
+    await router.route(_request("write a small helper", user="u1"))
+    events.clear()
+    third = await router.route(_request("please explain this " + "word " * 300, user="u1"))
+    assert third.daari_meta.complexity == "complex"
+    assert not any(event == "classify_user_turn" for event, _ in events)
+
+
+@pytest.mark.asyncio
+async def test_classify_user_turn_phase_routing_still_sees_tools(tmp_path, monkeypatch):
+    """Phase routing must still inspect tool history when classify_user_turn is on."""
+    from daari.router.phase import default_phase_map
+
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    router = _router(tmp_path, affinity=False)
+    router.classify_user_turn = True
+    router.phase_routing = True
+    router.phase_map = default_phase_map()
+    await router.route(_request(LONG_PROMPT, user="u1"))  # L4 from length
+    # Explore-phase tool names should step L4 → L3.
+    follow = _request(
+        LONG_PROMPT,
+        user="u1",
+        extra=[
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "c1",
+                        "type": "function",
+                        "function": {"name": "read_file", "arguments": "{}"},
+                    }
+                ],
+            ),
+            Message(role="tool", content="ok", tool_call_id="c1"),
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "c2",
+                        "type": "function",
+                        "function": {"name": "grep", "arguments": "{}"},
+                    }
+                ],
+            ),
+            Message(role="tool", content="hit", tool_call_id="c2"),
+        ],
+    )
+    response = await router.route(follow)
+    assert response.daari_meta.tier == "L3"
+    assert any(event == "phase_route" for event, _ in events)
+    assert any(event == "classify_user_turn" and payload.get("reused") for event, payload in events)
