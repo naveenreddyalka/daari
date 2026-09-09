@@ -54,6 +54,30 @@ def expiry_from(raw: str | None, *, now: datetime | None = None) -> str | None:
     return parsed.astimezone(timezone.utc).isoformat()
 
 
+def grace_from(raw: str | None, *, now: datetime | None = None) -> str:
+    """Grace window for key rotation (#377). Default 24h; `0` / `0h` = immediate."""
+    current = now if now is not None else datetime.now(timezone.utc)
+    value = (raw if raw is not None else "24h").strip().lower() or "24h"
+    if value in {"0", "0m", "0h", "0d"}:
+        return current.isoformat()
+    match = _RELATIVE_EXPIRY.match(value)
+    if match:
+        amount, unit = int(match.group(1)), match.group(2)
+        if amount <= 0:
+            return current.isoformat()
+        delta = {
+            "m": timedelta(minutes=amount),
+            "h": timedelta(hours=amount),
+            "d": timedelta(days=amount),
+        }
+        return (current + delta[unit]).isoformat()
+    # Fall back to expiry_from for ISO deadlines; never-tokens become immediate.
+    parsed = expiry_from(value, now=current)
+    if parsed is None:
+        return current.isoformat()
+    return parsed
+
+
 def _is_past(iso: str | None, now: datetime | None = None) -> bool:
     if not iso:
         return False
@@ -143,6 +167,8 @@ class VirtualKey:
     metadata: dict[str, Any] = field(default_factory=dict)
     # ISO-8601 UTC; None = never expires (#331).
     expires_at: str | None = None
+    # Pending previous-secret grace deadline after rotate (#377).
+    previous_expires_at: str | None = None
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
@@ -235,6 +261,12 @@ class VirtualKeyStore:
         if "expires_at" not in cols:
             # NULL for every pre-#331 key: existing keys never expire.
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN expires_at TEXT")
+        if "previous_key_hash" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN previous_key_hash TEXT")
+        if "previous_prefix" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN previous_prefix TEXT")
+        if "previous_expires_at" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN previous_expires_at TEXT")
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -449,6 +481,84 @@ class VirtualKeyStore:
             )
             return cur.rowcount > 0
 
+    def rotate(
+        self,
+        key_id: str,
+        *,
+        grace: str | None = "24h",
+        now: datetime | None = None,
+    ) -> CreatedKey:
+        """Mint a new secret for the same key identity with an overlap window (#377)."""
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        current = now if now is not None else datetime.now(timezone.utc)
+        grace_until = grace_from(grace, now=current)
+        plaintext = f"dk_{secrets.token_urlsafe(32)}"
+        new_hash = self._hash(plaintext)
+        new_prefix = plaintext[:10]
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT key_hash, prefix, name, daily_budget_usd, monthly_budget_usd,"
+                " rpm, tpm, tier_cap, client_id, team_id, budget_windows_json,"
+                " metadata_json, expires_at"
+                " FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
+                (key_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(key_id)
+            (
+                old_hash,
+                old_prefix,
+                name,
+                daily,
+                monthly,
+                rpm,
+                tpm,
+                tier_cap,
+                client_id,
+                team_id,
+                windows_json,
+                metadata_json,
+                expires_at,
+            ) = row
+            conn.execute(
+                "UPDATE virtual_keys SET key_hash = ?, prefix = ?,"
+                " previous_key_hash = ?, previous_prefix = ?, previous_expires_at = ?"
+                " WHERE key_id = ?",
+                (new_hash, new_prefix, old_hash, old_prefix, grace_until, key_id),
+            )
+            team_name = None
+            if team_id:
+                trow = conn.execute(
+                    "SELECT name FROM teams WHERE team_id = ?", (team_id,)
+                ).fetchone()
+                team_name = trow[0] if trow else None
+        windows = self._parse_windows(windows_json)
+        if not windows:
+            from daari.auth.budgets import windows_from_flat
+
+            windows = windows_from_flat(daily_usd=float(daily or 0), monthly_usd=float(monthly or 0))
+        return CreatedKey(
+            key=VirtualKey(
+                key_id=key_id,
+                name=name,
+                prefix=new_prefix,
+                daily_budget_usd=float(daily or 0),
+                monthly_budget_usd=float(monthly or 0),
+                rpm=int(rpm or 0),
+                tpm=int(tpm or 0),
+                tier_cap=tier_cap,
+                client_id=client_id,
+                team_id=team_id,
+                team_name=team_name,
+                budget_windows=windows,
+                metadata=_parse_metadata(metadata_json),
+                expires_at=expires_at,
+                previous_expires_at=grace_until,
+            ),
+            plaintext=plaintext,
+        )
+
     def _key_from_row(
         self,
         row: tuple[Any, ...],
@@ -456,6 +566,7 @@ class VirtualKeyStore:
         team_name: str | None = None,
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
+        previous_expires_at: str | None = None,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -481,6 +592,7 @@ class VirtualKeyStore:
             budget_windows=windows,
             metadata=parsed,
             expires_at=expires_at,
+            previous_expires_at=previous_expires_at,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -490,7 +602,8 @@ class VirtualKeyStore:
             rows = conn.execute(
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
-                " v.budget_windows_json, v.metadata_json, t.name, v.expires_at"
+                " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
+                " v.previous_expires_at"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -501,11 +614,12 @@ class VirtualKeyStore:
                 team_name=r[13],
                 metadata=_parse_metadata(r[12]),
                 expires_at=r[14],
+                previous_expires_at=r[15],
             )
             for r in rows
         ]
 
-    def resolve(self, plaintext: str) -> VirtualKey | None:
+    def resolve(self, plaintext: str, *, now: datetime | None = None) -> VirtualKey | None:
         if not self.enabled or not plaintext:
             return None
         digest = self._hash(plaintext)
@@ -513,19 +627,28 @@ class VirtualKeyStore:
             row = conn.execute(
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
-                " v.budget_windows_json, v.metadata_json, t.name, v.expires_at"
+                " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
+                " v.previous_expires_at, v.key_hash, v.previous_key_hash"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
-                " WHERE v.key_hash = ?",
-                (digest,),
+                " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
+                (digest, digest),
             ).fetchone()
         if row is None or row[9] is not None:
             return None
+        current_hash, previous_hash = row[16], row[17]
+        expires_at = row[14]
+        previous_expires_at = row[15]
+        # Old secret after grace: surface as expired via expires_at so middleware
+        # reuses the #331 key_expired path (and one budget identity).
+        if previous_hash and digest == previous_hash:
+            expires_at = previous_expires_at
         return self._key_from_row(
             row[:12],
             team_name=row[13],
             metadata=_parse_metadata(row[12]),
-            expires_at=row[14],
+            expires_at=expires_at,
+            previous_expires_at=previous_expires_at if digest == current_hash else None,
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:
@@ -561,6 +684,7 @@ class VirtualKeyStore:
             "team": key.team_name,
             "budget_windows": [w.as_dict() for w in key.budget_windows],
             "expires_at": key.expires_at,
+            "previous_expires_at": key.previous_expires_at,
             "status": key.status(),
         }
 
