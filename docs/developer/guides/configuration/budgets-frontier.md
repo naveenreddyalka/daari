@@ -38,11 +38,27 @@ The org `frontier.*` caps above remain an outer ceiling. A key over budget gets
     "window": "daily",
     "budget_usd": 2.0,
     "spend_usd": 2.431,
+
     "reset_at": "2026-08-28T00:00:00+00:00",
     "scope": "key"
   }
 }
 ```
+
+### Per-end-user caps on a shared key
+
+When many humans share one virtual key (a team agent), pass the OpenAI `user`
+field so spend is attributed per person. Optional `--user-daily-cap` denies only
+the user who crossed it (`scope: "user"`); others on the same key keep working.
+Requests without `user` are attributed to `unknown` and are never user-capped.
+
+```bash
+daari keys create shared-agent --user-daily-cap 2
+daari usage --by-user
+# or: daari report --by-user
+```
+
+`GET /v1/daari/report` includes a `users` array (`client_id`, `user_id`, counts).
 
 ### Window rollover (opt-in)
 

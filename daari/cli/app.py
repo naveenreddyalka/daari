@@ -106,6 +106,11 @@ def keys_create(
         "--expires",
         help="Expiry: 30d, 12h, 45m, ISO-8601, or never (default).",
     ),
+    user_daily_cap: float = typer.Option(
+        0.0,
+        "--user-daily-cap",
+        help="Per end-user daily L6 USD cap on this shared key (0=unlimited)",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import parse_window_flag
@@ -136,6 +141,7 @@ def keys_create(
         budget_windows=extra or None,
         metadata=metadata,
         expires_at=expires_at,
+        user_daily_usd_cap=user_daily_cap,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -833,6 +839,7 @@ def prune(
         typer.echo(f"  {row.store:<8} {status}{extra}")
 
 
+@app.command("usage")
 @app.command()
 def report(
     days: int = typer.Option(7, help="Number of days to include"),
@@ -842,6 +849,9 @@ def report(
     out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
     by_client: bool = typer.Option(False, "--by-client", help="Break usage down per client id"),
     by_team: bool = typer.Option(False, "--by-team", help="Roll usage up by virtual-key team"),
+    by_user: bool = typer.Option(
+        False, "--by-user", help="Break usage down per OpenAI user on each client id"
+    ),
 ) -> None:
     """Show persisted usage and estimated frontier savings."""
     settings = get_settings()
@@ -922,6 +932,23 @@ def report(
             for entry in teams:
                 typer.echo(
                     f"{entry['team']:<14} {entry['requests']:>9} "
+                    f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
+                    f"{entry['estimated_saved_usd']:>9.4f}"
+                )
+
+    if by_user:
+        users = payload.get("users") or []
+        typer.echo("")
+        if not users:
+            typer.echo("No per-user usage recorded yet.")
+        else:
+            typer.echo(
+                f"{'client':<14} {'user':<14} {'requests':>9} {'cache hits':>11}"
+                f" {'frontier':>9} {'saved $':>9}"
+            )
+            for entry in users:
+                typer.echo(
+                    f"{entry['client_id']:<14} {entry['user_id']:<14} {entry['requests']:>9} "
                     f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
                     f"{entry['estimated_saved_usd']:>9.4f}"
                 )

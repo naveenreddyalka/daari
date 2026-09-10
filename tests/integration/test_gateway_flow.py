@@ -1812,6 +1812,99 @@ def _frontier_spend(ledger, client_id: str, usd: float) -> None:
     ledger.record(tier="L6", client_id=client_id, model="", input_tokens=int(usd / 0.002 * 1000))
 
 
+def _frontier_spend_user(ledger, client_id: str, user_id: str, usd: float) -> None:
+    ledger.record(
+        tier="L6",
+        client_id=client_id,
+        user_id=user_id,
+        model="",
+        input_tokens=int(usd / 0.002 * 1000),
+    )
+
+
+@pytest.mark.asyncio
+async def test_user_attribution_and_per_user_cap(settings, tmp_path):
+    """Issue #410: OpenAI `user` hits the ledger; per-key user caps are isolated."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create(
+        "shared-agent",
+        client_id="key-a",
+        user_daily_usd_cap=1.0,
+    )
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    application.state.ctx.router.usage_ledger = ledger
+
+    async def local_answer(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    application.state.ctx.router.ollama.execute = local_answer
+    headers = {"Authorization": f"Bearer {created.plaintext}"}
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        attributed = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "alice",
+                "messages": [{"role": "user", "content": "hi alice"}],
+            },
+            headers=headers,
+        )
+        no_user = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "anon"}]},
+            headers=headers,
+        )
+        _frontier_spend_user(ledger, "key-a", "alice", 1.0)
+        alice_blocked = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "alice",
+                "messages": [{"role": "user", "content": "again"}],
+            },
+            headers=headers,
+        )
+        bob_ok = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "bob",
+                "messages": [{"role": "user", "content": "hi bob"}],
+            },
+            headers=headers,
+        )
+        report = await client.get("/v1/daari/report?days=1", headers={"Authorization": "Bearer master"})
+
+    assert attributed.status_code == 200
+    assert no_user.status_code == 200
+    assert alice_blocked.status_code == 402
+    assert alice_blocked.json()["error"]["type"] == "budget_exceeded"
+    assert alice_blocked.json()["error"]["scope"] == "user"
+    assert alice_blocked.json()["error"]["user_id"] == "alice"
+    assert bob_ok.status_code == 200
+
+    users = {((u["client_id"], u["user_id"])): u for u in report.json().get("users", [])}
+    assert users[("key-a", "alice")]["requests"] >= 1
+    assert users[("key-a", "unknown")]["requests"] >= 1
+    assert users[("key-a", "bob")]["requests"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_budget_headers_count_down_and_402_carries_contract(settings, tmp_path):
     app, ledger, headers = _budgeted_app(settings, tmp_path, daily_usd=1.0)

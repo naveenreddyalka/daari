@@ -45,6 +45,20 @@ CREATE TABLE IF NOT EXISTS client_usage (
     output_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, client_id, tier, model)
 );
+CREATE TABLE IF NOT EXISTS user_usage (
+    day TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    tier TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    requests INTEGER NOT NULL DEFAULT 0,
+    cache_hits INTEGER NOT NULL DEFAULT 0,
+    prompt_chars INTEGER NOT NULL DEFAULT 0,
+    completion_chars INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, client_id, user_id, tier, model)
+);
 CREATE TABLE IF NOT EXISTS budget_window_state (
     scope TEXT NOT NULL,
     scope_id TEXT NOT NULL,
@@ -60,6 +74,7 @@ CREATE TABLE IF NOT EXISTS budget_window_state (
 # and the upsert needs (day, tier, model) as its conflict target, so migration
 # rebuilds the table and copies the old rows across.
 _MIGRATED_TABLES = ("usage", "client_usage")
+_SPEND_TABLES = ("usage", "client_usage", "user_usage")
 
 
 def _today() -> str:
@@ -119,6 +134,24 @@ class UsageLedger:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_usage (
+                day TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                tier TEXT NOT NULL,
+                model TEXT NOT NULL DEFAULT '',
+                requests INTEGER NOT NULL DEFAULT 0,
+                cache_hits INTEGER NOT NULL DEFAULT 0,
+                prompt_chars INTEGER NOT NULL DEFAULT 0,
+                completion_chars INTEGER NOT NULL DEFAULT 0,
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, client_id, user_id, tier, model)
+            )
+            """
+        )
 
     def record(
         self,
@@ -129,6 +162,7 @@ class UsageLedger:
         completion_chars: int = 0,
         day: str | None = None,
         client_id: str | None = None,
+        user_id: str | None = None,
         model: str | None = None,
         provider: str | None = None,
         input_tokens: int | None = None,
@@ -195,6 +229,32 @@ class UsageLedger:
                         tokens_out,
                     ),
                 )
+                conn.execute(
+                    """
+                    INSERT INTO user_usage (day, client_id, user_id, tier, model, requests, cache_hits,
+                                            prompt_chars, completion_chars, input_tokens, output_tokens)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                    ON CONFLICT(day, client_id, user_id, tier, model) DO UPDATE SET
+                        requests = requests + 1,
+                        cache_hits = cache_hits + excluded.cache_hits,
+                        prompt_chars = prompt_chars + excluded.prompt_chars,
+                        completion_chars = completion_chars + excluded.completion_chars,
+                        input_tokens = input_tokens + excluded.input_tokens,
+                        output_tokens = output_tokens + excluded.output_tokens
+                    """,
+                    (
+                        day or _today(),
+                        client_id or "unknown",
+                        user_id or "unknown",
+                        tier,
+                        model or "",
+                        1 if cache_hit else 0,
+                        max(0, prompt_chars),
+                        max(0, completion_chars),
+                        tokens_in,
+                        tokens_out,
+                    ),
+                )
         except Exception:
             pass
 
@@ -242,6 +302,52 @@ class UsageLedger:
             entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
         return sorted(clients.values(), key=lambda entry: -entry["requests"])
 
+    def by_user(
+        self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002
+    ) -> list[dict[str, Any]]:
+        """Per end-user usage on each virtual-key client id (issue #410)."""
+        if not self.enabled:
+            return []
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT client_id, user_id, tier, SUM(requests), SUM(cache_hits),"
+                    " SUM(prompt_chars), SUM(completion_chars)"
+                    " FROM user_usage WHERE day >= ? GROUP BY client_id, user_id, tier",
+                    (cutoff,),
+                ).fetchall()
+        except Exception:
+            return []
+        users: dict[tuple[str, str], dict[str, Any]] = {}
+        for client_id, user_id, tier, requests, cache_hits, prompt_chars, completion_chars in rows:
+            key = (client_id, user_id)
+            entry = users.setdefault(
+                key,
+                {
+                    "client_id": client_id,
+                    "user_id": user_id,
+                    "requests": 0,
+                    "cache_hits": 0,
+                    "local_requests": 0,
+                    "frontier_requests": 0,
+                    "estimated_saved_usd": 0.0,
+                },
+            )
+            entry["requests"] += requests
+            entry["cache_hits"] += cache_hits
+            if tier == FRONTIER_TIER:
+                entry["frontier_requests"] += requests
+            else:
+                entry["local_requests"] += requests
+                tokens = (prompt_chars + completion_chars) / 4
+                entry["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
+        for entry in users.values():
+            entry["estimated_saved_usd"] = round(entry["estimated_saved_usd"], 4)
+        return sorted(users.values(), key=lambda entry: -entry["requests"])
+
     def _spend_for(
         self,
         where: str,
@@ -256,7 +362,7 @@ class UsageLedger:
         `table` selects the global ledger or the per-client one; both carry the
         model and token columns, so pricing works identically for either.
         """
-        if table not in _MIGRATED_TABLES:
+        if table not in _SPEND_TABLES:
             raise ValueError(f"unknown usage table: {table}")
         try:
             with self._lock, self._connect() as conn:
@@ -353,6 +459,42 @@ class UsageLedger:
             table="client_usage",
         )
 
+    def frontier_spend_usd_for_user(
+        self,
+        client_id: str,
+        user_id: str,
+        *,
+        window: str = "day",
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+        month: str | None = None,
+    ) -> float:
+        """USD one end-user spent on L6 under a virtual-key client id (#410)."""
+        if not self.enabled or not client_id or not user_id:
+            return 0.0
+        if window == "month":
+            where, params = "client_id = ? AND user_id = ? AND day LIKE ?", (
+                client_id,
+                user_id,
+                (month or _today()[:7]) + "-%",
+            )
+        elif window == "day":
+            where, params = "client_id = ? AND user_id = ? AND day = ?", (
+                client_id,
+                user_id,
+                day or _today(),
+            )
+        else:
+            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+        return self._spend_for(
+            where,
+            params,
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+            table="user_usage",
+        )
+
     def frontier_spend_usd_for_client_days(
         self,
         client_id: str,
@@ -430,10 +572,14 @@ class UsageLedger:
                 clients = conn.execute(
                     "SELECT COUNT(*) FROM client_usage WHERE day < ?", (cutoff_day,)
                 ).fetchone()[0]
-                if not dry_run and (usage or clients):
+                users = conn.execute(
+                    "SELECT COUNT(*) FROM user_usage WHERE day < ?", (cutoff_day,)
+                ).fetchone()[0]
+                if not dry_run and (usage or clients or users):
                     conn.execute("DELETE FROM usage WHERE day < ?", (cutoff_day,))
                     conn.execute("DELETE FROM client_usage WHERE day < ?", (cutoff_day,))
-                return int(usage) + int(clients)
+                    conn.execute("DELETE FROM user_usage WHERE day < ?", (cutoff_day,))
+                return int(usage) + int(clients) + int(users)
         except Exception:
             return 0
 

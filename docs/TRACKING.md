@@ -2003,6 +2003,19 @@ at create time (#408). Also retries `gh issue edit --add-label` after create
 (failure logged, not fatal). Cleanup: merged `origin/main` into PR #404 to
 unpark #398. Covered by `tests/unit/test_autodev_pr_watch.py`.
 
+### End-user spend attribution and per-user caps ([#410](https://github.com/naveenreddyalka/daari/issues/410))
+
+<!-- tracking:#410 -->
+**Status:** Done (2026-09-10). Usage ledger `user_usage` table records the
+OpenAI `user` (or `unknown`) per virtual-key `client_id`. `daari usage
+--by-user` / `GET /v1/daari/report` `users` array group spend. Optional
+`user_daily_usd_cap` on a key returns the same 402 shape with `scope: user`
+when that named user exceeds it; requests without `user` are never capped.
+Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md),
+[savings-report.md](developer/guides/observability/savings-report.md).
+Covered by `tests/unit/test_user_usage.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update
