@@ -48,6 +48,23 @@ def model_supports_thinking(model: str) -> bool:
     return any(marker in lowered for marker in _THINKING_MODEL_MARKERS)
 
 
+def _json_schema_from_response_format(response_format: Any) -> dict[str, Any] | None:
+    """Return the JSON Schema object from an OpenAI `response_format`, or None."""
+    if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":
+        return None
+    wrapper = response_format.get("json_schema")
+    if isinstance(wrapper, dict) and isinstance(wrapper.get("schema"), dict):
+        return wrapper["schema"]
+    if isinstance(wrapper, dict) and wrapper.get("name") and "schema" not in wrapper:
+        # `{name, schema}` is the usual shape; a bare schema object is also seen.
+        return None
+    if isinstance(wrapper, dict) and any(
+        key in wrapper for key in ("type", "properties", "$schema")
+    ):
+        return wrapper
+    return None
+
+
 def normalize_reasoning_effort(raw: Any) -> str | None:
     if not isinstance(raw, str):
         return None
@@ -68,6 +85,8 @@ class SamplingParams(BaseModel):
     frequency_penalty: float | None = None
     presence_penalty: float | None = None
     response_format_json: bool = False
+    # OpenAI structured outputs (`type: json_schema`). None when absent / invalid.
+    json_schema: dict[str, Any] | None = None
     tool_choice: str | None = None
     n: int | None = None
     logprobs: bool | None = None
@@ -98,6 +117,17 @@ class SamplingParams(BaseModel):
             isinstance(response_format, dict)
             and response_format.get("type") == "json_object"
         )
+        json_schema = _json_schema_from_response_format(response_format)
+        if (
+            isinstance(response_format, dict)
+            and response_format.get("type") == "json_schema"
+        ):
+            if json_schema is None:
+                from daari.gateway.request_log import log_gateway_event
+
+                log_gateway_event("json_schema_ignored", {"reason": "malformed"})
+            else:
+                wants_json = True
 
         tool_choice = body.get("tool_choice")
         if isinstance(tool_choice, dict):
@@ -114,6 +144,7 @@ class SamplingParams(BaseModel):
             frequency_penalty=body.get("frequency_penalty"),
             presence_penalty=body.get("presence_penalty"),
             response_format_json=wants_json,
+            json_schema=json_schema,
             tool_choice=tool_choice,
             n=body.get("n"),
             logprobs=body.get("logprobs"),
@@ -194,8 +225,14 @@ class SamplingParams(BaseModel):
             )
         return options
 
-    def ollama_format(self) -> str | None:
-        """Ollama takes JSON mode as a top-level `format`, not an option."""
+    def ollama_format(self) -> str | dict[str, Any] | None:
+        """Ollama takes JSON mode as a top-level `format`, not an option.
+
+        A structured-output schema is passed through as the format object
+        (#398). `json_object` stays the string `"json"`.
+        """
+        if self.json_schema:
+            return self.json_schema
         return "json" if self.response_format_json else None
 
     def ollama_think(self) -> str | None:
@@ -227,7 +264,12 @@ class SamplingParams(BaseModel):
                 payload[name] = value
         if self.stop:
             payload["stop"] = list(self.stop)
-        if self.response_format_json:
+        if self.json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "daari", "schema": self.json_schema},
+            }
+        elif self.response_format_json:
             payload["response_format"] = {"type": "json_object"}
         return payload
 
@@ -260,7 +302,9 @@ class SamplingParams(BaseModel):
                 data[name] = value
         if self.stop:
             data["stop"] = list(self.stop)
-        if self.response_format_json:
+        if self.json_schema:
+            data["response_format"] = {"type": "json_schema", "schema": self.json_schema}
+        elif self.response_format_json:
             data["response_format"] = "json_object"
         if self.tool_choice in {"none"}:
             data["tool_choice"] = self.tool_choice

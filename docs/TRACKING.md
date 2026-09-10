@@ -1841,6 +1841,15 @@ Event `modality_escalation`. Docs:
 [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
 `tests/unit/test_multimodal.py` and `tests/integration/test_anthropic_tools.py`.
 
+### Honor response_format json_schema ([#398](https://github.com/naveenreddyalka/daari/issues/398))
+
+<!-- tracking:#398 -->
+**Status:** Done (2026-09-09). `type: json_schema` is stored on `SamplingParams`
+and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
+`response_format`. Requires the `json` capability like `json_object`.
+Malformed schemas log `json_schema_ignored` and are dropped. Covered by
+`tests/unit/test_sampling_params.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))

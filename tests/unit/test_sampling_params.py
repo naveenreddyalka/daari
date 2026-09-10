@@ -172,6 +172,34 @@ class TestParsingFromClientBody:
         params = SamplingParams.from_openai_body({"response_format": {"type": "text"}})
         assert params.response_format_json is False
 
+    def test_json_schema_is_kept_and_requires_json(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+        params = SamplingParams.from_openai_body(
+            {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "result", "schema": schema},
+                }
+            }
+        )
+        assert params.response_format_json is True
+        assert params.json_schema == schema
+        assert params.ollama_format() == schema
+        assert params.openai_payload()["response_format"]["type"] == "json_schema"
+
+    def test_malformed_json_schema_is_ignored(self, monkeypatch):
+        events: list[str] = []
+        monkeypatch.setattr(
+            "daari.gateway.request_log.log_gateway_event",
+            lambda event, payload: events.append(event),
+        )
+        params = SamplingParams.from_openai_body(
+            {"response_format": {"type": "json_schema", "json_schema": "nope"}}
+        )
+        assert params.json_schema is None
+        assert params.response_format_json is False
+        assert "json_schema_ignored" in events
+
     def test_string_stop_is_normalized_to_a_list(self):
         assert SamplingParams.from_openai_body({"stop": "END"}).stop == ["END"]
 
