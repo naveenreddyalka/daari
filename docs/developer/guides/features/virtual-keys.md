@@ -7,8 +7,10 @@
 ```bash
 daari keys team-create eng --daily-budget 5
 daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --team eng --window 7d=10
+daari keys create shared-agent --user-daily-cap 2
 daari keys list
 daari report --by-team
+daari usage --by-user
 ```
 
 Enable in config:

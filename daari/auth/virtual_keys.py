@@ -114,7 +114,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     client_id TEXT,
     team_id TEXT,
     budget_windows_json TEXT NOT NULL DEFAULT '[]',
-    metadata_json TEXT NOT NULL DEFAULT '{}'
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    user_daily_usd_cap REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS key_hits (
     key_id TEXT NOT NULL,
@@ -169,6 +170,8 @@ class VirtualKey:
     expires_at: str | None = None
     # Pending previous-secret grace deadline after rotate (#377).
     previous_expires_at: str | None = None
+    # Per end-user daily L6 cap on this shared key (0 = unlimited) (#410).
+    user_daily_usd_cap: float = 0.0
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
@@ -267,6 +270,10 @@ class VirtualKeyStore:
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN previous_prefix TEXT")
         if "previous_expires_at" not in cols:
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN previous_expires_at TEXT")
+        if "user_daily_usd_cap" not in cols:
+            conn.execute(
+                "ALTER TABLE virtual_keys ADD COLUMN user_daily_usd_cap REAL NOT NULL DEFAULT 0"
+            )
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -366,6 +373,7 @@ class VirtualKeyStore:
         budget_windows: list[BudgetWindow] | None = None,
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
+        user_daily_usd_cap: float = 0.0,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -388,8 +396,8 @@ class VirtualKeyStore:
             conn.execute(
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
-                " team_id, budget_windows_json, metadata_json, expires_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -406,6 +414,7 @@ class VirtualKeyStore:
                     self._windows_json(windows),
                     json.dumps(metadata or {}),
                     expires_at,
+                    float(user_daily_usd_cap),
                 ),
             )
         return CreatedKey(
@@ -424,6 +433,7 @@ class VirtualKeyStore:
                 budget_windows=windows,
                 metadata=dict(metadata or {}),
                 expires_at=expires_at,
+                user_daily_usd_cap=float(user_daily_usd_cap),
             ),
             plaintext=plaintext,
         )
@@ -440,6 +450,7 @@ class VirtualKeyStore:
         team: str | None = None,
         budget_windows: list[BudgetWindow] | None = None,
         metadata: dict[str, Any] | None = None,
+        user_daily_usd_cap: float | None = None,
     ) -> bool:
         if not self.enabled:
             return False
@@ -453,22 +464,42 @@ class VirtualKeyStore:
                 windows = windows + (item,)
                 seen.add(item.duration)
         with self._lock, self._connect() as conn:
-            cur = conn.execute(
-                "UPDATE virtual_keys SET daily_budget_usd = ?, monthly_budget_usd = ?,"
-                " rpm = ?, tpm = ?, tier_cap = ?, team_id = ?, budget_windows_json = ?,"
-                " metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
-                (
-                    float(daily_budget_usd),
-                    float(monthly_budget_usd),
-                    int(rpm),
-                    int(tpm),
-                    tier_cap,
-                    team_row.team_id if team_row else None,
-                    self._windows_json(windows),
-                    json.dumps(metadata or {}),
-                    key_id,
-                ),
-            )
+            if user_daily_usd_cap is None:
+                cur = conn.execute(
+                    "UPDATE virtual_keys SET daily_budget_usd = ?, monthly_budget_usd = ?,"
+                    " rpm = ?, tpm = ?, tier_cap = ?, team_id = ?, budget_windows_json = ?,"
+                    " metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
+                    (
+                        float(daily_budget_usd),
+                        float(monthly_budget_usd),
+                        int(rpm),
+                        int(tpm),
+                        tier_cap,
+                        team_row.team_id if team_row else None,
+                        self._windows_json(windows),
+                        json.dumps(metadata or {}),
+                        key_id,
+                    ),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE virtual_keys SET daily_budget_usd = ?, monthly_budget_usd = ?,"
+                    " rpm = ?, tpm = ?, tier_cap = ?, team_id = ?, budget_windows_json = ?,"
+                    " metadata_json = ?, user_daily_usd_cap = ?"
+                    " WHERE key_id = ? AND revoked_at IS NULL",
+                    (
+                        float(daily_budget_usd),
+                        float(monthly_budget_usd),
+                        int(rpm),
+                        int(tpm),
+                        tier_cap,
+                        team_row.team_id if team_row else None,
+                        self._windows_json(windows),
+                        json.dumps(metadata or {}),
+                        float(user_daily_usd_cap),
+                        key_id,
+                    ),
+                )
             return cur.rowcount > 0
 
     def revoke(self, key_id: str) -> bool:
@@ -500,7 +531,7 @@ class VirtualKeyStore:
             row = conn.execute(
                 "SELECT key_hash, prefix, name, daily_budget_usd, monthly_budget_usd,"
                 " rpm, tpm, tier_cap, client_id, team_id, budget_windows_json,"
-                " metadata_json, expires_at"
+                " metadata_json, expires_at, user_daily_usd_cap"
                 " FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
                 (key_id,),
             ).fetchone()
@@ -520,6 +551,7 @@ class VirtualKeyStore:
                 windows_json,
                 metadata_json,
                 expires_at,
+                user_daily_usd_cap,
             ) = row
             conn.execute(
                 "UPDATE virtual_keys SET key_hash = ?, prefix = ?,"
@@ -555,6 +587,7 @@ class VirtualKeyStore:
                 metadata=_parse_metadata(metadata_json),
                 expires_at=expires_at,
                 previous_expires_at=grace_until,
+                user_daily_usd_cap=float(user_daily_usd_cap or 0),
             ),
             plaintext=plaintext,
         )
@@ -567,6 +600,7 @@ class VirtualKeyStore:
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
         previous_expires_at: str | None = None,
+        user_daily_usd_cap: float = 0.0,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -593,6 +627,7 @@ class VirtualKeyStore:
             metadata=parsed,
             expires_at=expires_at,
             previous_expires_at=previous_expires_at,
+            user_daily_usd_cap=float(user_daily_usd_cap or 0),
         )
 
     def list(self) -> list[VirtualKey]:
@@ -603,7 +638,7 @@ class VirtualKeyStore:
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
-                " v.previous_expires_at"
+                " v.previous_expires_at, v.user_daily_usd_cap"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -615,6 +650,7 @@ class VirtualKeyStore:
                 metadata=_parse_metadata(r[12]),
                 expires_at=r[14],
                 previous_expires_at=r[15],
+                user_daily_usd_cap=float(r[16] or 0),
             )
             for r in rows
         ]
@@ -628,7 +664,7 @@ class VirtualKeyStore:
                 "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
-                " v.previous_expires_at, v.key_hash, v.previous_key_hash"
+                " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
@@ -636,7 +672,7 @@ class VirtualKeyStore:
             ).fetchone()
         if row is None or row[9] is not None:
             return None
-        current_hash, previous_hash = row[16], row[17]
+        current_hash, previous_hash = row[17], row[18]
         expires_at = row[14]
         previous_expires_at = row[15]
         # Old secret after grace: surface as expired via expires_at so middleware
@@ -649,6 +685,7 @@ class VirtualKeyStore:
             metadata=_parse_metadata(row[12]),
             expires_at=expires_at,
             previous_expires_at=previous_expires_at if digest == current_hash else None,
+            user_daily_usd_cap=float(row[16] or 0),
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:
@@ -685,6 +722,7 @@ class VirtualKeyStore:
             "budget_windows": [w.as_dict() for w in key.budget_windows],
             "expires_at": key.expires_at,
             "previous_expires_at": key.previous_expires_at,
+            "user_daily_usd_cap": key.user_daily_usd_cap,
             "status": key.status(),
         }
 

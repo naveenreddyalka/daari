@@ -164,8 +164,8 @@ class TestPrune:
         ledger.record(tier="L3", day="2026-07-01", prompt_chars=4)
         results = prune_all(settings, now=NOW, dry_run=True)
         assert next(r for r in results if r.store == "traces").deleted == 1
-        # usage + client_usage rows for the same request.
-        assert next(r for r in results if r.store == "ledger").deleted == 2
+        # usage + client_usage + user_usage rows for the same request (#410).
+        assert next(r for r in results if r.store == "ledger").deleted == 3
         assert traces.get("old") is not None
         assert ledger.report(days=365)["totals"]["requests"] == 1
 

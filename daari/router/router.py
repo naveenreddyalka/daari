@@ -817,6 +817,7 @@ class Router:
             prompt_chars=prompt_chars,
             completion_chars=len(response.content or ""),
             client_id=request.meta.client_id,
+            user_id=request.meta.user,
             model=response.daari_meta.model or response.model,
             provider=response.daari_meta.provider_id,
             input_tokens=input_tokens,
@@ -1679,6 +1680,7 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(deterministic.content),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
                 finish_trace(tier)
@@ -1700,6 +1702,7 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(cached.content),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 log_gateway_event("stream_cache_hit", {"tier": "L0", "model": client_model})
                 outcome.note("L0", cache_hit=True)
@@ -1751,6 +1754,7 @@ class Router:
                             prompt_chars=prompt_chars,
                             completion_chars=len(nearest_response.content),
                             client_id=request.meta.client_id,
+                            user_id=request.meta.user,
                         )
                     log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
                     outcome.note("L1", cache_hit=True)
@@ -1974,6 +1978,7 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(relayed_text),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
                 finish_trace("L6")
@@ -2077,6 +2082,7 @@ class Router:
                     prompt_chars=prompt_chars,
                     completion_chars=completion_chars,
                     client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     model=served.daari_meta.model or served.model,
                     provider=served.daari_meta.provider_id,
                     input_tokens=stream_in,
@@ -2310,6 +2316,7 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(deterministic.content),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 return
 
@@ -2525,6 +2532,7 @@ class Router:
                     prompt_chars=prompt_chars,
                     completion_chars=len(response.content or ""),
                     client_id=request.meta.client_id,
+                    user_id=request.meta.user,
                     model=response.daari_meta.model or response.model,
                     provider=response.daari_meta.provider_id,
                     input_tokens=tokens_in,

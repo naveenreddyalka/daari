@@ -387,6 +387,35 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
+            # Per-end-user daily cap on shared virtual keys (#410). Checked here
+            # (not middleware) because the OpenAI `user` field lives in the body.
+            claims = getattr(request.state, "auth_claims", None)
+            vk = getattr(claims, "virtual_key", None) if claims is not None else None
+            if (
+                vk is not None
+                and float(getattr(vk, "user_daily_usd_cap", 0) or 0) > 0
+                and meta.user
+            ):
+                from daari.auth.budgets import user_daily_cap_exceeded
+
+                ledger = ctx.router.usage_ledger
+                client = meta.client_id or getattr(claims, "key_id", None) or ""
+                pricing = getattr(ctx.settings, "pricing", None)
+                fallback = float(ctx.settings.usage.frontier_price_per_1k_tokens or 0.002)
+                exceeded = (
+                    user_daily_cap_exceeded(
+                        vk,
+                        ledger,
+                        client_id=client,
+                        user_id=meta.user,
+                        pricing=pricing,
+                        fallback_per_1k=fallback,
+                    )
+                    if ledger is not None
+                    else None
+                )
+                if exceeded is not None:
+                    return JSONResponse(status_code=402, content={"error": exceeded})
             internal = _prepare_internal_request(
                 body,
                 default_model=ctx.settings.models.l3,
@@ -685,6 +714,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload["clients"] = ledger.by_client(
                 days=max(1, days),
                 frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+            )
+            by_user = getattr(ledger, "by_user", None)
+            payload["users"] = (
+                by_user(
+                    days=max(1, days),
+                    frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+                )
+                if callable(by_user)
+                else []
             )
             store = getattr(request.app.state, "virtual_key_store", None)
             if store is not None and getattr(store, "report_by_team", None):

@@ -7,9 +7,13 @@
 ```bash
 daari report
 daari report --days 30
+daari usage --by-user
 # Markdown export available via CLI flags / web UI export
 curl -s 'http://127.0.0.1:11435/v1/daari/report?days=7' | python -m json.tool
 ```
+
+The report payload includes `clients`, `teams`, and `users` (per OpenAI `user`
+on each virtual-key `client_id`). `daari usage` is an alias of `daari report`.
 
 Includes cache-trust panels when shadow samples exist.
 

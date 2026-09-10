@@ -18,6 +18,7 @@ Tunnel setup (`daari setup cursor --tunnel`) auto-generates a key when unset.
 ```bash
 daari keys create --name alice --daily-budget 5
 daari keys create --name ci --expires 30d
+daari keys create --name shared-agent --user-daily-cap 2
 daari keys list
 daari keys rotate <key_id>            # new secret; old works for 24h
 daari keys rotate <key_id> --grace 0  # immediate cutover
