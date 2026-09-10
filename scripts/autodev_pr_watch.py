@@ -22,6 +22,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -38,6 +39,7 @@ HOW_TO_UPDATE = "## How to update"
 _TRACKING_SECTION = re.compile(r"(^### .+?)(?=^### |\Z)", re.M | re.S)
 _TRACKING_ID = re.compile(r"<!-- tracking:#(\d+) -->")
 ISSUE_LABELS = "auto-dev,regression"
+INTENDED_LABELS_LINE = "**Intended labels: `auto-dev`, `regression`**"
 WORKING_LABEL = "agent:working"
 DEFAULT_MIN_AGE_MINUTES = 15
 DEFAULT_SWEEP_TTL_HOURS = 24
@@ -278,6 +280,11 @@ def render_issue_title(pr: dict[str, Any]) -> str:
     return f"[autodev] stalled auto-merge PR #{pr.get('number')}"
 
 
+def render_issue_body(comment_body: str) -> str:
+    """Prefix Intended-labels so issue-labeler (#330) applies them for any token."""
+    return f"{INTENDED_LABELS_LINE}\n\n{comment_body}"
+
+
 def select_stalled(
     prs: list[dict[str, Any]],
     *,
@@ -476,7 +483,7 @@ def apply_alerts(
         title = render_issue_title(pr)
         existing = list_issues(title) if list_issues else []
         if create_issue and not existing:
-            create_issue(title, body)
+            create_issue(title, render_issue_body(body))
         alerted.append(number)
     return alerted
 
@@ -514,7 +521,9 @@ def _cli_list_issues(title: str) -> list[dict[str, Any]]:
 
 
 def _cli_create_issue(title: str, body: str) -> None:
-    subprocess.check_call(
+    # PATs sometimes drop --label at create time (#409 / #408). Prefer create
+    # with labels, then re-apply via edit; edit failure is logged, not fatal.
+    url = subprocess.check_output(
         [
             "gh",
             "issue",
@@ -525,8 +534,28 @@ def _cli_create_issue(title: str, body: str) -> None:
             body,
             "--label",
             ISSUE_LABELS,
-        ]
-    )
+        ],
+        text=True,
+    ).strip()
+    number: str | None = None
+    if "/issues/" in url:
+        number = url.rstrip("/").rsplit("/", 1)[-1]
+    if not number or not number.isdigit():
+        print(
+            f"warning: could not parse issue number from create output {url!r}; "
+            f"skipping post-create label apply",
+            file=sys.stderr,
+        )
+        return
+    try:
+        subprocess.check_call(
+            ["gh", "issue", "edit", number, "--add-label", ISSUE_LABELS],
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"warning: failed to add labels {ISSUE_LABELS!r} to issue #{number}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def _cli_remove_working_label(number: int) -> None:
