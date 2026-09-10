@@ -168,7 +168,7 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 | `claude-opus-5` | 5.00 | 0.50 | 25.00 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) |
 | `claude-sonnet-5` | 2.00 | 0.20 | 10.00 | Anthropic pricing |
 | `claude-haiku-4-5` | 1.00 | 0.10 | 5.00 | Anthropic pricing |
-| `gpt-6-astra` | 10.00 | 1.00 | 50.00 | OpenAI standard short-context tier |
+| `gpt-6-astra` | 10.00 | 1.00 | 50.00 | OpenAI; ≥272K input → $20 / $2 / $75 |
 | `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | 20.00 | OpenAI promo through 2026-11-21 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)) |
 | `gpt-5.6-terra` | 2.00 | 0.20 | 12.00 | OpenAI API pricing |
 | `gpt-5.6-luna` | 0.20 | 0.02 | 1.20 | OpenAI API pricing |
@@ -179,17 +179,28 @@ as Sol. Gemini 3.8 Flash's published standard rate becomes $1.50 / $7.50 on
 2027-01-01; the shipped default is the intro rate in effect now. Override
 `pricing.models` when that date passes or when a provider changes a quote.
 
-### Known limitation: GPT-6 Astra long-context surcharge
+### Context-threshold pricing
 
-Threshold pricing is out of scope. `gpt-6-astra` is billed at the short-context
-list rate ($10 input / $1 cached / $50 output per 1M) regardless of prompt
-length.
+Optional fields on a `pricing.models` entry switch the **entire** request to a
+higher rate once prompt tokens reach a threshold (OpenAI's long-context
+surcharge pattern):
 
-OpenAI reprices the **entire** request once input exceeds 272K tokens: 2× input
-and cached-input, 1.5× output ($20 / $2 / $75). Operators budgeting 1M-context
-Astra traffic will see daari spend, budget remaining, and cost headers below
-the invoice for those calls. Set a higher `pricing.models` override if that
-traffic is the common case.
+```yaml
+pricing:
+  models:
+    gpt-6-astra:
+      input_per_1m: 10.0
+      output_per_1m: 50.0
+      cached_input_per_1m: 1.0
+      input_threshold_tokens: 272000
+      above_input_per_1m: 20.0   # 2×
+      above_output_per_1m: 75.0  # 1.5×
+```
+
+Below the threshold, rates are unchanged. At or above it, input/output (and a
+proportionally scaled cached-input rate) use the `above_*` values. Cost
+headers, the usage ledger, and budget enforcement all go through the same
+`cost_usd` path, so a 402 can fire before a 2× request is dispatched.
 
 ## Providers / fallback
 
