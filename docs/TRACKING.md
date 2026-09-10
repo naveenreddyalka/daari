@@ -2016,6 +2016,17 @@ Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md),
 Covered by `tests/unit/test_user_usage.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Context-threshold pricing for gpt-6-astra ([#411](https://github.com/naveenreddyalka/daari/issues/411))
+
+<!-- tracking:#411 -->
+**Status:** Done (2026-09-10). `ModelPrice` optional
+`input_threshold_tokens` / `above_input_per_1m` / `above_output_per_1m`;
+`cost_usd` selects the tier from prompt token count. Default table encodes
+gpt-6-astra at 272K → 2× input / 1.5× output. Cost headers and the budget
+ledger share that path. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_threshold_pricing.py`.
+
 ---
 
 ## How to update

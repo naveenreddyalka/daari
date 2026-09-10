@@ -479,14 +479,17 @@ class ModelPrice(BaseModel):
     output_per_1m: float
     # Providers discount cached prompt prefixes; None means bill at input rate.
     cached_input_per_1m: float | None = None
+    # Long-context tier: once prompt tokens reach the threshold, the whole
+    # request is billed at the above-* rates (#411 / gpt-6-astra >272K).
+    input_threshold_tokens: int | None = None
+    above_input_per_1m: float | None = None
+    above_output_per_1m: float | None = None
 
 
 # List prices captured 2026-09-07. These move, so treat the table as a
 # convenience default: anything in `pricing.models` overrides an entry here,
 # and unpriced models fall back to frontier.price_per_1k_tokens.
-# Threshold pricing (GPT-6 Astra above 272K input) is not applied here —
-# see docs/developer/guides/configuration/budgets-frontier.md.
-_DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
+_DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
     "gpt-4o": {"input_per_1m": 2.50, "output_per_1m": 10.00, "cached_input_per_1m": 1.25},
     "gpt-4o-mini": {"input_per_1m": 0.15, "output_per_1m": 0.60, "cached_input_per_1m": 0.075},
     "claude-3-5-sonnet": {"input_per_1m": 3.00, "output_per_1m": 15.00},
@@ -504,7 +507,15 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
     "claude-haiku-4-5": {"input_per_1m": 1.00, "output_per_1m": 5.00, "cached_input_per_1m": 0.10},
     # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
     # Sol is the promotional rate published through 2026-11-21 ($4/$20).
-    "gpt-6-astra": {"input_per_1m": 10.00, "output_per_1m": 50.00, "cached_input_per_1m": 1.00},
+    # Above 272K input tokens the whole request bills at 2× input / 1.5× output.
+    "gpt-6-astra": {
+        "input_per_1m": 10.00,
+        "output_per_1m": 50.00,
+        "cached_input_per_1m": 1.00,
+        "input_threshold_tokens": 272_000,
+        "above_input_per_1m": 20.00,
+        "above_output_per_1m": 75.00,
+    },
     "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-terra": {"input_per_1m": 2.00, "output_per_1m": 12.00, "cached_input_per_1m": 0.20},
