@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
+from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import extract_images
@@ -402,7 +403,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             try:
                 result = await ctx.router.route(internal)
             except UnsupportedCapability as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
                 ctx.metrics.record_error()
                 return JSONResponse(
@@ -410,13 +411,13 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     content={
                         "error": {
                             "type": "backend_unavailable",
-                            "message": str(exc),
+                            "message": backend_unavailable_message(exc),
                         }
                     },
                 )
             except Exception as exc:
                 ctx.metrics.record_error()
-                raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
+                raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
             payload = _response_body(
                 response_id,
                 result,
@@ -467,7 +468,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     "id": response_id,
                     "object": "response",
                     "status": "failed",
-                    "error": {"code": "server_error", "message": str(exc)[:300]},
+                    "error": {"code": "server_error", "message": safe_detail(exc)[:300]},
                     "output": [],
                 },
                 conversation=[],
@@ -584,7 +585,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     "response": {
                         **base,
                         "status": "failed",
-                        "error": {"code": "server_error", "message": str(exc)[:300]},
+                        "error": {"code": "server_error", "message": safe_detail(exc)[:300]},
                     },
                 },
             )

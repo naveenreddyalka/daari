@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
+from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images
@@ -271,7 +272,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         internal.provider, configured_frontier_slots(ctx.settings)
                     )
                 except ZdrUnavailable as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                    raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
             if body.stream:
                 internal.stream = True
@@ -287,7 +288,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     except Exception as exc:
                         error_payload = {
                             "type": "error",
-                            "error": {"type": "stream_error", "message": str(exc)},
+                            "error": {"type": "stream_error", "message": safe_detail(exc)},
                         }
                         yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
                         # Gracefully fall back to a non-streamed route and re-emit as a single SSE message.
@@ -336,9 +337,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             try:
                 result = await ctx.router.route(internal)
             except ZdrUnavailable as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
                 ctx.metrics.record_error()
                 return JSONResponse(
@@ -346,13 +347,13 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     content={
                         "error": {
                             "type": "backend_unavailable",
-                            "message": str(exc),
+                            "message": backend_unavailable_message(exc),
                         }
                     },
                 )
             except Exception as exc:
                 ctx.metrics.record_error()
-                raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
+                raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
