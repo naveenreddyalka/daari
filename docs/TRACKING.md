@@ -1993,6 +1993,16 @@ context-window escalation no longer disagree. Docs:
 Covered by `tests/unit/test_capabilities.py` and
 `tests/unit/test_context_window.py`.
 
+### Stall issues get Intended-labels + post-create label retry ([#409](https://github.com/naveenreddyalka/daari/issues/409))
+
+<!-- tracking:#409 -->
+**Status:** Done (2026-09-10). `autodev_pr_watch._cli_create_issue` prefixes
+`**Intended labels: \`auto-dev\`, \`regression\`**` on stall issue bodies so
+`issue-labeler` (#330) applies them even when a PAT silently drops `--label`
+at create time (#408). Also retries `gh issue edit --add-label` after create
+(failure logged, not fatal). Cleanup: merged `origin/main` into PR #404 to
+unpark #398. Covered by `tests/unit/test_autodev_pr_watch.py`.
+
 ---
 
 ## How to update

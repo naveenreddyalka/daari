@@ -136,6 +136,61 @@ def test_render_comment_conflict_keeps_merge_main_remedy(watch):
     assert "merge `origin/main`" in body
 
 
+def test_stall_issue_body_starts_with_intended_labels(watch):
+    """Issue #409: labeler + backlog need Intended-labels as the first line."""
+    comment = watch.render_comment(_pr(), "conflict")
+    body = watch.render_issue_body(comment)
+    first = next(line.strip() for line in body.splitlines() if line.strip())
+    assert first == "**Intended labels: `auto-dev`, `regression`**"
+    assert watch.STALL_MARKER in body
+    assert body.index(first) < body.index(watch.STALL_MARKER)
+
+
+def test_cli_create_issue_retries_labels_after_create(watch, monkeypatch, capsys):
+    """Post-create `--add-label` covers PATs that silently drop create labels."""
+    calls: list[list[str]] = []
+
+    def fake_check_output(args, text=True):
+        calls.append(list(args))
+        assert args[:3] == ["gh", "issue", "create"]
+        return "https://github.com/naveenreddyalka/daari/issues/408\n"
+
+    def fake_check_call(args):
+        calls.append(list(args))
+        assert args == [
+            "gh",
+            "issue",
+            "edit",
+            "408",
+            "--add-label",
+            watch.ISSUE_LABELS,
+        ]
+
+    monkeypatch.setattr(watch.subprocess, "check_output", fake_check_output)
+    monkeypatch.setattr(watch.subprocess, "check_call", fake_check_call)
+    watch._cli_create_issue("title", watch.render_issue_body("body"))
+    assert len(calls) == 2
+    assert "--label" in calls[0]
+    assert calls[0][calls[0].index("--label") + 1] == watch.ISSUE_LABELS
+
+
+def test_cli_create_issue_label_edit_failure_is_not_fatal(watch, monkeypatch, capsys):
+    monkeypatch.setattr(
+        watch.subprocess,
+        "check_output",
+        lambda *a, **k: "https://github.com/o/r/issues/99\n",
+    )
+
+    def boom(args):
+        raise watch.subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(watch.subprocess, "check_call", boom)
+    watch._cli_create_issue("t", "b")
+    err = capsys.readouterr().err
+    assert "failed to add labels" in err
+    assert "#99" in err
+
+
 def test_render_comment_awaiting_approval(watch):
     runs = [
         {
@@ -253,7 +308,7 @@ def test_apply_sweep_removes_label_once(watch):
 
 def test_apply_alerts_once(watch):
     commented: list[tuple[int, str]] = []
-    issues: list[str] = []
+    issues: list[tuple[str, str]] = []
 
     def comment(number, body):
         commented.append((number, body))
@@ -264,14 +319,17 @@ def test_apply_alerts_once(watch):
         min_age_minutes=15,
         comment=comment,
         list_comments=lambda _n: [],
-        create_issue=lambda title, body: issues.append(title),
+        create_issue=lambda title, body: issues.append((title, body)),
         list_issues=lambda _title: [],
     )
     assert alerted == [250]
     assert commented[0][0] == 250
     assert "classification: conflict" in commented[0][1]
     assert "DIRTY" in commented[0][1] or "CONFLICTING" in commented[0][1]
-    assert issues == ["[autodev] stalled auto-merge PR #250"]
+    assert issues[0][0] == "[autodev] stalled auto-merge PR #250"
+    assert issues[0][1].startswith("**Intended labels: `auto-dev`, `regression`**")
+    assert watch.STALL_MARKER in commented[0][1]
+    assert "**Intended labels:" not in commented[0][1]
 
     again = watch.apply_alerts(
         [_pr()],
@@ -279,8 +337,8 @@ def test_apply_alerts_once(watch):
         min_age_minutes=15,
         comment=comment,
         list_comments=lambda _n: [{"body": commented[0][1]}],
-        create_issue=lambda title, body: issues.append(title),
-        list_issues=lambda _title: [{"title": issues[0]}],
+        create_issue=lambda title, body: issues.append((title, body)),
+        list_issues=lambda _title: [{"title": issues[0][0]}],
     )
     assert again == []
     assert len(commented) == 1
