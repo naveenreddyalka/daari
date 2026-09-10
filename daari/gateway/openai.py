@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
+from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
@@ -432,13 +433,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         internal.provider, configured_frontier_slots(ctx.settings)
                     )
                 except ZdrUnavailable as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                    raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
             if body.stream:
                 try:
                     ctx.router.ensure_capable(internal)
                 except UnsupportedCapability as exc:
-                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+                    raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
 
                 outcome = StreamOutcome()
 
@@ -453,7 +454,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                                 content_chars += 1
                             yield chunk
                     except Exception as exc:
-                        yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+                        yield f"data: {json.dumps({'error': f'stream failed: {safe_detail(exc)}'})}\n\n"
                         yield "data: [DONE]\n\n"
                     finally:
                         log_gateway_event(
@@ -475,9 +476,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 result = await ctx.router.route(internal)
             except ZdrUnavailable as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
                 ctx.metrics.record_error()
                 return JSONResponse(
@@ -485,13 +486,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     content={
                         "error": {
                             "type": "backend_unavailable",
-                            "message": str(exc),
+                            "message": backend_unavailable_message(exc),
                         }
                     },
                 )
             except Exception as exc:
                 ctx.metrics.record_error()
-                raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
+                raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
@@ -789,7 +790,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 recorded = store.record_signal(body.trace_id, body.signal)
             except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             if not recorded:
                 raise HTTPException(
                     status_code=404, detail=f"no outcome recorded for trace {body.trace_id}"
@@ -839,7 +840,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 claims = verify_access_token(token, sso)
             except Exception as exc:  # noqa: BLE001 — surface auth failures as 401
-                raise HTTPException(status_code=401, detail=str(exc)) from exc
+                raise HTTPException(status_code=401, detail=safe_detail(exc)) from exc
             role = role_from_claims(claims, role_claim=sso.role_claim)
             if not role_at_least(role, sso.admin_min_role):
                 raise HTTPException(status_code=403, detail="insufficient role")
@@ -863,7 +864,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 claims = verify_access_token(token, sso)
             except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=401, detail=str(exc)) from exc
+                raise HTTPException(status_code=401, detail=safe_detail(exc)) from exc
             subject = str(claims.get("sub") or "")
             role = role_from_claims(claims, role_claim=sso.role_claim)
             result: dict[str, Any] = {
@@ -890,7 +891,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         role=role,
                     )
                 except UnmappedSsoPolicy as exc:
-                    raise HTTPException(status_code=403, detail=str(exc)) from exc
+                    raise HTTPException(status_code=403, detail=safe_detail(exc)) from exc
                 result.update(minted)
             return result
 
@@ -966,7 +967,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     else None
                 )
             except ConfigValidationError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             boundaries = raw_boundaries
             if "confidence_threshold" in routing:
                 ctx.router.confidence_threshold = routing["confidence_threshold"]

@@ -2027,6 +2027,15 @@ ledger share that path. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
 Covered by `tests/unit/test_threshold_pricing.py`.
 
+### Redact secrets from gateway error details ([#412](https://github.com/naveenreddyalka/daari/issues/412))
+
+<!-- tracking:#412 -->
+**Status:** Done (2026-09-10). Client-facing `HTTPException` / error-envelope
+text in gateway modules runs through `safe_detail` / `routing_failure_detail`
+(`daari/gateway/client_errors.py`), which apply `redact_secrets()`. Upstream
+`httpx` failures on the 503 path are summarized as host + status (no URLs).
+Covered by `tests/unit/test_gateway_error_redaction.py`.
+
 ---
 
 ## How to update

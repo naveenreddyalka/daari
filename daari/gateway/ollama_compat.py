@@ -15,6 +15,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
+from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.embeddings_api import (
@@ -256,7 +257,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                         if done:
                             yield line_fn(client_model, "", done=True, usage=usage)
                 except Exception as exc:
-                    yield json.dumps({"error": str(exc), "done": True}) + "\n"
+                    yield json.dumps({"error": safe_detail(exc), "done": True}) + "\n"
 
             return StreamingResponse(ndjson_stream(), media_type="application/x-ndjson")
 
@@ -264,7 +265,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             try:
                 return await ctx.router.route(internal)
             except UnsupportedCapability as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
                 ctx.metrics.record_error()
                 return JSONResponse(
@@ -272,13 +273,13 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     content={
                         "error": {
                             "type": "backend_unavailable",
-                            "message": str(exc),
+                            "message": backend_unavailable_message(exc),
                         }
                     },
                 )
             except Exception as exc:
                 ctx.metrics.record_error()
-                raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
+                raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
         @router.post("/api/chat", response_model=None)
         async def chat(
