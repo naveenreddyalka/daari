@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
@@ -153,6 +154,8 @@ class AnthropicRequest(BaseModel):
     top_k: int | None = None
     stop_sequences: list[str] | None = None
     provider: Any | None = None
+    cost_tier: str | None = None
+    plugins: list[Any] | None = None
 
 
 class AnthropicTextBlock(BaseModel):
@@ -184,6 +187,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             request: Request,
             x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
+            x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
@@ -234,12 +238,14 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
+                tier_cap=x_daari_tier_cap,
                 no_frontier=x_daari_no_frontier == "true",
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
                 client_id=x_daari_client_id,
                 session_id=(x_daari_session or "").strip() or None,
             )
+            apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
 
             apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))

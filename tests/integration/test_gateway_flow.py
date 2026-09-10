@@ -462,6 +462,17 @@ async def test_stream_l0_cache_hit_on_repeat(app, monkeypatch):
     ]
     costs = [p["usage"]["cost"] for p in usage_chunks if p.get("usage")]
     assert costs and costs[-1] == 0.0
+    cached = [
+        p["usage"]["prompt_tokens_details"]["cached_tokens"]
+        for p in usage_chunks
+        if p.get("usage") and p["usage"].get("prompt_tokens_details")
+    ]
+    prompts = [
+        p["usage"]["prompt_tokens"]
+        for p in usage_chunks
+        if p.get("usage")
+    ]
+    assert cached and prompts and cached[-1] == prompts[-1]
 
 
 @pytest.mark.asyncio
@@ -718,6 +729,45 @@ async def test_tier_cap_header_caps_long_prompt_at_l3(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cost_tier_body_caps_long_prompt_at_l3(app, monkeypatch):
+    seen_tiers: list[str] = []
+
+    def make_fake(tier: str):
+        async def fake_execute(request: InternalRequest) -> InternalResponse:
+            seen_tiers.append(tier)
+            return InternalResponse(
+                content="a confident answer that is long enough to avoid escalation",
+                model=f"model-{tier.lower()}",
+                daari_meta=DaariMeta(tier=tier, executor="ollama", provider_id="ollama", latency_ms=5),
+            )
+
+        return fake_execute
+
+    router = app.state.ctx.router
+    monkeypatch.setattr(router.ollama, "execute", make_fake("L3"))
+    monkeypatch.setattr(router.ollama_l4, "execute", make_fake("L4"))
+    monkeypatch.setattr(router.ollama_l5, "execute", make_fake("L5"))
+
+    long_prompt = "please explain this " + "word " * 300
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": long_prompt}],
+                "cost_tier": "low",
+            },
+            headers=META_HEADERS,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["tier"] == "L3"
+    assert seen_tiers == ["L3"]
+
+
+@pytest.mark.asyncio
 async def test_trace_recorded_and_retrievable_by_id(app, monkeypatch):
     """Issue #20: every request carries a trace_id whose steps are retrievable."""
 
@@ -927,6 +977,9 @@ async def test_openai_models_list(app):
     assert payload["object"] == "list"
     assert any(item["id"] == "daari" for item in payload["data"])
     assert all("capabilities" in item for item in payload["data"])
+    l3_id = app.state.ctx.settings.models.l3
+    l3_card = next(item for item in payload["data"] if item["id"] == l3_id)
+    assert l3_card["context_length"] == app.state.ctx.settings.routing.context_windows["L3"]
     assert model_response.status_code == 200
     assert model_response.json()["id"] == "daari"
     assert "capabilities" in model_response.json()

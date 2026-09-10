@@ -1821,14 +1821,15 @@ Unknown windows are left alone; `X-Daari-Tier-Cap` still wins. Trace/event
 [routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
 Covered by `tests/unit/test_context_window.py`.
 
-### Honor response_format json_schema ([#398](https://github.com/naveenreddyalka/daari/issues/398))
+### OpenRouter cost_tier body mapping ([#388](https://github.com/naveenreddyalka/daari/issues/388))
 
-<!-- tracking:#398 -->
-**Status:** Done (2026-09-09). `type: json_schema` is stored on `SamplingParams`
-and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
-`response_format`. Requires the `json` capability like `json_object`.
-Malformed schemas log `json_schema_ignored` and are dropped. Covered by
-`tests/unit/test_sampling_params.py`.
+<!-- tracking:#388 -->
+**Status:** Done (2026-09-09). OpenAI / Anthropic / Responses accept `cost_tier`
+and `plugins: [{id: "auto-router", cost_tier}]`. Map `low`→L3, `medium`→L4,
+`high`→L5, `xhigh`/`max`→L6 onto `meta.tier_cap`. `X-Daari-Tier-Cap` wins;
+unknown values log `cost_tier_ignored`. Anthropic now also reads the header.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_cost_tier.py` and `tests/integration/test_gateway_flow.py`.
 
 ### Vision hop for tool-result images ([#397](https://github.com/naveenreddyalka/daari/issues/397))
 
@@ -1839,6 +1840,15 @@ then requires `vision` and the existing catalog filter hops off text-only L3.
 Event `modality_escalation`. Docs:
 [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
 `tests/unit/test_multimodal.py` and `tests/integration/test_anthropic_tools.py`.
+
+### Honor response_format json_schema ([#398](https://github.com/naveenreddyalka/daari/issues/398))
+
+<!-- tracking:#398 -->
+**Status:** Done (2026-09-09). `type: json_schema` is stored on `SamplingParams`
+and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
+`response_format`. Requires the `json` capability like `json_object`.
+Malformed schemas log `json_schema_ignored` and are dropped. Covered by
+`tests/unit/test_sampling_params.py`.
 
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
@@ -1950,6 +1960,38 @@ tool history; a new user message re-profiles. Trace/event
 `classify_user_turn` with `reused: true`. Docs:
 [routing-tiers.md](developer/concepts/routing-tiers.md#classify-user-turn).
 Covered by `tests/unit/test_session_affinity.py`.
+
+### Streamed usage cached_tokens ([#399](https://github.com/naveenreddyalka/daari/issues/399))
+
+<!-- tracking:#399 -->
+**Status:** Done (2026-09-09). Final OpenAI stream usage always includes
+`prompt_tokens_details.cached_tokens` (`0` when unknown; L0/L1 equals
+`prompt_tokens`; L6 from `daari_meta.cached_tokens`). Anthropic
+`message_delta.usage` adds `cache_read_input_tokens` only when known and
+non-zero. Docs: [headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_stream_usage_cost.py`, `tests/integration/test_streaming_usage.py`,
+and `tests/integration/test_gateway_flow.py`.
+
+### Advertise context_windows on GET /v1/models ([#400](https://github.com/naveenreddyalka/daari/issues/400))
+
+<!-- tracking:#400 -->
+**Status:** Done (2026-09-09). Local tier cards from `openai_model_cards` /
+`GET /v1/models` include `context_length` from `routing.context_windows`
+when known (omit if missing). Frontier/L6 cards are not overwritten.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_models_catalog.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Derive length hops from context_windows only ([#401](https://github.com/naveenreddyalka/daari/issues/401))
+
+<!-- tracking:#401 -->
+**Status:** Done (2026-09-09). Removed the 24k-char `long_context` inference
+from `required_capabilities`. Prompt length hops solely via
+`routing.context_windows` × buffer (#385), so capability filter and
+context-window escalation no longer disagree. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_capabilities.py` and
+`tests/unit/test_context_window.py`.
 
 ---
 

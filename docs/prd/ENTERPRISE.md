@@ -11,22 +11,28 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-09 evening)
+## Where daari stands (verified in-tree, 2026-09-10)
 
-**The afternoon refill shipped in hours.** #376 / #385–#387 / #389 are on
-`main` (PRs #382 / #391 / #392 / #393 / #395). [#388](https://github.com/naveenreddyalka/daari/issues/388)
-(`cost_tier`) is the leftover — [PR #394](https://github.com/naveenreddyalka/daari/pull/394)
-open. Eligible backlog emptied again; this run refills it.
+**The 09-09 evening refill shipped overnight.** #397 / #399 / #400 / #401 are
+on `main` (PRs #403 / #405 / #406 / #407). The one leftover is
+[#398](https://github.com/naveenreddyalka/daari/issues/398) (`json_schema`):
+[PR #404](https://github.com/naveenreddyalka/daari/pull/404) has all five
+checks green but sits `DIRTY` — and its stall issue
+[#408](https://github.com/naveenreddyalka/daari/issues/408) was created
+**without labels**, so the backlog picker cannot see it (gap #1 below).
 
-Shipped surface now also includes: MCP semantic tool search, pre-dispatch
-context-window escalation, streamed `usage.cost`, chat tool-result
-guardrails, user-turn profile reuse. Proof: 1619+ mocked tests.
+**`AUTODEV_GH_TOKEN` is finally set** (#408 is authored by the PAT identity,
+not github-actions[bot]) — the standing HITL ask from four runs is done. The
+side effect is the labeling regression above.
 
-**Positioning:** LiteLLM is still selling the 09-01 Auto-Router blog
-(context-window + **modality** + `user_turn`). daari matched four of those
-five knobs today; images nested in **tool results** are the remaining
-modality hole. Ollama **0.34 still rc3** (re-checked 09-09 eve). SEP-1933
-still draft. Portkey / Kong quiet.
+**Positioning:** LiteLLM's 09-08 posts sell *identity-aware shared agents*
+(per-end-user access + spend on one shared key) and an updated SOC 2 Type 2
+report. Portkey woke up after five quiet months: **v2.21.0** (multi-JWKS JWT
+auth with user attribution, ElevenLabs). Kong quiet at 2.0.3 but keeps
+compounding cost-accounting fidelity (context-window pricing factors,
+cache-TTL write pricing). **Ollama v0.34.0 GA'd** — ChatGPT Desktop runs
+local models officially; daari's facade surface (#343/#348) verified against
+the 0.34 diff, no parity change needed. SEP-1933 still draft (upd 09-07).
 
 ---
 
@@ -34,52 +40,62 @@ still draft. Portkey / Kong quiet.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Tool-result images skip vision** — `required_capabilities` only sees `Message.images`; Anthropic `tool_result` uses `content_to_text` and drops image blocks | 4 | 2 | [LiteLLM `modality_routing`](https://docs.litellm.ai/blog/auto-router-more-routing-configurations) | Same #164 catalog; escalate to local vision L4/L5 instead of a provider 400 | **Filed [#397](https://github.com/naveenreddyalka/daari/issues/397)** (P2) |
-| 2 | **`json_schema` dropped** — `SamplingParams` only honors `response_format.type == json_object` | 3 | 2 | OpenAI structured outputs | Ollama already takes `format` as a schema object | **Filed [#398](https://github.com/naveenreddyalka/daari/issues/398)** (P2) |
-| 3 | **Stream usage has no cached tokens** — #386 added `cost`; OpenAI UIs also read `prompt_tokens_details.cached_tokens` | 3 | 2 | LiteLLM / OpenAI prefix cache | `daari_meta.cached_tokens` already parsed on L6; L0/L1 are fully cached | **Filed [#399](https://github.com/naveenreddyalka/daari/issues/399)** (P2) |
-| 4 | **`/v1/models` hides context windows** — #385 table is internal-only | 3 | 2 | OpenRouter / Ollama `/api/tags` | Clients stop guessing 4k and trimming pastes L4 would take | **Filed [#400](https://github.com/naveenreddyalka/daari/issues/400)** (P2) |
-| 5 | **`long_context` still uses 24k chars** — disagrees with `routing.context_windows` × 0.95 | 3 | 2 | (daari self-inflicted) | One table, one hop | **Filed [#401](https://github.com/naveenreddyalka/daari/issues/401)** (P2) |
-| 6 | **In-body `cost_tier`** | 3 | 2 | OpenRouter Auto | Header still wins | **In flight [#388](https://github.com/naveenreddyalka/daari/issues/388)** / [PR #394](https://github.com/naveenreddyalka/daari/pull/394) |
+| 1 | **Stall issues created unlabeled** — `_cli_create_issue` passes `--label` but PAT-created #408 has none; backlog picker is label-driven, so conflict parks are invisible to the loop | 4 | 1 | (loop self-healing, daari-specific) | Watcher + labeler (#336) already exist; one body line fixes it | **Filed [#409](https://github.com/naveenreddyalka/daari/issues/409)** (P1) |
+| 2 | **No end-user attribution on shared keys** — `body.user` parsed but only feeds session affinity; ledger dims are day/client_id/tier/model; no per-user report or cap | 4 | 3 | [LiteLLM identity-aware agents (09-08)](https://docs.litellm.ai/blog) | Identities never leave premises; keys/teams/budgets already shipped, this is the last identity dimension | **Filed [#410](https://github.com/naveenreddyalka/daari/issues/410)** (P2) |
+| 3 | **Context-threshold pricing not applied** — settings.py admits gpt-6-astra >272K (2×/1.5×) bills flat; budgets underbill the most expensive requests | 3 | 2 | [Kong `context_window_factor` (2.0.2)](https://developer.konghq.com/ai-gateway/changelog/) | Admission-time 402/downshift *before* the 2× spend, not a report after | **Filed [#411](https://github.com/naveenreddyalka/daari/issues/411)** (P2) |
+| 4 | **Client-facing error details skip redaction** — `detail=f"Routing failed: {exc}"` raw; `redact_secrets()` only guards the request log | 3 | 1 | [LiteLLM v1.102-dev fix](https://github.com/BerriAI/litellm/pull/39964) | Process-wide secret registry makes leak-proofing structural | **Filed [#412](https://github.com/naveenreddyalka/daari/issues/412)** (P2) |
+| 5 | **`json_schema` dropped** | 3 | 2 | OpenAI structured outputs | Ollama takes `format` schemas natively | **In flight [#398](https://github.com/naveenreddyalka/daari/issues/398)** / [PR #404](https://github.com/naveenreddyalka/daari/pull/404) — unparked by #409 |
+| 6 | **Multi-JWKS SSO** — `resolve_jwks_url` takes one URL; Portkey v2.21 merges keys from several IdPs | 2 | 2 | [Portkey v2.21](https://portkey.ai/docs/changelog/enterprise) | Straightforward cache extension | Watch — file when a fleet has two IdPs |
 | 7 | **Batch API** — no `/v1/batches` | 4 | 4 | OpenRouter Batch API | Idle local tiers overnight; MCP Tasks (#315) template | Watch |
-| 8 | **MCP agent identity** — [SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) still **draft** | 3 | 3 | MCP Tier-1 SDKs | `secret://oauth` + key expiry ready | Watch |
-| 9 | **Gemini facade / A2A / admin UI / off-peak / `/v1/images`** | 2–3 | 2–4 | Kong / LiteLLM / OpenRouter | No new client demand this run | Watch / non-goal |
-| 10 | **Ollama 0.34 facade** — still **rc3** (ChatGPT Desktop, tool search, compaction) | 2 | 2 | Ollama upstream | #343 recipe | Watch — verify when 0.34.0 GAs |
+| 8 | **MCP agent identity** — [SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) still **draft** (upd 09-07) | 3 | 3 | MCP Tier-1 SDKs | `secret://oauth` + key expiry ready | Watch |
+| 9 | **SOC 2 / trust center** — LiteLLM ships an updated Type 2 report | 3 | 5 | LiteLLM | Not agent work; positioning: daari's audit hash chain (#378) is verifiable by the customer, not an auditor PDF | Non-goal for the loop; note for humans |
+| 10 | **Gemini facade / A2A / admin UI / off-peak / `/v1/images` / WIF upstream auth** | 2–3 | 2–4 | Kong / LiteLLM / Portkey v2.20 | No client demand this run | Watch / non-goal |
 
-Afternoon rows #385–#387 / #389 and #376 shipped. Pruned from the active table.
+Resolved watches: **Ollama 0.34 GA** — `api/types.go` diff only adds cloud
+model-recommendation `thinking` metadata; facade (#343/#348) untouched.
+Evening rows #397/#399–#401 shipped and are pruned.
 
-Open backlog after this run: #388 (PR in flight) plus
-[#397](https://github.com/naveenreddyalka/daari/issues/397)–[#401](https://github.com/naveenreddyalka/daari/issues/401).
+Open backlog after this run:
+[#398](https://github.com/naveenreddyalka/daari/issues/398) (PR parked, see #409),
+[#409](https://github.com/naveenreddyalka/daari/issues/409)–[#412](https://github.com/naveenreddyalka/daari/issues/412).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Land #388** (merge [PR #394](https://github.com/naveenreddyalka/daari/pull/394)
-   after it picks up `main`) so OpenRouter bodies map `cost_tier`.
-2. **See what agents see** ([#397](https://github.com/naveenreddyalka/daari/issues/397)):
-   tool-result screenshots are the last LiteLLM modality gap.
-3. **Structured outputs + honest catalog**
-   ([#398](https://github.com/naveenreddyalka/daari/issues/398)/[#400](https://github.com/naveenreddyalka/daari/issues/400)/[#401](https://github.com/naveenreddyalka/daari/issues/401)):
-   json_schema through, windows advertised, one long-context rule.
-4. **Finish live spend** ([#399](https://github.com/naveenreddyalka/daari/issues/399)):
-   cached tokens next to `usage.cost`.
-5. **HITL leftovers:** `AUTODEV_GH_TOKEN`; merge
-   [#373](https://github.com/naveenreddyalka/daari/pull/373) (brew v1.4.0).
-   Batch API stays watch.
-
-Standing HITL asks: `AUTODEV_GH_TOKEN`; merge #373.
+1. **Re-arm the loop's self-healing**
+   ([#409](https://github.com/naveenreddyalka/daari/issues/409)): stall issues
+   must always carry labels; includes unparking
+   [PR #404](https://github.com/naveenreddyalka/daari/pull/404) so #398 lands.
+2. **Identity-aware shared agents**
+   ([#410](https://github.com/naveenreddyalka/daari/issues/410)): per-end-user
+   spend attribution and caps on shared virtual keys — LiteLLM's current
+   headline, done without identities leaving the building.
+3. **Honest long-context billing**
+   ([#411](https://github.com/naveenreddyalka/daari/issues/411)): threshold
+   pricing so budgets deny *before* the 2× request, not after.
+4. **Leak-proof error surfaces**
+   ([#412](https://github.com/naveenreddyalka/daari/issues/412)): every
+   client-visible detail through the secret registry.
+5. **HITL:** merge [#373](https://github.com/naveenreddyalka/daari/pull/373)
+   (brew v1.4.0, BEHIND). `AUTODEV_GH_TOKEN` ask is **done** — thank you.
 
 ---
 
 ## Changelog
 
-- **2026-09-09 evening** — Afternoon refill shipped (#376/#385/#386/#387/#389).
-  Outward: LiteLLM modality routing still the advertised hole; Ollama 0.34
-  rc3; SEP-1933 draft. Inward: Anthropic `tool_result` drops images;
-  `json_schema` ignored; stream usage has cost but no cached tokens;
-  `/v1/models` omits `context_windows`; `long_context` still 24k chars.
-  Filed [#397](https://github.com/naveenreddyalka/daari/issues/397)–[#401](https://github.com/naveenreddyalka/daari/issues/401)
-  (all P2).
+- **2026-09-10** — Evening refill shipped overnight (#397/#399/#400/#401);
+  backlog empty again. `AUTODEV_GH_TOKEN` set, with a new side effect:
+  PAT-created stall issue #408 lost its labels, orphaning conflict-parked
+  PR #404. Outward: Ollama 0.34 GA (facade verified, no change); Portkey
+  v2.21 after five quiet months (multi-JWKS + user attribution); LiteLLM
+  identity-aware shared agents + SOC 2; Kong quiet. Inward verified: no
+  end-user ledger dimension; threshold pricing knowingly unapplied
+  (settings.py comment); error details bypass `redact_secrets()`. Filed
+  [#409](https://github.com/naveenreddyalka/daari/issues/409) (P1) and
+  [#410](https://github.com/naveenreddyalka/daari/issues/410)–[#412](https://github.com/naveenreddyalka/daari/issues/412)
+  (P2).
+- **2026-09-09 evening** — Filed #397–#401 (all P2).
 - **2026-09-09 pm** — Filed #385–#389.
 - **2026-09-09** — Park over, v1.4.0 released. Filed #374–#378.
 - **2026-09-08** — Nine-PR park; filed #368 / #369.
