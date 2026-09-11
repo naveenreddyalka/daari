@@ -391,6 +391,7 @@ class Router:
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
         classify_user_turn: bool = False,
+        harness_aware_profile: bool = True,
         context_window_escalation: bool = True,
         context_window_buffer: float = 0.95,
         context_windows: dict[str, int] | None = None,
@@ -484,6 +485,7 @@ class Router:
 
         self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
         self.classify_user_turn = bool(classify_user_turn)
+        self.harness_aware_profile = bool(harness_aware_profile)
         self.profile_pins = ProfilePinStore(ttl_seconds=session_affinity_ttl_seconds)
         self.context_window_escalation = bool(context_window_escalation)
         self.context_window_buffer = float(context_window_buffer)
@@ -2963,12 +2965,7 @@ class Router:
         reflects the full message list so context-window escalation sees size.
         """
         if not self.classify_user_turn:
-            return (
-                build_prompt_profile(
-                    request, effort_escalation=self.reasoning_effort_escalation
-                ),
-                False,
-            )
+            return self._build_prompt_profile(request), False
         from daari.gateway.request_log import log_gateway_event
         from daari.router.session_affinity import (
             conversation_prefix_hash,
@@ -3004,9 +3001,7 @@ class Router:
             prefix_request = request.model_copy(
                 update={"messages": user_turn_prefix(request.messages)}
             )
-            base = build_prompt_profile(
-                prefix_request, effort_escalation=self.reasoning_effort_escalation
-            )
+            base = self._build_prompt_profile(prefix_request)
             profile = PromptProfile(
                 category=base.category,
                 complexity=base.complexity,
@@ -3029,10 +3024,22 @@ class Router:
                 prefix_hash=prefix,
             )
             return profile, True
+        return self._build_prompt_profile(request), False
+
+    def _build_prompt_profile(self, request: InternalRequest) -> PromptProfile:
         profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
+            request,
+            effort_escalation=self.reasoning_effort_escalation,
+            harness_aware=self.harness_aware_profile,
         )
-        return profile, False
+        if profile.stripped_chars:
+            from daari.gateway.request_log import log_gateway_event
+
+            log_gateway_event(
+                "harness_profile",
+                {"stripped_chars": profile.stripped_chars},
+            )
+        return profile
 
     def _remember_user_turn_profile(
         self, request: InternalRequest, profile: PromptProfile
@@ -4407,6 +4414,7 @@ class AppContext:
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
             classify_user_turn=settings.routing.classify_user_turn,
+            harness_aware_profile=settings.routing.harness_aware_profile,
             context_window_escalation=settings.routing.context_window_escalation,
             context_window_buffer=settings.routing.context_window_escalation_buffer,
             context_windows=dict(settings.routing.context_windows or {}),
