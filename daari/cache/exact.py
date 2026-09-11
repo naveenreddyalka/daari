@@ -37,6 +37,9 @@ def _messages_for_cache(request: InternalRequest) -> list[dict[str, Any]]:
         exclude = {"images"}
         if not message.tool_call_id:
             exclude.add("tool_call_id")
+        # Empty thinking_blocks omitted so pre-#431 keys stay reachable.
+        if not message.thinking_blocks:
+            exclude.add("thinking_blocks")
         data = message.model_dump(exclude=exclude)
         if message.images:
             data["images"] = [image.cache_token() for image in message.images]

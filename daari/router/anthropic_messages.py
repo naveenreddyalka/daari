@@ -125,8 +125,15 @@ def _conversation_message(message: Message) -> dict[str, Any]:
     return {"role": role, "content": _parts(message)}
 
 
+def _thinking_prefix(message: Message) -> list[dict[str, Any]]:
+    """Replay signed thinking blocks ahead of text/tool_use on assistant turns."""
+    if message.role != "assistant" or not message.thinking_blocks:
+        return []
+    return [dict(block) for block in message.thinking_blocks]
+
+
 def _assistant_tool_content(message: Message) -> list[dict[str, Any]]:
-    blocks: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = list(_thinking_prefix(message))
     if message.content:
         blocks.append({"type": "text", "text": message.content})
     for call in message.tool_calls or []:
@@ -151,9 +158,10 @@ def _assistant_tool_content(message: Message) -> list[dict[str, Any]]:
 
 
 def _parts(message: Message) -> str | list[dict[str, Any]]:
-    if not message.images:
+    thinking = _thinking_prefix(message)
+    if not message.images and not thinking:
         return message.content or ""
-    parts: list[dict[str, Any]] = []
+    parts: list[dict[str, Any]] = list(thinking)
     if message.content:
         parts.append({"type": "text", "text": message.content})
     for image in message.images:
