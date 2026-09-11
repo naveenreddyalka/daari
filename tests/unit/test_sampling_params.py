@@ -172,6 +172,34 @@ class TestParsingFromClientBody:
         params = SamplingParams.from_openai_body({"response_format": {"type": "text"}})
         assert params.response_format_json is False
 
+    def test_json_schema_is_kept_and_requires_json(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+        params = SamplingParams.from_openai_body(
+            {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "result", "schema": schema},
+                }
+            }
+        )
+        assert params.response_format_json is True
+        assert params.json_schema == schema
+        assert params.ollama_format() == schema
+        assert params.openai_payload()["response_format"]["type"] == "json_schema"
+
+    def test_malformed_json_schema_is_ignored(self, monkeypatch):
+        events: list[str] = []
+        monkeypatch.setattr(
+            "daari.gateway.request_log.log_gateway_event",
+            lambda event, payload: events.append(event),
+        )
+        params = SamplingParams.from_openai_body(
+            {"response_format": {"type": "json_schema", "json_schema": "nope"}}
+        )
+        assert params.json_schema is None
+        assert params.response_format_json is False
+        assert "json_schema_ignored" in events
+
     def test_string_stop_is_normalized_to_a_list(self):
         assert SamplingParams.from_openai_body({"stop": "END"}).stop == ["END"]
 
@@ -214,6 +242,43 @@ class TestAnthropicBody:
         assert params.top_p == 0.5
         assert params.top_k == 10
         assert params.stop == ["END"]
+
+    def test_output_format_json_schema_is_kept(self):
+        schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+        params = SamplingParams.from_anthropic_body(
+            {
+                "max_tokens": 50,
+                "output_format": {"type": "json_schema", "schema": schema},
+            }
+        )
+        assert params.json_schema == schema
+        assert params.response_format_json is True
+        assert params.ollama_format() == schema
+
+    def test_output_format_json_schema_wrapper_is_kept(self):
+        schema = {"type": "object", "properties": {"n": {"type": "integer"}}}
+        params = SamplingParams.from_anthropic_body(
+            {
+                "output_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "result", "schema": schema},
+                }
+            }
+        )
+        assert params.json_schema == schema
+
+    def test_malformed_output_format_is_ignored(self, monkeypatch):
+        events: list[str] = []
+        monkeypatch.setattr(
+            "daari.gateway.request_log.log_gateway_event",
+            lambda event, payload: events.append(event),
+        )
+        params = SamplingParams.from_anthropic_body(
+            {"output_format": {"type": "json_schema", "schema": "nope"}}
+        )
+        assert params.json_schema is None
+        assert params.response_format_json is False
+        assert "json_schema_ignored" in events
 
     def test_top_k_maps_to_ollama_but_not_to_openai(self):
         """top_k is not in the chat-completions schema; strict providers 400 on it."""

@@ -118,3 +118,65 @@ def is_continuation(messages: list[Message], pin: SessionPin | None) -> bool:
     if pin is None:
         return False
     return conversation_prefix_hash(messages) == pin.prefix_hash
+
+
+@dataclass(frozen=True)
+class ProfilePin:
+    """Category/complexity remembered for a user ask (#389)."""
+
+    category: str
+    complexity: str
+    prefix_hash: str
+    expires_at: float
+
+
+class ProfilePinStore:
+    """In-process memory of the last user-turn profile per session key."""
+
+    def __init__(
+        self,
+        ttl_seconds: float = 1800.0,
+        *,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self.ttl_seconds = max(0.0, float(ttl_seconds))
+        self._clock = clock or time.monotonic
+        self._pins: dict[str, ProfilePin] = {}
+
+    def get(self, key: str) -> ProfilePin | None:
+        pin = self._pins.get(key)
+        if pin is None:
+            return None
+        if self.ttl_seconds > 0 and self._clock() >= pin.expires_at:
+            self._pins.pop(key, None)
+            return None
+        return pin
+
+    def put(
+        self,
+        key: str,
+        *,
+        category: str,
+        complexity: str,
+        prefix_hash: str,
+    ) -> None:
+        now = self._clock()
+        expires = now + self.ttl_seconds if self.ttl_seconds > 0 else float("inf")
+        self._pins[key] = ProfilePin(
+            category=category,
+            complexity=complexity,
+            prefix_hash=prefix_hash,
+            expires_at=expires,
+        )
+
+
+def user_turn_prefix(messages: list[Message]) -> list[Message]:
+    """Drop a trailing tool-result suffix (and its assistant tool-calls)."""
+    if not is_tool_continuation(messages):
+        return list(messages)
+    index = len(messages) - 1
+    while index >= 0 and is_tool_result(messages[index]):
+        index -= 1
+    while index >= 0 and messages[index].role == "assistant" and messages[index].tool_calls:
+        index -= 1
+    return list(messages[: index + 1])

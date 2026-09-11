@@ -106,6 +106,11 @@ def keys_create(
         "--expires",
         help="Expiry: 30d, 12h, 45m, ISO-8601, or never (default).",
     ),
+    user_daily_cap: float = typer.Option(
+        0.0,
+        "--user-daily-cap",
+        help="Per end-user daily L6 USD cap on this shared key (0=unlimited)",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import parse_window_flag
@@ -136,6 +141,7 @@ def keys_create(
         budget_windows=extra or None,
         metadata=metadata,
         expires_at=expires_at,
+        user_daily_usd_cap=user_daily_cap,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -161,13 +167,14 @@ def keys_list() -> None:
         return
     typer.echo(
         f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} "
-        f"{'tier':<4} {'expires':<25} status"
+        f"{'tier':<4} {'expires':<25} {'grace_until':<25} status"
     )
     for key in keys:
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
             f"{key.tpm:>7} {(key.tier_cap or '-'):<4} "
-            f"{(key.expires_at or 'never'):<25} {key.status()}"
+            f"{(key.expires_at or 'never'):<25} "
+            f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
 
 
@@ -185,6 +192,51 @@ def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys 
     else:
         typer.echo(f"No active key {key_id}")
         raise typer.Exit(code=1)
+
+
+@keys_app.command("rotate")
+def keys_rotate(
+    key_id: str = typer.Argument(..., help="key_id from `daari keys list`"),
+    grace: str = typer.Option(
+        "24h",
+        "--grace",
+        help="Overlap window for the old secret (24h default; 0 = immediate cutover).",
+    ),
+) -> None:
+    """Mint a new secret for the same key identity with a grace overlap (#377)."""
+    import os
+
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings = get_settings()
+    store = VirtualKeyStore(
+        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
+    )
+    try:
+        created = store.rotate(key_id, grace=grace)
+    except KeyError:
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1) from None
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"key_id:      {created.key.key_id}")
+    typer.echo(f"name:        {created.key.name}")
+    typer.echo(f"prefix:      {created.key.prefix}…")
+    typer.echo(f"grace_until: {created.key.previous_expires_at}")
+    typer.echo("")
+    typer.echo("Store this token now — it will not be shown again:")
+    typer.echo(created.plaintext)
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="keys.rotate",
+        detail={
+            "key_id": created.key.key_id,
+            "grace": grace,
+            "grace_until": created.key.previous_expires_at,
+        },
+    )
 
 
 @keys_app.command("team-create")
@@ -312,6 +364,33 @@ def audit_export(
     finally:
         if handle is not None:
             handle.close()
+
+
+@audit_app.command("verify")
+def audit_verify(
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable result for CI/SIEM."),
+) -> None:
+    """Verify the SHA-256 audit hash chain (issue #378)."""
+    log = _audit_log_from_settings()
+    if not log.enabled:
+        typer.echo("Audit log is disabled or could not be opened.", err=True)
+        raise typer.Exit(code=1)
+    result = log.verify()
+    payload = result.as_dict()
+    if as_json:
+        typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    elif result.ok:
+        typer.echo(
+            f"OK: {result.total} rows ({result.legacy} legacy, {result.chained} chained)"
+        )
+    else:
+        typer.echo(
+            f"TAMPER at seq={result.broken_seq}: {result.reason} "
+            f"(total={result.total}, legacy={result.legacy}, chained={result.chained})",
+            err=True,
+        )
+    if not result.ok:
+        raise typer.Exit(code=1)
 
 
 @enterprise_app.command("bootstrap")
@@ -760,6 +839,7 @@ def prune(
         typer.echo(f"  {row.store:<8} {status}{extra}")
 
 
+@app.command("usage")
 @app.command()
 def report(
     days: int = typer.Option(7, help="Number of days to include"),
@@ -769,6 +849,9 @@ def report(
     out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
     by_client: bool = typer.Option(False, "--by-client", help="Break usage down per client id"),
     by_team: bool = typer.Option(False, "--by-team", help="Roll usage up by virtual-key team"),
+    by_user: bool = typer.Option(
+        False, "--by-user", help="Break usage down per OpenAI user on each client id"
+    ),
 ) -> None:
     """Show persisted usage and estimated frontier savings."""
     settings = get_settings()
@@ -849,6 +932,23 @@ def report(
             for entry in teams:
                 typer.echo(
                     f"{entry['team']:<14} {entry['requests']:>9} "
+                    f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
+                    f"{entry['estimated_saved_usd']:>9.4f}"
+                )
+
+    if by_user:
+        users = payload.get("users") or []
+        typer.echo("")
+        if not users:
+            typer.echo("No per-user usage recorded yet.")
+        else:
+            typer.echo(
+                f"{'client':<14} {'user':<14} {'requests':>9} {'cache hits':>11}"
+                f" {'frontier':>9} {'saved $':>9}"
+            )
+            for entry in users:
+                typer.echo(
+                    f"{entry['client_id']:<14} {entry['user_id']:<14} {entry['requests']:>9} "
                     f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
                     f"{entry['estimated_saved_usd']:>9.4f}"
                 )

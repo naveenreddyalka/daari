@@ -9,7 +9,7 @@ from typing import Any, Iterable, Literal
 
 from daari.auth.virtual_keys import BudgetWindow, Team, VirtualKey
 
-Scope = Literal["key", "team"]
+Scope = Literal["key", "team", "user"]
 
 _DAY_ALIASES = {"day", "daily", "24h"}
 _MONTH_ALIASES = {"month", "monthly", "30d"}
@@ -225,11 +225,12 @@ def budget_error(
     spend: float,
     scope: Scope,
     limit_usd: float | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     label = window_label(window.duration)
     reset = reset_at(window.duration)
     limit = float(window.max_usd if limit_usd is None else limit_usd)
-    return {
+    payload: dict[str, Any] = {
         "type": "budget_exceeded",
         "message": (
             f"Virtual key {label} frontier budget "
@@ -243,6 +244,64 @@ def budget_error(
         "reset_at": reset,
         "scope": scope,
     }
+    if user_id is not None:
+        payload["user_id"] = user_id
+    return payload
+
+
+def user_cap_error(
+    *,
+    client_id: str,
+    user_id: str,
+    spend: float,
+    cap_usd: float,
+) -> dict[str, Any]:
+    """402 body for a per-end-user daily cap on a shared virtual key (#410)."""
+    from daari.auth.virtual_keys import BudgetWindow
+
+    return budget_error(
+        client_id=client_id,
+        window=BudgetWindow("day", float(cap_usd)),
+        spend=spend,
+        scope="user",
+        limit_usd=float(cap_usd),
+        user_id=user_id,
+    )
+
+
+def user_daily_cap_exceeded(
+    key: VirtualKey,
+    ledger: Any,
+    *,
+    client_id: str,
+    user_id: str | None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> dict[str, Any] | None:
+    """Return a 402 body when this named user is over the key's daily user cap.
+
+    Requests without a `user` are never capped (attributed to ``unknown`` only).
+    """
+    cap = float(getattr(key, "user_daily_usd_cap", 0.0) or 0.0)
+    named = (user_id or "").strip()
+    if cap <= 0 or not named:
+        return None
+    spend_fn = getattr(ledger, "frontier_spend_usd_for_user", None)
+    if spend_fn is None:
+        return None
+    spend = float(
+        spend_fn(
+            client_id,
+            named,
+            window="day",
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
+        or 0.0
+    )
+    if spend < cap:
+        return None
+    return user_cap_error(client_id=client_id, user_id=named, spend=spend, cap_usd=cap)
 
 
 def effective_windows(key: VirtualKey, team: Team | None) -> list[tuple[BudgetWindow, Scope]]:

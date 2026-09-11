@@ -21,6 +21,7 @@ class ResolvedPrice:
     output_per_1m: float
     cached_input_per_1m: float | None = None
     is_fallback: bool = False
+    input_threshold_tokens: int | None = None
 
 
 def matching_model_key(model: str, keys: object) -> str | None:
@@ -52,8 +53,18 @@ def _model_id_candidates(model: str) -> list[str]:
     return candidates
 
 
-def resolve_price(model: str | None, pricing: object, *, fallback_per_1k: float) -> ResolvedPrice:
-    """Price for `model`, falling back to the flat per-1k rate when unknown."""
+def resolve_price(
+    model: str | None,
+    pricing: object,
+    *,
+    fallback_per_1k: float,
+    input_tokens: int = 0,
+) -> ResolvedPrice:
+    """Price for `model`, falling back to the flat per-1k rate when unknown.
+
+    When the model defines ``input_threshold_tokens`` and ``input_tokens``
+    reaches that threshold, the above-* rates apply to the whole request (#411).
+    """
     table = getattr(pricing, "models", None) or {}
     entry = None
     if model:
@@ -61,11 +72,29 @@ def resolve_price(model: str | None, pricing: object, *, fallback_per_1k: float)
         if key is not None:
             entry = table[key]
     if entry is not None:
+        input_rate = float(_field(entry, "input_per_1m"))
+        output_rate = float(_field(entry, "output_per_1m"))
+        cached_rate = _optional_field(entry, "cached_input_per_1m")
+        threshold = _optional_int_field(entry, "input_threshold_tokens")
+        above_input = _optional_field(entry, "above_input_per_1m")
+        above_output = _optional_field(entry, "above_output_per_1m")
+        if (
+            threshold is not None
+            and threshold > 0
+            and int(input_tokens) >= threshold
+            and above_input is not None
+        ):
+            if cached_rate is not None and input_rate > 0:
+                cached_rate = cached_rate * (above_input / input_rate)
+            input_rate = above_input
+            if above_output is not None:
+                output_rate = above_output
         return ResolvedPrice(
-            input_per_1m=float(_field(entry, "input_per_1m")),
-            output_per_1m=float(_field(entry, "output_per_1m")),
-            cached_input_per_1m=_optional_field(entry, "cached_input_per_1m"),
+            input_per_1m=input_rate,
+            output_per_1m=output_rate,
+            cached_input_per_1m=cached_rate,
             is_fallback=False,
+            input_threshold_tokens=threshold,
         )
     flat_per_1m = float(fallback_per_1k) * 1000.0
     return ResolvedPrice(
@@ -82,7 +111,12 @@ def cost_usd(
     fallback_per_1k: float,
     cached_input_tokens: int = 0,
 ) -> float:
-    price = resolve_price(model, pricing, fallback_per_1k=fallback_per_1k)
+    price = resolve_price(
+        model,
+        pricing,
+        fallback_per_1k=fallback_per_1k,
+        input_tokens=input_tokens,
+    )
     billable_input = max(0, input_tokens - cached_input_tokens)
     total = billable_input / 1_000_000 * price.input_per_1m
     total += max(0, output_tokens) / 1_000_000 * price.output_per_1m
@@ -132,3 +166,10 @@ def _field(entry: object, name: str) -> float:
 def _optional_field(entry: object, name: str) -> float | None:
     value = entry.get(name) if isinstance(entry, dict) else getattr(entry, name, None)
     return float(value) if value is not None else None
+
+
+def _optional_int_field(entry: object, name: str) -> int | None:
+    value = entry.get(name) if isinstance(entry, dict) else getattr(entry, name, None)
+    if value is None:
+        return None
+    return int(value)

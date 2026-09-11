@@ -91,6 +91,51 @@ def response_cost_headers(
     }
 
 
+def stream_usage_cost(
+    *,
+    tier: str | None,
+    model: str | None = None,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    pricing: object | None = None,
+    fallback_per_1k: float = 0.002,
+    cached_input_tokens: int = 0,
+    reported_cost: float | None = None,
+) -> float:
+    """USD for a streamed usage object. Local tiers are $0; L6 matches headers."""
+    if (tier or "").upper() != FRONTIER_TIER:
+        return 0.0
+    if reported_cost is not None:
+        return float(reported_cost)
+    return cost_usd(
+        model,
+        int(prompt_tokens),
+        int(completion_tokens),
+        pricing,
+        fallback_per_1k=fallback_per_1k,
+        cached_input_tokens=int(cached_input_tokens),
+    )
+
+
+def stream_cached_tokens(
+    *,
+    tier: str | None,
+    prompt_tokens: int = 0,
+    cached_from_meta: int | None = None,
+) -> int:
+    """Cached prompt tokens for a streamed usage object (#399).
+
+    L0/L1 hits report the full prompt as cached. L6 uses provider meta when
+    present. Unknown / local generate → 0.
+    """
+    label = (tier or "").upper()
+    if label in {"L0", "L1"}:
+        return max(0, int(prompt_tokens))
+    if cached_from_meta is not None:
+        return max(0, int(cached_from_meta))
+    return 0
+
+
 @dataclass
 class StreamOutcome:
     """What the router decided for a streamed request, filled before its first chunk."""

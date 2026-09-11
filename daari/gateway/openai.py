@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
+from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
 from daari.gateway.internal import (
     InternalRequest,
@@ -109,6 +111,9 @@ class ChatCompletionRequest(BaseModel):
     reasoning_effort: Any | None = None
     # Stable end-user id. Used as a session key when routing.session_affinity is on.
     user: str | None = None
+    # OpenRouter Auto `cost_tier` / `plugins: [{id: auto-router}]` (#388).
+    cost_tier: str | None = None
+    plugins: list[Any] | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
@@ -341,11 +346,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             include_usage = bool(body.stream_options and body.stream_options.get("include_usage"))
             client_host = request.client.host if request.client else "unknown"
             user_agent = request.headers.get("user-agent", "")
-            # T5b: explicit header wins; otherwise attribute Cursor traffic
-            # by user-agent so per-client reports work with zero config.
-            client_id = x_daari_client_id or (
-                "cursor" if "cursor" in user_agent.lower() else None
-            )
+            # T5b / #421: explicit header wins; otherwise attribute agent
+            # traffic by user-agent so per-client reports and classify_user_turn
+            # shortcuts work with zero config.
+            from daari.gateway.agent_ua import sniff_agent_client_id
+
+            client_id = x_daari_client_id or sniff_agent_client_id(user_agent)
             boundary_profile = (x_daari_boundary_profile or "").strip() or None
             log_gateway_event(
                 "chat_completions_request",
@@ -368,6 +374,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tier_cap=x_daari_tier_cap,
                 latency_budget_ms=latency_budget_ms,
                 client_id=client_id,
+                user_agent=user_agent[:200] or None,
                 user=(body.user or "").strip() or None,
                 session_id=(x_daari_session or "").strip() or None,
                 no_frontier=x_daari_no_frontier == "true",
@@ -376,12 +383,42 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 stream_include_usage=include_usage,
                 boundary_profile=boundary_profile,
             )
+            apply_cost_tier(body, meta)
             # Virtual-key defaults (issue #111); headers keep precedence.
             from daari.server.auth import apply_auth_claims_to_meta
 
             apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
+            # Per-end-user daily cap on shared virtual keys (#410). Checked here
+            # (not middleware) because the OpenAI `user` field lives in the body.
+            claims = getattr(request.state, "auth_claims", None)
+            vk = getattr(claims, "virtual_key", None) if claims is not None else None
+            if (
+                vk is not None
+                and float(getattr(vk, "user_daily_usd_cap", 0) or 0) > 0
+                and meta.user
+            ):
+                from daari.auth.budgets import user_daily_cap_exceeded
+
+                ledger = ctx.router.usage_ledger
+                client = meta.client_id or getattr(claims, "key_id", None) or ""
+                pricing = getattr(ctx.settings, "pricing", None)
+                fallback = float(ctx.settings.usage.frontier_price_per_1k_tokens or 0.002)
+                exceeded = (
+                    user_daily_cap_exceeded(
+                        vk,
+                        ledger,
+                        client_id=client,
+                        user_id=meta.user,
+                        pricing=pricing,
+                        fallback_per_1k=fallback,
+                    )
+                    if ledger is not None
+                    else None
+                )
+                if exceeded is not None:
+                    return JSONResponse(status_code=402, content={"error": exceeded})
             internal = _prepare_internal_request(
                 body,
                 default_model=ctx.settings.models.l3,
@@ -398,13 +435,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         internal.provider, configured_frontier_slots(ctx.settings)
                     )
                 except ZdrUnavailable as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                    raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
             if body.stream:
                 try:
                     ctx.router.ensure_capable(internal)
                 except UnsupportedCapability as exc:
-                    raise HTTPException(status_code=422, detail=str(exc)) from exc
+                    raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
 
                 outcome = StreamOutcome()
 
@@ -419,7 +456,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                                 content_chars += 1
                             yield chunk
                     except Exception as exc:
-                        yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+                        yield f"data: {json.dumps({'error': f'stream failed: {safe_detail(exc)}'})}\n\n"
                         yield "data: [DONE]\n\n"
                     finally:
                         log_gateway_event(
@@ -441,9 +478,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 result = await ctx.router.route(internal)
             except ZdrUnavailable as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
                 ctx.metrics.record_error()
                 return JSONResponse(
@@ -451,13 +488,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     content={
                         "error": {
                             "type": "backend_unavailable",
-                            "message": str(exc),
+                            "message": backend_unavailable_message(exc),
                         }
                     },
                 )
             except Exception as exc:
                 ctx.metrics.record_error()
-                raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
+                raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
@@ -681,6 +718,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 days=max(1, days),
                 frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
             )
+            by_user = getattr(ledger, "by_user", None)
+            payload["users"] = (
+                by_user(
+                    days=max(1, days),
+                    frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+                )
+                if callable(by_user)
+                else []
+            )
             store = getattr(request.app.state, "virtual_key_store", None)
             if store is not None and getattr(store, "report_by_team", None):
                 payload["teams"] = store.report_by_team(payload["clients"])
@@ -746,7 +792,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 recorded = store.record_signal(body.trace_id, body.signal)
             except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             if not recorded:
                 raise HTTPException(
                     status_code=404, detail=f"no outcome recorded for trace {body.trace_id}"
@@ -796,7 +842,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 claims = verify_access_token(token, sso)
             except Exception as exc:  # noqa: BLE001 — surface auth failures as 401
-                raise HTTPException(status_code=401, detail=str(exc)) from exc
+                raise HTTPException(status_code=401, detail=safe_detail(exc)) from exc
             role = role_from_claims(claims, role_claim=sso.role_claim)
             if not role_at_least(role, sso.admin_min_role):
                 raise HTTPException(status_code=403, detail="insufficient role")
@@ -820,7 +866,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 claims = verify_access_token(token, sso)
             except Exception as exc:  # noqa: BLE001
-                raise HTTPException(status_code=401, detail=str(exc)) from exc
+                raise HTTPException(status_code=401, detail=safe_detail(exc)) from exc
             subject = str(claims.get("sub") or "")
             role = role_from_claims(claims, role_claim=sso.role_claim)
             result: dict[str, Any] = {
@@ -847,7 +893,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         role=role,
                     )
                 except UnmappedSsoPolicy as exc:
-                    raise HTTPException(status_code=403, detail=str(exc)) from exc
+                    raise HTTPException(status_code=403, detail=safe_detail(exc)) from exc
                 result.update(minted)
             return result
 
@@ -923,7 +969,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     else None
                 )
             except ConfigValidationError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             boundaries = raw_boundaries
             if "confidence_threshold" in routing:
                 ctx.router.confidence_threshold = routing["confidence_threshold"]

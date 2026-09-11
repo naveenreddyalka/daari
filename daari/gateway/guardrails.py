@@ -82,11 +82,53 @@ class GuardrailEngine:
     max_prompt_chars: int = 0  # 0 = unlimited
     injection_action: Action = "block"
     block_message: str = "Request blocked by daari guardrail."
+    # buffered = collect then scan (default); incremental = holdback window (#375).
+    stream_mode: Literal["buffered", "incremental"] = "buffered"
+    stream_holdback_chars: int = 256
+    # When on, scan role=tool messages with output rules before the model hop (#387).
+    scan_tool_results: bool = False
 
     def check_input(self, request: InternalRequest) -> GuardrailResult:
         text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
         result = self.check_input_text(text)
         result.request = request
+        return result
+
+    def check_tool_results(self, request: InternalRequest) -> GuardrailResult:
+        """Scan OpenAI `role=tool` / Anthropic-converted tool_result messages.
+
+        Opt-in via `scan_tool_results`. Uses output-style rules (secrets/PII/deny)
+        so a leaked secret in a tool payload is redacted or blocked before execute
+        and before cache keys are computed. System/user/assistant are untouched.
+        """
+        result = GuardrailResult(request=request)
+        if not self.enabled or not self.scan_tool_results:
+            return result
+        rewritten_any = False
+        for index, message in enumerate(request.messages):
+            if message.role != "tool":
+                continue
+            text = message.content or ""
+            # Input deny/injection on tool payload (parity with MCP args path).
+            inbound = self.check_input_text(text)
+            if inbound.hits:
+                result.hits.extend(inbound.hits)
+                result.warning = result.warning or inbound.warning
+            if inbound.blocked:
+                result.blocked = True
+                return result
+            rewritten, outbound = self.check_output_text(text)
+            if outbound.hits:
+                result.hits.extend(outbound.hits)
+                result.warning = result.warning or outbound.warning
+            if outbound.blocked:
+                result.blocked = True
+                return result
+            if rewritten != text:
+                request.messages[index] = message.model_copy(update={"content": rewritten})
+                rewritten_any = True
+        if rewritten_any:
+            result.request = request
         return result
 
     def check_input_text(self, text: str) -> GuardrailResult:
@@ -203,6 +245,119 @@ class GuardrailEngine:
         return rewritten, result
 
 
+@dataclass
+class StreamScanRelease:
+    """Text safe to emit now from an incremental output scan."""
+
+    text: str = ""
+    blocked: bool = False
+    hits: list[GuardrailHit] = field(default_factory=list)
+    warning: str | None = None
+
+
+@dataclass
+class IncrementalOutputScanner:
+    """Scan streamed output with a trailing holdback so spans across chunks are caught.
+
+    Holds the last `holdback` characters of the rewritten buffer before release.
+    On block, `text` is the engine `block_message` (once) and further pushes stay blocked.
+    """
+
+    engine: GuardrailEngine
+    holdback: int = 256
+    _raw: str = field(default="", init=False, repr=False)
+    _emitted_len: int = field(default=0, init=False, repr=False)
+    _blocked: bool = field(default=False, init=False, repr=False)
+    _hits: list[GuardrailHit] = field(default_factory=list, init=False, repr=False)
+    _warning: str | None = field(default=None, init=False, repr=False)
+    _scanned: str = field(default="", init=False, repr=False)
+    _block_emitted: bool = field(default=False, init=False, repr=False)
+
+    def push(self, chunk: str) -> StreamScanRelease:
+        if self._blocked:
+            return StreamScanRelease(blocked=True, hits=list(self._hits), warning=self._warning)
+        if not chunk:
+            return StreamScanRelease(hits=list(self._hits), warning=self._warning)
+        self._raw += chunk
+        return self._release(final=False)
+
+    def flush(self) -> StreamScanRelease:
+        if self._blocked:
+            if not self._block_emitted:
+                self._block_emitted = True
+                return StreamScanRelease(
+                    text=self.engine.block_message,
+                    blocked=True,
+                    hits=list(self._hits),
+                    warning=self._warning,
+                )
+            return StreamScanRelease(blocked=True, hits=list(self._hits), warning=self._warning)
+        return self._release(final=True)
+
+    @property
+    def scanned_text(self) -> str:
+        return self._scanned
+
+    @property
+    def hits(self) -> list[GuardrailHit]:
+        return list(self._hits)
+
+    @property
+    def warning(self) -> str | None:
+        return self._warning
+
+    @property
+    def blocked(self) -> bool:
+        return self._blocked
+
+    def _release(self, *, final: bool) -> StreamScanRelease:
+        rewritten, result = self.engine.check_output_text(self._raw)
+        if result.hits:
+            # Keep first-seen hits; avoid duplicates on every push.
+            seen = {(h.stage, h.rule, h.action, h.detail) for h in self._hits}
+            for hit in result.hits:
+                key = (hit.stage, hit.rule, hit.action, hit.detail)
+                if key not in seen:
+                    self._hits.append(hit)
+                    seen.add(key)
+        if result.warning:
+            self._warning = result.warning
+        if result.blocked:
+            self._blocked = True
+            self._scanned = rewritten  # block_message
+            if self._block_emitted:
+                return StreamScanRelease(
+                    blocked=True, hits=list(self._hits), warning=self._warning
+                )
+            self._block_emitted = True
+            # Drop any previously released prefix from the client's view of record;
+            # cache stores the block message only.
+            self._emitted_len = len(rewritten)
+            return StreamScanRelease(
+                text=rewritten,
+                blocked=True,
+                hits=list(self._hits),
+                warning=self._warning,
+            )
+        self._scanned = rewritten
+        holdback = max(0, int(self.holdback))
+        if final:
+            safe_len = len(rewritten)
+        else:
+            safe_len = max(0, len(rewritten) - holdback)
+        if safe_len < self._emitted_len:
+            # Redaction shortened earlier text; wait for flush to reconcile.
+            safe_len = self._emitted_len
+        to_emit = rewritten[self._emitted_len : safe_len]
+        self._emitted_len = safe_len
+        return StreamScanRelease(
+            text=to_emit,
+            blocked=False,
+            hits=list(self._hits),
+            warning=self._warning,
+        )
+
+
 def engine_from_settings(settings: Any) -> GuardrailEngine | None:
     return engine_from_block(getattr(settings, "guardrails", None))
 
@@ -235,6 +390,9 @@ def engine_from_block(block: Any) -> GuardrailEngine | None:
             GuardrailRule(name="secrets", kind="secret", action="redact"),
             GuardrailRule(name="pii", kind="pii", action="redact"),
         ]
+    stream_mode = getattr(block, "stream_mode", "buffered") or "buffered"
+    holdback = int(getattr(block, "stream_holdback_chars", 256) or 256)
+    scan_tool = bool(getattr(block, "scan_tool_results", False))
     return GuardrailEngine(
         enabled=True,
         input_rules=input_rules,
@@ -242,6 +400,9 @@ def engine_from_block(block: Any) -> GuardrailEngine | None:
         max_prompt_chars=int(block.max_prompt_chars or 0),
         injection_action=block.injection_action,  # type: ignore[arg-type]
         block_message=block.block_message or GuardrailEngine.block_message,
+        stream_mode=stream_mode,  # type: ignore[arg-type]
+        stream_holdback_chars=max(0, holdback),
+        scan_tool_results=scan_tool,
     )
 
 

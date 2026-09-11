@@ -21,7 +21,7 @@ from daari.cache.verify import build_verifier
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
-from daari.gateway.cost_headers import StreamOutcome
+from daari.gateway.cost_headers import StreamOutcome, stream_cached_tokens, stream_usage_cost
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.provider_prefs import ZdrUnavailable
 from daari.gateway.sampling import model_supports_thinking
@@ -385,8 +385,17 @@ class Router:
         stall_escalation: bool = False,
         stall_repeats: int = 3,
         stall_window: int = 6,
+        phase_routing: bool = False,
+        phase_window: int = 6,
+        phase_map: dict[str, int | str] | None = None,
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
+        classify_user_turn: bool = False,
+        classify_user_turn_agents: bool = True,
+        harness_aware_profile: bool = True,
+        context_window_escalation: bool = True,
+        context_window_buffer: float = 0.95,
+        context_windows: dict[str, int] | None = None,
     ) -> None:
         self.cache = cache
         self.semantic_cache = semantic_cache
@@ -467,10 +476,22 @@ class Router:
         self.stall_escalation = bool(stall_escalation)
         self.stall_repeats = max(1, int(stall_repeats))
         self.stall_window = max(1, int(stall_window))
+        self.phase_routing = bool(phase_routing)
+        self.phase_window = max(1, int(phase_window))
+        from daari.router.phase import default_phase_map
+
+        self.phase_map = dict(phase_map) if phase_map is not None else default_phase_map()
         self.session_affinity = bool(session_affinity)
-        from daari.router.session_affinity import SessionPinStore
+        from daari.router.session_affinity import ProfilePinStore, SessionPinStore
 
         self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.classify_user_turn = bool(classify_user_turn)
+        self.classify_user_turn_agents = bool(classify_user_turn_agents)
+        self.harness_aware_profile = bool(harness_aware_profile)
+        self.profile_pins = ProfilePinStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.context_window_escalation = bool(context_window_escalation)
+        self.context_window_buffer = float(context_window_buffer)
+        self.context_windows = dict(context_windows) if context_windows else {}
         self.local_pool = local_pool
 
     @property
@@ -512,6 +533,17 @@ class Router:
                 before=tiers,
                 after=kept,
             )
+            if "vision" in required:
+                from daari.gateway.request_log import log_gateway_event
+
+                log_gateway_event(
+                    "modality_escalation",
+                    {
+                        "from": next((tier for tier in tiers if tier not in kept), None),
+                        "to": kept[0] if kept else None,
+                        "required": sorted(required),
+                    },
+                )
         if not kept:
             # A vision request on a text-only stack used to run anyway and answer
             # as if no image was sent (#164). Refuse rather than silently degrade.
@@ -537,6 +569,41 @@ class Router:
                 self.metrics.record_guardrail(hit.action)
         if warning:
             add_step("guardrail_warning", warning=warning)
+
+    def _incremental_output_scanner(self) -> Any | None:
+        """Holdback scanner when guardrails.stream_mode=incremental (#375)."""
+        engine = self.guardrails
+        if engine is None or not getattr(engine, "enabled", False):
+            return None
+        if not getattr(engine, "output_rules", None):
+            return None
+        if getattr(engine, "stream_mode", "buffered") != "incremental":
+            return None
+        from daari.gateway.guardrails import IncrementalOutputScanner
+
+        return IncrementalOutputScanner(
+            engine,
+            holdback=int(getattr(engine, "stream_holdback_chars", 256) or 256),
+        )
+
+    def _record_stream_guardrail(self, scanner: Any) -> None:
+        hits = list(getattr(scanner, "hits", []) or [])
+        warning = getattr(scanner, "warning", None)
+        if not hits and not warning:
+            return
+        self._apply_guardrail_hits(hits, warning=warning)
+        from daari.gateway.request_log import log_gateway_event
+
+        log_gateway_event(
+            "stream_guardrail",
+            {
+                "hits": [
+                    {"stage": h.stage, "rule": h.rule, "action": h.action} for h in hits
+                ],
+                "blocked": bool(getattr(scanner, "blocked", False)),
+                "warning": warning,
+            },
+        )
 
     async def _apply_input_policy(
         self, request: InternalRequest, profile: PromptProfile
@@ -591,6 +658,19 @@ class Router:
                 policy.refusal_tier = "guardrail"
                 return policy
             policy.warning = inbound.warning or policy.warning
+            # Opt-in scan of role=tool / tool_result payloads (#387). Mutates
+            # request in place on redact so cache keys and execute see scrubbed text.
+            if getattr(self.guardrails, "scan_tool_results", False):
+                tool_scan = self.guardrails.check_tool_results(request)
+                if tool_scan.hits:
+                    self._apply_guardrail_hits(tool_scan.hits, warning=tool_scan.warning)
+                if tool_scan.blocked:
+                    policy.refusal = blocked_response(
+                        request, self.guardrails.block_message
+                    )
+                    policy.refusal_tier = "guardrail"
+                    return policy
+                policy.warning = tool_scan.warning or policy.warning
         return policy
 
     def _apply_output_policy(self, response: InternalResponse) -> InternalResponse:
@@ -607,10 +687,15 @@ class Router:
         return response
 
     async def route(self, request: InternalRequest) -> InternalResponse:
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
+        profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
+        if reused:
+            add_step(
+                "classify_user_turn",
+                reused=True,
+                category=profile.category,
+                complexity=profile.complexity,
+            )
         add_step(
             "profile",
             category=profile.category,
@@ -618,7 +703,9 @@ class Router:
             prompt_tokens_est=profile.prompt_tokens_est,
             reasoning_effort=request.sampling.reasoning_effort,
         )
-        profile = await self._apply_learned_route(request, profile)
+        if not reused:
+            profile = await self._apply_learned_route(request, profile)
+            self._remember_user_turn_profile(request, profile)
         policy = await self._apply_input_policy(request, profile)
         boundary_meta = policy.boundary_meta
         input_warning = policy.warning
@@ -734,6 +821,7 @@ class Router:
             prompt_chars=prompt_chars,
             completion_chars=len(response.content or ""),
             client_id=request.meta.client_id,
+            user_id=request.meta.user,
             model=response.daari_meta.model or response.model,
             provider=response.daari_meta.provider_id,
             input_tokens=input_tokens,
@@ -1443,10 +1531,15 @@ class Router:
         created = int(time.time())
         chunk_id = f"chatcmpl-{int(time.time() * 1000)}"
         client_model = request.model or self.ollama_l3.default_model
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
+        profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
+        if reused:
+            add_step(
+                "classify_user_turn",
+                reused=True,
+                category=profile.category,
+                complexity=profile.complexity,
+            )
         add_step(
             "profile",
             category=profile.category,
@@ -1455,7 +1548,9 @@ class Router:
             reasoning_effort=request.sampling.reasoning_effort,
             stream=True,
         )
-        profile = await self._apply_learned_route(request, profile)
+        if not reused:
+            profile = await self._apply_learned_route(request, profile)
+            self._remember_user_turn_profile(request, profile)
 
         def finish_trace(tier: str | None) -> None:
             if trace is not None:
@@ -1498,7 +1593,13 @@ class Router:
                 "choices": [choice],
             }
 
-        def usage_chunk(completion_len: int, *, tokens: tuple[int, int] | None = None) -> str:
+        def usage_chunk(
+            completion_len: int,
+            *,
+            tokens: tuple[int, int] | None = None,
+            stream_tier: str | None = None,
+            served: InternalResponse | None = None,
+        ) -> str:
             # `tokens` carries provider-reported (input, output) counts when the
             # backend surfaced them (#320); otherwise fall back to chars/4.
             if tokens is not None:
@@ -1516,6 +1617,19 @@ class Router:
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "total_tokens": prompt_tokens + completion_tokens,
+                    "cost": self._stream_usage_cost(
+                        stream_tier,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        served=served,
+                    ),
+                    "prompt_tokens_details": {
+                        "cached_tokens": self._stream_cached_tokens(
+                            stream_tier,
+                            prompt_tokens=prompt_tokens,
+                            served=served,
+                        )
+                    },
                 },
             }
             return f"data: {json.dumps(payload)}\n\n"
@@ -1542,6 +1656,10 @@ class Router:
             add_step("served", tier=policy.refusal_tier, cache_hit=False, latency_ms=0)
             finish_trace(policy.refusal_tier)
             return
+        # Tool-result scan (#387) mutates `request` in place after the deep copy
+        # above; agent flows must see the redacted tool payloads downstream.
+        if agent_flow:
+            stream_request.messages = [m.model_copy(deep=True) for m in request.messages]
 
         # Deterministic tiers (Lt tools, L2 rules, live fetch, integrations)
         # answer without a model and were unreachable while streaming (#155).
@@ -1566,6 +1684,7 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(deterministic.content),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
                 finish_trace(tier)
@@ -1587,13 +1706,14 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(cached.content),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 log_gateway_event("stream_cache_hit", {"tier": "L0", "model": client_model})
                 outcome.note("L0", cache_hit=True)
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={'content': cached.content}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                yield usage_chunk(len(cached.content))
+                yield usage_chunk(len(cached.content), stream_tier="L0")
                 yield "data: [DONE]\n\n"
                 add_step("served", tier="L0", cache_hit=True, latency_ms=latency_ms)
                 finish_trace("L0")
@@ -1638,13 +1758,14 @@ class Router:
                             prompt_chars=prompt_chars,
                             completion_chars=len(nearest_response.content),
                             client_id=request.meta.client_id,
+                            user_id=request.meta.user,
                         )
                     log_gateway_event("stream_cache_hit", {"tier": "L1", "model": client_model})
                     outcome.note("L1", cache_hit=True)
                     yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                     yield f"data: {json.dumps(chunk_payload(delta={'content': nearest_response.content}))}\n\n"
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                    yield usage_chunk(len(nearest_response.content))
+                    yield usage_chunk(len(nearest_response.content), stream_tier="L1")
                     yield "data: [DONE]\n\n"
                     add_step("served", tier="L1", cache_hit=True, latency_ms=latency_ms)
                     finish_trace("L1")
@@ -1801,6 +1922,7 @@ class Router:
                 add_step("escalate", to="L6", local_confidence=confidence, relay=True)
                 log_gateway_event("stream_frontier_relay", {"from": tier, "to": "L6"})
                 relayed: list[str] = []
+                scanner = self._incremental_output_scanner()
                 outcome.note("L6", draft=draft_used)
                 try:
                     l6_request = await self._frontier_request(stream_request)
@@ -1809,17 +1931,44 @@ class Router:
                         l6_request, escalated_from=tier, local_confidence=confidence
                     ):
                         relayed.append(delta)
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+                        if scanner is not None:
+                            release = scanner.push(delta)
+                            if release.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                            if release.blocked:
+                                self._record_stream_guardrail(scanner)
+                                break
+                        else:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
                 except Exception as exc:
                     log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
                     # Nothing was emitted yet if the failure came before the
                     # first delta; otherwise the partial answer stands.
                     if not relayed:
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
-                        relayed.append(streamed_text)
-                relayed_text = "".join(relayed)
+                        if scanner is not None:
+                            release = scanner.push(streamed_text)
+                            if release.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                            flush = scanner.flush()
+                            if flush.text:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                            self._record_stream_guardrail(scanner)
+                            relayed.append(scanner.scanned_text)
+                        else:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
+                            relayed.append(streamed_text)
+                if scanner is not None and not scanner.blocked:
+                    flush = scanner.flush()
+                    if flush.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                    self._record_stream_guardrail(scanner)
+                    relayed_text = scanner.scanned_text
+                elif scanner is not None:
+                    relayed_text = scanner.scanned_text
+                else:
+                    relayed_text = "".join(relayed)
                 yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                yield usage_chunk(len(relayed_text))
+                yield usage_chunk(len(relayed_text), stream_tier="L6")
                 yield "data: [DONE]\n\n"
                 latency_ms = int((time.perf_counter() - started) * 1000)
                 self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
@@ -1833,6 +1982,7 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(relayed_text),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
                 finish_trace("L6")
@@ -1854,10 +2004,45 @@ class Router:
                         {"from": tier, "to": escalated.daari_meta.tier},
                     )
                     served = escalated
-            # Output guardrails run before the first byte reaches the client
-            # and before cache write-back, so a redacted secret cannot be
-            # served or persisted (#154).
-            if not tool_calls_sent and served.content.strip():
+            # Output guardrails: buffered scans the full answer before the first
+            # client byte; incremental replays deltas through a holdback scanner
+            # so secrets spanning chunks never leak (#154, #375).
+            scanner = (
+                self._incremental_output_scanner()
+                if not tool_calls_sent and served.content.strip()
+                else None
+            )
+            incremental_emitted = False
+            if scanner is not None and served.content == streamed_text:
+                # Local (or non-rewritten escalate) text — scan delta-by-delta.
+                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                for part in tier_text_parts:
+                    release = scanner.push(part)
+                    if release.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                    if release.blocked:
+                        break
+                if not scanner.blocked:
+                    flush = scanner.flush()
+                    if flush.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                self._record_stream_guardrail(scanner)
+                served = served.model_copy(update={"content": scanner.scanned_text})
+                incremental_emitted = True
+            elif scanner is not None:
+                # Escalated answer arrived as one blob — still scan with holdback.
+                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                release = scanner.push(served.content)
+                if release.text:
+                    yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                if not scanner.blocked:
+                    flush = scanner.flush()
+                    if flush.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                self._record_stream_guardrail(scanner)
+                served = served.model_copy(update={"content": scanner.scanned_text})
+                incremental_emitted = True
+            elif not tool_calls_sent and served.content.strip():
                 served = self._apply_output_policy(served)
 
             served_tier = served.daari_meta.tier or tier
@@ -1866,7 +2051,9 @@ class Router:
             rewritten = served.content != streamed_text
             completion_chars = len(served.content) if rewritten else tier_completion_chars
             outcome.note(served_tier, draft=draft_used)
-            if rewritten:
+            if incremental_emitted:
+                pass  # content already yielded through the scanner
+            elif rewritten:
                 yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                 yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
             elif content_sent:
@@ -1880,7 +2067,10 @@ class Router:
             # ledger row, so both see the provider's final count once (#320).
             stream_in, stream_out, usage_estimated = response_token_usage(served, prompt_chars)
             yield usage_chunk(
-                completion_chars, tokens=None if usage_estimated else (stream_in, stream_out)
+                completion_chars,
+                tokens=None if usage_estimated else (stream_in, stream_out),
+                stream_tier=served_tier,
+                served=served,
             )
             yield "data: [DONE]\n\n"
 
@@ -1896,6 +2086,7 @@ class Router:
                     prompt_chars=prompt_chars,
                     completion_chars=completion_chars,
                     client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     model=served.daari_meta.model or served.model,
                     provider=served.daari_meta.provider_id,
                     input_tokens=stream_in,
@@ -2013,10 +2204,10 @@ class Router:
         await self._refresh_warm_models()
         # Parity with the OpenAI stream path (issue #101): category policies,
         # learned routing, and latency step-down all key off the profile.
-        profile = build_prompt_profile(
-            request, effort_escalation=self.reasoning_effort_escalation
-        )
-        profile = await self._apply_learned_route(request, profile)
+        profile, reused = self._resolve_prompt_profile(request)
+        if not reused:
+            profile = await self._apply_learned_route(request, profile)
+            self._remember_user_turn_profile(request, profile)
         tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (issue #84: Claude Code tool turns) keep the full tool
         # protocol; plain chat gets sanitization + context optimization.
@@ -2085,7 +2276,11 @@ class Router:
                     {
                         "type": "message_delta",
                         "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                        "usage": {"output_tokens": max(0, len(text) // 4)},
+                        "usage": self._anthropic_stream_usage(
+                            tier_label,
+                            prompt_tokens=input_tokens,
+                            output_tokens=max(0, len(text) // 4),
+                        ),
                         "daari_meta": event_meta,
                     },
                 ),
@@ -2100,6 +2295,8 @@ class Router:
             for event in terminal_events(policy.refusal.content, policy.refusal_tier):
                 yield event
             return
+        if agent_flow:
+            stream_request.messages = [m.model_copy(deep=True) for m in request.messages]
 
         stream_started = time.perf_counter()
 
@@ -2123,6 +2320,7 @@ class Router:
                         prompt_chars=prompt_chars,
                         completion_chars=len(deterministic.content),
                         client_id=request.meta.client_id,
+                        user_id=request.meta.user,
                     )
                 return
 
@@ -2338,6 +2536,7 @@ class Router:
                     prompt_chars=prompt_chars,
                     completion_chars=len(response.content or ""),
                     client_id=request.meta.client_id,
+                    user_id=request.meta.user,
                     model=response.daari_meta.model or response.model,
                     provider=response.daari_meta.provider_id,
                     input_tokens=tokens_in,
@@ -2346,7 +2545,7 @@ class Router:
 
             # Events are buffered until the tier completes, so the confidence
             # ladder, org pool, and L6 can run before the client sees anything,
-            # and output guardrails can rewrite the text (#154, #155).
+            # and output guardrails can rewrite the text (#154, #155, #375).
             if not tool_use_sent and streamed_text.strip():
                 try:
                     escalated = await self._maybe_escalate(
@@ -2360,7 +2559,84 @@ class Router:
                         {"from": tier, "to": escalated.daari_meta.tier},
                     )
                     served = escalated
-                served = self._apply_output_policy(served)
+                scanner = self._incremental_output_scanner()
+                if scanner is not None and served.content == streamed_text:
+                    # Replay local deltas through the holdback scanner.
+                    out_events: list[str] = [message_start, text_block_start(0)]
+                    for part in tier_text_parts:
+                        release = scanner.push(part)
+                        if release.text:
+                            out_events.append(
+                                sse(
+                                    "content_block_delta",
+                                    {
+                                        "type": "content_block_delta",
+                                        "index": 0,
+                                        "delta": {"type": "text_delta", "text": release.text},
+                                        "daari_meta": meta,
+                                    },
+                                )
+                            )
+                        if release.blocked:
+                            break
+                    if not scanner.blocked:
+                        flush = scanner.flush()
+                        if flush.text:
+                            out_events.append(
+                                sse(
+                                    "content_block_delta",
+                                    {
+                                        "type": "content_block_delta",
+                                        "index": 0,
+                                        "delta": {"type": "text_delta", "text": flush.text},
+                                        "daari_meta": meta,
+                                    },
+                                )
+                            )
+                    self._record_stream_guardrail(scanner)
+                    served = served.model_copy(update={"content": scanner.scanned_text})
+                    outcome.note(served.daari_meta.tier or tier)
+                    self._finish_session_pin(request, served)
+                    for event in out_events:
+                        yield event
+                    yield block_stop(0)
+                    yield sse(
+                        "message_delta",
+                        {
+                            "type": "message_delta",
+                            "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                            "usage": self._anthropic_stream_usage(
+                                served.daari_meta.tier or tier,
+                                prompt_tokens=input_tokens,
+                                output_tokens=max(0, len(served.content) // 4),
+                                served=served,
+                            ),
+                        },
+                    )
+                    yield sse("message_stop", {"type": "message_stop"})
+                    latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                    record_served(served, latency_ms)
+                    log_gateway_event(
+                        "anthropic_stream_done",
+                        {
+                            "tier": served.daari_meta.tier or tier,
+                            "ollama_model": served.daari_meta.model or model_name,
+                            "latency_ms": latency_ms,
+                            "completion_chars": len(served.content),
+                            "rewritten": served.content != streamed_text,
+                            "agent_flow": agent_flow,
+                            "incremental": True,
+                        },
+                    )
+                    return
+                if scanner is not None:
+                    scanner.push(served.content)
+                    if not scanner.blocked:
+                        scanner.flush()
+                    self._record_stream_guardrail(scanner)
+                    served = served.model_copy(update={"content": scanner.scanned_text})
+                else:
+                    served = self._apply_output_policy(served)
 
             if served.content != streamed_text and not tool_use_sent:
                 outcome.note(served.daari_meta.tier or tier)
@@ -2416,7 +2692,14 @@ class Router:
                     },
                     # Cumulative per the Anthropic contract: the single delta
                     # carries the final total.
-                    "usage": {"output_tokens": output_tokens},
+                    "usage": self._anthropic_stream_usage(
+                        served.daari_meta.tier or tier,
+                        prompt_tokens=(
+                            reported_usage[0] if reported_usage is not None else input_tokens
+                        ),
+                        output_tokens=output_tokens,
+                        served=served,
+                    ),
                     "daari_meta": meta,
                 },
             )
@@ -2674,6 +2957,125 @@ class Router:
             return cap
         return tier
 
+    def _classify_user_turn_source(self, request: InternalRequest) -> str | None:
+        """Return 'config', 'ua', or None when profile reuse is disabled."""
+        if self.classify_user_turn:
+            return "config"
+        if self.classify_user_turn_agents:
+            from daari.gateway.agent_ua import is_classify_user_turn_agent
+
+            if is_classify_user_turn_agent(
+                user_agent=request.meta.user_agent,
+                client_id=request.meta.client_id,
+            ):
+                return "ua"
+        return None
+
+    def _resolve_prompt_profile(
+        self, request: InternalRequest
+    ) -> tuple[PromptProfile, bool]:
+        """Build or reuse a profile. Returns (profile, reused).
+
+        When `classify_user_turn` is on (or the agent UA shortcut applies), a
+        tool-result continuation reuses the prior user-turn category/complexity
+        (#389, #421). prompt_tokens_est still reflects the full message list so
+        context-window escalation sees size.
+        """
+        source = self._classify_user_turn_source(request)
+        if source is None:
+            return self._build_prompt_profile(request), False
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.session_affinity import (
+            conversation_prefix_hash,
+            is_tool_continuation,
+            session_key,
+            user_turn_prefix,
+        )
+
+        prefix = conversation_prefix_hash(request.messages)
+        key = session_key(request.meta, prefix)
+        tokens_est = max(
+            1, sum(len(message.content or "") for message in request.messages) // 4
+        )
+        if is_tool_continuation(request.messages):
+            pin = self.profile_pins.get(key)
+            if pin is not None and pin.prefix_hash == prefix:
+                profile = PromptProfile(
+                    category=pin.category,
+                    complexity=pin.complexity,
+                    prompt_tokens_est=tokens_est,
+                )
+                log_gateway_event(
+                    "classify_user_turn",
+                    {
+                        "reused": True,
+                        "category": profile.category,
+                        "complexity": profile.complexity,
+                        "session": key,
+                        "source": source,
+                    },
+                )
+                return profile, True
+            # No pin yet: classify from the user-turn prefix only.
+            prefix_request = request.model_copy(
+                update={"messages": user_turn_prefix(request.messages)}
+            )
+            base = self._build_prompt_profile(prefix_request)
+            profile = PromptProfile(
+                category=base.category,
+                complexity=base.complexity,
+                prompt_tokens_est=tokens_est,
+            )
+            log_gateway_event(
+                "classify_user_turn",
+                {
+                    "reused": True,
+                    "category": profile.category,
+                    "complexity": profile.complexity,
+                    "session": key,
+                    "source": source,
+                },
+            )
+            self.profile_pins.put(
+                key,
+                category=profile.category,
+                complexity=profile.complexity,
+                prefix_hash=prefix,
+            )
+            return profile, True
+        return self._build_prompt_profile(request), False
+
+    def _build_prompt_profile(self, request: InternalRequest) -> PromptProfile:
+        profile = build_prompt_profile(
+            request,
+            effort_escalation=self.reasoning_effort_escalation,
+            harness_aware=self.harness_aware_profile,
+        )
+        if profile.stripped_chars:
+            from daari.gateway.request_log import log_gateway_event
+
+            log_gateway_event(
+                "harness_profile",
+                {"stripped_chars": profile.stripped_chars},
+            )
+        return profile
+
+    def _remember_user_turn_profile(
+        self, request: InternalRequest, profile: PromptProfile
+    ) -> None:
+        if self._classify_user_turn_source(request) is None:
+            return
+        from daari.router.session_affinity import conversation_prefix_hash, session_key
+
+        prefix = conversation_prefix_hash(request.messages)
+        key = session_key(request.meta, prefix)
+        self.profile_pins.put(
+            key,
+            category=profile.category,
+            complexity=profile.complexity,
+            prefix_hash=prefix,
+        )
+
     def _session_pin_tier(self, request: InternalRequest) -> str | None:
         """Replay a continuation pin, or None so heuristics run.
 
@@ -2802,13 +3204,95 @@ class Router:
             chosen = capable[0] if capable else pinned
             if chosen != pinned:
                 self._log_session_pin_override(request, pinned, chosen, "capability")
-            return chosen
+            chosen = self._apply_context_window_escalation(request, profile, chosen)
+            return self._cap_tier(chosen, self._effective_tier_cap(request))
         tier = self._choose_uncapped_tier(request, profile)
+        tier = self._apply_phase_routing(request, tier)
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
         tier = self._apply_latency_budget(tier, request, profile)
         capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
         chosen = capable[0] if capable else tier
-        return self._apply_stall_escalation(request, chosen)
+        chosen = self._apply_stall_escalation(request, chosen)
+        chosen = self._apply_context_window_escalation(request, profile, chosen)
+        return self._cap_tier(chosen, self._effective_tier_cap(request))
+
+    def _apply_phase_routing(self, request: InternalRequest, tier: str) -> str:
+        """Downgrade/upgrade from tool-history phase; stall may undo later."""
+        if not self.phase_routing or tier not in self._TIER_ORDER:
+            return tier
+        # Non-agent requests (no tools, no tool history) are untouched.
+        if not request.tools and not request.has_tool_calls_in_history:
+            return tier
+        from daari.gateway.request_log import log_gateway_event
+        from daari.observability.trace import add_step
+        from daari.router.phase import adjust_tier, classify_phase
+
+        match = classify_phase(request.messages, window=self.phase_window)
+        if match is None:
+            return tier
+        nxt = adjust_tier(tier, match.phase, self.phase_map)
+        if nxt == tier:
+            # Still record a zero-delta classification for observability.
+            delta = 0
+        else:
+            delta = self._TIER_ORDER.index(nxt) - self._TIER_ORDER.index(tier)
+        detail = {
+            "phase": match.phase,
+            "signals": list(match.signals),
+            "delta": delta,
+            "from": tier,
+            "to": nxt,
+        }
+        add_step("phase_route", **detail)
+        log_gateway_event("phase_route", detail)
+        return nxt
+
+    def _context_window_fits(self, tier: str, estimated: int) -> bool | None:
+        """True / False when the window is known; None when unknown (#385)."""
+        window = int(self.context_windows.get(tier) or 0)
+        if window <= 0:
+            return None
+        buffer = self.context_window_buffer if self.context_window_buffer > 0 else 1.0
+        return estimated <= int(window * buffer)
+
+    def _apply_context_window_escalation(
+        self,
+        request: InternalRequest,
+        profile: PromptProfile | None,
+        tier: str,
+    ) -> str:
+        """Bump to a tier that can hold the prompt before the first local hop (#385)."""
+        if not self.context_window_escalation or profile is None:
+            return tier
+        if tier not in self._TIER_ORDER:
+            return tier
+        estimated = int(profile.prompt_tokens_est or 0)
+        if estimated <= 0:
+            return tier
+        if self._context_window_fits(tier, estimated) is not False:
+            return tier
+        start = self._TIER_ORDER.index(tier) + 1
+        chosen = tier
+        for candidate in self._TIER_ORDER[start:]:
+            fits = self._context_window_fits(candidate, estimated)
+            if fits is None:
+                return tier
+            chosen = candidate
+            if fits:
+                break
+        if chosen == tier:
+            return tier
+        from daari.gateway.request_log import log_gateway_event
+
+        detail = {
+            "from": tier,
+            "to": chosen,
+            "prompt_tokens_est": estimated,
+            "window": int(self.context_windows.get(chosen) or 0),
+        }
+        add_step("context_window_escalation", **detail)
+        log_gateway_event("context_window_escalation", detail)
+        return chosen
 
     def _apply_stall_escalation(self, request: InternalRequest, tier: str) -> str:
         if not self.stall_escalation or tier not in {"L3", "L4", "L5"}:
@@ -3138,7 +3622,9 @@ class Router:
             return False
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
             if getattr(self.guardrails, "output_rules", None):
-                return False
+                # Incremental mode scans relay deltas with a holdback (#375).
+                if getattr(self.guardrails, "stream_mode", "buffered") != "incremental":
+                    return False
         if not self._frontier_reachable(request):
             return False
         if self._frontier_budget_state() == "exceeded":
@@ -3253,6 +3739,77 @@ class Router:
 
     def _frontier_budget_exceeded(self) -> bool:
         return self._frontier_budget_state() == "exceeded"
+
+    def _stream_usage_cost(
+        self,
+        tier: str | None,
+        *,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        served: InternalResponse | None = None,
+    ) -> float:
+        reported = None
+        model = None
+        cached = 0
+        billed = tier
+        if served is not None:
+            reported = served.daari_meta.cost_usd
+            model = served.daari_meta.model or served.model
+            cached = int(served.daari_meta.cached_tokens or 0)
+            billed = served.daari_meta.tier or billed
+        return stream_usage_cost(
+            tier=billed,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            pricing=self.pricing,
+            fallback_per_1k=self.frontier_price_per_1k_tokens,
+            cached_input_tokens=cached,
+            reported_cost=reported,
+        )
+
+    def _stream_cached_tokens(
+        self,
+        tier: str | None,
+        *,
+        prompt_tokens: int = 0,
+        served: InternalResponse | None = None,
+    ) -> int:
+        meta_cached = None
+        billed = tier
+        if served is not None:
+            meta_cached = served.daari_meta.cached_tokens
+            billed = served.daari_meta.tier or billed
+        return stream_cached_tokens(
+            tier=billed,
+            prompt_tokens=prompt_tokens,
+            cached_from_meta=meta_cached,
+        )
+
+    def _anthropic_stream_usage(
+        self,
+        tier: str | None,
+        *,
+        prompt_tokens: int,
+        output_tokens: int,
+        served: InternalResponse | None = None,
+    ) -> dict[str, Any]:
+        """message_delta.usage: cost always; cache_read_input_tokens when known (#399)."""
+        usage: dict[str, Any] = {
+            "output_tokens": output_tokens,
+            "cost": self._stream_usage_cost(
+                tier,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=output_tokens,
+                served=served,
+            ),
+        }
+        cached = self._stream_cached_tokens(
+            tier, prompt_tokens=prompt_tokens, served=served
+        )
+        if cached:
+            usage["cache_read_input_tokens"] = cached
+        return usage
 
     def _record(self, response: InternalResponse, started: float) -> None:
         self._emit_org_feedback("", response)
@@ -3706,12 +4263,19 @@ class AppContext:
             providers.register(live_provider)
         from daari.enterprise.audit import AuditLog
         from daari.gateway.mcp_guardrails import McpGuardrails
+        from daari.gateway.mcp_policy import McpToolPolicy
         from daari.providers.mcp_egress import build_mcp_providers
 
         egress_guardrails = McpGuardrails.from_settings(
             settings, audit=AuditLog(settings.enterprise.audit_path), transport="egress"
         )
-        mcp_providers = build_mcp_providers(settings.integrations.mcp_servers, egress_guardrails)
+        mcp_providers = build_mcp_providers(
+            settings.integrations.mcp_servers,
+            egress_guardrails,
+            tool_search=settings.integrations.mcp_tool_search,
+            embedder=embedder,
+            tool_policy=McpToolPolicy.from_mapping(settings.integrations.mcp_policy),
+        )
         mcp_triggers: dict[str, list[str]] = {}
         for mcp_provider in mcp_providers:
             providers.register(mcp_provider)
@@ -3859,8 +4423,21 @@ class AppContext:
             stall_escalation=settings.routing.stall_escalation.enabled,
             stall_repeats=settings.routing.stall_escalation.repeats,
             stall_window=settings.routing.stall_escalation.window,
+            phase_routing=settings.routing.phase_routing.enabled,
+            phase_window=settings.routing.phase_routing.window,
+            phase_map={
+                "explore": settings.routing.phase_routing.explore,
+                "implement": settings.routing.phase_routing.implement,
+                "verify": settings.routing.phase_routing.verify,
+            },
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
+            classify_user_turn=settings.routing.classify_user_turn,
+            classify_user_turn_agents=settings.routing.classify_user_turn_agents,
+            harness_aware_profile=settings.routing.harness_aware_profile,
+            context_window_escalation=settings.routing.context_window_escalation,
+            context_window_buffer=settings.routing.context_window_escalation_buffer,
+            context_windows=dict(settings.routing.context_windows or {}),
         )
         if settings.observability.otel:
             from daari.observability.otel import configure_providers

@@ -239,7 +239,7 @@ async def test_frontier_executor_parses_upstream_sse():
 
 @pytest.mark.asyncio
 async def test_stream_buffers_frontier_when_output_guardrails_active(tmp_path):
-    """Redaction needs the whole answer, so guardrails force the buffered path."""
+    """Buffered mode still forces the collect-then-scan path when guardrails are on."""
     from daari.gateway.guardrails import GuardrailEngine, GuardrailRule
 
     executor = _Executor(text="idk")
@@ -253,8 +253,34 @@ async def test_stream_buffers_frontier_when_output_guardrails_active(tmp_path):
         guardrails=GuardrailEngine(
             enabled=True,
             output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+            stream_mode="buffered",
         ),
     )
     body = await _collect(router.stream_openai_chunks(_request("explain quantum decoherence")))
     assert "FRONTIER" in _openai_text(body)
     assert frontier.stream_calls + frontier.execute_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_relays_frontier_with_incremental_guardrails(tmp_path):
+    """Incremental mode keeps L6 relay eligible while scanning deltas (#375)."""
+    from daari.gateway.guardrails import GuardrailEngine, GuardrailRule
+
+    executor = _Executor(text="idk")
+    frontier = _StreamingFrontier()
+    router = _router(
+        tmp_path,
+        executor,
+        frontier=frontier,
+        frontier_enabled=True,
+        confidence_threshold=0.99,
+        guardrails=GuardrailEngine(
+            enabled=True,
+            output_rules=[GuardrailRule(name="secrets", kind="secret", action="redact")],
+            stream_mode="incremental",
+            stream_holdback_chars=256,
+        ),
+    )
+    body = await _collect(router.stream_openai_chunks(_request("explain quantum decoherence")))
+    assert "FRONTIER" in _openai_text(body)
+    assert frontier.stream_calls == 1, "incremental guardrails must allow live L6 relay"

@@ -224,6 +224,37 @@ class StallEscalationSettings(BaseModel):
     )
 
 
+class PhaseRoutingSettings(BaseModel):
+    """Tier agent turns by explore / implement / verify phase from tool history (#374)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, the last window of tool-call names classifies the turn "
+            "as explore / implement / verify and adjusts the heuristic tier. "
+            "Default off."
+        ),
+    )
+    window: int = Field(
+        default=6,
+        ge=1,
+        description="How many recent tool-call names are classified for phase.",
+    )
+    # Relative ladder deltas (int) or absolute tier labels (L3|L4|L5).
+    explore: int | str = Field(
+        default=-1,
+        description="Tier adjustment for explore-phase turns. Default -1 (floor L3).",
+    )
+    implement: int | str = Field(
+        default=0,
+        description="Tier adjustment for implement-phase turns. Default 0.",
+    )
+    verify: int | str = Field(
+        default=0,
+        description="Tier adjustment for verify-phase turns. Default 0.",
+    )
+
+
 class OrgPoolSettings(BaseModel):
     """Shared org GPU inference pool between local L5 and frontier L6 (issue #118)."""
 
@@ -282,6 +313,12 @@ class RoutingSettings(RuntimeSettings):
         default_factory=StallEscalationSettings,
         description="Stuck-loop bump from tool-call history. Off unless enabled.",
     )
+    phase_routing: PhaseRoutingSettings = Field(
+        default_factory=PhaseRoutingSettings,
+        description=(
+            "Subtask/phase tier adjustment from tool-call names. Off unless enabled."
+        ),
+    )
     # Keep an agent session on the model that planned the task across tool
     # continuations. Default off — unshipped behavior is unchanged (#356).
     session_affinity: bool = Field(
@@ -299,6 +336,54 @@ class RoutingSettings(RuntimeSettings):
             "How long a session pin is reused. 0 keeps the pin until process "
             "restart. Ignored unless session_affinity is true."
         ),
+    )
+    # When on, tool-result continuations reuse the prior user-turn category /
+    # complexity instead of re-running build_prompt_profile (#389). Default off.
+    classify_user_turn: bool = Field(
+        default=False,
+        description=(
+            "When true, a tool-result continuation (no new user text) reuses "
+            "the previous profile's category/complexity. Phase routing and "
+            "stall escalation still inspect tool history. A new user message "
+            "re-profiles. Default off."
+        ),
+    )
+    # UA shortcut when classify_user_turn is off (#421). Default on.
+    classify_user_turn_agents: bool = Field(
+        default=True,
+        description=(
+            "When classify_user_turn is false, still reuse profiles on "
+            "tool-result continuations for agent User-Agents (cursor, "
+            "claude-code, claude code, codex). Set false to disable the "
+            "shortcut. Ignored when classify_user_turn is true (applies to "
+            "every client). Default on."
+        ),
+    )
+    harness_aware_profile: bool = Field(
+        default=True,
+        description=(
+            "When true, complexity/category ignore system catalogs and "
+            "recognized Codex/Claude Code harness blocks. prompt_tokens_est "
+            "still counts the full request (#418). Default on (no-op without "
+            "those markers)."
+        ),
+    )
+    context_window_escalation: bool = Field(
+        default=True,
+        description=(
+            "When true, pick a higher local tier before the first hop if the "
+            "prompt estimate exceeds that tier's known context window (#385)."
+        ),
+    )
+    context_window_escalation_buffer: float = Field(
+        default=0.95,
+        ge=0.0,
+        le=1.0,
+        description="Escalate when estimated tokens exceed window * buffer.",
+    )
+    context_windows: dict[str, int] = Field(
+        default_factory=lambda: {"L3": 8192, "L4": 32768, "L5": 131072},
+        description="Known context windows (tokens) per local tier. Missing = unknown, left alone.",
     )
     # Shadow evals for tier decisions (#318): replay this fraction of requests
     # served by a local tier at a comparison tier in the background and record
@@ -414,14 +499,17 @@ class ModelPrice(BaseModel):
     output_per_1m: float
     # Providers discount cached prompt prefixes; None means bill at input rate.
     cached_input_per_1m: float | None = None
+    # Long-context tier: once prompt tokens reach the threshold, the whole
+    # request is billed at the above-* rates (#411 / gpt-6-astra >272K).
+    input_threshold_tokens: int | None = None
+    above_input_per_1m: float | None = None
+    above_output_per_1m: float | None = None
 
 
 # List prices captured 2026-09-07. These move, so treat the table as a
 # convenience default: anything in `pricing.models` overrides an entry here,
 # and unpriced models fall back to frontier.price_per_1k_tokens.
-# Threshold pricing (GPT-6 Astra above 272K input) is not applied here —
-# see docs/developer/guides/configuration/budgets-frontier.md.
-_DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
+_DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
     "gpt-4o": {"input_per_1m": 2.50, "output_per_1m": 10.00, "cached_input_per_1m": 1.25},
     "gpt-4o-mini": {"input_per_1m": 0.15, "output_per_1m": 0.60, "cached_input_per_1m": 0.075},
     "claude-3-5-sonnet": {"input_per_1m": 3.00, "output_per_1m": 15.00},
@@ -439,7 +527,15 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float]] = {
     "claude-haiku-4-5": {"input_per_1m": 1.00, "output_per_1m": 5.00, "cached_input_per_1m": 0.10},
     # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
     # Sol is the promotional rate published through 2026-11-21 ($4/$20).
-    "gpt-6-astra": {"input_per_1m": 10.00, "output_per_1m": 50.00, "cached_input_per_1m": 1.00},
+    # Above 272K input tokens the whole request bills at 2× input / 1.5× output.
+    "gpt-6-astra": {
+        "input_per_1m": 10.00,
+        "output_per_1m": 50.00,
+        "cached_input_per_1m": 1.00,
+        "input_threshold_tokens": 272_000,
+        "above_input_per_1m": 20.00,
+        "above_output_per_1m": 75.00,
+    },
     "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-terra": {"input_per_1m": 2.00, "output_per_1m": 12.00, "cached_input_per_1m": 0.20},
@@ -585,6 +681,35 @@ class GuardrailSettings(BaseModel):
     block_message: str = "Request blocked by daari guardrail."
     input_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
     output_rules: list[GuardrailRuleSettings] = Field(default_factory=list)
+    # buffered keeps today's collect-then-scan streams; incremental holds a
+    # trailing window so secrets spanning chunk boundaries never leak (#375).
+    stream_mode: Literal["buffered", "incremental"] = Field(
+        default="buffered",
+        description=(
+            "How output guardrails apply to SSE streams. buffered (default) "
+            "scans the full answer before the first byte; incremental scans "
+            "with a holdback window and keeps frontier relay eligible."
+        ),
+    )
+    stream_holdback_chars: int = Field(
+        default=256,
+        ge=0,
+        description=(
+            "Characters held back before emission in incremental stream_mode "
+            "so a secret spanning two deltas is caught. Ignored when buffered."
+        ),
+    )
+    # Off by default: chat tool payloads reach the model unchecked (MCP has its
+    # own path). When on, role=tool / tool_result content is scanned with output
+    # rules before execute; cache keys use the redacted text (#387).
+    scan_tool_results: bool = Field(
+        default=False,
+        description=(
+            "When true, scan OpenAI role=tool and Anthropic tool_result message "
+            "contents with output rules (secrets/PII/deny) before the model hop. "
+            "System/user/assistant messages are unchanged. Default off."
+        ),
+    )
 
 
 class BoundariesSettings(RuntimeSettings):
@@ -652,6 +777,28 @@ class McpTasksSettings(BaseModel):
     path: str = "~/.daari/mcp-tasks"
 
 
+class McpToolSearchSettings(BaseModel):
+    """Rank large aggregated MCP tool catalogs with local embeddings (#376)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true and the catalog exceeds min_catalog_size, rank tools by "
+            "embedding similarity and return top_k. Default off — listing is unchanged."
+        ),
+    )
+    min_catalog_size: int = Field(
+        default=40,
+        ge=1,
+        description="Catalogs at or under this size are returned unranked.",
+    )
+    top_k: int = Field(
+        default=40,
+        ge=1,
+        description="Maximum tools returned after ranking.",
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -685,6 +832,12 @@ class IntegrationsSettings(BaseModel):
     )
     # SEP-2663 Tasks for long-running tools/call (#289).
     mcp_tasks: McpTasksSettings = Field(default_factory=McpTasksSettings)
+    mcp_tool_search: McpToolSearchSettings = Field(
+        default_factory=McpToolSearchSettings,
+        description=(
+            "Semantic ranking for large MCP tools/list catalogs (#376). Off by default."
+        ),
+    )
     mcp_guardrails: GuardrailSettings = Field(
         default_factory=GuardrailSettings,
         description=(

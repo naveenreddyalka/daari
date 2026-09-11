@@ -455,6 +455,24 @@ async def test_stream_l0_cache_hit_on_repeat(app, monkeypatch):
     assert '"finish_reason": "stop"' in second.text or '"finish_reason":"stop"' in second.text
     assert stats["tiers"].get("L0", {}).get("cache_hits") == 1
     assert stats["tiers"].get("L3", {}).get("count") == 1
+    usage_chunks = [
+        json.loads(line[len("data: ") :])
+        for line in second.text.splitlines()
+        if line.startswith("data: ") and "[DONE]" not in line
+    ]
+    costs = [p["usage"]["cost"] for p in usage_chunks if p.get("usage")]
+    assert costs and costs[-1] == 0.0
+    cached = [
+        p["usage"]["prompt_tokens_details"]["cached_tokens"]
+        for p in usage_chunks
+        if p.get("usage") and p["usage"].get("prompt_tokens_details")
+    ]
+    prompts = [
+        p["usage"]["prompt_tokens"]
+        for p in usage_chunks
+        if p.get("usage")
+    ]
+    assert cached and prompts and cached[-1] == prompts[-1]
 
 
 @pytest.mark.asyncio
@@ -711,6 +729,45 @@ async def test_tier_cap_header_caps_long_prompt_at_l3(app, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cost_tier_body_caps_long_prompt_at_l3(app, monkeypatch):
+    seen_tiers: list[str] = []
+
+    def make_fake(tier: str):
+        async def fake_execute(request: InternalRequest) -> InternalResponse:
+            seen_tiers.append(tier)
+            return InternalResponse(
+                content="a confident answer that is long enough to avoid escalation",
+                model=f"model-{tier.lower()}",
+                daari_meta=DaariMeta(tier=tier, executor="ollama", provider_id="ollama", latency_ms=5),
+            )
+
+        return fake_execute
+
+    router = app.state.ctx.router
+    monkeypatch.setattr(router.ollama, "execute", make_fake("L3"))
+    monkeypatch.setattr(router.ollama_l4, "execute", make_fake("L4"))
+    monkeypatch.setattr(router.ollama_l5, "execute", make_fake("L5"))
+
+    long_prompt = "please explain this " + "word " * 300
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": long_prompt}],
+                "cost_tier": "low",
+            },
+            headers=META_HEADERS,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["tier"] == "L3"
+    assert seen_tiers == ["L3"]
+
+
+@pytest.mark.asyncio
 async def test_trace_recorded_and_retrievable_by_id(app, monkeypatch):
     """Issue #20: every request carries a trace_id whose steps are retrievable."""
 
@@ -920,6 +977,9 @@ async def test_openai_models_list(app):
     assert payload["object"] == "list"
     assert any(item["id"] == "daari" for item in payload["data"])
     assert all("capabilities" in item for item in payload["data"])
+    l3_id = app.state.ctx.settings.models.l3
+    l3_card = next(item for item in payload["data"] if item["id"] == l3_id)
+    assert l3_card["context_length"] == app.state.ctx.settings.routing.context_windows["L3"]
     assert model_response.status_code == 200
     assert model_response.json()["id"] == "daari"
     assert "capabilities" in model_response.json()
@@ -1213,6 +1273,7 @@ async def test_anthropic_stream_reports_estimated_usage(app, monkeypatch):
     # "stream this" = 11 chars -> 2 input tokens; "Hello world" = 11 chars -> 2 output tokens
     assert message_start["message"]["usage"]["input_tokens"] == 2
     assert message_delta["usage"]["output_tokens"] == 2
+    assert message_delta["usage"]["cost"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -1751,6 +1812,99 @@ def _frontier_spend(ledger, client_id: str, usd: float) -> None:
     ledger.record(tier="L6", client_id=client_id, model="", input_tokens=int(usd / 0.002 * 1000))
 
 
+def _frontier_spend_user(ledger, client_id: str, user_id: str, usd: float) -> None:
+    ledger.record(
+        tier="L6",
+        client_id=client_id,
+        user_id=user_id,
+        model="",
+        input_tokens=int(usd / 0.002 * 1000),
+    )
+
+
+@pytest.mark.asyncio
+async def test_user_attribution_and_per_user_cap(settings, tmp_path):
+    """Issue #410: OpenAI `user` hits the ledger; per-key user caps are isolated."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create(
+        "shared-agent",
+        client_id="key-a",
+        user_daily_usd_cap=1.0,
+    )
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    application.state.ctx.router.usage_ledger = ledger
+
+    async def local_answer(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama", latency_ms=1),
+        )
+
+    application.state.ctx.router.ollama.execute = local_answer
+    headers = {"Authorization": f"Bearer {created.plaintext}"}
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        attributed = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "alice",
+                "messages": [{"role": "user", "content": "hi alice"}],
+            },
+            headers=headers,
+        )
+        no_user = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "anon"}]},
+            headers=headers,
+        )
+        _frontier_spend_user(ledger, "key-a", "alice", 1.0)
+        alice_blocked = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "alice",
+                "messages": [{"role": "user", "content": "again"}],
+            },
+            headers=headers,
+        )
+        bob_ok = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "user": "bob",
+                "messages": [{"role": "user", "content": "hi bob"}],
+            },
+            headers=headers,
+        )
+        report = await client.get("/v1/daari/report?days=1", headers={"Authorization": "Bearer master"})
+
+    assert attributed.status_code == 200
+    assert no_user.status_code == 200
+    assert alice_blocked.status_code == 402
+    assert alice_blocked.json()["error"]["type"] == "budget_exceeded"
+    assert alice_blocked.json()["error"]["scope"] == "user"
+    assert alice_blocked.json()["error"]["user_id"] == "alice"
+    assert bob_ok.status_code == 200
+
+    users = {((u["client_id"], u["user_id"])): u for u in report.json().get("users", [])}
+    assert users[("key-a", "alice")]["requests"] >= 1
+    assert users[("key-a", "unknown")]["requests"] >= 1
+    assert users[("key-a", "bob")]["requests"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_budget_headers_count_down_and_402_carries_contract(settings, tmp_path):
     app, ledger, headers = _budgeted_app(settings, tmp_path, daily_usd=1.0)
@@ -2233,6 +2387,142 @@ async def test_stall_escalation_lands_one_tier_higher(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_phase_routing_explore_drops_one_tier(settings, monkeypatch):
+    """Explore-phase tool history routes a long prompt one tier below L4."""
+    settings.routing.phase_routing.enabled = True
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[str] = []
+
+    def bind(tier: str, model: str):
+        async def fake_execute(request: InternalRequest, _model: str = model) -> InternalResponse:
+            seen.append(_model)
+            return InternalResponse(
+                content="A confident answer with plenty of length to avoid escalation.",
+                model=_model,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    executor="ollama",
+                    provider_id="ollama",
+                    model=_model,
+                    latency_ms=1,
+                ),
+            )
+
+        return fake_execute
+
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l3, "execute", bind("L3", "llama3.2:3b")
+    )
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l4, "execute", bind("L4", "llama3.1:8b")
+    )
+
+    long_user = "please explain this " + "word " * 300
+    messages: list[dict] = [{"role": "user", "content": long_user}]
+    for index, name in enumerate(("read_file", "list_dir", "search_code")):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"call_{index}",
+                        "type": "function",
+                        "function": {"name": name, "arguments": "{}"},
+                    }
+                ],
+            }
+        )
+        messages.append({"role": "tool", "content": "ok", "tool_call_id": f"call_{index}"})
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        explore = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": messages, "tools": _demo_tools()},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+        plain = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": long_user}]},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+
+    assert explore.status_code == 200
+    assert explore.json()["daari_meta"]["tier"] == "L3"
+    assert plain.json()["daari_meta"]["tier"] == "L4"
+    assert seen == ["llama3.2:3b", "llama3.1:8b"]
+
+
+@pytest.mark.asyncio
+async def test_phase_routing_stall_overrides_explore_downgrade(settings, monkeypatch):
+    """Stall escalation beats an explore-phase downgrade."""
+    settings.routing.phase_routing.enabled = True
+    settings.routing.stall_escalation.enabled = True
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[str] = []
+
+    def bind(tier: str, model: str):
+        async def fake_execute(request: InternalRequest, _model: str = model) -> InternalResponse:
+            seen.append(_model)
+            return InternalResponse(
+                content="A confident answer with plenty of length to avoid escalation.",
+                model=_model,
+                daari_meta=DaariMeta(
+                    tier=tier,
+                    executor="ollama",
+                    provider_id="ollama",
+                    model=_model,
+                    latency_ms=1,
+                ),
+            )
+
+        return fake_execute
+
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l3, "execute", bind("L3", "llama3.2:3b")
+    )
+    monkeypatch.setattr(
+        application.state.ctx.router.ollama_l4, "execute", bind("L4", "llama3.1:8b")
+    )
+
+    # Long prompt → L4; explore would drop to L3; three identical reads stall back to L4.
+    long_user = "please explain this " + "word " * 300
+    messages: list[dict] = [{"role": "user", "content": long_user}]
+    for index in range(3):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"call_{index}",
+                        "type": "function",
+                        "function": {"name": "read_file", "arguments": '{"path": "a.py"}'},
+                    }
+                ],
+            }
+        )
+        messages.append(
+            {"role": "tool", "content": "print('hello')", "tool_call_id": f"call_{index}"}
+        )
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": messages, "tools": _demo_tools()},
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["daari_meta"]["tier"] == "L4"
+    assert seen == ["llama3.1:8b"]
+
+
+@pytest.mark.asyncio
 async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(
     settings, monkeypatch
 ):
@@ -2316,3 +2606,43 @@ async def test_session_affinity_pins_tool_continuation_and_reroutes_new_user(
     assert follow.json()["daari_meta"]["tier"] == "L4"
     assert fresh.json()["daari_meta"]["tier"] == "L3"
     assert seen == ["llama3.1:8b", "llama3.1:8b", "llama3.2:3b"]
+
+
+@pytest.mark.asyncio
+async def test_incremental_stream_guardrail_redacts_split_aws_key(settings, monkeypatch):
+    """stream_mode=incremental redacts an AWS key split across SSE deltas (#375)."""
+    settings.guardrails.enabled = True
+    settings.guardrails.stream_mode = "incremental"
+    settings.guardrails.stream_holdback_chars = 256
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    secret = "AKIAIOSFODNN7EXAMPLE"
+    parts = [f"the access key is {secret[:10]}", f"{secret[10:]} keep it safe"]
+
+    async def fake_stream(request: InternalRequest):
+        for part in parts:
+            yield {"message": {"content": part}}
+        yield {"message": {"content": ""}, "done": True}
+
+    monkeypatch.setattr(application.state.ctx.router.ollama_l3, "stream", fake_stream)
+    monkeypatch.setattr(application.state.ctx.router.ollama_l4, "stream", fake_stream)
+    monkeypatch.setattr(application.state.ctx.router.ollama_l5, "stream", fake_stream)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [{"role": "user", "content": "give me the key"}],
+            },
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+
+    assert response.status_code == 200
+    body = response.text
+    assert secret not in body
+    assert "<aws_key>" in body
+    assert "data: [DONE]" in body

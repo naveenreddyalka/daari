@@ -10,7 +10,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
+from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
@@ -93,12 +95,14 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
                 }
             )
         elif block_type == "tool_result":
-            result_text = content_to_text(block.get("content")) or ""
+            raw = block.get("content")
+            result_text = content_to_text(raw) or ""
             tool_results.append(
                 Message(
                     role="tool",
                     content=result_text,
                     tool_call_id=block.get("tool_use_id"),
+                    images=extract_images(raw),
                 )
             )
         else:
@@ -150,7 +154,10 @@ class AnthropicRequest(BaseModel):
     top_p: float | None = None
     top_k: int | None = None
     stop_sequences: list[str] | None = None
+    output_format: dict[str, Any] | None = None
     provider: Any | None = None
+    cost_tier: str | None = None
+    plugins: list[Any] | None = None
 
 
 class AnthropicTextBlock(BaseModel):
@@ -182,6 +189,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             request: Request,
             x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
+            x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
@@ -195,13 +203,17 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             confirm_tool = confirm_value in {"1", "true", "yes"}
 
             ctx: AppContext = request.app.state.ctx
+            user_agent = request.headers.get("user-agent") or ""
+            from daari.gateway.agent_ua import sniff_agent_client_id
+
+            client_id = x_daari_client_id or sniff_agent_client_id(user_agent)
             # Request-shape log (issue #88): mirrors chat_completions_request so
             # live failures are diagnosable from cursor-requests.log.
             log_gateway_event(
                 "anthropic_messages_request",
                 {
                     "client": request.client.host if request.client else None,
-                    "user_agent": request.headers.get("user-agent"),
+                    "user_agent": user_agent or None,
                     "model": body.model,
                     "stream": body.stream,
                     "message_count": len(body.messages),
@@ -232,12 +244,15 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
+                tier_cap=x_daari_tier_cap,
                 no_frontier=x_daari_no_frontier == "true",
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
-                client_id=x_daari_client_id,
+                client_id=client_id,
+                user_agent=user_agent[:200] or None,
                 session_id=(x_daari_session or "").strip() or None,
             )
+            apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
 
             apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
@@ -263,7 +278,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         internal.provider, configured_frontier_slots(ctx.settings)
                     )
                 except ZdrUnavailable as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                    raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
             if body.stream:
                 internal.stream = True
@@ -279,7 +294,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     except Exception as exc:
                         error_payload = {
                             "type": "error",
-                            "error": {"type": "stream_error", "message": str(exc)},
+                            "error": {"type": "stream_error", "message": safe_detail(exc)},
                         }
                         yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
                         # Gracefully fall back to a non-streamed route and re-emit as a single SSE message.
@@ -318,7 +333,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         }
                         yield f"event: content_block_delta\ndata: {json.dumps(block_delta)}\n\n"
                         yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0, 'daari_meta': fallback_meta})}\n\n"
-                        yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0}, 'daari_meta': fallback_meta})}\n\n"
+                        yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0, 'cost': 0.0}, 'daari_meta': fallback_meta})}\n\n"
                         yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop', 'daari_meta': fallback_meta})}\n\n"
 
                 return DeferredHeadersStreamingResponse(
@@ -328,9 +343,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             try:
                 result = await ctx.router.route(internal)
             except ZdrUnavailable as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
+                raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
                 ctx.metrics.record_error()
                 return JSONResponse(
@@ -338,13 +353,13 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     content={
                         "error": {
                             "type": "backend_unavailable",
-                            "message": str(exc),
+                            "message": backend_unavailable_message(exc),
                         }
                     },
                 )
             except Exception as exc:
                 ctx.metrics.record_error()
-                raise HTTPException(status_code=503, detail=f"Routing failed: {exc}") from exc
+                raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)

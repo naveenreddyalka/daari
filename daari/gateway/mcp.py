@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from daari import __version__
 from daari.enterprise.audit import AuditLog
+from daari.gateway.client_errors import safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, Message
 from daari.gateway.mcp_guardrails import (
@@ -720,7 +721,7 @@ class MCPGatewayAdapter(GatewayAdapter):
             except Exception as exc:  # noqa: BLE001 — JSON-RPC must not leak a 500
                 return _rpc_response(
                     request,
-                    _jsonrpc_error(rpc_id, INTERNAL_ERROR, str(exc)[:200]),
+                    _jsonrpc_error(rpc_id, INTERNAL_ERROR, safe_detail(exc)[:200]),
                 )
 
         return router

@@ -6,7 +6,7 @@
 | `X-Daari-Meta: true` | Embed `daari_meta` in JSON responses |
 | `X-Daari-No-Cache` | Skip L0/L1 |
 | `X-Daari-Tier-Override` | Force a tier |
-| `X-Daari-Tier-Cap` | Cap local tier (e.g. `L3`) |
+| `X-Daari-Tier-Cap` | Cap local tier (e.g. `L3`). Beats body `cost_tier`. |
 | `X-Daari-No-Frontier` | Forbid L6 |
 | `X-Daari-Latency-Budget` | Max local latency (ms) |
 | `X-Daari-Client-Id` | Ledger attribution |
@@ -71,7 +71,13 @@ router knows by then:
   whose first chunk arrives after the interval gets its headers on the
   keepalive frame, without tier or cache.
 - `x-daari-response-cost` and `x-daari-response-cost-avoided` are **never**
-  sent on streams — usage is unknown until the last chunk. Use the ledger
-  (`daari report`, `/v1/daari/report`) for streamed spend.
+  sent on streams — usage is unknown until the last chunk. The final OpenAI
+  usage chunk and Anthropic `message_delta.usage` carry `cost` (USD; `0` local,
+  L6 from `cost_usd()` / provider `usage.cost`). OpenAI usage also always
+  includes `prompt_tokens_details.cached_tokens` (`0` when unknown; L0/L1 hits
+  set it equal to `prompt_tokens`; L6 uses provider meta). Anthropic adds
+  `cache_read_input_tokens` only when that figure is known and non-zero
+  (native field — safe for clients). Use the ledger
+  (`daari report`, `/v1/daari/report`) for aggregates.
 - The `x-daari-budget-*` headers **are** sent on streams; they describe the
   caller's budget before this request, not this request's cost.

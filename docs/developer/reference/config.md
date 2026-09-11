@@ -58,9 +58,20 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.reasoning_effort_escalation` | bool | `False` |  |
 | `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
 | `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin is reused. 0 keeps the pin until process restart. Ignored unless session_affinity is true. |
+| `routing.classify_user_turn` | bool | `False` | When true, tool-result continuations reuse the prior user-turn category/complexity instead of re-profiling (#389). Phase/stall still see tool history. Default off. |
+| `routing.classify_user_turn_agents` | bool | `True` | When `classify_user_turn` is false, still reuse profiles for agent User-Agents (`cursor`, `claude-code`, `claude code`, `codex`) (#421). Set false to disable the shortcut. |
+| `routing.harness_aware_profile` | bool | `True` | Ignore system catalogs and Codex/Claude Code harness blocks when classifying complexity (#418). `prompt_tokens_est` still counts the full request. Default on. |
+| `routing.context_window_escalation` | bool | `True` | Pre-dispatch hop when prompt estimate exceeds a tier's known window × buffer (#385). |
+| `routing.context_window_escalation_buffer` | float | `0.95` | Escalate when estimated tokens exceed window × buffer. |
+| `routing.context_windows` | dict | `{L3:8192,L4:32768,L5:131072}` | Known context windows (tokens) per local tier. Also advertised as `context_length` on `GET /v1/models` local cards (#400). Missing = omit. |
 | `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |
 | `routing.stall_escalation.repeats` | int | `3` | Identical calls or consecutive error results required to stall. |
 | `routing.stall_escalation.window` | int | `6` | How many recent tool calls are inspected for identical repeats. |
+| `routing.phase_routing.enabled` | bool | `False` | When true, classify the last window of tool-call names as explore / implement / verify and adjust the heuristic tier. Default off. |
+| `routing.phase_routing.window` | int | `6` | How many recent tool-call names are classified for phase. |
+| `routing.phase_routing.explore` | int \| str | `-1` | Relative ladder delta or absolute `L3`/`L4`/`L5` for explore-phase turns. Floor L3. |
+| `routing.phase_routing.implement` | int \| str | `0` | Relative delta or absolute tier for implement-phase turns. |
+| `routing.phase_routing.verify` | int \| str | `0` | Relative delta or absolute tier for verify-phase turns. |
 | `routing.shadow_sample_rate` | float | `0.0` | Fraction of local-tier responses replayed in the background at shadow_compare_tier to measure tier divergence. 0 disables. |
 | `routing.shadow_compare_tier` | Literal | `''` | Tier to replay sampled requests at. Empty = highest configured local tier; L6 requires shadow_daily_usd > 0. |
 | `routing.shadow_daily_usd` | float | `0.0` | Daily spend cap for L6 shadow replays. 0 forbids L6 shadow runs. |
@@ -138,6 +149,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `guardrails.block_message` | str | `'Request blocked by daari guardrail.'` |  |
 | `guardrails.input_rules` | list | `[]` |  |
 | `guardrails.output_rules` | list | `[]` |  |
+| `guardrails.stream_mode` | str | `'buffered'` | `buffered` scans the full answer before the first SSE byte; `incremental` scans with a holdback window and keeps frontier relay eligible (#375). |
+| `guardrails.stream_holdback_chars` | int | `256` | Characters held back before emission in incremental mode. Ignored when buffered. |
+| `guardrails.scan_tool_results` | bool | `False` | When true, scan OpenAI `role=tool` / Anthropic `tool_result` message contents with output rules before the model hop (#387). System/user/assistant unchanged. MCP path separate. |
 | `boundaries.enabled` | bool | `False` |  |
 | `boundaries.mode` | Literal | `'block'` |  |
 | `boundaries.product_name` | str | `''` |  |
@@ -172,6 +186,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_tasks.long_running_tools` | list | `['route']` |  |
 | `integrations.mcp_tasks.threshold_ms` | int | `0` |  |
 | `integrations.mcp_tasks.path` | str | `'~/.daari/mcp-tasks'` |  |
+| `integrations.mcp_tool_search.enabled` | bool | `False` | When true and the catalog exceeds `min_catalog_size`, rank tools by local embedding similarity and return `top_k` (#376). |
+| `integrations.mcp_tool_search.min_catalog_size` | int | `40` | Catalogs at or under this size are returned unranked. |
+| `integrations.mcp_tool_search.top_k` | int | `40` | Maximum tools returned after ranking. |
 | `integrations.mcp_guardrails.enabled` | bool | `False` |  |
 | `integrations.mcp_guardrails.max_prompt_chars` | int | `0` |  |
 | `integrations.mcp_guardrails.injection_action` | str | `'block'` |  |

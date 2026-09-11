@@ -18,11 +18,16 @@ Tunnel setup (`daari setup cursor --tunnel`) auto-generates a key when unset.
 ```bash
 daari keys create --name alice --daily-budget 5
 daari keys create --name ci --expires 30d
+daari keys create --name shared-agent --user-daily-cap 2
 daari keys list
+daari keys rotate <key_id>            # new secret; old works for 24h
+daari keys rotate <key_id> --grace 0  # immediate cutover
 daari keys revoke <key_id>
 ```
 
-Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, TPM, tier caps, and an optional expiry (`--expires 30d|12h|45m` or an ISO-8601 timestamp). Existing keys with no expiry never expire. An expired key is a 401 `key_expired` (distinct from invalid/revoked) and writes an `auth.key_expired` audit row. `daari keys list` shows `expires` and a `status` of `active` / `expired` / `revoked`.
+Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, TPM, tier caps, and an optional expiry (`--expires 30d|12h|45m` or an ISO-8601 timestamp). Existing keys with no expiry never expire. An expired key is a 401 `key_expired` (distinct from invalid/revoked) and writes an `auth.key_expired` audit row. `daari keys list` shows `expires`, `grace_until` (pending rotation), and a `status` of `active` / `expired` / `revoked`.
+
+`daari keys rotate` mints a new secret for the **same** `key_id` — budgets, team, policies, RPM/TPM, and usage history are untouched. The old secret keeps authenticating until the grace window ends (default 24h; `--grace 0` cuts over immediately), then is rejected as expired. Both secrets share one budget and rate-limit bucket. Rotation writes a `keys.rotate` audit row (key_id + grace deadline; never the secret).
 
 ```bash
 daari keys create --name ci --rpm 60 --tpm 40000
@@ -90,11 +95,18 @@ daari audit list --limit 50
 daari audit list --actor alice --action budget. --since 7d --json
 daari audit export --format jsonl --since 30d --out /tmp/daari-audit.jsonl
 daari audit export --format jsonl --since 7d | jq -c 'select(.action|startswith("keys."))'
+daari audit verify
+daari audit verify --json
 ```
 
 Rows are newest-first. Export streams JSONL (`seq`, `ts`, `actor`, `role`,
-`action`, `detail`) without loading the whole table — suitable for SIEM
-ingestion. The store is `enterprise.audit_path` (default
+`action`, `detail`, `prev_hash`, `row_hash`) without loading the whole table —
+suitable for SIEM ingestion. New rows are hash-chained (SHA-256 over a
+canonical serialization of seq/ts/actor/role/action/detail/prev_hash); the
+first chained row anchors on genesis `0`×64. Pre-upgrade rows verify as
+`legacy`. `daari audit verify` walks oldest-first and exits non-zero on
+tamper (`hash_mismatch` or `seq_gap`). Retention prune re-anchors the chain
+head. The store is `enterprise.audit_path` (default
 `~/.daari/audit/audit.sqlite3`).
 
 ## Secret references (`secret://`)

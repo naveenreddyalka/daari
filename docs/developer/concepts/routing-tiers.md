@@ -36,10 +36,12 @@ flowchart TD
 
 ## Escalation
 
-Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/json). Caps:
+Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/json). Image blocks on user **or tool-result** messages require `vision` (#397); hops log `modality_escalation`. Caps:
 
 - Config: `routing.max_tier_for_chat`, `routing.no_frontier` (via project profile)
 - Headers: `X-Daari-Tier-Cap`, `X-Daari-No-Frontier`, `X-Daari-Tier-Override`
+- Body: OpenRouter `cost_tier` / `plugins: [{id: "auto-router", cost_tier}]`
+  (`low`→L3, `medium`→L4, `high`→L5, `xhigh`/`max`→L6). Header wins.
 
 Agent/`tool_calls` flows skip L1 and Lt/L2. Exact L0 is on for an identical full history + tools schema; changing the last tool result is a miss (ADR-0004 / G1).
 
@@ -81,6 +83,32 @@ failure, context-length failover, an open circuit, a down model, and
 `X-Daari-Tier-Cap` beat the pin. Hits log `session_pin`; overrides log
 `session_pin_override`.
 
+## Harness-aware profiling
+
+`routing.harness_aware_profile` (default on) keeps Claude Code / Cursor /
+Codex catalogs from flipping `complexity`. System messages and recognized
+harness blocks (`<environment_context>`, `<recommended_plugins>`,
+`<system-reminder>`) are ignored for category and complexity. `prompt_tokens_est`
+still counts the full request so context-window escalation (#385) sees real
+size. A no-op when those markers are absent. Off restores the old sum-every-
+message heuristic. Trace/event: `harness_profile` with `stripped_chars`.
+
+## Classify user turn
+
+`routing.classify_user_turn` (default off) skips re-running
+`build_prompt_profile` on tool-result continuations (assistant tool-call +
+`role=tool` / `tool_result` suffix, no new user text). The prior user-turn
+category/complexity are reused; `prompt_tokens_est` still reflects the full
+message list. Phase routing and stall escalation still inspect tool history.
+A new user message re-profiles. Trace/event: `classify_user_turn` with
+`reused: true` and `source: config`.
+
+When the global flag is off, `routing.classify_user_turn_agents` (default on)
+still enables the same reuse for agent User-Agents matching `cursor`,
+`claude-code`, `claude code`, or `codex` (also via sniffed `client_id`).
+Event `source` is then `ua`. Set `classify_user_turn_agents: false` to disable
+the shortcut. Explicit `classify_user_turn: true` applies to every client.
+
 ## Stall escalation
 
 `routing.stall_escalation.enabled` (default off) looks only at the request's
@@ -88,6 +116,36 @@ tool history. Three identical calls (same name and normalized arguments) in
 the last six tool calls, or three consecutive error tool results, bump the
 chosen tier by one. `X-Daari-Tier-Cap` and `routing.max_tier_for_chat` still
 win. The event is `stall_escalation` with the pattern and repeat count.
+
+## Phase routing
+
+`routing.phase_routing.enabled` (default off) classifies the last
+`routing.phase_routing.window` (default 6) tool-call names as `explore`
+(read/search/list/fetch/grep), `implement` (edit/write/apply/replace/patch),
+or `verify` (test/run/build/lint). Unknown or empty history leaves the
+heuristic pick alone. Each phase maps to a relative delta or absolute tier
+(`explore: -1`, `implement: 0`, `verify: 0` by default; floor L3).
+
+Composition: heuristic → phase → tier cap → latency budget → capability
+filter → stall → context-window escalation → cap again. Stall beats a phase
+downgrade. Session affinity pins the *phase-adjusted* served tier on
+continuations (no re-classify); a context-window bump is not pinned.
+Non-agent requests (no tools, no tool history) are unchanged. Trace step and
+event: `phase_route` (phase, signals, delta, from, to).
+
+## Context-window escalation
+
+`routing.context_window_escalation` (default on) compares
+`prompt_tokens_est` to `routing.context_windows` (defaults L3=8192, L4=32768,
+L5=131072) times `context_window_escalation_buffer` (0.95). A proven overflow
+picks the cheapest higher local tier with a known window that fits. Unknown
+windows are left alone. `X-Daari-Tier-Cap` still wins. Trace/event:
+`context_window_escalation`. Post-error `context_length_failover` stays as
+the safety net. The same table is advertised as `context_length` on local
+tier cards from `GET /v1/models` (#400); unknown windows are omitted.
+Frontier/L6 cards are never overwritten from this table. Capability
+`long_context` is no longer inferred from a 24k-char threshold (#401) —
+this escalation path is the single length hop.
 
 ## Knobs
 

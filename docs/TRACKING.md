@@ -1810,6 +1810,46 @@ set so new PRs are not attributed to `github-actions[bot]` (GitHub's
 2026-06-11 bot-PR approval gate has no repo-level opt-out). Covered by
 `tests/unit/test_autodev_pr_watch.py` and `tests/unit/test_autodev_backlog.py`.
 
+### Pre-dispatch context-window escalation ([#385](https://github.com/naveenreddyalka/daari/issues/385))
+
+<!-- tracking:#385 -->
+**Status:** Done (2026-09-09). `routing.context_window_escalation` (default on)
+compares `prompt_tokens_est` to per-tier `routing.context_windows` × buffer
+0.95 and picks the cheapest higher local tier that fits before the first hop.
+Unknown windows are left alone; `X-Daari-Tier-Cap` still wins. Trace/event
+`context_window_escalation`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_context_window.py`.
+
+### OpenRouter cost_tier body mapping ([#388](https://github.com/naveenreddyalka/daari/issues/388))
+
+<!-- tracking:#388 -->
+**Status:** Done (2026-09-09). OpenAI / Anthropic / Responses accept `cost_tier`
+and `plugins: [{id: "auto-router", cost_tier}]`. Map `low`→L3, `medium`→L4,
+`high`→L5, `xhigh`/`max`→L6 onto `meta.tier_cap`. `X-Daari-Tier-Cap` wins;
+unknown values log `cost_tier_ignored`. Anthropic now also reads the header.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_cost_tier.py` and `tests/integration/test_gateway_flow.py`.
+
+### Vision hop for tool-result images ([#397](https://github.com/naveenreddyalka/daari/issues/397))
+
+<!-- tracking:#397 -->
+**Status:** Done (2026-09-09). Anthropic `tool_result` image blocks populate
+`Message.images` (OpenAI `role=tool` parts already did). `required_capabilities`
+then requires `vision` and the existing catalog filter hops off text-only L3.
+Event `modality_escalation`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_multimodal.py` and `tests/integration/test_anthropic_tools.py`.
+
+### Honor response_format json_schema ([#398](https://github.com/naveenreddyalka/daari/issues/398))
+
+<!-- tracking:#398 -->
+**Status:** Done (2026-09-09). `type: json_schema` is stored on `SamplingParams`
+and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
+`response_format`. Requires the `json` capability like `json_object`.
+Malformed schemas log `json_schema_ignored` and are dropped. Covered by
+`tests/unit/test_sampling_params.py`.
+
 <!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
@@ -1822,6 +1862,220 @@ notify once. No Redis keeps the in-process `_seen` path. Redis errors still
 deliver and log `budget.alert_dedupe_degraded`. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#operator-alerts).
 Covered by `tests/unit/test_budget_alerts.py`.
+
+### Subtask/phase routing from tool history ([#374](https://github.com/naveenreddyalka/daari/issues/374))
+
+<!-- tracking:#374 -->
+**Status:** Done (2026-09-09). `routing.phase_routing` (default off; window 6)
+classifies the last N tool-call names as explore / implement / verify and
+applies a configurable tier delta (defaults `explore: -1`, floor L3;
+`implement`/`verify: 0`). Stall escalation beats a phase downgrade; session
+affinity pins the phase-adjusted served tier; `X-Daari-Tier-Cap` and
+`routing.max_tier_for_chat` still cap. Trace/event `phase_route`. Non-agent
+requests are unchanged. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#phase-routing).
+Covered by `tests/unit/test_phase_routing.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Incremental streaming output guardrails ([#375](https://github.com/naveenreddyalka/daari/issues/375))
+
+<!-- tracking:#375 -->
+**Status:** Done (2026-09-09). `guardrails.stream_mode` (`buffered` default |
+`incremental`) with `stream_holdback_chars` (default 256). Incremental mode
+scans SSE deltas through a holdback window so secrets spanning chunks never
+leak, keeps L6 frontier relay eligible, records hits like the buffered path,
+and caches only scanned text. Tool-call streams stay exempt. Docs:
+[guardrails.md](developer/guides/features/guardrails.md). Covered by
+`tests/unit/test_stream_guardrails.py`, `tests/unit/test_stream_policy_parity.py`,
+and `tests/integration/test_gateway_flow.py`.
+
+### MCP semantic tool search ([#376](https://github.com/naveenreddyalka/daari/issues/376))
+
+<!-- tracking:#376 -->
+**Status:** Done (2026-09-09). `integrations.mcp_tool_search` (default off;
+`min_catalog_size` 40, `top_k` 40) ranks aggregated egress `tools/list`
+catalogs by local embedding similarity when over the threshold. Query is
+trailing text after `@mcp … tools/list`, else recent user/tool message text.
+Governance allow/deny runs before ranking; embed failures log
+`mcp_tool_search_degraded` and return the unranked catalog. Tool embeddings
+are cached per `(server, name, description hash)`. Docs:
+[mcp.md](developer/guides/clients/mcp.md#semantic-tool-search). Covered by
+`tests/unit/test_mcp_egress.py`.
+
+### Zero-downtime virtual key rotation ([#377](https://github.com/naveenreddyalka/daari/issues/377))
+
+<!-- tracking:#377 -->
+**Status:** Done (2026-09-09). `daari keys rotate <key_id> [--grace 24h]`
+mints a new secret for the same key identity; budgets/team/policies/RPM/TPM
+untouched. Old secret authenticates until grace ends (`--grace 0` immediate),
+then rejects as expired via the #331 path. Both secrets share one budget and
+rate-limit bucket. `keys.rotate` audit row (no secret material). `keys list`
+shows `grace_until`. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_key_rotate.py`.
+
+### Tamper-evident audit hash chain ([#378](https://github.com/naveenreddyalka/daari/issues/378))
+
+<!-- tracking:#378 -->
+**Status:** Done (2026-09-09). Every new audit row stores `prev_hash` /
+`row_hash` (SHA-256 over canonical seq/ts/actor/role/action/detail/prev_hash;
+genesis `0`×64). `daari audit verify [--json]` walks oldest-first; legacy
+(null-hash) rows counted; exits non-zero on `hash_mismatch` / `seq_gap`.
+Export JSONL includes both hash fields. Retention prune re-anchors the chain.
+Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
+Covered by `tests/unit/test_audit_cli.py`.
+
+### Streamed usage.cost on the final usage chunk ([#386](https://github.com/naveenreddyalka/daari/issues/386))
+
+<!-- tracking:#386 -->
+**Status:** Done (2026-09-09). The OpenAI `chat.completion.chunk` usage object
+and Anthropic `message_delta.usage` include `cost` (USD float). Local / L0 / L1
+are `$0`; L6 uses the same `cost_usd()` / provider-reported figure as
+`x-daari-response-cost` on non-stream responses. Stream cost headers stay
+absent (usage is unknown at the HTTP start line). Docs:
+[headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_stream_usage_cost.py`, `tests/integration/test_streaming_usage.py`,
+and `tests/integration/test_gateway_flow.py`.
+
+### Scan chat tool-result messages ([#387](https://github.com/naveenreddyalka/daari/issues/387))
+
+<!-- tracking:#387 -->
+**Status:** Done (2026-09-09). Opt-in `guardrails.scan_tool_results` (default
+off). When on, OpenAI `role=tool` and Anthropic-converted `tool_result`
+contents run through input + output-style rules before the model hop: `block`
+refuses with `block_message` (stream or JSON); `redact` rewrites the tool
+message in place so execute and cache keys never see the secret.
+System/user/assistant unchanged; MCP `tools/call` scanning unchanged. Docs:
+[guardrails.md](developer/guides/features/guardrails.md). Covered by
+`tests/unit/test_guardrails.py` and `tests/unit/test_stream_policy_parity.py`.
+
+### Skip re-profiling on tool-result continuations ([#389](https://github.com/naveenreddyalka/daari/issues/389))
+
+<!-- tracking:#389 -->
+**Status:** Done (2026-09-09). Opt-in `routing.classify_user_turn` (default
+off). Tool-result continuations reuse the prior user-turn category/complexity
+instead of re-running `build_prompt_profile`; `prompt_tokens_est` still
+reflects full message size. Phase routing and stall escalation still inspect
+tool history; a new user message re-profiles. Trace/event
+`classify_user_turn` with `reused: true`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#classify-user-turn).
+Covered by `tests/unit/test_session_affinity.py`.
+
+### Streamed usage cached_tokens ([#399](https://github.com/naveenreddyalka/daari/issues/399))
+
+<!-- tracking:#399 -->
+**Status:** Done (2026-09-09). Final OpenAI stream usage always includes
+`prompt_tokens_details.cached_tokens` (`0` when unknown; L0/L1 equals
+`prompt_tokens`; L6 from `daari_meta.cached_tokens`). Anthropic
+`message_delta.usage` adds `cache_read_input_tokens` only when known and
+non-zero. Docs: [headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_stream_usage_cost.py`, `tests/integration/test_streaming_usage.py`,
+and `tests/integration/test_gateway_flow.py`.
+
+### Advertise context_windows on GET /v1/models ([#400](https://github.com/naveenreddyalka/daari/issues/400))
+
+<!-- tracking:#400 -->
+**Status:** Done (2026-09-09). Local tier cards from `openai_model_cards` /
+`GET /v1/models` include `context_length` from `routing.context_windows`
+when known (omit if missing). Frontier/L6 cards are not overwritten.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_models_catalog.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Derive length hops from context_windows only ([#401](https://github.com/naveenreddyalka/daari/issues/401))
+
+<!-- tracking:#401 -->
+**Status:** Done (2026-09-09). Removed the 24k-char `long_context` inference
+from `required_capabilities`. Prompt length hops solely via
+`routing.context_windows` × buffer (#385), so capability filter and
+context-window escalation no longer disagree. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#context-window-escalation).
+Covered by `tests/unit/test_capabilities.py` and
+`tests/unit/test_context_window.py`.
+
+### Stall issues get Intended-labels + post-create label retry ([#409](https://github.com/naveenreddyalka/daari/issues/409))
+
+<!-- tracking:#409 -->
+**Status:** Done (2026-09-10). `autodev_pr_watch._cli_create_issue` prefixes
+`**Intended labels: \`auto-dev\`, \`regression\`**` on stall issue bodies so
+`issue-labeler` (#330) applies them even when a PAT silently drops `--label`
+at create time (#408). Also retries `gh issue edit --add-label` after create
+(failure logged, not fatal). Cleanup: merged `origin/main` into PR #404 to
+unpark #398. Covered by `tests/unit/test_autodev_pr_watch.py`.
+
+### End-user spend attribution and per-user caps ([#410](https://github.com/naveenreddyalka/daari/issues/410))
+
+<!-- tracking:#410 -->
+**Status:** Done (2026-09-10). Usage ledger `user_usage` table records the
+OpenAI `user` (or `unknown`) per virtual-key `client_id`. `daari usage
+--by-user` / `GET /v1/daari/report` `users` array group spend. Optional
+`user_daily_usd_cap` on a key returns the same 402 shape with `scope: user`
+when that named user exceeds it; requests without `user` are never capped.
+Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md),
+[savings-report.md](developer/guides/observability/savings-report.md).
+Covered by `tests/unit/test_user_usage.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Context-threshold pricing for gpt-6-astra ([#411](https://github.com/naveenreddyalka/daari/issues/411))
+
+<!-- tracking:#411 -->
+**Status:** Done (2026-09-10). `ModelPrice` optional
+`input_threshold_tokens` / `above_input_per_1m` / `above_output_per_1m`;
+`cost_usd` selects the tier from prompt token count. Default table encodes
+gpt-6-astra at 272K → 2× input / 1.5× output. Cost headers and the budget
+ledger share that path. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_threshold_pricing.py`.
+
+### Redact secrets from gateway error details ([#412](https://github.com/naveenreddyalka/daari/issues/412))
+
+<!-- tracking:#412 -->
+**Status:** Done (2026-09-10). Client-facing `HTTPException` / error-envelope
+text in gateway modules runs through `safe_detail` / `routing_failure_detail`
+(`daari/gateway/client_errors.py`), which apply `redact_secrets()`. Upstream
+`httpx` failures on the 503 path are summarized as host + status (no URLs).
+Covered by `tests/unit/test_gateway_error_redaction.py`.
+
+### Harness-aware profiling ignores catalogs ([#418](https://github.com/naveenreddyalka/daari/issues/418))
+
+<!-- tracking:#418 -->
+**Status:** Done (2026-09-11). `routing.harness_aware_profile` (default on)
+drops `role=system` text and recognized Codex/Claude Code blocks
+(`<environment_context>`, `<recommended_plugins>`, `<system-reminder>`) from
+category/complexity. `prompt_tokens_est` still counts the full request so
+context-window escalation sees size. Event `harness_profile` with
+`stripped_chars`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#harness-aware-profiling).
+Covered by `tests/unit/test_prompt_profile.py`.
+
+### Close stall issues when the PR merges ([#419](https://github.com/naveenreddyalka/daari/issues/419))
+
+<!-- tracking:#419 -->
+**Status:** Done (2026-09-11). `scripts/autodev_pr_watch.py` closes open
+issues whose body contains `autodev-pr-stall` once the referenced PR is
+`MERGED` or `CLOSED`, with a one-line comment. Open PRs are left alone.
+Covered by `tests/unit/test_autodev_pr_watch.py`.
+
+### Honor Anthropic output_format json_schema ([#420](https://github.com/naveenreddyalka/daari/issues/420))
+
+<!-- tracking:#420 -->
+**Status:** Done (2026-09-11). `/v1/messages` `output_format.type == json_schema`
+(with `schema` or `json_schema.schema`) is stored on `SamplingParams.json_schema`
+and forwarded the same way as OpenAI #398. Malformed payloads log
+`json_schema_ignored` and are dropped. Covered by
+`tests/unit/test_sampling_params.py`.
+
+### Agent UA shortcut for classify_user_turn ([#421](https://github.com/naveenreddyalka/daari/issues/421))
+
+<!-- tracking:#421 -->
+**Status:** Done (2026-09-11). When `routing.classify_user_turn` is false
+(default), User-Agents matching `cursor` / `claude-code` / `claude code` /
+`codex` still reuse category/complexity on tool-result continuations via
+`routing.classify_user_turn_agents` (default on). Set agents false to disable;
+explicit `classify_user_turn: true` still applies to every client. Event
+`classify_user_turn` includes `source: ua` vs `source: config`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#classify-user-turn).
+Covered by `tests/unit/test_classify_user_turn.py`.
 
 ---
 
