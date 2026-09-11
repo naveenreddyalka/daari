@@ -11,28 +11,26 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-10)
+## Where daari stands (verified in-tree, 2026-09-11)
 
-**The 09-09 evening refill shipped overnight.** #397 / #399 / #400 / #401 are
-on `main` (PRs #403 / #405 / #406 / #407). The one leftover is
-[#398](https://github.com/naveenreddyalka/daari/issues/398) (`json_schema`):
-[PR #404](https://github.com/naveenreddyalka/daari/pull/404) has all five
-checks green but sits `DIRTY` — and its stall issue
-[#408](https://github.com/naveenreddyalka/daari/issues/408) was created
-**without labels**, so the backlog picker cannot see it (gap #1 below).
+**The loop is healthy.** The 09-10 refill (#409–#412) and leftover #398 all
+merged (PRs #404, #414–#417). `scripts/autodev_backlog.py --pick` was empty
+this morning; stall issue #408 was closed by hand after #404 landed. Open
+feature PRs: none. [#373](https://github.com/naveenreddyalka/daari/pull/373)
+(brew v1.4.0) is still `BEHIND` — HITL, not auto-merge.
 
-**`AUTODEV_GH_TOKEN` is finally set** (#408 is authored by the PAT identity,
-not github-actions[bot]) — the standing HITL ask from four runs is done. The
-side effect is the labeling regression above.
+**`AUTODEV_GH_TOKEN` remains set.** Labels on this run's issues (#418–#422)
+stuck at create time.
 
-**Positioning:** LiteLLM's 09-08 posts sell *identity-aware shared agents*
-(per-end-user access + spend on one shared key) and an updated SOC 2 Type 2
-report. Portkey woke up after five quiet months: **v2.21.0** (multi-JWKS JWT
-auth with user attribution, ElevenLabs). Kong quiet at 2.0.3 but keeps
-compounding cost-accounting fidelity (context-window pricing factors,
-cache-TTL write pricing). **Ollama v0.34.0 GA'd** — ChatGPT Desktop runs
-local models officially; daari's facade surface (#343/#348) verified against
-the 0.34 diff, no parity change needed. SEP-1933 still draft (upd 09-07).
+**Positioning:** LiteLLM's 09-10
+[harness-aware routing](https://docs.litellm.ai/blog/auto-router-harness-aware-classification)
+strips Claude Code system text and Codex `<environment_context>` /
+`<recommended_plugins>` from the *classifier* only. That is today's headline
+and the strongest inward miss: `build_prompt_profile` still sums every
+message into `tokens_est`, so a Cursor/Claude Code skill catalog flips
+`complexity=complex`. Portkey v2.21 multi-JWKS and Kong context-window
+pricing already have daari counterparts (#411 shipped; multi-JWKS filed as
+P3). Ollama 0.34 GA and SEP-1933 draft — unchanged from 09-10.
 
 ---
 
@@ -40,62 +38,55 @@ the 0.34 diff, no parity change needed. SEP-1933 still draft (upd 09-07).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Stall issues created unlabeled** — `_cli_create_issue` passes `--label` but PAT-created #408 has none; backlog picker is label-driven, so conflict parks are invisible to the loop | 4 | 1 | (loop self-healing, daari-specific) | Watcher + labeler (#336) already exist; one body line fixes it | **Filed [#409](https://github.com/naveenreddyalka/daari/issues/409)** (P1) |
-| 2 | **No end-user attribution on shared keys** — `body.user` parsed but only feeds session affinity; ledger dims are day/client_id/tier/model; no per-user report or cap | 4 | 3 | [LiteLLM identity-aware agents (09-08)](https://docs.litellm.ai/blog) | Identities never leave premises; keys/teams/budgets already shipped, this is the last identity dimension | **Filed [#410](https://github.com/naveenreddyalka/daari/issues/410)** (P2) |
-| 3 | **Context-threshold pricing not applied** — settings.py admits gpt-6-astra >272K (2×/1.5×) bills flat; budgets underbill the most expensive requests | 3 | 2 | [Kong `context_window_factor` (2.0.2)](https://developer.konghq.com/ai-gateway/changelog/) | Admission-time 402/downshift *before* the 2× spend, not a report after | **Filed [#411](https://github.com/naveenreddyalka/daari/issues/411)** (P2) |
-| 4 | **Client-facing error details skip redaction** — `detail=f"Routing failed: {exc}"` raw; `redact_secrets()` only guards the request log | 3 | 1 | [LiteLLM v1.102-dev fix](https://github.com/BerriAI/litellm/pull/39964) | Process-wide secret registry makes leak-proofing structural | **Filed [#412](https://github.com/naveenreddyalka/daari/issues/412)** (P2) |
-| 5 | **`json_schema` dropped** | 3 | 2 | OpenAI structured outputs | Ollama takes `format` schemas natively | **In flight [#398](https://github.com/naveenreddyalka/daari/issues/398)** / [PR #404](https://github.com/naveenreddyalka/daari/pull/404) — unparked by #409 |
-| 6 | **Multi-JWKS SSO** — `resolve_jwks_url` takes one URL; Portkey v2.21 merges keys from several IdPs | 2 | 2 | [Portkey v2.21](https://portkey.ai/docs/changelog/enterprise) | Straightforward cache extension | Watch — file when a fleet has two IdPs |
-| 7 | **Batch API** — no `/v1/batches` | 4 | 4 | OpenRouter Batch API | Idle local tiers overnight; MCP Tasks (#315) template | Watch |
-| 8 | **MCP agent identity** — [SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) still **draft** (upd 09-07) | 3 | 3 | MCP Tier-1 SDKs | `secret://oauth` + key expiry ready | Watch |
-| 9 | **SOC 2 / trust center** — LiteLLM ships an updated Type 2 report | 3 | 5 | LiteLLM | Not agent work; positioning: daari's audit hash chain (#378) is verifiable by the customer, not an auditor PDF | Non-goal for the loop; note for humans |
-| 10 | **Gemini facade / A2A / admin UI / off-peak / `/v1/images` / WIF upstream auth** | 2–3 | 2–4 | Kong / LiteLLM / Portkey v2.20 | No client demand this run | Watch / non-goal |
+| 1 | **Harness catalogs flip complexity** — `tokens_est` counts system/skill catalogs; `>2000` → `complex` / L4 hop on a one-line ask | 4 | 2 | [LiteLLM harness-aware (09-10)](https://docs.litellm.ai/blog/auto-router-harness-aware-classification) | Strip envelopes locally; no classifier call; #385 still sees full tokens | **Filed [#418](https://github.com/naveenreddyalka/daari/issues/418)** (P2) |
+| 2 | **Stall issues stay open after the PR merges** — watcher files `autodev-pr-stall` but never closes; #408 sat open after #404 | 3 | 1 | (loop self-healing) | Same `gh` path the watcher already uses | **Filed [#419](https://github.com/naveenreddyalka/daari/issues/419)** (P2) |
+| 3 | **Anthropic `output_format` ignored** — #398 covers OpenAI `response_format.json_schema` only; Claude Code sends `output_format` | 3 | 2 | OpenAI / Anthropic structured outputs | Same Ollama `format` object as #398 | **Filed [#420](https://github.com/naveenreddyalka/daari/issues/420)** (P2) |
+| 4 | **`classify_user_turn` default off for agents** — Cursor/Claude Code pay the re-profile tax unless an operator finds the knob | 3 | 2 | LiteLLM `classification_mode: user_turn` | UA already sniffed (`cursor` → client_id) | **Filed [#421](https://github.com/naveenreddyalka/daari/issues/421)** (P2) |
+| 5 | **Single JWKS URL** — `sso.jwks_url` cannot trust two IdPs | 2 | 2 | [Portkey v2.21](https://portkey.ai/docs/changelog/enterprise) | Cached JWKS fetch already on-box | **Filed [#422](https://github.com/naveenreddyalka/daari/issues/422)** (P3) |
+| 6 | **Batch API** — no `/v1/batches` | 4 | 4 | OpenRouter Batch API | Idle local tiers overnight | Watch |
+| 7 | **MCP agent identity** — [SEP-1933](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1933) still **draft** | 3 | 3 | MCP Tier-1 SDKs | `secret://oauth` + key expiry ready | Watch |
+| 8 | **SOC 2 / trust center** | 3 | 5 | LiteLLM | Audit hash chain (#378) is customer-verifiable, not an auditor PDF | Non-goal |
+| 9 | **Gemini facade / A2A / admin UI / off-peak / `/v1/images` / WIF** | 2–3 | 2–4 | Kong / LiteLLM / Portkey | No client demand this run | Watch / non-goal |
 
-Resolved watches: **Ollama 0.34 GA** — `api/types.go` diff only adds cloud
-model-recommendation `thinking` metadata; facade (#343/#348) untouched.
-Evening rows #397/#399–#401 shipped and are pruned.
+09-10 rows #409–#412 and #398 shipped and are pruned.
 
 Open backlog after this run:
-[#398](https://github.com/naveenreddyalka/daari/issues/398) (PR parked, see #409),
-[#409](https://github.com/naveenreddyalka/daari/issues/409)–[#412](https://github.com/naveenreddyalka/daari/issues/412).
+[#418](https://github.com/naveenreddyalka/daari/issues/418)–[#421](https://github.com/naveenreddyalka/daari/issues/421) (P2),
+[#422](https://github.com/naveenreddyalka/daari/issues/422) (P3).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Re-arm the loop's self-healing**
-   ([#409](https://github.com/naveenreddyalka/daari/issues/409)): stall issues
-   must always carry labels; includes unparking
-   [PR #404](https://github.com/naveenreddyalka/daari/pull/404) so #398 lands.
-2. **Identity-aware shared agents**
-   ([#410](https://github.com/naveenreddyalka/daari/issues/410)): per-end-user
-   spend attribution and caps on shared virtual keys — LiteLLM's current
-   headline, done without identities leaving the building.
-3. **Honest long-context billing**
-   ([#411](https://github.com/naveenreddyalka/daari/issues/411)): threshold
-   pricing so budgets deny *before* the 2× request, not after.
-4. **Leak-proof error surfaces**
-   ([#412](https://github.com/naveenreddyalka/daari/issues/412)): every
-   client-visible detail through the secret registry.
+1. **Harness-aware profiling**
+   ([#418](https://github.com/naveenreddyalka/daari/issues/418)): stop
+   Cursor/Claude Code catalogs from forcing L4 on a one-line ask — LiteLLM's
+   current headline, without a classifier hop.
+2. **Close stall issues on merge**
+   ([#419](https://github.com/naveenreddyalka/daari/issues/419)): #408 should
+   not need a human.
+3. **Anthropic structured output**
+   ([#420](https://github.com/naveenreddyalka/daari/issues/420)): same
+   `json_schema` path as #398 on `/v1/messages`.
+4. **Agent-UA user-turn classification**
+   ([#421](https://github.com/naveenreddyalka/daari/issues/421)): turn the
+   #389 knob on for Cursor / Claude Code / Codex automatically.
 5. **HITL:** merge [#373](https://github.com/naveenreddyalka/daari/pull/373)
-   (brew v1.4.0, BEHIND). `AUTODEV_GH_TOKEN` ask is **done** — thank you.
+   (brew v1.4.0, BEHIND). Multi-JWKS (#422) when a fleet has two IdPs.
 
 ---
 
 ## Changelog
 
-- **2026-09-10** — Evening refill shipped overnight (#397/#399/#400/#401);
-  backlog empty again. `AUTODEV_GH_TOKEN` set, with a new side effect:
-  PAT-created stall issue #408 lost its labels, orphaning conflict-parked
-  PR #404. Outward: Ollama 0.34 GA (facade verified, no change); Portkey
-  v2.21 after five quiet months (multi-JWKS + user attribution); LiteLLM
-  identity-aware shared agents + SOC 2; Kong quiet. Inward verified: no
-  end-user ledger dimension; threshold pricing knowingly unapplied
-  (settings.py comment); error details bypass `redact_secrets()`. Filed
-  [#409](https://github.com/naveenreddyalka/daari/issues/409) (P1) and
-  [#410](https://github.com/naveenreddyalka/daari/issues/410)–[#412](https://github.com/naveenreddyalka/daari/issues/412)
-  (P2).
-- **2026-09-09 evening** — Filed #397–#401 (all P2).
+- **2026-09-11** — 09-10 refill + #398 shipped; backlog empty; #408 closed
+  by hand. Outward: LiteLLM harness-aware routing (09-10). Inward verified:
+  `build_prompt_profile` counts all message chars; stall issues never
+  auto-close; Anthropic `output_format` absent; `classify_user_turn` still
+  global-off. Filed [#418](https://github.com/naveenreddyalka/daari/issues/418)–[#421](https://github.com/naveenreddyalka/daari/issues/421)
+  (P2) and [#422](https://github.com/naveenreddyalka/daari/issues/422) (P3).
+- **2026-09-10** — Filed #409–#412; `AUTODEV_GH_TOKEN` set; Ollama 0.34 GA
+  verified; Portkey v2.21; LiteLLM identity-aware agents.
+- **2026-09-09 evening** — Filed #397–#401.
 - **2026-09-09 pm** — Filed #385–#389.
 - **2026-09-09** — Park over, v1.4.0 released. Filed #374–#378.
 - **2026-09-08** — Nine-PR park; filed #368 / #369.
