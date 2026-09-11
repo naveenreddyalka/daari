@@ -2106,6 +2106,15 @@ omitted (Kong parity). `content_to_text` and `sanitize_messages_for_ollama`
 strip them so local tiers stay plain text. Covered by
 `tests/unit/test_anthropic_gateway.py`.
 
+### Circuit-breaker state on /ready and stats ([#432](https://github.com/naveenreddyalka/daari/issues/432))
+
+<!-- tracking:#432 -->
+**Status:** Done (2026-09-11). `LocalBackendPool.readiness()` / `snapshot()`
+include `circuit` (`closed`|`open`|`half_open`) per backend; `/ready` and
+`GET /v1/daari/stats` expose it (`backends: []` when no pool). Prometheus
+backend series carry a `circuit` label. `/health` stays `{status: ok}`.
+Covered by `tests/unit/test_local_pool.py`.
+
 ---
 
 ## How to update
