@@ -11,6 +11,8 @@ It also sweeps abandoned `agent:working` labels (issue #272): an open issue
 untouched for the TTL with no open PR referencing it gets the label removed
 so the dev-cycle picker can claim it again.
 
+Issue #419: close stall issues whose referenced PR is already MERGED or CLOSED.
+
 Issue #368: merge ``origin/main`` into ``BEHIND`` auto-merge PRs (union-merge
 ``docs/TRACKING.md``) and approve first-party bot workflow runs held on
 ``action_required`` so a park drains without a human *Update branch* click.
@@ -48,6 +50,8 @@ DEFAULT_SWEEP_TTL_HOURS = 24
 _BLOCKED_MARKER_RE = re.compile(
     rf"<!--\s*{re.escape(BLOCKED_MARKER)}:\s*([^\s>]+(?:\s+[^\s>]+)*)\s*-->"
 )
+_STALL_PR_RE = re.compile(r"stalled auto-merge PR #(\d+)")
+_STALL_PR_FALLBACK_RE = re.compile(r"/pull/(\d+)")
 
 
 def parse_gh_time(raw: str | None) -> datetime | None:
@@ -276,6 +280,55 @@ def render_comment(
     )
 
 
+def stall_issue_pr_number(issue: dict[str, Any]) -> int | None:
+    """PR number a stall issue tracks, or None if the body is not a stall."""
+    body = issue.get("body") or ""
+    if STALL_MARKER not in body:
+        return None
+    for text in (issue.get("title") or "", body):
+        match = _STALL_PR_RE.search(text)
+        if match:
+            return int(match.group(1))
+    match = _STALL_PR_FALLBACK_RE.search(body)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def is_resolved_stall_pr(pr: dict[str, Any] | None) -> bool:
+    if not pr:
+        return False
+    return (pr.get("state") or "").upper() in {"MERGED", "CLOSED"}
+
+
+def apply_resolved_stalls(
+    issues: list[dict[str, Any]],
+    *,
+    get_pr: Any = None,
+    close_issue: Any = None,
+    comment: Any = None,
+) -> list[int]:
+    """Close stall issues whose PR is MERGED or CLOSED. Returns issue numbers."""
+    closed: list[int] = []
+    if get_pr is None:
+        return closed
+    for issue in issues:
+        pr_number = stall_issue_pr_number(issue)
+        if pr_number is None:
+            continue
+        pr = get_pr(pr_number)
+        if not is_resolved_stall_pr(pr):
+            continue
+        number = int(issue["number"])
+        state = (pr.get("state") or "").lower()
+        if comment:
+            comment(number, f"Closing: PR #{pr_number} is {state}.")
+        if close_issue:
+            close_issue(number)
+        closed.append(number)
+    return closed
+
+
 def render_issue_title(pr: dict[str, Any]) -> str:
     return f"[autodev] stalled auto-merge PR #{pr.get('number')}"
 
@@ -431,6 +484,29 @@ def fetch_workflow_runs(head_sha: str) -> list[dict[str, Any]]:
     return []
 
 
+def fetch_open_stall_issues() -> list[dict[str, Any]]:
+    # Title search can lag (#291); a miss just leaves a resolved stall open
+    # until the next watch run.
+    rows = (
+        _gh_json(
+            [
+                "issue",
+                "list",
+                "--state",
+                "open",
+                "--limit",
+                "50",
+                "--search",
+                "stalled auto-merge in:title",
+                "--json",
+                "number,title,body",
+            ]
+        )
+        or []
+    )
+    return [row for row in rows if STALL_MARKER in (row.get("body") or "")]
+
+
 def fetch_working_issues() -> list[dict[str, Any]]:
     # Audited for #291: `--label` routes through the search index, which can
     # lag. Failure mode here is fail-safe — a stale index only postpones the
@@ -568,6 +644,17 @@ def _cli_issue_comment(number: int, body: str) -> None:
     subprocess.check_call(
         ["gh", "issue", "comment", str(number), "--body", body],
     )
+
+
+def _cli_pr_view(number: int) -> dict[str, Any] | None:
+    try:
+        return _gh_json(["pr", "view", str(number), "--json", "number,state"]) or None
+    except subprocess.CalledProcessError:
+        return None
+
+
+def _cli_close_issue(number: int) -> None:
+    subprocess.check_call(["gh", "issue", "close", str(number), "--reason", "completed"])
 
 
 def _head_before_how(text: str) -> str:
@@ -809,9 +896,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.input_json:
         prs = json.loads(Path(args.input_json).read_text(encoding="utf-8"))
         issues = []
+        stall_issues: list[dict[str, Any]] = []
     else:
         prs = fetch_open_prs()
         issues = fetch_working_issues()
+        stall_issues = fetch_open_stall_issues()
     stalled = select_stalled(
         prs,
         min_age_minutes=args.min_age_minutes,
@@ -835,6 +924,8 @@ def main(argv: list[str] | None = None) -> int:
     for pr in behind:
         print(f"#{pr.get('number')} behind_update {pr.get('title')}")
     if not args.apply:
+        for number in apply_resolved_stalls(stall_issues, get_pr=_cli_pr_view):
+            print(f"#{number} resolved_stall")
         return 0
     apply_behind_updates(
         prs,
@@ -865,6 +956,12 @@ def main(argv: list[str] | None = None) -> int:
         remove_label=_cli_remove_working_label,
         comment=_cli_issue_comment,
         list_comments=_cli_list_comments,
+    )
+    apply_resolved_stalls(
+        stall_issues,
+        get_pr=_cli_pr_view,
+        close_issue=_cli_close_issue,
+        comment=_cli_issue_comment,
     )
     return 0
 

@@ -614,3 +614,70 @@ def test_approve_skips_fork_runs(watch):
         approve=lambda run_id: approved.append(run_id),
     )
     assert approved == []
+
+
+def _stall_issue(number: int = 408, pr_number: int = 404, **overrides):
+    base = {
+        "number": number,
+        "title": f"[autodev] stalled auto-merge PR #{pr_number}",
+        "body": (
+            f"<!-- {watch_marker()} -->\n"
+            f"PR #{pr_number} is stalled (classification: conflict).\n"
+        ),
+        "state": "OPEN",
+    }
+    base.update(overrides)
+    return base
+
+
+def watch_marker():
+    return "autodev-pr-stall"
+
+
+def test_stall_issue_pr_number_from_title(watch):
+    assert watch.stall_issue_pr_number(_stall_issue()) == 404
+
+
+def test_stall_issue_pr_number_ignores_unmarked_issue(watch):
+    issue = _stall_issue(body="just a regular issue about PR #404")
+    assert watch.stall_issue_pr_number(issue) is None
+
+
+def test_apply_resolved_stalls_closes_merged_pr(watch):
+    closed: list[int] = []
+    comments: list[tuple[int, str]] = []
+    prs = {404: {"number": 404, "state": "MERGED"}}
+
+    result = watch.apply_resolved_stalls(
+        [_stall_issue()],
+        get_pr=lambda n: prs.get(n),
+        close_issue=lambda n: closed.append(n),
+        comment=lambda n, body: comments.append((n, body)),
+    )
+    assert result == [408]
+    assert closed == [408]
+    assert comments == [(408, "Closing: PR #404 is merged.")]
+
+
+def test_apply_resolved_stalls_closes_closed_pr(watch):
+    closed: list[int] = []
+    result = watch.apply_resolved_stalls(
+        [_stall_issue()],
+        get_pr=lambda _n: {"number": 404, "state": "CLOSED"},
+        close_issue=lambda n: closed.append(n),
+        comment=lambda _n, _body: None,
+    )
+    assert result == [408]
+    assert closed == [408]
+
+
+def test_apply_resolved_stalls_leaves_open_pr(watch):
+    closed: list[int] = []
+    result = watch.apply_resolved_stalls(
+        [_stall_issue()],
+        get_pr=lambda _n: {"number": 404, "state": "OPEN"},
+        close_issue=lambda n: closed.append(n),
+        comment=lambda _n, _body: None,
+    )
+    assert result == []
+    assert closed == []
