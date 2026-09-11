@@ -2036,6 +2036,18 @@ text in gateway modules runs through `safe_detail` / `routing_failure_detail`
 `httpx` failures on the 503 path are summarized as host + status (no URLs).
 Covered by `tests/unit/test_gateway_error_redaction.py`.
 
+### Harness-aware profiling ignores catalogs ([#418](https://github.com/naveenreddyalka/daari/issues/418))
+
+<!-- tracking:#418 -->
+**Status:** Done (2026-09-11). `routing.harness_aware_profile` (default on)
+drops `role=system` text and recognized Codex/Claude Code blocks
+(`<environment_context>`, `<recommended_plugins>`, `<system-reminder>`) from
+category/complexity. `prompt_tokens_est` still counts the full request so
+context-window escalation sees size. Event `harness_profile` with
+`stripped_chars`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#harness-aware-profiling).
+Covered by `tests/unit/test_prompt_profile.py`.
+
 ---
 
 ## How to update

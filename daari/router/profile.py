@@ -47,11 +47,27 @@ _EXPLAIN_MARKERS = (
 _GEN_VERBS = ("write", "create", "implement", "add ", "build", "generate", "refactor", "fix")
 _QUESTION_STARTERS = ("what", "why", "how", "when", "where", "who", "which", "is ", "are ", "can ")
 
+# Codex / Claude Code envelopes that dominate classifier input (LiteLLM 09-10).
+_HARNESS_BLOCK_RE = re.compile(
+    r"<(environment_context|recommended_plugins|system-reminder)(?:\s[^>]*)?>"
+    r".*?</\1>",
+    re.DOTALL | re.IGNORECASE,
+)
+
 
 class PromptProfile(BaseModel):
     category: str
     complexity: str  # trivial | standard | complex
     prompt_tokens_est: int
+    stripped_chars: int = 0
+
+
+def strip_harness_text(text: str) -> tuple[str, int]:
+    """Remove recognized harness XML blocks. Returns (cleaned, stripped_chars)."""
+    if not text:
+        return text or "", 0
+    cleaned = _HARNESS_BLOCK_RE.sub("", text)
+    return cleaned, len(text) - len(cleaned)
 
 
 def categorize(text: str) -> str:
@@ -77,7 +93,10 @@ def categorize(text: str) -> str:
 
 
 def build_prompt_profile(
-    request: InternalRequest, *, effort_escalation: bool = False
+    request: InternalRequest,
+    *,
+    effort_escalation: bool = False,
+    harness_aware: bool = True,
 ) -> PromptProfile:
     last_user = ""
     for message in reversed(request.messages):
@@ -85,11 +104,25 @@ def build_prompt_profile(
             last_user = message.content
             break
     total_chars = sum(len(message.content or "") for message in request.messages)
+    tokens_est = max(1, total_chars // 4)
+    stripped_chars = 0
+    complexity_chars = total_chars
+    if harness_aware:
+        complexity_chars = 0
+        for message in request.messages:
+            content = message.content or ""
+            cleaned, removed = strip_harness_text(content)
+            stripped_chars += removed
+            if message.role == "system":
+                stripped_chars += len(cleaned)
+                continue
+            complexity_chars += len(cleaned)
+        last_user, _ = strip_harness_text(last_user)
     words = len(re.findall(r"\S+", last_user))
     fences = last_user.count("```") // 2
-    tokens_est = max(1, total_chars // 4)
+    complexity_tokens = max(1, complexity_chars // 4)
 
-    if words > 250 or fences >= 2 or tokens_est > 2000:
+    if words > 250 or fences >= 2 or complexity_tokens > 2000:
         complexity = "complex"
     elif words <= 8 and fences == 0:
         complexity = "trivial"
@@ -106,4 +139,5 @@ def build_prompt_profile(
         category=categorize(last_user),
         complexity=complexity,
         prompt_tokens_est=tokens_est,
+        stripped_chars=stripped_chars,
     )

@@ -83,6 +83,16 @@ failure, context-length failover, an open circuit, a down model, and
 `X-Daari-Tier-Cap` beat the pin. Hits log `session_pin`; overrides log
 `session_pin_override`.
 
+## Harness-aware profiling
+
+`routing.harness_aware_profile` (default on) keeps Claude Code / Cursor /
+Codex catalogs from flipping `complexity`. System messages and recognized
+harness blocks (`<environment_context>`, `<recommended_plugins>`,
+`<system-reminder>`) are ignored for category and complexity. `prompt_tokens_est`
+still counts the full request so context-window escalation (#385) sees real
+size. A no-op when those markers are absent. Off restores the old sum-every-
+message heuristic. Trace/event: `harness_profile` with `stripped_chars`.
+
 ## Classify user turn
 
 `routing.classify_user_turn` (default off) skips re-running
