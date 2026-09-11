@@ -2036,6 +2036,14 @@ text in gateway modules runs through `safe_detail` / `routing_failure_detail`
 `httpx` failures on the 503 path are summarized as host + status (no URLs).
 Covered by `tests/unit/test_gateway_error_redaction.py`.
 
+### Close stall issues when the PR merges ([#419](https://github.com/naveenreddyalka/daari/issues/419))
+
+<!-- tracking:#419 -->
+**Status:** Done (2026-09-11). `scripts/autodev_pr_watch.py` closes open
+issues whose body contains `autodev-pr-stall` once the referenced PR is
+`MERGED` or `CLOSED`, with a one-line comment. Open PRs are left alone.
+Covered by `tests/unit/test_autodev_pr_watch.py`.
+
 ---
 
 ## How to update
