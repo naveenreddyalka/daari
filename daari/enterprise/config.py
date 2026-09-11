@@ -52,6 +52,8 @@ class SsoSettings(BaseModel):
     secret: str = ""
     # Production OIDC: explicit JWKS URL and/or discovery document.
     jwks_url: str = ""
+    # Additional / multi-IdP JWKS endpoints (#422). Combined with jwks_url.
+    jwks_urls: list[str] = Field(default_factory=list)
     discovery_url: str = ""
     # Expected aud claim (empty = do not verify audience).
     audience: str = ""

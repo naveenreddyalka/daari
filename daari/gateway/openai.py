@@ -823,7 +823,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         def _require_admin_role(request: Request, ctx: AppContext) -> str:
             """SSO role gate for admin surfaces when enterprise.sso.enabled."""
             sso = ctx.settings.enterprise.sso
-            oidc_ready = bool(sso.jwks_url.strip() or sso.discovery_url.strip())
+            oidc_ready = bool(
+                sso.jwks_url.strip()
+                or any(str(u or "").strip() for u in (sso.jwks_urls or []))
+                or sso.discovery_url.strip()
+            )
             if not sso.enabled or (not sso.secret and not oidc_ready):
                 return "admin"
             from daari.enterprise.rbac import role_at_least, role_from_claims
