@@ -2048,6 +2048,14 @@ context-window escalation sees size. Event `harness_profile` with
 [routing-tiers.md](developer/concepts/routing-tiers.md#harness-aware-profiling).
 Covered by `tests/unit/test_prompt_profile.py`.
 
+### Close stall issues when the PR merges ([#419](https://github.com/naveenreddyalka/daari/issues/419))
+
+<!-- tracking:#419 -->
+**Status:** Done (2026-09-11). `scripts/autodev_pr_watch.py` closes open
+issues whose body contains `autodev-pr-stall` once the referenced PR is
+`MERGED` or `CLOSED`, with a one-line comment. Open PRs are left alone.
+Covered by `tests/unit/test_autodev_pr_watch.py`.
+
 ### Honor Anthropic output_format json_schema ([#420](https://github.com/naveenreddyalka/daari/issues/420))
 
 <!-- tracking:#420 -->
