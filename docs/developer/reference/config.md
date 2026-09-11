@@ -59,6 +59,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
 | `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin is reused. 0 keeps the pin until process restart. Ignored unless session_affinity is true. |
 | `routing.classify_user_turn` | bool | `False` | When true, tool-result continuations reuse the prior user-turn category/complexity instead of re-profiling (#389). Phase/stall still see tool history. Default off. |
+| `routing.classify_user_turn_agents` | bool | `True` | When `classify_user_turn` is false, still reuse profiles for agent User-Agents (`cursor`, `claude-code`, `claude code`, `codex`) (#421). Set false to disable the shortcut. |
 | `routing.harness_aware_profile` | bool | `True` | Ignore system catalogs and Codex/Claude Code harness blocks when classifying complexity (#418). `prompt_tokens_est` still counts the full request. Default on. |
 | `routing.context_window_escalation` | bool | `True` | Pre-dispatch hop when prompt estimate exceeds a tier's known window × buffer (#385). |
 | `routing.context_window_escalation_buffer` | float | `0.95` | Escalate when estimated tokens exceed window × buffer. |

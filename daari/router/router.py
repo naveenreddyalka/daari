@@ -391,6 +391,7 @@ class Router:
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
         classify_user_turn: bool = False,
+        classify_user_turn_agents: bool = True,
         harness_aware_profile: bool = True,
         context_window_escalation: bool = True,
         context_window_buffer: float = 0.95,
@@ -485,6 +486,7 @@ class Router:
 
         self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
         self.classify_user_turn = bool(classify_user_turn)
+        self.classify_user_turn_agents = bool(classify_user_turn_agents)
         self.harness_aware_profile = bool(harness_aware_profile)
         self.profile_pins = ProfilePinStore(ttl_seconds=session_affinity_ttl_seconds)
         self.context_window_escalation = bool(context_window_escalation)
@@ -2955,16 +2957,32 @@ class Router:
             return cap
         return tier
 
+    def _classify_user_turn_source(self, request: InternalRequest) -> str | None:
+        """Return 'config', 'ua', or None when profile reuse is disabled."""
+        if self.classify_user_turn:
+            return "config"
+        if self.classify_user_turn_agents:
+            from daari.gateway.agent_ua import is_classify_user_turn_agent
+
+            if is_classify_user_turn_agent(
+                user_agent=request.meta.user_agent,
+                client_id=request.meta.client_id,
+            ):
+                return "ua"
+        return None
+
     def _resolve_prompt_profile(
         self, request: InternalRequest
     ) -> tuple[PromptProfile, bool]:
         """Build or reuse a profile. Returns (profile, reused).
 
-        When `classify_user_turn` is on, a tool-result continuation reuses the
-        prior user-turn category/complexity (#389). prompt_tokens_est still
-        reflects the full message list so context-window escalation sees size.
+        When `classify_user_turn` is on (or the agent UA shortcut applies), a
+        tool-result continuation reuses the prior user-turn category/complexity
+        (#389, #421). prompt_tokens_est still reflects the full message list so
+        context-window escalation sees size.
         """
-        if not self.classify_user_turn:
+        source = self._classify_user_turn_source(request)
+        if source is None:
             return self._build_prompt_profile(request), False
         from daari.gateway.request_log import log_gateway_event
         from daari.router.session_affinity import (
@@ -2994,6 +3012,7 @@ class Router:
                         "category": profile.category,
                         "complexity": profile.complexity,
                         "session": key,
+                        "source": source,
                     },
                 )
                 return profile, True
@@ -3014,7 +3033,7 @@ class Router:
                     "category": profile.category,
                     "complexity": profile.complexity,
                     "session": key,
-                    "source": "prefix",
+                    "source": source,
                 },
             )
             self.profile_pins.put(
@@ -3044,7 +3063,7 @@ class Router:
     def _remember_user_turn_profile(
         self, request: InternalRequest, profile: PromptProfile
     ) -> None:
-        if not self.classify_user_turn:
+        if self._classify_user_turn_source(request) is None:
             return
         from daari.router.session_affinity import conversation_prefix_hash, session_key
 
@@ -4414,6 +4433,7 @@ class AppContext:
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
             classify_user_turn=settings.routing.classify_user_turn,
+            classify_user_turn_agents=settings.routing.classify_user_turn_agents,
             harness_aware_profile=settings.routing.harness_aware_profile,
             context_window_escalation=settings.routing.context_window_escalation,
             context_window_buffer=settings.routing.context_window_escalation_buffer,

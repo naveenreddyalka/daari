@@ -101,7 +101,13 @@ message heuristic. Trace/event: `harness_profile` with `stripped_chars`.
 category/complexity are reused; `prompt_tokens_est` still reflects the full
 message list. Phase routing and stall escalation still inspect tool history.
 A new user message re-profiles. Trace/event: `classify_user_turn` with
-`reused: true` on skipped turns.
+`reused: true` and `source: config`.
+
+When the global flag is off, `routing.classify_user_turn_agents` (default on)
+still enables the same reuse for agent User-Agents matching `cursor`,
+`claude-code`, `claude code`, or `codex` (also via sniffed `client_id`).
+Event `source` is then `ua`. Set `classify_user_turn_agents: false` to disable
+the shortcut. Explicit `classify_user_turn: true` applies to every client.
 
 ## Stall escalation
 

@@ -2065,6 +2065,18 @@ and forwarded the same way as OpenAI #398. Malformed payloads log
 `json_schema_ignored` and are dropped. Covered by
 `tests/unit/test_sampling_params.py`.
 
+### Agent UA shortcut for classify_user_turn ([#421](https://github.com/naveenreddyalka/daari/issues/421))
+
+<!-- tracking:#421 -->
+**Status:** Done (2026-09-11). When `routing.classify_user_turn` is false
+(default), User-Agents matching `cursor` / `claude-code` / `claude code` /
+`codex` still reuse category/complexity on tool-result continuations via
+`routing.classify_user_turn_agents` (default on). Set agents false to disable;
+explicit `classify_user_turn: true` still applies to every client. Event
+`classify_user_turn` includes `source: ua` vs `source: config`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#classify-user-turn).
+Covered by `tests/unit/test_classify_user_turn.py`.
+
 ---
 
 ## How to update

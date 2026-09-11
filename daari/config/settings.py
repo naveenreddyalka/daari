@@ -348,6 +348,17 @@ class RoutingSettings(RuntimeSettings):
             "re-profiles. Default off."
         ),
     )
+    # UA shortcut when classify_user_turn is off (#421). Default on.
+    classify_user_turn_agents: bool = Field(
+        default=True,
+        description=(
+            "When classify_user_turn is false, still reuse profiles on "
+            "tool-result continuations for agent User-Agents (cursor, "
+            "claude-code, claude code, codex). Set false to disable the "
+            "shortcut. Ignored when classify_user_turn is true (applies to "
+            "every client). Default on."
+        ),
+    )
     harness_aware_profile: bool = Field(
         default=True,
         description=(
