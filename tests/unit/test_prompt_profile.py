@@ -64,6 +64,44 @@ class TestComplexity:
         profile = build_prompt_profile(_request("x" * 400))
         assert profile.prompt_tokens_est == 100
 
+    def test_system_catalog_does_not_flip_complexity(self):
+        catalog = "x" * 10_000
+        request = InternalRequest(
+            messages=[
+                Message(role="system", content=catalog),
+                Message(role="user", content="fix the typo"),
+            ],
+            model="llama3.2:3b",
+        )
+        profile = build_prompt_profile(request)
+        assert profile.complexity == "trivial"
+        assert profile.prompt_tokens_est == max(1, (len(catalog) + len("fix the typo")) // 4)
+        assert profile.stripped_chars >= len(catalog)
+
+    def test_codex_harness_blocks_ignored_for_complexity(self):
+        block = "<environment_context>" + ("repo " * 2000) + "</environment_context>"
+        request = InternalRequest(
+            messages=[Message(role="user", content=f"fix the typo\n{block}")],
+            model="llama3.2:3b",
+        )
+        profile = build_prompt_profile(request)
+        assert profile.complexity == "trivial"
+        assert profile.stripped_chars >= 1000
+        assert profile.prompt_tokens_est == max(1, len(f"fix the typo\n{block}") // 4)
+
+    def test_harness_aware_off_counts_system_catalog(self):
+        catalog = "x" * 10_000
+        request = InternalRequest(
+            messages=[
+                Message(role="system", content=catalog),
+                Message(role="user", content="fix the typo"),
+            ],
+            model="llama3.2:3b",
+        )
+        profile = build_prompt_profile(request, harness_aware=False)
+        assert profile.complexity == "complex"
+        assert profile.stripped_chars == 0
+
 
 def _tiered_router(tmp_path, *, category_policies=None) -> Router:
     def make_executor(tier: str) -> OllamaExecutor:
@@ -134,3 +172,26 @@ def test_profile_model_shape():
     assert isinstance(profile, PromptProfile)
     assert profile.category == "chat"
     assert profile.prompt_tokens_est > 0
+
+
+@pytest.mark.asyncio
+async def test_harness_profile_event_on_system_catalog(tmp_path, monkeypatch):
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    router = _tiered_router(tmp_path)
+    request = InternalRequest(
+        messages=[
+            Message(role="system", content="x" * 10_000),
+            Message(role="user", content="fix the typo"),
+        ],
+        model="llama3.2:3b",
+    )
+    response = await router.route(request)
+    assert response.daari_meta.complexity == "trivial"
+    assert any(
+        event == "harness_profile" and payload.get("stripped_chars", 0) >= 10_000
+        for event, payload in events
+    )
