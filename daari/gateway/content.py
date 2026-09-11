@@ -5,6 +5,7 @@ from typing import Any
 from daari.gateway.internal import ContentImage, Message
 
 _TEXT_BLOCK_TYPES = frozenset({"text", "input_text", "output_text"})
+_THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
 
 
 def content_to_text(content: str | list[dict[str, Any]] | dict[str, Any] | None) -> str | None:
@@ -18,7 +19,12 @@ def content_to_text(content: str | list[dict[str, Any]] | dict[str, Any] | None)
         return content_to_text([content])
     text_parts: list[str] = []
     for block in content:
+        if not isinstance(block, dict):
+            continue
         block_type = block.get("type")
+        # Thinking stays off local prompts; L6 replay uses extract_thinking_blocks.
+        if block_type in _THINKING_BLOCK_TYPES:
+            continue
         if block_type in _TEXT_BLOCK_TYPES and isinstance(block.get("text"), str):
             text_parts.append(block["text"])
             continue
@@ -30,6 +36,38 @@ def content_to_text(content: str | list[dict[str, Any]] | dict[str, Any] | None)
                 break
     joined = "\n".join(part for part in text_parts if part)
     return joined or None
+
+
+def extract_thinking_blocks(
+    content: str | list[dict[str, Any]] | dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Keep non-empty Anthropic thinking / redacted_thinking blocks (Kong parity).
+
+    A thinking block is kept when it has non-empty `thinking` text or a
+    `signature` (omitted-display blocks ship empty thinking + signature).
+    redacted_thinking is kept when `data` is non-empty. Fully empty blocks
+    are dropped.
+    """
+    if content is None or isinstance(content, str):
+        return []
+    blocks = [content] if isinstance(content, dict) else content
+    kept: list[dict[str, Any]] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "thinking":
+            thinking = block.get("thinking")
+            signature = block.get("signature")
+            has_text = isinstance(thinking, str) and bool(thinking.strip())
+            has_sig = isinstance(signature, str) and bool(signature.strip())
+            if has_text or has_sig:
+                kept.append(dict(block))
+        elif block_type == "redacted_thinking":
+            data = block.get("data")
+            if isinstance(data, str) and data.strip():
+                kept.append(dict(block))
+    return kept
 
 
 def extract_images(content: str | list[dict[str, Any]] | dict[str, Any] | None) -> list[ContentImage]:
@@ -104,6 +142,7 @@ def sanitize_messages_for_ollama(messages: list[Message]) -> list[Message]:
                 text = f"(called tools: {', '.join(names)})" if names else "(called tools)"
             sanitized.append(Message(role=message.role, content=text, images=list(message.images)))
             continue
+        # Strip thinking_blocks: local models must not see signed Anthropic chain.
         sanitized.append(
             Message(role=message.role, content=message.content, images=list(message.images))
         )

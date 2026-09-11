@@ -13,7 +13,7 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
-from daari.gateway.content import content_to_text, extract_images
+from daari.gateway.content import content_to_text, extract_images, extract_thinking_blocks
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.cost_headers import (
@@ -76,12 +76,15 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
 
     text_parts: list[str] = []
     images = extract_images(message.content)
+    thinking_blocks = extract_thinking_blocks(message.content)
     tool_calls: list[dict[str, Any]] = []
     tool_results: list[Message] = []
     for block in message.content:
         if not isinstance(block, dict):
             continue
         block_type = block.get("type")
+        if block_type in {"thinking", "redacted_thinking"}:
+            continue
         if block_type == "tool_use":
             arguments = block.get("input")
             tool_calls.append(
@@ -114,10 +117,23 @@ def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
     joined = "\n".join(text_parts) or None
     if tool_calls:
         expanded.append(
-            Message(role=message.role, content=joined, tool_calls=tool_calls, images=images)
+            Message(
+                role=message.role,
+                content=joined,
+                tool_calls=tool_calls,
+                images=images,
+                thinking_blocks=thinking_blocks,
+            )
         )
-    elif joined or images:
-        expanded.append(Message(role=message.role, content=joined, images=images))
+    elif joined or images or thinking_blocks:
+        expanded.append(
+            Message(
+                role=message.role,
+                content=joined,
+                images=images,
+                thinking_blocks=thinking_blocks,
+            )
+        )
     expanded.extend(tool_results)
     return expanded
 

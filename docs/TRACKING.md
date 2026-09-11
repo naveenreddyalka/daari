@@ -2086,6 +2086,35 @@ on one document tries the next; all miss → existing 401. Docs:
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
 Covered by `tests/unit/test_oidc_jwks.py`.
 
+### Honor service_tier for pricing and L6 forward ([#430](https://github.com/naveenreddyalka/daari/issues/430))
+
+<!-- tracking:#430 -->
+**Status:** Done (2026-09-11). OpenAI/Anthropic `service_tier` is stored on
+`SamplingParams`, forwarded on L6 OpenAI and Anthropic payloads, and
+multiplies `cost_usd` (`flex` 0.5×, `priority` 2×, standard/default/auto 1×).
+Unknown values log `service_tier_ignored`. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#service-tier-pricing).
+Covered by `tests/unit/test_service_tier.py`.
+
+### Preserve Anthropic thinking blocks on L6 replay ([#431](https://github.com/naveenreddyalka/daari/issues/431))
+
+<!-- tracking:#431 -->
+**Status:** Done (2026-09-11). Inbound `thinking` / `redacted_thinking` blocks
+with text, signature, or redacted `data` are stored on `Message.thinking_blocks`
+and replayed on Anthropic L6 `/v1/messages` assistant turns. Empty blocks are
+omitted (Kong parity). `content_to_text` and `sanitize_messages_for_ollama`
+strip them so local tiers stay plain text. Covered by
+`tests/unit/test_anthropic_gateway.py`.
+
+### Circuit-breaker state on /ready and stats ([#432](https://github.com/naveenreddyalka/daari/issues/432))
+
+<!-- tracking:#432 -->
+**Status:** Done (2026-09-11). `LocalBackendPool.readiness()` / `snapshot()`
+include `circuit` (`closed`|`open`|`half_open`) per backend; `/ready` and
+`GET /v1/daari/stats` expose it (`backends: []` when no pool). Prometheus
+backend series carry a `circuit` label. `/health` stays `{status: ok}`.
+Covered by `tests/unit/test_local_pool.py`.
+
 ---
 
 ## How to update

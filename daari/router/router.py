@@ -702,6 +702,7 @@ class Router:
             complexity=profile.complexity,
             prompt_tokens_est=profile.prompt_tokens_est,
             reasoning_effort=request.sampling.reasoning_effort,
+            service_tier=request.sampling.service_tier,
         )
         if not reused:
             profile = await self._apply_learned_route(request, profile)
@@ -749,6 +750,8 @@ class Router:
             response.daari_meta.complexity = profile.complexity
         if request.sampling.reasoning_effort and response.daari_meta.reasoning_effort is None:
             response.daari_meta.reasoning_effort = request.sampling.reasoning_effort
+        if request.sampling.service_tier and response.daari_meta.service_tier is None:
+            response.daari_meta.service_tier = request.sampling.service_tier
         add_step(
             "served",
             tier=response.daari_meta.tier,
@@ -1546,6 +1549,7 @@ class Router:
             complexity=profile.complexity,
             prompt_tokens_est=profile.prompt_tokens_est,
             reasoning_effort=request.sampling.reasoning_effort,
+            service_tier=request.sampling.service_tier,
             stream=True,
         )
         if not reused:
