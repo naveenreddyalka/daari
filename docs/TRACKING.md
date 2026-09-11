@@ -2056,6 +2056,15 @@ issues whose body contains `autodev-pr-stall` once the referenced PR is
 `MERGED` or `CLOSED`, with a one-line comment. Open PRs are left alone.
 Covered by `tests/unit/test_autodev_pr_watch.py`.
 
+### Honor Anthropic output_format json_schema ([#420](https://github.com/naveenreddyalka/daari/issues/420))
+
+<!-- tracking:#420 -->
+**Status:** Done (2026-09-11). `/v1/messages` `output_format.type == json_schema`
+(with `schema` or `json_schema.schema`) is stored on `SamplingParams.json_schema`
+and forwarded the same way as OpenAI #398. Malformed payloads log
+`json_schema_ignored` and are dropped. Covered by
+`tests/unit/test_sampling_params.py`.
+
 ---
 
 ## How to update
