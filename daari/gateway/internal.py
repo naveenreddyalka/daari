@@ -44,6 +44,9 @@ class Message(BaseModel):
     # Anthropic tool_result blocks carry tool_use_id; OpenAI uses this as
     # tool_call_id. Absent on ordinary turns so cache keys stay stable.
     tool_call_id: str | None = None
+    # Signed thinking / redacted_thinking blocks for Anthropic L6 replay (#431).
+    # Empty by default so cache keys stay stable when absent.
+    thinking_blocks: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RequestMeta(BaseModel):

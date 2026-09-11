@@ -2096,6 +2096,16 @@ Unknown values log `service_tier_ignored`. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#service-tier-pricing).
 Covered by `tests/unit/test_service_tier.py`.
 
+### Preserve Anthropic thinking blocks on L6 replay ([#431](https://github.com/naveenreddyalka/daari/issues/431))
+
+<!-- tracking:#431 -->
+**Status:** Done (2026-09-11). Inbound `thinking` / `redacted_thinking` blocks
+with text, signature, or redacted `data` are stored on `Message.thinking_blocks`
+and replayed on Anthropic L6 `/v1/messages` assistant turns. Empty blocks are
+omitted (Kong parity). `content_to_text` and `sanitize_messages_for_ollama`
+strip them so local tiers stay plain text. Covered by
+`tests/unit/test_anthropic_gateway.py`.
+
 ---
 
 ## How to update
