@@ -2086,6 +2086,16 @@ on one document tries the next; all miss → existing 401. Docs:
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
 Covered by `tests/unit/test_oidc_jwks.py`.
 
+### Honor service_tier for pricing and L6 forward ([#430](https://github.com/naveenreddyalka/daari/issues/430))
+
+<!-- tracking:#430 -->
+**Status:** Done (2026-09-11). OpenAI/Anthropic `service_tier` is stored on
+`SamplingParams`, forwarded on L6 OpenAI and Anthropic payloads, and
+multiplies `cost_usd` (`flex` 0.5×, `priority` 2×, standard/default/auto 1×).
+Unknown values log `service_tier_ignored`. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#service-tier-pricing).
+Covered by `tests/unit/test_service_tier.py`.
+
 ---
 
 ## How to update

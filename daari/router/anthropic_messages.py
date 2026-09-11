@@ -113,6 +113,8 @@ def to_anthropic_payload(
         payload["top_p"] = request.sampling.top_p
     if request.sampling.stop:
         payload["stop_sequences"] = list(request.sampling.stop)
+    if request.sampling.service_tier:
+        payload["service_tier"] = request.sampling.service_tier
     return payload
 
 

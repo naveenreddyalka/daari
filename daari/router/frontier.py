@@ -218,5 +218,6 @@ class FrontierExecutor:
                 cached_tokens=cached_tokens,
                 provider_prefs=provider_prefs,
                 daari_cost_usd=0.0,
+                service_tier=request.sampling.service_tier,
             ),
         )

@@ -132,6 +132,8 @@ class DaariMeta(BaseModel):
     daari_cost_usd: float | None = None
     # Client reasoning_effort when present (#297).
     reasoning_effort: str | None = None
+    # Client service_tier when present (#430).
+    service_tier: str | None = None
 
 
 class InternalResponse(BaseModel):

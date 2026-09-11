@@ -202,6 +202,13 @@ proportionally scaled cached-input rate) use the `above_*` values. Cost
 headers, the usage ledger, and budget enforcement all go through the same
 `cost_usd` path, so a 402 can fire before a 2× request is dispatched.
 
+### Service-tier pricing
+
+OpenAI / Anthropic / OpenRouter `service_tier` is forwarded on L6 hops and
+multiplies `cost_usd`: `flex` is 0.5×, `priority` is 2×, `standard` /
+`default` / `auto` / missing is 1×. Unknown values log `service_tier_ignored`
+and bill as standard.
+
 ## Providers / fallback
 
 Configure `frontier.providers` (ordered list) for OpenAI-compatible bases, Anthropic, OpenRouter, etc. Circuit breakers and key rotation ship with the L6 pool. A provider whose `provider` is `anthropic`/`claude`, or whose `base_url` contains `anthropic.com`, is sent native Messages API payloads (`POST …/messages`, `x-api-key`) rather than an OpenAI `/chat/completions` body.

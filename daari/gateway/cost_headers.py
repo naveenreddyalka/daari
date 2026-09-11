@@ -75,6 +75,7 @@ def response_cost_headers(
                 getattr(settings, "pricing", None),
                 fallback_per_1k=price_per_1k,
                 cached_input_tokens=int(meta.cached_tokens or 0),
+                service_tier=meta.service_tier,
             )
         avoided = 0.0
     else:
@@ -101,6 +102,7 @@ def stream_usage_cost(
     fallback_per_1k: float = 0.002,
     cached_input_tokens: int = 0,
     reported_cost: float | None = None,
+    service_tier: str | None = None,
 ) -> float:
     """USD for a streamed usage object. Local tiers are $0; L6 matches headers."""
     if (tier or "").upper() != FRONTIER_TIER:
@@ -114,6 +116,7 @@ def stream_usage_cost(
         pricing,
         fallback_per_1k=fallback_per_1k,
         cached_input_tokens=int(cached_input_tokens),
+        service_tier=service_tier,
     )
 
 

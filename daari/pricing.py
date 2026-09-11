@@ -14,6 +14,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# OpenAI / Anthropic / OpenRouter service_tier multipliers (#430).
+_SERVICE_TIER_FACTORS = {
+    "flex": 0.5,
+    "priority": 2.0,
+    "standard": 1.0,
+    "default": 1.0,
+    "auto": 1.0,
+}
+
+
+def service_tier_factor(tier: str | None) -> float:
+    """Multiplier for a client `service_tier`. Unknown → 1.0 + event."""
+    if tier is None or not str(tier).strip():
+        return 1.0
+    key = str(tier).strip().lower()
+    if key in _SERVICE_TIER_FACTORS:
+        return _SERVICE_TIER_FACTORS[key]
+    from daari.gateway.request_log import log_gateway_event
+
+    log_gateway_event("service_tier_ignored", {"tier": key})
+    return 1.0
+
 
 @dataclass(frozen=True)
 class ResolvedPrice:
@@ -110,6 +132,7 @@ def cost_usd(
     *,
     fallback_per_1k: float,
     cached_input_tokens: int = 0,
+    service_tier: str | None = None,
 ) -> float:
     price = resolve_price(
         model,
@@ -124,7 +147,7 @@ def cost_usd(
         total += cached_input_tokens / 1_000_000 * price.cached_input_per_1m
     elif cached_input_tokens:
         total += cached_input_tokens / 1_000_000 * price.input_per_1m
-    return total
+    return total * service_tier_factor(service_tier)
 
 
 def pricing_warnings(settings: object) -> list[str]:
