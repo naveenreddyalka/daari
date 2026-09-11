@@ -78,6 +78,12 @@ Open backlog after this run:
 
 ## Changelog
 
+- **2026-09-11 pm** — Second run of the day (17:04 cron fired minutes after
+  the morning run's PR #423 merged). Delta scan found nothing material:
+  LiteLLM only added dev tag v1.102.0-dev.2 (percentile-TTFT routing and a
+  `lite configure claude` CLI — watch), Kong still 2.0.3, OpenRouter
+  changelog unmoved since 08-19. Backlog already fed with #418–#422
+  unworked; no issues filed, no gap rows changed.
 - **2026-09-11** — 09-10 refill + #398 shipped; backlog empty; #408 closed
   by hand. Outward: LiteLLM harness-aware routing (09-10). Inward verified:
   `build_prompt_profile` counts all message chars; stall issues never
