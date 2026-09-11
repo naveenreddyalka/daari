@@ -234,6 +234,10 @@ class TestParsingFromClientBody:
 
 
 class TestAnthropicBody:
+    def test_service_tier_is_forwarded_on_openai_payload(self):
+        params = SamplingParams.from_openai_body({"service_tier": "priority"})
+        assert params.openai_payload()["service_tier"] == "priority"
+
     def test_anthropic_names_are_read(self):
         params = SamplingParams.from_anthropic_body(
             {"max_tokens": 100, "top_p": 0.5, "top_k": 10, "stop_sequences": ["END"]}

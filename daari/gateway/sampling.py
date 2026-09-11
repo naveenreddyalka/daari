@@ -75,6 +75,13 @@ def _json_schema_from_output_format(output_format: Any) -> dict[str, Any] | None
     return _json_schema_from_response_format(output_format)
 
 
+def _normalize_service_tier(raw: Any) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip().lower()
+    return text or None
+
+
 def normalize_reasoning_effort(raw: Any) -> str | None:
     if not isinstance(raw, str):
         return None
@@ -102,6 +109,8 @@ class SamplingParams(BaseModel):
     logprobs: bool | None = None
     # Client reasoning_effort (minimal|low|medium|high); forwarded / mapped (#297).
     reasoning_effort: str | None = None
+    # OpenAI/Anthropic/OpenRouter service_tier (flex|standard|priority) (#430).
+    service_tier: str | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -159,6 +168,7 @@ class SamplingParams(BaseModel):
             n=body.get("n"),
             logprobs=body.get("logprobs"),
             reasoning_effort=normalize_reasoning_effort(body.get("reasoning_effort")),
+            service_tier=_normalize_service_tier(body.get("service_tier")),
         )
 
     @classmethod
@@ -195,6 +205,7 @@ class SamplingParams(BaseModel):
             stop=stop or None,
             response_format_json=wants_json,
             json_schema=json_schema,
+            service_tier=_normalize_service_tier(body.get("service_tier")),
         )
 
     @classmethod
@@ -281,6 +292,7 @@ class SamplingParams(BaseModel):
             "presence_penalty",
             "frequency_penalty",
             "reasoning_effort",
+            "service_tier",
         ):
             value = getattr(self, name)
             if value is not None:
@@ -319,6 +331,7 @@ class SamplingParams(BaseModel):
             "seed",
             "frequency_penalty",
             "reasoning_effort",
+            "service_tier",
         ):
             value = getattr(self, name)
             if value is not None:
