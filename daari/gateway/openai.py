@@ -665,7 +665,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             snapshot = ctx.metrics.snapshot()
             total = sum(t["count"] for t in snapshot.values())
-            return {"total_requests": total, "errors": ctx.metrics.errors, "tiers": snapshot}
+            pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
+            backends = list((pool.snapshot() if pool is not None else {}).get("backends") or [])
+            return {
+                "total_requests": total,
+                "errors": ctx.metrics.errors,
+                "tiers": snapshot,
+                "backends": backends,
+            }
 
         @router.get("/v1/daari/traces")
         async def daari_traces(request: Request, limit: int = 20) -> dict[str, Any]:

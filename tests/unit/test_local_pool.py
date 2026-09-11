@@ -201,6 +201,28 @@ class TestReadiness:
         assert snap["status"] == "ready"
         assert snap["http_status"] == 200
 
+    def test_readiness_includes_circuit_state(self):
+        open_breaker = CircuitBreaker(failure_threshold=1, cooldown_seconds=60)
+        open_breaker.record_failure()
+        pool = LocalBackendPool(
+            slots=[
+                _slot("closed-host"),
+                _slot("open-host", breaker=open_breaker),
+            ]
+        )
+        backends = {row["id"]: row for row in pool.readiness()["backends"]}
+        assert backends["closed-host"]["circuit"] == "closed"
+        assert backends["open-host"]["circuit"] == "open"
+
+    def test_snapshot_includes_circuit_state(self):
+        half = CircuitBreaker(failure_threshold=1, cooldown_seconds=0)
+        half.record_failure()
+        assert half.state == "half_open"
+        pool = LocalBackendPool(slots=[_slot("probe", breaker=half)])
+        backends = pool.snapshot()["backends"]
+        assert backends[0]["circuit"] == "half_open"
+        assert backends[0]["id"] == "probe"
+
 
 class TestHealthLoop:
     @pytest.mark.asyncio
@@ -434,12 +456,59 @@ def test_metrics_label_chosen_backend():
         metrics,
         backend_pool={
             "backends": [
-                {"id": "gpu-a", "healthy": True, "outstanding": 1, "requests": 4},
-                {"id": "gpu-b", "healthy": False, "outstanding": 0, "requests": 0},
+                {
+                    "id": "gpu-a",
+                    "healthy": True,
+                    "outstanding": 1,
+                    "requests": 4,
+                    "circuit": "closed",
+                },
+                {
+                    "id": "gpu-b",
+                    "healthy": False,
+                    "outstanding": 0,
+                    "requests": 0,
+                    "circuit": "open",
+                },
             ]
         },
     )
-    assert 'daari_backend_up{backend="gpu-a"} 1' in text or 'daari_backend_up{backend="gpu-a"}' in text
+    assert 'daari_backend_up{backend="gpu-a",circuit="closed"} 1' in text
+    assert 'circuit="open"' in text
     assert "daari_backend_up" in text
     assert "gpu-a" in text
     assert "daari_backend_requests_total" in text
+
+
+@pytest.mark.asyncio
+async def test_stats_includes_backends_with_circuit(settings):
+    open_breaker = CircuitBreaker(failure_threshold=1, cooldown_seconds=60)
+    open_breaker.record_failure()
+    pool = LocalBackendPool(
+        slots=[
+            _slot("a"),
+            _slot("b", breaker=open_breaker),
+        ]
+    )
+    app = _app(settings, pool=pool)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/daari/stats")
+        health = await client.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    by_id = {row["id"]: row for row in body["backends"]}
+    assert by_id["a"]["circuit"] == "closed"
+    assert by_id["b"]["circuit"] == "open"
+    assert health.status_code == 200
+    assert health.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_stats_backends_empty_without_pool(settings):
+    app = _app(settings)
+    app.state.ctx.local_pool = None
+    app.state.ctx.router.local_pool = None
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/daari/stats")
+    assert response.status_code == 200
+    assert response.json()["backends"] == []

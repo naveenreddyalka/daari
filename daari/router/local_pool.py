@@ -172,6 +172,7 @@ class LocalBackendPool:
                 "healthy": slot.healthy,
                 "status": slot.last_check,
                 "outstanding": slot.outstanding,
+                "circuit": slot.breaker.state,
             }
             for slot in self.slots
         ]
@@ -204,6 +205,7 @@ class LocalBackendPool:
                     "outstanding": slot.outstanding,
                     "requests": slot.requests,
                     "last_check": slot.last_check,
+                    "circuit": slot.breaker.state,
                 }
                 for slot in self.slots
             ],

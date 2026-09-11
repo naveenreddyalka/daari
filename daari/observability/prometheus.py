@@ -182,20 +182,21 @@ def render_prometheus(
         for entry in backends:
             backend_id = str(entry.get("id") or "unknown")
             seen.add(backend_id)
+            circuit = str(entry.get("circuit") or "closed")
+            labels = _labels(backend=backend_id, circuit=circuit)
+            lines.append(f"daari_backend_up{labels} {1 if entry.get('healthy') else 0}")
             lines.append(
-                f"daari_backend_up{_labels(backend=backend_id)} "
-                f"{1 if entry.get('healthy') else 0}"
-            )
-            lines.append(
-                f"daari_backend_outstanding{_labels(backend=backend_id)} "
-                f"{int(entry.get('outstanding') or 0)}"
+                f"daari_backend_outstanding{labels} {int(entry.get('outstanding') or 0)}"
             )
             count = int(entry.get("requests") or recorded.get(backend_id) or 0)
-            lines.append(f"daari_backend_requests_total{_labels(backend=backend_id)} {count}")
+            lines.append(f"daari_backend_requests_total{labels} {count}")
         for backend_id, count in recorded.items():
             if backend_id in seen:
                 continue
-            lines.append(f"daari_backend_requests_total{_labels(backend=backend_id)} {int(count)}")
+            lines.append(
+                f"daari_backend_requests_total{_labels(backend=backend_id, circuit='closed')} "
+                f"{int(count)}"
+            )
 
     alerts = snap.get("budget_alerts") or {}
     if alerts:
