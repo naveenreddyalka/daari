@@ -203,13 +203,17 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             confirm_tool = confirm_value in {"1", "true", "yes"}
 
             ctx: AppContext = request.app.state.ctx
+            user_agent = request.headers.get("user-agent") or ""
+            from daari.gateway.agent_ua import sniff_agent_client_id
+
+            client_id = x_daari_client_id or sniff_agent_client_id(user_agent)
             # Request-shape log (issue #88): mirrors chat_completions_request so
             # live failures are diagnosable from cursor-requests.log.
             log_gateway_event(
                 "anthropic_messages_request",
                 {
                     "client": request.client.host if request.client else None,
-                    "user_agent": request.headers.get("user-agent"),
+                    "user_agent": user_agent or None,
                     "model": body.model,
                     "stream": body.stream,
                     "message_count": len(body.messages),
@@ -244,7 +248,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 no_frontier=x_daari_no_frontier == "true",
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
-                client_id=x_daari_client_id,
+                client_id=client_id,
+                user_agent=user_agent[:200] or None,
                 session_id=(x_daari_session or "").strip() or None,
             )
             apply_cost_tier(body, meta)

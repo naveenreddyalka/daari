@@ -346,11 +346,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             include_usage = bool(body.stream_options and body.stream_options.get("include_usage"))
             client_host = request.client.host if request.client else "unknown"
             user_agent = request.headers.get("user-agent", "")
-            # T5b: explicit header wins; otherwise attribute Cursor traffic
-            # by user-agent so per-client reports work with zero config.
-            client_id = x_daari_client_id or (
-                "cursor" if "cursor" in user_agent.lower() else None
-            )
+            # T5b / #421: explicit header wins; otherwise attribute agent
+            # traffic by user-agent so per-client reports and classify_user_turn
+            # shortcuts work with zero config.
+            from daari.gateway.agent_ua import sniff_agent_client_id
+
+            client_id = x_daari_client_id or sniff_agent_client_id(user_agent)
             boundary_profile = (x_daari_boundary_profile or "").strip() or None
             log_gateway_event(
                 "chat_completions_request",
@@ -373,6 +374,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tier_cap=x_daari_tier_cap,
                 latency_budget_ms=latency_budget_ms,
                 client_id=client_id,
+                user_agent=user_agent[:200] or None,
                 user=(body.user or "").strip() or None,
                 session_id=(x_daari_session or "").strip() or None,
                 no_frontier=x_daari_no_frontier == "true",

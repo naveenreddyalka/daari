@@ -53,6 +53,8 @@ class RequestMeta(BaseModel):
     # Max acceptable local-model latency in ms (X-Daari-Latency-Budget).
     latency_budget_ms: int | None = None
     client_id: str | None = None
+    # Raw User-Agent (gateway sniff). Used for classify_user_turn agent shortcut.
+    user_agent: str | None = None
     # OpenAI `user` or an explicit session id. Used only when session affinity
     # is on; absent values leave cache keys unchanged.
     user: str | None = None
