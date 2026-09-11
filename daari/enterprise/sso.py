@@ -2,7 +2,7 @@
 
 - Dev stub: HS256 HMAC via `enterprise.sso.secret` (local only).
 - Production: OIDC access/ID tokens verified against issuer JWKS
-  (`enterprise.sso.jwks_url` or OIDC discovery). Requires optional
+  (`enterprise.sso.jwks_url` / `jwks_urls` or OIDC discovery). Requires optional
   `daari[oidc]` (PyJWT[crypto]).
 """
 
@@ -106,6 +106,44 @@ def resolve_jwks_url(
     return uri.strip()
 
 
+def configured_jwks_urls(sso: Any) -> list[str]:
+    """Merge `jwks_url` (singular) with `jwks_urls` (list), deduped, order preserved."""
+    urls: list[str] = []
+    singular = str(getattr(sso, "jwks_url", "") or "").strip()
+    if singular:
+        urls.append(singular)
+    for raw in getattr(sso, "jwks_urls", None) or []:
+        item = str(raw or "").strip()
+        if item and item not in urls:
+            urls.append(item)
+    return urls
+
+
+def resolve_jwks_urls(
+    *,
+    jwks_url: str = "",
+    jwks_urls: list[str] | None = None,
+    discovery_url: str = "",
+    http_get: HttpGet | None = None,
+) -> list[str]:
+    """Resolve one or more JWKS endpoints (singular + list + optional discovery)."""
+    urls: list[str] = []
+    singular = (jwks_url or "").strip()
+    if singular:
+        urls.append(singular)
+    for raw in jwks_urls or []:
+        item = str(raw or "").strip()
+        if item and item not in urls:
+            urls.append(item)
+    if urls:
+        return urls
+    if discovery_url.strip():
+        return [
+            resolve_jwks_url(discovery_url=discovery_url, http_get=http_get)
+        ]
+    raise ValueError("SSO requires jwks_url, jwks_urls, or discovery_url")
+
+
 class JwksCache:
     """Process-local JWKS cache with TTL."""
 
@@ -184,18 +222,45 @@ def _public_key_and_algorithms(jwk: dict[str, Any]) -> tuple[Any, list[str]]:
     return public_key, list(family)
 
 
+def _kid_lookup_error(exc: BaseException) -> bool:
+    msg = str(exc)
+    return "no JWK matching kid=" in msg or "JWT missing kid and JWKS has multiple keys" in msg
+
+
+def _jwk_from_url(
+    token: str,
+    url: str,
+    *,
+    http_get: HttpGet | None,
+    jwks_cache: JwksCache,
+) -> dict[str, Any]:
+    jwks = jwks_cache.get(url, http_get=http_get)
+    try:
+        return _jwk_for_token(token, jwks)
+    except ValueError:
+        # Unknown kid means the IdP most likely rotated signing keys. Refetch
+        # once rather than rejecting every token until the TTL lapses.
+        jwks = jwks_cache.get(url, http_get=http_get, force=True)
+        return _jwk_for_token(token, jwks)
+
+
 def verify_oidc_token(
     token: str,
     *,
     issuer: str,
     audience: str = "",
     jwks_url: str = "",
+    jwks_urls: list[str] | None = None,
     discovery_url: str = "",
     jwks: dict[str, Any] | None = None,
     http_get: HttpGet | None = None,
     jwks_cache: JwksCache | None = None,
 ) -> dict[str, Any]:
-    """Verify a JWT against the issuer JWKS (RS256 / ES256 via PyJWT)."""
+    """Verify a JWT against the issuer JWKS (RS256 / ES256 via PyJWT).
+
+    When multiple JWKS URLs are configured (#422), an unknown kid on one
+    document tries the next; signature failures after a kid match do not.
+    """
     try:
         import jwt
     except ImportError as exc:
@@ -203,19 +268,29 @@ def verify_oidc_token(
             "OIDC JWKS verification requires PyJWT[crypto] — pip install 'daari[oidc]'"
         ) from exc
 
-    if jwks is None:
-        url = resolve_jwks_url(jwks_url=jwks_url, discovery_url=discovery_url, http_get=http_get)
-        cache = jwks_cache or _JWKS_CACHE
-        jwks = cache.get(url, http_get=http_get)
-        try:
-            jwk = _jwk_for_token(token, jwks)
-        except ValueError:
-            # Unknown kid means the IdP most likely rotated signing keys. Refetch
-            # once rather than rejecting every token until the TTL lapses.
-            jwks = cache.get(url, http_get=http_get, force=True)
-            jwk = _jwk_for_token(token, jwks)
-    else:
+    if jwks is not None:
         jwk = _jwk_for_token(token, jwks)
+    else:
+        urls = resolve_jwks_urls(
+            jwks_url=jwks_url,
+            jwks_urls=jwks_urls,
+            discovery_url=discovery_url,
+            http_get=http_get,
+        )
+        cache = jwks_cache or _JWKS_CACHE
+        jwk = None
+        last_err: ValueError | None = None
+        for url in urls:
+            try:
+                jwk = _jwk_from_url(token, url, http_get=http_get, jwks_cache=cache)
+                break
+            except ValueError as exc:
+                if _kid_lookup_error(exc):
+                    last_err = exc
+                    continue
+                raise
+        if jwk is None:
+            raise last_err or ValueError("no JWK matching token")
     public_key, algorithms = _public_key_and_algorithms(jwk)
     options: dict[str, Any] = {"require": ["exp", "iss"]}
     decode_kwargs: dict[str, Any] = {
@@ -240,13 +315,21 @@ def verify_access_token(
 ) -> dict[str, Any]:
     """Unified verifier: OIDC JWKS when configured, else HMAC dev stub."""
     jwks_url = str(getattr(sso, "jwks_url", "") or "")
+    jwks_urls = list(getattr(sso, "jwks_urls", None) or [])
     discovery_url = str(getattr(sso, "discovery_url", "") or "")
-    if jwks is not None or jwks_url.strip() or discovery_url.strip():
+    oidc_ready = bool(
+        jwks is not None
+        or jwks_url.strip()
+        or any(str(u or "").strip() for u in jwks_urls)
+        or discovery_url.strip()
+    )
+    if oidc_ready:
         return verify_oidc_token(
             token,
             issuer=str(getattr(sso, "issuer", "") or ""),
             audience=str(getattr(sso, "audience", "") or ""),
             jwks_url=jwks_url,
+            jwks_urls=jwks_urls,
             discovery_url=discovery_url,
             jwks=jwks,
             http_get=http_get,
@@ -254,7 +337,9 @@ def verify_access_token(
         )
     secret = str(getattr(sso, "secret", "") or "")
     if not secret:
-        raise ValueError("SSO enabled but neither jwks_url/discovery_url nor secret configured")
+        raise ValueError(
+            "SSO enabled but neither jwks_url/jwks_urls/discovery_url nor secret configured"
+        )
     return verify_dev_token(
         token,
         secret=secret,

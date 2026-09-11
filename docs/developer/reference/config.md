@@ -228,7 +228,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.sso.enabled` | bool | `False` |  |
 | `enterprise.sso.issuer` | str | `'daari-dev'` |  |
 | `enterprise.sso.secret` | str | `''` |  |
-| `enterprise.sso.jwks_url` | str | `''` |  |
+| `enterprise.sso.jwks_url` | str | `''` | Singular JWKS endpoint (one-item form). |
+| `enterprise.sso.jwks_urls` | list[str] | `[]` | Additional JWKS endpoints (#422). Tokens validate against any configured URL; unknown kid tries the next. |
 | `enterprise.sso.discovery_url` | str | `''` |  |
 | `enterprise.sso.audience` | str | `''` |  |
 | `enterprise.sso.role_claim` | str | `'role'` |  |

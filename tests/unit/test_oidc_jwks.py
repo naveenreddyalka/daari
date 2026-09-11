@@ -180,3 +180,128 @@ def test_jwk_prefers_sig_when_mixed_with_enc():
         jwks={"keys": [enc, sig]},
     )
     assert claims["sub"] == "alice"
+
+
+def _rsa_pair_kid(kid: str):
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public = private.public_key()
+    jwk = json.loads(RSAAlgorithm.to_jwk(public))
+    jwk["kid"] = kid
+    jwk["use"] = "sig"
+    jwk["alg"] = "RS256"
+    return private, {"keys": [jwk]}
+
+
+def test_configured_jwks_urls_merges_singular_and_list():
+    from daari.enterprise.sso import configured_jwks_urls
+
+    sso = SsoSettings(
+        jwks_url="https://okta.example/jwks",
+        jwks_urls=["https://ci.example/jwks", "https://okta.example/jwks"],
+    )
+    assert configured_jwks_urls(sso) == [
+        "https://okta.example/jwks",
+        "https://ci.example/jwks",
+    ]
+
+
+def test_verify_oidc_tries_second_jwks_on_kid_miss():
+    """Token signed by IdP B succeeds when JWKS A lacks the kid (#422)."""
+    _, jwks_a = _rsa_pair_kid("okta-key")
+    private_b, jwks_b = _rsa_pair_kid("ci-key")
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "ci-bot",
+            "role": "admin",
+            "iss": "https://idp.example",
+            "iat": now,
+            "exp": now + 3600,
+        },
+        private_b,
+        algorithm="RS256",
+        headers={"kid": "ci-key"},
+    )
+    docs = {
+        "https://okta.example/jwks": jwks_a,
+        "https://ci.example/jwks": jwks_b,
+    }
+
+    def http_get(url: str):
+        return docs[url]
+
+    claims = verify_oidc_token(
+        token,
+        issuer="https://idp.example",
+        jwks_urls=["https://okta.example/jwks", "https://ci.example/jwks"],
+        http_get=http_get,
+        jwks_cache=JwksCache(ttl_seconds=3600),
+    )
+    assert claims["sub"] == "ci-bot"
+
+
+def test_verify_oidc_all_jwks_miss_rejects():
+    _, jwks_a = _rsa_pair_kid("okta-key")
+    _, jwks_b = _rsa_pair_kid("ci-key")
+    other_private, _ = _rsa_pair_kid("ghost-key")
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "nobody",
+            "iss": "https://idp.example",
+            "iat": now,
+            "exp": now + 3600,
+        },
+        other_private,
+        algorithm="RS256",
+        headers={"kid": "ghost-key"},
+    )
+    docs = {
+        "https://okta.example/jwks": jwks_a,
+        "https://ci.example/jwks": jwks_b,
+    }
+
+    def http_get(url: str):
+        return docs[url]
+
+    with pytest.raises(ValueError, match="kid"):
+        verify_oidc_token(
+            token,
+            issuer="https://idp.example",
+            jwks_urls=["https://okta.example/jwks", "https://ci.example/jwks"],
+            http_get=http_get,
+            jwks_cache=JwksCache(ttl_seconds=3600),
+        )
+
+
+def test_verify_access_token_jwks_urls_list():
+    private_b, jwks_b = _rsa_pair_kid("ci-key")
+    _, jwks_a = _rsa_pair_kid("okta-key")
+    token = jwt.encode(
+        {
+            "sub": "ci-bot",
+            "role": "admin",
+            "iss": "https://idp.example",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+        },
+        private_b,
+        algorithm="RS256",
+        headers={"kid": "ci-key"},
+    )
+    sso = SsoSettings(
+        enabled=True,
+        issuer="https://idp.example",
+        jwks_urls=["https://okta.example/jwks", "https://ci.example/jwks"],
+    )
+    docs = {
+        "https://okta.example/jwks": jwks_a,
+        "https://ci.example/jwks": jwks_b,
+    }
+    claims = verify_access_token(
+        token,
+        sso,
+        http_get=lambda url: docs[url],
+        jwks_cache=JwksCache(ttl_seconds=3600),
+    )
+    assert claims["sub"] == "ci-bot"

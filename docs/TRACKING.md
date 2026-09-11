@@ -2077,6 +2077,15 @@ explicit `classify_user_turn: true` still applies to every client. Event
 [routing-tiers.md](developer/concepts/routing-tiers.md#classify-user-turn).
 Covered by `tests/unit/test_classify_user_turn.py`.
 
+### Merge multiple SSO JWKS URLs ([#422](https://github.com/naveenreddyalka/daari/issues/422))
+
+<!-- tracking:#422 -->
+**Status:** Done (2026-09-11). `enterprise.sso.jwks_urls` (list) combines with
+singular `jwks_url`; tokens validate against any configured JWKS. Unknown kid
+on one document tries the next; all miss → existing 401. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
+Covered by `tests/unit/test_oidc_jwks.py`.
+
 ---
 
 ## How to update

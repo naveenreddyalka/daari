@@ -57,6 +57,11 @@ RSA (`RS256`/`384`/`512`) and EC (`ES256`/`384`/`512`) signing keys; `use: "sig"
 is preferred when a JWKS also lists encryption keys. HMAC stub remains for
 local/dev when JWKS unset.
 
+Multiple IdPs: set `jwks_urls` to a list (and optionally keep `jwks_url` as the
+first entry). Verification tries each JWKS until the token's `kid` matches; if
+every document misses, the request is rejected with the same 401 as a single
+unknown key.
+
 ### IdP-minted virtual keys (MDM)
 
 Alongside `daari enterprise bootstrap`, map an IdP claim to key policy so
@@ -70,6 +75,10 @@ enterprise:
   sso:
     enabled: true
     jwks_url: https://idp.corp/jwks
+    # Or trust two IdPs:
+    # jwks_urls:
+    #   - https://okta.corp/oauth2/default/v1/keys
+    #   - https://ci-idp.corp/jwks
     mint_virtual_key_on_login: true
     mapping_claim: groups
     key_mappings:
