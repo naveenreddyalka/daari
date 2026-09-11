@@ -2048,6 +2048,15 @@ context-window escalation sees size. Event `harness_profile` with
 [routing-tiers.md](developer/concepts/routing-tiers.md#harness-aware-profiling).
 Covered by `tests/unit/test_prompt_profile.py`.
 
+### Honor Anthropic output_format json_schema ([#420](https://github.com/naveenreddyalka/daari/issues/420))
+
+<!-- tracking:#420 -->
+**Status:** Done (2026-09-11). `/v1/messages` `output_format.type == json_schema`
+(with `schema` or `json_schema.schema`) is stored on `SamplingParams.json_schema`
+and forwarded the same way as OpenAI #398. Malformed payloads log
+`json_schema_ignored` and are dropped. Covered by
+`tests/unit/test_sampling_params.py`.
+
 ---
 
 ## How to update

@@ -65,6 +65,16 @@ def _json_schema_from_response_format(response_format: Any) -> dict[str, Any] | 
     return None
 
 
+def _json_schema_from_output_format(output_format: Any) -> dict[str, Any] | None:
+    """Return the JSON Schema object from Anthropic `output_format`, or None."""
+    if not isinstance(output_format, dict) or output_format.get("type") != "json_schema":
+        return None
+    schema = output_format.get("schema")
+    if isinstance(schema, dict):
+        return schema
+    return _json_schema_from_response_format(output_format)
+
+
 def normalize_reasoning_effort(raw: Any) -> str | None:
     if not isinstance(raw, str):
         return None
@@ -167,11 +177,24 @@ class SamplingParams(BaseModel):
             stop = None
 
         raw_max = body.get("max_tokens")
+        output_format = body.get("output_format")
+        json_schema = None
+        wants_json = False
+        if isinstance(output_format, dict) and output_format.get("type") == "json_schema":
+            json_schema = _json_schema_from_output_format(output_format)
+            if json_schema is None:
+                from daari.gateway.request_log import log_gateway_event
+
+                log_gateway_event("json_schema_ignored", {"reason": "malformed"})
+            else:
+                wants_json = True
         return cls(
             max_tokens=int(raw_max) if isinstance(raw_max, int) and raw_max > 0 else None,
             top_p=body.get("top_p"),
             top_k=body.get("top_k"),
             stop=stop or None,
+            response_format_json=wants_json,
+            json_schema=json_schema,
         )
 
     @classmethod

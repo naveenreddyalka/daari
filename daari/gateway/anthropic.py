@@ -154,6 +154,7 @@ class AnthropicRequest(BaseModel):
     top_p: float | None = None
     top_k: int | None = None
     stop_sequences: list[str] | None = None
+    output_format: dict[str, Any] | None = None
     provider: Any | None = None
     cost_tier: str | None = None
     plugins: list[Any] | None = None
