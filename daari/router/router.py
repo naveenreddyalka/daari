@@ -3937,6 +3937,7 @@ class AppContext:
     virtual_key_store: Any | None = None
     local_pool: Any | None = None
     mcp_task_store: Any | None = None
+    batch_store: Any | None = None
     org_learning_sync_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
     backend_health_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
     retention_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
@@ -4447,6 +4448,7 @@ class AppContext:
             from daari.observability.otel import configure_providers
 
             configure_providers()
+        from daari.gateway.batches import BatchStore
         from daari.gateway.mcp_tasks import McpTaskStore
 
         mcp_task_store = None
@@ -4470,6 +4472,7 @@ class AppContext:
             org_learning_client=org_learning_client,
             local_pool=local_pool,
             mcp_task_store=mcp_task_store,
+            batch_store=BatchStore(),
         )
         context.sync_org_learning_profile_startup()
         return context
