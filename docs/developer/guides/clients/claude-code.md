@@ -2,6 +2,8 @@
 
 **Outcome:** Claude Code chats and tools route through daari's Anthropic gateway.
 
+**Fast path:** `daari configure claude-code` (writes settings + prints a verify curl; see also `daari setup claude-code`).
+
 ## Prerequisites
 
 - `daari serve` on `http://127.0.0.1:11435`

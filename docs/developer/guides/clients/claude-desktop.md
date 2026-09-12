@@ -4,6 +4,8 @@
 of the Anthropic cloud — local tiers first, frontier only when needed, with
 cache, budgets and traces that pointing it at raw Ollama cannot give you.
 
+**Fast path:** `daari configure claude-desktop` (writes settings + prints a verify curl; see also `daari setup claude-desktop`).
+
 Claude Desktop's *third-party inference* mode accepts any Anthropic-shaped
 gateway (the same mode Ollama 0.33 uses). daari speaks that protocol at
 `/v1/messages`, so the recipe only has to hand the app a configuration file.
