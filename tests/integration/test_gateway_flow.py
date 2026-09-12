@@ -2715,3 +2715,322 @@ async def test_batches_api_create_poll_complete(app, monkeypatch):
     assert final["request_counts"]["total"] == 2
     assert final["request_counts"]["completed"] == 2
     assert final["request_counts"]["failed"] == 0
+
+
+async def _poll_batch(client, batch_id: str, *, headers: dict) -> dict:
+    final = None
+    for _ in range(80):
+        retrieved = await client.get(f"/v1/batches/{batch_id}", headers=headers)
+        assert retrieved.status_code == 200
+        final = retrieved.json()
+        if final["status"] in {"completed", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.02)
+    assert final is not None
+    return final
+
+
+@pytest.mark.asyncio
+async def test_batch_items_respect_tier_cap_and_no_frontier(settings, tmp_path, monkeypatch):
+    """Creating-key tier_cap / no_frontier must block L6 on batch items (#441)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.frontier.enabled = True
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("batch-cap", client_id="batch-cap", tier_cap="L5")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    application.state.ctx.router.usage_ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    application.state.ctx.router.frontier_enabled = True
+
+    seen_metas: list = []
+    frontier_calls = 0
+
+    async def fake_local(request: InternalRequest) -> InternalResponse:
+        seen_metas.append(request.meta.model_copy(deep=True))
+        return InternalResponse(
+            content="no",  # low confidence → would escalate without caps
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    class _FakeFrontier:
+        api_key = "sk-test"
+
+        async def execute(self, request: InternalRequest, **kwargs) -> InternalResponse:
+            nonlocal frontier_calls
+            frontier_calls += 1
+            return InternalResponse(
+                content="from-frontier",
+                model="gpt-test",
+                daari_meta=DaariMeta(
+                    tier="L6",
+                    executor="frontier",
+                    provider_id="openai",
+                    latency_ms=1,
+                ),
+            )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_local)
+    application.state.ctx.router.frontier = _FakeFrontier()
+
+    payload = {
+        "endpoint": "/v1/chat/completions",
+        "requests": [
+            {
+                "custom_id": "capped",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "llama3.2:3b",
+                    "messages": [{"role": "user", "content": "escalate please"}],
+                },
+            }
+        ],
+    }
+    headers = {
+        "Authorization": f"Bearer {key.plaintext}",
+        "X-Daari-No-Frontier": "true",
+        "X-Daari-No-Cache": "true",
+        "X-Daari-Meta": "true",
+    }
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/v1/batches", json=payload, headers=headers)
+        assert created.status_code == 200, created.text
+        final = await _poll_batch(client, created.json()["id"], headers=headers)
+
+    assert final["status"] == "completed"
+    assert final["request_counts"]["failed"] == 0
+    assert frontier_calls == 0
+    assert seen_metas
+    assert seen_metas[0].tier_cap == "L5"
+    assert seen_metas[0].no_frontier is True
+    assert seen_metas[0].client_id == "batch-cap"
+
+
+@pytest.mark.asyncio
+async def test_batch_item_budget_check_and_ledger_client_id(settings, tmp_path, monkeypatch):
+    """Frontier-capable over-budget items fail 402-shaped; spend is attributed (#441)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.gateway.batches import BatchStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.frontier.enabled = True
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("batch-bud", client_id="batch-bud", daily_budget_usd=1.0)
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    application.state.ctx.router.usage_ledger = ledger
+    application.state.ctx.router.frontier_enabled = True
+
+    class _FakeFrontier:
+        api_key = "sk-test"
+
+        async def execute(self, request: InternalRequest, **kwargs) -> InternalResponse:
+            raise AssertionError("budget check must block before L6")
+
+    application.state.ctx.router.frontier = _FakeFrontier()
+
+    drain_ready = asyncio.Event()
+    original_run = BatchStore.run_job
+
+    async def gated_run(self, batch_id, execute_one):
+        await drain_ready.wait()
+        await original_run(self, batch_id, execute_one)
+
+    monkeypatch.setattr(BatchStore, "run_job", gated_run)
+
+    async def fake_local(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="local-ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_local)
+
+    headers = {
+        "Authorization": f"Bearer {key.plaintext}",
+        "X-Daari-No-Cache": "true",
+        "X-Daari-Client-Id": "batch-bud",
+    }
+    poll_headers = {"Authorization": "Bearer master"}
+    payload = {
+        "endpoint": "/v1/chat/completions",
+        "requests": [
+            {
+                "custom_id": "local-a",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "llama3.2:3b",
+                    "messages": [{"role": "user", "content": "a"}],
+                    "user": "alice",
+                },
+            },
+            {
+                "custom_id": "local-b",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "llama3.2:3b",
+                    "messages": [{"role": "user", "content": "b"}],
+                    "user": "alice",
+                },
+            },
+        ],
+    }
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/v1/batches", json=payload, headers=headers)
+        assert created.status_code == 200, created.text
+        batch_id = created.json()["id"]
+        # Exhaust the key after create (middleware would have blocked create).
+        ledger.record(
+            tier="L6",
+            client_id="batch-bud",
+            model="",
+            input_tokens=int(5.0 / 0.002 * 1000),
+            output_tokens=0,
+        )
+        drain_ready.set()
+        # Poll with master — the virtual key is over budget so GET would 402.
+        final = await _poll_batch(client, batch_id, headers=poll_headers)
+
+    assert final["status"] == "completed"
+    # Frontier-reachable job: both items fail budget before dispatch.
+    assert final["request_counts"]["failed"] == 2
+    assert final["request_counts"]["completed"] == 0
+    for result in final.get("results") or []:
+        assert result["error"]["type"] == "budget_exceeded"
+        assert result["error"]["client_id"] == "batch-bud"
+
+
+@pytest.mark.asyncio
+async def test_batch_items_apply_output_guardrails(settings, tmp_path, monkeypatch):
+    """Enterprise output guardrails rewrite batch item responses (#441)."""
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        output_rules=[GuardrailRuleSettings(name="secrets", kind="secret", action="redact")],
+    )
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="token=AKIAIOSFODNN7EXAMPLE",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+    payload = {
+        "endpoint": "/v1/chat/completions",
+        "requests": [
+            {
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "leak"}],
+            }
+        ],
+    }
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/v1/batches", json=payload, headers=META_HEADERS)
+        assert created.status_code == 200
+        final = await _poll_batch(client, created.json()["id"], headers=META_HEADERS)
+
+    assert final["status"] == "completed"
+    body = final["results"][0]["response"]["body"]
+    content = body["choices"][0]["message"]["content"]
+    assert "AKIA" not in content
+    assert "<aws_key>" in content
+
+
+@pytest.mark.asyncio
+async def test_batch_ledger_records_client_id_and_user(settings, tmp_path, monkeypatch):
+    """Batch item ledger rows carry client_id and user for attribution (#441)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("batch-led", client_id="batch-led", tier_cap="L3")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = store
+    application.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    application.state.ctx.router.usage_ledger = ledger
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok-ledger",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+    headers = {
+        "Authorization": f"Bearer {key.plaintext}",
+        "X-Daari-No-Cache": "true",
+        "X-Daari-Client-Id": "batch-led",
+    }
+    payload = {
+        "endpoint": "/v1/chat/completions",
+        "requests": [
+            {
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "hi"}],
+                "user": "bob",
+            }
+        ],
+    }
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/v1/batches", json=payload, headers=headers)
+        assert created.status_code == 200, created.text
+        final = await _poll_batch(client, created.json()["id"], headers=headers)
+
+    assert final["status"] == "completed"
+    assert final["request_counts"]["completed"] == 1
+    by_user = ledger.by_user(days=1)
+    assert any(
+        row.get("client_id") == "batch-led" and row.get("user_id") == "bob" for row in by_user
+    )
