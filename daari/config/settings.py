@@ -611,10 +611,22 @@ class FilesSettings(BaseModel):
 
 
 class BatchesSettings(BaseModel):
-    """Durable OpenAI Batch job store (#443)."""
+    """Durable OpenAI Batch job store (#443) and idle-yield drain (#444)."""
 
     enabled: bool = True
     path: str = "~/.daari/batches/jobs.sqlite3"
+    yield_to_interactive: bool = Field(
+        default=True,
+        description=(
+            "When true, the batch worker waits while interactive HTTP requests "
+            "are in flight before dispatching the next item (#444)."
+        ),
+    )
+    idle_poll_seconds: float = Field(
+        default=0.25,
+        ge=0.01,
+        description="How often to re-check interactive load while yielding.",
+    )
 
 
 class TraceSettings(BaseModel):

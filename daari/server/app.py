@@ -68,8 +68,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             metrics=app.state.ctx.metrics,
             redis_url=redis_url,
         )
-        # Resume unfinished batch jobs after restart (#443).
+        # Wire interactive load probe, then resume unfinished batches (#443/#444).
         batch_store = getattr(app.state.ctx, "batch_store", None)
+        limiter = getattr(app.state, "rate_limiter", None)
+        if batch_store is not None and limiter is not None:
+            batch_store.idle_probe = limiter.interactive_load
         if batch_store is not None:
 
             def _make_execute(job_id: str):
@@ -258,6 +261,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return response
 
     open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics"}
+    # Batch/files admin traffic must not look like interactive load (#444).
+    non_interactive_prefixes = ("/v1/batches", "/v1/files")
 
     @app.middleware("http")
     async def enforce_rate_limits(request: Request, call_next):
@@ -325,9 +330,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
                 headers=headers,
             )
+        path = request.url.path
+        track_interactive = not path.startswith(non_interactive_prefixes)
+        if track_interactive:
+            limiter.begin_interactive()
         try:
             response = await call_next(request)
         finally:
+            if track_interactive:
+                limiter.end_interactive()
             await limiter.release()
         for header, value in decision.headers().items():
             response.headers.setdefault(header, value)

@@ -202,6 +202,9 @@ class BatchStore:
         file_store: Any | None = None,
         *,
         path: str | Path | None = None,
+        idle_probe: Callable[[], int] | None = None,
+        yield_to_interactive: bool = True,
+        idle_poll_seconds: float = 0.25,
     ) -> None:
         self._batches: dict[str, BatchJob] = {}
         self._order: list[str] = []
@@ -210,6 +213,9 @@ class BatchStore:
         self._worker_sem = asyncio.Semaphore(1)
         self._running: set[str] = set()
         self.file_store = file_store
+        self.idle_probe = idle_probe
+        self.yield_to_interactive = yield_to_interactive
+        self.idle_poll_seconds = max(0.01, float(idle_poll_seconds))
         self.path = Path(path).expanduser() if path else None
         if self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -546,6 +552,8 @@ class BatchStore:
                         break
                     if item.status != ITEM_PENDING:
                         continue
+                    if not await self._wait_for_idle(job):
+                        break
                     try:
                         response = await execute_one(item.body)
                         item.response = response
@@ -637,6 +645,37 @@ class BatchStore:
                     )
             finally:
                 self._running.discard(batch_id)
+
+    async def _wait_for_idle(self, job: BatchJob) -> bool:
+        """Block until interactive load clears, or cancel/expire wins (#444).
+
+        Returns False when the worker should stop the job loop.
+        """
+        if not self.yield_to_interactive or self.idle_probe is None:
+            return True
+        logged = False
+        while True:
+            if job.cancel_requested:
+                return False
+            if self._maybe_expire(job):
+                return False
+            load = 0
+            try:
+                load = int(self.idle_probe() or 0)
+            except Exception:
+                load = 0
+            if load <= 0:
+                return True
+            if not logged:
+                log_gateway_event(
+                    "batch.waiting_for_idle",
+                    {
+                        "batch_id": job.id,
+                        "interactive_in_flight": load,
+                    },
+                )
+                logged = True
+            await asyncio.sleep(self.idle_poll_seconds)
 
     def _write_result_files(self, job: BatchJob) -> None:
         """Persist OpenAI-shaped JSONL output/error files when a store is wired."""

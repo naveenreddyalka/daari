@@ -2173,6 +2173,16 @@ Multi-replica caveat documented in
 [batches.md](developer/guides/features/batches.md). Covered by
 `tests/unit/test_batches.py`.
 
+### Batch drain yields to interactive traffic ([#444](https://github.com/naveenreddyalka/daari/issues/444))
+
+<!-- tracking:#444 -->
+**Status:** Done (2026-09-12). Batch worker waits while interactive HTTP
+in-flight > 0 (`batches.yield_to_interactive`, default true;
+`batches.idle_poll_seconds`). Emits `batch.waiting_for_idle` once per wait
+episode; cancel still wins while waiting. Docs:
+[batches.md](developer/guides/features/batches.md). Covered by
+`tests/unit/test_batches.py`.
+
 ---
 
 ## How to update

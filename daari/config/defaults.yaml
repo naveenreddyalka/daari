@@ -75,6 +75,8 @@ files:
 batches:
   enabled: true
   path: ~/.daari/batches/jobs.sqlite3
+  yield_to_interactive: true
+  idle_poll_seconds: 0.25
 
 integrations:
   sourcegraph:
