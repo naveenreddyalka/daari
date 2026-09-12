@@ -50,17 +50,52 @@ def anthropic_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any
     for tool in tools:
         if not isinstance(tool, dict) or not tool.get("name"):
             continue
-        converted.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool.get("description") or "",
-                    "parameters": tool.get("input_schema") or {"type": "object", "properties": {}},
-                },
-            }
-        )
+        entry: dict[str, Any] = {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool.get("description") or "",
+                "parameters": tool.get("input_schema") or {"type": "object", "properties": {}},
+            },
+        }
+        cache_control = tool.get("cache_control")
+        if isinstance(cache_control, dict):
+            entry["cache_control"] = dict(cache_control)
+        converted.append(entry)
     return converted
+
+
+def system_blocks_to_messages(system: str | list[dict[str, Any]] | None) -> list[Message]:
+    """Expand Anthropic `system` (string or content blocks) into Messages.
+
+    Preserves per-block `cache_control` (including `ttl`) for L6 replay (#434).
+    """
+    if system is None:
+        return []
+    if isinstance(system, str):
+        text = content_to_text(system)
+        return [Message(role="system", content=text)] if text else []
+    messages: list[Message] = []
+    for block in system:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") not in {None, "text"}:
+            continue
+        text = block.get("text")
+        if not isinstance(text, str) or not text:
+            # Fall back for odd shapes so we do not drop prompt text.
+            text = content_to_text([block]) or ""
+        if not text:
+            continue
+        cache_control = block.get("cache_control")
+        messages.append(
+            Message(
+                role="system",
+                content=text,
+                cache_control=dict(cache_control) if isinstance(cache_control, dict) else None,
+            )
+        )
+    return messages
 
 
 def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
@@ -242,9 +277,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 },
             )
             internal_messages: list[Message] = []
-            system_text = content_to_text(body.system)
-            if system_text:
-                internal_messages.append(Message(role="system", content=system_text))
+            internal_messages.extend(system_blocks_to_messages(body.system))
             for message in body.messages:
                 internal_messages.extend(anthropic_message_to_internal(message))
             internal_messages = hoist_system_messages(internal_messages)

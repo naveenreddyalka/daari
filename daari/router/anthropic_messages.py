@@ -43,14 +43,66 @@ def openai_tools_to_anthropic(tools: list[Any] | None) -> list[dict[str, Any]]:
         function = tool.get("function") if tool.get("type") == "function" else tool
         if not isinstance(function, dict) or not function.get("name"):
             continue
-        converted.append(
-            {
-                "name": function["name"],
-                "description": function.get("description") or "",
-                "input_schema": function.get("parameters") or {"type": "object", "properties": {}},
-            }
-        )
+        entry: dict[str, Any] = {
+            "name": function["name"],
+            "description": function.get("description") or "",
+            "input_schema": function.get("parameters") or {"type": "object", "properties": {}},
+        }
+        cache_control = tool.get("cache_control") or function.get("cache_control")
+        if isinstance(cache_control, dict):
+            entry["cache_control"] = dict(cache_control)
+        converted.append(entry)
     return converted
+
+
+def request_cache_ttl(request: InternalRequest) -> str | None:
+    """Highest TTL asked for on system messages or tools (`1h` wins over `5m`)."""
+    found: set[str] = set()
+    for message in request.messages:
+        ttl = _ttl_from_cache_control(message.cache_control)
+        if ttl:
+            found.add(ttl)
+    for tool in request.tools or []:
+        if not isinstance(tool, dict):
+            continue
+        function = tool.get("function") if isinstance(tool.get("function"), dict) else {}
+        ttl = _ttl_from_cache_control(tool.get("cache_control")) or _ttl_from_cache_control(
+            function.get("cache_control") if isinstance(function, dict) else None
+        )
+        if ttl:
+            found.add(ttl)
+    if "1h" in found:
+        return "1h"
+    if "5m" in found:
+        return "5m"
+    return None
+
+
+def _ttl_from_cache_control(cache_control: Any) -> str | None:
+    if not isinstance(cache_control, dict):
+        return None
+    raw = cache_control.get("ttl")
+    if raw is None:
+        return None
+    key = str(raw).strip().lower()
+    if key in {"1h", "1hr", "60m"}:
+        return "1h"
+    if key in {"5m", "5min"}:
+        return "5m"
+    return None
+
+
+def _merge_cache_control(
+    existing: dict[str, Any] | None,
+    *,
+    ensure_ephemeral: bool,
+) -> dict[str, Any]:
+    merged: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+    if ensure_ephemeral:
+        merged.setdefault("type", "ephemeral")
+    elif "type" not in merged:
+        merged["type"] = "ephemeral"
+    return merged
 
 
 def to_anthropic_payload(
@@ -73,7 +125,12 @@ def to_anthropic_payload(
     for message in request.messages:
         if message.role == "system":
             if message.content:
-                system_blocks.append({"type": "text", "text": message.content})
+                block: dict[str, Any] = {"type": "text", "text": message.content}
+                if message.cache_control:
+                    block["cache_control"] = _merge_cache_control(
+                        message.cache_control, ensure_ephemeral=False
+                    )
+                system_blocks.append(block)
             continue
         if message.role == "tool":
             pending_results.append(
@@ -92,7 +149,12 @@ def to_anthropic_payload(
         converted = [{"role": "user", "content": " "}]
 
     if prompt_cache and system_blocks:
-        system_blocks[-1] = {**system_blocks[-1], "cache_control": {"type": "ephemeral"}}
+        last = system_blocks[-1]
+        existing = last.get("cache_control") if isinstance(last.get("cache_control"), dict) else None
+        system_blocks[-1] = {
+            **last,
+            "cache_control": _merge_cache_control(existing, ensure_ephemeral=True),
+        }
         add_step("prompt_cache_hint", provider="anthropic", marked_blocks=1)
 
     payload: dict[str, Any] = {

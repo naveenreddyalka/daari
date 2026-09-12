@@ -499,6 +499,9 @@ class ModelPrice(BaseModel):
     output_per_1m: float
     # Providers discount cached prompt prefixes; None means bill at input rate.
     cached_input_per_1m: float | None = None
+    # Anthropic prompt-cache write at 1h TTL (2× base input). Missing TTL / 5m
+    # keeps today's rate (input_per_1m for write tokens) (#434).
+    cache_write_1h_per_1m: float | None = None
     # Long-context tier: once prompt tokens reach the threshold, the whole
     # request is billed at the above-* rates (#411 / gpt-6-astra >272K).
     input_threshold_tokens: int | None = None
@@ -517,14 +520,31 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
     "claude-3-opus": {"input_per_1m": 15.00, "output_per_1m": 75.00},
     # Anthropic, https://platform.claude.com/docs/en/about-claude/pricing
     # Fable 5.1 cache reads are 0.025x input ($0.25), not the usual 0.1x.
+    # 1h cache writes are 2× base input (#434).
     "claude-fable-5-1": {
         "input_per_1m": 10.00,
         "output_per_1m": 50.00,
         "cached_input_per_1m": 0.25,
+        "cache_write_1h_per_1m": 20.00,
     },
-    "claude-opus-5": {"input_per_1m": 5.00, "output_per_1m": 25.00, "cached_input_per_1m": 0.50},
-    "claude-sonnet-5": {"input_per_1m": 2.00, "output_per_1m": 10.00, "cached_input_per_1m": 0.20},
-    "claude-haiku-4-5": {"input_per_1m": 1.00, "output_per_1m": 5.00, "cached_input_per_1m": 0.10},
+    "claude-opus-5": {
+        "input_per_1m": 5.00,
+        "output_per_1m": 25.00,
+        "cached_input_per_1m": 0.50,
+        "cache_write_1h_per_1m": 10.00,
+    },
+    "claude-sonnet-5": {
+        "input_per_1m": 2.00,
+        "output_per_1m": 10.00,
+        "cached_input_per_1m": 0.20,
+        "cache_write_1h_per_1m": 4.00,
+    },
+    "claude-haiku-4-5": {
+        "input_per_1m": 1.00,
+        "output_per_1m": 5.00,
+        "cached_input_per_1m": 0.10,
+        "cache_write_1h_per_1m": 2.00,
+    },
     # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
     # Sol is the promotional rate published through 2026-11-21 ($4/$20).
     # Above 272K input tokens the whole request bills at 2× input / 1.5× output.
