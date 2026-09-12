@@ -235,6 +235,40 @@ class FeedbackBody(BaseModel):
     signal: str
 
 
+class BatchCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    endpoint: str = "/v1/chat/completions"
+    completion_window: str = "24h"
+    input_file_id: str | None = None
+    # Inline chat-completion bodies or OpenAI JSONL-line objects (tests / local).
+    requests: list[dict[str, Any]] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+async def _execute_batch_chat_body(
+    ctx: AppContext,
+    body_dict: dict[str, Any],
+) -> dict[str, Any]:
+    """Run one batch item through the same router path as /v1/chat/completions."""
+    body = ChatCompletionRequest.model_validate(body_dict)
+    meta = RequestMeta()
+    apply_cost_tier(body, meta)
+    internal = _prepare_internal_request(
+        body,
+        default_model=ctx.settings.models.l3,
+        meta=meta,
+    )
+    result = await ctx.router.route(internal)
+    prompt_chars = sum(len(message.content or "") for message in internal.messages)
+    return build_chat_completion_payload(
+        result,
+        prompt_chars=prompt_chars,
+        include_daari_meta=False,
+        client_model=body.model or None,
+    )
+
+
 def build_chat_completion_payload(
     response: InternalResponse,
     *,
@@ -1071,6 +1105,68 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "confidence_threshold": ctx.router.confidence_threshold,
                 },
             }
+
+        @router.post("/v1/batches")
+        async def create_batch(body: BatchCreateRequest, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.batch_store
+            if store is None:
+                from daari.gateway.batches import BatchStore
+
+                store = BatchStore()
+                ctx.batch_store = store
+            try:
+                job = store.create(
+                    endpoint=body.endpoint,
+                    completion_window=body.completion_window,
+                    input_file_id=body.input_file_id,
+                    requests=body.requests,
+                    metadata=body.metadata,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+            async def execute_one(item_body: dict[str, Any]) -> dict[str, Any]:
+                return await _execute_batch_chat_body(ctx, item_body)
+
+            store.schedule(job.id, execute_one)
+            return store.as_public(job)
+
+        @router.get("/v1/batches")
+        async def list_batches(request: Request, limit: int = 100) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.batch_store
+            if store is None:
+                return {"object": "list", "data": [], "first_id": None, "last_id": None, "has_more": False}
+            jobs = store.list_batches(limit=limit)
+            data = [store.as_public(job) for job in jobs]
+            return {
+                "object": "list",
+                "data": data,
+                "first_id": data[0]["id"] if data else None,
+                "last_id": data[-1]["id"] if data else None,
+                "has_more": False,
+            }
+
+        @router.get("/v1/batches/{batch_id}")
+        async def retrieve_batch(batch_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.batch_store
+            job = store.get(batch_id) if store is not None else None
+            if job is None:
+                raise HTTPException(status_code=404, detail="batch not found")
+            return store.as_public(job)
+
+        @router.post("/v1/batches/{batch_id}/cancel")
+        async def cancel_batch(batch_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.batch_store
+            if store is None:
+                raise HTTPException(status_code=404, detail="batch not found")
+            job = store.cancel(batch_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail="batch not found")
+            return store.as_public(job)
 
         return router
 

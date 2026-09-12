@@ -2646,3 +2646,72 @@ async def test_incremental_stream_guardrail_redacts_split_aws_key(settings, monk
     assert secret not in body
     assert "<aws_key>" in body
     assert "data: [DONE]" in body
+
+
+@pytest.mark.asyncio
+async def test_batches_api_create_poll_complete(app, monkeypatch):
+    """POST/GET /v1/batches drains inline requests through the router (#433)."""
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        last = request.messages[-1].content if request.messages else ""
+        return InternalResponse(
+            content=f"batch-ok:{last}",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+    payload = {
+        "endpoint": "/v1/chat/completions",
+        "completion_window": "24h",
+        "requests": [
+            {
+                "custom_id": "eval-1",
+                "method": "POST",
+                "url": "/v1/chat/completions",
+                "body": {
+                    "model": "llama3.2:3b",
+                    "messages": [{"role": "user", "content": "one"}],
+                },
+            },
+            {
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "two"}],
+            },
+        ],
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/v1/batches", json=payload, headers=META_HEADERS)
+        assert created.status_code == 200
+        body = created.json()
+        assert body["object"] == "batch"
+        assert body["id"].startswith("batch_")
+        assert body["status"] in {"validating", "in_progress", "completed"}
+        batch_id = body["id"]
+
+        final = None
+        for _ in range(50):
+            retrieved = await client.get(f"/v1/batches/{batch_id}", headers=META_HEADERS)
+            assert retrieved.status_code == 200
+            final = retrieved.json()
+            if final["status"] in {"completed", "failed", "cancelled"}:
+                break
+            await asyncio.sleep(0.02)
+
+        listed = await client.get("/v1/batches", headers=META_HEADERS)
+        assert listed.status_code == 200
+        assert listed.json()["object"] == "list"
+        assert any(item["id"] == batch_id for item in listed.json()["data"])
+
+    assert final is not None
+    assert final["status"] == "completed"
+    assert final["request_counts"]["total"] == 2
+    assert final["request_counts"]["completed"] == 2
+    assert final["request_counts"]["failed"] == 0

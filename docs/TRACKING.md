@@ -2115,6 +2115,18 @@ include `circuit` (`closed`|`open`|`half_open`) per backend; `/ready` and
 backend series carry a `circuit` label. `/health` stays `{status: ok}`.
 Covered by `tests/unit/test_local_pool.py`.
 
+### OpenAI Batch API local drain ([#433](https://github.com/naveenreddyalka/daari/issues/433))
+
+<!-- tracking:#433 -->
+**Status:** Done (2026-09-12). `POST/GET /v1/batches` and
+`POST /v1/batches/{id}/cancel` — OpenAI-shaped jobs
+(`validating` → `in_progress` → `completed` / `failed` / `cancelled`).
+Inline `requests` (chat bodies or JSONL-line objects) drain sequentially
+through the existing router; concurrent batch jobs capped at 1. Cancel
+marks remaining items skipped. `input_file_id` accepted; file upload is a
+follow-up (fails validation without inline requests). Covered by
+`tests/unit/test_batches.py` and `tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update
