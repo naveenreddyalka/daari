@@ -1336,7 +1336,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if store is None:
                 from daari.gateway.batches import BatchStore
 
-                store = BatchStore(file_store=_ensure_file_store(ctx) if ctx.settings.files.enabled else None)
+                batch_path = (
+                    ctx.settings.batches_store_path
+                    if ctx.settings.batches.enabled
+                    else None
+                )
+                store = BatchStore(
+                    file_store=_ensure_file_store(ctx) if ctx.settings.files.enabled else None,
+                    path=batch_path,
+                )
                 ctx.batch_store = store
             elif store.file_store is None and ctx.file_store is not None:
                 store.file_store = ctx.file_store

@@ -72,6 +72,10 @@ files:
   path: ~/.daari/files
   max_bytes: 104857600
 
+batches:
+  enabled: true
+  path: ~/.daari/batches/jobs.sqlite3
+
 integrations:
   sourcegraph:
     url: https://sourcegraph.com

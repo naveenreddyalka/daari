@@ -1,16 +1,21 @@
-"""OpenAI-compatible Batch API — local sequential drain (#433, #442).
+"""OpenAI-compatible Batch API — local sequential drain (#433, #442, #443).
 
 Inline `requests` or `input_file_id` (JSONL via `/v1/files`). Completed jobs
 write `output_file_id` / `error_file_id` JSONL when a FileStore is attached.
+Jobs persist to SQLite across restarts when `batches.path` is set.
 At most one batch job runs at a time so local GPUs are not stampeded.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
+import sqlite3
+import threading
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
 
 from daari.gateway.request_log import log_gateway_event
@@ -21,6 +26,7 @@ STATUS_IN_PROGRESS = "in_progress"
 STATUS_COMPLETED = "completed"
 STATUS_CANCELLING = "cancelling"
 STATUS_CANCELLED = "cancelled"
+STATUS_EXPIRED = "expired"
 
 ITEM_PENDING = "pending"
 ITEM_COMPLETED = "completed"
@@ -28,6 +34,18 @@ ITEM_FAILED = "failed"
 ITEM_SKIPPED = "skipped"
 
 ExecuteOne = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS batch_jobs (
+    id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS batch_order (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id TEXT NOT NULL UNIQUE
+);
+"""
 
 
 class BatchItemRejected(Exception):
@@ -78,6 +96,7 @@ class BatchJob:
     failed_at: int | None = None
     cancelling_at: int | None = None
     cancelled_at: int | None = None
+    expired_at: int | None = None
     expires_at: int | None = None
     metadata: dict[str, Any] | None = None
     governance: BatchGovernance | None = None
@@ -109,16 +128,147 @@ def _normalize_requests(raw: Iterable[Any] | None) -> list[BatchItem]:
     return items
 
 
-class BatchStore:
-    """In-process batch registry with a single-slot worker."""
+def _job_to_payload(job: BatchJob) -> dict[str, Any]:
+    gov = asdict(job.governance) if job.governance is not None else None
+    return {
+        "id": job.id,
+        "endpoint": job.endpoint,
+        "completion_window": job.completion_window,
+        "status": job.status,
+        "input_file_id": job.input_file_id,
+        "output_file_id": job.output_file_id,
+        "error_file_id": job.error_file_id,
+        "created_at": job.created_at,
+        "in_progress_at": job.in_progress_at,
+        "completed_at": job.completed_at,
+        "failed_at": job.failed_at,
+        "cancelling_at": job.cancelling_at,
+        "cancelled_at": job.cancelled_at,
+        "expired_at": job.expired_at,
+        "expires_at": job.expires_at,
+        "metadata": job.metadata,
+        "governance": gov,
+        "items": [asdict(item) for item in job.items],
+        "errors": job.errors,
+        "cancel_requested": job.cancel_requested,
+        "results": job.results,
+    }
 
-    def __init__(self, file_store: Any | None = None) -> None:
+
+def _job_from_payload(payload: dict[str, Any]) -> BatchJob:
+    gov_raw = payload.get("governance")
+    governance = BatchGovernance(**gov_raw) if isinstance(gov_raw, dict) else None
+    items = [
+        BatchItem(
+            custom_id=str(item.get("custom_id") or ""),
+            body=dict(item.get("body") or {}),
+            status=str(item.get("status") or ITEM_PENDING),
+            response=item.get("response"),
+            error=item.get("error"),
+        )
+        for item in (payload.get("items") or [])
+        if isinstance(item, dict)
+    ]
+    return BatchJob(
+        id=str(payload["id"]),
+        endpoint=str(payload.get("endpoint") or "/v1/chat/completions"),
+        completion_window=str(payload.get("completion_window") or "24h"),
+        status=str(payload.get("status") or STATUS_VALIDATING),
+        input_file_id=payload.get("input_file_id"),
+        output_file_id=payload.get("output_file_id"),
+        error_file_id=payload.get("error_file_id"),
+        created_at=int(payload.get("created_at") or time.time()),
+        in_progress_at=payload.get("in_progress_at"),
+        completed_at=payload.get("completed_at"),
+        failed_at=payload.get("failed_at"),
+        cancelling_at=payload.get("cancelling_at"),
+        cancelled_at=payload.get("cancelled_at"),
+        expired_at=payload.get("expired_at"),
+        expires_at=payload.get("expires_at"),
+        metadata=payload.get("metadata"),
+        governance=governance,
+        items=items,
+        errors=payload.get("errors"),
+        cancel_requested=bool(payload.get("cancel_requested")),
+        results=list(payload.get("results") or []),
+    )
+
+
+class BatchStore:
+    """Batch registry with optional SQLite durability (#443)."""
+
+    def __init__(
+        self,
+        file_store: Any | None = None,
+        *,
+        path: str | Path | None = None,
+    ) -> None:
         self._batches: dict[str, BatchJob] = {}
         self._order: list[str] = []
         self._lock = asyncio.Lock()
+        self._db_lock = threading.Lock()
         self._worker_sem = asyncio.Semaphore(1)
         self._running: set[str] = set()
         self.file_store = file_store
+        self.path = Path(path).expanduser() if path else None
+        if self.path is not None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self._connect() as conn:
+                conn.executescript(_SCHEMA)
+            self._load_from_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        assert self.path is not None
+        return sqlite3.connect(self.path, timeout=5.0)
+
+    def _load_from_db(self) -> None:
+        if self.path is None:
+            return
+        try:
+            with self._db_lock, self._connect() as conn:
+                order_rows = conn.execute(
+                    "SELECT batch_id FROM batch_order ORDER BY seq ASC"
+                ).fetchall()
+                payloads = {
+                    row[0]: row[1]
+                    for row in conn.execute("SELECT id, payload FROM batch_jobs").fetchall()
+                }
+        except Exception:
+            return
+        for (batch_id,) in order_rows:
+            raw = payloads.get(batch_id)
+            if not raw:
+                continue
+            try:
+                job = _job_from_payload(json.loads(raw))
+            except (TypeError, ValueError, json.JSONDecodeError, KeyError):
+                continue
+            # Mid-flight items stay pending; retry once on resume (#443).
+            self._batches[job.id] = job
+            self._order.append(job.id)
+
+    def _persist(self, job: BatchJob) -> None:
+        if self.path is None:
+            return
+        payload = json.dumps(_job_to_payload(job), ensure_ascii=False)
+        try:
+            with self._db_lock, self._connect() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO batch_jobs (id, payload, created_at) VALUES (?, ?, ?)",
+                    (job.id, payload, int(job.created_at)),
+                )
+                exists = conn.execute(
+                    "SELECT 1 FROM batch_order WHERE batch_id = ?", (job.id,)
+                ).fetchone()
+                if exists is None:
+                    conn.execute(
+                        "INSERT INTO batch_order (batch_id) VALUES (?)", (job.id,)
+                    )
+        except Exception as exc:  # noqa: BLE001
+            log_gateway_event(
+                "batch.persist_failed",
+                {"batch_id": job.id, "error": str(exc)[:200]},
+            )
 
     def create(
         self,
@@ -185,7 +335,6 @@ class BatchStore:
             )
         else:
             if line_errors:
-                # Partial parse: keep valid lines, surface bad lines on the job.
                 job.errors = {"object": "list", "data": line_errors}
             log_gateway_event(
                 "batch.created",
@@ -198,6 +347,7 @@ class BatchStore:
 
         self._batches[job.id] = job
         self._order.append(job.id)
+        self._persist(job)
         return job
 
     def _load_input_file(
@@ -228,11 +378,21 @@ class BatchStore:
         return parse_batch_jsonl(text)
 
     def get(self, batch_id: str) -> BatchJob | None:
-        return self._batches.get(batch_id)
+        job = self._batches.get(batch_id)
+        if job is None:
+            return None
+        if self._maybe_expire(job):
+            self._persist(job)
+        return job
 
     def list_batches(self, *, limit: int = 100) -> list[BatchJob]:
         ids = list(reversed(self._order))[: max(1, min(limit, 1000))]
-        return [self._batches[batch_id] for batch_id in ids if batch_id in self._batches]
+        out: list[BatchJob] = []
+        for batch_id in ids:
+            job = self.get(batch_id)
+            if job is not None:
+                out.append(job)
+        return out
 
     def cancel(self, batch_id: str) -> BatchJob | None:
         job = self.get(batch_id)
@@ -242,6 +402,7 @@ class BatchStore:
             STATUS_COMPLETED,
             STATUS_FAILED,
             STATUS_CANCELLED,
+            STATUS_EXPIRED,
         }:
             return job
         now = int(time.time())
@@ -255,6 +416,7 @@ class BatchStore:
             job.status = STATUS_CANCELLING
             job.cancelling_at = now
         log_gateway_event("batch.cancel_requested", {"batch_id": job.id})
+        self._persist(job)
         return job
 
     def as_public(self, job: BatchJob) -> dict[str, Any]:
@@ -276,7 +438,7 @@ class BatchStore:
             "finalizing_at": None,
             "completed_at": job.completed_at,
             "failed_at": job.failed_at,
-            "expired_at": None,
+            "expired_at": job.expired_at,
             "cancelling_at": job.cancelling_at,
             "cancelled_at": job.cancelled_at,
             "request_counts": {
@@ -286,7 +448,6 @@ class BatchStore:
             },
             "metadata": job.metadata,
         }
-        # Local convenience: expose inline results (no Files API yet).
         if job.results:
             payload["results"] = job.results
         skipped = sum(1 for item in job.items if item.status == ITEM_SKIPPED)
@@ -297,16 +458,65 @@ class BatchStore:
     def schedule(self, batch_id: str, execute_one: ExecuteOne) -> None:
         """Fire-and-forget worker; safe to call from a request handler."""
         job = self.get(batch_id)
-        if job is None or job.status != STATUS_VALIDATING or not job.items:
+        if job is None or not job.items:
+            return
+        if job.status not in {STATUS_VALIDATING, STATUS_IN_PROGRESS}:
             return
         asyncio.create_task(self.run_job(batch_id, execute_one))
+
+    def resume_incomplete(self, execute_one: ExecuteOne) -> int:
+        """Re-queue validating/in_progress jobs after a restart (#443)."""
+        return self.resume_incomplete_with(lambda _batch_id: execute_one)
+
+    def resume_incomplete_with(
+        self, factory: Callable[[str], ExecuteOne]
+    ) -> int:
+        """Like resume_incomplete but builds a per-job executor (governance)."""
+        resumed = 0
+        for batch_id in list(self._order):
+            job = self.get(batch_id)
+            if job is None:
+                continue
+            if job.status not in {STATUS_VALIDATING, STATUS_IN_PROGRESS}:
+                continue
+            if not any(item.status == ITEM_PENDING for item in job.items):
+                continue
+            self.schedule(batch_id, factory(batch_id))
+            resumed += 1
+        if resumed:
+            log_gateway_event("batch.resume", {"count": resumed})
+        return resumed
+
+    def _maybe_expire(self, job: BatchJob) -> bool:
+        if job.status in {
+            STATUS_COMPLETED,
+            STATUS_FAILED,
+            STATUS_CANCELLED,
+            STATUS_EXPIRED,
+        }:
+            return False
+        if job.expires_at is None or int(time.time()) < int(job.expires_at):
+            return False
+        if not any(item.status == ITEM_PENDING for item in job.items):
+            return False
+        now = int(time.time())
+        self._mark_remaining_skipped(job)
+        job.status = STATUS_EXPIRED
+        job.expired_at = now
+        log_gateway_event("batch.expired", {"batch_id": job.id})
+        return True
 
     async def run_job(self, batch_id: str, execute_one: ExecuteOne) -> None:
         async with self._worker_sem:
             job = self.get(batch_id)
             if job is None:
                 return
-            if job.status in {STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED}:
+            if job.status in {
+                STATUS_COMPLETED,
+                STATUS_FAILED,
+                STATUS_CANCELLED,
+                STATUS_EXPIRED,
+            }:
                 return
             if job.cancel_requested:
                 self._mark_remaining_skipped(job)
@@ -314,13 +524,15 @@ class BatchStore:
                 job.status = STATUS_CANCELLED
                 job.cancelled_at = job.cancelled_at or now
                 job.cancelling_at = job.cancelling_at or now
+                self._persist(job)
                 return
             if not job.items or job.status == STATUS_FAILED:
                 return
 
             self._running.add(batch_id)
             job.status = STATUS_IN_PROGRESS
-            job.in_progress_at = int(time.time())
+            job.in_progress_at = job.in_progress_at or int(time.time())
+            self._persist(job)
             log_gateway_event(
                 "batch.in_progress",
                 {"batch_id": job.id, "total": len(job.items)},
@@ -329,6 +541,8 @@ class BatchStore:
                 for item in job.items:
                     if job.cancel_requested:
                         self._mark_remaining_skipped(job)
+                        break
+                    if self._maybe_expire(job):
                         break
                     if item.status != ITEM_PENDING:
                         continue
@@ -391,17 +605,22 @@ class BatchStore:
                                 "error": str(item.error)[:200],
                             },
                         )
+                    self._persist(job)
 
                 now = int(time.time())
-                if job.cancel_requested:
+                if job.status == STATUS_EXPIRED:
+                    self._persist(job)
+                elif job.cancel_requested:
                     self._mark_remaining_skipped(job)
                     job.status = STATUS_CANCELLED
                     job.cancelled_at = now
+                    self._persist(job)
                     log_gateway_event("batch.cancelled", {"batch_id": job.id})
                 else:
                     job.status = STATUS_COMPLETED
                     job.completed_at = now
                     self._write_result_files(job)
+                    self._persist(job)
                     log_gateway_event(
                         "batch.completed",
                         {

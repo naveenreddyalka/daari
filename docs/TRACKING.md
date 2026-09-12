@@ -2162,6 +2162,17 @@ guardrails apply via the shared router path. Covered by
 `tests/unit/test_files_api.py`, `tests/unit/test_batches.py`, and
 `tests/integration/test_gateway_flow.py`.
 
+### Durable batch jobs across restarts ([#443](https://github.com/naveenreddyalka/daari/issues/443))
+
+<!-- tracking:#443 -->
+**Status:** Done (2026-09-12). `BatchStore` persists jobs/items/results to
+SQLite (`batches.path`, default `~/.daari/batches/jobs.sqlite3`). Restart
+reloads unfinished work and resumes pending items (mid-flight retried once);
+past-`expires_at` jobs become `expired` with remaining items skipped.
+Multi-replica caveat documented in
+[batches.md](developer/guides/features/batches.md). Covered by
+`tests/unit/test_batches.py`.
+
 ---
 
 ## How to update
