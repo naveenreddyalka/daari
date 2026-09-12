@@ -2138,6 +2138,17 @@ today's input rate. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#anthropic-cache_control-ttl-write-rates).
 Covered by `tests/unit/test_cache_ttl_pricing.py`.
 
+### Batch items carry creating-key governance ([#441](https://github.com/naveenreddyalka/daari/issues/441))
+
+<!-- tracking:#441 -->
+**Status:** Done (2026-09-12). `POST /v1/batches` snapshots key id, `client_id`,
+tier cap, `no_frontier`, user, and boundary profile onto `BatchJob.governance`.
+Items route with that meta (L5 cap / `no_frontier` never reach L6); per-key/team
+and per-user budget checks fail frontier-capable items with a 402-shaped
+`error` while siblings continue; ledger rows carry `client_id`/`user`; output
+guardrails apply via the shared router path. Covered by
+`tests/unit/test_batches.py` and `tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update

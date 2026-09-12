@@ -30,13 +30,37 @@ ITEM_SKIPPED = "skipped"
 ExecuteOne = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 
+class BatchItemRejected(Exception):
+    """Per-item rejection with a structured error body (e.g. 402 budget)."""
+
+    def __init__(self, error: dict[str, Any]) -> None:
+        self.error = error
+        super().__init__(str(error.get("message") or error.get("type") or "rejected"))
+
+
+@dataclass
+class BatchGovernance:
+    """Creating-request identity + policy snapshotted for every item (#441)."""
+
+    key_id: str | None = None
+    client_id: str | None = None
+    tier_cap: str | None = None
+    no_frontier: bool = False
+    user: str | None = None
+    boundary_profile: str | None = None
+    kind: str = "master"  # master | virtual
+    latency_budget_ms: int | None = None
+    session_id: str | None = None
+    user_agent: str | None = None
+
+
 @dataclass
 class BatchItem:
     custom_id: str
     body: dict[str, Any]
     status: str = ITEM_PENDING
     response: dict[str, Any] | None = None
-    error: str | None = None
+    error: str | dict[str, Any] | None = None
 
 
 @dataclass
@@ -54,6 +78,7 @@ class BatchJob:
     cancelled_at: int | None = None
     expires_at: int | None = None
     metadata: dict[str, Any] | None = None
+    governance: BatchGovernance | None = None
     items: list[BatchItem] = field(default_factory=list)
     errors: dict[str, Any] | None = None
     cancel_requested: bool = False
@@ -100,6 +125,7 @@ class BatchStore:
         input_file_id: str | None = None,
         requests: list[Any] | None = None,
         metadata: dict[str, Any] | None = None,
+        governance: BatchGovernance | None = None,
     ) -> BatchJob:
         if not input_file_id and not requests:
             raise ValueError("Provide input_file_id or an inline requests array")
@@ -114,6 +140,7 @@ class BatchStore:
             created_at=now,
             expires_at=now + 24 * 3600,
             metadata=metadata,
+            governance=governance,
             items=items,
             status=STATUS_VALIDATING,
         )
@@ -275,6 +302,30 @@ class BatchStore:
                                 "error": None,
                             }
                         )
+                    except BatchItemRejected as exc:
+                        item.status = ITEM_FAILED
+                        item.error = exc.error
+                        status_code = 402 if exc.error.get("type") == "budget_exceeded" else 400
+                        job.results.append(
+                            {
+                                "id": f"batch_req_{uuid.uuid4().hex[:12]}",
+                                "custom_id": item.custom_id,
+                                "response": {
+                                    "status_code": status_code,
+                                    "request_id": None,
+                                    "body": None,
+                                },
+                                "error": dict(exc.error),
+                            }
+                        )
+                        log_gateway_event(
+                            "batch.item_failed",
+                            {
+                                "batch_id": job.id,
+                                "custom_id": item.custom_id,
+                                "error": str(exc.error.get("message") or exc)[:200],
+                            },
+                        )
                     except Exception as exc:  # noqa: BLE001 — per-item failure
                         item.status = ITEM_FAILED
                         item.error = str(exc)[:500]
@@ -291,7 +342,7 @@ class BatchStore:
                             {
                                 "batch_id": job.id,
                                 "custom_id": item.custom_id,
-                                "error": item.error[:200],
+                                "error": str(item.error)[:200],
                             },
                         )
 

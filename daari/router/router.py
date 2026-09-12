@@ -3604,6 +3604,10 @@ class Router:
         """Whether L6 is configured and permitted for this request."""
         if request.meta.no_frontier or not self.frontier_enabled:
             return False
+        # A local tier_cap (L3–L5) forbids frontier — same rule as stall bump.
+        cap = self._effective_tier_cap(request)
+        if cap in self._TIER_ORDER:
+            return False
         return self.frontier is not None and bool(self.frontier.api_key)
 
     async def _frontier_request(self, request: InternalRequest) -> InternalRequest:

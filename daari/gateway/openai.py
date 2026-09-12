@@ -249,11 +249,27 @@ class BatchCreateRequest(BaseModel):
 async def _execute_batch_chat_body(
     ctx: AppContext,
     body_dict: dict[str, Any],
+    *,
+    governance: Any | None = None,
 ) -> dict[str, Any]:
     """Run one batch item through the same router path as /v1/chat/completions."""
+    from daari.gateway.batches import BatchGovernance
+
     body = ChatCompletionRequest.model_validate(body_dict)
-    meta = RequestMeta()
+    gov = governance if isinstance(governance, BatchGovernance) else None
+    body_user = (body.user or "").strip() or None
+    meta = RequestMeta(
+        tier_cap=gov.tier_cap if gov else None,
+        latency_budget_ms=gov.latency_budget_ms if gov else None,
+        client_id=gov.client_id if gov else None,
+        user_agent=gov.user_agent if gov else None,
+        user=body_user or (gov.user if gov else None),
+        session_id=gov.session_id if gov else None,
+        no_frontier=bool(gov.no_frontier) if gov else False,
+        boundary_profile=gov.boundary_profile if gov else None,
+    )
     apply_cost_tier(body, meta)
+    _enforce_batch_item_budgets(ctx, meta, governance=gov)
     internal = _prepare_internal_request(
         body,
         default_model=ctx.settings.models.l3,
@@ -266,6 +282,128 @@ async def _execute_batch_chat_body(
         prompt_chars=prompt_chars,
         include_daari_meta=False,
         client_model=body.model or None,
+    )
+
+
+def _batch_frontier_allowed(ctx: AppContext, meta: RequestMeta) -> bool:
+    """Whether this item's meta could escalate to L6 (mirrors router gate)."""
+    router = ctx.router
+    if meta.no_frontier or not getattr(router, "frontier_enabled", False):
+        return False
+    cap = (meta.tier_cap or "").upper()
+    if cap in {"L3", "L4", "L5"}:
+        return False
+    frontier = getattr(router, "frontier", None)
+    return frontier is not None and bool(getattr(frontier, "api_key", None))
+
+
+def _enforce_batch_item_budgets(
+    ctx: AppContext,
+    meta: RequestMeta,
+    *,
+    governance: Any | None,
+) -> None:
+    """Fail frontier-capable items when the creating key is over budget (#441)."""
+    from daari.gateway.batches import BatchGovernance, BatchItemRejected
+
+    if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
+        return
+    if not _batch_frontier_allowed(ctx, meta):
+        return
+    store = getattr(ctx, "virtual_key_store", None)
+    if store is None:
+        return
+    key = None
+    if governance.key_id:
+        for candidate in store.list() or []:
+            if candidate.key_id == governance.key_id:
+                key = candidate
+                break
+    if key is None:
+        return
+    ledger = getattr(ctx.router, "usage_ledger", None)
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return
+    from daari.auth.budgets import budget_error, budget_status, user_daily_cap_exceeded
+
+    client = meta.client_id or governance.client_id or governance.key_id or ""
+    pricing = getattr(ctx.settings, "pricing", None)
+    fallback = float(ctx.settings.usage.frontier_price_per_1k_tokens or 0.002)
+    team = store.get_team(key.team_id) if getattr(key, "team_id", None) else None
+    team_ids = store.team_client_ids(team.team_id) if team is not None else []
+    statuses = budget_status(
+        key,
+        team,
+        ledger,
+        client_id=client,
+        team_client_ids=team_ids,
+        pricing=pricing,
+        fallback_per_1k=fallback,
+    )
+    exceeded = next((status for status in statuses if status.exceeded), None)
+    if exceeded is not None:
+        raise BatchItemRejected(
+            budget_error(
+                client_id=client,
+                window=exceeded.window,
+                spend=exceeded.spend,
+                scope=exceeded.scope,
+            )
+        )
+    if float(getattr(key, "user_daily_usd_cap", 0) or 0) > 0 and meta.user:
+        user_err = user_daily_cap_exceeded(
+            key,
+            ledger,
+            client_id=client,
+            user_id=meta.user,
+            pricing=pricing,
+            fallback_per_1k=fallback,
+        )
+        if user_err is not None:
+            raise BatchItemRejected(user_err)
+
+
+def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -> Any:
+    """Snapshot authenticated identity + headers for every batch item (#441)."""
+    from daari.gateway.agent_ua import sniff_agent_client_id
+    from daari.gateway.batches import BatchGovernance
+    from daari.server.auth import apply_auth_claims_to_meta
+
+    headers = request.headers
+    user_agent = headers.get("user-agent", "")
+    client_id = headers.get("x-daari-client-id") or sniff_agent_client_id(user_agent)
+    try:
+        latency_raw = headers.get("x-daari-latency-budget")
+        latency_budget_ms = int(latency_raw) if latency_raw else None
+    except ValueError:
+        latency_budget_ms = None
+    meta = RequestMeta(
+        tier_cap=headers.get("x-daari-tier-cap"),
+        latency_budget_ms=latency_budget_ms,
+        client_id=client_id,
+        user_agent=user_agent[:200] or None,
+        user=None,
+        session_id=(headers.get("x-daari-session") or "").strip() or None,
+        no_frontier=(headers.get("x-daari-no-frontier") or "").lower() == "true",
+        boundary_profile=(headers.get("x-daari-boundary-profile") or "").strip() or None,
+    )
+    claims = getattr(request.state, "auth_claims", None)
+    apply_auth_claims_to_meta(meta, claims)
+    apply_profile_to_meta(meta, load_project_profile(headers.get("x-daari-project")))
+    kind = getattr(claims, "kind", None) or "master"
+    if kind not in {"master", "virtual"}:
+        kind = "master"
+    return BatchGovernance(
+        key_id=getattr(claims, "key_id", None) if claims else None,
+        client_id=meta.client_id,
+        tier_cap=meta.tier_cap,
+        no_frontier=bool(meta.no_frontier),
+        user=meta.user,
+        boundary_profile=meta.boundary_profile,
+        kind=kind,
+        latency_budget_ms=meta.latency_budget_ms,
+        session_id=meta.session_id,
+        user_agent=meta.user_agent,
     )
 
 
@@ -1122,12 +1260,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     input_file_id=body.input_file_id,
                     requests=body.requests,
                     metadata=body.metadata,
+                    governance=_governance_from_batch_request(request, body),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+            governance = job.governance
+
             async def execute_one(item_body: dict[str, Any]) -> dict[str, Any]:
-                return await _execute_batch_chat_body(ctx, item_body)
+                return await _execute_batch_chat_body(
+                    ctx, item_body, governance=governance
+                )
 
             store.schedule(job.id, execute_one)
             return store.as_public(job)
