@@ -2127,6 +2127,17 @@ marks remaining items skipped. `input_file_id` accepted; file upload is a
 follow-up (fails validation without inline requests). Covered by
 `tests/unit/test_batches.py` and `tests/integration/test_gateway_flow.py`.
 
+### Anthropic cache_control TTL write rates ([#434](https://github.com/naveenreddyalka/daari/issues/434))
+
+<!-- tracking:#434 -->
+**Status:** Done (2026-09-12). System/tool `cache_control.ttl` (`5m`/`1h`)
+is preserved on L6 Anthropic payloads; default auto-hint stays ephemeral
+without TTL. `ModelPrice.cache_write_1h_per_1m` + `cost_usd(...,
+cache_write_tokens, cache_ttl)` bill 1h writes distinctly; missing TTL keeps
+today's input rate. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#anthropic-cache_control-ttl-write-rates).
+Covered by `tests/unit/test_cache_ttl_pricing.py`.
+
 ---
 
 ## How to update

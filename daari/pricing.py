@@ -42,6 +42,7 @@ class ResolvedPrice:
     input_per_1m: float
     output_per_1m: float
     cached_input_per_1m: float | None = None
+    cache_write_1h_per_1m: float | None = None
     is_fallback: bool = False
     input_threshold_tokens: int | None = None
 
@@ -97,6 +98,7 @@ def resolve_price(
         input_rate = float(_field(entry, "input_per_1m"))
         output_rate = float(_field(entry, "output_per_1m"))
         cached_rate = _optional_field(entry, "cached_input_per_1m")
+        write_1h = _optional_field(entry, "cache_write_1h_per_1m")
         threshold = _optional_int_field(entry, "input_threshold_tokens")
         above_input = _optional_field(entry, "above_input_per_1m")
         above_output = _optional_field(entry, "above_output_per_1m")
@@ -108,6 +110,8 @@ def resolve_price(
         ):
             if cached_rate is not None and input_rate > 0:
                 cached_rate = cached_rate * (above_input / input_rate)
+            if write_1h is not None and input_rate > 0:
+                write_1h = write_1h * (above_input / input_rate)
             input_rate = above_input
             if above_output is not None:
                 output_rate = above_output
@@ -115,6 +119,7 @@ def resolve_price(
             input_per_1m=input_rate,
             output_per_1m=output_rate,
             cached_input_per_1m=cached_rate,
+            cache_write_1h_per_1m=write_1h,
             is_fallback=False,
             input_threshold_tokens=threshold,
         )
@@ -132,6 +137,8 @@ def cost_usd(
     *,
     fallback_per_1k: float,
     cached_input_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    cache_ttl: str | None = None,
     service_tier: str | None = None,
 ) -> float:
     price = resolve_price(
@@ -140,6 +147,7 @@ def cost_usd(
         fallback_per_1k=fallback_per_1k,
         input_tokens=input_tokens,
     )
+    write_tokens = max(0, int(cache_write_tokens))
     billable_input = max(0, input_tokens - cached_input_tokens)
     total = billable_input / 1_000_000 * price.input_per_1m
     total += max(0, output_tokens) / 1_000_000 * price.output_per_1m
@@ -147,7 +155,20 @@ def cost_usd(
         total += cached_input_tokens / 1_000_000 * price.cached_input_per_1m
     elif cached_input_tokens:
         total += cached_input_tokens / 1_000_000 * price.input_per_1m
+    if write_tokens:
+        total += write_tokens / 1_000_000 * _cache_write_rate(price, cache_ttl)
     return total * service_tier_factor(service_tier)
+
+
+def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:
+    """1h TTL uses cache_write_1h_per_1m; missing/5m keeps today's input rate."""
+    ttl = (cache_ttl or "").strip().lower()
+    if ttl in {"1h", "1hr", "60m"}:
+        if price.cache_write_1h_per_1m is not None:
+            return float(price.cache_write_1h_per_1m)
+        # Configured models should set the field; fall back to 2× input.
+        return float(price.input_per_1m) * 2.0
+    return float(price.input_per_1m)
 
 
 def pricing_warnings(settings: object) -> list[str]:

@@ -47,6 +47,9 @@ class Message(BaseModel):
     # Signed thinking / redacted_thinking blocks for Anthropic L6 replay (#431).
     # Empty by default so cache keys stay stable when absent.
     thinking_blocks: list[dict[str, Any]] = Field(default_factory=list)
+    # Anthropic prompt-cache marker (system / tool blocks). Preserved on L6
+    # Messages egress so ttl 5m vs 1h reaches the provider (#434).
+    cache_control: dict[str, Any] | None = None
 
 
 class RequestMeta(BaseModel):

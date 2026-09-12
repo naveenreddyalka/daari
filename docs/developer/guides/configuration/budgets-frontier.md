@@ -162,17 +162,17 @@ The default table still includes the 2024 entries (`gpt-4o`, `gpt-4o-mini`,
 `claude-3-5-sonnet`, `claude-3-5-haiku`, `claude-3-opus`) at their previous
 rates. Current flagship and workhorse models, USD per 1M tokens:
 
-| Model | Input | Cached input | Output | Source |
-|-------|------:|-------------:|-------:|--------|
-| `claude-fable-5-1` | 10.00 | 0.25 | 50.00 | [Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview) |
-| `claude-opus-5` | 5.00 | 0.50 | 25.00 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) |
-| `claude-sonnet-5` | 2.00 | 0.20 | 10.00 | Anthropic pricing |
-| `claude-haiku-4-5` | 1.00 | 0.10 | 5.00 | Anthropic pricing |
-| `gpt-6-astra` | 10.00 | 1.00 | 50.00 | OpenAI; ≥272K input → $20 / $2 / $75 |
-| `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | 20.00 | OpenAI promo through 2026-11-21 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)) |
-| `gpt-5.6-terra` | 2.00 | 0.20 | 12.00 | OpenAI API pricing |
-| `gpt-5.6-luna` | 0.20 | 0.02 | 1.20 | OpenAI API pricing |
-| `gemini-3.8-flash` | 0.75 | 0.075 | 3.75 | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) intro rate through 2026-12-31 |
+| Model | Input | Cached input | 1h cache write | Output | Source |
+|-------|------:|-------------:|---------------:|-------:|--------|
+| `claude-fable-5-1` | 10.00 | 0.25 | 20.00 | 50.00 | [Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview) |
+| `claude-opus-5` | 5.00 | 0.50 | 10.00 | 25.00 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) |
+| `claude-sonnet-5` | 2.00 | 0.20 | 4.00 | 10.00 | Anthropic pricing |
+| `claude-haiku-4-5` | 1.00 | 0.10 | 2.00 | 5.00 | Anthropic pricing |
+| `gpt-6-astra` | 10.00 | 1.00 | — | 50.00 | OpenAI; ≥272K input → $20 / $2 / $75 |
+| `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | — | 20.00 | OpenAI promo through 2026-11-21 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)) |
+| `gpt-5.6-terra` | 2.00 | 0.20 | — | 12.00 | OpenAI API pricing |
+| `gpt-5.6-luna` | 0.20 | 0.02 | — | 1.20 | OpenAI API pricing |
+| `gemini-3.8-flash` | 0.75 | 0.075 | — | 3.75 | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) intro rate through 2026-12-31 |
 
 `gpt-5.6` is the Sol alias. Longer keys win, so `gpt-5.6-luna` is not priced
 as Sol. Gemini 3.8 Flash's published standard rate becomes $1.50 / $7.50 on
@@ -208,6 +208,15 @@ OpenAI / Anthropic / OpenRouter `service_tier` is forwarded on L6 hops and
 multiplies `cost_usd`: `flex` is 0.5×, `priority` is 2×, `standard` /
 `default` / `auto` / missing is 1×. Unknown values log `service_tier_ignored`
 and bill as standard.
+
+### Anthropic cache_control TTL write rates
+
+Anthropic prompt-cache markers on system/tool blocks (`cache_control.ttl`
+`5m` or `1h`) are preserved on the L6 Messages payload. Default auto-hint
+remains `{type: ephemeral}` (5-minute). When the request asks for `ttl: 1h`,
+`cost_usd(..., cache_write_tokens=…, cache_ttl="1h")` bills writes at
+`cache_write_1h_per_1m` (2× base input on the shipped Claude table). Missing
+TTL or `5m` keeps today's rate (write tokens at `input_per_1m`).
 
 ## Providers / fallback
 
