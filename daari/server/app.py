@@ -68,6 +68,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             metrics=app.state.ctx.metrics,
             redis_url=redis_url,
         )
+        # Resume unfinished batch jobs after restart (#443).
+        batch_store = getattr(app.state.ctx, "batch_store", None)
+        if batch_store is not None:
+
+            def _make_execute(job_id: str):
+                async def execute_one(item_body: dict) -> dict:
+                    from daari.gateway.openai import _execute_batch_chat_body
+
+                    job = batch_store.get(job_id)
+                    gov = job.governance if job is not None else None
+                    return await _execute_batch_chat_body(
+                        app.state.ctx, item_body, governance=gov
+                    )
+
+                return execute_one
+
+            batch_store.resume_incomplete_with(_make_execute)
         try:
             yield
         finally:

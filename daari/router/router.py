@@ -4466,6 +4466,7 @@ class AppContext:
                 settings.files_store_path,
                 max_bytes=settings.files.max_bytes,
             )
+        batch_path = settings.batches_store_path if settings.batches.enabled else None
         context = cls(
             settings=settings,
             cache=cache,
@@ -4484,7 +4485,7 @@ class AppContext:
             org_learning_client=org_learning_client,
             local_pool=local_pool,
             mcp_task_store=mcp_task_store,
-            batch_store=BatchStore(file_store=file_store),
+            batch_store=BatchStore(file_store=file_store, path=batch_path),
             file_store=file_store,
         )
         context.sync_org_learning_profile_startup()

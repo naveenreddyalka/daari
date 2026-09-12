@@ -610,6 +610,13 @@ class FilesSettings(BaseModel):
     )
 
 
+class BatchesSettings(BaseModel):
+    """Durable OpenAI Batch job store (#443)."""
+
+    enabled: bool = True
+    path: str = "~/.daari/batches/jobs.sqlite3"
+
+
 class TraceSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/traces/traces.sqlite3"
@@ -909,6 +916,7 @@ class Settings(BaseSettings):
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
     files: FilesSettings = Field(default_factory=FilesSettings)
+    batches: BatchesSettings = Field(default_factory=BatchesSettings)
     pricing: PricingSettings = Field(default_factory=PricingSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
@@ -960,6 +968,10 @@ class Settings(BaseSettings):
     @property
     def files_store_path(self) -> Path:
         return Path(self.files.path).expanduser()
+
+    @property
+    def batches_store_path(self) -> Path:
+        return Path(self.batches.path).expanduser()
 
     @property
     def virtual_keys_path(self) -> Path:

@@ -1,9 +1,10 @@
-"""OpenAI Batch API store + worker (#433, #441, #442)."""
+"""OpenAI Batch API store + worker (#433, #441, #442, #443)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 import pytest
 
@@ -138,6 +139,98 @@ async def test_completed_batch_writes_output_and_error_files(tmp_path):
     err_text = files.read_text(refreshed.error_file_id)
     assert err_text is not None
     assert "server_error" in err_text
+
+
+def test_sqlite_persistence_round_trip(tmp_path):
+    path = tmp_path / "batches.sqlite3"
+    store = BatchStore(path=path)
+    job = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "persist"}]}],
+        governance=BatchGovernance(client_id="c1", tier_cap="L3", kind="virtual"),
+    )
+    job.status = STATUS_IN_PROGRESS
+    job.items[0].status = ITEM_COMPLETED
+    job.items[0].response = {"ok": True}
+    store._persist(job)
+
+    reloaded = BatchStore(path=path)
+    found = reloaded.get(job.id)
+    assert found is not None
+    assert found.status == STATUS_IN_PROGRESS
+    assert found.governance is not None
+    assert found.governance.client_id == "c1"
+    assert found.items[0].status == ITEM_COMPLETED
+    public = reloaded.as_public(found)
+    assert public["request_counts"]["completed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_restart_resumes_pending_items(tmp_path):
+    path = tmp_path / "batches.sqlite3"
+    store = BatchStore(path=path)
+    job = store.create(
+        requests=[
+            {"model": "m", "messages": [{"role": "user", "content": "done"}]},
+            {"model": "m", "messages": [{"role": "user", "content": "pending"}]},
+        ],
+    )
+    job.status = STATUS_IN_PROGRESS
+    job.items[0].status = ITEM_COMPLETED
+    job.items[0].response = {"ok": True}
+    job.results.append(
+        {
+            "id": "batch_req_done",
+            "custom_id": job.items[0].custom_id,
+            "response": {"status_code": 200, "request_id": None, "body": {"ok": True}},
+            "error": None,
+        }
+    )
+    store._persist(job)
+
+    resumed = BatchStore(path=path)
+    seen: list[str] = []
+
+    async def execute_one(body: dict) -> dict:
+        seen.append(body["messages"][0]["content"])
+        return {"echo": body["messages"][0]["content"]}
+
+    count = resumed.resume_incomplete(execute_one)
+    assert count == 1
+    # Let the scheduled task drain.
+    await asyncio.sleep(0.05)
+    for _ in range(50):
+        refreshed = resumed.get(job.id)
+        if refreshed and refreshed.status == STATUS_COMPLETED:
+            break
+        await asyncio.sleep(0.02)
+    refreshed = resumed.get(job.id)
+    assert refreshed is not None
+    assert refreshed.status == STATUS_COMPLETED
+    assert seen == ["pending"]
+    assert refreshed.items[1].status == ITEM_COMPLETED
+
+
+def test_expired_job_skips_pending_on_read(tmp_path):
+    from daari.gateway.batches import STATUS_EXPIRED
+
+    path = tmp_path / "batches.sqlite3"
+    store = BatchStore(path=path)
+    job = store.create(
+        requests=[
+            {"model": "m", "messages": [{"role": "user", "content": "a"}]},
+            {"model": "m", "messages": [{"role": "user", "content": "b"}]},
+        ],
+    )
+    job.expires_at = int(time.time()) - 10
+    store._persist(job)
+    found = store.get(job.id)
+    assert found is not None
+    assert found.status == STATUS_EXPIRED
+    assert all(item.status == ITEM_SKIPPED for item in found.items)
+    assert found.expired_at is not None
+    public = store.as_public(found)
+    assert public["status"] == STATUS_EXPIRED
+    assert public["expired_at"] == found.expired_at
 
 
 
