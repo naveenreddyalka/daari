@@ -2149,6 +2149,19 @@ and per-user budget checks fail frontier-capable items with a 402-shaped
 guardrails apply via the shared router path. Covered by
 `tests/unit/test_batches.py` and `tests/integration/test_gateway_flow.py`.
 
+### OpenAI Files API for Batch JSONL ([#442](https://github.com/naveenreddyalka/daari/issues/442))
+
+<!-- tracking:#442 -->
+**Status:** Done (2026-09-12). `POST/GET/DELETE /v1/files` and
+`GET /v1/files/{id}/content` — OpenAI-shaped file objects on disk under
+`files.path` (default `~/.daari/files`, `files.max_bytes`).
+`POST /v1/batches` with `input_file_id` parses JSONL (bad lines report
+`errors.data[].line`); completed jobs set `output_file_id` /
+`error_file_id` while keeping inline `results`. Adds runtime dep
+`python-multipart` for multipart upload. Covered by
+`tests/unit/test_files_api.py`, `tests/unit/test_batches.py`, and
+`tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update

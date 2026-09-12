@@ -67,6 +67,11 @@ context:
   enabled: true
   path: ~/.daari/context/commands
 
+files:
+  enabled: true
+  path: ~/.daari/files
+  max_bytes: 104857600
+
 integrations:
   sourcegraph:
     url: https://sourcegraph.com
