@@ -2183,6 +2183,15 @@ episode; cancel still wins while waiting. Docs:
 [batches.md](developer/guides/features/batches.md). Covered by
 `tests/unit/test_batches.py`.
 
+### One-command client onboarding ([#445](https://github.com/naveenreddyalka/daari/issues/445))
+
+<!-- tracking:#445 -->
+**Status:** Done (2026-09-12). `daari configure <client>` writes the same
+settings as `daari setup` (claude-code, vscode, claude-desktop, …), backs up
+modified files, is idempotent / `--dry-run` safe, and prints a one-line verify
+curl. Unknown clients list supported names and exit 1. Client docs link the
+fast path. Covered by `tests/unit/test_configure_cli.py`.
+
 ---
 
 ## How to update

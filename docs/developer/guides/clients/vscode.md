@@ -2,6 +2,8 @@
 
 **Outcome:** VS Code OpenAI-compatible settings point at daari.
 
+**Fast path:** `daari configure vscode` (writes settings + prints a verify curl; see also `daari setup vscode`).
+
 ## Steps
 
 ```bash

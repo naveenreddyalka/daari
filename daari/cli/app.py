@@ -1277,6 +1277,34 @@ def service_uninstall(
         typer.echo("No daari user service file found.")
 
 
+@app.command("configure")
+def configure_command(
+    client: str = typer.Argument(
+        ...,
+        help="Client to configure (claude-code, vscode, claude-desktop, …).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show planned changes without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Re-apply even when already configured.",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="Override gateway base URL (default: http://host:port/v1 from config).",
+    ),
+) -> None:
+    """One-command client onboarding — write settings and print a verify curl (#445)."""
+    from daari.cli.configure import configure_client
+
+    configure_client(client, dry_run=dry_run, force=force, base_url=base_url)
+
+
 @setup_app.callback(invoke_without_command=True)
 def setup_main(
     ctx: typer.Context,
