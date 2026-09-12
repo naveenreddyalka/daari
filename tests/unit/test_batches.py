@@ -233,6 +233,85 @@ def test_expired_job_skips_pending_on_read(tmp_path):
     assert public["expired_at"] == found.expired_at
 
 
+@pytest.mark.asyncio
+async def test_batch_yields_to_interactive_traffic():
+    """Worker waits while interactive load > 0, then resumes (#444)."""
+    load = {"n": 1}
+    store = BatchStore(
+        idle_probe=lambda: load["n"],
+        yield_to_interactive=True,
+        idle_poll_seconds=0.02,
+    )
+    job = store.create(
+        requests=[
+            {"model": "m", "messages": [{"role": "user", "content": "a"}]},
+            {"model": "m", "messages": [{"role": "user", "content": "b"}]},
+        ],
+    )
+    started = asyncio.Event()
+    dispatched: list[str] = []
+
+    async def execute_one(body: dict) -> dict:
+        started.set()
+        dispatched.append(body["messages"][0]["content"])
+        return {"ok": True}
+
+    task = asyncio.create_task(store.run_job(job.id, execute_one))
+    await asyncio.sleep(0.08)
+    assert not started.is_set(), "must not dispatch while interactive load > 0"
+    assert dispatched == []
+    load["n"] = 0
+    await started.wait()
+    await task
+    refreshed = store.get(job.id)
+    assert refreshed is not None
+    assert refreshed.status == STATUS_COMPLETED
+    assert dispatched == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_while_waiting_for_idle():
+    load = {"n": 1}
+    store = BatchStore(
+        idle_probe=lambda: load["n"],
+        yield_to_interactive=True,
+        idle_poll_seconds=0.02,
+    )
+    job = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "x"}]}],
+    )
+
+    async def execute_one(body: dict) -> dict:
+        raise AssertionError("must not dispatch after cancel")
+
+    task = asyncio.create_task(store.run_job(job.id, execute_one))
+    await asyncio.sleep(0.05)
+    store.cancel(job.id)
+    await task
+    refreshed = store.get(job.id)
+    assert refreshed is not None
+    assert refreshed.status == STATUS_CANCELLED
+    assert refreshed.items[0].status == ITEM_SKIPPED
+
+
+@pytest.mark.asyncio
+async def test_yield_disabled_dispatches_immediately():
+    store = BatchStore(
+        idle_probe=lambda: 99,
+        yield_to_interactive=False,
+        idle_poll_seconds=0.5,
+    )
+    job = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "go"}]}],
+    )
+
+    async def execute_one(body: dict) -> dict:
+        return {"ok": True}
+
+    await asyncio.wait_for(store.run_job(job.id, execute_one), timeout=1.0)
+    assert store.get(job.id).status == STATUS_COMPLETED
+
+
 
 @pytest.mark.asyncio
 async def test_worker_runs_items_sequentially_through_executor():

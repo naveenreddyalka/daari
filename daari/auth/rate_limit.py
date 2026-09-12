@@ -160,8 +160,23 @@ class RateLimiter:
         self.queue_size = queue_size
         self.retry_after_seconds = retry_after_seconds
         self.in_flight = 0
+        self.interactive_in_flight = 0
         self.queued = 0
         self._cond = asyncio.Condition()
+        self._interactive_lock = threading.Lock()
+
+    def begin_interactive(self) -> None:
+        """Count an interactive HTTP request for batch idle-yield (#444)."""
+        with self._interactive_lock:
+            self.interactive_in_flight += 1
+
+    def end_interactive(self) -> None:
+        with self._interactive_lock:
+            self.interactive_in_flight = max(0, self.interactive_in_flight - 1)
+
+    def interactive_load(self) -> int:
+        with self._interactive_lock:
+            return self.interactive_in_flight
 
     def check(
         self,

@@ -4485,7 +4485,12 @@ class AppContext:
             org_learning_client=org_learning_client,
             local_pool=local_pool,
             mcp_task_store=mcp_task_store,
-            batch_store=BatchStore(file_store=file_store, path=batch_path),
+            batch_store=BatchStore(
+                file_store=file_store,
+                path=batch_path,
+                yield_to_interactive=settings.batches.yield_to_interactive,
+                idle_poll_seconds=settings.batches.idle_poll_seconds,
+            ),
             file_store=file_store,
         )
         context.sync_org_learning_profile_startup()
