@@ -1,7 +1,7 @@
-"""OpenAI-compatible Batch API — local sequential drain (#433).
+"""OpenAI-compatible Batch API — local sequential drain (#433, #442).
 
-First slice: inline `requests` (chat-completion bodies or JSONL-line objects).
-`input_file_id` is accepted for shape parity; file upload is a follow-up.
+Inline `requests` or `input_file_id` (JSONL via `/v1/files`). Completed jobs
+write `output_file_id` / `error_file_id` JSONL when a FileStore is attached.
 At most one batch job runs at a time so local GPUs are not stampeded.
 """
 
@@ -70,6 +70,8 @@ class BatchJob:
     completion_window: str = "24h"
     status: str = STATUS_VALIDATING
     input_file_id: str | None = None
+    output_file_id: str | None = None
+    error_file_id: str | None = None
     created_at: int = field(default_factory=lambda: int(time.time()))
     in_progress_at: int | None = None
     completed_at: int | None = None
@@ -110,12 +112,13 @@ def _normalize_requests(raw: Iterable[Any] | None) -> list[BatchItem]:
 class BatchStore:
     """In-process batch registry with a single-slot worker."""
 
-    def __init__(self) -> None:
+    def __init__(self, file_store: Any | None = None) -> None:
         self._batches: dict[str, BatchJob] = {}
         self._order: list[str] = []
         self._lock = asyncio.Lock()
         self._worker_sem = asyncio.Semaphore(1)
         self._running: set[str] = set()
+        self.file_store = file_store
 
     def create(
         self,
@@ -130,7 +133,12 @@ class BatchStore:
         if not input_file_id and not requests:
             raise ValueError("Provide input_file_id or an inline requests array")
 
-        items = _normalize_requests(requests)
+        line_errors: list[dict[str, Any]] = []
+        resolved_requests = list(requests or [])
+        if input_file_id and not resolved_requests:
+            resolved_requests, line_errors = self._load_input_file(input_file_id)
+
+        items = _normalize_requests(resolved_requests) if resolved_requests else []
         now = int(time.time())
         job = BatchJob(
             id=f"batch_{uuid.uuid4().hex}",
@@ -145,8 +153,15 @@ class BatchStore:
             status=STATUS_VALIDATING,
         )
 
-        if not items:
-            # File upload is a follow-up; accept the field then fail validation.
+        if line_errors and not items:
+            job.status = STATUS_FAILED
+            job.failed_at = now
+            job.errors = {"object": "list", "data": line_errors}
+            log_gateway_event(
+                "batch.validation_failed",
+                {"batch_id": job.id, "input_file_id": input_file_id, "errors": len(line_errors)},
+            )
+        elif not items:
             job.status = STATUS_FAILED
             job.failed_at = now
             job.errors = {
@@ -156,7 +171,8 @@ class BatchStore:
                         "code": "invalid_request",
                         "message": (
                             "input_file_id without uploaded file content is not "
-                            "supported yet; pass an inline requests array"
+                            "supported; upload via POST /v1/files or pass an "
+                            "inline requests array"
                         ),
                         "param": "input_file_id",
                         "line": None,
@@ -168,6 +184,9 @@ class BatchStore:
                 {"batch_id": job.id, "input_file_id": input_file_id},
             )
         else:
+            if line_errors:
+                # Partial parse: keep valid lines, surface bad lines on the job.
+                job.errors = {"object": "list", "data": line_errors}
             log_gateway_event(
                 "batch.created",
                 {
@@ -180,6 +199,33 @@ class BatchStore:
         self._batches[job.id] = job
         self._order.append(job.id)
         return job
+
+    def _load_input_file(
+        self, input_file_id: str
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        store = self.file_store
+        if store is None:
+            return [], [
+                {
+                    "code": "invalid_request",
+                    "message": "files store is not configured",
+                    "param": "input_file_id",
+                    "line": None,
+                }
+            ]
+        text = store.read_text(input_file_id)
+        if text is None:
+            return [], [
+                {
+                    "code": "invalid_request",
+                    "message": f"unknown input_file_id: {input_file_id}",
+                    "param": "input_file_id",
+                    "line": None,
+                }
+            ]
+        from daari.gateway.files import parse_batch_jsonl
+
+        return parse_batch_jsonl(text)
 
     def get(self, batch_id: str) -> BatchJob | None:
         return self._batches.get(batch_id)
@@ -222,8 +268,8 @@ class BatchStore:
             "input_file_id": job.input_file_id,
             "completion_window": job.completion_window,
             "status": job.status,
-            "output_file_id": None,
-            "error_file_id": None,
+            "output_file_id": job.output_file_id,
+            "error_file_id": job.error_file_id,
             "created_at": job.created_at,
             "in_progress_at": job.in_progress_at,
             "expires_at": job.expires_at,
@@ -355,6 +401,7 @@ class BatchStore:
                 else:
                     job.status = STATUS_COMPLETED
                     job.completed_at = now
+                    self._write_result_files(job)
                     log_gateway_event(
                         "batch.completed",
                         {
@@ -365,10 +412,38 @@ class BatchStore:
                             "failed": sum(
                                 1 for i in job.items if i.status == ITEM_FAILED
                             ),
+                            "output_file_id": job.output_file_id,
+                            "error_file_id": job.error_file_id,
                         },
                     )
             finally:
                 self._running.discard(batch_id)
+
+    def _write_result_files(self, job: BatchJob) -> None:
+        """Persist OpenAI-shaped JSONL output/error files when a store is wired."""
+        store = self.file_store
+        if store is None or not job.results:
+            return
+        try:
+            output = store.write_jsonl(
+                lines=job.results,
+                filename=f"{job.id}_output.jsonl",
+                purpose="batch_output",
+            )
+            job.output_file_id = output.id
+            failed_lines = [row for row in job.results if row.get("error") is not None]
+            if failed_lines:
+                error_file = store.write_jsonl(
+                    lines=failed_lines,
+                    filename=f"{job.id}_errors.jsonl",
+                    purpose="batch_output",
+                )
+                job.error_file_id = error_file.id
+        except Exception as exc:  # noqa: BLE001 — results still available inline
+            log_gateway_event(
+                "batch.result_files_failed",
+                {"batch_id": job.id, "error": str(exc)[:200]},
+            )
 
     @staticmethod
     def _mark_remaining_skipped(job: BatchJob) -> None:

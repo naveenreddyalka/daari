@@ -598,6 +598,18 @@ class UsageSettings(BaseModel):
     )
 
 
+class FilesSettings(BaseModel):
+    """Local OpenAI Files API store for Batch JSONL (#442)."""
+
+    enabled: bool = True
+    path: str = "~/.daari/files"
+    max_bytes: int = Field(
+        default=100 * 1024 * 1024,
+        ge=1,
+        description="Maximum upload size in bytes for POST /v1/files.",
+    )
+
+
 class TraceSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/traces/traces.sqlite3"
@@ -896,6 +908,7 @@ class Settings(BaseSettings):
     tools: ToolsSettings = Field(default_factory=ToolsSettings)
     context: ContextSettings = Field(default_factory=ContextSettings)
     usage: UsageSettings = Field(default_factory=UsageSettings)
+    files: FilesSettings = Field(default_factory=FilesSettings)
     pricing: PricingSettings = Field(default_factory=PricingSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
@@ -943,6 +956,10 @@ class Settings(BaseSettings):
     @property
     def usage_ledger_path(self) -> Path:
         return Path(self.usage.path).expanduser()
+
+    @property
+    def files_store_path(self) -> Path:
+        return Path(self.files.path).expanduser()
 
     @property
     def virtual_keys_path(self) -> Path:

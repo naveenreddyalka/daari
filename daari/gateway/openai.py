@@ -8,8 +8,8 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
@@ -405,6 +405,21 @@ def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -
         session_id=meta.session_id,
         user_agent=meta.user_agent,
     )
+
+
+def _ensure_file_store(ctx: AppContext) -> Any:
+    """Return (and lazily attach) the Files API store (#442)."""
+    store = getattr(ctx, "file_store", None)
+    if store is not None:
+        return store
+    from daari.gateway.files import FileStore
+
+    store = FileStore(
+        ctx.settings.files_store_path,
+        max_bytes=ctx.settings.files.max_bytes,
+    )
+    ctx.file_store = store
+    return store
 
 
 def build_chat_completion_payload(
@@ -1244,6 +1259,76 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 },
             }
 
+        @router.post("/v1/files")
+        async def upload_file(
+            request: Request,
+            file: UploadFile = File(...),
+            purpose: str = Form(default="batch"),
+        ) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = _ensure_file_store(ctx)
+            raw = await file.read()
+            try:
+                stored = store.create(
+                    content=raw,
+                    filename=file.filename or "upload",
+                    purpose=purpose or "batch",
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            log_gateway_event(
+                "file.uploaded",
+                {"file_id": stored.id, "bytes": stored.bytes, "purpose": stored.purpose},
+            )
+            return stored.as_public()
+
+        @router.get("/v1/files")
+        async def list_files(
+            request: Request,
+            purpose: str | None = None,
+            limit: int = 10000,
+        ) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.file_store
+            if store is None:
+                return {"object": "list", "data": [], "has_more": False}
+            data = [item.as_public() for item in store.list_files(purpose=purpose, limit=limit)]
+            return {"object": "list", "data": data, "has_more": False}
+
+        @router.get("/v1/files/{file_id}")
+        async def retrieve_file(file_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.file_store
+            stored = store.get(file_id) if store is not None else None
+            if stored is None:
+                raise HTTPException(status_code=404, detail="file not found")
+            return stored.as_public()
+
+        @router.get("/v1/files/{file_id}/content")
+        async def download_file_content(file_id: str, request: Request) -> Response:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.file_store
+            raw = store.read_bytes(file_id) if store is not None else None
+            if raw is None:
+                raise HTTPException(status_code=404, detail="file not found")
+            stored = store.get(file_id) if store is not None else None
+            filename = stored.filename if stored is not None else file_id
+            return Response(
+                content=raw,
+                media_type="application/jsonl",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                },
+            )
+
+        @router.delete("/v1/files/{file_id}")
+        async def delete_file(file_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store = ctx.file_store
+            if store is None or not store.delete(file_id):
+                raise HTTPException(status_code=404, detail="file not found")
+            return {"id": file_id, "object": "file", "deleted": True}
+
         @router.post("/v1/batches")
         async def create_batch(body: BatchCreateRequest, request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
@@ -1251,8 +1336,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if store is None:
                 from daari.gateway.batches import BatchStore
 
-                store = BatchStore()
+                store = BatchStore(file_store=_ensure_file_store(ctx) if ctx.settings.files.enabled else None)
                 ctx.batch_store = store
+            elif store.file_store is None and ctx.file_store is not None:
+                store.file_store = ctx.file_store
             try:
                 job = store.create(
                     endpoint=body.endpoint,

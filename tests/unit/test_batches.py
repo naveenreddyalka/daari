@@ -1,8 +1,9 @@
-"""OpenAI Batch API store + worker (#433, #441)."""
+"""OpenAI Batch API store + worker (#433, #441, #442)."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -67,6 +68,77 @@ def test_create_input_file_id_without_requests_fails_validation():
     assert public["status"] == STATUS_FAILED
     assert public["input_file_id"] == "file-abc"
     assert public["errors"] is not None
+
+
+def test_create_from_input_file_jsonl(tmp_path):
+    from daari.gateway.files import FileStore
+
+    files = FileStore(tmp_path / "files")
+    line = {
+        "custom_id": "from-file",
+        "method": "POST",
+        "url": "/v1/chat/completions",
+        "body": {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+    }
+    uploaded = files.create(
+        content=(json.dumps(line) + "\n").encode(),
+        filename="in.jsonl",
+        purpose="batch",
+    )
+    store = BatchStore(file_store=files)
+    job = store.create(input_file_id=uploaded.id, endpoint="/v1/chat/completions")
+    assert job.status == STATUS_VALIDATING
+    assert len(job.items) == 1
+    assert job.items[0].custom_id == "from-file"
+
+
+def test_create_from_input_file_reports_bad_line_numbers(tmp_path):
+    from daari.gateway.files import FileStore
+
+    files = FileStore(tmp_path / "files")
+    content = "{bad\n" + json.dumps({"nope": 1}) + "\n"
+    uploaded = files.create(content=content.encode(), filename="bad.jsonl", purpose="batch")
+    store = BatchStore(file_store=files)
+    job = store.create(input_file_id=uploaded.id)
+    assert job.status == STATUS_FAILED
+    lines = {err["line"] for err in job.errors["data"]}
+    assert lines == {1, 2}
+
+
+@pytest.mark.asyncio
+async def test_completed_batch_writes_output_and_error_files(tmp_path):
+    from daari.gateway.files import FileStore
+
+    files = FileStore(tmp_path / "files")
+    store = BatchStore(file_store=files)
+    job = store.create(
+        requests=[
+            {"model": "m", "messages": [{"role": "user", "content": "ok"}]},
+            {"model": "m", "messages": [{"role": "user", "content": "boom"}]},
+        ],
+    )
+
+    async def execute_one(body: dict) -> dict:
+        if body["messages"][0]["content"] == "boom":
+            raise RuntimeError("upstream failed")
+        return {"ok": True}
+
+    await store.run_job(job.id, execute_one)
+    refreshed = store.get(job.id)
+    assert refreshed is not None
+    assert refreshed.status == STATUS_COMPLETED
+    assert refreshed.output_file_id
+    assert refreshed.error_file_id
+    public = store.as_public(refreshed)
+    assert public["output_file_id"] == refreshed.output_file_id
+    assert public["error_file_id"] == refreshed.error_file_id
+    out_text = files.read_text(refreshed.output_file_id)
+    assert out_text is not None
+    assert "ok" in out_text or '"error": null' in out_text
+    err_text = files.read_text(refreshed.error_file_id)
+    assert err_text is not None
+    assert "server_error" in err_text
+
 
 
 @pytest.mark.asyncio

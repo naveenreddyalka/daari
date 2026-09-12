@@ -3034,3 +3034,100 @@ async def test_batch_ledger_records_client_id_and_user(settings, tmp_path, monke
     assert any(
         row.get("client_id") == "batch-led" and row.get("user_id") == "bob" for row in by_user
     )
+
+
+@pytest.mark.asyncio
+async def test_files_api_batch_end_to_end(app, monkeypatch, tmp_path):
+    """Upload JSONL → create batch → poll → download output (#442)."""
+    import json as _json
+
+    app.state.ctx.settings.files.path = str(tmp_path / "files")
+    from daari.gateway.files import FileStore
+
+    file_store = FileStore(tmp_path / "files")
+    app.state.ctx.file_store = file_store
+    if app.state.ctx.batch_store is not None:
+        app.state.ctx.batch_store.file_store = file_store
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        last = request.messages[-1].content if request.messages else ""
+        return InternalResponse(
+            content=f"file-batch:{last}",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+    line = {
+        "custom_id": "file-req-1",
+        "method": "POST",
+        "url": "/v1/chat/completions",
+        "body": {
+            "model": "llama3.2:3b",
+            "messages": [{"role": "user", "content": "via-file"}],
+        },
+    }
+    jsonl = (_json.dumps(line) + "\n").encode()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        uploaded = await client.post(
+            "/v1/files",
+            files={"file": ("batch.jsonl", jsonl, "application/jsonl")},
+            data={"purpose": "batch"},
+            headers=META_HEADERS,
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        file_body = uploaded.json()
+        assert file_body["object"] == "file"
+        assert file_body["id"].startswith("file-")
+        file_id = file_body["id"]
+
+        listed = await client.get("/v1/files", headers=META_HEADERS)
+        assert listed.status_code == 200
+        assert any(item["id"] == file_id for item in listed.json()["data"])
+
+        meta = await client.get(f"/v1/files/{file_id}", headers=META_HEADERS)
+        assert meta.status_code == 200
+        assert meta.json()["filename"] == "batch.jsonl"
+
+        created = await client.post(
+            "/v1/batches",
+            json={
+                "endpoint": "/v1/chat/completions",
+                "completion_window": "24h",
+                "input_file_id": file_id,
+            },
+            headers=META_HEADERS,
+        )
+        assert created.status_code == 200, created.text
+        batch = created.json()
+        assert batch["input_file_id"] == file_id
+        assert batch["status"] in {"validating", "in_progress", "completed"}
+
+        final = await _poll_batch(client, batch["id"], headers=META_HEADERS)
+        assert final["status"] == "completed"
+        assert final["request_counts"]["completed"] == 1
+        assert final["output_file_id"]
+        assert final.get("results")  # inline back-compat
+
+        content = await client.get(
+            f"/v1/files/{final['output_file_id']}/content",
+            headers=META_HEADERS,
+        )
+        assert content.status_code == 200
+        lines = [ln for ln in content.text.splitlines() if ln.strip()]
+        assert len(lines) == 1
+        row = _json.loads(lines[0])
+        assert row["custom_id"] == "file-req-1"
+        assert row["response"]["status_code"] == 200
+        assert "file-batch:via-file" in row["response"]["body"]["choices"][0]["message"]["content"]
+
+        deleted = await client.delete(f"/v1/files/{file_id}", headers=META_HEADERS)
+        assert deleted.status_code == 200
+        assert deleted.json()["deleted"] is True

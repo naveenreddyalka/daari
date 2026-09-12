@@ -3942,6 +3942,7 @@ class AppContext:
     local_pool: Any | None = None
     mcp_task_store: Any | None = None
     batch_store: Any | None = None
+    file_store: Any | None = None
     org_learning_sync_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
     backend_health_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
     retention_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
@@ -4453,11 +4454,18 @@ class AppContext:
 
             configure_providers()
         from daari.gateway.batches import BatchStore
+        from daari.gateway.files import FileStore
         from daari.gateway.mcp_tasks import McpTaskStore
 
         mcp_task_store = None
         if settings.integrations.mcp_tasks.enabled:
             mcp_task_store = McpTaskStore(settings.integrations.mcp_tasks.path)
+        file_store = None
+        if settings.files.enabled:
+            file_store = FileStore(
+                settings.files_store_path,
+                max_bytes=settings.files.max_bytes,
+            )
         context = cls(
             settings=settings,
             cache=cache,
@@ -4476,7 +4484,8 @@ class AppContext:
             org_learning_client=org_learning_client,
             local_pool=local_pool,
             mcp_task_store=mcp_task_store,
-            batch_store=BatchStore(),
+            batch_store=BatchStore(file_store=file_store),
+            file_store=file_store,
         )
         context.sync_org_learning_profile_startup()
         return context
