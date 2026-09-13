@@ -2236,6 +2236,17 @@ override the pinned `2023-06-01` default; absent beta is not injected. Local
 tiers unaffected. Covered by `tests/unit/test_anthropic_gateway.py` and
 `tests/unit/test_anthropic_egress.py`.
 
+### Files store retention, expires_after, and size cap ([#456](https://github.com/naveenreddyalka/daari/issues/456))
+
+<!-- tracking:#456 -->
+**Status:** Done (2026-09-13). `POST /v1/files` accepts OpenAI `expires_after`
+(`created_at` + seconds); objects expose `expires_at`; expired files 404 and
+are deleted on access or `daari prune` / retention sweep. `files.retention_days`
+(default 0) sets fallback expiry including batch output/error files;
+`files.max_total_bytes` (default 0) rejects over-cap uploads with 413 naming
+cap and usage. Covered by `tests/unit/test_files_api.py` and
+`tests/unit/test_retention.py`.
+
 ---
 
 ## How to update

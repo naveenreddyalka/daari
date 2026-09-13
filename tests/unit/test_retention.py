@@ -221,6 +221,27 @@ class TestCLI:
         assert traces.get("old") is None
 
 
+class TestFilesRetention:
+    def test_prune_reclaims_expired_files(self, tmp_path):
+        from daari.gateway.files import FileStore
+
+        settings = _settings(tmp_path)
+        settings.files.path = str(tmp_path / "files")
+        settings.files.retention_days = 1
+        store = FileStore(
+            settings.files_store_path,
+            retention_days=settings.files.retention_days,
+        )
+        stored = store.create(content=b"x", filename="x.jsonl", purpose="batch")
+        # Age the file past retention by rewriting expires_at in the index.
+        stored.expires_at = int((NOW - timedelta(days=1)).timestamp())
+        store._persist_index()
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["files"].deleted == 1
+        assert FileStore(settings.files_store_path).get(stored.id) is None
+
+
 class TestPostgresHooks:
     def test_postgres_trace_store_exposes_prune(self):
         from daari.observability.postgres_trace import PostgresTraceStore

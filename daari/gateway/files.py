@@ -1,4 +1,4 @@
-"""OpenAI-compatible Files API — local disk store for Batch JSONL (#442)."""
+"""OpenAI-compatible Files API — local disk store for Batch JSONL (#442, #456)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,19 @@ from typing import Any, Iterable
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024  # 100 MiB
 
 
+class FileStoreFull(Exception):
+    """Raised when an upload would exceed ``max_total_bytes`` (#456)."""
+
+    def __init__(self, *, max_total_bytes: int, current_bytes: int, incoming_bytes: int) -> None:
+        self.max_total_bytes = max_total_bytes
+        self.current_bytes = current_bytes
+        self.incoming_bytes = incoming_bytes
+        super().__init__(
+            f"files store would exceed max_total_bytes of {max_total_bytes} "
+            f"(current={current_bytes}, upload={incoming_bytes})"
+        )
+
+
 @dataclass
 class StoredFile:
     id: str
@@ -22,9 +35,10 @@ class StoredFile:
     created_at: int = field(default_factory=lambda: int(time.time()))
     path: Path | None = None
     owner_key_id: str | None = None
+    expires_at: int | None = None
 
     def as_public(self) -> dict[str, Any]:
-        return {
+        payload = {
             "id": self.id,
             "object": "file",
             "bytes": self.bytes,
@@ -32,6 +46,14 @@ class StoredFile:
             "filename": self.filename,
             "purpose": self.purpose,
         }
+        if self.expires_at is not None:
+            payload["expires_at"] = self.expires_at
+        return payload
+
+    def is_expired(self, *, now: int | None = None) -> bool:
+        if self.expires_at is None:
+            return False
+        return int(now if now is not None else time.time()) >= int(self.expires_at)
 
 
 def file_visible_to_caller(stored: StoredFile, claims: Any | None) -> bool:
@@ -49,6 +71,29 @@ def file_visible_to_caller(stored: StoredFile, claims: Any | None) -> bool:
     return owner == getattr(claims, "key_id", None)
 
 
+def parse_expires_after(raw: Any) -> int | None:
+    """Return expiry seconds from OpenAI ``expires_after``, or None."""
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("expires_after must be a JSON object") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("expires_after must be an object with anchor and seconds")
+    anchor = str(raw.get("anchor") or "created_at")
+    if anchor != "created_at":
+        raise ValueError("expires_after.anchor must be 'created_at'")
+    try:
+        seconds = int(raw.get("seconds"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("expires_after.seconds must be an integer") from exc
+    if seconds < 1:
+        raise ValueError("expires_after.seconds must be >= 1")
+    return seconds
+
+
 class FileStore:
     """Disk-backed OpenAI-shaped file registry under the daari data dir."""
 
@@ -57,10 +102,14 @@ class FileStore:
         root: str | Path,
         *,
         max_bytes: int = DEFAULT_MAX_BYTES,
+        retention_days: int = 0,
+        max_total_bytes: int = 0,
     ) -> None:
         self.root = Path(root).expanduser()
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_bytes = max(1, int(max_bytes))
+        self.retention_days = max(0, int(retention_days))
+        self.max_total_bytes = max(0, int(max_total_bytes))
         self._meta_path = self.root / "index.json"
         self._files: dict[str, StoredFile] = {}
         self._order: list[str] = []
@@ -82,6 +131,8 @@ class FileStore:
             path = self.root / f"{file_id}.bin"
             owner_raw = entry.get("owner_key_id")
             owner_key_id = str(owner_raw) if owner_raw else None
+            expires_raw = entry.get("expires_at")
+            expires_at = int(expires_raw) if expires_raw not in (None, "") else None
             stored = StoredFile(
                 id=file_id,
                 filename=str(entry.get("filename") or "upload"),
@@ -90,6 +141,7 @@ class FileStore:
                 created_at=int(entry.get("created_at") or time.time()),
                 path=path if path.is_file() else None,
                 owner_key_id=owner_key_id,
+                expires_at=expires_at,
             )
             if stored.path is None:
                 continue
@@ -106,12 +158,28 @@ class FileStore:
                     "bytes": stored.bytes,
                     "created_at": stored.created_at,
                     "owner_key_id": stored.owner_key_id,
+                    "expires_at": stored.expires_at,
                 }
                 for file_id in self._order
                 if (stored := self._files.get(file_id)) is not None
             ]
         }
         self._meta_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def total_bytes(self) -> int:
+        return sum(stored.bytes for stored in self._files.values())
+
+    def _resolve_expires_at(
+        self,
+        *,
+        created_at: int,
+        expires_after_seconds: int | None,
+    ) -> int | None:
+        if expires_after_seconds is not None:
+            return int(created_at) + int(expires_after_seconds)
+        if self.retention_days > 0:
+            return int(created_at) + self.retention_days * 86400
+        return None
 
     def create(
         self,
@@ -120,30 +188,53 @@ class FileStore:
         filename: str,
         purpose: str = "batch",
         owner_key_id: str | None = None,
+        expires_after: Any | None = None,
+        expires_after_seconds: int | None = None,
     ) -> StoredFile:
         if len(content) > self.max_bytes:
             raise ValueError(
                 f"file exceeds max size of {self.max_bytes} bytes "
                 f"({len(content)} bytes uploaded)"
             )
+        if expires_after_seconds is None and expires_after is not None:
+            expires_after_seconds = parse_expires_after(expires_after)
+        current = self.total_bytes()
+        if self.max_total_bytes > 0 and current + len(content) > self.max_total_bytes:
+            raise FileStoreFull(
+                max_total_bytes=self.max_total_bytes,
+                current_bytes=current,
+                incoming_bytes=len(content),
+            )
         file_id = f"file-{uuid.uuid4().hex}"
         path = self.root / f"{file_id}.bin"
         path.write_bytes(content)
+        created_at = int(time.time())
         stored = StoredFile(
             id=file_id,
             filename=filename or "upload",
             purpose=purpose or "batch",
             bytes=len(content),
+            created_at=created_at,
             path=path,
             owner_key_id=owner_key_id,
+            expires_at=self._resolve_expires_at(
+                created_at=created_at,
+                expires_after_seconds=expires_after_seconds,
+            ),
         )
         self._files[file_id] = stored
         self._order.append(file_id)
         self._persist_index()
         return stored
 
-    def get(self, file_id: str) -> StoredFile | None:
-        return self._files.get(file_id)
+    def get(self, file_id: str, *, now: int | None = None) -> StoredFile | None:
+        stored = self._files.get(file_id)
+        if stored is None:
+            return None
+        if stored.is_expired(now=now):
+            self.delete(file_id)
+            return None
+        return stored
 
     def list_files(
         self,
@@ -151,7 +242,9 @@ class FileStore:
         purpose: str | None = None,
         limit: int = 10000,
         owner_key_id: str | None = None,
+        now: int | None = None,
     ) -> list[StoredFile]:
+        self.prune_expired(now=now)
         ids = list(reversed(self._order))
         out: list[StoredFile] = []
         for file_id in ids:
@@ -167,14 +260,14 @@ class FileStore:
                 break
         return out
 
-    def read_bytes(self, file_id: str) -> bytes | None:
-        stored = self.get(file_id)
+    def read_bytes(self, file_id: str, *, now: int | None = None) -> bytes | None:
+        stored = self.get(file_id, now=now)
         if stored is None or stored.path is None or not stored.path.is_file():
             return None
         return stored.path.read_bytes()
 
-    def read_text(self, file_id: str) -> str | None:
-        raw = self.read_bytes(file_id)
+    def read_text(self, file_id: str, *, now: int | None = None) -> str | None:
+        raw = self.read_bytes(file_id, now=now)
         if raw is None:
             return None
         return raw.decode("utf-8")
@@ -192,6 +285,20 @@ class FileStore:
         self._persist_index()
         return True
 
+    def prune_expired(self, *, now: int | None = None, dry_run: bool = False) -> int:
+        """Delete expired files from index + disk. Returns count removed."""
+        stamp = int(now if now is not None else time.time())
+        expired = [
+            file_id
+            for file_id, stored in list(self._files.items())
+            if stored.is_expired(now=stamp)
+        ]
+        if dry_run:
+            return len(expired)
+        for file_id in expired:
+            self.delete(file_id)
+        return len(expired)
+
     def write_jsonl(
         self,
         *,
@@ -199,6 +306,7 @@ class FileStore:
         filename: str,
         purpose: str,
         owner_key_id: str | None = None,
+        expires_after_seconds: int | None = None,
     ) -> StoredFile:
         body = "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines)
         return self.create(
@@ -206,6 +314,7 @@ class FileStore:
             filename=filename,
             purpose=purpose,
             owner_key_id=owner_key_id,
+            expires_after_seconds=expires_after_seconds,
         )
 
 

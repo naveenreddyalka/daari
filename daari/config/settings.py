@@ -599,7 +599,7 @@ class UsageSettings(BaseModel):
 
 
 class FilesSettings(BaseModel):
-    """Local OpenAI Files API store for Batch JSONL (#442)."""
+    """Local OpenAI Files API store for Batch JSONL (#442, #456)."""
 
     enabled: bool = True
     path: str = "~/.daari/files"
@@ -607,6 +607,22 @@ class FilesSettings(BaseModel):
         default=100 * 1024 * 1024,
         ge=1,
         description="Maximum upload size in bytes for POST /v1/files.",
+    )
+    retention_days: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Fallback expiry for files without expires_after (#456). "
+            "0 keeps files forever until an explicit expires_after."
+        ),
+    )
+    max_total_bytes: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Hard cap on aggregate stored bytes (#456). 0 disables the cap. "
+            "Uploads that would exceed it return 413."
+        ),
     )
 
 

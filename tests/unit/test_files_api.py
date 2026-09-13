@@ -75,6 +75,54 @@ def test_index_survives_reload(tmp_path):
     assert second.read_bytes(stored.id) == b"hello"
 
 
+def test_expires_after_sets_expires_at_and_404s_when_past(tmp_path):
+    store = FileStore(tmp_path / "files")
+    stored = store.create(
+        content=b"temp",
+        filename="t.jsonl",
+        purpose="batch",
+        expires_after={"anchor": "created_at", "seconds": 60},
+    )
+    assert stored.expires_at == stored.created_at + 60
+    assert "expires_at" in stored.as_public()
+    assert store.get(stored.id) is stored
+    assert store.get(stored.id, now=stored.expires_at) is None
+    assert store.get(stored.id) is None
+    assert not (tmp_path / "files" / f"{stored.id}.bin").exists()
+
+
+def test_retention_days_fallback_and_prune(tmp_path):
+    store = FileStore(tmp_path / "files", retention_days=1)
+    stored = store.create(content=b"old", filename="o.jsonl", purpose="batch")
+    assert stored.expires_at == stored.created_at + 86400
+    assert store.prune_expired(now=stored.expires_at - 1) == 0
+    assert store.prune_expired(now=stored.expires_at) == 1
+    assert store.get(stored.id) is None
+
+
+def test_max_total_bytes_rejects_with_store_full(tmp_path):
+    from daari.gateway.files import FileStoreFull
+
+    store = FileStore(tmp_path / "files", max_total_bytes=10)
+    store.create(content=b"12345", filename="a.jsonl", purpose="batch")
+    with pytest.raises(FileStoreFull) as excinfo:
+        store.create(content=b"123456", filename="b.jsonl", purpose="batch")
+    assert excinfo.value.max_total_bytes == 10
+    assert excinfo.value.current_bytes == 5
+
+
+def test_batch_output_honors_retention_days(tmp_path):
+    store = FileStore(tmp_path / "files", retention_days=2)
+    out = store.write_jsonl(
+        lines=[{"ok": True}],
+        filename="out.jsonl",
+        purpose="batch_output",
+        owner_key_id="vk_1",
+    )
+    assert out.expires_at == out.created_at + 2 * 86400
+    assert out.owner_key_id == "vk_1"
+
+
 def test_create_records_owner_key_id_and_persists(tmp_path):
     """FileStore.create snapshots owner; index survives reload (#452)."""
     root = tmp_path / "files"
