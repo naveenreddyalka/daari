@@ -1268,11 +1268,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             store = _ensure_file_store(ctx)
             raw = await file.read()
+            claims = getattr(request.state, "auth_claims", None)
+            owner_key_id = (
+                getattr(claims, "key_id", None)
+                if getattr(claims, "kind", None) == "virtual"
+                else None
+            )
             try:
                 stored = store.create(
                     content=raw,
                     filename=file.filename or "upload",
                     purpose=purpose or "batch",
+                    owner_key_id=owner_key_id,
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1292,26 +1299,49 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             store = ctx.file_store
             if store is None:
                 return {"object": "list", "data": [], "has_more": False}
-            data = [item.as_public() for item in store.list_files(purpose=purpose, limit=limit)]
+            claims = getattr(request.state, "auth_claims", None)
+            owner_filter = (
+                getattr(claims, "key_id", None)
+                if getattr(claims, "kind", None) == "virtual"
+                else None
+            )
+            # Virtual keys pass owner_key_id so limit applies within their scope.
+            # Master / no-auth leave owner_filter None and see every file.
+            data = [
+                item.as_public()
+                for item in store.list_files(
+                    purpose=purpose,
+                    limit=limit,
+                    owner_key_id=owner_filter,
+                )
+            ]
             return {"object": "list", "data": data, "has_more": False}
 
         @router.get("/v1/files/{file_id}")
         async def retrieve_file(file_id: str, request: Request) -> dict[str, Any]:
+            from daari.gateway.files import file_visible_to_caller
+
             ctx: AppContext = request.app.state.ctx
             store = ctx.file_store
             stored = store.get(file_id) if store is not None else None
-            if stored is None:
+            claims = getattr(request.state, "auth_claims", None)
+            if stored is None or not file_visible_to_caller(stored, claims):
                 raise HTTPException(status_code=404, detail="file not found")
             return stored.as_public()
 
         @router.get("/v1/files/{file_id}/content")
         async def download_file_content(file_id: str, request: Request) -> Response:
+            from daari.gateway.files import file_visible_to_caller
+
             ctx: AppContext = request.app.state.ctx
             store = ctx.file_store
+            stored = store.get(file_id) if store is not None else None
+            claims = getattr(request.state, "auth_claims", None)
+            if stored is None or not file_visible_to_caller(stored, claims):
+                raise HTTPException(status_code=404, detail="file not found")
             raw = store.read_bytes(file_id) if store is not None else None
             if raw is None:
                 raise HTTPException(status_code=404, detail="file not found")
-            stored = store.get(file_id) if store is not None else None
             filename = stored.filename if stored is not None else file_id
             return Response(
                 content=raw,
@@ -1323,9 +1353,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.delete("/v1/files/{file_id}")
         async def delete_file(file_id: str, request: Request) -> dict[str, Any]:
+            from daari.gateway.files import file_visible_to_caller
+
             ctx: AppContext = request.app.state.ctx
             store = ctx.file_store
-            if store is None or not store.delete(file_id):
+            stored = store.get(file_id) if store is not None else None
+            claims = getattr(request.state, "auth_claims", None)
+            if store is None or stored is None or not file_visible_to_caller(stored, claims):
+                raise HTTPException(status_code=404, detail="file not found")
+            if not store.delete(file_id):
                 raise HTTPException(status_code=404, detail="file not found")
             return {"id": file_id, "object": "file", "deleted": True}
 
@@ -1376,7 +1412,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             store = ctx.batch_store
             if store is None:
                 return {"object": "list", "data": [], "first_id": None, "last_id": None, "has_more": False}
-            jobs = store.list_batches(limit=limit)
+            claims = getattr(request.state, "auth_claims", None)
+            owner_filter = (
+                getattr(claims, "key_id", None)
+                if getattr(claims, "kind", None) == "virtual"
+                else None
+            )
+            jobs = store.list_batches(limit=limit, owner_key_id=owner_filter)
             data = [store.as_public(job) for job in jobs]
             return {
                 "object": "list",
@@ -1388,23 +1430,32 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/batches/{batch_id}")
         async def retrieve_batch(batch_id: str, request: Request) -> dict[str, Any]:
+            from daari.gateway.batches import batch_visible_to_caller
+
             ctx: AppContext = request.app.state.ctx
             store = ctx.batch_store
             job = store.get(batch_id) if store is not None else None
-            if job is None:
+            claims = getattr(request.state, "auth_claims", None)
+            if job is None or not batch_visible_to_caller(job, claims):
                 raise HTTPException(status_code=404, detail="batch not found")
             return store.as_public(job)
 
         @router.post("/v1/batches/{batch_id}/cancel")
         async def cancel_batch(batch_id: str, request: Request) -> dict[str, Any]:
+            from daari.gateway.batches import batch_visible_to_caller
+
             ctx: AppContext = request.app.state.ctx
             store = ctx.batch_store
             if store is None:
                 raise HTTPException(status_code=404, detail="batch not found")
-            job = store.cancel(batch_id)
-            if job is None:
+            job = store.get(batch_id)
+            claims = getattr(request.state, "auth_claims", None)
+            if job is None or not batch_visible_to_caller(job, claims):
                 raise HTTPException(status_code=404, detail="batch not found")
-            return store.as_public(job)
+            cancelled = store.cancel(batch_id)
+            if cancelled is None:
+                raise HTTPException(status_code=404, detail="batch not found")
+            return store.as_public(cancelled)
 
         return router
 

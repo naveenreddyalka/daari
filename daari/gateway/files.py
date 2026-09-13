@@ -21,6 +21,7 @@ class StoredFile:
     bytes: int
     created_at: int = field(default_factory=lambda: int(time.time()))
     path: Path | None = None
+    owner_key_id: str | None = None
 
     def as_public(self) -> dict[str, Any]:
         return {
@@ -31,6 +32,21 @@ class StoredFile:
             "filename": self.filename,
             "purpose": self.purpose,
         }
+
+
+def file_visible_to_caller(stored: StoredFile, claims: Any | None) -> bool:
+    """Return whether auth claims may see this file (#452).
+
+    Master / no-auth sees everything. Virtual keys see only files they own;
+    pre-existing ownerless files stay master-only.
+    """
+    kind = getattr(claims, "kind", None) if claims is not None else None
+    if kind != "virtual":
+        return True
+    owner = stored.owner_key_id
+    if not owner:
+        return False
+    return owner == getattr(claims, "key_id", None)
 
 
 class FileStore:
@@ -64,6 +80,8 @@ class FileStore:
                 continue
             file_id = str(entry["id"])
             path = self.root / f"{file_id}.bin"
+            owner_raw = entry.get("owner_key_id")
+            owner_key_id = str(owner_raw) if owner_raw else None
             stored = StoredFile(
                 id=file_id,
                 filename=str(entry.get("filename") or "upload"),
@@ -71,6 +89,7 @@ class FileStore:
                 bytes=int(entry.get("bytes") or 0),
                 created_at=int(entry.get("created_at") or time.time()),
                 path=path if path.is_file() else None,
+                owner_key_id=owner_key_id,
             )
             if stored.path is None:
                 continue
@@ -86,6 +105,7 @@ class FileStore:
                     "purpose": stored.purpose,
                     "bytes": stored.bytes,
                     "created_at": stored.created_at,
+                    "owner_key_id": stored.owner_key_id,
                 }
                 for file_id in self._order
                 if (stored := self._files.get(file_id)) is not None
@@ -99,6 +119,7 @@ class FileStore:
         content: bytes,
         filename: str,
         purpose: str = "batch",
+        owner_key_id: str | None = None,
     ) -> StoredFile:
         if len(content) > self.max_bytes:
             raise ValueError(
@@ -114,6 +135,7 @@ class FileStore:
             purpose=purpose or "batch",
             bytes=len(content),
             path=path,
+            owner_key_id=owner_key_id,
         )
         self._files[file_id] = stored
         self._order.append(file_id)
@@ -123,7 +145,13 @@ class FileStore:
     def get(self, file_id: str) -> StoredFile | None:
         return self._files.get(file_id)
 
-    def list_files(self, *, purpose: str | None = None, limit: int = 10000) -> list[StoredFile]:
+    def list_files(
+        self,
+        *,
+        purpose: str | None = None,
+        limit: int = 10000,
+        owner_key_id: str | None = None,
+    ) -> list[StoredFile]:
         ids = list(reversed(self._order))
         out: list[StoredFile] = []
         for file_id in ids:
@@ -131,6 +159,8 @@ class FileStore:
             if stored is None:
                 continue
             if purpose and stored.purpose != purpose:
+                continue
+            if owner_key_id is not None and stored.owner_key_id != owner_key_id:
                 continue
             out.append(stored)
             if len(out) >= max(1, min(limit, 10000)):
@@ -168,9 +198,15 @@ class FileStore:
         lines: Iterable[dict[str, Any]],
         filename: str,
         purpose: str,
+        owner_key_id: str | None = None,
     ) -> StoredFile:
         body = "".join(json.dumps(line, ensure_ascii=False) + "\n" for line in lines)
-        return self.create(content=body.encode("utf-8"), filename=filename, purpose=purpose)
+        return self.create(
+            content=body.encode("utf-8"),
+            filename=filename,
+            purpose=purpose,
+            owner_key_id=owner_key_id,
+        )
 
 
 def parse_batch_jsonl(text: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

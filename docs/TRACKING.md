@@ -2192,6 +2192,18 @@ modified files, is idempotent / `--dry-run` safe, and prints a one-line verify
 curl. Unknown clients list supported names and exit 1. Client docs link the
 fast path. Covered by `tests/unit/test_configure_cli.py`.
 
+### Batch and Files reads scoped to creating key ([#452](https://github.com/naveenreddyalka/daari/issues/452))
+
+<!-- tracking:#452 -->
+**Status:** Done (2026-09-13). `FileStore` records `owner_key_id` (nullable for
+master/no-auth) and persists it in `index.json`. Virtual-key auth scopes
+`GET/DELETE /v1/files` and content downloads to the caller's files (404 for
+cross-tenant / ownerless); master sees everything. `GET /v1/batches` and
+get/cancel use `BatchGovernance.key_id` the same way. Batch
+`output_file_id` / `error_file_id` inherit the job owner. Covered by
+`tests/unit/test_files_api.py`, `tests/unit/test_batches.py`, and
+`tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update

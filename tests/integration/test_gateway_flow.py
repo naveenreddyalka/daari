@@ -3131,3 +3131,134 @@ async def test_files_api_batch_end_to_end(app, monkeypatch, tmp_path):
         deleted = await client.delete(f"/v1/files/{file_id}", headers=META_HEADERS)
         assert deleted.status_code == 200
         assert deleted.json()["deleted"] is True
+
+
+@pytest.mark.asyncio
+async def test_files_and_batches_scoped_to_creating_key(settings, tmp_path, monkeypatch):
+    """Two virtual keys cannot list/get/cancel/delete each other's artifacts (#452)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.gateway.files import FileStore
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.files.path = str(tmp_path / "files")
+    vk_store = VirtualKeyStore(settings.virtual_keys_path)
+    alice = vk_store.create("alice", client_id="alice")
+    bob = vk_store.create("bob", client_id="bob")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = vk_store
+    application.state.ctx.virtual_key_store = vk_store
+    file_store = FileStore(tmp_path / "files")
+    application.state.ctx.file_store = file_store
+    if application.state.ctx.batch_store is not None:
+        application.state.ctx.batch_store.file_store = file_store
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="tenancy-ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    mock_all_ollama_executors(monkeypatch, application.state.ctx.router, fake_execute)
+    alice_h = {"Authorization": f"Bearer {alice.plaintext}"}
+    bob_h = {"Authorization": f"Bearer {bob.plaintext}"}
+    master_h = {"Authorization": "Bearer master"}
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        alice_file = await client.post(
+            "/v1/files",
+            files={"file": ("a.jsonl", b'{"custom_id":"a"}\n', "application/jsonl")},
+            data={"purpose": "batch"},
+            headers=alice_h,
+        )
+        assert alice_file.status_code == 200, alice_file.text
+        alice_fid = alice_file.json()["id"]
+
+        bob_file = await client.post(
+            "/v1/files",
+            files={"file": ("b.jsonl", b'{"custom_id":"b"}\n', "application/jsonl")},
+            data={"purpose": "batch"},
+            headers=bob_h,
+        )
+        assert bob_file.status_code == 200, bob_file.text
+        bob_fid = bob_file.json()["id"]
+
+        listed_alice = await client.get("/v1/files", headers=alice_h)
+        assert {item["id"] for item in listed_alice.json()["data"]} == {alice_fid}
+        listed_bob = await client.get("/v1/files", headers=bob_h)
+        assert {item["id"] for item in listed_bob.json()["data"]} == {bob_fid}
+        listed_master = await client.get("/v1/files", headers=master_h)
+        assert {item["id"] for item in listed_master.json()["data"]} == {alice_fid, bob_fid}
+
+        assert (await client.get(f"/v1/files/{bob_fid}", headers=alice_h)).status_code == 404
+        assert (await client.get(f"/v1/files/{bob_fid}/content", headers=alice_h)).status_code == 404
+        assert (await client.delete(f"/v1/files/{bob_fid}", headers=alice_h)).status_code == 404
+        assert (await client.get(f"/v1/files/{bob_fid}", headers=master_h)).status_code == 200
+
+        alice_batch = await client.post(
+            "/v1/batches",
+            json={
+                "endpoint": "/v1/chat/completions",
+                "requests": [
+                    {
+                        "custom_id": "r1",
+                        "method": "POST",
+                        "url": "/v1/chat/completions",
+                        "body": {
+                            "model": "llama3.2:3b",
+                            "messages": [{"role": "user", "content": "hi"}],
+                        },
+                    }
+                ],
+            },
+            headers=alice_h,
+        )
+        assert alice_batch.status_code == 200, alice_batch.text
+        alice_bid = alice_batch.json()["id"]
+
+        bob_batch = await client.post(
+            "/v1/batches",
+            json={
+                "endpoint": "/v1/chat/completions",
+                "requests": [
+                    {
+                        "custom_id": "r2",
+                        "method": "POST",
+                        "url": "/v1/chat/completions",
+                        "body": {
+                            "model": "llama3.2:3b",
+                            "messages": [{"role": "user", "content": "yo"}],
+                        },
+                    }
+                ],
+            },
+            headers=bob_h,
+        )
+        assert bob_batch.status_code == 200, bob_batch.text
+        bob_bid = bob_batch.json()["id"]
+
+        assert {j["id"] for j in (await client.get("/v1/batches", headers=alice_h)).json()["data"]} == {
+            alice_bid
+        }
+        assert (await client.get(f"/v1/batches/{bob_bid}", headers=alice_h)).status_code == 404
+        assert (await client.post(f"/v1/batches/{bob_bid}/cancel", headers=alice_h)).status_code == 404
+        assert (await client.get(f"/v1/batches/{bob_bid}", headers=master_h)).status_code == 200
+
+        final = await _poll_batch(client, alice_bid, headers=alice_h)
+        assert final["status"] == "completed"
+        assert final["output_file_id"]
+        assert (
+            await client.get(f"/v1/files/{final['output_file_id']}", headers=bob_h)
+        ).status_code == 404
+        assert (
+            await client.get(f"/v1/files/{final['output_file_id']}", headers=alice_h)
+        ).status_code == 200
+

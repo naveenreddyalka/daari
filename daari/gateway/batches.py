@@ -72,6 +72,23 @@ class BatchGovernance:
     user_agent: str | None = None
 
 
+def batch_visible_to_caller(job: BatchJob, claims: Any | None) -> bool:
+    """Return whether auth claims may see this batch (#452).
+
+    Master / no-auth sees everything. Virtual keys see only jobs whose
+    ``governance.key_id`` matches; master-created / ownerless jobs stay
+    master-only.
+    """
+    kind = getattr(claims, "kind", None) if claims is not None else None
+    if kind != "virtual":
+        return True
+    gov = job.governance
+    owner = gov.key_id if gov is not None else None
+    if not owner:
+        return False
+    return owner == getattr(claims, "key_id", None)
+
+
 @dataclass
 class BatchItem:
     custom_id: str
@@ -391,13 +408,22 @@ class BatchStore:
             self._persist(job)
         return job
 
-    def list_batches(self, *, limit: int = 100) -> list[BatchJob]:
-        ids = list(reversed(self._order))[: max(1, min(limit, 1000))]
+    def list_batches(
+        self, *, limit: int = 100, owner_key_id: str | None = None
+    ) -> list[BatchJob]:
+        ids = list(reversed(self._order))
         out: list[BatchJob] = []
         for batch_id in ids:
             job = self.get(batch_id)
-            if job is not None:
-                out.append(job)
+            if job is None:
+                continue
+            if owner_key_id is not None:
+                gov = job.governance
+                if gov is None or gov.key_id != owner_key_id:
+                    continue
+            out.append(job)
+            if len(out) >= max(1, min(limit, 1000)):
+                break
         return out
 
     def cancel(self, batch_id: str) -> BatchJob | None:
@@ -682,11 +708,13 @@ class BatchStore:
         store = self.file_store
         if store is None or not job.results:
             return
+        owner_key_id = job.governance.key_id if job.governance is not None else None
         try:
             output = store.write_jsonl(
                 lines=job.results,
                 filename=f"{job.id}_output.jsonl",
                 purpose="batch_output",
+                owner_key_id=owner_key_id,
             )
             job.output_file_id = output.id
             failed_lines = [row for row in job.results if row.get("error") is not None]
@@ -695,6 +723,7 @@ class BatchStore:
                     lines=failed_lines,
                     filename=f"{job.id}_errors.jsonl",
                     purpose="batch_output",
+                    owner_key_id=owner_key_id,
                 )
                 job.error_file_id = error_file.id
         except Exception as exc:  # noqa: BLE001 — results still available inline
