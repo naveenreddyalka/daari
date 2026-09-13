@@ -160,6 +160,51 @@ class TestExecutor:
         assert response.daari_meta.usage_estimated is False
 
     @pytest.mark.asyncio
+    async def test_forwards_client_anthropic_beta_and_version(self):
+        """L6 Anthropic leg echoes client beta/version from RequestMeta (#455)."""
+        from daari.gateway.internal import RequestMeta
+        from daari.router.anthropic_messages import ANTHROPIC_VERSION
+
+        seen: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["headers"] = dict(request.headers)
+            return httpx.Response(
+                200,
+                json={
+                    "content": [{"type": "text", "text": "ok"}],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 1, "output_tokens": 1},
+                },
+            )
+
+        executor = FrontierExecutor(
+            base_url="https://api.anthropic.com",
+            default_model="claude-sonnet-4-0",
+            api_key="sk-ant-test",
+            provider="anthropic",
+            transport=httpx.MockTransport(handler),
+        )
+        await executor.execute(
+            _request(
+                meta=RequestMeta(
+                    anthropic_beta="context-1m-2025-08-07",
+                    anthropic_version="2024-10-22",
+                )
+            ),
+            escalated_from="L3",
+            local_confidence=0.2,
+        )
+        assert seen["headers"].get("anthropic-beta") == "context-1m-2025-08-07"
+        assert seen["headers"].get("anthropic-version") == "2024-10-22"
+
+        seen.clear()
+        await executor.execute(_request(), escalated_from="L3", local_confidence=0.2)
+        headers_lower = {k.lower(): v for k, v in seen["headers"].items()}
+        assert "anthropic-beta" not in headers_lower
+        assert headers_lower.get("anthropic-version") == ANTHROPIC_VERSION
+
+    @pytest.mark.asyncio
     async def test_openai_provider_is_unchanged(self):
         seen: dict = {}
 

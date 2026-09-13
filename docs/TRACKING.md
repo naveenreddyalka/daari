@@ -2226,6 +2226,16 @@ keep the OpenAI card shape. Same catalog ids as `openai_model_cards`. Covered by
 `tests/unit/test_anthropic_gateway.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Forward client anthropic-beta / anthropic-version on L6 ([#455](https://github.com/naveenreddyalka/daari/issues/455))
+
+<!-- tracking:#455 -->
+**Status:** Done (2026-09-13). Anthropic `/v1/messages` captures inbound
+`anthropic-beta` and `anthropic-version` onto `RequestMeta`. The L6 Anthropic
+leg forwards beta verbatim when present and lets client `anthropic-version`
+override the pinned `2023-06-01` default; absent beta is not injected. Local
+tiers unaffected. Covered by `tests/unit/test_anthropic_gateway.py` and
+`tests/unit/test_anthropic_egress.py`.
+
 ---
 
 ## How to update

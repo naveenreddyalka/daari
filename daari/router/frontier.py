@@ -15,7 +15,7 @@ from daari.gateway.provider_prefs import (
 )
 from daari.observability.tokens import openai_token_usage
 from daari.router.anthropic_messages import (
-    anthropic_headers,
+    anthropic_headers_for_request,
     anthropic_messages_path,
     infer_frontier_kind,
     text_delta_from_sse_data,
@@ -107,7 +107,7 @@ class FrontierExecutor:
                 stream=True,
                 prompt_cache=self.prompt_cache,
             )
-            headers = anthropic_headers(self.api_key)
+            headers = anthropic_headers_for_request(self.api_key, request)
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=True)
@@ -164,7 +164,7 @@ class FrontierExecutor:
                 stream=False,
                 prompt_cache=self.prompt_cache,
             )
-            headers = anthropic_headers(self.api_key)
+            headers = anthropic_headers_for_request(self.api_key, request)
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=False)
