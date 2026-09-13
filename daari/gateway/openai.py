@@ -714,9 +714,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
-            from daari.router.capabilities import openai_model_cards
+            from daari.gateway.anthropic import wants_anthropic_models
+            from daari.router.capabilities import anthropic_models_payload, openai_model_cards
 
             ctx: AppContext = request.app.state.ctx
+            # Claude Code / Desktop send anthropic-version and/or x-api-key (#454).
+            if wants_anthropic_models(request):
+                return anthropic_models_payload(ctx.settings)
             return {"object": "list", "data": openai_model_cards(ctx.settings)}
 
         @router.get("/v1/models/{model_id}")
