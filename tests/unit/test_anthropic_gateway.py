@@ -49,6 +49,85 @@ def test_anthropic_model_cards_match_openai_ids(settings) -> None:
 
 
 @pytest.mark.asyncio
+async def test_messages_captures_anthropic_beta_and_version(settings):
+    """Inbound anthropic-beta / anthropic-version land on RequestMeta (#455)."""
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    seen: list[InternalRequest] = []
+
+    async def fake_route(request: InternalRequest):
+        seen.append(request)
+        from daari.gateway.internal import DaariMeta, InternalResponse
+
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    application.state.ctx.router.route = fake_route
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://test"
+    ) as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            headers={
+                "anthropic-version": "2024-01-01",
+                "anthropic-beta": "context-1m-2025-08-07,interleaved-thinking-2025-05-14",
+            },
+        )
+        bare = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hi2"}],
+            },
+        )
+    assert response.status_code == 200
+    assert seen[0].meta.anthropic_version == "2024-01-01"
+    assert (
+        seen[0].meta.anthropic_beta
+        == "context-1m-2025-08-07,interleaved-thinking-2025-05-14"
+    )
+    assert bare.status_code == 200
+    assert seen[1].meta.anthropic_beta is None
+    assert seen[1].meta.anthropic_version is None
+
+
+def test_anthropic_headers_forward_beta_and_override_version() -> None:
+    from daari.gateway.internal import RequestMeta
+    from daari.router.anthropic_messages import (
+        ANTHROPIC_VERSION,
+        anthropic_headers,
+        anthropic_headers_for_request,
+    )
+
+    default = anthropic_headers("sk")
+    assert default["anthropic-version"] == ANTHROPIC_VERSION
+    assert "anthropic-beta" not in default
+
+    forwarded = anthropic_headers_for_request(
+        "sk",
+        InternalRequest(
+            messages=[Message(role="user", content="hi")],
+            model="claude",
+            meta=RequestMeta(
+                anthropic_beta="context-1m-2025-08-07",
+                anthropic_version="2024-10-22",
+            ),
+        ),
+    )
+    assert forwarded["anthropic-beta"] == "context-1m-2025-08-07"
+    assert forwarded["anthropic-version"] == "2024-10-22"
+
+
+@pytest.mark.asyncio
 async def test_models_list_anthropic_shape_via_header(settings):
     application = create_app(settings)
     application.state.ctx = AppContext.from_settings(settings)

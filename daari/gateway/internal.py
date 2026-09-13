@@ -73,6 +73,9 @@ class RequestMeta(BaseModel):
     stream_include_usage: bool = False
     # Named boundaries.profiles overlay (X-Daari-Boundary-Profile / #171).
     boundary_profile: str | None = None
+    # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
+    anthropic_beta: str | None = None
+    anthropic_version: str | None = None
 
 
 class InternalRequest(BaseModel):

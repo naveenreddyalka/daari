@@ -27,12 +27,31 @@ def anthropic_messages_path(base_url: str) -> str:
     return "/v1/messages"
 
 
-def anthropic_headers(api_key: str) -> dict[str, str]:
-    return {
+def anthropic_headers(
+    api_key: str,
+    *,
+    anthropic_beta: str | None = None,
+    anthropic_version: str | None = None,
+) -> dict[str, str]:
+    headers = {
         "x-api-key": api_key,
-        "anthropic-version": ANTHROPIC_VERSION,
+        "anthropic-version": (anthropic_version or "").strip() or ANTHROPIC_VERSION,
         "content-type": "application/json",
     }
+    beta = (anthropic_beta or "").strip()
+    if beta:
+        headers["anthropic-beta"] = beta
+    return headers
+
+
+def anthropic_headers_for_request(api_key: str, request: InternalRequest) -> dict[str, str]:
+    """Build L6 Anthropic headers, forwarding client beta/version when set (#455)."""
+    meta = request.meta
+    return anthropic_headers(
+        api_key,
+        anthropic_beta=meta.anthropic_beta,
+        anthropic_version=meta.anthropic_version,
+    )
 
 
 def openai_tools_to_anthropic(tools: list[Any] | None) -> list[dict[str, Any]]:

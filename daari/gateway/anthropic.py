@@ -316,6 +316,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 client_id=client_id,
                 user_agent=user_agent[:200] or None,
                 session_id=(x_daari_session or "").strip() or None,
+                anthropic_beta=(request.headers.get("anthropic-beta") or "").strip() or None,
+                anthropic_version=(request.headers.get("anthropic-version") or "").strip()
+                or None,
             )
             apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
