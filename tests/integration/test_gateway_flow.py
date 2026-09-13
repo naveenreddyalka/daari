@@ -3262,3 +3262,56 @@ async def test_files_and_batches_scoped_to_creating_key(settings, tmp_path, monk
             await client.get(f"/v1/files/{final['output_file_id']}", headers=alice_h)
         ).status_code == 200
 
+
+@pytest.mark.asyncio
+async def test_responses_scoped_to_creating_key(settings, tmp_path):
+    """Two virtual keys cannot GET or chain each other's stored responses (#453)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.trace.path = str(tmp_path / "trace.jsonl")
+    vk_store = VirtualKeyStore(settings.virtual_keys_path)
+    alice = vk_store.create("alice", client_id="alice")
+    bob = vk_store.create("bob", client_id="bob")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    application.state.virtual_key_store = vk_store
+    application.state.ctx.virtual_key_store = vk_store
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="tenancy-resp",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=1),
+        )
+
+    application.state.ctx.router.route = fake_route
+    alice_h = {"Authorization": f"Bearer {alice.plaintext}"}
+    bob_h = {"Authorization": f"Bearer {bob.plaintext}"}
+    master_h = {"Authorization": "Bearer master"}
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post(
+            "/v1/responses", json={"model": "daari", "input": "private"}, headers=alice_h
+        )
+        assert created.status_code == 200, created.text
+        rid = created.json()["id"]
+        assert (await client.get(f"/v1/responses/{rid}", headers=alice_h)).status_code == 200
+        assert (await client.get(f"/v1/responses/{rid}", headers=bob_h)).status_code == 404
+        assert (await client.get(f"/v1/responses/{rid}", headers=master_h)).status_code == 200
+        denied = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "chain", "previous_response_id": rid},
+            headers=bob_h,
+        )
+        assert denied.status_code == 400
+        assert "previous_response_id not found" in denied.json()["detail"]
+        chained = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "chain", "previous_response_id": rid},
+            headers=alice_h,
+        )
+        assert chained.status_code == 200
+

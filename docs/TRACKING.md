@@ -2204,6 +2204,17 @@ get/cancel use `BatchGovernance.key_id` the same way. Batch
 `tests/unit/test_files_api.py`, `tests/unit/test_batches.py`, and
 `tests/integration/test_gateway_flow.py`.
 
+### Stored Responses scoped to creating key ([#453](https://github.com/naveenreddyalka/daari/issues/453))
+
+<!-- tracking:#453 -->
+**Status:** Done (2026-09-13). `ResponseStore` gains `owner_key_id` (migrates
+legacy rows to master-only). Virtual-key `GET /v1/responses/{id}` and
+`previous_response_id` reject cross-tenant ids with the same not-found shapes;
+master/no-auth unrestricted. Background polls keep the create-time owner.
+Covered by `tests/unit/test_response_store.py`,
+`tests/unit/test_responses_tenancy.py`, and
+`tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update

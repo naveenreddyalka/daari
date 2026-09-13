@@ -270,6 +270,14 @@ def _store_for(ctx: AppContext) -> ResponseStore:
     return ResponseStore(Path(ctx.settings.trace.path).expanduser().parent / "responses.sqlite3")
 
 
+def _owner_key_id_from_request(request: Request) -> str | None:
+    claims = getattr(request.state, "auth_claims", None)
+    if getattr(claims, "kind", None) == "virtual":
+        return getattr(claims, "key_id", None)
+    return None
+
+
+
 class ResponsesGatewayAdapter(GatewayAdapter):
     id = "responses"
 
@@ -278,8 +286,11 @@ class ResponsesGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/responses/{response_id}")
         async def get_response(response_id: str, request: Request) -> dict[str, Any]:
+            from daari.gateway.response_store import response_visible_to_caller
+
             stored = _store_for(request.app.state.ctx).get(response_id)
-            if stored is None:
+            claims = getattr(request.state, "auth_claims", None)
+            if stored is None or not response_visible_to_caller(stored, claims):
                 raise HTTPException(status_code=404, detail="response not found")
             return _public_body(stored)
 
@@ -297,6 +308,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
         ) -> Any:
+            from daari.gateway.response_store import response_visible_to_caller
+
             ctx: AppContext = request.app.state.ctx
             if body.include:
                 raise HTTPException(
@@ -310,10 +323,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 latency_budget_ms = None
 
             store = _store_for(ctx)
+            owner_key_id = _owner_key_id_from_request(request)
+            claims = getattr(request.state, "auth_claims", None)
             messages = responses_input_to_messages(body)
             if body.previous_response_id:
                 prior = store.get(body.previous_response_id)
-                if prior is None:
+                if prior is None or not response_visible_to_caller(prior, claims):
                     raise HTTPException(
                         status_code=400,
                         detail=f"previous_response_id not found: {body.previous_response_id}",
@@ -335,7 +350,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
 
-            apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
+            apply_auth_claims_to_meta(meta, claims)
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
                 messages=messages,
@@ -370,6 +385,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         metadata=body.metadata,
                         store=store if body.store else None,
                         history=messages,
+                        owner_key_id=owner_key_id,
                     ),
                     media_type="text/event-stream",
                     headers=SSE_HEADERS,
@@ -386,7 +402,13 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 }
                 if body.metadata is not None:
                     queued["metadata"] = body.metadata
-                store.put(response_id, queued, conversation=[], stored=True)
+                store.put(
+                    response_id,
+                    queued,
+                    conversation=[],
+                    stored=True,
+                    owner_key_id=owner_key_id,
+                )
                 background_tasks.add_task(
                     self._run_background,
                     ctx,
@@ -397,6 +419,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     body.metadata,
                     messages,
                     store,
+                    owner_key_id,
                 )
                 return queued
 
@@ -430,6 +453,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 payload,
                 conversation=_conversation_after(messages, payload["output"]),
                 stored=body.store,
+                owner_key_id=owner_key_id,
             )
             return payload
 
@@ -445,6 +469,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         metadata: dict[str, str] | None,
         history: list[Message],
         store: ResponseStore,
+        owner_key_id: str | None = None,
     ) -> None:
         try:
             result = await ctx.router.route(internal)
@@ -460,6 +485,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 payload,
                 conversation=_conversation_after(history, payload["output"]),
                 stored=True,
+                owner_key_id=owner_key_id,
             )
         except Exception as exc:  # noqa: BLE001 — persist failure for GET polling
             store.put(
@@ -473,6 +499,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 },
                 conversation=[],
                 stored=True,
+                owner_key_id=owner_key_id,
             )
 
     @staticmethod
@@ -485,6 +512,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         metadata: dict[str, str] | None = None,
         store: ResponseStore | None = None,
         history: list[Message] | None = None,
+        owner_key_id: str | None = None,
     ) -> AsyncIterator[str]:
         """Re-emit the routed chat-completions stream as Responses events."""
         message_id = f"msg_{uuid.uuid4().hex[:12]}"
@@ -657,6 +685,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 completed,
                 conversation=_conversation_after(history or [], output),
                 stored=True,
+                owner_key_id=owner_key_id,
             )
         log_gateway_event(
             "responses_stream_done",
