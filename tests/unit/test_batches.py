@@ -461,6 +461,81 @@ def test_create_stores_governance_snapshot():
     assert job.governance.key_id == "vk_1"
 
 
+def test_list_batches_filters_by_owner_key_id():
+    """Virtual-key callers only list their own jobs (#452)."""
+    store = BatchStore()
+    a = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "a"}]}],
+        governance=BatchGovernance(key_id="vk_a", kind="virtual"),
+    )
+    b = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "b"}]}],
+        governance=BatchGovernance(key_id="vk_b", kind="virtual"),
+    )
+    master = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "m"}]}],
+        governance=BatchGovernance(kind="master"),
+    )
+    assert {job.id for job in store.list_batches(owner_key_id="vk_a")} == {a.id}
+    assert {job.id for job in store.list_batches(owner_key_id="vk_b")} == {b.id}
+    assert {job.id for job in store.list_batches()} == {a.id, b.id, master.id}
+
+
+def test_batch_visible_to_caller_scopes_virtual_vs_master():
+    from daari.gateway.batches import batch_visible_to_caller
+    from daari.server.auth import AuthClaims
+
+    store = BatchStore()
+    mine = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "a"}]}],
+        governance=BatchGovernance(key_id="vk_1", kind="virtual"),
+    )
+    theirs = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "b"}]}],
+        governance=BatchGovernance(key_id="vk_2", kind="virtual"),
+    )
+    orphan = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "m"}]}],
+        governance=BatchGovernance(kind="master"),
+    )
+    vk = AuthClaims(kind="virtual", key_id="vk_1")
+    master = AuthClaims(kind="master")
+    assert batch_visible_to_caller(mine, vk) is True
+    assert batch_visible_to_caller(theirs, vk) is False
+    assert batch_visible_to_caller(orphan, vk) is False
+    assert batch_visible_to_caller(mine, master) is True
+    assert batch_visible_to_caller(orphan, master) is True
+
+
+@pytest.mark.asyncio
+async def test_result_files_inherit_job_owner(tmp_path):
+    """Batch output/error JSONL files inherit the creating key (#452)."""
+    from daari.gateway.files import FileStore
+
+    files = FileStore(tmp_path / "files")
+    store = BatchStore(file_store=files)
+    job = store.create(
+        requests=[
+            {"model": "m", "messages": [{"role": "user", "content": "ok"}]},
+            {"model": "m", "messages": [{"role": "user", "content": "boom"}]},
+        ],
+        governance=BatchGovernance(key_id="vk_owner", kind="virtual"),
+    )
+
+    async def execute_one(body: dict) -> dict:
+        if body["messages"][0]["content"] == "boom":
+            raise RuntimeError("upstream failed")
+        return {"ok": True}
+
+    await store.run_job(job.id, execute_one)
+    refreshed = store.get(job.id)
+    assert refreshed is not None
+    assert refreshed.output_file_id
+    assert refreshed.error_file_id
+    assert files.get(refreshed.output_file_id).owner_key_id == "vk_owner"
+    assert files.get(refreshed.error_file_id).owner_key_id == "vk_owner"
+
+
 @pytest.mark.asyncio
 async def test_budget_rejected_item_records_402_shape_and_continues():
     """Over-budget frontier items fail with a 402 body; siblings still run (#441)."""
