@@ -86,9 +86,12 @@ def test_cli_list_json_and_export(audit_path, tmp_path):
     assert payload[0]["action"].startswith("budget.")
 
     out = tmp_path / "audit.jsonl"
+    # Fixed ISO date: seeded rows have fixed 2026-09 timestamps, so a relative
+    # window ("7d") empties as wall-clock time passes (broke CI on 2026-09-13).
+    # Relative parsing is covered by test_parse_since_relative_and_iso.
     exported = runner.invoke(
         cli_app.app,
-        ["audit", "export", "--format", "jsonl", "--out", str(out), "--since", "7d"],
+        ["audit", "export", "--format", "jsonl", "--out", str(out), "--since", "2026-09-05T00:00:00Z"],
     )
     assert exported.exit_code == 0, exported.output
     lines = out.read_text(encoding="utf-8").strip().splitlines()
