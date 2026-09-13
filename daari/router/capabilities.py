@@ -209,6 +209,47 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
     return cards
 
 
+def _anthropic_display_name(model_id: str) -> str:
+    """Human-readable label for Anthropic-shaped model cards (#454)."""
+    if model_id == "daari":
+        return "Daari"
+    # llama3.2:3b → Llama3.2 3b; keep tags readable without over-formatting.
+    spaced = model_id.replace(":", " ").replace("/", " ").replace("-", " ").replace("_", " ")
+    return " ".join(part for part in spaced.split() if part) or model_id
+
+
+def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
+    """Anthropic-native `/v1/models` rows from the same catalog as OpenAI (#454)."""
+    from datetime import datetime, timezone
+
+    cards: list[dict[str, Any]] = []
+    for card in openai_model_cards(settings):
+        created = int(card.get("created") or 0)
+        created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        cards.append(
+            {
+                "id": card["id"],
+                "type": "model",
+                "display_name": _anthropic_display_name(str(card["id"])),
+                "created_at": created_at,
+            }
+        )
+    return cards
+
+
+def anthropic_models_payload(settings: Any) -> dict[str, Any]:
+    """Full Anthropic list-models response body (#454)."""
+    data = anthropic_model_cards(settings)
+    return {
+        "data": data,
+        "has_more": False,
+        "first_id": data[0]["id"] if data else None,
+        "last_id": data[-1]["id"] if data else None,
+    }
+
+
 def _context_windows(settings: Any) -> dict[str, int]:
     raw = getattr(getattr(settings, "routing", None), "context_windows", None) or {}
     out: dict[str, int] = {}

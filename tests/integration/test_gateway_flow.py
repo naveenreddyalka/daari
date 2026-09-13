@@ -986,6 +986,27 @@ async def test_openai_models_list(app):
 
 
 @pytest.mark.asyncio
+async def test_anthropic_models_list_via_x_api_key(app):
+    """Claude Desktop verify hint uses x-api-key against /v1/models (#454)."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/v1/models",
+            headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
+        )
+        bearer = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer test-key"}
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_more"] is False
+    assert any(item["id"] == "daari" and item["type"] == "model" for item in body["data"])
+    assert all("display_name" in item and "created_at" in item for item in body["data"])
+    assert bearer.json()["object"] == "list"
+    assert "capabilities" in bearer.json()["data"][0]
+
+
+@pytest.mark.asyncio
 async def test_reload_caches_endpoint_refreshes_app_context_handles(app, monkeypatch):
     monkeypatch.setattr(
         app.state.ctx,

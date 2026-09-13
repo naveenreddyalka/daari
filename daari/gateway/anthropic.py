@@ -36,6 +36,22 @@ from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
 
 
+def wants_anthropic_models(request: Request) -> bool:
+    """True when the client is Anthropic-protocol (Claude Code / Desktop) (#454).
+
+    Portkey-style: ``anthropic-version`` header. Also treat bare ``x-api-key``
+    (without Authorization Bearer) as Anthropic so ``daari configure
+    claude-desktop`` verify curls work as printed.
+    """
+    if (request.headers.get("anthropic-version") or "").strip():
+        return True
+    if (request.headers.get("x-api-key") or "").strip():
+        authorization = (request.headers.get("authorization") or "").strip()
+        if not authorization.lower().startswith("bearer "):
+            return True
+    return False
+
+
 class AnthropicMessageIn(BaseModel):
     role: str
     content: str | list[dict[str, Any]]

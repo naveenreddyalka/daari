@@ -2215,6 +2215,17 @@ Covered by `tests/unit/test_response_store.py`,
 `tests/unit/test_responses_tenancy.py`, and
 `tests/integration/test_gateway_flow.py`.
 
+### Anthropic-native GET /v1/models ([#454](https://github.com/naveenreddyalka/daari/issues/454))
+
+<!-- tracking:#454 -->
+**Status:** Done (2026-09-13). `GET /v1/models` returns Anthropic list shape
+(`type`/`display_name`/`created_at`, `has_more`/`first_id`/`last_id`) when the
+request carries `anthropic-version` or bare `x-api-key` (Claude Code / Desktop
++ `daari configure claude-desktop` verify hint). Bearer / no Anthropic headers
+keep the OpenAI card shape. Same catalog ids as `openai_model_cards`. Covered by
+`tests/unit/test_anthropic_gateway.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ---
 
 ## How to update
