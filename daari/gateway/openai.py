@@ -417,6 +417,8 @@ def _ensure_file_store(ctx: AppContext) -> Any:
     store = FileStore(
         ctx.settings.files_store_path,
         max_bytes=ctx.settings.files.max_bytes,
+        retention_days=ctx.settings.files.retention_days,
+        max_total_bytes=ctx.settings.files.max_total_bytes,
     )
     ctx.file_store = store
     return store
@@ -1268,7 +1270,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             request: Request,
             file: UploadFile = File(...),
             purpose: str = Form(default="batch"),
+            expires_after: str | None = Form(default=None),
         ) -> dict[str, Any]:
+            from daari.gateway.files import FileStoreFull
+
             ctx: AppContext = request.app.state.ctx
             store = _ensure_file_store(ctx)
             raw = await file.read()
@@ -1284,7 +1289,22 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     filename=file.filename or "upload",
                     purpose=purpose or "batch",
                     owner_key_id=owner_key_id,
+                    expires_after=expires_after,
                 )
+            except FileStoreFull as exc:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "error": {
+                            "message": str(exc),
+                            "type": "invalid_request_error",
+                            "code": "files_store_full",
+                            "max_total_bytes": exc.max_total_bytes,
+                            "current_bytes": exc.current_bytes,
+                            "upload_bytes": exc.incoming_bytes,
+                        }
+                    },
+                ) from exc
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             log_gateway_event(

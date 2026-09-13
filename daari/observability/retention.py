@@ -117,6 +117,29 @@ def prune_all(
     else:
         results.append(PruneResult("tasks", 0, True))
 
+    files_cfg = getattr(settings, "files", None)
+    if files_cfg is not None and getattr(files_cfg, "enabled", False):
+        from daari.gateway.files import FileStore
+
+        store = FileStore(
+            settings.files_store_path,
+            max_bytes=files_cfg.max_bytes,
+            retention_days=files_cfg.retention_days,
+            max_total_bytes=files_cfg.max_total_bytes,
+        )
+        # Always reclaim expires_after / retention_days expiries (#456).
+        deleted = store.prune_expired(now=int(current.timestamp()), dry_run=dry_run)
+        results.append(
+            PruneResult(
+                "files",
+                deleted,
+                deleted == 0 and files_cfg.retention_days == 0,
+                current.isoformat(),
+            )
+        )
+    else:
+        results.append(PruneResult("files", 0, True))
+
     from daari.enterprise.audit import AuditLog
 
     audit = AuditLog(settings.enterprise.audit_path)

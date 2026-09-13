@@ -4465,6 +4465,8 @@ class AppContext:
             file_store = FileStore(
                 settings.files_store_path,
                 max_bytes=settings.files.max_bytes,
+                retention_days=settings.files.retention_days,
+                max_total_bytes=settings.files.max_total_bytes,
             )
         batch_path = settings.batches_store_path if settings.batches.enabled else None
         context = cls(
