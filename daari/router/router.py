@@ -23,7 +23,7 @@ from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
 from daari.gateway.cost_headers import StreamOutcome, stream_cached_tokens, stream_usage_cost
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
-from daari.gateway.provider_prefs import ZdrUnavailable
+from daari.gateway.provider_prefs import RegionUnavailable, ZdrUnavailable
 from daari.gateway.sampling import model_supports_thinking
 from daari.observability.metrics import Metrics
 from daari.observability.trace import TraceStore, add_step, end_trace, start_trace
@@ -3602,6 +3602,10 @@ class Router:
             return l6_response
         except ZdrUnavailable:
             raise
+        except RegionUnavailable:
+            # Soft-local: keep the best on-box answer rather than leaving the region (#466).
+            response.daari_meta.warning = "region_pin_unavailable"
+            return response
         except Exception:
             response.daari_meta.warning = "below_confidence_threshold"
             return response

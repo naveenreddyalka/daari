@@ -111,6 +111,11 @@ def keys_create(
         "--user-daily-cap",
         help="Per end-user daily L6 USD cap on this shared key (0=unlimited)",
     ),
+    region_pin: str | None = typer.Option(
+        None,
+        "--region-pin",
+        help="Restrict L6 to providers declaring this region (e.g. us, eu).",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import parse_window_flag
@@ -142,11 +147,14 @@ def keys_create(
         metadata=metadata,
         expires_at=expires_at,
         user_daily_usd_cap=user_daily_cap,
+        region_pin=region_pin,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
     typer.echo(f"prefix: {created.key.prefix}…")
     typer.echo(f"expires: {created.key.expires_at or 'never'}")
+    if created.key.region_pin:
+        typer.echo(f"region:  {created.key.region_pin}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -160,6 +168,7 @@ def keys_create(
             "key_id": created.key.key_id,
             "name": created.key.name,
             "prefix": created.key.prefix,
+            "region_pin": created.key.region_pin,
         },
     )
 
@@ -265,6 +274,11 @@ def keys_team_create(
     daily_budget: float = typer.Option(0.0, "--daily-budget"),
     monthly_budget: float = typer.Option(0.0, "--monthly-budget"),
     window: list[str] = typer.Option([], "--window", help="duration=max_usd (repeatable)"),
+    region_pin: str | None = typer.Option(
+        None,
+        "--region-pin",
+        help="Restrict L6 for every key on this team (e.g. us, eu).",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import os
@@ -283,9 +297,12 @@ def keys_team_create(
         budget_windows=extra or None,
         daily_budget_usd=daily_budget,
         monthly_budget_usd=monthly_budget,
+        region_pin=region_pin,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
+    if team.region_pin:
+        typer.echo(f"region:  {team.region_pin}")
     for item in team.budget_windows:
         typer.echo(f"window:  {item.duration} ${item.max_usd}")
     if prior is None:
@@ -299,6 +316,7 @@ def keys_team_create(
                 "windows": [
                     {"duration": w.duration, "max_usd": w.max_usd} for w in team.budget_windows
                 ],
+                "region_pin": team.region_pin,
             },
         )
 
@@ -309,6 +327,11 @@ def keys_team_update(
     daily_budget: float = typer.Option(0.0, "--daily-budget"),
     monthly_budget: float = typer.Option(0.0, "--monthly-budget"),
     window: list[str] = typer.Option([], "--window", help="duration=max_usd (repeatable)"),
+    region_pin: str | None = typer.Option(
+        None,
+        "--region-pin",
+        help="Set or clear L6 region pin (empty string clears).",
+    ),
 ) -> None:
     """Update a team's budget windows (#464)."""
     import os
@@ -327,6 +350,7 @@ def keys_team_update(
             budget_windows=extra or None,
             daily_budget_usd=daily_budget,
             monthly_budget_usd=monthly_budget,
+            region_pin=region_pin,
         )
     except KeyError:
         typer.echo(f"No team {team_id}", err=True)

@@ -19,6 +19,7 @@ class AuthClaims:
     monthly_budget_usd: float = 0.0
     virtual_key: VirtualKey | None = None
     boundary_profile: str | None = None
+    region_pin: str | None = None
 
 
 def extract_api_key(headers: Any) -> str:
@@ -40,6 +41,8 @@ def apply_auth_claims_to_meta(meta: Any, claims: AuthClaims | None) -> None:
         meta.tier_cap = claims.tier_cap
     if not getattr(meta, "boundary_profile", None) and claims.boundary_profile:
         meta.boundary_profile = claims.boundary_profile
+    if not getattr(meta, "region_pin", None) and claims.region_pin:
+        meta.region_pin = claims.region_pin
 
 
 def resolve_auth(
@@ -61,6 +64,11 @@ def resolve_auth(
                     client_id=key.client_id or key.key_id,
                     virtual_key=key,
                 )
+            region_pin = key.region_pin
+            if not region_pin and key.team_id:
+                team = store.get_team(key.team_id)
+                if team is not None and team.region_pin:
+                    region_pin = team.region_pin
             return AuthClaims(
                 kind="virtual",
                 key_id=key.key_id,
@@ -70,6 +78,7 @@ def resolve_auth(
                 monthly_budget_usd=key.monthly_budget_usd,
                 virtual_key=key,
                 boundary_profile=(key.metadata or {}).get("boundary_profile"),
+                region_pin=region_pin,
             )
     # Auth required but nothing matched.
     if master_key or (store is not None and store.enabled and store.list()):

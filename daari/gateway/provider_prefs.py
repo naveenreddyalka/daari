@@ -29,6 +29,17 @@ class ZdrUnavailable(Exception):
         )
 
 
+class RegionUnavailable(Exception):
+    """region_pin set but no L6 slot declares a matching region (#466)."""
+
+    def __init__(self, pin: str) -> None:
+        self.pin = pin
+        super().__init__(
+            f"no configured L6 provider declares region={pin!r}; "
+            "refusing to route out of the pinned region"
+        )
+
+
 def parse_provider(raw: Any) -> ProviderPreferences | None:
     if not raw or not isinstance(raw, dict):
         return None
@@ -70,6 +81,25 @@ def require_zdr_slot(prefs: ProviderPreferences | None, slots: list[Any]) -> Non
         return
     if not any(bool(getattr(slot, "zdr", False)) for slot in slots):
         raise ZdrUnavailable()
+
+
+def normalize_region(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def require_region_slot(region_pin: str | None, slots: list[Any]) -> None:
+    pin = normalize_region(region_pin)
+    if not pin:
+        return
+    if not any(normalize_region(getattr(slot, "region", "")) == pin for slot in slots):
+        raise RegionUnavailable(pin)
+
+
+def filter_slots_for_region(region_pin: str | None, slots: list[Any]) -> list[Any]:
+    pin = normalize_region(region_pin)
+    if not pin:
+        return list(slots)
+    return [slot for slot in slots if normalize_region(getattr(slot, "region", "")) == pin]
 
 
 def usage_cost_and_cache(data: dict[str, Any]) -> tuple[float | None, int | None]:

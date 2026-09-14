@@ -27,6 +27,7 @@ COST_HEADER = "x-daari-response-cost"
 COST_AVOIDED_HEADER = "x-daari-response-cost-avoided"
 TIER_HEADER = "x-daari-tier"
 CACHE_HEADER = "x-daari-cache"
+REGION_HEADER = "x-daari-region"
 
 FRONTIER_TIER = "L6"
 
@@ -84,12 +85,15 @@ def response_cost_headers(
         # identical to UsageLedger.report so per-response and per-team agree.
         tokens = (max(0, prompt_chars) + max(0, completion_chars)) / 4
         avoided = tokens / 1000 * price_per_1k
-    return {
+    headers = {
         COST_HEADER: _decimal(spent),
         COST_AVOIDED_HEADER: _decimal(avoided),
         TIER_HEADER: meta.tier,
         CACHE_HEADER: _cache_state(cache_hit=meta.cache_hit, draft=meta.draft),
     }
+    if meta.region:
+        headers[REGION_HEADER] = str(meta.region)
+    return headers
 
 
 def stream_usage_cost(
