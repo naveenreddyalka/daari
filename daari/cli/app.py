@@ -150,6 +150,18 @@ def keys_create(
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
+    import os
+
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="keys.create",
+        detail={
+            "key_id": created.key.key_id,
+            "name": created.key.name,
+            "prefix": created.key.prefix,
+        },
+    )
 
 
 @keys_app.command("list")
@@ -189,6 +201,14 @@ def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys 
     )
     if store.revoke(key_id):
         typer.echo(f"Revoked {key_id}")
+        import os
+
+        _audit_log_from_settings().record(
+            actor=os.environ.get("USER") or "cli",
+            role="admin",
+            action="keys.revoke",
+            detail={"key_id": key_id},
+        )
     else:
         typer.echo(f"No active key {key_id}")
         raise typer.Exit(code=1)
@@ -247,6 +267,8 @@ def keys_team_create(
     window: list[str] = typer.Option([], "--window", help="duration=max_usd (repeatable)"),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
+    import os
+
     from daari.auth.budgets import parse_window_flag
     from daari.auth.virtual_keys import VirtualKeyStore
 
@@ -255,6 +277,7 @@ def keys_team_create(
         settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
     )
     extra = [parse_window_flag(item) for item in window]
+    prior = store.get_team(name=name)
     team = store.create_team(
         name,
         budget_windows=extra or None,
@@ -265,7 +288,65 @@ def keys_team_create(
     typer.echo(f"name:    {team.name}")
     for item in team.budget_windows:
         typer.echo(f"window:  {item.duration} ${item.max_usd}")
+    if prior is None:
+        _audit_log_from_settings().record(
+            actor=os.environ.get("USER") or "cli",
+            role="admin",
+            action="teams.create",
+            detail={
+                "team_id": team.team_id,
+                "name": team.name,
+                "windows": [
+                    {"duration": w.duration, "max_usd": w.max_usd} for w in team.budget_windows
+                ],
+            },
+        )
 
+
+@keys_app.command("team-update")
+def keys_team_update(
+    team_id: str = typer.Argument(..., help="team_id from `daari keys team-create`"),
+    daily_budget: float = typer.Option(0.0, "--daily-budget"),
+    monthly_budget: float = typer.Option(0.0, "--monthly-budget"),
+    window: list[str] = typer.Option([], "--window", help="duration=max_usd (repeatable)"),
+) -> None:
+    """Update a team's budget windows (#464)."""
+    import os
+
+    from daari.auth.budgets import parse_window_flag
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings = get_settings()
+    store = VirtualKeyStore(
+        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
+    )
+    extra = [parse_window_flag(item) for item in window]
+    try:
+        team = store.update_team(
+            team_id,
+            budget_windows=extra or None,
+            daily_budget_usd=daily_budget,
+            monthly_budget_usd=monthly_budget,
+        )
+    except KeyError:
+        typer.echo(f"No team {team_id}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"team_id: {team.team_id}")
+    typer.echo(f"name:    {team.name}")
+    for item in team.budget_windows:
+        typer.echo(f"window:  {item.duration} ${item.max_usd}")
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="teams.update",
+        detail={
+            "team_id": team.team_id,
+            "name": team.name,
+            "windows": [
+                {"duration": w.duration, "max_usd": w.max_usd} for w in team.budget_windows
+            ],
+        },
+    )
 
 app.add_typer(enterprise_app, name="enterprise")
 

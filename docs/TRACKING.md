@@ -2259,6 +2259,17 @@ Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md),
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_rate_limit.py` and `tests/integration/test_ready_probe.py`.
 
+### Audit coverage: lifecycle, failed auth, tenancy ([#464](https://github.com/naveenreddyalka/daari/issues/464))
+
+<!-- tracking:#464 -->
+**Status:** Done (2026-09-14). CLI audits `keys.create` / `keys.revoke` /
+`teams.create` / `teams.update` (new `daari keys team-update`). Invalid-key
+401s record flood-safe `auth.invalid_key` (prefix + path). Cross-tenant
+file/batch/response denials record `tenancy.denied`. Hash chain +
+`daari audit verify` unchanged. Docs catalog in
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_audit_coverage.py`.
+
 ---
 
 ## How to update

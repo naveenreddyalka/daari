@@ -123,6 +123,24 @@ tamper (`hash_mismatch` or `seq_gap`). Retention prune re-anchors the chain
 head. The store is `enterprise.audit_path` (default
 `~/.daari/audit/audit.sqlite3`).
 
+### Audit event catalog
+
+| Action | When | Detail (never secrets) |
+|--------|------|------------------------|
+| `keys.create` | `daari keys create` | `key_id`, `name`, `prefix` |
+| `keys.rotate` | `daari keys rotate` | `key_id`, `grace`, `grace_until` |
+| `keys.revoke` | `daari keys revoke` | `key_id` |
+| `teams.create` | `daari keys team-create` (new team) | `team_id`, `name`, `windows` |
+| `teams.update` | `daari keys team-update` | `team_id`, `name`, `windows` |
+| `auth.key_expired` | Expired virtual key 401 | `key_id`, `expires_at` |
+| `auth.invalid_key` | Invalid/missing key 401 | `prefix` (≤10 chars), `path`; identical `(prefix, path)` deduped for 60s |
+| `tenancy.denied` | Cross-tenant file/batch/response access | `key_id`, `kind`, `id` |
+| `sso.mint_virtual_key` / `sso.revoke_virtual_key` | SSO key sync | claim + key_id |
+| `budget.alert` | Budget webhook fired | scope / threshold |
+| `config.patch` | Admin config patch | changed keys |
+| `retention.prune` | Retention sweep | counts |
+| `mcp.tools/call` / `mcp.guardrail` | MCP policy | tool / decision |
+
 ## Secret references (`secret://`)
 
 Any secret-bearing config value (frontier provider keys, org tokens,
