@@ -330,6 +330,34 @@ class VirtualKeyStore:
             )
         return Team(team_id=team_id, name=name, budget_windows=windows)
 
+    def update_team(
+        self,
+        team_id: str,
+        *,
+        budget_windows: list[BudgetWindow] | None = None,
+        daily_budget_usd: float = 0.0,
+        monthly_budget_usd: float = 0.0,
+    ) -> Team:
+        """Replace a team's budget windows (#464). Raises KeyError if missing."""
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        windows = tuple(budget_windows or ())
+        if not windows:
+            from daari.auth.budgets import windows_from_flat
+
+            windows = windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd)
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT name FROM teams WHERE team_id = ?", (team_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(team_id)
+            conn.execute(
+                "UPDATE teams SET budget_windows_json = ? WHERE team_id = ?",
+                (self._windows_json(windows), team_id),
+            )
+        return Team(team_id=team_id, name=row[0], budget_windows=windows)
+
     def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
         if not self.enabled or (not team_id and not name):
             return None

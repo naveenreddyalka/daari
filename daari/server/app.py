@@ -163,6 +163,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             if claims is None:
+                from daari.enterprise.audit import AuditLog, record_invalid_key
+
+                record_invalid_key(
+                    AuditLog(resolved.enterprise.audit_path),
+                    supplied=supplied,
+                    path=request.url.path,
+                )
                 return JSONResponse(
                     status_code=401,
                     content={

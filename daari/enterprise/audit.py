@@ -12,6 +12,7 @@ import json
 import re
 import sqlite3
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -358,3 +359,86 @@ class AuditLog:
                 (prev, row_hash, int(seq)),
             )
             prev = row_hash
+
+
+# Flood-safe invalid-key auditing (#464): identical (prefix, path) within the
+# window share one row; subsequent hits bump an in-memory count instead of
+# appending unbounded rows during a brute-force storm.
+INVALID_KEY_DEDUPE_WINDOW_SECONDS = 60.0
+_invalid_key_lock = threading.Lock()
+_invalid_key_seen: dict[tuple[str, str], tuple[float, int]] = {}
+
+
+def key_prefix_for_audit(supplied: str | None, *, max_chars: int = 10) -> str:
+    return (supplied or "")[:max_chars]
+
+
+def record_invalid_key(
+    audit: AuditLog,
+    *,
+    supplied: str | None,
+    path: str,
+    window_seconds: float = INVALID_KEY_DEDUPE_WINDOW_SECONDS,
+    now: float | None = None,
+) -> bool:
+    """Record ``auth.invalid_key`` at most once per (prefix, path) window.
+
+    Returns True when a row was written. Detail never includes the full secret.
+    """
+    prefix = key_prefix_for_audit(supplied)
+    stamp = (prefix, path)
+    moment = time.monotonic() if now is None else now
+    with _invalid_key_lock:
+        last, suppressed = _invalid_key_seen.get(stamp, (0.0, 0))
+        if last > 0 and (moment - last) < window_seconds:
+            _invalid_key_seen[stamp] = (last, suppressed + 1)
+            return False
+        prior_suppressed = suppressed
+        _invalid_key_seen[stamp] = (moment, 0)
+
+    detail: dict[str, Any] = {"prefix": prefix, "path": path}
+    if prior_suppressed:
+        detail["deduped"] = prior_suppressed
+    audit.record(
+        actor=prefix or "anonymous",
+        role="anonymous",
+        action="auth.invalid_key",
+        detail=detail,
+    )
+    return True
+
+
+def record_tenancy_denied(
+    audit: AuditLog,
+    *,
+    key_id: str | None,
+    kind: str,
+    artifact_id: str,
+) -> None:
+    """Record a cross-tenant artifact denial (#464)."""
+    actor = key_id or "unknown"
+    audit.record(
+        actor=actor,
+        role="key",
+        action="tenancy.denied",
+        detail={"key_id": key_id, "kind": kind, "id": artifact_id},
+    )
+
+
+def maybe_audit_tenancy_denied(
+    settings: Any,
+    *,
+    claims: Any | None,
+    kind: str,
+    artifact_id: str,
+    stored: Any | None,
+    visible: bool,
+) -> None:
+    """Audit when the artifact exists but the caller is not allowed to see it."""
+    if stored is None or visible:
+        return
+    key_id = getattr(claims, "key_id", None) if claims is not None else None
+    path = getattr(getattr(settings, "enterprise", None), "audit_path", None)
+    if not path:
+        return
+    record_tenancy_denied(AuditLog(path), key_id=key_id, kind=kind, artifact_id=artifact_id)

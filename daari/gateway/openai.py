@@ -1358,25 +1358,45 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/files/{file_id}")
         async def retrieve_file(file_id: str, request: Request) -> dict[str, Any]:
+            from daari.enterprise.audit import maybe_audit_tenancy_denied
             from daari.gateway.files import file_visible_to_caller
 
             ctx: AppContext = request.app.state.ctx
             store = ctx.file_store
             stored = store.get(file_id) if store is not None else None
             claims = getattr(request.state, "auth_claims", None)
-            if stored is None or not file_visible_to_caller(stored, claims):
+            visible = stored is not None and file_visible_to_caller(stored, claims)
+            maybe_audit_tenancy_denied(
+                ctx.settings,
+                claims=claims,
+                kind="file",
+                artifact_id=file_id,
+                stored=stored,
+                visible=visible,
+            )
+            if stored is None or not visible:
                 raise HTTPException(status_code=404, detail="file not found")
             return stored.as_public()
 
         @router.get("/v1/files/{file_id}/content")
         async def download_file_content(file_id: str, request: Request) -> Response:
+            from daari.enterprise.audit import maybe_audit_tenancy_denied
             from daari.gateway.files import file_visible_to_caller
 
             ctx: AppContext = request.app.state.ctx
             store = ctx.file_store
             stored = store.get(file_id) if store is not None else None
             claims = getattr(request.state, "auth_claims", None)
-            if stored is None or not file_visible_to_caller(stored, claims):
+            visible = stored is not None and file_visible_to_caller(stored, claims)
+            maybe_audit_tenancy_denied(
+                ctx.settings,
+                claims=claims,
+                kind="file",
+                artifact_id=file_id,
+                stored=stored,
+                visible=visible,
+            )
+            if stored is None or not visible:
                 raise HTTPException(status_code=404, detail="file not found")
             raw = store.read_bytes(file_id) if store is not None else None
             if raw is None:
@@ -1392,13 +1412,27 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.delete("/v1/files/{file_id}")
         async def delete_file(file_id: str, request: Request) -> dict[str, Any]:
+            from daari.enterprise.audit import maybe_audit_tenancy_denied
             from daari.gateway.files import file_visible_to_caller
 
             ctx: AppContext = request.app.state.ctx
             store = ctx.file_store
             stored = store.get(file_id) if store is not None else None
             claims = getattr(request.state, "auth_claims", None)
-            if store is None or stored is None or not file_visible_to_caller(stored, claims):
+            visible = (
+                store is not None
+                and stored is not None
+                and file_visible_to_caller(stored, claims)
+            )
+            maybe_audit_tenancy_denied(
+                ctx.settings,
+                claims=claims,
+                kind="file",
+                artifact_id=file_id,
+                stored=stored,
+                visible=visible,
+            )
+            if store is None or stored is None or not visible:
                 raise HTTPException(status_code=404, detail="file not found")
             if not store.delete(file_id):
                 raise HTTPException(status_code=404, detail="file not found")
@@ -1469,18 +1503,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/batches/{batch_id}")
         async def retrieve_batch(batch_id: str, request: Request) -> dict[str, Any]:
+            from daari.enterprise.audit import maybe_audit_tenancy_denied
             from daari.gateway.batches import batch_visible_to_caller
 
             ctx: AppContext = request.app.state.ctx
             store = ctx.batch_store
             job = store.get(batch_id) if store is not None else None
             claims = getattr(request.state, "auth_claims", None)
-            if job is None or not batch_visible_to_caller(job, claims):
+            visible = job is not None and batch_visible_to_caller(job, claims)
+            maybe_audit_tenancy_denied(
+                ctx.settings,
+                claims=claims,
+                kind="batch",
+                artifact_id=batch_id,
+                stored=job,
+                visible=visible,
+            )
+            if job is None or not visible:
                 raise HTTPException(status_code=404, detail="batch not found")
             return store.as_public(job)
 
         @router.post("/v1/batches/{batch_id}/cancel")
         async def cancel_batch(batch_id: str, request: Request) -> dict[str, Any]:
+            from daari.enterprise.audit import maybe_audit_tenancy_denied
             from daari.gateway.batches import batch_visible_to_caller
 
             ctx: AppContext = request.app.state.ctx
@@ -1489,7 +1534,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 raise HTTPException(status_code=404, detail="batch not found")
             job = store.get(batch_id)
             claims = getattr(request.state, "auth_claims", None)
-            if job is None or not batch_visible_to_caller(job, claims):
+            visible = job is not None and batch_visible_to_caller(job, claims)
+            maybe_audit_tenancy_denied(
+                ctx.settings,
+                claims=claims,
+                kind="batch",
+                artifact_id=batch_id,
+                stored=job,
+                visible=visible,
+            )
+            if job is None or not visible:
                 raise HTTPException(status_code=404, detail="batch not found")
             cancelled = store.cancel(batch_id)
             if cancelled is None:

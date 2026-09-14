@@ -286,11 +286,22 @@ class ResponsesGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/responses/{response_id}")
         async def get_response(response_id: str, request: Request) -> dict[str, Any]:
+            from daari.enterprise.audit import maybe_audit_tenancy_denied
             from daari.gateway.response_store import response_visible_to_caller
 
-            stored = _store_for(request.app.state.ctx).get(response_id)
+            ctx: AppContext = request.app.state.ctx
+            stored = _store_for(ctx).get(response_id)
             claims = getattr(request.state, "auth_claims", None)
-            if stored is None or not response_visible_to_caller(stored, claims):
+            visible = stored is not None and response_visible_to_caller(stored, claims)
+            maybe_audit_tenancy_denied(
+                ctx.settings,
+                claims=claims,
+                kind="response",
+                artifact_id=response_id,
+                stored=stored,
+                visible=visible,
+            )
+            if stored is None or not visible:
                 raise HTTPException(status_code=404, detail="response not found")
             return _public_body(stored)
 
@@ -327,8 +338,19 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             claims = getattr(request.state, "auth_claims", None)
             messages = responses_input_to_messages(body)
             if body.previous_response_id:
+                from daari.enterprise.audit import maybe_audit_tenancy_denied
+
                 prior = store.get(body.previous_response_id)
-                if prior is None or not response_visible_to_caller(prior, claims):
+                prior_visible = prior is not None and response_visible_to_caller(prior, claims)
+                maybe_audit_tenancy_denied(
+                    ctx.settings,
+                    claims=claims,
+                    kind="response",
+                    artifact_id=body.previous_response_id,
+                    stored=prior,
+                    visible=prior_visible,
+                )
+                if prior is None or not prior_visible:
                     raise HTTPException(
                         status_code=400,
                         detail=f"previous_response_id not found: {body.previous_response_id}",
