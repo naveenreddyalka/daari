@@ -111,11 +111,14 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `usage.frontier_price_per_1k_tokens` | float | `0.002` | Flat fallback rate used to estimate what locally-served tokens would have cost on a frontier model. Applies only to models absent from `pricing.models`, and ignores input/output direction. |
 | `files.enabled` | bool | `True` |  |
 | `files.path` | str | `'~/.daari/files'` |  |
+| `files.backend` | Literal | `'sqlite'` | sqlite (disk index + .bin files, default) or postgres (metadata + BYTEA content via observability.postgres_url) for multi-replica fleets (#465). |
 | `files.max_bytes` | int | `104857600` | Maximum upload size in bytes for POST /v1/files. |
 | `files.retention_days` | int | `0` | Fallback expiry for files without expires_after (#456). 0 keeps files forever until an explicit expires_after. |
 | `files.max_total_bytes` | int | `0` | Hard cap on aggregate stored bytes (#456). 0 disables the cap. Uploads that would exceed it return 413. |
 | `batches.enabled` | bool | `True` |  |
 | `batches.path` | str | `'~/.daari/batches/jobs.sqlite3'` |  |
+| `batches.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so batch jobs are readable/cancellable across replicas (#465). |
+| `batches.claim_ttl_seconds` | int | `90` | How long a replica's drain claim stays exclusive before another replica may reclaim a crashed worker (#465). Ignored for sqlite. |
 | `batches.yield_to_interactive` | bool | `True` | When true, the batch worker waits while interactive HTTP requests are in flight before dispatching the next item (#444). |
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
 | `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |

@@ -620,6 +620,13 @@ class FilesSettings(BaseModel):
 
     enabled: bool = True
     path: str = "~/.daari/files"
+    backend: Literal["sqlite", "postgres"] = Field(
+        default="sqlite",
+        description=(
+            "sqlite (disk index + .bin files, default) or postgres (metadata + "
+            "BYTEA content via observability.postgres_url) for multi-replica fleets (#465)."
+        ),
+    )
     max_bytes: int = Field(
         default=100 * 1024 * 1024,
         ge=1,
@@ -648,6 +655,21 @@ class BatchesSettings(BaseModel):
 
     enabled: bool = True
     path: str = "~/.daari/batches/jobs.sqlite3"
+    backend: Literal["sqlite", "postgres"] = Field(
+        default="sqlite",
+        description=(
+            "sqlite (default) or postgres (observability.postgres_url) so batch "
+            "jobs are readable/cancellable across replicas (#465)."
+        ),
+    )
+    claim_ttl_seconds: int = Field(
+        default=90,
+        ge=5,
+        description=(
+            "How long a replica's drain claim stays exclusive before another "
+            "replica may reclaim a crashed worker (#465). Ignored for sqlite."
+        ),
+    )
     yield_to_interactive: bool = Field(
         default=True,
         description=(

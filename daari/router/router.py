@@ -4466,15 +4466,52 @@ class AppContext:
         mcp_task_store = None
         if settings.integrations.mcp_tasks.enabled:
             mcp_task_store = McpTaskStore(settings.integrations.mcp_tasks.path)
+        pg_url = (settings.observability.postgres_url or "").strip()
         file_store = None
         if settings.files.enabled:
-            file_store = FileStore(
-                settings.files_store_path,
-                max_bytes=settings.files.max_bytes,
-                retention_days=settings.files.retention_days,
-                max_total_bytes=settings.files.max_total_bytes,
+            if getattr(settings.files, "backend", "sqlite") == "postgres" and pg_url:
+                from daari.gateway.postgres_files import PostgresFileStore
+
+                file_store = PostgresFileStore(
+                    pg_url,
+                    max_bytes=settings.files.max_bytes,
+                    retention_days=settings.files.retention_days,
+                    max_total_bytes=settings.files.max_total_bytes,
+                )
+            else:
+                file_store = FileStore(
+                    settings.files_store_path,
+                    max_bytes=settings.files.max_bytes,
+                    retention_days=settings.files.retention_days,
+                    max_total_bytes=settings.files.max_total_bytes,
+                )
+        if settings.batches.enabled:
+            if getattr(settings.batches, "backend", "sqlite") == "postgres" and pg_url:
+                from daari.gateway.postgres_batches import PostgresBatchStore
+
+                batch_store = PostgresBatchStore(
+                    pg_url,
+                    file_store=file_store,
+                    yield_to_interactive=settings.batches.yield_to_interactive,
+                    idle_poll_seconds=settings.batches.idle_poll_seconds,
+                    claim_ttl_seconds=int(
+                        getattr(settings.batches, "claim_ttl_seconds", 90) or 90
+                    ),
+                )
+            else:
+                batch_store = BatchStore(
+                    file_store=file_store,
+                    path=settings.batches_store_path,
+                    yield_to_interactive=settings.batches.yield_to_interactive,
+                    idle_poll_seconds=settings.batches.idle_poll_seconds,
+                )
+        else:
+            batch_store = BatchStore(
+                file_store=file_store,
+                path=None,
+                yield_to_interactive=settings.batches.yield_to_interactive,
+                idle_poll_seconds=settings.batches.idle_poll_seconds,
             )
-        batch_path = settings.batches_store_path if settings.batches.enabled else None
         context = cls(
             settings=settings,
             cache=cache,
@@ -4493,12 +4530,7 @@ class AppContext:
             org_learning_client=org_learning_client,
             local_pool=local_pool,
             mcp_task_store=mcp_task_store,
-            batch_store=BatchStore(
-                file_store=file_store,
-                path=batch_path,
-                yield_to_interactive=settings.batches.yield_to_interactive,
-                idle_poll_seconds=settings.batches.idle_poll_seconds,
-            ),
+            batch_store=batch_store,
             file_store=file_store,
         )
         context.sync_org_learning_profile_startup()

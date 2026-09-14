@@ -119,14 +119,25 @@ def prune_all(
 
     files_cfg = getattr(settings, "files", None)
     if files_cfg is not None and getattr(files_cfg, "enabled", False):
-        from daari.gateway.files import FileStore
+        pg_url = (getattr(settings.observability, "postgres_url", "") or "").strip()
+        if getattr(files_cfg, "backend", "sqlite") == "postgres" and pg_url:
+            from daari.gateway.postgres_files import PostgresFileStore
 
-        store = FileStore(
-            settings.files_store_path,
-            max_bytes=files_cfg.max_bytes,
-            retention_days=files_cfg.retention_days,
-            max_total_bytes=files_cfg.max_total_bytes,
-        )
+            store = PostgresFileStore(
+                pg_url,
+                max_bytes=files_cfg.max_bytes,
+                retention_days=files_cfg.retention_days,
+                max_total_bytes=files_cfg.max_total_bytes,
+            )
+        else:
+            from daari.gateway.files import FileStore
+
+            store = FileStore(
+                settings.files_store_path,
+                max_bytes=files_cfg.max_bytes,
+                retention_days=files_cfg.retention_days,
+                max_total_bytes=files_cfg.max_total_bytes,
+            )
         # Always reclaim expires_after / retention_days expiries (#456).
         deleted = store.prune_expired(now=int(current.timestamp()), dry_run=dry_run)
         results.append(

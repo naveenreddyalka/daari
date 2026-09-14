@@ -2270,6 +2270,17 @@ file/batch/response denials record `tenancy.denied`. Hash chain +
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
 `tests/unit/test_audit_coverage.py`.
 
+### Cross-replica Batches and Files via Postgres ([#465](https://github.com/naveenreddyalka/daari/issues/465))
+
+<!-- tracking:#465 -->
+**Status:** Done (2026-09-14). `batches.backend` / `files.backend` default
+`sqlite`; `postgres` reuses `observability.postgres_url` for shared jobs and
+file BYTEA content. Drain uses claim + heartbeat (`claim_ttl_seconds`) so one
+replica executes a job and crashed workers are reclaimed. Helm sets both
+backends when `postgres.enabled`. Docs:
+[batches.md](developer/guides/features/batches.md). Covered by
+`tests/unit/test_postgres_batches_files.py`.
+
 ---
 
 ## How to update
