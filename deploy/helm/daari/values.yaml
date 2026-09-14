@@ -34,7 +34,7 @@ redis:
   enabled: false
   url: redis://redis:6379/0
 
-# External Postgres for ledger/traces (issue #116) — optional.
+# External Postgres for ledger/traces/batches/files (issues #116, #465).
 postgres:
   enabled: false
   url: ""

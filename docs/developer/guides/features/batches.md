@@ -8,19 +8,33 @@ SDK flow (`files.create` → `batches.create(input_file_id=…)` → download
 ## Durability
 
 Jobs, items, and results persist to SQLite at `batches.path` (default
-`~/.daari/batches/jobs.sqlite3`). A gateway restart reloads unfinished
-`validating` / `in_progress` jobs and continues draining pending items; an item
-that was mid-flight at crash is retried once. Jobs past `expires_at` with
-pending work become `expired` (remaining items skipped) on read or resume.
+`~/.daari/batches/jobs.sqlite3`) when `batches.backend: sqlite` (default). A
+gateway restart reloads unfinished `validating` / `in_progress` jobs and
+continues draining pending items; an item that was mid-flight at crash is
+retried once. Jobs past `expires_at` with pending work become `expired`
+(remaining items skipped) on read or resume.
 
-## Multi-replica caveat
+## Multi-replica (Postgres)
 
-Persistence is **per process / per data directory**. The Helm chart's default
-`replicaCount: 2` does **not** share batch state across pods — a
-`GET /v1/batches/{id}` may hit a replica that never created the job. For
-durable multi-replica drain, pin a single replica (or shared volume) until
-cross-replica routing lands. Single-node and Docker Compose one-replica
-deploys are the supported path today.
+For a multi-replica fleet, point batches and files at the same Postgres the
+ledger already uses:
+
+```yaml
+observability:
+  backend: postgres
+  postgres_url: postgresql://daari:daari@postgres:5432/daari
+batches:
+  backend: postgres
+  claim_ttl_seconds: 90   # reclaim a crashed drainer's job after this
+files:
+  backend: postgres
+```
+
+Jobs and file content are then shared across replicas. Only one replica drains
+a given batch at a time (claim + heartbeat); a crashed worker's claim expires
+after `claim_ttl_seconds` and another replica resumes. Keep both backends on
+postgres when using `input_file_id` / `output_file_id` across pods. Single-node
+SQLite remains the zero-dependency default.
 
 ## Idle yield
 

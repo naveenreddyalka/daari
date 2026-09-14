@@ -37,6 +37,10 @@ spec:
               value: postgres
             - name: DAARI_OBSERVABILITY__POSTGRES_URL
               value: {{ .Values.postgres.url | quote }}
+            - name: DAARI_BATCHES__BACKEND
+              value: postgres
+            - name: DAARI_FILES__BACKEND
+              value: postgres
             {{- end }}
           livenessProbe:
             httpGet:

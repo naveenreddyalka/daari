@@ -409,18 +409,30 @@ def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -
 
 
 def _ensure_file_store(ctx: AppContext) -> Any:
-    """Return (and lazily attach) the Files API store (#442)."""
+    """Return (and lazily attach) the Files API store (#442 / #465)."""
     store = getattr(ctx, "file_store", None)
     if store is not None:
         return store
-    from daari.gateway.files import FileStore
+    settings = ctx.settings
+    pg_url = (settings.observability.postgres_url or "").strip()
+    if getattr(settings.files, "backend", "sqlite") == "postgres" and pg_url:
+        from daari.gateway.postgres_files import PostgresFileStore
 
-    store = FileStore(
-        ctx.settings.files_store_path,
-        max_bytes=ctx.settings.files.max_bytes,
-        retention_days=ctx.settings.files.retention_days,
-        max_total_bytes=ctx.settings.files.max_total_bytes,
-    )
+        store = PostgresFileStore(
+            pg_url,
+            max_bytes=settings.files.max_bytes,
+            retention_days=settings.files.retention_days,
+            max_total_bytes=settings.files.max_total_bytes,
+        )
+    else:
+        from daari.gateway.files import FileStore
+
+        store = FileStore(
+            settings.files_store_path,
+            max_bytes=settings.files.max_bytes,
+            retention_days=settings.files.retention_days,
+            max_total_bytes=settings.files.max_total_bytes,
+        )
     ctx.file_store = store
     return store
 
@@ -1443,17 +1455,39 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             store = ctx.batch_store
             if store is None:
-                from daari.gateway.batches import BatchStore
+                settings = ctx.settings
+                pg_url = (settings.observability.postgres_url or "").strip()
+                file_store = (
+                    _ensure_file_store(ctx) if settings.files.enabled else None
+                )
+                if (
+                    settings.batches.enabled
+                    and getattr(settings.batches, "backend", "sqlite") == "postgres"
+                    and pg_url
+                ):
+                    from daari.gateway.postgres_batches import PostgresBatchStore
 
-                batch_path = (
-                    ctx.settings.batches_store_path
-                    if ctx.settings.batches.enabled
-                    else None
-                )
-                store = BatchStore(
-                    file_store=_ensure_file_store(ctx) if ctx.settings.files.enabled else None,
-                    path=batch_path,
-                )
+                    store = PostgresBatchStore(
+                        pg_url,
+                        file_store=file_store,
+                        yield_to_interactive=settings.batches.yield_to_interactive,
+                        idle_poll_seconds=settings.batches.idle_poll_seconds,
+                        claim_ttl_seconds=int(
+                            getattr(settings.batches, "claim_ttl_seconds", 90) or 90
+                        ),
+                    )
+                else:
+                    from daari.gateway.batches import BatchStore
+
+                    batch_path = (
+                        settings.batches_store_path if settings.batches.enabled else None
+                    )
+                    store = BatchStore(
+                        file_store=file_store,
+                        path=batch_path,
+                        yield_to_interactive=settings.batches.yield_to_interactive,
+                        idle_poll_seconds=settings.batches.idle_poll_seconds,
+                    )
                 ctx.batch_store = store
             elif store.file_store is None and ctx.file_store is not None:
                 store.file_store = ctx.file_store
