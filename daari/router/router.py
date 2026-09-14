@@ -78,6 +78,9 @@ def _build_l0_cache(settings: Settings, l0_path: Path) -> ExactCache:
             prefix=settings.cache.redis_prefix,
             enabled=settings.cache.l0.enabled,
             ttl_seconds=settings.cache.l0.ttl_seconds,
+            timeout_seconds=float(
+                getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0
+            ),
         )
     return ExactCache(
         path=str(l0_path),
@@ -108,6 +111,9 @@ def _build_l1_cache(
             normalize_inputs=settings.cache.l1.normalize_inputs,
             verifier=verifier,
             metrics=metrics,
+            timeout_seconds=float(
+                getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0
+            ),
         )
     return SemanticCache(
         path=str(l1_path),

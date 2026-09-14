@@ -48,6 +48,14 @@ class RateLimitSettings(BaseModel):
         description="Waiters allowed when in-flight is full; overflow is 503 + Retry-After.",
     )
     retry_after_seconds: int = Field(default=1, description="Retry-After value on 429/503.")
+    fail_open: bool = Field(
+        default=False,
+        description=(
+            "When Redis counters are unreachable, allow requests without counting "
+            "instead of degrading to the per-replica SQLite backend. Default false "
+            "(prefer SQLite fallback so limits still apply locally)."
+        ),
+    )
 
 
 class ServerSettings(BaseModel):
@@ -139,6 +147,15 @@ class CacheSettings(RuntimeSettings):
     redis_url: str = "redis://127.0.0.1:6379/0"
     redis_prefix: str = "daari:l0:"
     redis_l1_prefix: str = "daari:l1:"
+    redis_timeout_seconds: float = Field(
+        default=2.0,
+        ge=0.1,
+        description=(
+            "socket_connect_timeout and socket_timeout for every Redis client "
+            "(rate-limit counters, L0/L1 cache, budget-alert dedupe). Keeps a "
+            "hung Redis from blocking gateway requests indefinitely (#463)."
+        ),
+    )
 
 
 class FrontierProviderConfig(BaseModel):

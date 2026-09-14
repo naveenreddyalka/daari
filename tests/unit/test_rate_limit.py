@@ -53,6 +53,9 @@ class FakeRedis:
     def pipeline(self):
         return _FakePipeline(self)
 
+    def ping(self) -> bool:
+        return True
+
 
 class _FakePipeline:
     def __init__(self, redis: FakeRedis) -> None:
@@ -264,3 +267,182 @@ async def test_metrics_exposes_limits_and_utilization(settings):
     assert "daari_rate_limit_limit" in text
     assert "daari_rate_limit_in_flight" in text
     assert "daari_rate_limit_in_flight_max" in text
+
+
+class BoomRedis(FakeRedis):
+    """Raises ConnectionError on every counter mutation (issue #463)."""
+
+    def incrby(self, key: str, amount: int = 1) -> int:
+        raise ConnectionError("redis down")
+
+    def ping(self) -> bool:
+        raise ConnectionError("redis down")
+
+
+class BlockingRedis(FakeRedis):
+    """Blocks then raises TimeoutError — simulates hung Redis past socket_timeout."""
+
+    def __init__(self, block_seconds: float = 0.05) -> None:
+        super().__init__()
+        self.block_seconds = block_seconds
+
+    def incrby(self, key: str, amount: int = 1) -> int:
+        time.sleep(self.block_seconds)
+        raise TimeoutError("socket timeout")
+
+    def ping(self) -> bool:
+        time.sleep(self.block_seconds)
+        raise TimeoutError("socket timeout")
+
+
+class RecoveringRedis(FakeRedis):
+    """Fails until `heal()` is called — recovery without restart (#463)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.down = True
+
+    def incrby(self, key: str, amount: int = 1) -> int:
+        if self.down:
+            raise ConnectionError("redis down")
+        return super().incrby(key, amount)
+
+    def ping(self) -> bool:
+        if self.down:
+            raise ConnectionError("redis down")
+        return True
+
+    def heal(self) -> None:
+        self.down = False
+
+
+def test_redis_counter_passes_socket_timeouts(monkeypatch):
+    captured: dict = {}
+
+    class _FakeMod:
+        class Redis:
+            @staticmethod
+            def from_url(url, **kwargs):
+                captured.update(kwargs)
+                captured["url"] = url
+                return FakeRedis()
+
+    monkeypatch.setitem(__import__("sys").modules, "redis", _FakeMod())
+    backend = RedisCounterBackend(redis_url="redis://example:6379/0", timeout_seconds=2.5)
+    backend.increment("k", 1)
+    assert captured["url"] == "redis://example:6379/0"
+    assert captured["decode_responses"] is True
+    assert captured["socket_connect_timeout"] == 2.5
+    assert captured["socket_timeout"] == 2.5
+
+
+def test_rate_limiter_degrades_to_sqlite_on_redis_error(tmp_path, monkeypatch):
+    events: list[tuple[str, dict]] = []
+
+    def capture(event: str, detail=None, **kwargs):
+        events.append((event, detail or {}))
+
+    monkeypatch.setattr("daari.gateway.request_log.log_gateway_event", capture)
+    redis = BoomRedis()
+    fallback = SqliteCounterBackend(tmp_path / "rl.sqlite3")
+    limiter = RateLimiter(
+        RedisCounterBackend(client=redis),
+        default_rpm=10,
+        fallback_backend=fallback,
+        probe_interval_seconds=0.0,
+    )
+    first = limiter.check(key_id="alice", model="daari", tokens=1)
+    second = limiter.check(key_id="alice", model="daari", tokens=1)
+    assert first.allowed and second.allowed
+    assert first.backend == "sqlite"
+    assert second.backend == "sqlite"
+    assert limiter.backend.name == "sqlite"
+    assert limiter.degraded is True
+    assert sum(1 for e, _ in events if e == "rate_limit.degraded") == 1
+
+
+def test_rate_limiter_fail_open_allows_without_sqlite(tmp_path, monkeypatch):
+    events: list = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, detail=None, **kw: events.append(event),
+    )
+    connects: list = []
+    monkeypatch.setattr(
+        "sqlite3.connect",
+        lambda *args, **kwargs: connects.append(args)
+        or (_ for _ in ()).throw(AssertionError("sqlite should not open")),
+    )
+    limiter = RateLimiter(
+        RedisCounterBackend(client=BoomRedis()),
+        default_rpm=1,
+        fail_open=True,
+        fallback_backend=SqliteCounterBackend(tmp_path / "unused.sqlite3"),
+    )
+    # Many requests past the rpm=1 cap — fail-open must allow, not count in sqlite.
+    for _ in range(5):
+        decision = limiter.check(key_id="alice", model="daari", tokens=1)
+        assert decision.allowed
+    assert "rate_limit.degraded" in events
+    assert connects == []
+
+
+def test_rate_limiter_recovers_when_redis_returns(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda *args, **kwargs: None,
+    )
+    redis = RecoveringRedis()
+    fallback = SqliteCounterBackend(tmp_path / "rl.sqlite3")
+    limiter = RateLimiter(
+        RedisCounterBackend(client=redis),
+        default_rpm=100,
+        fallback_backend=fallback,
+        probe_interval_seconds=0.0,
+    )
+    assert limiter.check(key_id="a", model="m", tokens=1).backend == "sqlite"
+    assert limiter.degraded is True
+    redis.heal()
+    recovered = limiter.check(key_id="a", model="m", tokens=1)
+    assert recovered.backend == "redis"
+    assert limiter.degraded is False
+    assert redis.incr_calls >= 1
+
+
+@pytest.mark.asyncio
+async def test_gateway_survives_redis_connection_error(settings, tmp_path, monkeypatch):
+    settings.cache.backend = "redis"
+    settings.rate_limit.rpm = 10
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    events: list[str] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, detail=None, **kw: events.append(event),
+    )
+    limiter = build_rate_limiter(settings, redis_client=BoomRedis())
+    app = _app(settings, limiter=limiter)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=CHAT)
+    assert response.status_code == 200
+    assert response.headers["x-ratelimit-limit"] == "10"
+    assert response.headers.get("x-ratelimit-backend") == "sqlite"
+    assert limiter.backend.name == "sqlite"
+    assert "rate_limit.degraded" in events
+
+
+@pytest.mark.asyncio
+async def test_gateway_survives_redis_timeout(settings, tmp_path, monkeypatch):
+    settings.cache.backend = "redis"
+    settings.cache.redis_timeout_seconds = 2.0
+    settings.rate_limit.rpm = 5
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda *args, **kwargs: None,
+    )
+    limiter = build_rate_limiter(settings, redis_client=BlockingRedis(block_seconds=0.01))
+    app = _app(settings, limiter=limiter)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=CHAT)
+    assert response.status_code == 200
+    assert response.headers.get("x-ratelimit-backend") == "sqlite"
