@@ -28,6 +28,7 @@ from daari.gateway.provider_prefs import (
     as_openrouter_payload,
     configured_frontier_slots,
     require_zdr_slot,
+    RegionUnavailable,
     ZdrUnavailable,
 )
 from daari.gateway.sampling import SamplingParams
@@ -680,6 +681,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             try:
                 result = await ctx.router.route(internal)
             except ZdrUnavailable as exc:
+                raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
+            except RegionUnavailable as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc

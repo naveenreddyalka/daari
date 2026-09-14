@@ -73,6 +73,8 @@ class RequestMeta(BaseModel):
     stream_include_usage: bool = False
     # Named boundaries.profiles overlay (X-Daari-Boundary-Profile / #171).
     boundary_profile: str | None = None
+    # L6 residency pin from virtual key / team (#466).
+    region_pin: str | None = None
     # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
     anthropic_beta: str | None = None
     anthropic_version: str | None = None
@@ -106,6 +108,8 @@ class DaariMeta(BaseModel):
     draft: bool = False
     executor: str
     provider_id: str | None = None
+    # L6 slot region label when a frontier provider served the request (#466).
+    region: str | None = None
     tool: str | None = None
     latency_ms: int = 0
     model: str | None = None

@@ -148,6 +148,7 @@ class Team:
     team_id: str
     name: str
     budget_windows: tuple[BudgetWindow, ...] = ()
+    region_pin: str | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,8 @@ class VirtualKey:
     previous_expires_at: str | None = None
     # Per end-user daily L6 cap on this shared key (0 = unlimited) (#410).
     user_daily_usd_cap: float = 0.0
+    # L6 residency pin (#466). Empty/None = unrestricted.
+    region_pin: str | None = None
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
@@ -274,6 +277,11 @@ class VirtualKeyStore:
             conn.execute(
                 "ALTER TABLE virtual_keys ADD COLUMN user_daily_usd_cap REAL NOT NULL DEFAULT 0"
             )
+        if "region_pin" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN region_pin TEXT")
+        team_cols = {row[1] for row in conn.execute("PRAGMA table_info(teams)")}
+        if "region_pin" not in team_cols:
+            conn.execute("ALTER TABLE teams ADD COLUMN region_pin TEXT")
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -303,6 +311,7 @@ class VirtualKeyStore:
         budget_windows: list[BudgetWindow] | None = None,
         daily_budget_usd: float = 0.0,
         monthly_budget_usd: float = 0.0,
+        region_pin: str | None = None,
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -311,24 +320,27 @@ class VirtualKeyStore:
             from daari.auth.budgets import windows_from_flat
 
             windows = windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd)
+        pin = (region_pin or "").strip() or None
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             existing = conn.execute(
-                "SELECT team_id, budget_windows_json FROM teams WHERE name = ?", (name,)
+                "SELECT team_id, budget_windows_json, region_pin FROM teams WHERE name = ?",
+                (name,),
             ).fetchone()
             if existing:
                 return Team(
                     team_id=existing[0],
                     name=name,
                     budget_windows=self._parse_windows(existing[1]),
+                    region_pin=existing[2] if len(existing) > 2 else None,
                 )
             conn.execute(
-                "INSERT INTO teams (team_id, name, budget_windows_json, created_at)"
-                " VALUES (?, ?, ?, ?)",
-                (team_id, name, self._windows_json(windows), created),
+                "INSERT INTO teams (team_id, name, budget_windows_json, created_at, region_pin)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (team_id, name, self._windows_json(windows), created, pin),
             )
-        return Team(team_id=team_id, name=name, budget_windows=windows)
+        return Team(team_id=team_id, name=name, budget_windows=windows, region_pin=pin)
 
     def update_team(
         self,
@@ -337,8 +349,9 @@ class VirtualKeyStore:
         budget_windows: list[BudgetWindow] | None = None,
         daily_budget_usd: float = 0.0,
         monthly_budget_usd: float = 0.0,
+        region_pin: str | None = None,
     ) -> Team:
-        """Replace a team's budget windows (#464). Raises KeyError if missing."""
+        """Replace a team's budget windows (#464) and optional region_pin (#466)."""
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
         windows = tuple(budget_windows or ())
@@ -346,17 +359,28 @@ class VirtualKeyStore:
             from daari.auth.budgets import windows_from_flat
 
             windows = windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd)
+        pin = (region_pin or "").strip() or None
         with self._lock, self._connect() as conn:
             row = conn.execute(
                 "SELECT name FROM teams WHERE team_id = ?", (team_id,)
             ).fetchone()
             if row is None:
                 raise KeyError(team_id)
-            conn.execute(
-                "UPDATE teams SET budget_windows_json = ? WHERE team_id = ?",
-                (self._windows_json(windows), team_id),
-            )
-        return Team(team_id=team_id, name=row[0], budget_windows=windows)
+            if region_pin is None:
+                conn.execute(
+                    "UPDATE teams SET budget_windows_json = ? WHERE team_id = ?",
+                    (self._windows_json(windows), team_id),
+                )
+                existing = conn.execute(
+                    "SELECT region_pin FROM teams WHERE team_id = ?", (team_id,)
+                ).fetchone()
+                pin = existing[0] if existing else None
+            else:
+                conn.execute(
+                    "UPDATE teams SET budget_windows_json = ?, region_pin = ? WHERE team_id = ?",
+                    (self._windows_json(windows), pin, team_id),
+                )
+        return Team(team_id=team_id, name=row[0], budget_windows=windows, region_pin=pin)
 
     def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
         if not self.enabled or (not team_id and not name):
@@ -364,17 +388,22 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             if team_id:
                 row = conn.execute(
-                    "SELECT team_id, name, budget_windows_json FROM teams WHERE team_id = ?",
+                    "SELECT team_id, name, budget_windows_json, region_pin FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
             else:
                 row = conn.execute(
-                    "SELECT team_id, name, budget_windows_json FROM teams WHERE name = ?",
+                    "SELECT team_id, name, budget_windows_json, region_pin FROM teams WHERE name = ?",
                     (name,),
                 ).fetchone()
         if row is None:
             return None
-        return Team(team_id=row[0], name=row[1], budget_windows=self._parse_windows(row[2]))
+        return Team(
+            team_id=row[0],
+            name=row[1],
+            budget_windows=self._parse_windows(row[2]),
+            region_pin=row[3] if len(row) > 3 else None,
+        )
 
     def team_client_ids(self, team_id: str) -> list[str]:
         if not self.enabled:
@@ -402,6 +431,7 @@ class VirtualKeyStore:
         metadata: dict[str, Any] | None = None,
         expires_at: str | None = None,
         user_daily_usd_cap: float = 0.0,
+        region_pin: str | None = None,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -420,12 +450,17 @@ class VirtualKeyStore:
             if item.duration not in seen:
                 windows = windows + (item,)
                 seen.add(item.duration)
+        meta = dict(metadata or {})
+        pin = (region_pin or "").strip() or None
+        if pin:
+            meta["region_pin"] = pin
         with self._lock, self._connect() as conn:
             conn.execute(
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
-                " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
+                " region_pin)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -440,9 +475,10 @@ class VirtualKeyStore:
                     client_id,
                     team_row.team_id if team_row else None,
                     self._windows_json(windows),
-                    json.dumps(metadata or {}),
+                    json.dumps(meta),
                     expires_at,
                     float(user_daily_usd_cap),
+                    pin,
                 ),
             )
         return CreatedKey(
@@ -459,9 +495,10 @@ class VirtualKeyStore:
                 team_id=team_row.team_id if team_row else None,
                 team_name=team_row.name if team_row else None,
                 budget_windows=windows,
-                metadata=dict(metadata or {}),
+                metadata=meta,
                 expires_at=expires_at,
                 user_daily_usd_cap=float(user_daily_usd_cap),
+                region_pin=pin,
             ),
             plaintext=plaintext,
         )
@@ -638,6 +675,12 @@ class VirtualKeyStore:
                 daily_usd=float(row[3] or 0), monthly_usd=float(row[4] or 0)
             )
         parsed = metadata or {}
+        pin = None
+        if isinstance(parsed, dict) and parsed.get("region_pin"):
+            pin = str(parsed["region_pin"]).strip() or None
+        if pin is None and len(row) > 12:
+            # Prefer explicit column when present (list/resolve SELECTs).
+            pass
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -656,6 +699,7 @@ class VirtualKeyStore:
             expires_at=expires_at,
             previous_expires_at=previous_expires_at,
             user_daily_usd_cap=float(user_daily_usd_cap or 0),
+            region_pin=pin,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -747,6 +791,7 @@ class VirtualKeyStore:
             "revoked": key.revoked,
             "team_id": key.team_id,
             "team": key.team_name,
+            "region_pin": key.region_pin,
             "budget_windows": [w.as_dict() for w in key.budget_windows],
             "expires_at": key.expires_at,
             "previous_expires_at": key.previous_expires_at,

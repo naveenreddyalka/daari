@@ -172,6 +172,9 @@ class FrontierProviderConfig(BaseModel):
     cooldown_seconds: float = 30.0
     # Zero-data-retention. Required when the client sends `provider.zdr`.
     zdr: bool = False
+    # Free-form residency label (e.g. us, eu). Matched against virtual-key /
+    # team region_pin when selecting L6 slots (#466).
+    region: str = ""
 
 
 class FrontierSettings(RuntimeSettings):

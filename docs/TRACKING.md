@@ -2281,6 +2281,16 @@ backends when `postgres.enabled`. Docs:
 [batches.md](developer/guides/features/batches.md). Covered by
 `tests/unit/test_postgres_batches_files.py`.
 
+### Region-pinned frontier fallback ([#466](https://github.com/naveenreddyalka/daari/issues/466))
+
+<!-- tracking:#466 -->
+**Status:** Done (2026-09-14). `FrontierProviderConfig.region` plus virtual-key /
+team `region_pin` filter L6 slots fail-closed (`RegionUnavailable`). Escalation
+soft-locals with `region_pin_unavailable` when possible; L6 responses expose
+`daari_meta.region` and `x-daari-region`. CLI: `--region-pin` on keys/teams.
+Docs: [data-residency.md](developer/guides/configuration/data-residency.md).
+Covered by `tests/unit/test_region_pin.py`.
+
 ---
 
 ## How to update
