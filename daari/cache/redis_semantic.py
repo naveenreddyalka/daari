@@ -30,6 +30,7 @@ class RedisSemanticCache(SemanticCache):
         client: Any | None = None,
         verifier: Any = None,
         metrics: Any = None,
+        timeout_seconds: float = 2.0,
     ) -> None:
         super().__init__(
             path="redis",
@@ -45,6 +46,7 @@ class RedisSemanticCache(SemanticCache):
         )
         self.redis_url = redis_url
         self.prefix = prefix
+        self.timeout_seconds = timeout_seconds
         self._client = client
 
     def _entries_redis_key(self) -> str:
@@ -52,14 +54,9 @@ class RedisSemanticCache(SemanticCache):
 
     def _redis(self) -> Any:
         if self._client is None:
-            try:
-                import redis
-            except ImportError as exc:
-                raise RuntimeError(
-                    "cache.backend=redis requires the redis package — "
-                    "pip install 'redis>=5' (or daari[redis])"
-                ) from exc
-            self._client = redis.Redis.from_url(self.redis_url, decode_responses=True)
+            from daari.cache.redis_client import connect_redis
+
+            self._client = connect_redis(self.redis_url, timeout_seconds=self.timeout_seconds)
         return self._client
 
     def _store(self) -> Any:

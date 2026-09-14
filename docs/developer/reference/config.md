@@ -21,6 +21,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `rate_limit.max_in_flight` | int | `0` | Global in-flight request cap. 0 disables the concurrency gate. |
 | `rate_limit.queue_size` | int | `32` | Waiters allowed when in-flight is full; overflow is 503 + Retry-After. |
 | `rate_limit.retry_after_seconds` | int | `1` | Retry-After value on 429/503. |
+| `rate_limit.fail_open` | bool | `False` | When Redis counters are unreachable, allow requests without counting instead of degrading to the per-replica SQLite backend. Default false (prefer SQLite fallback so limits still apply locally). |
 | `models.l3` | str | `'llama3.2:3b'` |  |
 | `models.l4` | str | `'llama3.1:8b'` |  |
 | `models.l5` | str | `'llama3.1:70b'` |  |
@@ -48,6 +49,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` |  |
 | `cache.redis_prefix` | str | `'daari:l0:'` |  |
 | `cache.redis_l1_prefix` | str | `'daari:l1:'` |  |
+| `cache.redis_timeout_seconds` | float | `2.0` | socket_connect_timeout and socket_timeout for every Redis client (rate-limit counters, L0/L1 cache, budget-alert dedupe). Keeps a hung Redis from blocking gateway requests indefinitely (#463). |
 | `routing.prefer` | Literal | `'balanced'` |  |
 | `routing.confidence_threshold` | float | `0.7` |  |
 | `routing.category_policies` | dict | `{}` |  |
@@ -56,22 +58,22 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.warm_model_preference` | bool | `True` |  |
 | `routing.learned_router` | bool | `False` |  |
 | `routing.reasoning_effort_escalation` | bool | `False` |  |
-| `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
-| `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin is reused. 0 keeps the pin until process restart. Ignored unless session_affinity is true. |
-| `routing.classify_user_turn` | bool | `False` | When true, tool-result continuations reuse the prior user-turn category/complexity instead of re-profiling (#389). Phase/stall still see tool history. Default off. |
-| `routing.classify_user_turn_agents` | bool | `True` | When `classify_user_turn` is false, still reuse profiles for agent User-Agents (`cursor`, `claude-code`, `claude code`, `codex`) (#421). Set false to disable the shortcut. |
-| `routing.harness_aware_profile` | bool | `True` | Ignore system catalogs and Codex/Claude Code harness blocks when classifying complexity (#418). `prompt_tokens_est` still counts the full request. Default on. |
-| `routing.context_window_escalation` | bool | `True` | Pre-dispatch hop when prompt estimate exceeds a tier's known window × buffer (#385). |
-| `routing.context_window_escalation_buffer` | float | `0.95` | Escalate when estimated tokens exceed window × buffer. |
-| `routing.context_windows` | dict | `{L3:8192,L4:32768,L5:131072}` | Known context windows (tokens) per local tier. Also advertised as `context_length` on `GET /v1/models` local cards (#400). Missing = omit. |
 | `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |
 | `routing.stall_escalation.repeats` | int | `3` | Identical calls or consecutive error results required to stall. |
 | `routing.stall_escalation.window` | int | `6` | How many recent tool calls are inspected for identical repeats. |
-| `routing.phase_routing.enabled` | bool | `False` | When true, classify the last window of tool-call names as explore / implement / verify and adjust the heuristic tier. Default off. |
+| `routing.phase_routing.enabled` | bool | `False` | When true, the last window of tool-call names classifies the turn as explore / implement / verify and adjusts the heuristic tier. Default off. |
 | `routing.phase_routing.window` | int | `6` | How many recent tool-call names are classified for phase. |
-| `routing.phase_routing.explore` | int \| str | `-1` | Relative ladder delta or absolute `L3`/`L4`/`L5` for explore-phase turns. Floor L3. |
-| `routing.phase_routing.implement` | int \| str | `0` | Relative delta or absolute tier for implement-phase turns. |
-| `routing.phase_routing.verify` | int \| str | `0` | Relative delta or absolute tier for verify-phase turns. |
+| `routing.phase_routing.explore` | int | str | `-1` | Tier adjustment for explore-phase turns. Default -1 (floor L3). |
+| `routing.phase_routing.implement` | int | str | `0` | Tier adjustment for implement-phase turns. Default 0. |
+| `routing.phase_routing.verify` | int | str | `0` | Tier adjustment for verify-phase turns. Default 0. |
+| `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
+| `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin is reused. 0 keeps the pin until process restart. Ignored unless session_affinity is true. |
+| `routing.classify_user_turn` | bool | `False` | When true, a tool-result continuation (no new user text) reuses the previous profile's category/complexity. Phase routing and stall escalation still inspect tool history. A new user message re-profiles. Default off. |
+| `routing.classify_user_turn_agents` | bool | `True` | When classify_user_turn is false, still reuse profiles on tool-result continuations for agent User-Agents (cursor, claude-code, claude code, codex). Set false to disable the shortcut. Ignored when classify_user_turn is true (applies to every client). Default on. |
+| `routing.harness_aware_profile` | bool | `True` | When true, complexity/category ignore system catalogs and recognized Codex/Claude Code harness blocks. prompt_tokens_est still counts the full request (#418). Default on (no-op without those markers). |
+| `routing.context_window_escalation` | bool | `True` | When true, pick a higher local tier before the first hop if the prompt estimate exceeds that tier's known context window (#385). |
+| `routing.context_window_escalation_buffer` | float | `0.95` | Escalate when estimated tokens exceed window * buffer. |
+| `routing.context_windows` | dict | `{'L3': 8192, 'L4': 32768, 'L5': 131072}` | Known context windows (tokens) per local tier. Missing = unknown, left alone. |
 | `routing.shadow_sample_rate` | float | `0.0` | Fraction of local-tier responses replayed in the background at shadow_compare_tier to measure tier divergence. 0 disables. |
 | `routing.shadow_compare_tier` | Literal | `''` | Tier to replay sampled requests at. Empty = highest configured local tier; L6 requires shadow_daily_usd > 0. |
 | `routing.shadow_daily_usd` | float | `0.0` | Daily spend cap for L6 shadow replays. 0 forbids L6 shadow runs. |
@@ -107,7 +109,16 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `usage.enabled` | bool | `True` |  |
 | `usage.path` | str | `'~/.daari/usage/ledger.sqlite3'` |  |
 | `usage.frontier_price_per_1k_tokens` | float | `0.002` | Flat fallback rate used to estimate what locally-served tokens would have cost on a frontier model. Applies only to models absent from `pricing.models`, and ignores input/output direction. |
-| `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25}, 'gpt-4o-mini': {'input_per_1m': 0.15, 'output_per_1m':…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
+| `files.enabled` | bool | `True` |  |
+| `files.path` | str | `'~/.daari/files'` |  |
+| `files.max_bytes` | int | `104857600` | Maximum upload size in bytes for POST /v1/files. |
+| `files.retention_days` | int | `0` | Fallback expiry for files without expires_after (#456). 0 keeps files forever until an explicit expires_after. |
+| `files.max_total_bytes` | int | `0` | Hard cap on aggregate stored bytes (#456). 0 disables the cap. Uploads that would exceed it return 413. |
+| `batches.enabled` | bool | `True` |  |
+| `batches.path` | str | `'~/.daari/batches/jobs.sqlite3'` |  |
+| `batches.yield_to_interactive` | bool | `True` | When true, the batch worker waits while interactive HTTP requests are in flight before dispatching the next item (#444). |
+| `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
+| `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
 | `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |
 | `upstream.retry.attempts` | int | `3` | Total attempts per upstream call, counting the first. `1` disables retries. Only transient failures are retried (408, 429, 5xx, connect and read timeouts); a 401 or malformed body fails immediately. |
@@ -126,6 +137,11 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.postgres_url` | str | `''` |  |
 | `observability.structured_json_logs` | bool | `False` |  |
 | `observability.stateless` | bool | `False` |  |
+| `observability.retention.traces_days` | int | `0` |  |
+| `observability.retention.ledger_days` | int | `0` |  |
+| `observability.retention.audit_days` | int | `0` |  |
+| `observability.retention.shadow_days` | int | `0` |  |
+| `observability.retention.tasks_days` | int | `0` |  |
 | `learning.enabled` | bool | `True` |  |
 | `learning.path` | str | `'~/.daari/feedback/feedback.sqlite3'` |  |
 | `learning.max_rows` | int | `20000` |  |
@@ -149,9 +165,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `guardrails.block_message` | str | `'Request blocked by daari guardrail.'` |  |
 | `guardrails.input_rules` | list | `[]` |  |
 | `guardrails.output_rules` | list | `[]` |  |
-| `guardrails.stream_mode` | str | `'buffered'` | `buffered` scans the full answer before the first SSE byte; `incremental` scans with a holdback window and keeps frontier relay eligible (#375). |
-| `guardrails.stream_holdback_chars` | int | `256` | Characters held back before emission in incremental mode. Ignored when buffered. |
-| `guardrails.scan_tool_results` | bool | `False` | When true, scan OpenAI `role=tool` / Anthropic `tool_result` message contents with output rules before the model hop (#387). System/user/assistant unchanged. MCP path separate. |
+| `guardrails.stream_mode` | Literal | `'buffered'` | How output guardrails apply to SSE streams. buffered (default) scans the full answer before the first byte; incremental scans with a holdback window and keeps frontier relay eligible. |
+| `guardrails.stream_holdback_chars` | int | `256` | Characters held back before emission in incremental stream_mode so a secret spanning two deltas is caught. Ignored when buffered. |
+| `guardrails.scan_tool_results` | bool | `False` | When true, scan OpenAI role=tool and Anthropic tool_result message contents with output rules (secrets/PII/deny) before the model hop. System/user/assistant messages are unchanged. Default off. |
 | `boundaries.enabled` | bool | `False` |  |
 | `boundaries.mode` | Literal | `'block'` |  |
 | `boundaries.product_name` | str | `''` |  |
@@ -186,7 +202,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_tasks.long_running_tools` | list | `['route']` |  |
 | `integrations.mcp_tasks.threshold_ms` | int | `0` |  |
 | `integrations.mcp_tasks.path` | str | `'~/.daari/mcp-tasks'` |  |
-| `integrations.mcp_tool_search.enabled` | bool | `False` | When true and the catalog exceeds `min_catalog_size`, rank tools by local embedding similarity and return `top_k` (#376). |
+| `integrations.mcp_tool_search.enabled` | bool | `False` | When true and the catalog exceeds min_catalog_size, rank tools by embedding similarity and return top_k. Default off — listing is unchanged. |
 | `integrations.mcp_tool_search.min_catalog_size` | int | `40` | Catalogs at or under this size are returned unranked. |
 | `integrations.mcp_tool_search.top_k` | int | `40` | Maximum tools returned after ranking. |
 | `integrations.mcp_guardrails.enabled` | bool | `False` |  |
@@ -195,6 +211,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_guardrails.block_message` | str | `'Request blocked by daari guardrail.'` |  |
 | `integrations.mcp_guardrails.input_rules` | list | `[]` |  |
 | `integrations.mcp_guardrails.output_rules` | list | `[]` |  |
+| `integrations.mcp_guardrails.stream_mode` | Literal | `'buffered'` | How output guardrails apply to SSE streams. buffered (default) scans the full answer before the first byte; incremental scans with a holdback window and keeps frontier relay eligible. |
+| `integrations.mcp_guardrails.stream_holdback_chars` | int | `256` | Characters held back before emission in incremental stream_mode so a secret spanning two deltas is caught. Ignored when buffered. |
+| `integrations.mcp_guardrails.scan_tool_results` | bool | `False` | When true, scan OpenAI role=tool and Anthropic tool_result message contents with output rules (secrets/PII/deny) before the model hop. System/user/assistant messages are unchanged. Default off. |
 | `enterprise.enabled` | bool | `False` |  |
 | `enterprise.id` | str | None | `None` |  |
 | `enterprise.org_id` | str | None | `None` |  |
@@ -228,8 +247,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.sso.enabled` | bool | `False` |  |
 | `enterprise.sso.issuer` | str | `'daari-dev'` |  |
 | `enterprise.sso.secret` | str | `''` |  |
-| `enterprise.sso.jwks_url` | str | `''` | Singular JWKS endpoint (one-item form). |
-| `enterprise.sso.jwks_urls` | list[str] | `[]` | Additional JWKS endpoints (#422). Tokens validate against any configured URL; unknown kid tries the next. |
+| `enterprise.sso.jwks_url` | str | `''` |  |
+| `enterprise.sso.jwks_urls` | list | `[]` |  |
 | `enterprise.sso.discovery_url` | str | `''` |  |
 | `enterprise.sso.audience` | str | `''` |  |
 | `enterprise.sso.role_claim` | str | `'role'` |  |
@@ -240,4 +259,6 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.sso.default_policy` | daari.enterprise.config.SsoKeyPolicy | None | `None` |  |
 | `enterprise.sso.deny_unmapped` | bool | `False` |  |
 | `enterprise.audit_path` | str | `'~/.daari/audit/audit.sqlite3'` |  |
+| `alerts.budget_webhook_url` | str | `''` |  |
+| `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
 | `skills_system_prefix` | str | `''` |  |

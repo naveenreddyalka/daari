@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import time
@@ -820,7 +821,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         async def ready(request: Request) -> JSONResponse:
             """Readiness probe (issue #105 / #170): cache handles plus local
             pool health. Degraded (some hosts down) is 200; no serving host
-            is 503."""
+            is 503. When ``cache.backend=redis``, also probe Redis — down with
+            rate-limit fallback active is degraded-but-200 (#463)."""
             ctx: AppContext = request.app.state.ctx
             cache_ok = ctx.cache is not None
             pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
@@ -848,6 +850,19 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "cache": "ok" if cache_ok else "missing",
                 "model_backend": model_backend,
             }
+            if getattr(ctx.settings.cache, "backend", "disk") == "redis":
+                limiter = getattr(request.app.state, "rate_limiter", None)
+                if limiter is not None and hasattr(limiter, "probe_redis"):
+                    redis_check = await asyncio.to_thread(limiter.probe_redis)
+                else:
+                    redis_check = await asyncio.to_thread(
+                        _probe_redis_url,
+                        getattr(ctx.settings.cache, "redis_url", ""),
+                        float(getattr(ctx.settings.cache, "redis_timeout_seconds", 2.0) or 2.0),
+                    )
+                checks["redis"] = redis_check
+                if redis_check != "ok" and http_status == 200 and status == "ready":
+                    status = "degraded"
             content: dict[str, Any] = {"status": status, "checks": checks}
             if backends:
                 content["backends"] = backends
@@ -1482,6 +1497,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             return store.as_public(cancelled)
 
         return router
+
+
+def _probe_redis_url(redis_url: str, timeout_seconds: float = 2.0) -> str:
+    """Best-effort Redis PING for /ready when no rate limiter is wired."""
+    if not redis_url:
+        return "missing_url"
+    try:
+        from daari.cache.redis_client import connect_redis
+
+        client = connect_redis(redis_url, timeout_seconds=timeout_seconds)
+        client.ping()
+        return "ok"
+    except Exception as exc:
+        return type(exc).__name__
 
 
 async def check_model_backend(probe_url: str, timeout: float = 2.0) -> str:

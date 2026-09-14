@@ -62,6 +62,44 @@ async def test_ready_open_without_api_key_auth(settings, monkeypatch):
     assert response.status_code == 200
 
 
+@pytest.mark.asyncio
+async def test_ready_redis_degraded_when_redis_down(settings, tmp_path, monkeypatch):
+    """cache.backend=redis + Redis down → degraded-but-200 (#463)."""
+    from daari.auth.rate_limit import build_rate_limiter
+
+    settings.cache.backend = "redis"
+    settings.rate_limit.rpm = 10
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+
+    class Boom:
+        def ping(self):
+            raise ConnectionError("redis down")
+
+        def pipeline(self):
+            raise ConnectionError("redis down")
+
+    async def backend_ok(probe_url: str, timeout: float = 2.0) -> str:
+        return "ok"
+
+    monkeypatch.setattr("daari.gateway.openai.check_model_backend", backend_ok)
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda *args, **kwargs: None,
+    )
+    app = _app(settings)
+    app.state.rate_limiter = build_rate_limiter(settings, redis_client=Boom())
+    # Force degraded path so /ready sees fallback-active semantics.
+    app.state.rate_limiter.check(key_id="probe", model="daari", tokens=1, rpm=10)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/ready")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["checks"]["redis"] == "ConnectionError"
+    assert body["checks"]["cache"] == "ok"
+    assert body["checks"]["model_backend"] == "ok"
+
+
 class TestCheckModelBackend:
     @pytest.mark.asyncio
     async def test_ok_response(self, monkeypatch):

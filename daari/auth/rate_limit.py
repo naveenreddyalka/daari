@@ -1,4 +1,8 @@
-"""RPM / TPM / concurrency limits with Redis or SQLite counters (issue #169)."""
+"""RPM / TPM / concurrency limits with Redis or SQLite counters (issue #169).
+
+Redis outages degrade to per-replica SQLite (or fail-open) instead of 500ing
+the gateway (issue #463).
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from daari.cache.redis_client import DEFAULT_REDIS_TIMEOUT_SECONDS, connect_redis
+
 WINDOW_SECONDS = 60
+DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,8 @@ class RateLimitDecision:
             "X-RateLimit-Remaining": str(max(0, self.remaining)),
             "X-RateLimit-Reset": str(self.reset_epoch),
         }
+        if self.backend:
+            headers["X-RateLimit-Backend"] = self.backend
         if self.retry_after is not None:
             headers["Retry-After"] = str(self.retry_after)
         return headers
@@ -110,22 +119,20 @@ class RedisCounterBackend:
         *,
         prefix: str = "daari:rl:",
         client: Any | None = None,
+        timeout_seconds: float = DEFAULT_REDIS_TIMEOUT_SECONDS,
     ) -> None:
         self.redis_url = redis_url
         self.prefix = prefix
+        self.timeout_seconds = timeout_seconds
         self._client = client
 
     def _store(self) -> Any:
         if self._client is None:
-            try:
-                import redis
-            except ImportError as exc:
-                raise RuntimeError(
-                    "cache.backend=redis requires the redis package — "
-                    "pip install 'redis>=5' (or daari[redis])"
-                ) from exc
-            self._client = redis.Redis.from_url(self.redis_url, decode_responses=True)
+            self._client = connect_redis(self.redis_url, timeout_seconds=self.timeout_seconds)
         return self._client
+
+    def ping(self) -> bool:
+        return bool(self._store().ping())
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
         window = int(time.time() // window_seconds)
@@ -150,8 +157,14 @@ class RateLimiter:
         max_in_flight: int = 0,
         queue_size: int = 32,
         retry_after_seconds: int = 1,
+        fallback_backend: CounterBackend | None = None,
+        fail_open: bool = False,
+        probe_interval_seconds: float = DEFAULT_PROBE_INTERVAL_SECONDS,
     ) -> None:
+        self._primary = backend
         self.backend = backend
+        self._fallback = fallback_backend
+        self.fail_open = fail_open
         self.default_rpm = default_rpm
         self.default_tpm = default_tpm
         self.model_rpm = model_rpm
@@ -164,6 +177,16 @@ class RateLimiter:
         self.queued = 0
         self._cond = asyncio.Condition()
         self._interactive_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._degraded = False
+        self._degraded_logged = False
+        self._last_probe = 0.0
+        self._probe_interval = max(0.0, float(probe_interval_seconds))
+
+    @property
+    def degraded(self) -> bool:
+        with self._state_lock:
+            return self._degraded
 
     def begin_interactive(self) -> None:
         """Count an interactive HTTP request for batch idle-yield (#444)."""
@@ -177,6 +200,95 @@ class RateLimiter:
     def interactive_load(self) -> int:
         with self._interactive_lock:
             return self.interactive_in_flight
+
+    def probe_redis(self) -> str:
+        """Return ``ok`` or the exception type name for ``/ready`` (#463)."""
+        primary = self._primary
+        if getattr(primary, "name", "") != "redis":
+            return "ok"
+        try:
+            if hasattr(primary, "ping"):
+                primary.ping()
+            else:
+                primary._store().ping()  # type: ignore[attr-defined]
+            return "ok"
+        except Exception as exc:
+            return type(exc).__name__
+
+    def _enter_degraded(self, exc: BaseException) -> None:
+        from daari.gateway.request_log import log_gateway_event
+
+        with self._state_lock:
+            self._degraded = True
+            if self.fail_open:
+                # Keep primary as named backend for diagnostics; counting skipped.
+                pass
+            elif self._fallback is not None:
+                self.backend = self._fallback
+            should_log = not self._degraded_logged
+            if should_log:
+                self._degraded_logged = True
+            mode = "fail_open" if self.fail_open else "sqlite_fallback"
+        if should_log:
+            log_gateway_event(
+                "rate_limit.degraded",
+                {
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "mode": mode,
+                    "backend": self.backend.name,
+                },
+            )
+
+    def _maybe_recover(self) -> None:
+        if getattr(self._primary, "name", "") != "redis":
+            return
+        now = time.monotonic()
+        with self._state_lock:
+            if not self._degraded:
+                return
+            if now - self._last_probe < self._probe_interval:
+                return
+            self._last_probe = now
+        try:
+            if hasattr(self._primary, "ping"):
+                self._primary.ping()  # type: ignore[attr-defined]
+            else:
+                self._primary._store().ping()  # type: ignore[attr-defined]
+        except Exception:
+            return
+        from daari.gateway.request_log import log_gateway_event
+
+        with self._state_lock:
+            self.backend = self._primary
+            self._degraded = False
+            self._degraded_logged = False
+        log_gateway_event("rate_limit.recovered", {"backend": "redis"})
+
+    def _increment(self, key: str, amount: int) -> int:
+        with self._state_lock:
+            degraded = self._degraded
+        if degraded:
+            self._maybe_recover()
+            with self._state_lock:
+                degraded = self._degraded
+
+        if not degraded:
+            try:
+                return self._primary.increment(key, amount)
+            except Exception as exc:
+                self._enter_degraded(exc)
+
+        if self.fail_open:
+            # Count of 0 → remaining stays at the full limit; request allowed.
+            return 0
+
+        fallback = self._fallback
+        if fallback is not None:
+            with self._state_lock:
+                self.backend = fallback
+            return fallback.increment(key, amount)
+        # No fallback configured — still must not 500.
+        return 0
 
     def check(
         self,
@@ -217,7 +329,7 @@ class RateLimiter:
             checks.append((f"tpm:{key_id}:{model}", "tpm", max(1, tokens), per_model_tpm))
 
         for counter_key, scope, amount, limit in checks:
-            count = self.backend.increment(counter_key, amount)
+            count = self._increment(counter_key, amount)
             remaining = max(0, limit - count)
             decision = RateLimitDecision(
                 allowed=count <= limit,
@@ -291,6 +403,7 @@ class RateLimiter:
     def snapshot(self) -> dict[str, Any]:
         return {
             "backend": self.backend.name,
+            "degraded": self.degraded,
             "rpm_limit": self.default_rpm,
             "tpm_limit": self.default_tpm,
             "in_flight": self.in_flight,
@@ -331,16 +444,25 @@ def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLi
     raw_queue = getattr(rl, "queue_size", 32)
     queue_size = 32 if raw_queue is None else int(raw_queue)
     retry_after = int(getattr(rl, "retry_after_seconds", 1) or 1)
+    fail_open = bool(getattr(rl, "fail_open", False))
     cache = getattr(settings, "cache", None)
+    vk_path = Path(settings.server.virtual_keys.path).expanduser()
+    sqlite_backend = SqliteCounterBackend(vk_path.parent / "rate-limit.sqlite3")
     if getattr(cache, "backend", "disk") == "redis":
+        timeout = float(
+            getattr(cache, "redis_timeout_seconds", DEFAULT_REDIS_TIMEOUT_SECONDS)
+            or DEFAULT_REDIS_TIMEOUT_SECONDS
+        )
         backend: CounterBackend = RedisCounterBackend(
             redis_url=getattr(cache, "redis_url", "redis://127.0.0.1:6379/0"),
             prefix="daari:rl:",
             client=redis_client,
+            timeout_seconds=timeout,
         )
+        fallback: CounterBackend | None = sqlite_backend
     else:
-        vk_path = Path(settings.server.virtual_keys.path).expanduser()
-        backend = SqliteCounterBackend(vk_path.parent / "rate-limit.sqlite3")
+        backend = sqlite_backend
+        fallback = None
     return RateLimiter(
         backend,
         default_rpm=default_rpm,
@@ -350,4 +472,6 @@ def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLi
         max_in_flight=max_in_flight,
         queue_size=queue_size,
         retry_after_seconds=retry_after,
+        fallback_backend=fallback,
+        fail_open=fail_open,
     )

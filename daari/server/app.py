@@ -59,14 +59,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         cache = resolved.cache
         redis_url = ""
+        redis_timeout = 2.0
         if getattr(cache, "backend", "disk") == "redis":
             redis_url = getattr(cache, "redis_url", "") or ""
+            redis_timeout = float(getattr(cache, "redis_timeout_seconds", 2.0) or 2.0)
         app.state.budget_alerter = BudgetAlerter(
             webhook_url=resolved.alerts.budget_webhook_url,
             thresholds=tuple(resolved.alerts.budget_thresholds),
             audit=AuditLog(resolved.enterprise.audit_path),
             metrics=app.state.ctx.metrics,
             redis_url=redis_url,
+            redis_timeout_seconds=redis_timeout,
         )
         # Wire interactive load probe, then resume unfinished batches (#443/#444).
         batch_store = getattr(app.state.ctx, "batch_store", None)

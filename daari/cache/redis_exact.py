@@ -22,23 +22,20 @@ class RedisExactCache(ExactCache):
         ttl_seconds: float = 0.0,
         clock: Callable[[], float] | None = None,
         client: Any | None = None,
+        timeout_seconds: float = 2.0,
     ) -> None:
         # path unused — kept so callers can treat this like ExactCache.
         super().__init__(path="redis", enabled=enabled, ttl_seconds=ttl_seconds, clock=clock)
         self.redis_url = redis_url
         self.prefix = prefix
+        self.timeout_seconds = timeout_seconds
         self._client = client
 
     def _store(self) -> Any:
         if self._client is None:
-            try:
-                import redis
-            except ImportError as exc:
-                raise RuntimeError(
-                    "cache.backend=redis requires the redis package — "
-                    "pip install 'redis>=5' (or daari[redis])"
-                ) from exc
-            self._client = redis.Redis.from_url(self.redis_url, decode_responses=True)
+            from daari.cache.redis_client import connect_redis
+
+            self._client = connect_redis(self.redis_url, timeout_seconds=self.timeout_seconds)
         return self._client
 
     def _key(self, request: InternalRequest) -> str:

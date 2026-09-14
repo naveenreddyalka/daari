@@ -46,9 +46,14 @@ rate_limit:
   max_in_flight: 8      # 0 = no concurrency gate
   queue_size: 32        # waiters before 503 + Retry-After
   retry_after_seconds: 1
+  fail_open: false      # true = allow (uncounted) if Redis is down
 ```
 
-Counters live in Redis when `cache.backend: redis` (`daari:rl:` prefix); otherwise SQLite next to the virtual-key store. Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`. `/metrics` exposes the configured limits and current in-flight / queued gauges.
+Counters live in Redis when `cache.backend: redis` (`daari:rl:` prefix); otherwise SQLite next to the virtual-key store. Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `X-RateLimit-Backend`. `/metrics` exposes the configured limits and current in-flight / queued gauges.
+
+### Redis outage semantics (fleet)
+
+With `cache.backend: redis`, every Redis client uses `cache.redis_timeout_seconds` (default 2s) for connect and command timeouts so a hung Redis cannot stall requests for the OS TCP timeout. If Redis counters raise or time out, the gateway logs one `rate_limit.degraded` event and switches rate-limit counting to the per-replica SQLite backend (or allows without counting when `rate_limit.fail_open: true`). Requests never 500 because Redis is down. When Redis answers again, counting returns to Redis without a restart. `/ready` includes a `redis` check; Redis down with fallback active is **degraded but HTTP 200** (same pattern as a partial local-pool outage). L0/L1 cache misses already degrade gracefully on Redis errors.
 
 ## SSO (admin)
 

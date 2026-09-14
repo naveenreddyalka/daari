@@ -79,6 +79,7 @@ class BudgetAlerter:
     timeout: float = 3.0
     redis: Any | None = None
     redis_url: str = ""
+    redis_timeout_seconds: float = 2.0
     _seen: set[tuple[str, str, str, float, int]] = field(default_factory=set)
     _lock: threading.Lock = field(default_factory=threading.Lock)
     _redis_client: Any | None = field(default=None, repr=False, compare=False)
@@ -105,9 +106,11 @@ class BudgetAlerter:
         if self.redis is not None:
             return self.redis
         if self._redis_client is None:
-            import redis
+            from daari.cache.redis_client import connect_redis
 
-            self._redis_client = redis.Redis.from_url(self.redis_url, decode_responses=True)
+            self._redis_client = connect_redis(
+                self.redis_url, timeout_seconds=self.redis_timeout_seconds
+            )
         return self._redis_client
 
     def _claim_redis(

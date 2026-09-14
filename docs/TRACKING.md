@@ -2247,6 +2247,18 @@ are deleted on access or `daari prune` / retention sweep. `files.retention_days`
 cap and usage. Covered by `tests/unit/test_files_api.py` and
 `tests/unit/test_retention.py`.
 
+### Redis outage resilience ([#463](https://github.com/naveenreddyalka/daari/issues/463))
+
+<!-- tracking:#463 -->
+**Status:** Done (2026-09-14). All Redis clients use
+`cache.redis_timeout_seconds` (default 2s) for socket connect/command timeouts.
+Rate-limit Redis errors log one `rate_limit.degraded` event and fall back to
+per-replica SQLite (or `rate_limit.fail_open`); counting recovers when Redis
+answers again. `/ready` probes Redis when `cache.backend=redis` (degraded-but-200).
+Docs: [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md),
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_rate_limit.py` and `tests/integration/test_ready_probe.py`.
+
 ---
 
 ## How to update
