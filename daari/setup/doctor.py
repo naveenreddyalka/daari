@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,7 @@ def run_doctor(
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
+    results.append(_check_fleet_artifacts(cfg))
     results.append(_check_daemon(cfg, httpx_client))
     if tunnel_url:
         results.append(_check_tunnel(tunnel_url, httpx_client))
@@ -343,6 +345,43 @@ def _check_daemon(
     finally:
         if own_client:
             http.close()
+
+
+def _check_fleet_artifacts(settings: Settings) -> CheckResult:
+    """Warn when Helm/fleet signals multi-replica with per-pod SQLite (#476)."""
+    raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return CheckResult(
+            name="fleet_artifacts",
+            ok=False,
+            detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
+            optional=True,
+        )
+    sqlite_parts: list[str] = []
+    if settings.batches.backend == "sqlite":
+        sqlite_parts.append("batches")
+    if settings.files.backend == "sqlite":
+        sqlite_parts.append("files")
+    if settings.observability.backend == "sqlite":
+        sqlite_parts.append("observability/ledger")
+    if replicas > 1 and sqlite_parts:
+        return CheckResult(
+            name="fleet_artifacts",
+            ok=False,
+            detail=(
+                f"fleet_replicas={replicas} but {', '.join(sqlite_parts)} use "
+                "sqlite (per-pod; enable postgres backends or keep replicas at 1)"
+            ),
+            optional=True,
+        )
+    detail = (
+        f"fleet_replicas={replicas}; artifact backends ok"
+        if replicas > 1
+        else f"fleet_replicas={replicas} (single-node SQLite defaults are fine)"
+    )
+    return CheckResult(name="fleet_artifacts", ok=True, detail=detail, optional=True)
 
 
 def _check_org(settings: Settings) -> CheckResult:

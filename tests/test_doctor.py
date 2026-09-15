@@ -378,3 +378,26 @@ class TestDoctorSecretRefs:
         assert by_name["secret_refs"].ok is False
         assert ref in by_name["secret_refs"].detail
         assert doctor_exit_code(results) == 1
+
+    def test_fleet_replicas_with_sqlite_artifacts_warns(self, settings, monkeypatch):
+        monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_artifacts"].ok is False
+        assert by_name["fleet_artifacts"].optional is True
+        assert "sqlite" in by_name["fleet_artifacts"].detail.lower()
+
+    def test_fleet_replicas_with_postgres_artifacts_ok(self, settings, monkeypatch):
+        monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
+        settings.batches.backend = "postgres"
+        settings.files.backend = "postgres"
+        settings.observability.backend = "postgres"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_artifacts"].ok is True
+
+    def test_single_replica_sqlite_is_ok(self, settings, monkeypatch):
+        monkeypatch.delenv("DAARI_FLEET_REPLICAS", raising=False)
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_artifacts"].ok is True

@@ -2,5 +2,8 @@ apiVersion: v2
 name: daari
 description: Local-first LLM execution router (gateway replicas + optional Redis)
 type: application
-version: 0.1.0
-appVersion: "1.2.0"
+# Chart packaging version (semver for the chart itself). Bump on chart-only changes.
+version: 0.2.0
+# Must match pyproject.toml / daari.__version__ / values image.tag after each release.
+# Agents/humans: bump appVersion + values.yaml image.tag together; do not create git tags here.
+appVersion: "1.4.0"

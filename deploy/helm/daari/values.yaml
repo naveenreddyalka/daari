@@ -1,8 +1,13 @@
-replicaCount: 2
+# Default: single replica until Postgres is enabled. Raising replicaCount or
+# autoscaling.minReplicas above 1 without postgres.enabled leaves batches, files,
+# and the usage ledger on per-pod SQLite (404 / split-brain across replicas).
+# See templates/NOTES.txt and docs/developer/guides/operations/capacity-helm.md.
+replicaCount: 1
 
 image:
   repository: ghcr.io/naveenreddyalka/daari
-  tag: "1.2.0"
+  # Keep in sync with Chart.yaml appVersion and daari.__version__ (see capacity-helm.md).
+  tag: "1.4.0"
   pullPolicy: IfNotPresent
 
 service:
@@ -18,9 +23,10 @@ resources:
     memory: 1Gi
 
 # HPA: scale on CPU. For request-rate, wire KEDA externally.
+# Keep minReplicas at 1 unless postgres.enabled is true (shared batches/files/ledger).
 autoscaling:
   enabled: true
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
 
@@ -35,6 +41,14 @@ redis:
   url: redis://redis:6379/0
 
 # External Postgres for ledger/traces/batches/files (issues #116, #465).
+# When enabled, the Deployment sets DAARI_OBSERVABILITY__BACKEND,
+# DAARI_BATCHES__BACKEND, and DAARI_FILES__BACKEND to postgres (shared fleet).
+# Example multi-replica fleet:
+#   replicaCount: 2
+#   autoscaling.minReplicas: 2
+#   postgres:
+#     enabled: true
+#     url: postgresql://daari:daari@postgres:5432/daari
 postgres:
   enabled: false
   url: ""

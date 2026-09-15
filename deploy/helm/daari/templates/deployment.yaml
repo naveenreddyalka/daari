@@ -4,6 +4,12 @@ metadata:
   name: {{ include "daari.fullname" . }}
   labels:
     app.kubernetes.io/name: daari
+  {{- if eq (include "daari.fleetSqliteWarning" .) "true" }}
+  annotations:
+    daari.dev/fleet-sqlite-warning: |
+      Effective replicas > 1 with postgres.enabled=false: batches, files, and
+      the usage ledger are per-pod SQLite (split-brain / 404 across replicas).
+  {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -22,6 +28,8 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
           env:
+            - name: DAARI_FLEET_REPLICAS
+              value: {{ include "daari.fleetReplicas" . | quote }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
