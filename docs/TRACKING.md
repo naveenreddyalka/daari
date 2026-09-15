@@ -2363,6 +2363,16 @@ Owner scoping (#453) unchanged. Helm sets `DAARI_RESPONSES__BACKEND` with
 batches/files. Docs: [batches.md](developer/guides/features/batches.md).
 Covered by `tests/unit/test_postgres_responses.py`.
 
+### Fleet-shared session pins + cost-avoided via Redis ([#482](https://github.com/naveenreddyalka/daari/issues/482))
+
+<!-- tracking:#482 -->
+**Status:** Done (2026-09-15). When `cache.backend: redis`, session affinity
+pins and the session cost-avoided accumulator use Redis (TTL =
+`session_affinity_ttl_seconds`); Redis errors fail open to in-process and
+log `session_affinity.degraded`. Docs: [routing-tiers.md](developer/concepts/routing-tiers.md),
+[headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_session_affinity_redis.py`.
+
 ---
 
 ## How to update

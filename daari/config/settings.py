@@ -353,8 +353,10 @@ class RoutingSettings(RuntimeSettings):
         default=1800.0,
         ge=0.0,
         description=(
-            "How long a session pin is reused. 0 keeps the pin until process "
-            "restart. Ignored unless session_affinity is true."
+            "How long a session pin (and the session cost-avoided rollup) is "
+            "reused. 0 keeps the pin until process restart (in-process) or "
+            "without a Redis TTL when cache.backend=redis. Ignored unless "
+            "session_affinity is true."
         ),
     )
     # When on, tool-result continuations reuse the prior user-turn category /

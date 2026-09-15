@@ -62,7 +62,8 @@ class SessionAvoidedStore:
     """Running frontier-implied savings for one client session id.
 
     Same TTL as session-affinity pins. Missing / blank ids are ignored so
-    single-turn clients keep the per-response header only.
+    single-turn clients keep the per-response header only. When Redis is
+    configured (fleet), the total is shared across replicas (#482).
     """
 
     def __init__(
@@ -70,10 +71,50 @@ class SessionAvoidedStore:
         ttl_seconds: float = 1800.0,
         *,
         clock: Callable[[], float] | None = None,
+        redis_client: Any | None = None,
+        redis_prefix: str = "daari:session-avoided:",
+        redis_url: str | None = None,
+        redis_timeout_seconds: float = 2.0,
     ) -> None:
         self.ttl_seconds = max(0.0, float(ttl_seconds))
         self._clock = clock or time.monotonic
         self._totals: dict[str, tuple[float, float]] = {}
+        self._redis = redis_client
+        self._redis_url = redis_url
+        self._redis_timeout_seconds = redis_timeout_seconds
+        self._redis_prefix = redis_prefix
+        self._degraded = False
+
+    def _client(self) -> Any | None:
+        if self._redis is not None:
+            return self._redis
+        if not self._redis_url:
+            return None
+        from daari.cache.redis_client import connect_redis
+
+        self._redis = connect_redis(
+            self._redis_url, timeout_seconds=self._redis_timeout_seconds
+        )
+        return self._redis
+
+    def _redis_key(self, session_id: str) -> str:
+        return f"{self._redis_prefix}{session_id}"
+
+    def _mark_degraded(self, exc: BaseException) -> None:
+        if self._degraded:
+            return
+        self._degraded = True
+        try:
+            from daari.gateway.request_log import log_gateway_event
+
+            log_gateway_event(
+                "session_affinity.degraded",
+                detail=str(exc),
+                backend="redis",
+                store="session_avoided",
+            )
+        except Exception:
+            pass
 
     def _purge(self, session_id: str) -> None:
         row = self._totals.get(session_id)
@@ -87,11 +128,37 @@ class SessionAvoidedStore:
         key = (session_id or "").strip()
         if not key:
             return 0.0
+        delta = max(0.0, float(avoided))
+        client = None
+        try:
+            client = self._client()
+        except Exception as exc:
+            self._mark_degraded(exc)
+            client = None
+        if client is not None:
+            try:
+                redis_key = self._redis_key(key)
+                if hasattr(client, "incrbyfloat"):
+                    total = float(client.incrbyfloat(redis_key, delta))
+                else:
+                    raw = client.get(redis_key)
+                    prev = float(raw or 0.0)
+                    total = prev + delta
+                    if self.ttl_seconds > 0:
+                        client.set(redis_key, str(total), ex=int(max(1, self.ttl_seconds)))
+                    else:
+                        client.set(redis_key, str(total))
+                    return total
+                if self.ttl_seconds > 0 and hasattr(client, "expire"):
+                    client.expire(redis_key, int(max(1, self.ttl_seconds)))
+                return total
+            except Exception as exc:
+                self._mark_degraded(exc)
         self._purge(key)
         now = self._clock()
         expires = now + self.ttl_seconds if self.ttl_seconds > 0 else float("inf")
         prev, _ = self._totals.get(key, (0.0, expires))
-        total = prev + max(0.0, float(avoided))
+        total = prev + delta
         self._totals[key] = (total, expires)
         return total
 
@@ -99,6 +166,20 @@ class SessionAvoidedStore:
         key = (session_id or "").strip()
         if not key:
             return None
+        client = None
+        try:
+            client = self._client()
+        except Exception as exc:
+            self._mark_degraded(exc)
+            client = None
+        if client is not None:
+            try:
+                raw = client.get(self._redis_key(key))
+                if raw is None:
+                    return None
+                return float(raw)
+            except Exception as exc:
+                self._mark_degraded(exc)
         self._purge(key)
         row = self._totals.get(key)
         return None if row is None else row[0]
