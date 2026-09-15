@@ -52,6 +52,7 @@ def run_doctor(
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_fleet_artifacts(cfg))
+    results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_daemon(cfg, httpx_client))
     if tunnel_url:
@@ -371,6 +372,9 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
         sqlite_artifacts.append("responses.backend=sqlite")
     if settings.observability.backend == "sqlite":
         sqlite_artifacts.append("observability.backend=sqlite")
+    audit_backend = getattr(settings.enterprise, "audit_backend", "sqlite") or "sqlite"
+    if audit_backend == "sqlite":
+        sqlite_artifacts.append("enterprise.audit_backend=sqlite")
 
     signals: list[str] = []
     if replicas > 1:
@@ -389,6 +393,8 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     if settings.observability.backend == "sqlite" and signals:
         # Ledger split only matters when some other fleet signal is already on.
         needs_shared.append("observability.backend=sqlite")
+    if audit_backend == "sqlite" and signals:
+        needs_shared.append("enterprise.audit_backend=sqlite")
 
     if needs_shared and signals:
         return CheckResult(
@@ -397,9 +403,10 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
             detail=(
                 f"fleet signals ({', '.join(signals)}) with per-pod SQLite "
                 f"({', '.join(needs_shared)}) — GET /v1/batches|files|responses "
-                "can 404 across replicas; set batches.backend=postgres, "
-                "files.backend=postgres, responses.backend=postgres, and "
-                "observability.backend=postgres (with observability.postgres_url), "
+                "can 404 across replicas and audit export is incomplete; set "
+                "batches.backend=postgres, files.backend=postgres, "
+                "responses.backend=postgres, observability.backend=postgres, and "
+                "enterprise.audit_backend=postgres (with observability.postgres_url), "
                 "or keep a single replica"
             ),
             optional=True,
@@ -412,6 +419,28 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     else:
         detail = f"fleet_replicas={replicas} (single-node SQLite defaults are fine)"
     return CheckResult(name="fleet_artifacts", ok=True, detail=detail, optional=True)
+
+
+def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
+    """Warn when a budget webhook URL is set without a signing secret (#496)."""
+    url = (settings.alerts.budget_webhook_url or "").strip()
+    secret = (settings.alerts.budget_webhook_secret or "").strip()
+    if url and not secret:
+        return CheckResult(
+            name="budget_webhook_secret",
+            ok=False,
+            detail=(
+                "alerts.budget_webhook_url is set but alerts.budget_webhook_secret "
+                "is empty — receivers cannot verify origin; set a secret "
+                "(secret:// ok) or clear the URL"
+            ),
+            optional=True,
+        )
+    if url:
+        detail = "budget webhook URL + secret configured"
+    else:
+        detail = "budget webhook disabled (empty URL)"
+    return CheckResult(name="budget_webhook_secret", ok=True, detail=detail, optional=True)
 
 
 def _check_helm_image_tag() -> CheckResult:

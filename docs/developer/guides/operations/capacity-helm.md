@@ -17,9 +17,9 @@ Redis is an accelerator, not a single point of failure: set `cache.backend: redi
 
 Chart: `deploy/helm/daari/`. Point Redis/Postgres/org pool via values. Image: `ghcr.io/naveenreddyalka/daari`.
 
-Defaults are a **single replica** (`replicaCount: 1`, `autoscaling.minReplicas: 1`) with `postgres.enabled: false`. Batches, files, responses, and the usage ledger then use per-pod SQLite — fine for one pod. Raising replicas (or HPA min) above 1 without Postgres splits those stores across pods (404s / divergent counters). `helm install` NOTES and `daari doctor` (via `DAARI_FLEET_REPLICAS`) warn on that combination.
+Defaults are a **single replica** (`replicaCount: 1`, `autoscaling.minReplicas: 1`) with `postgres.enabled: false`. Batches, files, responses, the usage ledger, and the audit log then use per-pod SQLite — fine for one pod. Raising replicas (or HPA min) above 1 without Postgres splits those stores across pods (404s / divergent counters / incomplete `daari audit export`). `helm install` NOTES and `daari doctor` (via `DAARI_FLEET_REPLICAS`) warn on that combination.
 
-For a multi-replica fleet, enable the chart Postgres helper (sets observability / batches / files / responses backends):
+For a multi-replica fleet, enable the chart Postgres helper (sets observability / batches / files / responses / audit backends):
 
 ```yaml
 replicaCount: 2

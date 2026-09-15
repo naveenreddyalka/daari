@@ -394,6 +394,7 @@ class TestDoctorSecretRefs:
         settings.files.backend = "postgres"
         settings.responses.backend = "postgres"
         settings.observability.backend = "postgres"
+        settings.enterprise.audit_backend = "postgres"
         results = run_doctor(settings, httpx_client=self._down_client())
         by_name = {r.name: r for r in results}
         assert by_name["fleet_artifacts"].ok is True
@@ -412,6 +413,7 @@ class TestDoctorSecretRefs:
         assert by_name["fleet_artifacts"].ok is False
         assert "cache.backend=redis" in by_name["fleet_artifacts"].detail
         assert "files.backend=postgres" in by_name["fleet_artifacts"].detail
+        assert "enterprise.audit_backend=postgres" in by_name["fleet_artifacts"].detail
 
     def test_postgres_ledger_with_sqlite_batches_warns(self, settings, monkeypatch):
         monkeypatch.delenv("DAARI_FLEET_REPLICAS", raising=False)
@@ -421,6 +423,36 @@ class TestDoctorSecretRefs:
         assert by_name["fleet_artifacts"].ok is False
         assert "observability.backend=postgres" in by_name["fleet_artifacts"].detail
         assert "batches.backend=sqlite" in by_name["fleet_artifacts"].detail
+        assert "enterprise.audit_backend=sqlite" in by_name["fleet_artifacts"].detail
+
+    def test_fleet_signals_with_sqlite_audit_warns(self, settings, monkeypatch):
+        monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
+        settings.batches.backend = "postgres"
+        settings.files.backend = "postgres"
+        settings.responses.backend = "postgres"
+        settings.observability.backend = "postgres"
+        settings.enterprise.audit_backend = "sqlite"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_artifacts"].ok is False
+        assert "enterprise.audit_backend=sqlite" in by_name["fleet_artifacts"].detail
+        assert "enterprise.audit_backend=postgres" in by_name["fleet_artifacts"].detail
+
+    def test_budget_webhook_without_secret_warns(self, settings):
+        settings.alerts.budget_webhook_url = "https://hooks.example/budget"
+        settings.alerts.budget_webhook_secret = ""
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["budget_webhook_secret"].ok is False
+        assert by_name["budget_webhook_secret"].optional is True
+        assert "budget_webhook_secret" in by_name["budget_webhook_secret"].detail
+
+    def test_budget_webhook_with_secret_ok(self, settings):
+        settings.alerts.budget_webhook_url = "https://hooks.example/budget"
+        settings.alerts.budget_webhook_secret = "whsec_test"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["budget_webhook_secret"].ok is True
 
     def test_helm_image_tag_matches_package(self, settings):
         results = run_doctor(settings, httpx_client=self._down_client())
