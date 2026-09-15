@@ -522,7 +522,12 @@ class Router:
         self.classify_user_turn = bool(classify_user_turn)
         self.classify_user_turn_agents = bool(classify_user_turn_agents)
         self.harness_aware_profile = bool(harness_aware_profile)
-        self.profile_pins = ProfilePinStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.profile_pins = ProfilePinStore(
+            ttl_seconds=session_affinity_ttl_seconds,
+            redis_client=session_affinity_redis_client,
+            redis_url=session_affinity_redis_url,
+            redis_timeout_seconds=session_affinity_redis_timeout_seconds,
+        )
         self.context_window_escalation = bool(context_window_escalation)
         self.context_window_buffer = float(context_window_buffer)
         self.context_windows = dict(context_windows) if context_windows else {}

@@ -2403,6 +2403,16 @@ stay no-op. Docs:
 [otel-genai.md](developer/guides/observability/otel-genai.md#trace-context-propagation).
 Covered by `tests/unit/test_otel_genai.py`.
 
+### Fleet-shared profile pins via Redis ([#495](https://github.com/naveenreddyalka/daari/issues/495))
+
+<!-- tracking:#495 -->
+**Status:** Done (2026-09-15). `ProfilePinStore` uses the same Redis path as
+session pins when `cache.backend: redis` (TTL =
+`session_affinity_ttl_seconds`); Redis errors fail open and log
+`session_affinity.degraded`. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#session-affinity).
+Covered by `tests/unit/test_session_affinity_redis.py`.
+
 ---
 
 ## How to update
