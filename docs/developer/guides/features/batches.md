@@ -36,6 +36,12 @@ after `claim_ttl_seconds` and another replica resumes. Keep both backends on
 postgres when using `input_file_id` / `output_file_id` across pods. Single-node
 SQLite remains the zero-dependency default.
 
+Helm chart defaults stay at one replica until `postgres.enabled: true`. With that
+flag the Deployment sets `DAARI_BATCHES__BACKEND` / `DAARI_FILES__BACKEND` /
+`DAARI_OBSERVABILITY__BACKEND` to `postgres` for you. NOTES and `daari doctor`
+warn if effective replicas (or HPA min) are greater than 1 while those backends
+are still SQLite — see [Capacity and Helm](../operations/capacity-helm.md).
+
 ## Idle yield
 
 With `batches.yield_to_interactive: true` (default), the worker checks interactive

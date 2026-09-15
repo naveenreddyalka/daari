@@ -2323,6 +2323,17 @@ usability / testability / benchmarking / documentation / tooling) when
 `--pick` is empty, then implement. `docs/automations/prd-cycle.md` forbids
 no-delta filing. Covered by `tests/unit/test_autodev_backlog.py`.
 
+### Helm chart image pin + multi-replica SQLite warnings ([#476](https://github.com/naveenreddyalka/daari/issues/476))
+
+<!-- tracking:#476 -->
+**Status:** Done (2026-09-15). Chart `appVersion` / `image.tag` track
+`daari.__version__` (1.4.0). Defaults are `replicaCount` / HPA min `1` until
+`postgres.enabled`; NOTES + `DAARI_FLEET_REPLICAS` / `daari doctor`
+`fleet_artifacts` warn on multi-replica + SQLite artifacts. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md),
+[batches.md](developer/guides/features/batches.md). Covered by
+`tests/unit/test_helm_chart.py` and `tests/test_doctor.py`.
+
 ---
 
 ## How to update
