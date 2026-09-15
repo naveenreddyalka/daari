@@ -165,6 +165,40 @@ def test_workflow_prompt_references_backlog_script():
     assert "gh issue list --label auto-dev" not in text
 
 
+def test_workflow_refills_instead_of_stopping_on_empty_backlog():
+    text = (REPO_ROOT / ".github" / "workflows" / "autodev.yml").read_text(encoding="utf-8")
+    assert "print 'backlog empty' and stop" not in text
+    assert "refill" in text.lower()
+    assert "prd-cycle.md" in text
+
+
+def test_prd_cycle_workflow_is_scheduled():
+    path = REPO_ROOT / ".github" / "workflows" / "prd-cycle.yml"
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "0 14 * * *" in text
+    assert "CURSOR_API_KEY" in text
+    assert "AUTODEV_GH_TOKEN" in text
+    assert "prd-cycle.md" in text
+
+
+def test_prd_cycle_prompt_forbids_empty_filing():
+    text = (REPO_ROOT / "docs" / "automations" / "prd-cycle.md").read_text(
+        encoding="utf-8"
+    ).lower()
+    assert "no-delta" in text or "no delta" in text
+    assert "must file" in text or "always file" in text
+    for word in (
+        "performance",
+        "usability",
+        "testability",
+        "benchmarking",
+        "documentation",
+        "tooling",
+    ):
+        assert word in text
+
+
 def _stall_body(pr_number=340, run_id=33815553913):
     return (
         "<!-- autodev-pr-stall -->\n"

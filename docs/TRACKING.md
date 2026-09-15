@@ -2303,6 +2303,16 @@ cache hits do not. Team inheritance matches USD (tighter wins per dimension).
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
 Covered by `tests/unit/test_request_quotas.py`.
 
+### Never-empty PRD and autodev refill ([#474](https://github.com/naveenreddyalka/daari/issues/474))
+
+<!-- tracking:#474 -->
+**Status:** Done (2026-09-15). Empty backlog is a refill trigger, not a stop.
+`.github/workflows/prd-cycle.yml` runs daily at 14:00 UTC. Autodev and
+`AGENTS.md` must file 3–5 `auto-dev` issues (features or performance /
+usability / testability / benchmarking / documentation / tooling) when
+`--pick` is empty, then implement. `docs/automations/prd-cycle.md` forbids
+no-delta filing. Covered by `tests/unit/test_autodev_backlog.py`.
+
 ---
 
 ## How to update
