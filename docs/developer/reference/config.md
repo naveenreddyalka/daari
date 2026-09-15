@@ -121,6 +121,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `batches.claim_ttl_seconds` | int | `90` | How long a replica's drain claim stays exclusive before another replica may reclaim a crashed worker (#465). Ignored for sqlite. |
 | `batches.yield_to_interactive` | bool | `True` | When true, the batch worker waits while interactive HTTP requests are in flight before dispatching the next item (#444). |
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
+| `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) for multi-replica fleets (#481). |
+| `responses.retention_days` | int | `0` | Delete stored Responses older than this many days (#497). 0 keeps them forever. |
 | `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
 | `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |

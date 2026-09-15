@@ -700,6 +700,14 @@ class ResponsesSettings(BaseModel):
             "background polling work across replicas (#481)."
         ),
     )
+    retention_days: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Delete stored responses older than this many days (#497). "
+            "0 keeps them forever."
+        ),
+    )
 
 
 class TraceSettings(BaseModel):

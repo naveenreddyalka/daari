@@ -65,4 +65,12 @@ files:
   enabled: true
   path: ~/.daari/files
   max_bytes: 104857600
+  retention_days: 0          # 0 = forever; set >0 to prune expired uploads
+responses:
+  backend: sqlite            # or postgres with observability.postgres_url
+  retention_days: 0          # 0 = forever; prune via daari prune / daily sweep
 ```
+
+Stored Responses (`store: true`) keep `created_at` at first write. When
+`responses.retention_days` is greater than zero, `daari prune` and the daily
+retention sweep delete older rows on both SQLite and Postgres backends.

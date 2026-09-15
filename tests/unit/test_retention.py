@@ -242,6 +242,43 @@ class TestFilesRetention:
         assert FileStore(settings.files_store_path).get(stored.id) is None
 
 
+class TestResponsesRetention:
+    def test_prune_reclaims_old_responses(self, tmp_path):
+        from daari.gateway.response_store import ResponseStore
+
+        settings = _settings(tmp_path)
+        settings.responses.retention_days = 7
+        settings.trace.path = str(tmp_path / "traces" / "traces.sqlite3")
+        store = ResponseStore(tmp_path / "traces" / "responses.sqlite3")
+        store.put("resp_old", {"id": "resp_old", "output": []})
+        store.put("resp_new", {"id": "resp_new", "output": []})
+        cutoff = int((NOW - timedelta(days=7)).timestamp())
+        with store._connect() as conn:
+            conn.execute(
+                "UPDATE responses SET created_at = ? WHERE response_id = ?",
+                (cutoff - 10, "resp_old"),
+            )
+            conn.execute(
+                "UPDATE responses SET created_at = ? WHERE response_id = ?",
+                (int(NOW.timestamp()), "resp_new"),
+            )
+            conn.commit()
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["responses"].deleted == 1
+        assert by_store["responses"].skipped is False
+        assert ResponseStore(tmp_path / "traces" / "responses.sqlite3").get("resp_old") is None
+        assert ResponseStore(tmp_path / "traces" / "responses.sqlite3").get("resp_new") is not None
+
+    def test_zero_retention_skips(self, tmp_path):
+        settings = _settings(tmp_path)
+        assert settings.responses.retention_days == 0
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["responses"].skipped is True
+        assert by_store["responses"].deleted == 0
+
+
 class TestPostgresHooks:
     def test_postgres_trace_store_exposes_prune(self):
         from daari.observability.postgres_trace import PostgresTraceStore

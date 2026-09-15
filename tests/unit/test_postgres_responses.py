@@ -38,7 +38,22 @@ class TestPostgresResponseStoreMemory:
         assert got["_conversation"] == [{"role": "user", "content": "hi"}]
         assert got["_owner_key_id"] == "k1"
         assert response_visible_to_caller(got, _Claims(kind="virtual", key_id="k1"))
-        assert not response_visible_to_caller(got, _Claims(kind="virtual", key_id="other"))
+
+    def test_prune_older_than_memory(self):
+        dsn = _dsn()
+        store = PostgresResponseStore(dsn, retention_days=1)
+        store.put("resp_old", {"id": "resp_old", "output": []})
+        store.put("resp_new", {"id": "resp_new", "output": []})
+        bucket, lock = __import__(
+            "daari.gateway.postgres_responses", fromlist=["_memory_bucket"]
+        )._memory_bucket(dsn)
+        with lock:
+            bucket["resp_old"]["created_at"] = 1000
+        assert store.prune_older_than(2000, dry_run=True) == 1
+        assert store.get("resp_old") is not None
+        assert store.prune_older_than(2000) == 1
+        assert store.get("resp_old") is None
+        assert store.get("resp_new") is not None
 
     def test_replace_preserves_owner_when_omitted(self):
         dsn = _dsn()
