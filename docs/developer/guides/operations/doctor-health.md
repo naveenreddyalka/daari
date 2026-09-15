@@ -20,7 +20,8 @@ Orchestrators should use `/ready` (Ollama + cache handles), not only `/health`.
 | `/health` | Process not listening |
 | `/ready` | Dependency (Ollama/cache) not ready |
 | doctor mlx/redis | Optional backend misconfigured |
-| doctor `fleet_artifacts` | Optional: `DAARI_FLEET_REPLICAS` > 1 with sqlite batches/files/ledger (Helm multi-replica without Postgres) |
+| doctor `fleet_artifacts` | Optional: fleet signals (`DAARI_FLEET_REPLICAS` > 1, `cache.backend=redis`, or `observability.backend=postgres`) with sqlite `batches` / `files` (and ledger when still sqlite) — split-brain / 404 risk |
+| doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
 
 ## Next
 

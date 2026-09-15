@@ -2343,6 +2343,16 @@ no-Ollama ceilings for ExactCache get, `budget_status`, SQLite
 Docs: [benchmark-load.md](developer/resources/benchmark-load.md),
 [live-benchmark.md](developer/guides/observability/live-benchmark.md).
 
+### Doctor flags fleet SQLite artifacts + stale Helm tag ([#478](https://github.com/naveenreddyalka/daari/issues/478))
+
+<!-- tracking:#478 -->
+**Status:** Done (2026-09-15). `fleet_artifacts` also trips on
+`cache.backend=redis` or `observability.backend=postgres` with sqlite
+batches/files; warning names the postgres settings to flip. Optional
+`helm_image_tag` compares checkout chart `image.tag` to
+`daari.__version__`. Docs: [doctor-health.md](developer/guides/operations/doctor-health.md).
+Covered by `tests/test_doctor.py`.
+
 ---
 
 ## How to update

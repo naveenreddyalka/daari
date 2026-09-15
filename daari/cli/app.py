@@ -1261,7 +1261,7 @@ def doctor(
         help="Print a VRAM/RAM-aware L3/L4/L5 stack recommendation (issue #113).",
     ),
 ) -> None:
-    """Verify Python, config, Ollama, model, and optional daemon."""
+    """Verify Python, config, Ollama, model, fleet artifact backends, and optional daemon."""
     if suggest_models:
         from daari.router.capabilities import detect_system_ram_gb, suggest_models_for_vram
 

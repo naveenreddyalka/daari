@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,6 +52,7 @@ def run_doctor(
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_fleet_artifacts(cfg))
+    results.append(_check_helm_image_tag())
     results.append(_check_daemon(cfg, httpx_client))
     if tunnel_url:
         results.append(_check_tunnel(tunnel_url, httpx_client))
@@ -348,7 +350,7 @@ def _check_daemon(
 
 
 def _check_fleet_artifacts(settings: Settings) -> CheckResult:
-    """Warn when Helm/fleet signals multi-replica with per-pod SQLite (#476)."""
+    """Warn when fleet signals collide with per-pod SQLite artifacts (#476, #478)."""
     raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
     try:
         replicas = int(raw)
@@ -359,29 +361,104 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
             detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
             optional=True,
         )
-    sqlite_parts: list[str] = []
+
+    sqlite_artifacts: list[str] = []
     if settings.batches.backend == "sqlite":
-        sqlite_parts.append("batches")
+        sqlite_artifacts.append("batches.backend=sqlite")
     if settings.files.backend == "sqlite":
-        sqlite_parts.append("files")
+        sqlite_artifacts.append("files.backend=sqlite")
     if settings.observability.backend == "sqlite":
-        sqlite_parts.append("observability/ledger")
-    if replicas > 1 and sqlite_parts:
+        sqlite_artifacts.append("observability.backend=sqlite")
+
+    signals: list[str] = []
+    if replicas > 1:
+        signals.append(f"DAARI_FLEET_REPLICAS={replicas}")
+    if settings.cache.backend == "redis":
+        signals.append("cache.backend=redis")
+    if settings.observability.backend == "postgres":
+        signals.append("observability.backend=postgres")
+
+    # Artifacts that must be shared across a fleet (batches/files; ledger when
+    # still sqlite while another fleet signal is present).
+    needs_shared = [
+        part
+        for part in sqlite_artifacts
+        if part.startswith("batches.") or part.startswith("files.")
+    ]
+    if settings.observability.backend == "sqlite" and signals:
+        # Ledger split only matters when some other fleet signal is already on.
+        needs_shared.append("observability.backend=sqlite")
+
+    if needs_shared and signals:
         return CheckResult(
             name="fleet_artifacts",
             ok=False,
             detail=(
-                f"fleet_replicas={replicas} but {', '.join(sqlite_parts)} use "
-                "sqlite (per-pod; enable postgres backends or keep replicas at 1)"
+                f"fleet signals ({', '.join(signals)}) with per-pod SQLite "
+                f"({', '.join(needs_shared)}) — GET /v1/batches|files can 404 "
+                "across replicas; set batches.backend=postgres, "
+                "files.backend=postgres, and observability.backend=postgres "
+                "(with observability.postgres_url), or keep a single replica"
             ),
             optional=True,
         )
-    detail = (
-        f"fleet_replicas={replicas}; artifact backends ok"
-        if replicas > 1
-        else f"fleet_replicas={replicas} (single-node SQLite defaults are fine)"
-    )
+
+    if not sqlite_artifacts and replicas > 1:
+        detail = f"fleet_replicas={replicas}; artifact backends ok"
+    elif signals and not needs_shared:
+        detail = f"fleet signals ok ({', '.join(signals)}); shared backends configured"
+    else:
+        detail = f"fleet_replicas={replicas} (single-node SQLite defaults are fine)"
     return CheckResult(name="fleet_artifacts", ok=True, detail=detail, optional=True)
+
+
+def _check_helm_image_tag() -> CheckResult:
+    """Optional: chart image.tag behind daari.__version__ when values.yaml is present (#478)."""
+    from daari import __version__
+
+    values = Path(__file__).resolve().parents[2] / "deploy" / "helm" / "daari" / "values.yaml"
+    if not values.is_file():
+        return CheckResult(
+            name="helm_image_tag",
+            ok=True,
+            detail="chart values.yaml not present (skip)",
+            optional=True,
+        )
+    try:
+        text = values.read_text(encoding="utf-8")
+    except OSError as exc:
+        return CheckResult(
+            name="helm_image_tag",
+            ok=True,
+            detail=f"could not read chart values ({exc})",
+            optional=True,
+        )
+    match = re.search(r"(?m)^\s*tag:\s*[\"']?([0-9]+(?:\.[0-9]+)*)[\"']?\s*$", text)
+    if not match:
+        return CheckResult(
+            name="helm_image_tag",
+            ok=True,
+            detail="image.tag not found in chart values",
+            optional=True,
+        )
+    tag = match.group(1)
+    if tag != __version__:
+        return CheckResult(
+            name="helm_image_tag",
+            ok=False,
+            detail=(
+                f"deploy/helm/daari/values.yaml image.tag={tag} behind package "
+                f"{__version__} — bump Chart.yaml appVersion and values image.tag "
+                "(see docs/developer/guides/operations/capacity-helm.md)"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="helm_image_tag",
+        ok=True,
+        detail=f"chart image.tag={tag} matches package",
+        optional=True,
+    )
 
 
 def _check_org(settings: Settings) -> CheckResult:

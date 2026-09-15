@@ -386,6 +386,7 @@ class TestDoctorSecretRefs:
         assert by_name["fleet_artifacts"].ok is False
         assert by_name["fleet_artifacts"].optional is True
         assert "sqlite" in by_name["fleet_artifacts"].detail.lower()
+        assert "batches.backend=postgres" in by_name["fleet_artifacts"].detail
 
     def test_fleet_replicas_with_postgres_artifacts_ok(self, settings, monkeypatch):
         monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
@@ -401,3 +402,30 @@ class TestDoctorSecretRefs:
         results = run_doctor(settings, httpx_client=self._down_client())
         by_name = {r.name: r for r in results}
         assert by_name["fleet_artifacts"].ok is True
+
+    def test_redis_cache_with_sqlite_artifacts_warns(self, settings, monkeypatch):
+        monkeypatch.delenv("DAARI_FLEET_REPLICAS", raising=False)
+        settings.cache.backend = "redis"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_artifacts"].ok is False
+        assert "cache.backend=redis" in by_name["fleet_artifacts"].detail
+        assert "files.backend=postgres" in by_name["fleet_artifacts"].detail
+
+    def test_postgres_ledger_with_sqlite_batches_warns(self, settings, monkeypatch):
+        monkeypatch.delenv("DAARI_FLEET_REPLICAS", raising=False)
+        settings.observability.backend = "postgres"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_artifacts"].ok is False
+        assert "observability.backend=postgres" in by_name["fleet_artifacts"].detail
+        assert "batches.backend=sqlite" in by_name["fleet_artifacts"].detail
+
+    def test_helm_image_tag_matches_package(self, settings):
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert "helm_image_tag" in by_name
+        assert by_name["helm_image_tag"].optional is True
+        # Checkout includes the chart; after #476 it should match daari.__version__.
+        assert by_name["helm_image_tag"].ok is True
+        assert "matches package" in by_name["helm_image_tag"].detail
