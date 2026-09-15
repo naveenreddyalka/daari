@@ -49,7 +49,11 @@ def _windows(policy: SsoKeyPolicy) -> list[BudgetWindow]:
             max_usd = float(item.get("max_usd") or 0)
         except (TypeError, ValueError):
             continue
-        if not duration or max_usd <= 0:
+        try:
+            max_requests = int(item.get("max_requests") or 0)
+        except (TypeError, ValueError):
+            max_requests = 0
+        if not duration or (max_usd <= 0 and max_requests <= 0):
             continue
         rollover = bool(item.get("rollover") or False)
         try:
@@ -64,6 +68,7 @@ def _windows(policy: SsoKeyPolicy) -> list[BudgetWindow]:
                 max_usd,
                 rollover=rollover,
                 rollover_cap_multiple=cap,
+                max_requests=max(0, max_requests),
             )
         )
     return out

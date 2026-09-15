@@ -91,6 +91,11 @@ def keys_create(
         "--window",
         help="Extra duration=max_usd window (e.g. 7d=5). Repeatable.",
     ),
+    window_requests: list[str] = typer.Option(
+        [],
+        "--window-requests",
+        help="Request-count cap duration=max_requests (e.g. 1d=5000). Repeatable.",
+    ),
     mcp_allow: list[str] = typer.Option(
         [],
         "--mcp-allow",
@@ -118,14 +123,21 @@ def keys_create(
     ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
-    from daari.auth.budgets import parse_window_flag
+    from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.virtual_keys import VirtualKeyStore, expiry_from
 
     settings = get_settings()
     store = VirtualKeyStore(
         settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
     )
-    extra = [parse_window_flag(item) for item in window]
+    try:
+        extra = coalesce_windows(
+            [parse_window_flag(item) for item in window]
+            + [parse_window_requests_flag(item) for item in window_requests]
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     metadata: dict | None = None
     if mcp_allow or mcp_deny:
         metadata = {"mcp": {"allow": list(mcp_allow), "deny": list(mcp_deny)}}
@@ -143,7 +155,7 @@ def keys_create(
         tier_cap=tier_cap,
         client_id=client_id,
         team=team,
-        budget_windows=extra or None,
+        budget_windows=list(extra) or None,
         metadata=metadata,
         expires_at=expires_at,
         user_daily_usd_cap=user_daily_cap,
@@ -176,7 +188,9 @@ def keys_create(
 @keys_app.command("list")
 def keys_list() -> None:
     """List virtual keys (prefixes only — never plaintext)."""
+    from daari.auth.budgets import budget_status
     from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.observability.usage import UsageLedger
 
     settings = get_settings()
     store = VirtualKeyStore(
@@ -186,6 +200,7 @@ def keys_list() -> None:
     if not keys:
         typer.echo("No virtual keys.")
         return
+    ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
     typer.echo(
         f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} "
         f"{'tier':<4} {'expires':<25} {'grace_until':<25} status"
@@ -197,6 +212,31 @@ def keys_list() -> None:
             f"{(key.expires_at or 'never'):<25} "
             f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
+        team = store.get_team(key.team_id) if key.team_id else None
+        client_id = key.client_id or key.key_id
+        team_ids = store.team_client_ids(team.team_id) if team is not None else []
+        if not ledger.enabled:
+            continue
+        try:
+            statuses = budget_status(
+                key,
+                team,
+                ledger,
+                client_id=client_id,
+                team_client_ids=team_ids,
+            )
+        except Exception:
+            continue
+        if not statuses:
+            continue
+        parts: list[str] = []
+        for status in statuses:
+            label = status.window.duration
+            if status.quota == "requests":
+                parts.append(f"req {int(status.spend)}/{int(status.limit)} ({label})")
+            else:
+                parts.append(f"${status.spend:.2f}/${status.limit:.2f} ({label})")
+        typer.echo(f"  budget: {', '.join(parts)}")
 
 
 @keys_app.command("revoke")
@@ -274,6 +314,11 @@ def keys_team_create(
     daily_budget: float = typer.Option(0.0, "--daily-budget"),
     monthly_budget: float = typer.Option(0.0, "--monthly-budget"),
     window: list[str] = typer.Option([], "--window", help="duration=max_usd (repeatable)"),
+    window_requests: list[str] = typer.Option(
+        [],
+        "--window-requests",
+        help="Request-count cap duration=max_requests (e.g. 1d=5000). Repeatable.",
+    ),
     region_pin: str | None = typer.Option(
         None,
         "--region-pin",
@@ -283,18 +328,25 @@ def keys_team_create(
     """Create a team whose caps apply to every key that joins it."""
     import os
 
-    from daari.auth.budgets import parse_window_flag
+    from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.virtual_keys import VirtualKeyStore
 
     settings = get_settings()
     store = VirtualKeyStore(
         settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
     )
-    extra = [parse_window_flag(item) for item in window]
+    try:
+        extra = coalesce_windows(
+            [parse_window_flag(item) for item in window]
+            + [parse_window_requests_flag(item) for item in window_requests]
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     prior = store.get_team(name=name)
     team = store.create_team(
         name,
-        budget_windows=extra or None,
+        budget_windows=list(extra) or None,
         daily_budget_usd=daily_budget,
         monthly_budget_usd=monthly_budget,
         region_pin=region_pin,
@@ -304,7 +356,12 @@ def keys_team_create(
     if team.region_pin:
         typer.echo(f"region:  {team.region_pin}")
     for item in team.budget_windows:
-        typer.echo(f"window:  {item.duration} ${item.max_usd}")
+        bits = []
+        if item.max_usd > 0:
+            bits.append(f"${item.max_usd}")
+        if item.max_requests > 0:
+            bits.append(f"{item.max_requests} req")
+        typer.echo(f"window:  {item.duration} {' '.join(bits)}")
     if prior is None:
         _audit_log_from_settings().record(
             actor=os.environ.get("USER") or "cli",
@@ -327,6 +384,11 @@ def keys_team_update(
     daily_budget: float = typer.Option(0.0, "--daily-budget"),
     monthly_budget: float = typer.Option(0.0, "--monthly-budget"),
     window: list[str] = typer.Option([], "--window", help="duration=max_usd (repeatable)"),
+    window_requests: list[str] = typer.Option(
+        [],
+        "--window-requests",
+        help="Request-count cap duration=max_requests (e.g. 1d=5000). Repeatable.",
+    ),
     region_pin: str | None = typer.Option(
         None,
         "--region-pin",
@@ -336,18 +398,25 @@ def keys_team_update(
     """Update a team's budget windows (#464)."""
     import os
 
-    from daari.auth.budgets import parse_window_flag
+    from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.virtual_keys import VirtualKeyStore
 
     settings = get_settings()
     store = VirtualKeyStore(
         settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
     )
-    extra = [parse_window_flag(item) for item in window]
+    try:
+        extra = coalesce_windows(
+            [parse_window_flag(item) for item in window]
+            + [parse_window_requests_flag(item) for item in window_requests]
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     try:
         team = store.update_team(
             team_id,
-            budget_windows=extra or None,
+            budget_windows=list(extra) or None,
             daily_budget_usd=daily_budget,
             monthly_budget_usd=monthly_budget,
             region_pin=region_pin,
@@ -358,7 +427,12 @@ def keys_team_update(
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     for item in team.budget_windows:
-        typer.echo(f"window:  {item.duration} ${item.max_usd}")
+        bits = []
+        if item.max_usd > 0:
+            bits.append(f"${item.max_usd}")
+        if item.max_requests > 0:
+            bits.append(f"{item.max_requests} req")
+        typer.echo(f"window:  {item.duration} {' '.join(bits)}")
     _audit_log_from_settings().record(
         actor=os.environ.get("USER") or "cli",
         role="admin",
@@ -366,9 +440,7 @@ def keys_team_update(
         detail={
             "team_id": team.team_id,
             "name": team.name,
-            "windows": [
-                {"duration": w.duration, "max_usd": w.max_usd} for w in team.budget_windows
-            ],
+            "windows": [w.as_dict() for w in team.budget_windows],
         },
     )
 

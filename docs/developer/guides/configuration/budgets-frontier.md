@@ -126,9 +126,44 @@ is down). Each fire writes a `budget.alert` audit row and increments
 Existing keys that only have `daily_budget_usd` / `monthly_budget_usd` are
 migrated to `day` / `month` windows on first open; behavior is unchanged.
 
-Only frontier (L6) usage counts. Local tiers and cache hits are free and never
-consume a budget. Spend is priced per model from `pricing.models`, so a key's
-remaining allowance reflects the models it actually used.
+Only frontier (L6) usage counts **toward USD budgets**. Local tiers and cache
+hits are free and never consume a USD budget. Spend is priced per model from
+`pricing.models`, so a key's remaining allowance reflects the models it
+actually used.
+
+### Request-count quotas
+
+USD caps cannot meter shared local GPU capacity: local tiers cost `$0.00`, so a
+key can monopolize the fleet without touching a budget window. RPM only bounds
+bursts. Request-count quotas close that gap.
+
+```bash
+daari keys create gpu-bot --window-requests 1d=5000 --window 1d=5
+daari keys team-create eng --window-requests 1d=20000
+```
+
+YAML / SSO `budget_windows` entries accept the same shape:
+
+```yaml
+budget_windows:
+  - duration: day
+    max_usd: 5
+    max_requests: 5000
+```
+
+Semantics match USD windows: multiple durations are checked independently,
+team caps apply to every key on the team, and the tighter of key vs team wins
+**per dimension** (USD and requests merge independently). Counting is
+ledger-backed (`requests − cache_hits` on `client_usage`), so quotas hold
+across replicas when `observability.backend=postgres`. **Local-tier requests
+count; L0/L1 cache hits do not** — a cache hit costs nothing to serve.
+
+Exceeding a request quota returns the same `402` `budget_exceeded` shape with
+`quota: "requests"`, `budget_requests` / `spend_requests`, plus
+`x-daari-quota-requests-remaining` / `-limit` (and `Retry-After`). Successful
+responses for a quota-bound key carry the remaining/limit headers so clients
+can back off before the hard stop. `daari keys list` prints live
+`req used/cap` next to USD usage for each window.
 
 ## Pricing
 

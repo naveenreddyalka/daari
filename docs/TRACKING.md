@@ -2291,6 +2291,18 @@ soft-locals with `region_pin_unavailable` when possible; L6 responses expose
 Docs: [data-residency.md](developer/guides/configuration/data-residency.md).
 Covered by `tests/unit/test_region_pin.py`.
 
+### Request-count quotas per key/team window ([#467](https://github.com/naveenreddyalka/daari/issues/467))
+
+<!-- tracking:#467 -->
+**Status:** Done (2026-09-15). Budget windows accept `max_requests` alongside
+USD (`--window-requests 1d=5000`, YAML/SSO `max_requests`). Exceeding returns
+`402` with `quota: "requests"` plus `x-daari-quota-requests-*` headers.
+Counting is ledger-backed (`requests − cache_hits`); local tiers count, L0/L1
+cache hits do not. Team inheritance matches USD (tighter wins per dimension).
+`daari keys list` surfaces `req used/cap` next to USD. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_request_quotas.py`.
+
 ---
 
 ## How to update

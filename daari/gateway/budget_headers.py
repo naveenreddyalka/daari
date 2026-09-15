@@ -4,6 +4,9 @@ Sibling of `cost_headers.py`: where those say what *this* response cost, these
 say how much frontier budget the caller has left in the window it will hit
 first, so clients and FinOps tooling can back off to $0 local tiers before the
 402. Budget state is known before the body, so streams carry them too.
+
+Request-count quotas (#467) add ``x-daari-quota-requests-*`` for the same
+reason when a key/team carries a request cap.
 """
 
 from __future__ import annotations
@@ -18,12 +21,26 @@ BUDGET_LIMIT_HEADER = "x-daari-budget-limit"
 BUDGET_WINDOW_HEADER = "x-daari-budget-window"
 BUDGET_RESET_HEADER = "x-daari-budget-reset"
 BUDGET_SCOPE_HEADER = "x-daari-budget-scope"
+QUOTA_REQUESTS_REMAINING_HEADER = "x-daari-quota-requests-remaining"
+QUOTA_REQUESTS_LIMIT_HEADER = "x-daari-quota-requests-limit"
 
 
 def budget_headers(status: WindowStatus) -> dict[str, str]:
+    if status.quota == "requests":
+        return request_quota_headers(status)
     return {
         BUDGET_REMAINING_HEADER: usd_string(status.remaining),
         BUDGET_LIMIT_HEADER: usd_string(float(status.limit)),
+        BUDGET_WINDOW_HEADER: window_header_label(status.window.duration),
+        BUDGET_RESET_HEADER: str(status.reset_epoch),
+        BUDGET_SCOPE_HEADER: status.scope,
+    }
+
+
+def request_quota_headers(status: WindowStatus) -> dict[str, str]:
+    return {
+        QUOTA_REQUESTS_REMAINING_HEADER: str(int(status.remaining)),
+        QUOTA_REQUESTS_LIMIT_HEADER: str(int(status.limit)),
         BUDGET_WINDOW_HEADER: window_header_label(status.window.duration),
         BUDGET_RESET_HEADER: str(status.reset_epoch),
         BUDGET_SCOPE_HEADER: status.scope,

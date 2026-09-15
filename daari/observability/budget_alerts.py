@@ -57,10 +57,17 @@ def crossings(
     thresholds: Iterable[float],
 ) -> list[tuple[WindowStatus, float]]:
     """Thresholds newly reached between two snapshots of the same windows."""
-    prior = {(item.scope, item.window.duration): _ratio(item) for item in before}
+    # Request quotas (#467) share duration keys with USD; alerts stay USD-only.
+    prior = {
+        (item.scope, item.window.duration): _ratio(item)
+        for item in before
+        if getattr(item, "quota", "usd") == "usd"
+    }
     hits: list[tuple[WindowStatus, float]] = []
     marks = sorted({float(t) for t in thresholds if 0 < float(t) <= 1.0})
     for status in after:
+        if getattr(status, "quota", "usd") != "usd":
+            continue
         start = prior.get((status.scope, status.window.duration), 0.0)
         end = _ratio(status)
         for threshold in marks:
