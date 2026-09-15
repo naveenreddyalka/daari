@@ -261,7 +261,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.sso.key_mappings` | dict | `{}` |  |
 | `enterprise.sso.default_policy` | daari.enterprise.config.SsoKeyPolicy | None | `None` |  |
 | `enterprise.sso.deny_unmapped` | bool | `False` |  |
-| `enterprise.audit_path` | str | `'~/.daari/audit/audit.sqlite3'` |  |
+| `enterprise.audit_path` | str | `'~/.daari/audit/audit.sqlite3'` | SQLite path when `audit_backend=sqlite`. |
+| `enterprise.audit_backend` | str | `'sqlite'` | `sqlite` (default) or `postgres` (reuses `observability.postgres_url`) for a single fleet-wide hash chain (#483). |
 | `alerts.budget_webhook_url` | str | `''` |  |
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
 | `skills_system_prefix` | str | `''` |  |

@@ -51,6 +51,8 @@ spec:
               value: postgres
             - name: DAARI_RESPONSES__BACKEND
               value: postgres
+            - name: DAARI_ENTERPRISE__AUDIT_BACKEND
+              value: postgres
             {{- end }}
           livenessProbe:
             httpGet:

@@ -2373,6 +2373,16 @@ log `session_affinity.degraded`. Docs: [routing-tiers.md](developer/concepts/rou
 [headers.md](developer/reference/headers.md). Covered by
 `tests/unit/test_session_affinity_redis.py`.
 
+### Fleet-shared audit log via Postgres ([#483](https://github.com/naveenreddyalka/daari/issues/483))
+
+<!-- tracking:#483 -->
+**Status:** Done (2026-09-15). `enterprise.audit_backend: sqlite|postgres`
+(default sqlite); postgres reuses `observability.postgres_url` with one
+serialized hash chain (`daari audit verify` is fleet-global). Helm sets
+`DAARI_ENTERPRISE__AUDIT_BACKEND`. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_postgres_audit.py`.
+
 ---
 
 ## How to update

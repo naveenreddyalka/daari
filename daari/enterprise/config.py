@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -100,6 +100,13 @@ class OrgSettings(BaseModel):
     learning: EnterpriseLearningSettings = Field(default_factory=EnterpriseLearningSettings)
     sso: SsoSettings = Field(default_factory=SsoSettings)
     audit_path: str = "~/.daari/audit/audit.sqlite3"
+    audit_backend: Literal["sqlite", "postgres"] = Field(
+        default="sqlite",
+        description=(
+            "sqlite (default, per-node file) or postgres (observability.postgres_url) "
+            "for a single fleet-wide hash chain (#483)."
+        ),
+    )
 
     @property
     def resolved_org_id(self) -> str | None:

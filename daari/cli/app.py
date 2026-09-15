@@ -448,10 +448,9 @@ app.add_typer(enterprise_app, name="enterprise")
 
 
 def _audit_log_from_settings():
-    from daari.enterprise.audit import AuditLog
+    from daari.enterprise.postgres_audit import audit_log_from_settings
 
-    settings = get_settings()
-    return AuditLog(settings.enterprise.audit_path)
+    return audit_log_from_settings(get_settings())
 
 
 @audit_app.command("list")
