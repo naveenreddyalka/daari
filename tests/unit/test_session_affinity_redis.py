@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from daari.gateway.cost_headers import SessionAvoidedStore
-from daari.router.session_affinity import SessionPinStore
+from daari.router.session_affinity import ProfilePinStore, SessionPinStore
 
 
 class FakeRedis:
@@ -58,6 +58,24 @@ def test_two_replicas_share_session_pins():
     assert redis.ttls[a._redis_key("session:agent-1")] == 60
 
 
+def test_two_replicas_share_profile_pins():
+    redis = FakeRedis()
+    a = ProfilePinStore(ttl_seconds=60, redis_client=redis)
+    b = ProfilePinStore(ttl_seconds=60, redis_client=redis)
+    a.put(
+        "session:agent-1",
+        category="coding",
+        complexity="medium",
+        prefix_hash="abc",
+    )
+    pin = b.get("session:agent-1")
+    assert pin is not None
+    assert pin.category == "coding"
+    assert pin.complexity == "medium"
+    assert pin.prefix_hash == "abc"
+    assert redis.ttls[a._redis_key("session:agent-1")] == 60
+
+
 def test_two_replicas_share_session_cost_avoided():
     redis = FakeRedis()
     a = SessionAvoidedStore(ttl_seconds=60, redis_client=redis)
@@ -71,13 +89,18 @@ def test_two_replicas_share_session_cost_avoided():
 def test_redis_errors_fail_open_to_memory():
     redis = BoomRedis()
     pins = SessionPinStore(ttl_seconds=60, redis_client=redis)
+    profiles = ProfilePinStore(ttl_seconds=60, redis_client=redis)
     savings = SessionAvoidedStore(ttl_seconds=60, redis_client=redis)
     pins.put("session:x", tier="L3", model="m", prefix_hash="h")
+    profiles.put("session:x", category="coding", complexity="low", prefix_hash="h")
     assert pins.get("session:x") is not None
     assert pins.get("session:x").tier == "L3"
+    assert profiles.get("session:x") is not None
+    assert profiles.get("session:x").category == "coding"
     assert savings.add("s1", 1.0) == pytest.approx(1.0)
     assert savings.total("s1") == pytest.approx(1.0)
     assert pins._degraded is True
+    assert profiles._degraded is True
     assert savings._degraded is True
 
 
