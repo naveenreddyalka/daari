@@ -445,6 +445,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                     ctx.settings,
                     prompt_chars=prompt_chars,
                     completion_chars=len(result.content or ""),
+                    session_id=internal.meta.session_id,
+                    savings=ctx.router.session_savings,
                 ),
             )
 

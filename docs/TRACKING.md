@@ -2303,6 +2303,16 @@ cache hits do not. Team inheritance matches USD (tighter wins per dimension).
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
 Covered by `tests/unit/test_request_quotas.py`.
 
+### Session-cumulative cost-avoided rollup ([#475](https://github.com/naveenreddyalka/daari/issues/475))
+
+<!-- tracking:#475 -->
+**Status:** Done (2026-09-15). `x-daari-session-cost-avoided` is the running
+sum of per-response `x-daari-response-cost-avoided` for `X-Daari-Session`,
+TTL matching session-affinity pins. Omitted without a session id. Streaming
+final usage includes `session_cost_avoided` when usage is requested.
+Covered by `tests/unit/test_cost_headers.py` and
+`tests/integration/test_cost_headers.py`.
+
 ### Never-empty PRD and autodev refill ([#474](https://github.com/naveenreddyalka/daari/issues/474))
 
 <!-- tracking:#474 -->

@@ -9,8 +9,10 @@ from daari.gateway.cost_headers import (
     COST_AVOIDED_HEADER,
     COST_HEADER,
     CACHE_HEADER,
+    SESSION_COST_AVOIDED_HEADER,
     TIER_HEADER,
     DeferredHeadersStreamingResponse,
+    SessionAvoidedStore,
     StreamOutcome,
     response_cost_headers,
 )
@@ -74,6 +76,50 @@ class TestResponseCostHeaders:
         headers = response_cost_headers(meta, _settings(), prompt_chars=4, completion_chars=0)
         assert headers[COST_HEADER] == "0"
         assert "e" not in headers[COST_AVOIDED_HEADER].lower()
+
+    def test_session_rollup_accumulates_without_changing_per_response(self):
+        store = SessionAvoidedStore(ttl_seconds=1800)
+        meta = DaariMeta(tier="L3", executor="ollama")
+        first = response_cost_headers(
+            meta,
+            _settings(0.002),
+            prompt_chars=4000,
+            completion_chars=0,
+            session_id="agent-1",
+            savings=store,
+        )
+        second = response_cost_headers(
+            meta,
+            _settings(0.002),
+            prompt_chars=4000,
+            completion_chars=0,
+            session_id="agent-1",
+            savings=store,
+        )
+        hop = 1000 / 1000 * 0.002
+        assert float(first[COST_AVOIDED_HEADER]) == pytest.approx(hop)
+        assert float(second[COST_AVOIDED_HEADER]) == pytest.approx(hop)
+        assert float(first[SESSION_COST_AVOIDED_HEADER]) == pytest.approx(hop)
+        assert float(second[SESSION_COST_AVOIDED_HEADER]) == pytest.approx(2 * hop)
+
+    def test_missing_session_id_omits_rollup(self):
+        store = SessionAvoidedStore()
+        headers = response_cost_headers(
+            DaariMeta(tier="L3", executor="ollama"),
+            _settings(),
+            prompt_chars=4000,
+            savings=store,
+        )
+        assert SESSION_COST_AVOIDED_HEADER not in headers
+        assert COST_AVOIDED_HEADER in headers
+
+    def test_session_store_expires_with_ttl(self):
+        now = 1000.0
+        store = SessionAvoidedStore(ttl_seconds=10, clock=lambda: now)
+        store.add("s", 0.5)
+        assert store.total("s") == pytest.approx(0.5)
+        now = 1011.0
+        assert store.total("s") is None
 
 
 class TestStreamOutcome:

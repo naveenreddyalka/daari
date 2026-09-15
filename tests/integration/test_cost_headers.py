@@ -10,6 +10,7 @@ from daari.gateway.cost_headers import (
     CACHE_HEADER,
     COST_AVOIDED_HEADER,
     COST_HEADER,
+    SESSION_COST_AVOIDED_HEADER,
     TIER_HEADER,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
@@ -53,6 +54,27 @@ async def test_chat_completions_l0_hit_costs_nothing_and_avoids_frontier_spend(
     for response in (first, second):
         assert float(response.headers[COST_HEADER]) == 0.0
         assert float(response.headers[COST_AVOIDED_HEADER]) > 0.0
+
+
+async def test_session_header_rolls_up_avoided_cost(settings, monkeypatch):
+    app = _app(settings)
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, _fake_l3)
+    headers = {**META_HEADERS, "x-daari-session": "loop-9"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=PAYLOAD, headers=headers)
+        second = await client.post(
+            "/v1/chat/completions",
+            json={**PAYLOAD, "messages": [{"role": "user", "content": "different turn"}]},
+            headers=headers,
+        )
+        bare = await client.post("/v1/chat/completions", json=PAYLOAD)
+    hop = float(first.headers[COST_AVOIDED_HEADER])
+    assert hop > 0
+    assert float(first.headers[SESSION_COST_AVOIDED_HEADER]) == pytest.approx(hop)
+    assert float(second.headers[SESSION_COST_AVOIDED_HEADER]) == pytest.approx(
+        hop + float(second.headers[COST_AVOIDED_HEADER])
+    )
+    assert SESSION_COST_AVOIDED_HEADER not in bare.headers
 
 
 async def test_headers_present_without_meta_opt_in(settings, monkeypatch):

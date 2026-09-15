@@ -21,7 +21,13 @@ from daari.cache.verify import build_verifier
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
 from daari.enterprise.client import OrgCacheClient, OrgLearningClient, OrgLearningFeedback
-from daari.gateway.cost_headers import StreamOutcome, stream_cached_tokens, stream_usage_cost
+from daari.gateway.cost_headers import (
+    FRONTIER_TIER,
+    SessionAvoidedStore,
+    StreamOutcome,
+    stream_cached_tokens,
+    stream_usage_cost,
+)
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.provider_prefs import RegionUnavailable, ZdrUnavailable
 from daari.gateway.sampling import model_supports_thinking
@@ -491,6 +497,7 @@ class Router:
         from daari.router.session_affinity import ProfilePinStore, SessionPinStore
 
         self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.session_savings = SessionAvoidedStore(ttl_seconds=session_affinity_ttl_seconds)
         self.classify_user_turn = bool(classify_user_turn)
         self.classify_user_turn_agents = bool(classify_user_turn_agents)
         self.harness_aware_profile = bool(harness_aware_profile)
@@ -1642,6 +1649,15 @@ class Router:
                     },
                 },
             }
+            rollup = self._record_session_avoided(
+                getattr(request.meta, "session_id", None),
+                tier=stream_tier,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                served=served,
+            )
+            if rollup is not None:
+                payload["usage"]["session_cost_avoided"] = rollup
             return f"data: {json.dumps(payload)}\n\n"
 
         def terminal_stream(text: str, *, finish_reason: str = "stop") -> list[str]:
@@ -2290,6 +2306,7 @@ class Router:
                             tier_label,
                             prompt_tokens=input_tokens,
                             output_tokens=max(0, len(text) // 4),
+                            session_id=getattr(request.meta, "session_id", None),
                         ),
                         "daari_meta": event_meta,
                     },
@@ -2620,6 +2637,7 @@ class Router:
                                 prompt_tokens=input_tokens,
                                 output_tokens=max(0, len(served.content) // 4),
                                 served=served,
+                                session_id=getattr(request.meta, "session_id", None),
                             ),
                         },
                     )
@@ -2709,6 +2727,7 @@ class Router:
                         ),
                         output_tokens=output_tokens,
                         served=served,
+                        session_id=getattr(request.meta, "session_id", None),
                     ),
                     "daari_meta": meta,
                 },
@@ -3804,6 +3823,29 @@ class Router:
             cached_from_meta=meta_cached,
         )
 
+    def _record_session_avoided(
+        self,
+        session_id: str | None,
+        *,
+        tier: str | None,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        served: InternalResponse | None = None,
+    ) -> float | None:
+        sid = (session_id or "").strip()
+        if not sid:
+            return None
+        billed = (served.daari_meta.tier if served is not None else None) or tier
+        if (billed or "").upper() == FRONTIER_TIER:
+            hop = 0.0
+        else:
+            hop = (
+                (max(0, prompt_tokens) + max(0, completion_tokens))
+                / 1000
+                * self.frontier_price_per_1k_tokens
+            )
+        return self.session_savings.add(sid, hop)
+
     def _anthropic_stream_usage(
         self,
         tier: str | None,
@@ -3811,6 +3853,7 @@ class Router:
         prompt_tokens: int,
         output_tokens: int,
         served: InternalResponse | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         """message_delta.usage: cost always; cache_read_input_tokens when known (#399)."""
         usage: dict[str, Any] = {
@@ -3827,6 +3870,15 @@ class Router:
         )
         if cached:
             usage["cache_read_input_tokens"] = cached
+        rollup = self._record_session_avoided(
+            session_id,
+            tier=tier,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=output_tokens,
+            served=served,
+        )
+        if rollup is not None:
+            usage["session_cost_avoided"] = rollup
         return usage
 
     def _record(self, response: InternalResponse, started: float) -> None:

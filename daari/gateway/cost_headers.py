@@ -14,6 +14,7 @@ sent on streams: usage is unknown until the last chunk.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -25,6 +26,7 @@ from daari.pricing import cost_usd
 
 COST_HEADER = "x-daari-response-cost"
 COST_AVOIDED_HEADER = "x-daari-response-cost-avoided"
+SESSION_COST_AVOIDED_HEADER = "x-daari-session-cost-avoided"
 TIER_HEADER = "x-daari-tier"
 CACHE_HEADER = "x-daari-cache"
 REGION_HEADER = "x-daari-region"
@@ -56,15 +58,80 @@ def _is_frontier(meta: DaariMeta) -> bool:
     return meta.tier == FRONTIER_TIER or (meta.executor or "") == "frontier"
 
 
+class SessionAvoidedStore:
+    """Running frontier-implied savings for one client session id.
+
+    Same TTL as session-affinity pins. Missing / blank ids are ignored so
+    single-turn clients keep the per-response header only.
+    """
+
+    def __init__(
+        self,
+        ttl_seconds: float = 1800.0,
+        *,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        self.ttl_seconds = max(0.0, float(ttl_seconds))
+        self._clock = clock or time.monotonic
+        self._totals: dict[str, tuple[float, float]] = {}
+
+    def _purge(self, session_id: str) -> None:
+        row = self._totals.get(session_id)
+        if row is None:
+            return
+        _total, expires_at = row
+        if self.ttl_seconds > 0 and self._clock() >= expires_at:
+            self._totals.pop(session_id, None)
+
+    def add(self, session_id: str, avoided: float) -> float:
+        key = (session_id or "").strip()
+        if not key:
+            return 0.0
+        self._purge(key)
+        now = self._clock()
+        expires = now + self.ttl_seconds if self.ttl_seconds > 0 else float("inf")
+        prev, _ = self._totals.get(key, (0.0, expires))
+        total = prev + max(0.0, float(avoided))
+        self._totals[key] = (total, expires)
+        return total
+
+    def total(self, session_id: str) -> float | None:
+        key = (session_id or "").strip()
+        if not key:
+            return None
+        self._purge(key)
+        row = self._totals.get(key)
+        return None if row is None else row[0]
+
+
+def avoided_usd(
+    meta: DaariMeta,
+    settings: Any,
+    *,
+    prompt_chars: int = 0,
+    completion_chars: int = 0,
+) -> float:
+    """Frontier-implied USD of a local serve; 0 on L6."""
+    if _is_frontier(meta):
+        return 0.0
+    tokens = (max(0, prompt_chars) + max(0, completion_chars)) / 4
+    return tokens / 1000 * _frontier_price_per_1k(settings)
+
+
 def response_cost_headers(
     meta: DaariMeta,
     settings: Any,
     *,
     prompt_chars: int = 0,
     completion_chars: int = 0,
+    session_id: str | None = None,
+    savings: SessionAvoidedStore | None = None,
 ) -> dict[str, str]:
     """Headers for a completed (non-streaming) response."""
     price_per_1k = _frontier_price_per_1k(settings)
+    avoided = avoided_usd(
+        meta, settings, prompt_chars=prompt_chars, completion_chars=completion_chars
+    )
     if _is_frontier(meta):
         if meta.cost_usd is not None:
             spent = float(meta.cost_usd)
@@ -78,13 +145,8 @@ def response_cost_headers(
                 cached_input_tokens=int(meta.cached_tokens or 0),
                 service_tier=meta.service_tier,
             )
-        avoided = 0.0
     else:
         spent = 0.0
-        # chars/4 ~ tokens, priced as if a frontier model had served them —
-        # identical to UsageLedger.report so per-response and per-team agree.
-        tokens = (max(0, prompt_chars) + max(0, completion_chars)) / 4
-        avoided = tokens / 1000 * price_per_1k
     headers = {
         COST_HEADER: _decimal(spent),
         COST_AVOIDED_HEADER: _decimal(avoided),
@@ -93,6 +155,9 @@ def response_cost_headers(
     }
     if meta.region:
         headers[REGION_HEADER] = str(meta.region)
+    sid = (session_id or "").strip()
+    if sid and savings is not None:
+        headers[SESSION_COST_AVOIDED_HEADER] = _decimal(savings.add(sid, avoided))
     return headers
 
 
