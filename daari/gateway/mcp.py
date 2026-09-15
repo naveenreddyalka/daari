@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from daari import __version__
-from daari.enterprise.audit import AuditLog
+from daari.enterprise.postgres_audit import audit_log_from_settings
 from daari.gateway.client_errors import safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.internal import InternalRequest, Message
@@ -256,7 +256,7 @@ class _Governance:
     def __init__(self, request: Request, ctx: AppContext, *, transport: str) -> None:
         self.claims = getattr(request.state, "auth_claims", None)
         self.policy = resolve_policy(self.claims, ctx.settings)
-        self._audit = AuditLog(ctx.settings.enterprise.audit_path)
+        self._audit = audit_log_from_settings(ctx.settings)
         self.guardrails = McpGuardrails.from_settings(
             ctx.settings, audit=self._audit, claims=self.claims, transport=transport
         )

@@ -438,7 +438,11 @@ def maybe_audit_tenancy_denied(
     if stored is None or visible:
         return
     key_id = getattr(claims, "key_id", None) if claims is not None else None
-    path = getattr(getattr(settings, "enterprise", None), "audit_path", None)
-    if not path:
-        return
-    record_tenancy_denied(AuditLog(path), key_id=key_id, kind=kind, artifact_id=artifact_id)
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    record_tenancy_denied(
+        audit_log_from_settings(settings),
+        key_id=key_id,
+        kind=kind,
+        artifact_id=artifact_id,
+    )

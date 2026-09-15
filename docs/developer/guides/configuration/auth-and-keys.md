@@ -120,8 +120,12 @@ canonical serialization of seq/ts/actor/role/action/detail/prev_hash); the
 first chained row anchors on genesis `0`×64. Pre-upgrade rows verify as
 `legacy`. `daari audit verify` walks oldest-first and exits non-zero on
 tamper (`hash_mismatch` or `seq_gap`). Retention prune re-anchors the chain
-head. The store is `enterprise.audit_path` (default
-`~/.daari/audit/audit.sqlite3`).
+head. The default store is SQLite at `enterprise.audit_path`
+(`~/.daari/audit/audit.sqlite3`). For a multi-replica fleet set
+`enterprise.audit_backend: postgres` (reuses `observability.postgres_url`) so
+every replica appends to **one serialized hash chain**; `daari audit verify`
+then covers the whole fleet. Helm sets `DAARI_ENTERPRISE__AUDIT_BACKEND=postgres`
+when `postgres.enabled` is true.
 
 ### Audit event catalog
 

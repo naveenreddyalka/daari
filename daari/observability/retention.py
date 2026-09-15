@@ -151,9 +151,9 @@ def prune_all(
     else:
         results.append(PruneResult("files", 0, True))
 
-    from daari.enterprise.audit import AuditLog
+    from daari.enterprise.postgres_audit import audit_log_from_settings
 
-    audit = AuditLog(settings.enterprise.audit_path)
+    audit = audit_log_from_settings(settings)
     if retention.audit_days:
         cutoff = _cutoff_iso(retention.audit_days, current)
         deleted = audit.prune_before(cutoff, dry_run=dry_run)

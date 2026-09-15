@@ -54,7 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ctx.start_org_learning_sync()
         app.state.ctx.start_backend_health()
         app.state.ctx.start_retention_sweep()
-        from daari.enterprise.audit import AuditLog
+        from daari.enterprise.postgres_audit import audit_log_from_settings
         from daari.observability.budget_alerts import BudgetAlerter
 
         cache = resolved.cache
@@ -66,7 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.budget_alerter = BudgetAlerter(
             webhook_url=resolved.alerts.budget_webhook_url,
             thresholds=tuple(resolved.alerts.budget_thresholds),
-            audit=AuditLog(resolved.enterprise.audit_path),
+            audit=audit_log_from_settings(resolved),
             metrics=app.state.ctx.metrics,
             redis_url=redis_url,
             redis_timeout_seconds=redis_timeout,
@@ -141,12 +141,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 except Exception:
                     pass
             if claims is not None and claims.kind == "expired":
-                from daari.enterprise.audit import AuditLog
+                from daari.enterprise.postgres_audit import audit_log_from_settings
 
                 expires_at = (
                     claims.virtual_key.expires_at if claims.virtual_key is not None else None
                 )
-                AuditLog(resolved.enterprise.audit_path).record(
+                audit_log_from_settings(resolved).record(
                     actor=claims.client_id or claims.key_id or "unknown",
                     role="key",
                     action="auth.key_expired",
@@ -163,10 +163,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             if claims is None:
-                from daari.enterprise.audit import AuditLog, record_invalid_key
+                from daari.enterprise.audit import record_invalid_key
+                from daari.enterprise.postgres_audit import audit_log_from_settings
 
                 record_invalid_key(
-                    AuditLog(resolved.enterprise.audit_path),
+                    audit_log_from_settings(resolved),
                     supplied=supplied,
                     path=request.url.path,
                 )

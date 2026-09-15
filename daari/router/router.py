@@ -4346,13 +4346,13 @@ class AppContext:
         sources_cfg = load_sources_config()
         for live_provider in build_live_providers(sources_cfg):
             providers.register(live_provider)
-        from daari.enterprise.audit import AuditLog
+        from daari.enterprise.postgres_audit import audit_log_from_settings
         from daari.gateway.mcp_guardrails import McpGuardrails
         from daari.gateway.mcp_policy import McpToolPolicy
         from daari.providers.mcp_egress import build_mcp_providers
 
         egress_guardrails = McpGuardrails.from_settings(
-            settings, audit=AuditLog(settings.enterprise.audit_path), transport="egress"
+            settings, audit=audit_log_from_settings(settings), transport="egress"
         )
         mcp_providers = build_mcp_providers(
             settings.integrations.mcp_servers,

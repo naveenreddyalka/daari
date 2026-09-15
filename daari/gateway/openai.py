@@ -1112,7 +1112,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             }
             if sso.mint_virtual_key_on_login and subject:
                 from daari.auth.virtual_keys import VirtualKeyStore
-                from daari.enterprise.audit import AuditLog
+                from daari.enterprise.postgres_audit import audit_log_from_settings
                 from daari.enterprise.sso_keys import UnmappedSsoPolicy, sync_sso_virtual_key
 
                 store = VirtualKeyStore(
@@ -1125,7 +1125,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         subject=subject,
                         claims=claims,
                         sso=sso,
-                        audit=AuditLog(ctx.settings.enterprise.audit_path),
+                        audit=audit_log_from_settings(ctx.settings),
                         role=role,
                     )
                 except UnmappedSsoPolicy as exc:
@@ -1260,9 +1260,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         }
                     )
                 )
-            from daari.enterprise.audit import AuditLog
+            from daari.enterprise.postgres_audit import audit_log_from_settings
 
-            AuditLog(ctx.settings.enterprise.audit_path).record(
+            audit_log_from_settings(ctx.settings).record(
                 actor=request.headers.get("x-daari-actor", "api"),
                 role=role,
                 action="config.patch",
@@ -1277,9 +1277,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         async def daari_audit_list(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
             _require_admin_role(request, ctx)
-            from daari.enterprise.audit import AuditLog
+            from daari.enterprise.postgres_audit import audit_log_from_settings
 
-            entries = AuditLog(ctx.settings.enterprise.audit_path).list(limit=100)
+            entries = audit_log_from_settings(ctx.settings).list(limit=100)
             return {"entries": entries}
 
         @router.post("/v1/org-learning/sync")
