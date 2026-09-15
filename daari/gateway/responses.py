@@ -266,8 +266,15 @@ def _parse_chat_delta(raw: str) -> dict[str, Any] | None:
     return delta if isinstance(delta, dict) else None
 
 
-def _store_for(ctx: AppContext) -> ResponseStore:
-    return ResponseStore(Path(ctx.settings.trace.path).expanduser().parent / "responses.sqlite3")
+def _store_for(ctx: AppContext) -> ResponseStore | Any:
+    """SQLite by default; postgres when responses.backend=postgres (#481)."""
+    settings = ctx.settings
+    pg_url = (settings.observability.postgres_url or "").strip()
+    if settings.responses.backend == "postgres" and pg_url:
+        from daari.gateway.postgres_responses import PostgresResponseStore
+
+        return PostgresResponseStore(pg_url)
+    return ResponseStore(Path(settings.trace.path).expanduser().parent / "responses.sqlite3")
 
 
 def _owner_key_id_from_request(request: Request) -> str | None:

@@ -392,6 +392,7 @@ class TestDoctorSecretRefs:
         monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
         settings.batches.backend = "postgres"
         settings.files.backend = "postgres"
+        settings.responses.backend = "postgres"
         settings.observability.backend = "postgres"
         results = run_doctor(settings, httpx_client=self._down_client())
         by_name = {r.name: r for r in results}

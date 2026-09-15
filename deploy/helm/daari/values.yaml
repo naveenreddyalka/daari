@@ -42,7 +42,8 @@ redis:
 
 # External Postgres for ledger/traces/batches/files (issues #116, #465).
 # When enabled, the Deployment sets DAARI_OBSERVABILITY__BACKEND,
-# DAARI_BATCHES__BACKEND, and DAARI_FILES__BACKEND to postgres (shared fleet).
+# DAARI_BATCHES__BACKEND, DAARI_FILES__BACKEND, and DAARI_RESPONSES__BACKEND
+# to postgres (shared fleet).
 # Example multi-replica fleet:
 #   replicaCount: 2
 #   autoscaling.minReplicas: 2
