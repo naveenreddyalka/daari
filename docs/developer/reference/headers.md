@@ -27,6 +27,7 @@ bodies. Values agree with `daari_meta` on the same response.
 |--------|-------|
 | `x-daari-response-cost` | USD actually spent on this response. `0` for every local tier (L0–L5, Lt, L2, CCS); for L6 the provider-reported `usage.cost` when present, otherwise `pricing.models` × reported tokens (flat `usage.frontier_price_per_1k_tokens` fallback). |
 | `x-daari-response-cost-avoided` | Frontier-implied USD for a response served locally for $0: `(prompt_chars + completion_chars) / 4` tokens at `usage.frontier_price_per_1k_tokens` — the same basis as `daari report`'s `estimated_saved_usd`. `0` for L6. |
+| `x-daari-session-cost-avoided` | Running sum of `x-daari-response-cost-avoided` for the `X-Daari-Session` id, TTL matching `routing.session_affinity_ttl_seconds` (default 30m). Omitted when the client sends no session id. |
 | `x-daari-tier` | Serving tier (`L0`, `L1`, `L3` … `L6`, `Lt`, `L2`, `CCS`). Same as `daari_meta.tier`. |
 | `x-daari-cache` | `hit` (L0/L1 served the answer), `draft` (an L1 near-miss steered generation), or `miss`. |
 
@@ -78,11 +79,13 @@ router knows by then:
 - `x-daari-response-cost` and `x-daari-response-cost-avoided` are **never**
   sent on streams — usage is unknown until the last chunk. The final OpenAI
   usage chunk and Anthropic `message_delta.usage` carry `cost` (USD; `0` local,
-  L6 from `cost_usd()` / provider `usage.cost`). OpenAI usage also always
-  includes `prompt_tokens_details.cached_tokens` (`0` when unknown; L0/L1 hits
-  set it equal to `prompt_tokens`; L6 uses provider meta). Anthropic adds
-  `cache_read_input_tokens` only when that figure is known and non-zero
-  (native field — safe for clients). Use the ledger
+  L6 from `cost_usd()` / provider `usage.cost`). When `X-Daari-Session` is set
+  and `stream_options.include_usage` is on, the same chunk also carries
+  `session_cost_avoided` (running local-first savings for that session). OpenAI
+  usage also always includes `prompt_tokens_details.cached_tokens` (`0` when
+  unknown; L0/L1 hits set it equal to `prompt_tokens`; L6 uses provider meta).
+  Anthropic adds `cache_read_input_tokens` only when that figure is known and
+  non-zero (native field — safe for clients). Use the ledger
   (`daari report`, `/v1/daari/report`) for aggregates.
 - The `x-daari-budget-*` headers **are** sent on streams; they describe the
   caller's budget before this request, not this request's cost.
