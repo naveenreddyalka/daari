@@ -53,6 +53,7 @@ def _clone_window(window: BudgetWindow, duration: str) -> BudgetWindow:
         float(window.max_usd),
         rollover=bool(window.rollover),
         rollover_cap_multiple=float(window.rollover_cap_multiple or 2.0),
+        max_requests=int(window.max_requests or 0),
     )
 
 
@@ -79,26 +80,127 @@ def parse_window_flag(raw: str) -> BudgetWindow:
     )
 
 
+def parse_window_requests_flag(raw: str) -> BudgetWindow:
+    """CLI `--window-requests 1d=5000` — request-count cap, no USD (#467)."""
+    if "=" not in raw:
+        raise ValueError(f"window-requests must be duration=max_requests, got {raw!r}")
+    duration, amount_part = raw.split("=", 1)
+    amount_part = amount_part.split(":", 1)[0].strip()
+    try:
+        max_requests = int(amount_part)
+    except ValueError as exc:
+        raise ValueError(f"window-requests count must be an integer, got {raw!r}") from exc
+    if max_requests <= 0:
+        raise ValueError(f"window-requests count must be > 0, got {raw!r}")
+    return BudgetWindow(
+        normalize_duration(duration),
+        0.0,
+        max_requests=max_requests,
+    )
+
+
+def coalesce_windows(windows: Iterable[BudgetWindow]) -> tuple[BudgetWindow, ...]:
+    """Combine same-duration windows so USD and request caps share one entry."""
+    merged: dict[str, BudgetWindow] = {}
+    for window in windows:
+        duration = normalize_duration(window.duration)
+        max_usd = float(window.max_usd or 0.0)
+        max_requests = int(window.max_requests or 0)
+        if max_usd <= 0 and max_requests <= 0:
+            continue
+        existing = merged.get(duration)
+        if existing is None:
+            merged[duration] = _clone_window(window, duration)
+            continue
+        # Prefer explicitly set dimensions; if both set, keep the tighter.
+        usd = existing.max_usd
+        if max_usd > 0:
+            usd = max_usd if usd <= 0 else min(usd, max_usd)
+        reqs = existing.max_requests
+        if max_requests > 0:
+            reqs = max_requests if reqs <= 0 else min(reqs, max_requests)
+        rollover = bool(existing.rollover or window.rollover)
+        cap = float(existing.rollover_cap_multiple or window.rollover_cap_multiple or 2.0)
+        merged[duration] = BudgetWindow(
+            duration,
+            float(usd),
+            rollover=rollover,
+            rollover_cap_multiple=cap,
+            max_requests=int(reqs),
+        )
+    return tuple(merged.values())
+
+
 def merge_windows(
     key_windows: Iterable[BudgetWindow],
     team_windows: Iterable[BudgetWindow] = (),
 ) -> list[tuple[BudgetWindow, Scope]]:
-    """Tighter cap wins per canonical duration. Team-only durations are inherited."""
-    merged: dict[str, tuple[BudgetWindow, Scope]] = {}
-    for window in team_windows:
-        duration = normalize_duration(window.duration)
-        if window.max_usd <= 0:
-            continue
-        merged[duration] = (_clone_window(window, duration), "team")
-    for window in key_windows:
-        duration = normalize_duration(window.duration)
-        if window.max_usd <= 0:
-            continue
-        incoming = _clone_window(window, duration)
-        existing = merged.get(duration)
-        if existing is None or incoming.max_usd < existing[0].max_usd:
-            merged[duration] = (incoming, "key")
-    return list(merged.values())
+    """Tighter cap wins per canonical duration. Team-only durations are inherited.
+
+    USD and request-count dimensions merge independently (#467). When both are
+    present on one duration, ``scope`` follows the USD winner (request scope is
+    recovered in ``budget_status`` via ``merge_window_scopes``).
+    """
+    return [
+        (item.window, item.usd_scope or item.request_scope or "key")
+        for item in merge_window_scopes(key_windows, team_windows)
+    ]
+
+
+@dataclass(frozen=True)
+class MergedCaps:
+    """Effective caps for one duration after key/team merge (#467)."""
+
+    window: BudgetWindow
+    usd_scope: Scope | None = None
+    request_scope: Scope | None = None
+
+
+def merge_window_scopes(
+    key_windows: Iterable[BudgetWindow],
+    team_windows: Iterable[BudgetWindow] = (),
+) -> list[MergedCaps]:
+    usd_by: dict[str, tuple[float, Scope, BudgetWindow]] = {}
+    req_by: dict[str, tuple[int, Scope]] = {}
+
+    def _ingest(windows: Iterable[BudgetWindow], scope: Scope) -> None:
+        for window in windows:
+            duration = normalize_duration(window.duration)
+            if float(window.max_usd or 0) > 0:
+                amount = float(window.max_usd)
+                existing = usd_by.get(duration)
+                if existing is None or amount < existing[0]:
+                    usd_by[duration] = (amount, scope, window)
+            if int(window.max_requests or 0) > 0:
+                count = int(window.max_requests)
+                existing_r = req_by.get(duration)
+                if existing_r is None or count < existing_r[0]:
+                    req_by[duration] = (count, scope)
+
+    _ingest(team_windows, "team")
+    _ingest(key_windows, "key")
+
+    out: list[MergedCaps] = []
+    for duration in set(usd_by) | set(req_by):
+        usd_entry = usd_by.get(duration)
+        req_entry = req_by.get(duration)
+        max_usd = usd_entry[0] if usd_entry else 0.0
+        max_requests = req_entry[0] if req_entry else 0
+        template = usd_entry[2] if usd_entry else BudgetWindow(duration, 0.0)
+        out.append(
+            MergedCaps(
+                window=BudgetWindow(
+                    duration,
+                    float(max_usd),
+                    rollover=bool(template.rollover) if usd_entry else False,
+                    rollover_cap_multiple=float(template.rollover_cap_multiple or 2.0),
+                    max_requests=int(max_requests),
+                ),
+                usd_scope=usd_entry[1] if usd_entry else None,
+                request_scope=req_entry[1] if req_entry else None,
+            )
+        )
+    return out
 
 
 def reset_at(duration: str, *, now: datetime | None = None) -> str:
@@ -226,24 +328,46 @@ def budget_error(
     scope: Scope,
     limit_usd: float | None = None,
     user_id: str | None = None,
+    quota: Literal["usd", "requests"] = "usd",
+    spend_requests: int | None = None,
+    limit_requests: int | None = None,
 ) -> dict[str, Any]:
     label = window_label(window.duration)
     reset = reset_at(window.duration)
-    limit = float(window.max_usd if limit_usd is None else limit_usd)
-    payload: dict[str, Any] = {
-        "type": "budget_exceeded",
-        "message": (
-            f"Virtual key {label} frontier budget "
-            f"(${limit:.4f}) exceeded — ${spend:.4f} spent. "
-            f"Resets at {reset}."
-        ),
-        "client_id": client_id,
-        "window": label,
-        "budget_usd": round(limit, 6),
-        "spend_usd": round(spend, 6),
-        "reset_at": reset,
-        "scope": scope,
-    }
+    if quota == "requests":
+        limit_r = int(window.max_requests if limit_requests is None else limit_requests)
+        used = int(spend if spend_requests is None else spend_requests)
+        payload: dict[str, Any] = {
+            "type": "budget_exceeded",
+            "message": (
+                f"Virtual key {label} request quota "
+                f"({limit_r}) exceeded — {used} used. "
+                f"Resets at {reset}."
+            ),
+            "client_id": client_id,
+            "window": label,
+            "quota": "requests",
+            "budget_requests": limit_r,
+            "spend_requests": used,
+            "reset_at": reset,
+            "scope": scope,
+        }
+    else:
+        limit = float(window.max_usd if limit_usd is None else limit_usd)
+        payload = {
+            "type": "budget_exceeded",
+            "message": (
+                f"Virtual key {label} frontier budget "
+                f"(${limit:.4f}) exceeded — ${spend:.4f} spent. "
+                f"Resets at {reset}."
+            ),
+            "client_id": client_id,
+            "window": label,
+            "budget_usd": round(limit, 6),
+            "spend_usd": round(spend, 6),
+            "reset_at": reset,
+            "scope": scope,
+        }
     if user_id is not None:
         payload["user_id"] = user_id
     return payload
@@ -312,6 +436,14 @@ def effective_windows(key: VirtualKey, team: Team | None) -> list[tuple[BudgetWi
     return merge_windows(key_windows, team_windows)
 
 
+def effective_caps(key: VirtualKey, team: Team | None) -> list[MergedCaps]:
+    key_windows = key.budget_windows or windows_from_flat(
+        daily_usd=key.daily_budget_usd, monthly_usd=key.monthly_budget_usd
+    )
+    team_windows = team.budget_windows if team is not None else ()
+    return merge_window_scopes(key_windows, team_windows)
+
+
 def spend_for_window(
     ledger: Any,
     client_ids: list[str],
@@ -345,6 +477,34 @@ def spend_for_window(
             if kind != "month" and day is not None:
                 kwargs["day"] = day
             total += float(ledger.frontier_spend_usd_for_client(client_id, **kwargs))
+    return total
+
+
+def requests_for_window(
+    ledger: Any,
+    client_ids: list[str],
+    duration: str,
+    *,
+    day: str | None = None,
+    month: str | None = None,
+) -> int:
+    """Billable request count (excludes cache hits) across client ids (#467)."""
+    kind, days = ledger_window(duration)
+    total = 0
+    for client_id in client_ids:
+        if kind == "days" and hasattr(ledger, "request_count_for_client_days"):
+            total += int(
+                ledger.request_count_for_client_days(client_id, days=days or 1) or 0
+            )
+        elif hasattr(ledger, "request_count_for_client"):
+            kwargs: dict[str, Any] = {
+                "window": "month" if kind == "month" else "day",
+            }
+            if kind == "month" and month is not None:
+                kwargs["month"] = month
+            if kind != "month" and day is not None:
+                kwargs["day"] = day
+            total += int(ledger.request_count_for_client(client_id, **kwargs) or 0)
     return total
 
 
@@ -438,16 +598,19 @@ def resolve_carry_usd(
 
 @dataclass(frozen=True)
 class WindowStatus:
-    """One effective budget window measured against current spend (#319, #344)."""
+    """One effective budget window measured against current spend (#319, #344, #467)."""
 
     window: BudgetWindow
     scope: Scope
     spend: float
     carry_usd: float = 0.0
     now: datetime | None = field(default=None, compare=False)
+    quota: Literal["usd", "requests"] = "usd"
 
     @property
     def limit(self) -> float:
+        if self.quota == "requests":
+            return float(int(self.window.max_requests or 0))
         return effective_limit(
             float(self.window.max_usd),
             carry_usd=self.carry_usd if self.window.rollover else 0.0,
@@ -460,6 +623,8 @@ class WindowStatus:
 
     @property
     def exceeded(self) -> bool:
+        if self.quota == "requests":
+            return int(self.spend) >= int(self.limit)
         return float(self.spend) >= self.limit
 
     @property
@@ -482,34 +647,77 @@ def budget_status(
     fallback_per_1k: float = 0.002,
     now: datetime | None = None,
 ) -> list[WindowStatus]:
-    """Spend vs cap for every effective window, in `effective_windows` order."""
+    """Spend vs cap for every effective window, in `effective_caps` order.
+
+    A duration with both USD and request caps yields two statuses (#467).
+    """
     statuses: list[WindowStatus] = []
-    for window, scope in effective_windows(key, team):
-        ids = team_client_ids if scope == "team" else [client_id]
-        spend = spend_for_window(
-            ledger, ids, window.duration, pricing=pricing, fallback_per_1k=fallback_per_1k
-        )
-        scope_id = client_id if scope == "key" else (team.team_id if team is not None else client_id)
-        carry = resolve_carry_usd(
-            window,
-            scope=scope,
-            scope_id=scope_id,
-            client_ids=ids,
-            ledger=ledger,
-            now=now,
-            pricing=pricing,
-            fallback_per_1k=fallback_per_1k,
-        )
-        statuses.append(
-            WindowStatus(window=window, scope=scope, spend=spend, carry_usd=carry, now=now)
-        )
+    for caps in effective_caps(key, team):
+        window = caps.window
+        if caps.usd_scope is not None and float(window.max_usd or 0) > 0:
+            ids = team_client_ids if caps.usd_scope == "team" else [client_id]
+            spend = spend_for_window(
+                ledger, ids, window.duration, pricing=pricing, fallback_per_1k=fallback_per_1k
+            )
+            scope_id = (
+                client_id if caps.usd_scope == "key" else (team.team_id if team is not None else client_id)
+            )
+            carry = resolve_carry_usd(
+                window,
+                scope=caps.usd_scope,
+                scope_id=scope_id,
+                client_ids=ids,
+                ledger=ledger,
+                now=now,
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            statuses.append(
+                WindowStatus(
+                    window=window,
+                    scope=caps.usd_scope,
+                    spend=spend,
+                    carry_usd=carry,
+                    now=now,
+                    quota="usd",
+                )
+            )
+        if caps.request_scope is not None and int(window.max_requests or 0) > 0:
+            ids = team_client_ids if caps.request_scope == "team" else [client_id]
+            used = requests_for_window(ledger, ids, window.duration)
+            statuses.append(
+                WindowStatus(
+                    window=window,
+                    scope=caps.request_scope,
+                    spend=float(used),
+                    now=now,
+                    quota="requests",
+                )
+            )
     return statuses
 
 
 def tightest_window(statuses: Iterable[WindowStatus]) -> WindowStatus | None:
-    """The window a client will hit first: least USD remaining (first wins ties)."""
+    """The window a client will hit first: least remaining (first wins ties).
+
+    Prefer USD windows when comparing mixed quotas so existing clients keep
+    seeing ``x-daari-budget-*`` for spend; request headers are attached
+    separately via ``tightest_request_window``.
+    """
+    usd = [status for status in statuses if status.quota == "usd"]
+    pool = usd or list(statuses)
+    best: WindowStatus | None = None
+    for status in pool:
+        if best is None or status.remaining < best.remaining:
+            best = status
+    return best
+
+
+def tightest_request_window(statuses: Iterable[WindowStatus]) -> WindowStatus | None:
     best: WindowStatus | None = None
     for status in statuses:
+        if status.quota != "requests":
+            continue
         if best is None or status.remaining < best.remaining:
             best = status
     return best
@@ -539,6 +747,16 @@ def first_exceeded_window(
     exceeded = next((status for status in statuses if status.exceeded), None)
     if exceeded is None:
         return None
+    if exceeded.quota == "requests":
+        return budget_error(
+            client_id=client_id,
+            window=exceeded.window,
+            spend=exceeded.spend,
+            scope=exceeded.scope,
+            quota="requests",
+            spend_requests=int(exceeded.spend),
+            limit_requests=int(exceeded.limit),
+        )
     return budget_error(
         client_id=client_id,
         window=exceeded.window,

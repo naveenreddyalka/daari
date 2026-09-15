@@ -47,6 +47,8 @@ remaining across key and team scopes.
 | `x-daari-budget-window` | Window duration: `1d`, `1mo`, or the configured `7d` / `12h`. |
 | `x-daari-budget-reset` | Epoch seconds when the window resets — the same instant as the `402` body's `reset_at`. |
 | `x-daari-budget-scope` | `key` or `team` — which cap is the tightest. |
+| `x-daari-quota-requests-remaining` | Billable requests left in the tightest request-count window (`0` when exhausted). |
+| `x-daari-quota-requests-limit` | That window's request cap. |
 
 Rules:
 
@@ -54,11 +56,14 @@ Rules:
   state is known before the first byte, unlike per-response cost.
 - A budget-exhausted `402` (`budget_exceeded`) carries the same five headers
   with remaining `0`, plus `Retry-After` in seconds until the reset — the same
-  shape as the rate-limit `429`.
+  shape as the rate-limit `429`. Request-quota `402`s carry the
+  `x-daari-quota-requests-*` pair instead of the USD remaining/limit headers
+  (window / reset / scope still apply).
 - No budget window for the caller ⇒ none of these headers. Master-key and
   open single-user installs are unchanged.
-- Only frontier (L6) spend counts toward `remaining`; local tiers and cache
-  hits are free, so the denominator is real spend.
+- Only frontier (L6) spend counts toward USD `remaining`; local tiers and cache
+  hits are free for USD. Request quotas count every non-cache serve (local +
+  frontier); L0/L1 cache hits do not consume request quota.
 
 ## Streaming contract
 

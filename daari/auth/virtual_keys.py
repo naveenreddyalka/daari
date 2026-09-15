@@ -131,12 +131,16 @@ class BudgetWindow:
     max_usd: float
     rollover: bool = False
     rollover_cap_multiple: float = 2.0
+    # 0 = unlimited. Counts non-cache requests (local + frontier) (#467).
+    max_requests: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "duration": self.duration,
             "max_usd": float(self.max_usd),
         }
+        if self.max_requests > 0:
+            payload["max_requests"] = int(self.max_requests)
         if self.rollover:
             payload["rollover"] = True
             payload["rollover_cap_multiple"] = float(self.rollover_cap_multiple)
@@ -232,7 +236,11 @@ class VirtualKeyStore:
                 max_usd = float(item.get("max_usd") or 0)
             except (TypeError, ValueError):
                 continue
-            if duration and max_usd > 0:
+            try:
+                max_requests = int(item.get("max_requests") or 0)
+            except (TypeError, ValueError):
+                max_requests = 0
+            if duration and (max_usd > 0 or max_requests > 0):
                 rollover = bool(item.get("rollover") or False)
                 try:
                     cap = float(item.get("rollover_cap_multiple") or 2.0)
@@ -246,6 +254,7 @@ class VirtualKeyStore:
                         max_usd,
                         rollover=rollover,
                         rollover_cap_multiple=cap,
+                        max_requests=max(0, max_requests),
                     )
                 )
         return tuple(out)
@@ -315,11 +324,12 @@ class VirtualKeyStore:
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        windows = tuple(budget_windows or ())
-        if not windows:
-            from daari.auth.budgets import windows_from_flat
+        from daari.auth.budgets import coalesce_windows, windows_from_flat
 
-            windows = windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd)
+        windows = coalesce_windows(
+            list(budget_windows or ())
+            or list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
+        )
         pin = (region_pin or "").strip() or None
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
@@ -354,11 +364,12 @@ class VirtualKeyStore:
         """Replace a team's budget windows (#464) and optional region_pin (#466)."""
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        windows = tuple(budget_windows or ())
-        if not windows:
-            from daari.auth.budgets import windows_from_flat
+        from daari.auth.budgets import coalesce_windows, windows_from_flat
 
-            windows = windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd)
+        windows = coalesce_windows(
+            list(budget_windows or ())
+            or list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
+        )
         pin = (region_pin or "").strip() or None
         with self._lock, self._connect() as conn:
             row = conn.execute(
@@ -444,12 +455,12 @@ class VirtualKeyStore:
         prefix = plaintext[:10]
         created = datetime.now(timezone.utc).isoformat()
         team_row = self.create_team(team) if team else None
-        windows = tuple(budget_windows or ())
-        seen = {item.duration for item in windows}
-        for item in windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd):
-            if item.duration not in seen:
-                windows = windows + (item,)
-                seen.add(item.duration)
+        from daari.auth.budgets import coalesce_windows
+
+        windows = coalesce_windows(
+            list(budget_windows or ())
+            + list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
+        )
         meta = dict(metadata or {})
         pin = (region_pin or "").strip() or None
         if pin:
@@ -519,15 +530,13 @@ class VirtualKeyStore:
     ) -> bool:
         if not self.enabled:
             return False
-        from daari.auth.budgets import windows_from_flat
+        from daari.auth.budgets import coalesce_windows, windows_from_flat
 
         team_row = self.create_team(team) if team else None
-        windows = tuple(budget_windows or ())
-        seen = {item.duration for item in windows}
-        for item in windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd):
-            if item.duration not in seen:
-                windows = windows + (item,)
-                seen.add(item.duration)
+        windows = coalesce_windows(
+            list(budget_windows or ())
+            + list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
+        )
         with self._lock, self._connect() as conn:
             if user_daily_usd_cap is None:
                 cur = conn.execute(

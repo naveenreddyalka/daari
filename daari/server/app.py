@@ -195,8 +195,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ctx = getattr(request.app.state, "ctx", None)
                 ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
                 if ledger is not None and getattr(ledger, "enabled", False):
-                    from daari.auth.budgets import budget_error, budget_status, tightest_window
-                    from daari.gateway.budget_headers import budget_headers, retry_after_seconds
+                    from daari.auth.budgets import (
+                        budget_error,
+                        budget_status,
+                        tightest_request_window,
+                        tightest_window,
+                    )
+                    from daari.gateway.budget_headers import (
+                        QUOTA_REQUESTS_LIMIT_HEADER,
+                        QUOTA_REQUESTS_REMAINING_HEADER,
+                        budget_headers,
+                        retry_after_seconds,
+                    )
 
                     client = claims.client_id or claims.key_id or ""
                     pricing = getattr(resolved, "pricing", None)
@@ -219,21 +229,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         # (remaining 0) plus Retry-After from the window reset.
                         headers = budget_headers(exceeded)
                         headers["Retry-After"] = str(retry_after_seconds(exceeded))
+                        err_kwargs: dict = {
+                            "client_id": client,
+                            "window": exceeded.window,
+                            "spend": exceeded.spend,
+                            "scope": exceeded.scope,
+                        }
+                        if exceeded.quota == "requests":
+                            err_kwargs["quota"] = "requests"
+                            err_kwargs["spend_requests"] = int(exceeded.spend)
+                            err_kwargs["limit_requests"] = int(exceeded.limit)
                         return JSONResponse(
                             status_code=402,
-                            content={
-                                "error": budget_error(
-                                    client_id=client,
-                                    window=exceeded.window,
-                                    spend=exceeded.spend,
-                                    scope=exceeded.scope,
-                                )
-                            },
+                            content={"error": budget_error(**err_kwargs)},
                             headers=headers,
                         )
                     tightest = tightest_window(statuses)
                     if tightest is not None:
                         budget_response_headers = budget_headers(tightest)
+                    request_tightest = tightest_request_window(statuses)
+                    if request_tightest is not None:
+                        # Keep USD window/scope headers when both quotas apply.
+                        budget_response_headers[QUOTA_REQUESTS_REMAINING_HEADER] = str(
+                            int(request_tightest.remaining)
+                        )
+                        budget_response_headers[QUOTA_REQUESTS_LIMIT_HEADER] = str(
+                            int(request_tightest.limit)
+                        )
+                        if tightest is None:
+                            budget_response_headers.update(budget_headers(request_tightest))
             request.state.auth_claims = claims
             response = await call_next(request)
             if budget_response_headers and 200 <= response.status_code < 300:

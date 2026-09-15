@@ -307,6 +307,52 @@ class PostgresUsageLedger:
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * rate
 
+    def request_count_for_client(
+        self,
+        client_id: str,
+        *,
+        window: str = "day",
+        day: str | None = None,
+        month: str | None = None,
+    ) -> int:
+        """Billable requests for one client (``requests - cache_hits``) (#467)."""
+        if not self.enabled or not client_id:
+            return 0
+        if window == "month":
+            where, params = "client_id = %s AND day LIKE %s", (
+                client_id,
+                (month or _today()[:7]) + "-%",
+            )
+        elif window == "day":
+            where, params = "client_id = %s AND day = %s", (client_id, day or _today())
+        else:
+            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+        return self._request_count_for(where, params)
+
+    def request_count_for_client_days(self, client_id: str, *, days: int) -> int:
+        if not self.enabled or not client_id or days <= 0:
+            return 0
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        return self._request_count_for("client_id = %s AND day >= %s", (client_id, cutoff))
+
+    def _request_count_for(self, where: str, params: tuple[Any, ...]) -> int:
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(requests), 0), COALESCE(SUM(cache_hits), 0)"
+                        f" FROM client_usage WHERE {where}",
+                        params,
+                    )
+                    row = cur.fetchone()
+        except Exception:
+            return 0
+        if row is None:
+            return 0
+        return max(0, int(row[0] or 0) - int(row[1] or 0))
+
     def frontier_spend_usd(self, *, price_per_1k_tokens: float, day: str | None = None) -> float:
         if not self.enabled:
             return 0.0

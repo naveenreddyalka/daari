@@ -517,6 +517,52 @@ class UsageLedger:
             table="client_usage",
         )
 
+    def request_count_for_client(
+        self,
+        client_id: str,
+        *,
+        window: str = "day",
+        day: str | None = None,
+        month: str | None = None,
+    ) -> int:
+        """Billable requests for one client (``requests - cache_hits``) (#467)."""
+        if not self.enabled or not client_id:
+            return 0
+        if window == "month":
+            where, params = "client_id = ? AND day LIKE ?", (
+                client_id,
+                (month or _today()[:7]) + "-%",
+            )
+        elif window == "day":
+            where, params = "client_id = ? AND day = ?", (client_id, day or _today())
+        else:
+            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+        return self._request_count_for(where, params)
+
+    def request_count_for_client_days(self, client_id: str, *, days: int) -> int:
+        if not self.enabled or not client_id or days <= 0:
+            return 0
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        return self._request_count_for("client_id = ? AND day >= ?", (client_id, cutoff))
+
+    def _request_count_for(self, where: str, params: tuple[Any, ...]) -> int:
+        try:
+            with self._lock, self._connect() as conn:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(requests), 0), COALESCE(SUM(cache_hits), 0)"
+                    f" FROM client_usage WHERE {where}",
+                    params,
+                ).fetchone()
+        except Exception:
+            return 0
+        if row is None:
+            return 0
+        requests = int(row[0] or 0)
+        cache_hits = int(row[1] or 0)
+        return max(0, requests - cache_hits)
+
     def get_budget_window_state(
         self, scope: str, scope_id: str, duration: str
     ) -> dict[str, Any] | None:
