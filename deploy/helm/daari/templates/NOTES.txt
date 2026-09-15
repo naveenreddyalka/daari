@@ -5,14 +5,15 @@ daari {{ .Chart.AppVersion }} installed.
 {{- if eq (include "daari.fleetSqliteWarning" .) "true" }}
 
 WARNING: Effective replicas={{ include "daari.fleetReplicas" . }} with postgres.enabled=false.
-  batches, files, responses, and the usage ledger default to per-pod SQLite — GETs can 404
-  and counters split across replicas. Set postgres.enabled=true (and postgres.url)
-  so the chart wires DAARI_BATCHES__BACKEND / DAARI_FILES__BACKEND /
-  DAARI_RESPONSES__BACKEND / DAARI_OBSERVABILITY__BACKEND to postgres, or keep
+  batches, files, responses, the usage ledger, and the audit log default to per-pod SQLite —
+  GETs can 404, counters split, and `daari audit export` is incomplete across replicas.
+  Set postgres.enabled=true (and postgres.url) so the chart wires
+  DAARI_BATCHES__BACKEND / DAARI_FILES__BACKEND / DAARI_RESPONSES__BACKEND /
+  DAARI_OBSERVABILITY__BACKEND / DAARI_ENTERPRISE__AUDIT_BACKEND to postgres, or keep
   replicaCount and autoscaling.minReplicas at 1. See docs/developer/guides/features/batches.md.
 {{- else if .Values.postgres.enabled }}
 
-Postgres enabled: observability, batches, files, and responses backends are set to postgres.
+Postgres enabled: observability, batches, files, responses, and audit backends are set to postgres.
 {{- end }}
 
 Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}

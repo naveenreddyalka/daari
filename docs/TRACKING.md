@@ -2413,6 +2413,14 @@ session pins when `cache.backend: redis` (TTL =
 [routing-tiers.md](developer/concepts/routing-tiers.md#session-affinity).
 Covered by `tests/unit/test_session_affinity_redis.py`.
 
+### Doctor warns on sqlite audit and unsigned budget webhooks ([#496](https://github.com/naveenreddyalka/daari/issues/496))
+
+<!-- tracking:#496 -->
+**Status:** Done (2026-09-15). `fleet_artifacts` also flags
+`enterprise.audit_backend=sqlite` under fleet signals; new optional
+`budget_webhook_secret` warns when a webhook URL lacks a signing secret.
+Docs/NOTES mention responses + audit. Covered by `tests/test_doctor.py`.
+
 ---
 
 ## How to update
