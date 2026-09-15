@@ -17,7 +17,11 @@ You are working in naveenreddyalka/daari. Read AGENTS.md at the repo root and fo
 
 1. List open issues labeled auto-dev that do NOT have the agent:working label and no open linked PR:
    gh issue list --label auto-dev --state open --json number,title,labels
-   Pick the highest priority (P1 > P2 > P3, then lowest issue number). If none, stop and report "backlog empty".
+   Pick the highest priority (P1 > P2 > P3, then lowest issue number). If none,
+   refill: follow docs/automations/prd-cycle.md, file 3–5 auto-dev issues
+   (features or performance / usability / testability / benchmarking /
+   documentation / tooling / tech debt), then pick again. Never stop solely
+   because the backlog is empty.
 2. Add the agent:working label to the chosen issue.
 3. Create branch autodev/<issue-number>-<short-slug> from latest main.
 4. Implement the issue TDD-style: failing test first, then the minimal fix. Respect the acceptance criteria checklist in the issue body.

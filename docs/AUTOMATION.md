@@ -8,6 +8,8 @@
 flowchart LR
     subgraph cloudLoop [Cloud loop]
         Sched[Scheduled agent run] --> Pick[Pick top auto-dev issue]
+        Pick -->|empty| Refill[PRD refill 3-5 issues]
+        Refill --> Pick
         Pick --> Impl[Implement TDD per AGENTS.md]
         Impl --> PR[Open PR + enable auto-merge]
         PR --> CI[CI test check]
@@ -32,7 +34,7 @@ flowchart LR
 | Merge gate | branch protection on `main` (requires CI check `test`, strict, no force-push) + repo auto-merge | active |
 | Dev-cycle agent | Cursor Automation draft: [automations/dev-cycle.md](automations/dev-cycle.md); CI fallback: [.github/workflows/autodev.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/autodev.yml) | fallback committed; needs `CURSOR_API_KEY` secret or Automation creation |
 | PR review agent | [automations/pr-review.md](automations/pr-review.md) or enable Bugbot on cursor.com | draft |
-| PRD cycle (backlog replenishment) | [automations/prd-cycle.md](automations/prd-cycle.md) — daily enterprise gap scan maintains `docs/prd/ENTERPRISE.md` and files prioritized `auto-dev` issues (supersedes the weekly scout draft) | draft |
+| PRD cycle (backlog replenishment) | [automations/prd-cycle.md](automations/prd-cycle.md); CI fallback: [.github/workflows/prd-cycle.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/prd-cycle.yml) — daily scan + never-empty 3–5 issue refill (features or tech debt) | fallback committed; same `CURSOR_API_KEY` as autodev |
 | Issue labeler | [.github/workflows/issue-labeler.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/issue-labeler.yml) + `scripts/apply_intended_labels.py` — applies the `**Intended labels:**` first line of new/edited issues (#330) | active |
 | Local watchdog | `scripts/autodev-local.sh` + launchd (`com.daari.serve`, `com.daari.autodev`) | installed and validated |
 
@@ -56,7 +58,7 @@ tail -f ~/.daari/autodev/watchdog.out.log
    - Create the Cursor Automation from [automations/dev-cycle.md](automations/dev-cycle.md) in the Agents Window.
    - Also `gh secret set AUTODEV_GH_TOKEN` (fine-grained PAT, this repo, contents/PRs/actions write) so bot-opened PRs are not held for Actions approval.
 2. **PR review** — enable Bugbot for the repo on cursor.com/dashboard, or create the automation from [automations/pr-review.md](automations/pr-review.md).
-3. **PRD cycle** — create the automation from [automations/prd-cycle.md](automations/prd-cycle.md).
+3. **PRD cycle** — the scheduled workflow `.github/workflows/prd-cycle.yml` runs daily at 14:00 UTC once `CURSOR_API_KEY` is set (same secret as autodev). Optional: also create the Cursor Automation from [automations/prd-cycle.md](automations/prd-cycle.md). A run that files zero issues is a failed run.
 
 ## Pausing / stopping
 
@@ -64,6 +66,7 @@ tail -f ~/.daari/autodev/watchdog.out.log
 |------|-----|
 | Local watchdog | `scripts/autodev-local.sh --uninstall` |
 | CI dev cycle | `gh secret delete CURSOR_API_KEY` or `gh workflow disable autodev-cycle` |
+| CI PRD cycle | `gh workflow disable prd-cycle` (same `CURSOR_API_KEY` gate) |
 | Cursor Automations | disable in cursor.com dashboard |
 | Everything merge-related | branch protection stays; nothing lands without green CI |
 
