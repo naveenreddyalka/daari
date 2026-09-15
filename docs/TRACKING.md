@@ -2334,6 +2334,15 @@ no-delta filing. Covered by `tests/unit/test_autodev_backlog.py`.
 [batches.md](developer/guides/features/batches.md). Covered by
 `tests/unit/test_helm_chart.py` and `tests/test_doctor.py`.
 
+### Hermetic benchmark suite beyond L0 ([#477](https://github.com/naveenreddyalka/daari/issues/477))
+
+<!-- tracking:#477 -->
+**Status:** Done (2026-09-15). `tests/benchmark/test_hermetic_paths.py` adds
+no-Ollama ceilings for ExactCache get, `budget_status`, SQLite
+`RateLimiter.check`, and `BatchStore.create` (still `@pytest.mark.benchmark`).
+Docs: [benchmark-load.md](developer/resources/benchmark-load.md),
+[live-benchmark.md](developer/guides/observability/live-benchmark.md).
+
 ---
 
 ## How to update

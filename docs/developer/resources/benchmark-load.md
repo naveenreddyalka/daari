@@ -6,6 +6,22 @@ no-cache generations with `max_tokens` capped (generate), and a
 tool-bearing agent replay (agent, G1 / #223). Reproduce:
 [guide](../guides/observability/live-benchmark.md#load).
 
+## Hermetic micro-benchmarks (no Ollama)
+
+In-process regression guards for TTFT-adjacent paths live under
+`tests/benchmark/` (`test_hermetic_paths.py`, plus the existing L0-vs-mocked-L3
+case). They are marked `@pytest.mark.benchmark`, so the default CI suite
+(`pytest -m "not integration and not benchmark"`) skips them. Run locally when
+changing cache, budgets, rate limiting, or batches:
+
+```bash
+pytest -m benchmark -q
+```
+
+Each hermetic test asserts a **loose absolute ceiling** (roughly 10× typical
+local medians) so only order-of-magnitude regressions fail. They do **not**
+replace this page's live load numbers.
+
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`
 - **Hardware:** Apple M4 Pro, 48 GB RAM

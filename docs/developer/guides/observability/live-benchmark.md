@@ -44,6 +44,13 @@ pytest -m benchmark tests/unit/test_bench_live.py
 Both skip cleanly (exit 0 / pass) when Ollama is unreachable, so CI and
 Ollama-less machines are unaffected.
 
+### Hermetic path ceilings (no Ollama)
+
+`tests/benchmark/test_hermetic_paths.py` (#477) times ExactCache get, budget
+remaining, SQLite rate-limit increment, and batch enqueue in-process. Included
+in `pytest -m benchmark` (skipped by default CI). Details:
+[benchmark-load.md](../../resources/benchmark-load.md#hermetic-micro-benchmarks-no-ollama).
+
 ## Flags
 
 | Flag | Meaning |
