@@ -367,6 +367,8 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
         sqlite_artifacts.append("batches.backend=sqlite")
     if settings.files.backend == "sqlite":
         sqlite_artifacts.append("files.backend=sqlite")
+    if settings.responses.backend == "sqlite":
+        sqlite_artifacts.append("responses.backend=sqlite")
     if settings.observability.backend == "sqlite":
         sqlite_artifacts.append("observability.backend=sqlite")
 
@@ -378,12 +380,11 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     if settings.observability.backend == "postgres":
         signals.append("observability.backend=postgres")
 
-    # Artifacts that must be shared across a fleet (batches/files; ledger when
-    # still sqlite while another fleet signal is present).
+    # Artifacts that must be shared across a fleet.
     needs_shared = [
         part
         for part in sqlite_artifacts
-        if part.startswith("batches.") or part.startswith("files.")
+        if part.startswith(("batches.", "files.", "responses."))
     ]
     if settings.observability.backend == "sqlite" and signals:
         # Ledger split only matters when some other fleet signal is already on.
@@ -395,10 +396,11 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
             ok=False,
             detail=(
                 f"fleet signals ({', '.join(signals)}) with per-pod SQLite "
-                f"({', '.join(needs_shared)}) — GET /v1/batches|files can 404 "
-                "across replicas; set batches.backend=postgres, "
-                "files.backend=postgres, and observability.backend=postgres "
-                "(with observability.postgres_url), or keep a single replica"
+                f"({', '.join(needs_shared)}) — GET /v1/batches|files|responses "
+                "can 404 across replicas; set batches.backend=postgres, "
+                "files.backend=postgres, responses.backend=postgres, and "
+                "observability.backend=postgres (with observability.postgres_url), "
+                "or keep a single replica"
             ),
             optional=True,
         )

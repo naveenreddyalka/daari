@@ -118,6 +118,7 @@ class TestHelmNotesAndFleetEnv:
         assert "DAARI_FLEET_REPLICAS" in rendered
         assert re.search(r"name: DAARI_BATCHES__BACKEND\s+value: postgres", rendered)
         assert re.search(r"name: DAARI_FILES__BACKEND\s+value: postgres", rendered)
+        assert re.search(r"name: DAARI_RESPONSES__BACKEND\s+value: postgres", rendered)
         assert re.search(
             r"name: DAARI_OBSERVABILITY__BACKEND\s+value: postgres", rendered
         )

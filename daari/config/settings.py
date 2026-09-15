@@ -687,6 +687,19 @@ class BatchesSettings(BaseModel):
     )
 
 
+class ResponsesSettings(BaseModel):
+    """Persisted Responses API objects for GET / chaining / background (#165, #481)."""
+
+    backend: Literal["sqlite", "postgres"] = Field(
+        default="sqlite",
+        description=(
+            "sqlite (default, path next to traces) or postgres "
+            "(observability.postgres_url) so store:true / previous_response_id / "
+            "background polling work across replicas (#481)."
+        ),
+    )
+
+
 class TraceSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/traces/traces.sqlite3"
@@ -987,6 +1000,7 @@ class Settings(BaseSettings):
     usage: UsageSettings = Field(default_factory=UsageSettings)
     files: FilesSettings = Field(default_factory=FilesSettings)
     batches: BatchesSettings = Field(default_factory=BatchesSettings)
+    responses: ResponsesSettings = Field(default_factory=ResponsesSettings)
     pricing: PricingSettings = Field(default_factory=PricingSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)

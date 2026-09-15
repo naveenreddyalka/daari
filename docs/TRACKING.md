@@ -2353,6 +2353,16 @@ batches/files; warning names the postgres settings to flip. Optional
 `daari.__version__`. Docs: [doctor-health.md](developer/guides/operations/doctor-health.md).
 Covered by `tests/test_doctor.py`.
 
+### Cross-replica Responses via Postgres ([#481](https://github.com/naveenreddyalka/daari/issues/481))
+
+<!-- tracking:#481 -->
+**Status:** Done (2026-09-15). `responses.backend` defaults to `sqlite`;
+`postgres` reuses `observability.postgres_url` so `store: true`,
+`previous_response_id`, and background polling work across replicas.
+Owner scoping (#453) unchanged. Helm sets `DAARI_RESPONSES__BACKEND` with
+batches/files. Docs: [batches.md](developer/guides/features/batches.md).
+Covered by `tests/unit/test_postgres_responses.py`.
+
 ---
 
 ## How to update
