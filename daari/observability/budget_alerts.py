@@ -1,4 +1,4 @@
-"""Budget threshold webhooks (#333, #369).
+"""Budget threshold webhooks (#333, #369, #484).
 
 When a request pushes a key/team window across a configured ratio, POST a
 JSON payload to `alerts.budget_webhook_url`. Delivery is best-effort and
@@ -7,11 +7,18 @@ scope/window/threshold until the window resets). When the same Redis the
 cache and rate limits use is configured, a crossing is claimed with
 `SET NX EX` before delivery so a fleet notifies once; Redis errors still
 deliver and log `budget.alert_dedupe_degraded`.
+
+When `alerts.budget_webhook_secret` is set, POSTs carry `X-Daari-Timestamp`
+and `X-Daari-Signature` (HMAC-SHA256 over ``timestamp + "." + body``).
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -20,7 +27,42 @@ from daari.auth.budgets import WindowStatus, window_label
 from daari.auth.virtual_keys import Team, VirtualKey
 
 DEFAULT_THRESHOLDS = (0.8, 1.0)
+DEFAULT_REPLAY_TOLERANCE_SECONDS = 300
 REDIS_KEY_PREFIX = "daari:budget-alert:"
+SIGNATURE_HEADER = "X-Daari-Signature"
+TIMESTAMP_HEADER = "X-Daari-Timestamp"
+
+
+def sign_webhook(body: bytes, secret: str, timestamp: str) -> str:
+    """HMAC-SHA256 hex digest over ``timestamp + '.' + body`` (#484)."""
+    return hmac.new(
+        secret.encode(),
+        f"{timestamp}.".encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def verify_webhook_signature(
+    body: bytes,
+    signature_hex: str,
+    secret: str,
+    timestamp: str,
+    *,
+    now: int | None = None,
+    tolerance_seconds: int = DEFAULT_REPLAY_TOLERANCE_SECONDS,
+) -> bool:
+    """Receiver-side check: HMAC match and timestamp within replay window."""
+    if not secret or not signature_hex or not timestamp:
+        return False
+    try:
+        ts = int(timestamp)
+    except (TypeError, ValueError):
+        return False
+    moment = int(time.time()) if now is None else int(now)
+    if abs(moment - ts) > int(tolerance_seconds):
+        return False
+    expected = sign_webhook(body, secret, timestamp)
+    return hmac.compare_digest(expected, signature_hex.strip().lower())
 
 
 def _ratio(status: WindowStatus) -> float:
@@ -80,6 +122,7 @@ def crossings(
 class BudgetAlerter:
     webhook_url: str
     thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS
+    webhook_secret: str = ""
     audit: Any | None = None
     metrics: Any | None = None
     transport: Any | None = None
@@ -94,6 +137,10 @@ class BudgetAlerter:
     @property
     def enabled(self) -> bool:
         return bool(self.webhook_url.strip())
+
+    @property
+    def signing_enabled(self) -> bool:
+        return bool(self.webhook_secret.strip())
 
     def _dedupe_key(
         self, status: WindowStatus, scope_id: str, threshold: float
@@ -197,11 +244,29 @@ class BudgetAlerter:
         """POST one alert. Failures are logged; never raised to the caller."""
         from daari.gateway.request_log import log_gateway_event
 
+        headers: dict[str, str] = {}
+        content: bytes | None = None
+        json_body: dict[str, Any] | None = body
+        if self.signing_enabled:
+            # Serialize once so the HMAC covers the exact wire bytes (#484).
+            content = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
+            timestamp = str(int(time.time()))
+            headers[TIMESTAMP_HEADER] = timestamp
+            headers[SIGNATURE_HEADER] = sign_webhook(
+                content, self.webhook_secret, timestamp
+            )
+            headers["Content-Type"] = "application/json"
+            json_body = None
         try:
             import httpx
 
             with httpx.Client(transport=self.transport, timeout=self.timeout) as client:
-                response = client.post(self.webhook_url, json=body)
+                response = client.post(
+                    self.webhook_url,
+                    content=content,
+                    json=json_body,
+                    headers=headers or None,
+                )
                 response.raise_for_status()
         except Exception as exc:
             log_gateway_event(
