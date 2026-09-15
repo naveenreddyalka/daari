@@ -11,30 +11,40 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-14)
+## Where daari stands (verified in-tree, 2026-09-15)
 
-**Fourth consecutive same-day drain.** The 09-13 refill #452–#456 all merged the
-same evening (PRs #458–#462): batch/file/response tenancy scoping,
-Anthropic-native `/v1/models`, `anthropic-beta` passthrough, and files
-retention. Backlog and open PRs were both empty at run start.
+**Fifth consecutive same-day drain — and the loop now feeds itself.** The 09-14
+refill #463–#467 all merged overnight (PRs #469–#473): Redis fail-open
+resilience, audit coverage, cross-replica batches/files via Postgres, L6 region
+pinning, and request-count quotas. Then, minutes before this run, a sibling
+session landed the loop's biggest structural change: **never-empty refill**
+(#474 → PR #479: a scheduled `prd-cycle` GitHub Actions workflow at 14:00 UTC,
+plus autodev refilling 3–5 issues itself instead of idling on an empty backlog)
+and the **session cost-avoided rollup** (#475 → PR #480). Three P2 issues from
+that session were open at run start.
 
-**Positioning:** outward is flat — LiteLLM stable is still v1.100.1 (newest tag
-v1.102.0-rc.1, scanned 09-13), Portkey v2.22.0, Kong 2.0.3, Ollama 0.34.0,
-vLLM 0.29.0, and SEP-1933 still draft. Two ecosystem signals matter:
-**OpenRouter launched US in-region routing 09-09** (`us.openrouter.ai` /
-`eu.openrouter.ai`, Business/Enterprise-gated — a data-residency story daari
-can beat local-first), and TrueFoundry entered the auto-routing fight 09-09
-claiming latency superiority over LiteLLM.
+**Positioning:** the one outward event is **LiteLLM v1.101.0 going stable
+2026-09-15** — the "routing offensive" (heuristic_v2, hybrid routing, MCP
+semantic tool search, off-peak pricing, per-worker admission control) is no
+longer rc-gated, and stable also adds `/v1/responses/input_tokens` token
+counting and OpenAI workload-identity federation. daari already shipped parity
+where it mattered (tool search, admission cap, stall escalation, session
+affinity) and its routing stays Apache 2.0 while LiteLLM meters `auto_router`
+behind an enterprise license. Everything else is flat: Portkey v2.22.0,
+Kong 2.0.3 (08-31), OpenRouter changelog unmoved since 08-19, Ollama 0.34.0
+(0.34.1-rc2 is app/MLX-only), vLLM 0.29.0, MCP spec 2026-07-28 with SEP-1933
+still draft.
 
-**Inward theme of this run: dependency-failure resilience and metering.**
-With `cache.backend: redis` (the documented fleet setup) and any RPM/TPM limit,
-the rate-limit middleware calls Redis with no error handling and no socket
-timeout anywhere in the tree — a Redis outage 500s every request; a hung Redis
-blocks them indefinitely (LiteLLM hardened this exact path in v1.102-rc.1).
-Also verified: `keys create`/`revoke` and invalid-key 401s are unaudited (only
-`keys.rotate` and `auth.key_expired` are); batches/files break in the default
-`replicaCount: 2` Helm deploy (documented caveat); and USD budgets cannot meter
-$0 local tiers — no request-count quotas exist.
+**Inward theme of this run: the fleet story is half-finished.** Batches, files,
+and the ledger got shared backends, but at the Helm chart's own
+`replicaCount: 2`: stored Responses (`store: true`, `previous_response_id`,
+background polling) 404 on the replica that didn't serve the request; session
+pins and the brand-new session cost rollup live in a per-process dict, so
+fleet totals diverge; and the hash-chained audit log is per-pod SQLite, so any
+one pod's `daari audit export` misses roughly half the fleet's events. Also
+verified: budget webhooks are unsigned (spoofable, unverifiable), and OTel
+spans neither honor inbound `traceparent` nor inject it upstream — one request
+appears as three disconnected traces.
 
 ---
 
@@ -42,56 +52,64 @@ $0 local tiers — no request-count quotas exist.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Redis outage takes down the gateway** — unguarded `RedisCounterBackend.increment()` in the rate-limit middleware; no `socket_timeout` on any Redis client; `/ready` never probes Redis | 5 | 2 | LiteLLM v1.102-rc.1 ([PR 40624](https://github.com/BerriAI/litellm/pull/40624), chaos test [PR 40482](https://github.com/BerriAI/litellm/pull/40482)) | SQLite counter backend already exists — degrade to per-replica enforcement, never 500 | **Filed [#463](https://github.com/naveenreddyalka/daari/issues/463)** (P1) |
-| 2 | **Audit holes where SOC 2 looks first** — `keys create`/`revoke`, team ops, invalid-key 401s, and cross-tenant artifact denials all unaudited | 4 | 2 | LiteLLM / Portkey admin trails | Hash-chained local SQLite (#378) verifiable offline; just needs coverage | **Filed [#464](https://github.com/naveenreddyalka/daari/issues/464)** (P2) |
-| 3 | **Batches/Files break at `replicaCount: 2`** — per-pod SQLite/disk; GET can hit a replica that never saw the job | 4 | 3 | LiteLLM (DB-backed everything) | Ledger already proves the pattern: SQLite default, opt-in shared Postgres (`daari[postgres]`) | **Filed [#465](https://github.com/naveenreddyalka/daari/issues/465)** (P2) |
-| 4 | **No data-residency pin on L6** — OpenRouter in-region routing (09-09) is enterprise-gated; daari has `zdr` per slot but no `region` | 3 | 2 | OpenRouter ([announcement](https://openrouter.ai/blog/announcements/us-in-region-routing/)) | L0–L5 never leave the operator's hardware; only the L6 remainder needs pinning | **Filed [#466](https://github.com/naveenreddyalka/daari/issues/466)** (P2) |
-| 5 | **USD budgets can't meter $0 local tiers** — no request-count quotas over long windows; one key can monopolize shared GPU all month | 3 | 2 | Portkey usage limits / LiteLLM key limits | Request counts are the natural unit for rationing local GPU; multi-window budget machinery exists | **Filed [#467](https://github.com/naveenreddyalka/daari/issues/467)** (P2) |
-| 6 | **Percentile-TTFT routing** — LiteLLM still rc-only | 2 | 3 | LiteLLM `-rc` | Need latency histograms first | Watch |
-| 7 | **MCP agent identity** — SEP-1933 draft (upd 09-07); Skills 2640 / audit-context 2817 / server-cards 2127 active | 3 | 3 | MCP Tier-1 SDKs | `secret://oauth` ready | Watch |
-| 8 | **Session-cumulative savings surfacing** — LiteLLM rc shows session savings inside Claude Code/Codex | 2 | 2 | LiteLLM rc | `x-daari-response-cost-avoided` shipped; rollup needs affinity store | Watch (stable release or client ask) |
-| 9 | **SOC 2 / Gemini facade / A2A / admin UI / off-peak / `/v1/images` / realtime / WIF / streamed `usage.cost`** | 2–3 | 2–5 | Kong / LiteLLM | No new client demand | Watch / non-goal |
+| 1 | **Stored Responses break across replicas** — `response_store.py` is SQLite-only; batches/files got Postgres, responses missed | 4 | 2 | LiteLLM (DB-backed everywhere) | Keep zero-dep SQLite for single-node; one setting flips fleets to the Postgres the chart already ships | **Filed [#481](https://github.com/naveenreddyalka/daari/issues/481)** (P2) |
+| 2 | **Session pins + cost rollup are per-process** — affinity misses behind round-robin; per-replica savings totals diverge | 3 | 2 | LiteLLM (central DB sessions) | Reuse the Redis the fleet already runs for cache/rate limits; fail open like the Redis-resilience work | **Filed [#482](https://github.com/naveenreddyalka/daari/issues/482)** (P2) |
+| 3 | **Audit trail is per-pod** — hash chain + export only see local SQLite; fleet export is incomplete for SOC 2 | 4 | 3 | LiteLLM/Portkey (plain DB trails) | Nobody else has offline-verifiable chaining; make it fleet-complete and it stays a differentiator | **Filed [#483](https://github.com/naveenreddyalka/daari/issues/483)** (P2) |
+| 4 | **Budget webhooks unsigned** — receivers can't authenticate; alerts spoofable into paging pipelines | 2 | 1 | Stripe-style HMAC is industry norm | `X-Daari-Signature` convention + `secret://` refs already in-tree; pure stdlib | **Filed [#484](https://github.com/naveenreddyalka/daari/issues/484)** (P2) |
+| 5 | **No W3C trace-context propagation** — inbound `traceparent` ignored, upstream calls uninstrumented; 3 disconnected traces per request | 3 | 2 | Kong OTel plugin / LiteLLM proxy | The routing ladder (cache hit, tier escalation) becomes visible inside the caller's own Jaeger/Tempo trace | **Filed [#485](https://github.com/naveenreddyalka/daari/issues/485)** (P2) |
+| 6 | **Helm/doctor/bench hygiene** — stale chart tag, SQLite-at-replicas warnings, hermetic perf suite | 2–3 | 2 | — | Filed by the 09-15 sibling session | Open: [#476](https://github.com/naveenreddyalka/daari/issues/476)–[#478](https://github.com/naveenreddyalka/daari/issues/478) (P2) |
+| 7 | **Percentile-TTFT routing** — still rc-only (LiteLLM v1.102.0-rc.1) | 2 | 3 | LiteLLM `-rc` | Need latency histograms first | Watch (stable or operator SLO ask) |
+| 8 | **`/v1/responses/input_tokens` counting** — LiteLLM v1.101 stable | 2 | 2 | LiteLLM | Anthropic `count_tokens` shipped; OpenAI-side estimate exists internally | Watch (client ask) |
+| 9 | **WIF upstream provider auth** — now in Portkey v2.20, Kong 2.0.3, LiteLLM v1.101 stable | 3 | 3 | Portkey | `secret://oauth` covers most; WIF is keyless step further | Watch (operator demand for keyless creds) |
+| 10 | **MCP agent identity** — SEP-1933 still draft; spec 2026-07-28 current | 3 | 3 | MCP Tier-1 SDKs | `secret://oauth` ready | Watch (SEP merge or fleet ask) |
+| 11 | **SOC 2 / Gemini facade / A2A / admin UI / off-peak / `/v1/images` / realtime / streamed `usage.cost`** | 2–3 | 2–5 | Kong / LiteLLM | No new client demand | Watch / non-goal |
 
-Pruned this run: #452–#456 rows (all shipped 09-13, PRs #458–#462).
+Pruned this run: #463–#467 rows (all shipped overnight, PRs #469–#473);
+session-savings watch row (shipped as PR #480).
 
 Open backlog after this run:
-[#463](https://github.com/naveenreddyalka/daari/issues/463) (P1),
-[#464](https://github.com/naveenreddyalka/daari/issues/464)–[#467](https://github.com/naveenreddyalka/daari/issues/467) (P2).
+[#476](https://github.com/naveenreddyalka/daari/issues/476)–[#478](https://github.com/naveenreddyalka/daari/issues/478),
+[#481](https://github.com/naveenreddyalka/daari/issues/481)–[#485](https://github.com/naveenreddyalka/daari/issues/485)
+(all P2).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Survive dependency failure** ([#463](https://github.com/naveenreddyalka/daari/issues/463)) — a router that 500s when Redis blips is not an HA story; fail open to local enforcement, bound every Redis call, surface it on `/ready`.
-2. **Complete the audit trail** ([#464](https://github.com/naveenreddyalka/daari/issues/464)) — the hash chain is only as good as its coverage; key lifecycle, failed auth, and tenancy denials are the events reviewers ask for.
-3. **Make the fleet deploy honest** ([#465](https://github.com/naveenreddyalka/daari/issues/465)) — Batches/Files must work at the Helm chart's own default replica count.
-4. **Own the residency narrative** ([#466](https://github.com/naveenreddyalka/daari/issues/466)) — "90% of traffic never leaves your rack, and the remainder is region-pinned" beats every cloud gateway's compliance page.
-5. **Meter what local actually costs** ([#467](https://github.com/naveenreddyalka/daari/issues/467)) — request-count quotas ration shared GPU capacity that USD budgets can't see.
+1. **Finish the fleet** ([#481](https://github.com/naveenreddyalka/daari/issues/481), [#482](https://github.com/naveenreddyalka/daari/issues/482)) — every stateful surface must be true at the chart's default replica count; stored Responses and session state are the two still lying.
+2. **Fleet-complete compliance** ([#483](https://github.com/naveenreddyalka/daari/issues/483)) — the hash-chained audit log is a genuine differentiator only if one export covers the whole fleet.
+3. **Trustworthy signals out** ([#484](https://github.com/naveenreddyalka/daari/issues/484)) — signed webhooks close the day-one security-review finding on the alerting path.
+4. **One trace end-to-end** ([#485](https://github.com/naveenreddyalka/daari/issues/485)) — propagated trace context puts daari's routing ladder inside the observability stack enterprises already run.
+5. **Honest defaults** ([#476](https://github.com/naveenreddyalka/daari/issues/476)–[#478](https://github.com/naveenreddyalka/daari/issues/478)) — chart, doctor, and benchmarks that tell operators the truth about what a config actually does.
 
 ---
 
 ## Changelog
 
-- **2026-09-14** — Fourth same-day drain: #452–#456 merged 09-13 evening
-  (PRs #458–#462); backlog empty. Outward flat (LiteLLM v1.100.1 stable /
-  v1.102.0-rc.1, Portkey v2.22.0, Kong 2.0.3, Ollama 0.34.0, vLLM 0.29.0,
-  SEP-1933 draft); new signals: OpenRouter US in-region routing (09-09),
-  TrueFoundry auto-routing entry. Inward: Redis outage 500s the rate-limit
-  middleware (no error handling, no socket timeouts anywhere); keys
-  create/revoke + invalid-key 401s + tenancy denials unaudited; batches/files
-  broken at default Helm replicas; no request-count quotas. Filed
-  [#463](https://github.com/naveenreddyalka/daari/issues/463) (P1),
-  [#464](https://github.com/naveenreddyalka/daari/issues/464)–[#467](https://github.com/naveenreddyalka/daari/issues/467)
-  (P2).
-- **2026-09-13** — Stored-artifact tenancy audit (batch/file/response reads
-  unscoped) + Portkey v2.22 parity (Anthropic `/v1/models`, `anthropic-beta`)
-  + files retention. Filed #452–#456; all shipped same day. Fixed a CI date
-  bomb in the audit-export test in the same PR.
+- **2026-09-15** — Fifth same-day drain: #463–#467 merged overnight (PRs
+  #469–#473). Loop structure changed minutes before this run: never-empty
+  refill + scheduled Actions `prd-cycle` at 14:00 UTC (PR #479) and session
+  cost rollup (PR #480) landed; sibling session filed #474–#478. **Two PRD
+  cycles now exist (Actions 14:00 UTC, Cursor Automation 17:00 UTC) — later
+  run each day must delta-scan.** Outward: LiteLLM v1.101.0 STABLE (routing
+  offensive + `/v1/responses/input_tokens` + OpenAI WIF); Portkey v2.22.0,
+  Kong 2.0.3, OpenRouter (08-19), Ollama 0.34.0, vLLM 0.29.0, SEP-1933 draft —
+  all unchanged. Inward: fleet story half-finished — per-pod Responses store,
+  per-process session pins/rollup, per-pod audit chain, unsigned budget
+  webhooks, no trace-context propagation. Filed
+  [#481](https://github.com/naveenreddyalka/daari/issues/481)–[#485](https://github.com/naveenreddyalka/daari/issues/485)
+  (all P2).
+- **2026-09-14** — Redis resilience audit: rate-limit middleware 500s on Redis
+  outage, audit coverage holes, per-pod batches/files at default Helm
+  replicas, no request-count quotas, no L6 region pin. Filed #463–#467; all
+  shipped overnight.
+- **2026-09-13** — Stored-artifact tenancy audit + Portkey v2.22 parity +
+  files retention. Filed #452–#456; all shipped same day. Fixed a CI date
+  bomb in the audit-export test.
 - **2026-09-12** — Batch slice audit (governance bypass, `/v1/files`,
   durability, idle-yield) + `daari configure`. Filed #441–#445; all shipped
   same day.
-- **2026-09-11 / late / pm** — Filed #418–#422 (harness-aware headline) and
-  #430–#434 (Kong parity + Batch API); pm run no-delta.
-- **2026-09-10** — Filed #409–#412; `AUTODEV_GH_TOKEN` set.
+- **2026-09-11 / 10** — Filed #418–#422, #430–#434 (Kong parity + Batch API),
+  #409–#412; `AUTODEV_GH_TOKEN` set.
 - **2026-09-09→08-28** (condensed) — #374–#401 refills, park era, labeler,
   Apache 2.0, this PRD.
