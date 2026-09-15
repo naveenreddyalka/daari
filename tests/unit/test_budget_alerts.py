@@ -1,7 +1,11 @@
-"""Budget threshold webhooks (#333)."""
+"""Budget threshold webhooks (#333, #484)."""
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from datetime import datetime, timezone
 
 import httpx
@@ -11,7 +15,13 @@ from daari.auth.budgets import BudgetWindow, WindowStatus
 from daari.auth.virtual_keys import Team, VirtualKey
 from daari.config.settings import Settings
 from daari.enterprise.audit import AuditLog
-from daari.observability.budget_alerts import BudgetAlerter, crossings
+from daari.observability.budget_alerts import (
+    DEFAULT_REPLAY_TOLERANCE_SECONDS,
+    BudgetAlerter,
+    crossings,
+    sign_webhook,
+    verify_webhook_signature,
+)
 from daari.observability.metrics import Metrics
 from daari.observability.prometheus import render_prometheus
 
@@ -52,10 +62,58 @@ class TestCrossings:
         assert crossings([_status(0)], [_status(10)], [0.0, 1.5]) == []
 
 
+class TestWebhookSignature:
+    """Stripe-style HMAC: timestamp + '.' + body (#484)."""
+
+    SECRET = "whsec_test_budget"
+
+    def test_receiver_recipe_accepts_valid(self):
+        body = b'{"scope":"key","threshold":0.8}'
+        ts = str(int(time.time()))
+        sig = sign_webhook(body, self.SECRET, ts)
+        assert verify_webhook_signature(
+            body, sig, self.SECRET, ts, now=int(ts)
+        )
+
+    def test_tampered_body_rejected(self):
+        body = b'{"scope":"key","threshold":0.8}'
+        ts = str(int(time.time()))
+        sig = sign_webhook(body, self.SECRET, ts)
+        assert not verify_webhook_signature(
+            b'{"scope":"key","threshold":1.0}',
+            sig,
+            self.SECRET,
+            ts,
+            now=int(ts),
+        )
+
+    def test_stale_timestamp_rejected(self):
+        body = b'{"scope":"key","threshold":0.8}'
+        now = int(time.time())
+        stale = str(now - DEFAULT_REPLAY_TOLERANCE_SECONDS - 1)
+        sig = sign_webhook(body, self.SECRET, stale)
+        assert not verify_webhook_signature(
+            body, sig, self.SECRET, stale, now=now
+        )
+
+    def test_documented_receiver_recipe(self):
+        """Receiver-side check matches the budgets-frontier.md snippet."""
+        body = b'{"scope":"key","id":"k1","threshold":0.8}'
+        ts = "1756944000"
+        expected = hmac.new(
+            self.SECRET.encode(),
+            f"{ts}.".encode() + body,
+            hashlib.sha256,
+        ).hexdigest()
+        assert sign_webhook(body, self.SECRET, ts) == expected
+        assert hmac.compare_digest(expected, sign_webhook(body, self.SECRET, ts))
+
+
 class TestAlerter:
     def test_defaults(self):
         alerts = Settings().alerts
         assert alerts.budget_webhook_url == ""
+        assert alerts.budget_webhook_secret == ""
         assert alerts.budget_thresholds == [0.8, 1.0]
         assert BudgetAlerter(webhook_url="").enabled is False
 
@@ -134,6 +192,48 @@ class TestAlerter:
     def test_empty_url_never_posts(self):
         alerter = BudgetAlerter(webhook_url="")
         assert alerter.notify([_status(0)], [_status(10)], key=KEY, team=None) == []
+
+    def test_unsigned_when_secret_unset(self):
+        posted: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            posted.append(request)
+            return httpx.Response(204)
+
+        alerter = BudgetAlerter(
+            webhook_url="https://hooks.example/budget",
+            transport=httpx.MockTransport(handler),
+        )
+        alerter.notify([_status(7.0)], [_status(8.2)], key=KEY, team=None)
+        assert len(posted) == 1
+        assert "x-daari-signature" not in posted[0].headers
+        assert "x-daari-timestamp" not in posted[0].headers
+
+    def test_signed_post_covers_exact_body(self):
+        posted: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            posted.append(request)
+            return httpx.Response(204)
+
+        secret = "whsec_live"
+        alerter = BudgetAlerter(
+            webhook_url="https://hooks.example/budget",
+            webhook_secret=secret,
+            transport=httpx.MockTransport(handler),
+        )
+        alerter.notify([_status(7.0)], [_status(8.2)], key=KEY, team=None)
+        assert len(posted) == 1
+        req = posted[0]
+        raw = req.content
+        ts = req.headers["x-daari-timestamp"]
+        sig = req.headers["x-daari-signature"]
+        assert verify_webhook_signature(raw, sig, secret, ts)
+        assert json.loads(raw)["threshold"] == 0.8
+        # Re-serializing with different separators would break the HMAC.
+        alt = json.dumps(json.loads(raw), separators=(", ", ": ")).encode()
+        assert alt != raw
+        assert not verify_webhook_signature(alt, sig, secret, ts)
 
 
 class FakeRedis:

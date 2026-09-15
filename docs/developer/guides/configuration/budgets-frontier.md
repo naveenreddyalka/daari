@@ -94,6 +94,7 @@ delays or fails the chat response.
 ```yaml
 alerts:
   budget_webhook_url: https://hooks.example/daari-budget   # Slack / ntfy / PagerDuty
+  budget_webhook_secret: secret://env-file/~/.daari/secrets.env#BUDGET_WEBHOOK  # optional
   budget_thresholds: [0.8, 1.0]
 ```
 
@@ -111,6 +112,26 @@ Payload (never includes key material):
   "threshold": 0.8,
   "reset_epoch": 1756944000
 }
+```
+
+When `budget_webhook_secret` is set (plaintext or a `secret://` ref), every
+POST carries `X-Daari-Timestamp` (unix seconds) and `X-Daari-Signature`
+(HMAC-SHA256 hex of `timestamp + "." + body` over the exact request bytes).
+Unset keeps the previous unsigned POST (no new headers). Reject timestamps
+older than ~5 minutes to block replays:
+
+```python
+import hashlib, hmac, time
+
+TOLERANCE = 300  # seconds
+
+def verify(body: bytes, signature: str, secret: str, timestamp: str) -> bool:
+    if abs(time.time() - int(timestamp)) > TOLERANCE:
+        return False
+    expected = hmac.new(
+        secret.encode(), f"{timestamp}.".encode() + body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature.strip().lower())
 ```
 
 Each `(scope, id, window, threshold, reset_epoch)` fires at most once until

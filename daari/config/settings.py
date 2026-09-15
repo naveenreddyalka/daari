@@ -977,6 +977,7 @@ class AlertSettings(BaseModel):
     """Operator webhooks for budget thresholds (#333). Empty URL disables."""
 
     budget_webhook_url: str = ""
+    budget_webhook_secret: str = ""
     budget_thresholds: list[float] = Field(default_factory=lambda: [0.8, 1.0])
 
     @field_validator("budget_thresholds")

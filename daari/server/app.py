@@ -66,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.budget_alerter = BudgetAlerter(
             webhook_url=resolved.alerts.budget_webhook_url,
             thresholds=tuple(resolved.alerts.budget_thresholds),
+            webhook_secret=resolved.alerts.budget_webhook_secret,
             audit=audit_log_from_settings(resolved),
             metrics=app.state.ctx.metrics,
             redis_url=redis_url,

@@ -2383,6 +2383,16 @@ serialized hash chain (`daari audit verify` is fleet-global). Helm sets
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
 `tests/unit/test_postgres_audit.py`.
 
+### Signed budget alert webhooks ([#484](https://github.com/naveenreddyalka/daari/issues/484))
+
+<!-- tracking:#484 -->
+**Status:** Done (2026-09-15). `alerts.budget_webhook_secret` (supports
+`secret://`) adds Stripe-style `X-Daari-Timestamp` + `X-Daari-Signature`
+(HMAC-SHA256 over `timestamp + "." +` exact body bytes). Unset keeps
+unsigned POSTs. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#operator-alerts).
+Covered by `tests/unit/test_budget_alerts.py`.
+
 ---
 
 ## How to update
