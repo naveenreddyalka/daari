@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 RETENTION_SWEEP_SECONDS = 86400
@@ -150,6 +151,36 @@ def prune_all(
         )
     else:
         results.append(PruneResult("files", 0, True))
+
+    responses_cfg = getattr(settings, "responses", None)
+    if responses_cfg is not None and getattr(responses_cfg, "retention_days", 0):
+        cutoff_epoch = (current - timedelta(days=responses_cfg.retention_days)).timestamp()
+        pg_url = (getattr(settings.observability, "postgres_url", "") or "").strip()
+        if getattr(responses_cfg, "backend", "sqlite") == "postgres" and pg_url:
+            from daari.gateway.postgres_responses import PostgresResponseStore
+
+            store = PostgresResponseStore(
+                pg_url, retention_days=responses_cfg.retention_days
+            )
+        else:
+            from daari.gateway.response_store import ResponseStore
+
+            traces_path = Path(settings.trace.path).expanduser()
+            store = ResponseStore(
+                traces_path.parent / "responses.sqlite3",
+                retention_days=responses_cfg.retention_days,
+            )
+        deleted = store.prune_older_than(cutoff_epoch, dry_run=dry_run)
+        results.append(
+            PruneResult(
+                "responses",
+                deleted,
+                False,
+                datetime.fromtimestamp(cutoff_epoch, timezone.utc).isoformat(),
+            )
+        )
+    else:
+        results.append(PruneResult("responses", 0, True))
 
     from daari.enterprise.postgres_audit import audit_log_from_settings
 

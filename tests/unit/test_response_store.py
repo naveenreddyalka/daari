@@ -1,4 +1,4 @@
-"""ResponseStore ownership for multi-tenant Responses API (#453)."""
+"""ResponseStore ownership for multi-tenant Responses API (#453, #497)."""
 
 from __future__ import annotations
 
@@ -65,3 +65,26 @@ def test_replace_preserves_owner_when_omitted(tmp_path):
     store.put("resp_x", {"id": "resp_x", "status": "queued"}, owner_key_id="vk_1")
     store.put("resp_x", {"id": "resp_x", "status": "completed", "output": []})
     assert store.get("resp_x")["_owner_key_id"] == "vk_1"
+
+
+def test_prune_older_than_dry_run_and_delete(tmp_path):
+    store = ResponseStore(tmp_path / "r.sqlite3", retention_days=1)
+    store.put("resp_old", {"id": "resp_old", "output": []})
+    store.put("resp_new", {"id": "resp_new", "output": []})
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE responses SET created_at = 1000 WHERE response_id = ?",
+            ("resp_old",),
+        )
+        conn.commit()
+    assert store.prune_older_than(2000, dry_run=True) == 1
+    assert store.get("resp_old") is not None
+    assert store.prune_older_than(2000, dry_run=False) == 1
+    assert store.get("resp_old") is None
+    assert store.get("resp_new") is not None
+
+
+def test_default_retention_days_is_forever():
+    from daari.config.settings import Settings
+
+    assert Settings().responses.retention_days == 0

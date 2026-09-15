@@ -2421,6 +2421,15 @@ Covered by `tests/unit/test_session_affinity_redis.py`.
 `budget_webhook_secret` warns when a webhook URL lacks a signing secret.
 Docs/NOTES mention responses + audit. Covered by `tests/test_doctor.py`.
 
+### Stored Responses retention ([#497](https://github.com/naveenreddyalka/daari/issues/497))
+
+<!-- tracking:#497 -->
+**Status:** Done (2026-09-15). `responses.retention_days` (default `0` =
+forever) prunes SQLite and Postgres stored Responses via `daari prune` /
+daily sweep. Docs: [batches.md](developer/guides/features/batches.md).
+Covered by `tests/unit/test_response_store.py`,
+`tests/unit/test_retention.py`, `tests/unit/test_postgres_responses.py`.
+
 ---
 
 ## How to update
