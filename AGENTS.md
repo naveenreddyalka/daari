@@ -31,11 +31,11 @@ A change is not done until the default suite passes.
 4. Keep the change scoped to the issue. No drive-by refactors, no new dependencies unless the issue calls for them.
 5. Update docs touched by the change: [docs/TRACKING.md](docs/TRACKING.md) status row, plus any setup/ADR docs the issue lists.
 6. Run the default test suite; fix what you broke.
-7. After the PR merges (or the failure protocol fires), immediately pick the next issue. Do not ask the user whether to continue. Stop only for hard limits below, or when no eligible `auto-dev` issue remains.
+7. After the PR merges (or the failure protocol fires), immediately pick the next issue. Do not ask the user whether to continue. Stop only for hard limits below. If `scripts/autodev_backlog.py --pick` prints `backlog empty`, refill: follow [docs/automations/prd-cycle.md](docs/automations/prd-cycle.md), file 3–5 `auto-dev` issues (new features or improvements to performance, usability, testability, benchmarking, documentation, tooling, tech debt), then pick again. Empty backlog is a refill trigger, not a stop.
 
 ## Continuity
 
-- "continue", "keep going", or an in-progress auto-dev session means: work the backlog until empty or blocked.
+- "continue", "keep going", or an in-progress auto-dev session means: keep implementing. If the backlog is empty, refill it and continue.
 - Never end a turn with "say if you want the next one."
 - New Agent chats in this repo follow the same loop once the user (or a Cursor Automation) starts work.
 
