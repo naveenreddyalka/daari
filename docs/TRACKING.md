@@ -2393,6 +2393,16 @@ unsigned POSTs. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md#operator-alerts).
 Covered by `tests/unit/test_budget_alerts.py`.
 
+### W3C trace-context propagation ([#485](https://github.com/naveenreddyalka/daari/issues/485))
+
+<!-- tracking:#485 -->
+**Status:** Done (2026-09-15). When OTel is on, inbound `traceparent` /
+`tracestate` parent the GenAI span tree; outbound Ollama / OpenAI-compat /
+MLX / frontier calls inject the same context. Disabled / missing packages
+stay no-op. Docs:
+[otel-genai.md](developer/guides/observability/otel-genai.md#trace-context-propagation).
+Covered by `tests/unit/test_otel_genai.py`.
+
 ---
 
 ## How to update

@@ -78,11 +78,13 @@ class FrontierExecutor:
         return payload
 
     def _openai_headers(self) -> dict[str, str]:
+        from daari.observability.otel import inject_trace_headers
+
         if self.provider == "openrouter" or is_openrouter_base(self.base_url):
             from daari.router.openrouter import openrouter_headers
 
-            return openrouter_headers(self.api_key or "")
-        return {"Authorization": f"Bearer {self.api_key}"}
+            return inject_trace_headers(openrouter_headers(self.api_key or ""))
+        return inject_trace_headers({"Authorization": f"Bearer {self.api_key}"})
 
     async def stream(
         self,
@@ -107,7 +109,11 @@ class FrontierExecutor:
                 stream=True,
                 prompt_cache=self.prompt_cache,
             )
-            headers = anthropic_headers_for_request(self.api_key, request)
+            from daari.observability.otel import inject_trace_headers
+
+            headers = inject_trace_headers(
+                anthropic_headers_for_request(self.api_key, request)
+            )
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=True)
@@ -164,7 +170,11 @@ class FrontierExecutor:
                 stream=False,
                 prompt_cache=self.prompt_cache,
             )
-            headers = anthropic_headers_for_request(self.api_key, request)
+            from daari.observability.otel import inject_trace_headers
+
+            headers = inject_trace_headers(
+                anthropic_headers_for_request(self.api_key, request)
+            )
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=False)

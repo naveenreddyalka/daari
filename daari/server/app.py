@@ -103,6 +103,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.virtual_key_store = vk_store
     app.state.rate_limiter = build_rate_limiter(resolved)
 
+    if resolved.observability.otel:
+
+        @app.middleware("http")
+        async def otel_trace_context(request: Request, call_next):
+            """Extract inbound W3C traceparent for parenting + outbound inject (#485)."""
+            from daari.observability.otel import (
+                extract_inbound_context,
+                reset_inbound_context,
+            )
+
+            token = extract_inbound_context(request.headers)
+            try:
+                return await call_next(request)
+            finally:
+                reset_inbound_context(token)
+
     master_key = resolved.server.api_key.strip()
     # Auth middleware runs when a master key is set OR virtual keys exist /
     # are enabled (so newly created keys are enforced without restart... we
