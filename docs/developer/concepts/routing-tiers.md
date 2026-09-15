@@ -78,7 +78,10 @@ or the same user-turn prefix — replays that tier. A new human turn re-routes.
 
 Session identity is `X-Daari-Session` or the OpenAI `user` field when present,
 otherwise a hash of the user/system prefix. Pins expire after
-`routing.session_affinity_ttl_seconds` (default 30 minutes). Confidence
+`routing.session_affinity_ttl_seconds` (default 30 minutes). When
+`cache.backend: redis`, pins (and the session cost-avoided rollup) are stored in
+Redis with that TTL so a multi-replica fleet shares them; Redis errors fail open
+to in-process memory and log `session_affinity.degraded`. Confidence
 failure, context-length failover, an open circuit, a down model, and
 `X-Daari-Tier-Cap` beat the pin. Hits log `session_pin`; overrides log
 `session_pin_override`.

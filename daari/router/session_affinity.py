@@ -29,12 +29,73 @@ class SessionPinStore:
         ttl_seconds: float = 1800.0,
         *,
         clock: Callable[[], float] | None = None,
+        redis_client: Any | None = None,
+        redis_prefix: str = "daari:session-pin:",
+        redis_url: str | None = None,
+        redis_timeout_seconds: float = 2.0,
     ) -> None:
         self.ttl_seconds = max(0.0, float(ttl_seconds))
         self._clock = clock or time.monotonic
         self._pins: dict[str, SessionPin] = {}
+        self._redis = redis_client
+        self._redis_url = redis_url
+        self._redis_timeout_seconds = redis_timeout_seconds
+        self._redis_prefix = redis_prefix
+        self._degraded = False
+
+    def _client(self) -> Any | None:
+        if self._redis is not None:
+            return self._redis
+        if not self._redis_url:
+            return None
+        from daari.cache.redis_client import connect_redis
+
+        self._redis = connect_redis(
+            self._redis_url, timeout_seconds=self._redis_timeout_seconds
+        )
+        return self._redis
+
+    def _redis_key(self, key: str) -> str:
+        return f"{self._redis_prefix}{key}"
+
+    def _mark_degraded(self, exc: BaseException) -> None:
+        if self._degraded:
+            return
+        self._degraded = True
+        try:
+            from daari.gateway.request_log import log_gateway_event
+
+            log_gateway_event(
+                "session_affinity.degraded",
+                detail=str(exc),
+                backend="redis",
+            )
+        except Exception:
+            pass
 
     def get(self, key: str) -> SessionPin | None:
+        client = None
+        try:
+            client = self._client()
+        except Exception as exc:
+            self._mark_degraded(exc)
+            client = None
+        if client is not None:
+            try:
+                raw = client.get(self._redis_key(key))
+                if raw is None:
+                    return None
+                if isinstance(raw, bytes):
+                    raw = raw.decode()
+                data = json.loads(raw)
+                return SessionPin(
+                    tier=str(data["tier"]),
+                    model=data.get("model"),
+                    prefix_hash=str(data.get("prefix_hash") or ""),
+                    expires_at=float(data.get("expires_at") or 0.0),
+                )
+            except Exception as exc:
+                self._mark_degraded(exc)
         pin = self._pins.get(key)
         if pin is None:
             return None
@@ -53,12 +114,37 @@ class SessionPinStore:
     ) -> None:
         now = self._clock()
         expires = now + self.ttl_seconds if self.ttl_seconds > 0 else float("inf")
-        self._pins[key] = SessionPin(
+        pin = SessionPin(
             tier=tier,
             model=model,
             prefix_hash=prefix_hash,
             expires_at=expires,
         )
+        client = None
+        try:
+            client = self._client()
+        except Exception as exc:
+            self._mark_degraded(exc)
+            client = None
+        if client is not None:
+            try:
+                payload = json.dumps(
+                    {
+                        "tier": pin.tier,
+                        "model": pin.model,
+                        "prefix_hash": pin.prefix_hash,
+                        "expires_at": pin.expires_at,
+                    }
+                )
+                redis_key = self._redis_key(key)
+                if self.ttl_seconds > 0:
+                    client.set(redis_key, payload, ex=int(max(1, self.ttl_seconds)))
+                else:
+                    client.set(redis_key, payload)
+                return
+            except Exception as exc:
+                self._mark_degraded(exc)
+        self._pins[key] = pin
 
 
 def is_tool_result(message: Message) -> bool:

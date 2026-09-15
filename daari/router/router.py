@@ -402,6 +402,9 @@ class Router:
         phase_map: dict[str, int | str] | None = None,
         session_affinity: bool = False,
         session_affinity_ttl_seconds: float = 1800.0,
+        session_affinity_redis_client: Any | None = None,
+        session_affinity_redis_url: str | None = None,
+        session_affinity_redis_timeout_seconds: float = 2.0,
         classify_user_turn: bool = False,
         classify_user_turn_agents: bool = True,
         harness_aware_profile: bool = True,
@@ -496,8 +499,18 @@ class Router:
         self.session_affinity = bool(session_affinity)
         from daari.router.session_affinity import ProfilePinStore, SessionPinStore
 
-        self.session_pins = SessionPinStore(ttl_seconds=session_affinity_ttl_seconds)
-        self.session_savings = SessionAvoidedStore(ttl_seconds=session_affinity_ttl_seconds)
+        self.session_pins = SessionPinStore(
+            ttl_seconds=session_affinity_ttl_seconds,
+            redis_client=session_affinity_redis_client,
+            redis_url=session_affinity_redis_url,
+            redis_timeout_seconds=session_affinity_redis_timeout_seconds,
+        )
+        self.session_savings = SessionAvoidedStore(
+            ttl_seconds=session_affinity_ttl_seconds,
+            redis_client=session_affinity_redis_client,
+            redis_url=session_affinity_redis_url,
+            redis_timeout_seconds=session_affinity_redis_timeout_seconds,
+        )
         self.classify_user_turn = bool(classify_user_turn)
         self.classify_user_turn_agents = bool(classify_user_turn_agents)
         self.harness_aware_profile = bool(harness_aware_profile)
@@ -4504,6 +4517,14 @@ class AppContext:
             },
             session_affinity=settings.routing.session_affinity,
             session_affinity_ttl_seconds=settings.routing.session_affinity_ttl_seconds,
+            session_affinity_redis_url=(
+                settings.cache.redis_url
+                if settings.cache.backend == "redis"
+                else None
+            ),
+            session_affinity_redis_timeout_seconds=float(
+                getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0
+            ),
             classify_user_turn=settings.routing.classify_user_turn,
             classify_user_turn_agents=settings.routing.classify_user_turn_agents,
             harness_aware_profile=settings.routing.harness_aware_profile,
