@@ -23,8 +23,17 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (  # noqa: E4
 )
 
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message  # noqa: E402
-from daari.observability.otel import configure_providers, export_trace  # noqa: E402
+from daari.observability.otel import (  # noqa: E402
+    configure_providers,
+    export_trace,
+    extract_inbound_context,
+    inject_trace_headers,
+    reset_inbound_context,
+)
 from daari.observability.trace import RequestTrace  # noqa: E402
+from opentelemetry.trace.propagation.tracecontext import (  # noqa: E402
+    TraceContextTextMapPropagator,
+)
 
 _EXPORTER = InMemorySpanExporter()
 _READER = InMemoryMetricReader()
@@ -44,7 +53,10 @@ def _providers():
 @pytest.fixture(autouse=True)
 def _clear_spans():
     _EXPORTER.clear()
+    token = extract_inbound_context({})
+    reset_inbound_context(token)
     yield
+    reset_inbound_context(extract_inbound_context({}))
 
 
 def _request(model: str = "llama3.2:3b") -> InternalRequest:
@@ -287,3 +299,113 @@ async def test_router_stream_exports_span_and_timing_metrics(settings, monkeypat
     assert attrs["gen_ai.usage.input_tokens"] == 11
     assert attrs["gen_ai.usage.output_tokens"] == 4
     assert _metric_points("gen_ai.server.time_to_first_token")
+
+
+def _client_carrier() -> tuple[dict[str, str], object]:
+    """Start a client span and inject W3C headers (simulates the caller)."""
+    tracer = otel_trace.get_tracer("client-app")
+    with tracer.start_as_current_span("client.op") as span:
+        carrier: dict[str, str] = {}
+        TraceContextTextMapPropagator().inject(carrier)
+        return carrier, span.get_span_context()
+
+
+def test_export_parented_to_inbound_traceparent():
+    carrier, parent_ctx = _client_carrier()
+    assert "traceparent" in carrier
+    token = extract_inbound_context(carrier)
+    try:
+        trace = RequestTrace()
+        trace.add("tier_attempt", tier="L3")
+        assert export_trace(trace, request=_request(), response=_response()) is True
+    finally:
+        reset_inbound_context(token)
+
+    chat = [s for s in _EXPORTER.get_finished_spans() if s.name == "chat llama3.2:3b"]
+    assert len(chat) == 1
+    child = chat[0]
+    assert child.parent is not None
+    assert child.parent.trace_id == parent_ctx.trace_id
+    assert child.parent.span_id == parent_ctx.span_id
+    assert child.context.trace_id == parent_ctx.trace_id
+
+
+def test_tracestate_preserved_on_inject():
+    parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    state = "rojo=00f067aa0ba902b7,congo=t61rcWkgMzE"
+    token = extract_inbound_context({"traceparent": parent, "tracestate": state})
+    try:
+        out = inject_trace_headers({})
+    finally:
+        reset_inbound_context(token)
+    assert out.get("traceparent") == parent
+    assert out.get("tracestate") == state
+
+
+def test_inject_noop_without_inbound_context():
+    assert inject_trace_headers({"Authorization": "Bearer x"}) == {
+        "Authorization": "Bearer x"
+    }
+
+
+def test_export_without_inbound_still_root():
+    trace = RequestTrace()
+    assert export_trace(trace, request=_request(), response=_response()) is True
+    roots = [s for s in _EXPORTER.get_finished_spans() if s.parent is None]
+    assert any(s.name == "chat llama3.2:3b" for s in roots)
+
+
+@pytest.mark.asyncio
+async def test_frontier_injects_traceparent(monkeypatch):
+    from daari.router.frontier import FrontierExecutor
+
+    carrier, _parent = _client_carrier()
+    token = extract_inbound_context(carrier)
+    seen: list[dict] = []
+
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+
+        def raise_for_status(self):
+            return None
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, path, json=None, headers=None):
+            seen.append(dict(headers or {}))
+            return _Resp()
+
+    monkeypatch.setattr("daari.router.frontier.httpx.AsyncClient", _Client)
+    try:
+        executor = FrontierExecutor(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            default_model="gpt-4o-mini",
+        )
+        await executor.execute(
+            InternalRequest(
+                messages=[Message(role="user", content="hi")],
+                model="gpt-4o-mini",
+            ),
+            escalated_from="L3",
+            local_confidence=0.5,
+        )
+    finally:
+        reset_inbound_context(token)
+
+    assert seen
+    assert "traceparent" in seen[0]

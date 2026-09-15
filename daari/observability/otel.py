@@ -1,4 +1,4 @@
-"""Optional OpenTelemetry export for RequestTrace steps (issues #115, #167).
+"""Optional OpenTelemetry export for RequestTrace steps (issues #115, #167, #485).
 
 Off by default. When enabled and `opentelemetry-api` is installed, each
 finished RequestTrace is exported as a span tree. Missing OTel packages are
@@ -9,12 +9,17 @@ Spans and metrics follow the OpenTelemetry GenAI semantic conventions
 daari-specific facts (tier, cache hit, escalation, boundary) stay under the
 `daari.*` namespace. Token usage is only emitted when the provider reported
 real counts (`usage_estimated` is False) so the attributes stay truthful.
+
+W3C `traceparent` / `tracestate` (#485): inbound headers are extracted into a
+contextvar so the exported tree is parented to the caller's span, and outbound
+HTTP calls inject the same context when it is present.
 """
 
 from __future__ import annotations
 
+import contextvars
 import os
-from typing import Any
+from typing import Any, Mapping
 
 _MAX_ATTR_CHARS = 200
 
@@ -23,6 +28,65 @@ _MAX_ATTR_CHARS = 200
 # a new one, and instruments created against the old provider would silently
 # record nothing.
 _instrument_cache: dict[int, dict[str, Any]] = {}
+
+# Inbound W3C context for the current request (set by middleware / tests).
+_inbound_context: contextvars.ContextVar[Any | None] = contextvars.ContextVar(
+    "daari_otel_inbound", default=None
+)
+
+
+def extract_inbound_context(headers: Mapping[str, str] | Any) -> Any:
+    """Extract W3C trace context from request headers into a contextvar.
+
+    Returns a token suitable for :func:`reset_inbound_context`. Missing OTel
+    packages or malformed headers are a no-op (token still resets cleanly).
+    """
+    try:
+        from opentelemetry.trace.propagation.tracecontext import (
+            TraceContextTextMapPropagator,
+        )
+    except ImportError:
+        return _inbound_context.set(None)
+    try:
+        carrier = {str(key).lower(): str(value) for key, value in headers.items()}
+        ctx = TraceContextTextMapPropagator().extract(carrier=carrier)
+        return _inbound_context.set(ctx)
+    except Exception:
+        return _inbound_context.set(None)
+
+
+def reset_inbound_context(token: Any) -> None:
+    """Undo :func:`extract_inbound_context` (middleware ``finally``)."""
+    try:
+        _inbound_context.reset(token)
+    except Exception:
+        pass
+
+
+def inject_trace_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    """Merge W3C ``traceparent`` / ``tracestate`` into *headers* when active.
+
+    Uses the inbound context from :func:`extract_inbound_context` when set,
+    otherwise the currently active span. No-op when packages are missing or
+    no valid span context is available.
+    """
+    out = dict(headers or {})
+    try:
+        from opentelemetry.trace.propagation.tracecontext import (
+            TraceContextTextMapPropagator,
+        )
+    except ImportError:
+        return out
+    try:
+        propagator = TraceContextTextMapPropagator()
+        inbound = _inbound_context.get()
+        if inbound is not None:
+            propagator.inject(out, context=inbound)
+        else:
+            propagator.inject(out)
+    except Exception:
+        return out
+    return out
 
 
 def configure_providers(service_name: str = "daari") -> bool:
@@ -243,7 +307,13 @@ def export_trace(
             root_attrs["error.type"] = str(error_type)
 
         tracer = otel_trace.get_tracer(service_name)
-        with tracer.start_as_current_span(span_name) as span:
+        span_kwargs: dict[str, Any] = {}
+        inbound = _inbound_context.get()
+        if inbound is not None:
+            parent = otel_trace.get_current_span(inbound)
+            if parent.get_span_context().is_valid:
+                span_kwargs["context"] = inbound
+        with tracer.start_as_current_span(span_name, **span_kwargs) as span:
             for key, value in root_attrs.items():
                 span.set_attribute(key, value)
             for step in getattr(trace, "steps", []) or []:

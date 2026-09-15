@@ -68,3 +68,25 @@ python scripts/smoke_otel_genai.py
 
 boots an in-process OTLP collector, routes a request, and prints the spans,
 `gen_ai.*` attributes, and metric names that actually arrived over the wire.
+
+## Trace-context propagation
+
+When a caller sends W3C `traceparent` (and optional `tracestate`), daari
+parents its GenAI span tree under that context and injects the same headers on
+outbound calls to Ollama, OpenAI-compat, MLX, and frontier providers. One
+request then appears as a single trace in Jaeger/Tempo — client → daari
+routing steps → provider — instead of three disconnected trees.
+
+Propagation is a no-op when `observability.otel` is off or the
+`opentelemetry` packages are missing (same guard pattern as export).
+
+```bash
+# Caller starts a span, then:
+curl -H "traceparent: 00-<trace-id>-<span-id>-01" \
+  http://127.0.0.1:11435/v1/chat/completions ...
+```
+
+In your collector, filter by that `trace-id`: the `chat {model}` span and its
+`tier_attempt` / `served` children sit under the caller's span, and upstream
+provider spans (when the backend honors `traceparent`) share the same id.
+

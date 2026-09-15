@@ -89,10 +89,16 @@ class MLXExecutor:
         payload = self._payload(request, model, stream=False)
 
         async def attempt() -> dict[str, Any]:
+            from daari.observability.otel import inject_trace_headers
+
             async with httpx.AsyncClient(
                 base_url=self.base_url, timeout=self.timeout
             ) as client:
-                response = await client.post("/v1/chat/completions", json=payload)
+                response = await client.post(
+                    "/v1/chat/completions",
+                    json=payload,
+                    headers=inject_trace_headers(),
+                )
                 if response.status_code >= 400:
                     raise MLXRequestError(
                         response.status_code, str(response.request.url), response.text
@@ -123,8 +129,15 @@ class MLXExecutor:
         """Yield Ollama-style events converted from OpenAI SSE chunks."""
         model = request.model or self.default_model
         payload = self._payload(request, model, stream=True)
+        from daari.observability.otel import inject_trace_headers
+
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            async with client.stream("POST", "/v1/chat/completions", json=payload) as response:
+            async with client.stream(
+                "POST",
+                "/v1/chat/completions",
+                json=payload,
+                headers=inject_trace_headers(),
+            ) as response:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode("utf-8", errors="replace")
                     raise MLXRequestError(response.status_code, str(response.request.url), body)
