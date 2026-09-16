@@ -52,6 +52,7 @@ def run_doctor(
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_fleet_artifacts(cfg))
+    results.append(_check_fleet_cache(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_daemon(cfg, httpx_client))
@@ -419,6 +420,60 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     else:
         detail = f"fleet_replicas={replicas} (single-node SQLite defaults are fine)"
     return CheckResult(name="fleet_artifacts", ok=True, detail=detail, optional=True)
+
+
+def _check_fleet_cache(settings: Settings) -> CheckResult:
+    """Warn when multi-replica fleet runs without shared Redis L0/session (#510)."""
+    raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return CheckResult(
+            name="fleet_cache",
+            ok=False,
+            detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
+            optional=True,
+        )
+
+    multi = replicas > 1
+    cache_backend = (settings.cache.backend or "disk").strip().lower()
+    affinity = bool(getattr(settings.routing, "session_affinity", False))
+    if not multi:
+        return CheckResult(
+            name="fleet_cache",
+            ok=True,
+            detail=f"fleet_replicas={replicas} (in-process L0/session fine)",
+            optional=True,
+        )
+
+    problems: list[str] = []
+    if cache_backend != "redis":
+        problems.append(
+            f"cache.backend={cache_backend} (L0 + singleflight are per-pod)"
+        )
+    if affinity and cache_backend != "redis":
+        problems.append(
+            "routing.session_affinity=true without cache.backend=redis "
+            "(pins stay per-process)"
+        )
+    if problems:
+        return CheckResult(
+            name="fleet_cache",
+            ok=False,
+            detail=(
+                f"DAARI_FLEET_REPLICAS={replicas} with "
+                + "; ".join(problems)
+                + " — set cache.backend=redis so L0/session/singleflight "
+                "share across replicas, or keep a single replica"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="fleet_cache",
+        ok=True,
+        detail=f"fleet_replicas={replicas}; cache.backend=redis",
+        optional=True,
+    )
 
 
 def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
