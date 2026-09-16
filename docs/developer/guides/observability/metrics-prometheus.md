@@ -24,6 +24,7 @@ Two counters worth alerting on:
 |--------|-----------|
 | `daari_upstream_retries_total` | Transient upstream failures absorbed by backoff. Rising here while errors stay flat means clients never saw the instability. Rising alongside errors means the failures are not retryable — check for 401s or malformed requests. |
 | `daari_cache_false_hits_avoided_total` | L1 hits vetoed by verification. Steady growth is the cache working; a spike suggests the similarity threshold is too loose. |
+| `daari_soft_warnings_total{kind}` | Soft-band pressure before hard rejects: `kind="request_quota"` (`x-daari-quota-requests-warning`) or `kind="rate_limit"` (`x-daari-ratelimit-warning`). Rising here while 402/429 stay flat means agents are hovering in the soft band — scale Ollama or widen caps before hard rejects start. Hard 402/429 do not increment this counter. |
 
 Retries also appear per-request as `upstream_retry` trace steps with the status and
 delay, so a slow request explains its own latency. See

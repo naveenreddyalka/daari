@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from daari.auth.rate_limit import (
+    RATELIMIT_WARNING_HEADER,
     RateLimiter,
     build_rate_limiter,
     estimate_request_tokens,
@@ -288,6 +289,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if budget_response_headers and 200 <= response.status_code < 300:
                 for header, value in budget_response_headers.items():
                     response.headers.setdefault(header, value)
+                if budget_response_headers.get(QUOTA_REQUESTS_WARNING_HEADER) == "soft":
+                    metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+                    if metrics is not None and hasattr(metrics, "record_soft_warning"):
+                        metrics.record_soft_warning("request_quota")
             alerter = getattr(request.app.state, "budget_alerter", None)
             if (
                 alerter is not None
@@ -410,8 +415,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if track_interactive:
                 limiter.end_interactive()
             await limiter.release()
-        for header, value in decision.headers(soft=rate_soft).items():
+        soft_headers = decision.headers(soft=rate_soft)
+        for header, value in soft_headers.items():
             response.headers.setdefault(header, value)
+        if soft_headers.get(RATELIMIT_WARNING_HEADER) == "soft":
+            metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+            if metrics is not None and hasattr(metrics, "record_soft_warning"):
+                metrics.record_soft_warning("rate_limit")
         return response
 
     app.include_router(create_gateway_router())
