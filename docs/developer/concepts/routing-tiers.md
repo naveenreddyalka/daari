@@ -34,6 +34,10 @@ flowchart TD
 
 **$0 tiers** = L0, L1, L2, Lt (no frontier invoice).
 
+Concurrent identical L0 cold misses coalesce in-process (singleflight): one
+upstream fill, waiters share the body, cache writes once. An upstream error
+clears the in-flight slot so the next attempt can retry (#499).
+
 ## Escalation
 
 Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/json). Image blocks on user **or tool-result** messages require `vision` (#397); hops log `modality_escalation`. Caps:

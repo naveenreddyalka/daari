@@ -2442,6 +2442,15 @@ Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md),
 [headers.md](developer/reference/headers.md). Covered by
 `tests/unit/test_request_quotas.py` and `tests/unit/test_budget_alerts.py`.
 
+### L0 exact-cache singleflight ([#499](https://github.com/naveenreddyalka/daari/issues/499))
+
+<!-- tracking:#499 -->
+**Status:** Done (2026-09-16). Concurrent identical L0 cold misses share one
+upstream fill via in-process singleflight; waiters get the same body; cache
+writes once. Upstream errors clear the in-flight slot so retries work.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_l0_singleflight.py`.
+
 ---
 
 ## How to update
