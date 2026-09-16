@@ -118,3 +118,46 @@ class TestCliExport:
         assert result.exit_code == 0
         assert "total requests:    12" in result.stdout
         assert "#" not in result.stdout.splitlines()[0]
+
+    def test_report_format_json_matches_http_payload(self, monkeypatch):
+        """CLI JSON dump matches GET /v1/daari/report shape (#527)."""
+        import json
+
+        payload = {
+            **REPORT_PAYLOAD,
+            "frontier": {
+                "today_spend_usd": 0.1,
+                "daily_budget_usd": 1.0,
+                "budget_state": "ok",
+            },
+            "request_quotas": [
+                {
+                    "key_id": "bot",
+                    "scope": "key",
+                    "window": "day",
+                    "used": 8,
+                    "cap": 10,
+                    "remaining": 2,
+                    "soft": True,
+                }
+            ],
+        }
+        self._mock_httpx(monkeypatch, payload)
+        result = CliRunner().invoke(app, ["report", "--format", "json"])
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(result.stdout)
+        assert parsed["totals"]["requests"] == 12
+        assert parsed["frontier"]["budget_state"] == "ok"
+        assert parsed["request_quotas"][0]["soft"] is True
+        assert parsed["request_quotas"][0]["used"] == 8
+
+    def test_report_format_json_out_writes_file(self, monkeypatch, tmp_path):
+        import json
+
+        self._mock_httpx(monkeypatch, REPORT_PAYLOAD)
+        out = tmp_path / "report.json"
+        result = CliRunner().invoke(app, ["report", "--format", "json", "--out", str(out)])
+        assert result.exit_code == 0, result.output
+        parsed = json.loads(out.read_text(encoding="utf-8"))
+        assert parsed["totals"]["requests"] == 12
+        assert str(out) in result.stdout

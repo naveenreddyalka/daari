@@ -1028,7 +1028,9 @@ def report(
     days: int = typer.Option(7, help="Number of days to include"),
     host: str | None = typer.Option(None, help="Daemon host"),
     port: int | None = typer.Option(None, help="Daemon port"),
-    output_format: str = typer.Option("text", "--format", help="Output format: text | markdown"),
+    output_format: str = typer.Option(
+        "text", "--format", help="Output format: text | markdown | json"
+    ),
     out: str | None = typer.Option(None, "--out", help="Write output to a file (client-shareable)"),
     by_client: bool = typer.Option(False, "--by-client", help="Break usage down per client id"),
     by_team: bool = typer.Option(False, "--by-team", help="Roll usage up by virtual-key team"),
@@ -1051,7 +1053,15 @@ def report(
         typer.echo(f"Could not reach daari at {url}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
-    if output_format == "markdown" or out is not None:
+    fmt = (output_format or "text").strip().lower()
+    if fmt == "json":
+        import json
+
+        # Same shape as GET /v1/daari/report (totals, frontier, request_quotas, …).
+        _emit_or_write(json.dumps(payload, indent=2, sort_keys=False), out)
+        return
+
+    if fmt == "markdown" or out is not None:
         from daari.observability.render import report_markdown
 
         _emit_or_write(report_markdown(payload, days=days), out)
