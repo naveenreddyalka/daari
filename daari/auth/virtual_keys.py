@@ -127,6 +127,9 @@ CREATE TABLE IF NOT EXISTS key_hits (
 CREATE INDEX IF NOT EXISTS idx_key_hits_key_ts ON key_hits(key_id, ts);
 """
 
+# Versioned keys/teams backup document (#548). Bump when the export shape changes.
+KEYS_EXPORT_SCHEMA = 1
+
 
 @dataclass(frozen=True)
 class BudgetWindow:
@@ -894,6 +897,337 @@ class VirtualKeyStore:
         for bucket in teams.values():
             bucket["estimated_saved_usd"] = round(float(bucket["estimated_saved_usd"]), 4)
         return sorted(teams.values(), key=lambda item: -item["requests"])
+
+    def export_document(self) -> dict[str, Any]:
+        """Versioned teams+keys snapshot; hashes only, never plaintext (#548)."""
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        with self._lock, self._connect() as conn:
+            team_rows = conn.execute(
+                "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm"
+                " FROM teams ORDER BY created_at ASC, team_id ASC"
+            ).fetchall()
+            key_rows = conn.execute(
+                "SELECT key_hash, key_id, name, prefix, created_at, revoked_at, expires_at,"
+                " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
+                " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
+                " previous_key_hash, previous_prefix, previous_expires_at, region_pin"
+                " FROM virtual_keys ORDER BY created_at ASC, key_id ASC"
+            ).fetchall()
+        teams = [
+            {
+                "team_id": row[0],
+                "name": row[1],
+                "budget_windows": [w.as_dict() for w in self._parse_windows(row[2])],
+                "created_at": row[3],
+                "region_pin": row[4],
+                "rpm": int(row[5] or 0),
+                "tpm": int(row[6] or 0),
+            }
+            for row in team_rows
+        ]
+        keys = []
+        for row in key_rows:
+            keys.append(
+                {
+                    "key_hash": row[0],
+                    "key_id": row[1],
+                    "name": row[2],
+                    "prefix": row[3],
+                    "created_at": row[4],
+                    "revoked_at": row[5],
+                    "expires_at": row[6],
+                    "daily_budget_usd": float(row[7] or 0),
+                    "monthly_budget_usd": float(row[8] or 0),
+                    "rpm": int(row[9] or 0),
+                    "tpm": int(row[10] or 0),
+                    "tier_cap": row[11],
+                    "client_id": row[12],
+                    "team_id": row[13],
+                    "budget_windows": [w.as_dict() for w in self._parse_windows(row[14])],
+                    "metadata": _parse_metadata(row[15]),
+                    "user_daily_usd_cap": float(row[16] or 0),
+                    "previous_key_hash": row[17],
+                    "previous_prefix": row[18],
+                    "previous_expires_at": row[19],
+                    "region_pin": row[20],
+                }
+            )
+        return {
+            "schema": KEYS_EXPORT_SCHEMA,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "teams": teams,
+            "keys": keys,
+        }
+
+    def import_document(
+        self,
+        document: dict[str, Any],
+        *,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Upsert teams/keys by id. Refuses unknown schema versions (#548)."""
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        if not isinstance(document, dict):
+            raise ValueError("export document must be a JSON object")
+        schema = document.get("schema")
+        if schema != KEYS_EXPORT_SCHEMA:
+            raise ValueError(
+                f"unsupported keys export schema {schema!r}; "
+                f"expected {KEYS_EXPORT_SCHEMA}"
+            )
+        teams_in = list(document.get("teams") or [])
+        keys_in = list(document.get("keys") or [])
+        summary: dict[str, Any] = {
+            "dry_run": dry_run,
+            "teams": {"created": 0, "updated": 0, "skipped": 0},
+            "keys": {"created": 0, "updated": 0, "skipped": 0},
+        }
+
+        def _windows_payload(raw: Any) -> list[BudgetWindow]:
+            if not raw:
+                return []
+            if isinstance(raw, str):
+                return list(self._parse_windows(raw))
+            if isinstance(raw, list):
+                return list(self._parse_windows(json.dumps(raw)))
+            return []
+
+        with self._lock, self._connect() as conn:
+            for team in teams_in:
+                team_id = str(team.get("team_id") or "")
+                name = str(team.get("name") or "")
+                if not team_id or not name:
+                    raise ValueError("team entries require team_id and name")
+                windows = _windows_payload(team.get("budget_windows"))
+                pin = (team.get("region_pin") or None) or None
+                if isinstance(pin, str):
+                    pin = pin.strip() or None
+                rpm = max(0, int(team.get("rpm") or 0))
+                tpm = max(0, int(team.get("tpm") or 0))
+                created_at = team.get("created_at") or datetime.now(timezone.utc).isoformat()
+                existing = conn.execute(
+                    "SELECT name, budget_windows_json, region_pin, rpm, tpm, created_at"
+                    " FROM teams WHERE team_id = ?",
+                    (team_id,),
+                ).fetchone()
+                desired = (
+                    name,
+                    self._windows_json(windows),
+                    pin,
+                    rpm,
+                    tpm,
+                )
+                if existing is None:
+                    summary["teams"]["created"] += 1
+                    if not dry_run:
+                        conn.execute(
+                            "INSERT INTO teams (team_id, name, budget_windows_json,"
+                            " created_at, region_pin, rpm, tpm) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (team_id, *desired[:2], created_at, *desired[2:]),
+                        )
+                else:
+                    current = (
+                        existing[0],
+                        existing[1] or "[]",
+                        existing[2],
+                        int(existing[3] or 0),
+                        int(existing[4] or 0),
+                    )
+                    # Normalize window JSON for comparison.
+                    current_norm = (
+                        current[0],
+                        self._windows_json(self._parse_windows(current[1])),
+                        current[2],
+                        current[3],
+                        current[4],
+                    )
+                    desired_norm = (
+                        desired[0],
+                        self._windows_json(windows),
+                        desired[2],
+                        desired[3],
+                        desired[4],
+                    )
+                    if current_norm == desired_norm:
+                        summary["teams"]["skipped"] += 1
+                    else:
+                        summary["teams"]["updated"] += 1
+                        if not dry_run:
+                            conn.execute(
+                                "UPDATE teams SET name = ?, budget_windows_json = ?,"
+                                " region_pin = ?, rpm = ?, tpm = ? WHERE team_id = ?",
+                                (*desired, team_id),
+                            )
+
+            for key in keys_in:
+                key_id = str(key.get("key_id") or "")
+                key_hash = str(key.get("key_hash") or "")
+                name = str(key.get("name") or "")
+                prefix = str(key.get("prefix") or "")
+                if not key_id or not key_hash or not name or not prefix:
+                    raise ValueError("key entries require key_id, key_hash, name, and prefix")
+                windows = _windows_payload(key.get("budget_windows"))
+                meta = key.get("metadata") if isinstance(key.get("metadata"), dict) else {}
+                region_pin = key.get("region_pin") or None
+                if isinstance(region_pin, str):
+                    region_pin = region_pin.strip() or None
+                values = (
+                    key_hash,
+                    name,
+                    prefix,
+                    key.get("created_at") or datetime.now(timezone.utc).isoformat(),
+                    key.get("revoked_at"),
+                    key.get("expires_at"),
+                    float(key.get("daily_budget_usd") or 0),
+                    float(key.get("monthly_budget_usd") or 0),
+                    max(0, int(key.get("rpm") or 0)),
+                    max(0, int(key.get("tpm") or 0)),
+                    key.get("tier_cap"),
+                    key.get("client_id"),
+                    key.get("team_id"),
+                    self._windows_json(windows),
+                    json.dumps(meta),
+                    float(key.get("user_daily_usd_cap") or 0),
+                    key.get("previous_key_hash"),
+                    key.get("previous_prefix"),
+                    key.get("previous_expires_at"),
+                    region_pin,
+                )
+                existing = conn.execute(
+                    "SELECT key_hash, name, prefix, created_at, revoked_at, expires_at,"
+                    " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
+                    " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
+                    " previous_key_hash, previous_prefix, previous_expires_at, region_pin"
+                    " FROM virtual_keys WHERE key_id = ?",
+                    (key_id,),
+                ).fetchone()
+                if existing is None:
+                    summary["keys"]["created"] += 1
+                    if not dry_run:
+                        conn.execute(
+                            "INSERT INTO virtual_keys (key_hash, key_id, name, prefix,"
+                            " created_at, revoked_at, expires_at, daily_budget_usd,"
+                            " monthly_budget_usd, rpm, tpm, tier_cap, client_id, team_id,"
+                            " budget_windows_json, metadata_json, user_daily_usd_cap,"
+                            " previous_key_hash, previous_prefix, previous_expires_at,"
+                            " region_pin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                            " ?, ?, ?, ?, ?, ?, ?)",
+                            (
+                                values[0],
+                                key_id,
+                                values[1],
+                                values[2],
+                                values[3],
+                                values[4],
+                                values[5],
+                                values[6],
+                                values[7],
+                                values[8],
+                                values[9],
+                                values[10],
+                                values[11],
+                                values[12],
+                                values[13],
+                                values[14],
+                                values[15],
+                                values[16],
+                                values[17],
+                                values[18],
+                                values[19],
+                            ),
+                        )
+                else:
+                    current = (
+                        existing[0],
+                        existing[1],
+                        existing[2],
+                        existing[4],
+                        existing[5],
+                        float(existing[6] or 0),
+                        float(existing[7] or 0),
+                        int(existing[8] or 0),
+                        int(existing[9] or 0),
+                        existing[10],
+                        existing[11],
+                        existing[12],
+                        self._windows_json(self._parse_windows(existing[13])),
+                        json.dumps(_parse_metadata(existing[14]), sort_keys=True),
+                        float(existing[15] or 0),
+                        existing[16],
+                        existing[17],
+                        existing[18],
+                        existing[19],
+                    )
+                    desired_cmp = (
+                        values[0],
+                        values[1],
+                        values[2],
+                        values[4],
+                        values[5],
+                        values[6],
+                        values[7],
+                        values[8],
+                        values[9],
+                        values[10],
+                        values[11],
+                        values[12],
+                        self._windows_json(windows),
+                        json.dumps(meta, sort_keys=True),
+                        values[15],
+                        values[16],
+                        values[17],
+                        values[18],
+                        values[19],
+                    )
+                    if current == desired_cmp:
+                        summary["keys"]["skipped"] += 1
+                    else:
+                        summary["keys"]["updated"] += 1
+                        if not dry_run:
+                            conflict = conn.execute(
+                                "SELECT key_id FROM virtual_keys"
+                                " WHERE key_hash = ? AND key_id != ?",
+                                (key_hash, key_id),
+                            ).fetchone()
+                            if conflict:
+                                raise ValueError(
+                                    f"key_hash for {key_id} already owned by {conflict[0]}"
+                                )
+                            conn.execute(
+                                "UPDATE virtual_keys SET key_hash = ?, name = ?, prefix = ?,"
+                                " revoked_at = ?, expires_at = ?, daily_budget_usd = ?,"
+                                " monthly_budget_usd = ?, rpm = ?, tpm = ?, tier_cap = ?,"
+                                " client_id = ?, team_id = ?, budget_windows_json = ?,"
+                                " metadata_json = ?, user_daily_usd_cap = ?,"
+                                " previous_key_hash = ?, previous_prefix = ?,"
+                                " previous_expires_at = ?, region_pin = ?"
+                                " WHERE key_id = ?",
+                                (
+                                    values[0],
+                                    values[1],
+                                    values[2],
+                                    values[4],
+                                    values[5],
+                                    values[6],
+                                    values[7],
+                                    values[8],
+                                    values[9],
+                                    values[10],
+                                    values[11],
+                                    values[12],
+                                    values[13],
+                                    values[14],
+                                    values[15],
+                                    values[16],
+                                    values[17],
+                                    values[18],
+                                    values[19],
+                                    key_id,
+                                ),
+                            )
+        return summary
 
 
 def _parse_metadata(raw: str | None) -> dict[str, Any]:

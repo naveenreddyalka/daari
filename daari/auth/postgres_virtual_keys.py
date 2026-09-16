@@ -21,6 +21,7 @@ from typing import Any
 from daari.auth.virtual_keys import (
     BudgetWindow,
     CreatedKey,
+    KEYS_EXPORT_SCHEMA,
     Team,
     VirtualKey,
     VirtualKeyStore,
@@ -738,6 +739,193 @@ class PostgresVirtualKeyStore:
         for bucket in teams.values():
             bucket["estimated_saved_usd"] = round(float(bucket["estimated_saved_usd"]), 4)
         return sorted(teams.values(), key=lambda item: -item["requests"])
+
+    def export_document(self) -> dict[str, Any]:
+        if self._inner is not None:
+            return self._inner.export_document()
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm"
+                    " FROM teams ORDER BY created_at ASC, team_id ASC"
+                )
+                team_rows = cur.fetchall()
+                cur.execute(
+                    "SELECT key_hash, key_id, name, prefix, created_at, revoked_at, expires_at,"
+                    " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
+                    " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
+                    " previous_key_hash, previous_prefix, previous_expires_at, region_pin"
+                    " FROM virtual_keys ORDER BY created_at ASC, key_id ASC"
+                )
+                key_rows = cur.fetchall()
+        # Reuse SQLite assembler via a throwaway store disabled for I/O — build inline.
+        teams = [
+            {
+                "team_id": row[0],
+                "name": row[1],
+                "budget_windows": [w.as_dict() for w in self._parse_windows(row[2])],
+                "created_at": row[3],
+                "region_pin": row[4],
+                "rpm": int(row[5] or 0),
+                "tpm": int(row[6] or 0),
+            }
+            for row in team_rows
+        ]
+        keys = [
+            {
+                "key_hash": row[0],
+                "key_id": row[1],
+                "name": row[2],
+                "prefix": row[3],
+                "created_at": row[4],
+                "revoked_at": row[5],
+                "expires_at": row[6],
+                "daily_budget_usd": float(row[7] or 0),
+                "monthly_budget_usd": float(row[8] or 0),
+                "rpm": int(row[9] or 0),
+                "tpm": int(row[10] or 0),
+                "tier_cap": row[11],
+                "client_id": row[12],
+                "team_id": row[13],
+                "budget_windows": [w.as_dict() for w in self._parse_windows(row[14])],
+                "metadata": _parse_metadata(row[15]),
+                "user_daily_usd_cap": float(row[16] or 0),
+                "previous_key_hash": row[17],
+                "previous_prefix": row[18],
+                "previous_expires_at": row[19],
+                "region_pin": row[20],
+            }
+            for row in key_rows
+        ]
+        return {
+            "schema": KEYS_EXPORT_SCHEMA,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "teams": teams,
+            "keys": keys,
+        }
+
+    def import_document(
+        self,
+        document: dict[str, Any],
+        *,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        if self._inner is not None:
+            return self._inner.import_document(document, dry_run=dry_run)
+        if not self.enabled:
+            raise RuntimeError("virtual key store is disabled")
+        if not isinstance(document, dict):
+            raise ValueError("export document must be a JSON object")
+        schema = document.get("schema")
+        if schema != KEYS_EXPORT_SCHEMA:
+            raise ValueError(
+                f"unsupported keys export schema {schema!r}; "
+                f"expected {KEYS_EXPORT_SCHEMA}"
+            )
+        # Validate + count via SQLite bridge, then upsert into Postgres.
+        handle = tempfile.NamedTemporaryFile(
+            prefix="daari-vk-import-", suffix=".sqlite3", delete=False
+        )
+        handle.close()
+        path = Path(handle.name)
+        try:
+            bridge = VirtualKeyStore(path, enabled=True)
+            summary = bridge.import_document(document, dry_run=dry_run)
+            if dry_run:
+                return summary
+            doc = bridge.export_document()
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    for team in doc["teams"]:
+                        windows = self._windows_json(
+                            self._parse_windows(json.dumps(team.get("budget_windows") or []))
+                        )
+                        cur.execute(
+                            "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
+                            " region_pin, rpm, tpm) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                            " ON CONFLICT (team_id) DO UPDATE SET"
+                            " name = EXCLUDED.name,"
+                            " budget_windows_json = EXCLUDED.budget_windows_json,"
+                            " region_pin = EXCLUDED.region_pin,"
+                            " rpm = EXCLUDED.rpm,"
+                            " tpm = EXCLUDED.tpm",
+                            (
+                                team["team_id"],
+                                team["name"],
+                                windows,
+                                team.get("created_at")
+                                or datetime.now(timezone.utc).isoformat(),
+                                team.get("region_pin"),
+                                int(team.get("rpm") or 0),
+                                int(team.get("tpm") or 0),
+                            ),
+                        )
+                    for key in doc["keys"]:
+                        windows = self._windows_json(
+                            self._parse_windows(json.dumps(key.get("budget_windows") or []))
+                        )
+                        cur.execute(
+                            "INSERT INTO virtual_keys (key_hash, key_id, name, prefix,"
+                            " created_at, revoked_at, expires_at, daily_budget_usd,"
+                            " monthly_budget_usd, rpm, tpm, tier_cap, client_id, team_id,"
+                            " budget_windows_json, metadata_json, user_daily_usd_cap,"
+                            " previous_key_hash, previous_prefix, previous_expires_at,"
+                            " region_pin) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
+                            " %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                            " ON CONFLICT (key_id) DO UPDATE SET"
+                            " key_hash = EXCLUDED.key_hash,"
+                            " name = EXCLUDED.name,"
+                            " prefix = EXCLUDED.prefix,"
+                            " revoked_at = EXCLUDED.revoked_at,"
+                            " expires_at = EXCLUDED.expires_at,"
+                            " daily_budget_usd = EXCLUDED.daily_budget_usd,"
+                            " monthly_budget_usd = EXCLUDED.monthly_budget_usd,"
+                            " rpm = EXCLUDED.rpm,"
+                            " tpm = EXCLUDED.tpm,"
+                            " tier_cap = EXCLUDED.tier_cap,"
+                            " client_id = EXCLUDED.client_id,"
+                            " team_id = EXCLUDED.team_id,"
+                            " budget_windows_json = EXCLUDED.budget_windows_json,"
+                            " metadata_json = EXCLUDED.metadata_json,"
+                            " user_daily_usd_cap = EXCLUDED.user_daily_usd_cap,"
+                            " previous_key_hash = EXCLUDED.previous_key_hash,"
+                            " previous_prefix = EXCLUDED.previous_prefix,"
+                            " previous_expires_at = EXCLUDED.previous_expires_at,"
+                            " region_pin = EXCLUDED.region_pin",
+                            (
+                                key["key_hash"],
+                                key["key_id"],
+                                key["name"],
+                                key["prefix"],
+                                key.get("created_at")
+                                or datetime.now(timezone.utc).isoformat(),
+                                key.get("revoked_at"),
+                                key.get("expires_at"),
+                                float(key.get("daily_budget_usd") or 0),
+                                float(key.get("monthly_budget_usd") or 0),
+                                int(key.get("rpm") or 0),
+                                int(key.get("tpm") or 0),
+                                key.get("tier_cap"),
+                                key.get("client_id"),
+                                key.get("team_id"),
+                                windows,
+                                json.dumps(key.get("metadata") or {}),
+                                float(key.get("user_daily_usd_cap") or 0),
+                                key.get("previous_key_hash"),
+                                key.get("previous_prefix"),
+                                key.get("previous_expires_at"),
+                                key.get("region_pin"),
+                            ),
+                        )
+                conn.commit()
+            return summary
+        finally:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def virtual_key_store_from_settings(settings: Any) -> VirtualKeyStore | PostgresVirtualKeyStore:

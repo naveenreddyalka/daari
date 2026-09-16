@@ -460,6 +460,95 @@ def keys_team_update(
         },
     )
 
+
+@keys_app.command("export")
+def keys_export(
+    as_json: bool = typer.Option(True, "--json", help="Emit the versioned JSON document."),
+    out: Path | None = typer.Option(None, "--out", help="Write to FILE (default stdout)."),
+) -> None:
+    """Export teams and keys (hashes only — never plaintext) for backup/DR (#548)."""
+    import json
+    import os
+
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+    if not as_json:
+        typer.echo("keys export requires --json", err=True)
+        raise typer.Exit(code=1)
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    doc = store.export_document()
+    payload = json.dumps(doc, indent=2, sort_keys=True) + "\n"
+    if out is not None:
+        out.write_text(payload, encoding="utf-8")
+        typer.echo(f"wrote {out}")
+    else:
+        typer.echo(payload, nl=False)
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="keys.export",
+        detail={
+            "schema": doc.get("schema"),
+            "teams": len(doc.get("teams") or []),
+            "keys": len(doc.get("keys") or []),
+            "out": str(out) if out is not None else None,
+        },
+    )
+
+
+@keys_app.command("import")
+def keys_import(
+    file: Path = typer.Argument(..., help="Export JSON from `daari keys export`"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print create/update/skip summary without writing."
+    ),
+) -> None:
+    """Import a keys/teams export document (idempotent upsert by id) (#548)."""
+    import json
+    import os
+
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+    if not file.is_file():
+        typer.echo(f"No such file: {file}", err=True)
+        raise typer.Exit(code=1)
+    try:
+        document = json.loads(file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        typer.echo(f"Invalid JSON: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    try:
+        summary = store.import_document(document, dry_run=dry_run)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    teams = summary["teams"]
+    keys = summary["keys"]
+    mode = "dry-run " if dry_run else ""
+    typer.echo(
+        f"{mode}teams: created={teams['created']} updated={teams['updated']}"
+        f" skipped={teams['skipped']}"
+    )
+    typer.echo(
+        f"{mode}keys:  created={keys['created']} updated={keys['updated']}"
+        f" skipped={keys['skipped']}"
+    )
+    if not dry_run:
+        _audit_log_from_settings().record(
+            actor=os.environ.get("USER") or "cli",
+            role="admin",
+            action="keys.import",
+            detail={
+                "file": str(file),
+                "teams": teams,
+                "keys": keys,
+            },
+        )
+
+
 app.add_typer(enterprise_app, name="enterprise")
 
 
