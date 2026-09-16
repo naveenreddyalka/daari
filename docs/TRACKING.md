@@ -2568,6 +2568,15 @@ embed before fill and one upstream under a wall ceiling. Docs:
 [benchmark-load.md](developer/resources/benchmark-load.md). Covered by
 `tests/benchmark/test_hermetic_paths.py`.
 
+### TTFT-aware local tier preference ([#529](https://github.com/naveenreddyalka/daari/issues/529))
+
+<!-- tracking:#529 -->
+**Status:** Done (2026-09-16). Opt-in `routing.ttft_aware` (default off)
+prefers a faster local tier with better recent stream TTFT percentile when
+`ttft_min_samples` are present. Docs: [routing-tiers.md](developer/concepts/routing-tiers.md),
+[config.md](developer/reference/config.md). Covered by
+`tests/unit/test_ttft_aware_routing.py`.
+
 ---
 
 ## How to update

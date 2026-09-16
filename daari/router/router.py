@@ -378,6 +378,9 @@ class Router:
         tier_shadow_compare_tier: str = "",
         tier_shadow_daily_usd: float = 0.0,
         latency_budget_ms: int = 0,
+        ttft_aware: bool = False,
+        ttft_percentile: float = 0.95,
+        ttft_min_samples: int = 20,
         frontier_enabled: bool = False,
         confidence_threshold: float = 0.7,
         l1_draft_threshold: float = 0.75,
@@ -464,6 +467,9 @@ class Router:
         self.warm_tracker = warm_tracker
         self.learned_router = learned_router
         self.latency_budget_ms = latency_budget_ms
+        self.ttft_aware = bool(ttft_aware)
+        self.ttft_percentile = float(ttft_percentile)
+        self.ttft_min_samples = max(1, int(ttft_min_samples))
         self._warm_models: set[str] = set()
         self.l1_shadow_sample_rate = max(0.0, min(1.0, l1_shadow_sample_rate))
         self._shadow_rng = shadow_rng or random.random
@@ -3392,6 +3398,7 @@ class Router:
         tier = self._apply_phase_routing(request, tier)
         tier = self._cap_tier(tier, self._effective_tier_cap(request))
         tier = self._apply_latency_budget(tier, request, profile)
+        tier = self._apply_ttft_preference(tier, request)
         capable = self._filter_capable_tiers([tier, "L5", "L4", "L3"], request)
         chosen = capable[0] if capable else tier
         chosen = self._apply_stall_escalation(request, chosen)
@@ -3587,6 +3594,57 @@ class Router:
                 )
                 return faster
         return tier
+
+    def _apply_ttft_preference(self, tier: str, request: InternalRequest) -> str:
+        """Prefer a faster local tier with better recent stream TTFT (#529)."""
+        if not self.ttft_aware or tier not in self._TIER_SPEED_ORDER:
+            return tier
+        metrics = getattr(self, "metrics", None)
+        if metrics is None or not hasattr(metrics, "snapshot"):
+            return tier
+        try:
+            snap = metrics.snapshot(include_histograms=True)
+        except Exception:
+            return tier
+        ttft = snap.get("ttft") or {}
+        if not ttft:
+            return tier
+
+        from daari.observability.metrics import histogram_percentile_ms
+
+        # Only step down (never escalate) among L3..heuristic.
+        candidates = self._TIER_SPEED_ORDER[: self._TIER_SPEED_ORDER.index(tier) + 1]
+        scored: list[tuple[float, str]] = []
+        for candidate in candidates:
+            stats = ttft.get(candidate) or {}
+            count = int(stats.get("count") or 0)
+            if count < self.ttft_min_samples:
+                continue
+            value = histogram_percentile_ms(
+                stats.get("buckets") or {},
+                count=count,
+                percentile=self.ttft_percentile,
+            )
+            if value is None:
+                continue
+            scored.append((float(value), candidate))
+        if not scored:
+            return tier
+        best_ms, best_tier = min(scored, key=lambda item: (item[0], item[1]))
+        if best_tier == tier:
+            return tier
+        from daari.gateway.request_log import log_gateway_event
+
+        detail = {
+            "from": tier,
+            "to": best_tier,
+            "percentile": self.ttft_percentile,
+            "ttft_ms": best_ms,
+            "min_samples": self.ttft_min_samples,
+        }
+        add_step("ttft_preference", **detail)
+        log_gateway_event("ttft_preference", detail)
+        return best_tier
 
     def _choose_uncapped_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
@@ -4620,6 +4678,9 @@ class AppContext:
             warm_tracker=warm_tracker,
             learned_router=learned_router,
             latency_budget_ms=settings.routing.latency_budget_ms,
+            ttft_aware=settings.routing.ttft_aware,
+            ttft_percentile=settings.routing.ttft_percentile,
+            ttft_min_samples=settings.routing.ttft_min_samples,
             frontier_daily_budget_usd=settings.frontier.daily_budget_usd,
             frontier_monthly_budget_usd=settings.frontier.monthly_budget_usd,
             frontier_soft_budget_ratio=settings.frontier.soft_budget_ratio,

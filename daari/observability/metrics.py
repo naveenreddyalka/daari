@@ -10,6 +10,36 @@ LATENCY_BUCKETS_MS: tuple[float, ...] = (5, 25, 50, 100, 250, 500, 1000, 2500, 5
 TTFT_BUCKETS_MS: tuple[float, ...] = LATENCY_BUCKETS_MS
 
 
+def histogram_percentile_ms(
+    buckets: dict[float | str, int],
+    *,
+    count: int,
+    percentile: float,
+) -> float | None:
+    """Approximate a percentile from exclusive histogram buckets (#529).
+
+    ``buckets`` maps upper bound → count in that exclusive bucket (same shape
+    as ``TtftStats.buckets``). Returns the bucket upper bound covering the
+    target rank, or None when there are no samples.
+    """
+    if count <= 0:
+        return None
+    mark = max(0.0, min(1.0, float(percentile)))
+    # Ceiling of mark * count without importing math.
+    target = int(mark * count)
+    if target < mark * count:
+        target += 1
+    target = max(1, target)
+    cumulative = 0
+    for bound in TTFT_BUCKETS_MS:
+        cumulative += int(buckets.get(bound, 0))
+        if cumulative >= target:
+            return float(bound)
+    if int(buckets.get("+Inf", 0)) > 0:
+        return float("inf")
+    return float(TTFT_BUCKETS_MS[-1]) if cumulative else None
+
+
 @dataclass
 class TierStats:
     count: int = 0

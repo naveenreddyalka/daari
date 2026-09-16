@@ -56,6 +56,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.max_tier_for_chat` | Optional | `None` |  |
 | `routing.latency_budget_ms` | int | `0` |  |
 | `routing.warm_model_preference` | bool | `True` |  |
+| `routing.ttft_aware` | bool | `False` | Prefer a faster local tier with better recent stream TTFT percentile when enough samples exist (#529) |
+| `routing.ttft_percentile` | float | `0.95` | Percentile used when `ttft_aware` is on (`0.5`–`0.99`) |
+| `routing.ttft_min_samples` | int | `20` | Minimum TTFT samples per tier before preference may apply |
 | `routing.learned_router` | bool | `False` |  |
 | `routing.reasoning_effort_escalation` | bool | `False` |  |
 | `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |

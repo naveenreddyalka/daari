@@ -139,12 +139,22 @@ or `verify` (test/run/build/lint). Unknown or empty history leaves the
 heuristic pick alone. Each phase maps to a relative delta or absolute tier
 (`explore: -1`, `implement: 0`, `verify: 0` by default; floor L3).
 
-Composition: heuristic → phase → tier cap → latency budget → capability
-filter → stall → context-window escalation → cap again. Stall beats a phase
-downgrade. Session affinity pins the *phase-adjusted* served tier on
-continuations (no re-classify); a context-window bump is not pinned.
-Non-agent requests (no tools, no tool history) are unchanged. Trace step and
-event: `phase_route` (phase, signals, delta, from, to).
+Composition: heuristic → phase → tier cap → latency budget → TTFT preference
+(when `routing.ttft_aware`) → capability filter → stall → context-window
+escalation → cap again. Stall beats a phase downgrade. Session affinity pins
+the *phase-adjusted* served tier on continuations (no re-classify); a
+context-window bump is not pinned. Non-agent requests (no tools, no tool
+history) are unchanged. Trace step and event: `phase_route` (phase, signals,
+delta, from, to).
+
+## TTFT-aware local preference
+
+`routing.ttft_aware` (default off) uses recent stream `daari_ttft_ms` samples
+to prefer a **faster** local tier (never escalate) when that tier has at least
+`routing.ttft_min_samples` (default 20) and a lower
+`routing.ttft_percentile` (default 0.95) than the heuristic pick. Trace/event:
+`ttft_preference`. Non-stream traffic does not record TTFT, so the bias stays
+quiet until streams have warmed the histograms.
 
 ## Context-window escalation
 

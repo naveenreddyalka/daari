@@ -323,6 +323,26 @@ class RoutingSettings(RuntimeSettings):
     latency_budget_ms: int = Field(default=0, ge=0)
     # Prefer already-loaded Ollama models on weight ties (Trust PRD T3c).
     warm_model_preference: bool = True
+    # Bias initial local tier toward better recent stream TTFT (#529). Off by default.
+    ttft_aware: bool = Field(
+        default=False,
+        description=(
+            "When true, after the heuristic pick, prefer a faster local tier "
+            "(L3..heuristic) with enough recent TTFT samples and a lower "
+            "configured percentile. Default off."
+        ),
+    )
+    ttft_percentile: float = Field(
+        default=0.95,
+        ge=0.5,
+        le=0.99,
+        description="TTFT histogram percentile used when ttft_aware is true.",
+    )
+    ttft_min_samples: int = Field(
+        default=20,
+        ge=1,
+        description="Minimum TTFT samples per tier before ttft_aware may prefer it.",
+    )
     # Use the trained personal classifier (`daari learn train-router`) to
     # override heuristic categorization when confident (Trust PRD Train 4).
     learned_router: bool = False
