@@ -2672,6 +2672,15 @@ probes). Docs: [upgrade.md](developer/guides/operations/upgrade.md),
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_version_discovery.py`.
 
+### Rate-limit Redis degraded gauge ([#553](https://github.com/naveenreddyalka/daari/issues/553))
+
+<!-- tracking:#553 -->
+**Status:** Done (2026-09-16). `/metrics` exposes
+`daari_rate_limit_degraded{mode="sqlite_fallback"|"fail_open"}` (1 while Redis
+counting is degraded, 0 after recover). Docs + Grafana panel:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_rate_limit.py`.
+
 ---
 
 ## How to update

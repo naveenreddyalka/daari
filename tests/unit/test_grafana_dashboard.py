@@ -48,3 +48,15 @@ def test_grafana_dashboard_includes_rejects_panel():
     exprs = [t.get("expr", "") for t in rejects.get("targets", [])]
     assert any("daari_rejects_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_rate_limit_degraded_panel():
+    """Redis degrade gauge from #553 should be visible on the overview."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Rate-limit Redis degraded" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a rate-limit degraded panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_rate_limit_degraded" in expr for expr in exprs)

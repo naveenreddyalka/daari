@@ -54,16 +54,10 @@ def render_prometheus(
     lines.append("# HELP daari_escalations_total Local→frontier (L6) escalations.")
     lines.append("# TYPE daari_escalations_total counter")
     lines.append(f"daari_escalations_total {snap['escalations']}")
-    lines.append(
-        "# HELP daari_cache_false_hits_avoided_total L1 hits vetoed by verification."
-    )
+    lines.append("# HELP daari_cache_false_hits_avoided_total L1 hits vetoed by verification.")
     lines.append("# TYPE daari_cache_false_hits_avoided_total counter")
-    lines.append(
-        f"daari_cache_false_hits_avoided_total {snap.get('cache_false_hits_avoided', 0)}"
-    )
-    lines.append(
-        "# HELP daari_upstream_retries_total Transient upstream failures retried."
-    )
+    lines.append(f"daari_cache_false_hits_avoided_total {snap.get('cache_false_hits_avoided', 0)}")
+    lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
 
@@ -89,9 +83,7 @@ def render_prometheus(
             stage, label = key.split(":", 1)
         else:
             stage, label = "unknown", key
-        lines.append(
-            f"daari_boundary_decisions_total{_labels(stage=stage, label=label)} {count}"
-        )
+        lines.append(f"daari_boundary_decisions_total{_labels(stage=stage, label=label)} {count}")
 
     lines.append(
         "# HELP daari_request_latency_ms Request latency histogram in milliseconds, by tier."
@@ -106,9 +98,7 @@ def render_prometheus(
                 f"daari_request_latency_ms_bucket{_labels(tier=tier, le=str(bound))} {cumulative}"
             )
         cumulative += buckets.get("+Inf", 0)
-        lines.append(
-            f'daari_request_latency_ms_bucket{_labels(tier=tier, le="+Inf")} {cumulative}'
-        )
+        lines.append(f"daari_request_latency_ms_bucket{_labels(tier=tier, le='+Inf')} {cumulative}")
         lines.append(
             f"daari_request_latency_ms_sum{_labels(tier=tier)} {stats['total_latency_ms']}"
         )
@@ -129,12 +119,8 @@ def render_prometheus(
                     f"daari_ttft_ms_bucket{_labels(tier=tier, le=str(bound))} {cumulative}"
                 )
             cumulative += buckets.get("+Inf", 0)
-            lines.append(
-                f'daari_ttft_ms_bucket{_labels(tier=tier, le="+Inf")} {cumulative}'
-            )
-            lines.append(
-                f"daari_ttft_ms_sum{_labels(tier=tier)} {stats['total_ttft_ms']}"
-            )
+            lines.append(f"daari_ttft_ms_bucket{_labels(tier=tier, le='+Inf')} {cumulative}")
+            lines.append(f"daari_ttft_ms_sum{_labels(tier=tier)} {stats['total_ttft_ms']}")
             lines.append(f"daari_ttft_ms_count{_labels(tier=tier)} {stats['count']}")
 
     if budget_state is not None:
@@ -142,17 +128,17 @@ def render_prometheus(
         lines.append("# TYPE daari_frontier_spend_usd gauge")
         daily = float(budget_state.get("daily_spend_usd") or 0.0)
         monthly = float(budget_state.get("monthly_spend_usd") or 0.0)
-        lines.append(f'daari_frontier_spend_usd{_labels(window="daily")} {daily}')
-        lines.append(f'daari_frontier_spend_usd{_labels(window="monthly")} {monthly}')
+        lines.append(f"daari_frontier_spend_usd{_labels(window='daily')} {daily}")
+        lines.append(f"daari_frontier_spend_usd{_labels(window='monthly')} {monthly}")
         lines.append("# HELP daari_frontier_budget_usd Configured frontier budget in USD.")
         lines.append("# TYPE daari_frontier_budget_usd gauge")
         lines.append(
-            f'daari_frontier_budget_usd{_labels(window="daily")} '
-            f'{float(budget_state.get("daily_budget_usd") or 0.0)}'
+            f"daari_frontier_budget_usd{_labels(window='daily')} "
+            f"{float(budget_state.get('daily_budget_usd') or 0.0)}"
         )
         lines.append(
-            f'daari_frontier_budget_usd{_labels(window="monthly")} '
-            f'{float(budget_state.get("monthly_budget_usd") or 0.0)}'
+            f"daari_frontier_budget_usd{_labels(window='monthly')} "
+            f"{float(budget_state.get('monthly_budget_usd') or 0.0)}"
         )
         state = str(budget_state.get("state") or "ok")
         lines.append("# HELP daari_frontier_budget_state Budget state as a one-hot gauge.")
@@ -164,9 +150,7 @@ def render_prometheus(
             )
 
     if false_hit_rate is not None:
-        lines.append(
-            "# HELP daari_cache_false_hit_rate Shadow-sampled L1 false-hit rate (0..1)."
-        )
+        lines.append("# HELP daari_cache_false_hit_rate Shadow-sampled L1 false-hit rate (0..1).")
         lines.append("# TYPE daari_cache_false_hit_rate gauge")
         lines.append(f"daari_cache_false_hit_rate {float(false_hit_rate)}")
 
@@ -174,22 +158,30 @@ def render_prometheus(
         lines.append("# HELP daari_rate_limit_limit Configured rate / concurrency limits.")
         lines.append("# TYPE daari_rate_limit_limit gauge")
         lines.append(
-            f'daari_rate_limit_limit{_labels(kind="rpm")} {int(rate_limit.get("rpm_limit") or 0)}'
+            f"daari_rate_limit_limit{_labels(kind='rpm')} {int(rate_limit.get('rpm_limit') or 0)}"
         )
         lines.append(
-            f'daari_rate_limit_limit{_labels(kind="tpm")} {int(rate_limit.get("tpm_limit") or 0)}'
+            f"daari_rate_limit_limit{_labels(kind='tpm')} {int(rate_limit.get('tpm_limit') or 0)}"
         )
         lines.append("# HELP daari_rate_limit_in_flight Current in-flight requests.")
         lines.append("# TYPE daari_rate_limit_in_flight gauge")
         lines.append(f"daari_rate_limit_in_flight {int(rate_limit.get('in_flight') or 0)}")
         lines.append("# HELP daari_rate_limit_in_flight_max Configured in-flight cap.")
         lines.append("# TYPE daari_rate_limit_in_flight_max gauge")
-        lines.append(
-            f"daari_rate_limit_in_flight_max {int(rate_limit.get('in_flight_max') or 0)}"
-        )
+        lines.append(f"daari_rate_limit_in_flight_max {int(rate_limit.get('in_flight_max') or 0)}")
         lines.append("# HELP daari_rate_limit_queued Requests waiting on the concurrency gate.")
         lines.append("# TYPE daari_rate_limit_queued gauge")
         lines.append(f"daari_rate_limit_queued {int(rate_limit.get('queued') or 0)}")
+        lines.append(
+            "# HELP daari_rate_limit_degraded 1 when Redis rate-limit counting has"
+            " fallen back (sqlite_fallback) or fail-opened."
+        )
+        lines.append("# TYPE daari_rate_limit_degraded gauge")
+        degraded = bool(rate_limit.get("degraded"))
+        mode = str(rate_limit.get("degrade_mode") or "")
+        for candidate in ("sqlite_fallback", "fail_open"):
+            value = 1 if degraded and mode == candidate else 0
+            lines.append(f"daari_rate_limit_degraded{_labels(mode=candidate)} {value}")
 
     pool = backend_pool or {}
     backends = list(pool.get("backends") or [])
@@ -208,9 +200,7 @@ def render_prometheus(
             circuit = str(entry.get("circuit") or "closed")
             labels = _labels(backend=backend_id, circuit=circuit)
             lines.append(f"daari_backend_up{labels} {1 if entry.get('healthy') else 0}")
-            lines.append(
-                f"daari_backend_outstanding{labels} {int(entry.get('outstanding') or 0)}"
-            )
+            lines.append(f"daari_backend_outstanding{labels} {int(entry.get('outstanding') or 0)}")
             count = int(entry.get("requests") or recorded.get(backend_id) or 0)
             lines.append(f"daari_backend_requests_total{labels} {count}")
         for backend_id, count in recorded.items():
@@ -240,9 +230,7 @@ def render_prometheus(
         )
         lines.append("# TYPE daari_soft_warnings_total counter")
         for kind, count in soft_warnings.items():
-            lines.append(
-                f"daari_soft_warnings_total{_labels(kind=kind)} {int(count)}"
-            )
+            lines.append(f"daari_soft_warnings_total{_labels(kind=kind)} {int(count)}")
 
     rejects = snap.get("rejects") or {}
     if rejects:

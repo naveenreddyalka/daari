@@ -118,7 +118,9 @@ class TestCounterBackends:
         connects: list = []
         monkeypatch.setattr(
             "sqlite3.connect",
-            lambda *args, **kwargs: connects.append(args) or (_ for _ in ()).throw(AssertionError("sqlite")),
+            lambda *args, **kwargs: (
+                connects.append(args) or (_ for _ in ()).throw(AssertionError("sqlite"))
+            ),
         )
         assert backend.increment("k", 1) == 1
         assert backend.increment("k", 1) == 2
@@ -171,9 +173,7 @@ class TestRateLimiter:
     def test_rpm_soft_band_before_hard_deny(self):
         limiter = RateLimiter(MemoryCounterBackend(), default_rpm=5)
         soft_ratio = 0.8
-        decisions = [
-            limiter.check(key_id="alice", model="daari", tokens=1) for _ in range(5)
-        ]
+        decisions = [limiter.check(key_id="alice", model="daari", tokens=1) for _ in range(5)]
         # used 1..5 against limit 5; soft at >=4 (0.8).
         assert all(d.allowed for d in decisions)
         assert [d.in_soft_band(soft_ratio) for d in decisions] == [
@@ -426,8 +426,9 @@ def test_rate_limiter_fail_open_allows_without_sqlite(tmp_path, monkeypatch):
     connects: list = []
     monkeypatch.setattr(
         "sqlite3.connect",
-        lambda *args, **kwargs: connects.append(args)
-        or (_ for _ in ()).throw(AssertionError("sqlite should not open")),
+        lambda *args, **kwargs: (
+            connects.append(args) or (_ for _ in ()).throw(AssertionError("sqlite should not open"))
+        ),
     )
     limiter = RateLimiter(
         RedisCounterBackend(client=BoomRedis()),
@@ -463,6 +464,62 @@ def test_rate_limiter_recovers_when_redis_returns(tmp_path, monkeypatch):
     assert recovered.backend == "redis"
     assert limiter.degraded is False
     assert redis.incr_calls >= 1
+
+
+def test_rate_limit_degraded_prometheus_gauge(tmp_path, monkeypatch):
+    from daari.observability.metrics import Metrics
+    from daari.observability.prometheus import render_prometheus
+
+    events: list = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, detail=None, **kw: events.append(event),
+    )
+    redis = RecoveringRedis()
+    fallback = SqliteCounterBackend(tmp_path / "rl.sqlite3")
+    limiter = RateLimiter(
+        RedisCounterBackend(client=redis),
+        default_rpm=100,
+        fallback_backend=fallback,
+        probe_interval_seconds=0.0,
+    )
+    assert limiter.check(key_id="a", model="m", tokens=1).backend == "sqlite"
+    assert limiter.degraded is True
+    assert sum(1 for e in events if e == "rate_limit.degraded") == 1
+    snap = limiter.snapshot()
+    assert snap["degraded"] is True
+    assert snap["degrade_mode"] == "sqlite_fallback"
+    text = render_prometheus(Metrics(), rate_limit=snap)
+    assert 'daari_rate_limit_degraded{mode="sqlite_fallback"} 1' in text
+    assert 'daari_rate_limit_degraded{mode="fail_open"} 0' in text
+
+    redis.heal()
+    assert limiter.check(key_id="a", model="m", tokens=1).backend == "redis"
+    assert limiter.degraded is False
+    recovered = render_prometheus(Metrics(), rate_limit=limiter.snapshot())
+    assert 'daari_rate_limit_degraded{mode="sqlite_fallback"} 0' in recovered
+    assert 'daari_rate_limit_degraded{mode="fail_open"} 0' in recovered
+    assert sum(1 for e in events if e == "rate_limit.degraded") == 1
+
+
+def test_rate_limit_fail_open_prometheus_gauge(tmp_path, monkeypatch):
+    from daari.observability.metrics import Metrics
+    from daari.observability.prometheus import render_prometheus
+
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda *args, **kwargs: None,
+    )
+    limiter = RateLimiter(
+        RedisCounterBackend(client=BoomRedis()),
+        default_rpm=10,
+        fail_open=True,
+        fallback_backend=SqliteCounterBackend(tmp_path / "unused.sqlite3"),
+    )
+    assert limiter.check(key_id="a", model="m", tokens=1).allowed
+    text = render_prometheus(Metrics(), rate_limit=limiter.snapshot())
+    assert 'daari_rate_limit_degraded{mode="fail_open"} 1' in text
+    assert 'daari_rate_limit_degraded{mode="sqlite_fallback"} 0' in text
 
 
 @pytest.mark.asyncio
