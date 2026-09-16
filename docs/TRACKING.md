@@ -2653,6 +2653,16 @@ key limits. `daari report --by-team` shows configured limits. Docs:
 [virtual-keys.md](developer/guides/features/virtual-keys.md). Covered by
 `tests/unit/test_team_rate_limits.py`.
 
+### Keys/teams export and import ([#548](https://github.com/naveenreddyalka/daari/issues/548))
+
+<!-- tracking:#548 -->
+**Status:** Done (2026-09-16). `daari keys export --json [--out FILE]` writes a
+versioned document (teams + key hashes, never plaintext). `daari keys import
+FILE [--dry-run]` upserts by `team_id`/`key_id` and refuses unknown schema
+versions. Round-trip preserves rotated-key grace. Docs:
+[upgrade.md](developer/guides/operations/upgrade.md#virtual-keys-backup--restore).
+Covered by `tests/unit/test_keys_export_import.py`.
+
 ---
 
 ## How to update

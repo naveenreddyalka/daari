@@ -142,7 +142,7 @@ same open.
 | L1 semantic cache | `~/.daari/cache/l1` (diskcache) or Redis `daari:l1:entries` | **Survives**, keyed by model/temperature/tools/tier (`daari/cache/semantic.py`). The embedding model name is *not* part of the key: if you change `cache.l1.embedding_model`, delete the L1 directory (or the Redis key) or old vectors will score ~0 and never hit. Unreadable entry lists are treated as empty, not fatal. |
 | Org shared cache | `~/.daari/org/<id>/shared-cache/` | Survives; same rebuildable semantics (`daari/enterprise/service.py`). |
 | Usage ledger | `~/.daari/usage/ledger.sqlite3` | **Durable.** Tables rebuilt in place when a pre-#156 schema is found (`UsageLedger._migrate`, `daari/observability/usage.py`). If init fails the ledger disables itself rather than crashing the gateway. |
-| Virtual keys / teams | `~/.daari/auth/virtual-keys.sqlite3` | **Durable.** Additive `ALTER TABLE … ADD COLUMN` migrations (`_migrate` in `daari/auth/virtual_keys.py`). Back this up — keys cannot be regenerated. |
+| Virtual keys / teams | `~/.daari/auth/virtual-keys.sqlite3` | **Durable.** Additive `ALTER TABLE … ADD COLUMN` migrations (`_migrate` in `daari/auth/virtual_keys.py`). Back this up — keys cannot be regenerated. Prefer `daari keys export --json --out …` / `daari keys import` over copying the SQLite file when migrating hosts or backends. |
 | Rate-limit counters | `rate-limit.sqlite3` / Redis `daari:rl:*` | Ephemeral; windows expire. |
 | Traces, Responses API objects | `~/.daari/traces/` | Durable, create-if-missing only. |
 | Audit log | `~/.daari/audit/audit.sqlite3` | Append-only, durable (`daari/enterprise/audit.py`). Back up for compliance. `observability.retention.audit_days` defaults to **0 (keep forever)** so an upgrade never silently deletes audit history; set it only when you want a stated retention period. |
@@ -153,6 +153,21 @@ same open.
 Rule of thumb: **caches and counters are disposable, `.sqlite3` files are
 not.** A backup of `~/.daari/config.yaml`, `auth/`, `usage/`, `audit/` and
 `feedback/` is a complete backup.
+
+### Virtual keys backup / restore
+
+Export hashes only (never plaintext secrets). Restore is an idempotent upsert
+by `team_id` / `key_id` — safe to re-run after a partial restore:
+
+```bash
+daari keys export --json --out keys-backup.json
+daari keys import keys-backup.json --dry-run
+daari keys import keys-backup.json
+```
+
+Rotated keys keep `previous_key_hash` + grace deadline so both secrets resolve
+within the overlap window after import. Unknown export `schema` versions are
+refused.
 
 Migrations are forward-only. A ledger rebuilt by N+1 still opens on N (the
 extra `model`/token columns are ignored by older `INSERT`s); a virtual-keys
