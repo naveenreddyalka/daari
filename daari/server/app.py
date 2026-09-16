@@ -222,6 +222,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     from daari.gateway.budget_headers import (
                         QUOTA_REQUESTS_LIMIT_HEADER,
                         QUOTA_REQUESTS_REMAINING_HEADER,
+                        QUOTA_REQUESTS_WARNING_HEADER,
                         budget_headers,
                         retry_after_seconds,
                     )
@@ -276,6 +277,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
                         if tightest is None:
                             budget_response_headers.update(budget_headers(request_tightest))
+                        soft_ratio = float(
+                            getattr(resolved.frontier, "soft_budget_ratio", 0.8) or 0.0
+                        )
+                        if request_tightest.in_soft_band(soft_ratio):
+                            budget_response_headers[QUOTA_REQUESTS_WARNING_HEADER] = "soft"
+                            request.state.request_quota_soft = True
             request.state.auth_claims = claims
             response = await call_next(request)
             if budget_response_headers and 200 <= response.status_code < 300:

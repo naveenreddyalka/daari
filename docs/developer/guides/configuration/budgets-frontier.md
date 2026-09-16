@@ -87,9 +87,9 @@ key and team), and the `402` repeats them with remaining `0` plus
 ### Operator alerts
 
 A webhook fires when a request *pushes* a key or team window across a
-threshold (default 80% and 100%). Empty URL disables. The POST is a
-background task: a down hook is logged (`budget.alert_failed`) and never
-delays or fails the chat response.
+threshold (default 80% and 100%) — USD **or** request-count quotas. Empty
+URL disables. The POST is a background task: a down hook is logged
+(`budget.alert_failed`) and never delays or fails the chat response.
 
 ```yaml
 alerts:
@@ -113,6 +113,10 @@ Payload (never includes key material):
   "reset_epoch": 1756944000
 }
 ```
+
+Request-quota crossings use the same envelope with `quota: "requests"` and
+`limit_requests` / `spent_requests` / `remaining_requests` instead of the
+USD fields.
 
 When `budget_webhook_secret` is set (plaintext or a `secret://` ref), every
 POST carries `X-Daari-Timestamp` (unix seconds) and `X-Daari-Signature`
@@ -185,6 +189,14 @@ Exceeding a request quota returns the same `402` `budget_exceeded` shape with
 responses for a quota-bound key carry the remaining/limit headers so clients
 can back off before the hard stop. `daari keys list` prints live
 `req used/cap` next to USD usage for each window.
+
+Soft band (same `frontier.soft_budget_ratio`, default `0.8`): when used/cap
+crosses the soft line but not the hard cap, responses still succeed and add
+`x-daari-quota-requests-warning: soft` plus `daari_meta.warning =
+"request_quota_warning"` (when `X-Daari-Meta` is set). Operator webhooks from
+`alerts.budget_webhook_url` also fire on request-quota threshold crossings
+with `quota: "requests"` and `limit_requests` / `spent_requests` /
+`remaining_requests` (USD payloads unchanged).
 
 ## Pricing
 

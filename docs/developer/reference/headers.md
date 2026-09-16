@@ -50,6 +50,7 @@ remaining across key and team scopes.
 | `x-daari-budget-scope` | `key` or `team` — which cap is the tightest. |
 | `x-daari-quota-requests-remaining` | Billable requests left in the tightest request-count window (`0` when exhausted). |
 | `x-daari-quota-requests-limit` | That window's request cap. |
+| `x-daari-quota-requests-warning` | `soft` when used/cap ≥ `frontier.soft_budget_ratio` but under the hard cap (#498). Omitted otherwise. |
 
 Rules:
 

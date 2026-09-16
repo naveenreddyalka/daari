@@ -1,4 +1,4 @@
-"""Budget threshold webhooks (#333, #369, #484).
+"""Budget threshold webhooks (#333, #369, #484, #498).
 
 When a request pushes a key/team window across a configured ratio, POST a
 JSON payload to `alerts.budget_webhook_url`. Delivery is best-effort and
@@ -7,6 +7,11 @@ scope/window/threshold until the window resets). When the same Redis the
 cache and rate limits use is configured, a crossing is claimed with
 `SET NX EX` before delivery so a fleet notifies once; Redis errors still
 deliver and log `budget.alert_dedupe_degraded`.
+
+USD and request-count quotas (#467) both alert: crossings key by
+`(scope, duration, quota)` so a shared duration still pages twice when both
+dimensions trip. Request payloads use `quota: "requests"` with
+`limit_requests` / `spent_requests` / `remaining_requests` instead of USD fields.
 
 When `alerts.budget_webhook_secret` is set, POSTs carry `X-Daari-Timestamp`
 and `X-Daari-Signature` (HMAC-SHA256 over ``timestamp + "." + body``).
@@ -93,24 +98,22 @@ def dedupe_ttl_seconds(status: WindowStatus) -> int:
     return max(1, ttl)
 
 
+def _crossing_key(status: WindowStatus) -> tuple[str, str, str]:
+    """Scope + duration + quota so USD and request caps on one window both alert (#498)."""
+    return (status.scope, status.window.duration, getattr(status, "quota", "usd") or "usd")
+
+
 def crossings(
     before: Iterable[WindowStatus],
     after: Iterable[WindowStatus],
     thresholds: Iterable[float],
 ) -> list[tuple[WindowStatus, float]]:
     """Thresholds newly reached between two snapshots of the same windows."""
-    # Request quotas (#467) share duration keys with USD; alerts stay USD-only.
-    prior = {
-        (item.scope, item.window.duration): _ratio(item)
-        for item in before
-        if getattr(item, "quota", "usd") == "usd"
-    }
+    prior = {_crossing_key(item): _ratio(item) for item in before}
     hits: list[tuple[WindowStatus, float]] = []
     marks = sorted({float(t) for t in thresholds if 0 < float(t) <= 1.0})
     for status in after:
-        if getattr(status, "quota", "usd") != "usd":
-            continue
-        start = prior.get((status.scope, status.window.duration), 0.0)
+        start = prior.get(_crossing_key(status), 0.0)
         end = _ratio(status)
         for threshold in marks:
             if start < threshold <= end:
@@ -145,10 +148,15 @@ class BudgetAlerter:
     def _dedupe_key(
         self, status: WindowStatus, scope_id: str, threshold: float
     ) -> tuple[str, str, str, float, int]:
+        # Include quota in the window stamp so USD + request alerts dedupe independently.
+        label = window_label(status.window.duration)
+        quota = getattr(status, "quota", "usd") or "usd"
+        if quota != "usd":
+            label = f"{label}:{quota}"
         return (
             status.scope,
             scope_id,
-            window_label(status.window.duration),
+            label,
             float(threshold),
             status.reset_epoch,
         )
@@ -203,17 +211,24 @@ class BudgetAlerter:
         team: Team | None,
     ) -> dict[str, Any]:
         scope, scope_id, name = _identity(status, key, team)
-        return {
+        base: dict[str, Any] = {
             "scope": scope,
             "id": scope_id,
             "name": name,
             "window": window_label(status.window.duration),
-            "limit_usd": float(status.limit),
-            "spent_usd": round(float(status.spend), 6),
-            "remaining_usd": round(status.remaining, 6),
             "threshold": float(threshold),
             "reset_epoch": status.reset_epoch,
         }
+        if getattr(status, "quota", "usd") == "requests":
+            base["quota"] = "requests"
+            base["limit_requests"] = int(status.limit)
+            base["spent_requests"] = int(status.spend)
+            base["remaining_requests"] = int(status.remaining)
+            return base
+        base["limit_usd"] = float(status.limit)
+        base["spent_usd"] = round(float(status.spend), 6)
+        base["remaining_usd"] = round(status.remaining, 6)
+        return base
 
     def pending(
         self,

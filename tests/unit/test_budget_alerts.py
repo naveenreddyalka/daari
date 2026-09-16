@@ -37,12 +37,20 @@ def _status(
     scope: str = "key",
     duration: str = "day",
     now: datetime = NOW,
+    quota: str = "usd",
+    max_requests: int = 0,
 ) -> WindowStatus:
+    window = (
+        BudgetWindow(duration, 0.0, max_requests=int(cap if quota == "requests" else max_requests))
+        if quota == "requests"
+        else BudgetWindow(duration, cap, max_requests=max_requests)
+    )
     return WindowStatus(
-        window=BudgetWindow(duration, cap),
+        window=window,
         scope=scope,  # type: ignore[arg-type]
         spend=spend,
         now=now,
+        quota=quota,  # type: ignore[arg-type]
     )
 
 
@@ -60,6 +68,28 @@ class TestCrossings:
 
     def test_disabled_thresholds_ignored(self):
         assert crossings([_status(0)], [_status(10)], [0.0, 1.5]) == []
+
+    def test_request_quota_crossing_fires(self):
+        before = [_status(7.0, cap=10, quota="requests")]
+        after = [_status(8.5, cap=10, quota="requests")]
+        hits = crossings(before, after, [0.8, 1.0])
+        assert len(hits) == 1
+        status, threshold = hits[0]
+        assert status.quota == "requests"
+        assert threshold == 0.8
+
+    def test_usd_and_request_same_duration_both_fire(self):
+        before = [
+            _status(7.0, cap=10.0, quota="usd"),
+            _status(7.0, cap=10, quota="requests"),
+        ]
+        after = [
+            _status(8.5, cap=10.0, quota="usd"),
+            _status(8.5, cap=10, quota="requests"),
+        ]
+        hits = crossings(before, after, [0.8])
+        quotas = {status.quota for status, _ in hits}
+        assert quotas == {"usd", "requests"}
 
 
 class TestWebhookSignature:
@@ -192,6 +222,34 @@ class TestAlerter:
     def test_empty_url_never_posts(self):
         alerter = BudgetAlerter(webhook_url="")
         assert alerter.notify([_status(0)], [_status(10)], key=KEY, team=None) == []
+
+    def test_request_quota_payload_shape(self):
+        posted: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            posted.append(request)
+            return httpx.Response(204)
+
+        alerter = BudgetAlerter(
+            webhook_url="https://hooks.example/budget",
+            transport=httpx.MockTransport(handler),
+        )
+        bodies = alerter.notify(
+            [_status(7.0, cap=10, quota="requests")],
+            [_status(8.0, cap=10, quota="requests")],
+            key=KEY,
+            team=None,
+        )
+        assert len(bodies) == 1
+        body = bodies[0]
+        assert body["quota"] == "requests"
+        assert body["limit_requests"] == 10
+        assert body["spent_requests"] == 8
+        assert body["remaining_requests"] == 2
+        assert body["threshold"] == 0.8
+        assert "limit_usd" not in body
+        assert "dk_" not in str(body)
+        assert len(posted) == 1
 
     def test_unsigned_when_secret_unset(self):
         posted: list[httpx.Request] = []

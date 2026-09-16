@@ -703,6 +703,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
+            if getattr(request.state, "request_quota_soft", False):
+                # Soft request quota beats other soft warnings so agents back off (#498).
+                result.daari_meta.warning = "request_quota_warning"
             prompt_chars = sum(len(message.content or "") for message in body.messages)
             payload = _openai_completion_body(
                 body=body,
