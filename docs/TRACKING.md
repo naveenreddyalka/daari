@@ -2559,6 +2559,15 @@ payload as `GET /v1/daari/report` (including `request_quotas` / `frontier`).
 Docs: [savings-report.md](developer/guides/observability/savings-report.md).
 Covered by `tests/unit/test_render_markdown.py`.
 
+### L1 singleflight hermetic ceiling ([#528](https://github.com/naveenreddyalka/daari/issues/528))
+
+<!-- tracking:#528 -->
+**Status:** Done (2026-09-16). Hermetic `@pytest.mark.benchmark` burst: N
+concurrent same-embed-key L1 cold misses (distinct L0 keys) → exactly one
+embed before fill and one upstream under a wall ceiling. Docs:
+[benchmark-load.md](developer/resources/benchmark-load.md). Covered by
+`tests/benchmark/test_hermetic_paths.py`.
+
 ---
 
 ## How to update
