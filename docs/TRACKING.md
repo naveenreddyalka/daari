@@ -2478,6 +2478,16 @@ Docs: [clients-and-gateways.md](developer/concepts/clients-and-gateways.md),
 Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_prometheus.py`, `tests/unit/test_ttft_metrics.py`.
 
+### Request-quota soft warn on Anthropic/Responses ([#509](https://github.com/naveenreddyalka/daari/issues/509))
+
+<!-- tracking:#509 -->
+**Status:** Done (2026-09-16). Soft request-quota band sets
+`daari_meta.warning=request_quota_warning` on Anthropic Messages and
+Responses (with `X-Daari-Meta`), matching OpenAI chat. Header soft warn was
+already middleware-wide. Docs:
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_request_quotas.py`.
+
 ---
 
 ## How to update
