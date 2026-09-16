@@ -377,6 +377,9 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     audit_backend = getattr(settings.enterprise, "audit_backend", "sqlite") or "sqlite"
     if audit_backend == "sqlite":
         sqlite_artifacts.append("enterprise.audit_backend=sqlite")
+    vk_backend = getattr(settings.server.virtual_keys, "backend", "sqlite") or "sqlite"
+    if vk_backend == "sqlite":
+        sqlite_artifacts.append("server.virtual_keys.backend=sqlite")
 
     signals: list[str] = []
     if replicas > 1:
@@ -390,7 +393,7 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     needs_shared = [
         part
         for part in sqlite_artifacts
-        if part.startswith(("batches.", "files.", "responses."))
+        if part.startswith(("batches.", "files.", "responses.", "server.virtual_keys."))
     ]
     if settings.observability.backend == "sqlite" and signals:
         # Ledger split only matters when some other fleet signal is already on.
@@ -405,9 +408,11 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
             detail=(
                 f"fleet signals ({', '.join(signals)}) with per-pod SQLite "
                 f"({', '.join(needs_shared)}) — GET /v1/batches|files|responses "
-                "can 404 across replicas and audit export is incomplete; set "
-                "batches.backend=postgres, files.backend=postgres, "
-                "responses.backend=postgres, observability.backend=postgres, and "
+                "can 404 across replicas, SSO-minted keys 401 on other pods, and "
+                "audit export is incomplete; set batches.backend=postgres, "
+                "files.backend=postgres, responses.backend=postgres, "
+                "server.virtual_keys.backend=postgres, "
+                "observability.backend=postgres, and "
                 "enterprise.audit_backend=postgres (with observability.postgres_url), "
                 "or keep a single replica"
             ),
@@ -482,9 +487,9 @@ def _has_request_quota_windows(settings: Settings) -> bool:
     if not getattr(settings.server.virtual_keys, "enabled", False):
         return False
     try:
-        from daari.auth.virtual_keys import VirtualKeyStore
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 
-        store = VirtualKeyStore(settings.virtual_keys_path)
+        store = virtual_key_store_from_settings(settings)
     except Exception:
         return False
     for key in store.list():

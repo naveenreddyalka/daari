@@ -24,6 +24,14 @@ class VirtualKeysSettings(BaseModel):
 
     enabled: bool = True
     path: str = "~/.daari/auth/virtual-keys.sqlite3"
+    backend: Literal["sqlite", "postgres"] = Field(
+        default="sqlite",
+        description=(
+            "sqlite (default) or postgres (observability.postgres_url) so keys "
+            "and teams resolve across replicas (#544). Env: "
+            "DAARI_SERVER__VIRTUAL_KEYS__BACKEND."
+        ),
+    )
 
 
 class RateLimitSettings(BaseModel):
