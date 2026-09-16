@@ -244,4 +244,14 @@ def render_prometheus(
                 f"daari_soft_warnings_total{_labels(kind=kind)} {int(count)}"
             )
 
+    rejects = snap.get("rejects") or {}
+    if rejects:
+        lines.append(
+            "# HELP daari_rejects_total Hard 402/429 denials, by kind "
+            "(budget, request_quota, rate_limit)."
+        )
+        lines.append("# TYPE daari_rejects_total counter")
+        for kind, count in rejects.items():
+            lines.append(f"daari_rejects_total{_labels(kind=kind)} {int(count)}")
+
     return "\n".join(lines) + "\n"

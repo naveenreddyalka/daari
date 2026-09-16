@@ -35,3 +35,16 @@ def test_grafana_dashboard_includes_soft_warnings_panel():
     exprs = [t.get("expr", "") for t in soft.get("targets", [])]
     assert any("daari_soft_warnings_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_rejects_panel():
+    """Hard 402/429 counters from #551 should be visible on the overview."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    rejects = next(
+        (p for p in payload["panels"] if "Hard reject" in p.get("title", "")),
+        None,
+    )
+    assert rejects is not None, "expected a hard-rejects panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in rejects.get("targets", [])]
+    assert any("daari_rejects_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)

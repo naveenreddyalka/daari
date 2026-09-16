@@ -93,6 +93,7 @@ class Metrics:
     tier_shadow: dict[str, int] = field(default_factory=dict)
     budget_alerts: dict[str, int] = field(default_factory=dict)
     soft_warnings: dict[str, int] = field(default_factory=dict)
+    rejects: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -166,6 +167,11 @@ class Metrics:
         with self._lock:
             self.soft_warnings[kind] = self.soft_warnings.get(kind, 0) + 1
 
+    def record_reject(self, kind: str) -> None:
+        """Hard 402/429 deny (budget, request_quota, or rate_limit, #551)."""
+        with self._lock:
+            self.rejects[kind] = self.rejects.get(kind, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -203,4 +209,5 @@ class Metrics:
                 "tier_shadow": dict(self.tier_shadow),
                 "budget_alerts": dict(self.budget_alerts),
                 "soft_warnings": dict(self.soft_warnings),
+                "rejects": dict(self.rejects),
             }

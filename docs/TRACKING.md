@@ -2604,6 +2604,15 @@ calling Ollama or frontier. Docs:
 [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
 `tests/unit/test_route_preview.py`.
 
+### Hard-reject Prometheus counters ([#551](https://github.com/naveenreddyalka/daari/issues/551))
+
+<!-- tracking:#551 -->
+**Status:** Done (2026-09-16). `/metrics` exposes
+`daari_rejects_total{kind="budget"|"request_quota"|"rate_limit"}` on hard
+402/429 only; soft warning headers unchanged. Grafana hard-rejects panel.
+Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_reject_metrics.py`.
+
 ---
 
 ## How to update
