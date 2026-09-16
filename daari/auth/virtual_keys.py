@@ -96,7 +96,10 @@ CREATE TABLE IF NOT EXISTS teams (
     team_id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     budget_windows_json TEXT NOT NULL DEFAULT '[]',
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    region_pin TEXT,
+    rpm INTEGER NOT NULL DEFAULT 0,
+    tpm INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
@@ -153,6 +156,9 @@ class Team:
     name: str
     budget_windows: tuple[BudgetWindow, ...] = ()
     region_pin: str | None = None
+    # Aggregate ceilings across every key on the team (0 = unlimited) (#546).
+    rpm: int = 0
+    tpm: int = 0
 
 
 @dataclass(frozen=True)
@@ -291,6 +297,10 @@ class VirtualKeyStore:
         team_cols = {row[1] for row in conn.execute("PRAGMA table_info(teams)")}
         if "region_pin" not in team_cols:
             conn.execute("ALTER TABLE teams ADD COLUMN region_pin TEXT")
+        if "rpm" not in team_cols:
+            conn.execute("ALTER TABLE teams ADD COLUMN rpm INTEGER NOT NULL DEFAULT 0")
+        if "tpm" not in team_cols:
+            conn.execute("ALTER TABLE teams ADD COLUMN tpm INTEGER NOT NULL DEFAULT 0")
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -321,6 +331,8 @@ class VirtualKeyStore:
         daily_budget_usd: float = 0.0,
         monthly_budget_usd: float = 0.0,
         region_pin: str | None = None,
+        rpm: int = 0,
+        tpm: int = 0,
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -331,11 +343,14 @@ class VirtualKeyStore:
             or list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
         )
         pin = (region_pin or "").strip() or None
+        team_rpm = max(0, int(rpm))
+        team_tpm = max(0, int(tpm))
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             existing = conn.execute(
-                "SELECT team_id, budget_windows_json, region_pin FROM teams WHERE name = ?",
+                "SELECT team_id, budget_windows_json, region_pin, rpm, tpm"
+                " FROM teams WHERE name = ?",
                 (name,),
             ).fetchone()
             if existing:
@@ -344,13 +359,30 @@ class VirtualKeyStore:
                     name=name,
                     budget_windows=self._parse_windows(existing[1]),
                     region_pin=existing[2] if len(existing) > 2 else None,
+                    rpm=int(existing[3] or 0) if len(existing) > 3 else 0,
+                    tpm=int(existing[4] or 0) if len(existing) > 4 else 0,
                 )
             conn.execute(
-                "INSERT INTO teams (team_id, name, budget_windows_json, created_at, region_pin)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (team_id, name, self._windows_json(windows), created, pin),
+                "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
+                " region_pin, rpm, tpm) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    team_id,
+                    name,
+                    self._windows_json(windows),
+                    created,
+                    pin,
+                    team_rpm,
+                    team_tpm,
+                ),
             )
-        return Team(team_id=team_id, name=name, budget_windows=windows, region_pin=pin)
+        return Team(
+            team_id=team_id,
+            name=name,
+            budget_windows=windows,
+            region_pin=pin,
+            rpm=team_rpm,
+            tpm=team_tpm,
+        )
 
     def update_team(
         self,
@@ -360,8 +392,10 @@ class VirtualKeyStore:
         daily_budget_usd: float = 0.0,
         monthly_budget_usd: float = 0.0,
         region_pin: str | None = None,
+        rpm: int | None = None,
+        tpm: int | None = None,
     ) -> Team:
-        """Replace a team's budget windows (#464) and optional region_pin (#466)."""
+        """Replace a team's budget windows (#464), optional region_pin (#466), rpm/tpm (#546)."""
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
         from daari.auth.budgets import coalesce_windows, windows_from_flat
@@ -373,25 +407,28 @@ class VirtualKeyStore:
         pin = (region_pin or "").strip() or None
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT name FROM teams WHERE team_id = ?", (team_id,)
+                "SELECT name, region_pin, rpm, tpm FROM teams WHERE team_id = ?",
+                (team_id,),
             ).fetchone()
             if row is None:
                 raise KeyError(team_id)
             if region_pin is None:
-                conn.execute(
-                    "UPDATE teams SET budget_windows_json = ? WHERE team_id = ?",
-                    (self._windows_json(windows), team_id),
-                )
-                existing = conn.execute(
-                    "SELECT region_pin FROM teams WHERE team_id = ?", (team_id,)
-                ).fetchone()
-                pin = existing[0] if existing else None
-            else:
-                conn.execute(
-                    "UPDATE teams SET budget_windows_json = ?, region_pin = ? WHERE team_id = ?",
-                    (self._windows_json(windows), pin, team_id),
-                )
-        return Team(team_id=team_id, name=row[0], budget_windows=windows, region_pin=pin)
+                pin = row[1]
+            team_rpm = max(0, int(rpm)) if rpm is not None else int(row[2] or 0)
+            team_tpm = max(0, int(tpm)) if tpm is not None else int(row[3] or 0)
+            conn.execute(
+                "UPDATE teams SET budget_windows_json = ?, region_pin = ?, rpm = ?, tpm = ?"
+                " WHERE team_id = ?",
+                (self._windows_json(windows), pin, team_rpm, team_tpm, team_id),
+            )
+        return Team(
+            team_id=team_id,
+            name=row[0],
+            budget_windows=windows,
+            region_pin=pin,
+            rpm=team_rpm,
+            tpm=team_tpm,
+        )
 
     def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
         if not self.enabled or (not team_id and not name):
@@ -399,12 +436,14 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             if team_id:
                 row = conn.execute(
-                    "SELECT team_id, name, budget_windows_json, region_pin FROM teams WHERE team_id = ?",
+                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
+                    " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
             else:
                 row = conn.execute(
-                    "SELECT team_id, name, budget_windows_json, region_pin FROM teams WHERE name = ?",
+                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
+                    " FROM teams WHERE name = ?",
                     (name,),
                 ).fetchone()
         if row is None:
@@ -414,6 +453,8 @@ class VirtualKeyStore:
             name=row[1],
             budget_windows=self._parse_windows(row[2]),
             region_pin=row[3] if len(row) > 3 else None,
+            rpm=int(row[4] or 0) if len(row) > 4 else 0,
+            tpm=int(row[5] or 0) if len(row) > 5 else 0,
         )
 
     def team_client_ids(self, team_id: str) -> list[str]:
@@ -814,19 +855,21 @@ class VirtualKeyStore:
             return []
         with self._lock, self._connect() as conn:
             rows = conn.execute(
-                "SELECT v.key_id, v.client_id, t.name FROM virtual_keys v"
+                "SELECT v.key_id, v.client_id, t.name, t.rpm, t.tpm FROM virtual_keys v"
                 " JOIN teams t ON t.team_id = v.team_id"
             ).fetchall()
-        owner: dict[str, str] = {}
-        for key_id, client_id, team_name in rows:
-            owner[key_id] = team_name
+        owner: dict[str, tuple[str, int, int]] = {}
+        for key_id, client_id, team_name, team_rpm, team_tpm in rows:
+            meta = (team_name, int(team_rpm or 0), int(team_tpm or 0))
+            owner[key_id] = meta
             if client_id:
-                owner[client_id] = team_name
+                owner[client_id] = meta
         teams: dict[str, dict[str, Any]] = {}
         for entry in clients:
-            team_name = owner.get(entry.get("client_id") or "")
-            if not team_name:
+            meta = owner.get(entry.get("client_id") or "")
+            if not meta:
                 continue
+            team_name, team_rpm, team_tpm = meta
             bucket = teams.setdefault(
                 team_name,
                 {
@@ -836,6 +879,8 @@ class VirtualKeyStore:
                     "local_requests": 0,
                     "frontier_requests": 0,
                     "estimated_saved_usd": 0.0,
+                    "rpm": team_rpm,
+                    "tpm": team_tpm,
                 },
             )
             for field_name in (

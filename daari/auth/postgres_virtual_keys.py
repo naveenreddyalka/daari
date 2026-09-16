@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS teams (
     name TEXT NOT NULL UNIQUE,
     budget_windows_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL,
-    region_pin TEXT
+    region_pin TEXT,
+    rpm INTEGER NOT NULL DEFAULT 0,
+    tpm INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
@@ -61,6 +63,11 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     region_pin TEXT
 );
 """
+
+_PG_TEAM_MIGRATIONS = (
+    "ALTER TABLE teams ADD COLUMN IF NOT EXISTS rpm INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE teams ADD COLUMN IF NOT EXISTS tpm INTEGER NOT NULL DEFAULT 0",
+)
 
 _MEMORY_PATHS: dict[str, Path] = {}
 _MEMORY_META = threading.Lock()
@@ -96,6 +103,8 @@ class PostgresVirtualKeyStore:
                 with self._connect() as conn:
                     with conn.cursor() as cur:
                         cur.execute(_PG_SCHEMA)
+                        for stmt in _PG_TEAM_MIGRATIONS:
+                            cur.execute(stmt)
                     conn.commit()
             except Exception:
                 self.enabled = False
@@ -126,6 +135,8 @@ class PostgresVirtualKeyStore:
         daily_budget_usd: float = 0.0,
         monthly_budget_usd: float = 0.0,
         region_pin: str | None = None,
+        rpm: int = 0,
+        tpm: int = 0,
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -134,6 +145,8 @@ class PostgresVirtualKeyStore:
                 daily_budget_usd=daily_budget_usd,
                 monthly_budget_usd=monthly_budget_usd,
                 region_pin=region_pin,
+                rpm=rpm,
+                tpm=tpm,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -144,12 +157,15 @@ class PostgresVirtualKeyStore:
             or list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
         )
         pin = (region_pin or "").strip() or None
+        team_rpm = max(0, int(rpm))
+        team_tpm = max(0, int(tpm))
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT team_id, budget_windows_json, region_pin FROM teams WHERE name = %s",
+                    "SELECT team_id, budget_windows_json, region_pin, rpm, tpm"
+                    " FROM teams WHERE name = %s",
                     (name,),
                 )
                 existing = cur.fetchone()
@@ -159,14 +175,31 @@ class PostgresVirtualKeyStore:
                         name=name,
                         budget_windows=self._parse_windows(existing[1]),
                         region_pin=existing[2],
+                        rpm=int(existing[3] or 0),
+                        tpm=int(existing[4] or 0),
                     )
                 cur.execute(
-                    "INSERT INTO teams (team_id, name, budget_windows_json, created_at, region_pin)"
-                    " VALUES (%s, %s, %s, %s, %s)",
-                    (team_id, name, self._windows_json(windows), created, pin),
+                    "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
+                    " region_pin, rpm, tpm) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (
+                        team_id,
+                        name,
+                        self._windows_json(windows),
+                        created,
+                        pin,
+                        team_rpm,
+                        team_tpm,
+                    ),
                 )
             conn.commit()
-        return Team(team_id=team_id, name=name, budget_windows=windows, region_pin=pin)
+        return Team(
+            team_id=team_id,
+            name=name,
+            budget_windows=windows,
+            region_pin=pin,
+            rpm=team_rpm,
+            tpm=team_tpm,
+        )
 
     def update_team(
         self,
@@ -176,6 +209,8 @@ class PostgresVirtualKeyStore:
         daily_budget_usd: float = 0.0,
         monthly_budget_usd: float = 0.0,
         region_pin: str | None = None,
+        rpm: int | None = None,
+        tpm: int | None = None,
     ) -> Team:
         if self._inner is not None:
             return self._inner.update_team(
@@ -184,6 +219,8 @@ class PostgresVirtualKeyStore:
                 daily_budget_usd=daily_budget_usd,
                 monthly_budget_usd=monthly_budget_usd,
                 region_pin=region_pin,
+                rpm=rpm,
+                tpm=tpm,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -196,26 +233,31 @@ class PostgresVirtualKeyStore:
         pin = (region_pin or "").strip() or None
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT name FROM teams WHERE team_id = %s", (team_id,))
+                cur.execute(
+                    "SELECT name, region_pin, rpm, tpm FROM teams WHERE team_id = %s",
+                    (team_id,),
+                )
                 row = cur.fetchone()
                 if row is None:
                     raise KeyError(team_id)
                 if region_pin is None:
-                    cur.execute(
-                        "UPDATE teams SET budget_windows_json = %s WHERE team_id = %s",
-                        (self._windows_json(windows), team_id),
-                    )
-                    cur.execute("SELECT region_pin FROM teams WHERE team_id = %s", (team_id,))
-                    existing = cur.fetchone()
-                    pin = existing[0] if existing else None
-                else:
-                    cur.execute(
-                        "UPDATE teams SET budget_windows_json = %s, region_pin = %s"
-                        " WHERE team_id = %s",
-                        (self._windows_json(windows), pin, team_id),
-                    )
+                    pin = row[1]
+                team_rpm = max(0, int(rpm)) if rpm is not None else int(row[2] or 0)
+                team_tpm = max(0, int(tpm)) if tpm is not None else int(row[3] or 0)
+                cur.execute(
+                    "UPDATE teams SET budget_windows_json = %s, region_pin = %s,"
+                    " rpm = %s, tpm = %s WHERE team_id = %s",
+                    (self._windows_json(windows), pin, team_rpm, team_tpm, team_id),
+                )
             conn.commit()
-        return Team(team_id=team_id, name=row[0], budget_windows=windows, region_pin=pin)
+        return Team(
+            team_id=team_id,
+            name=row[0],
+            budget_windows=windows,
+            region_pin=pin,
+            rpm=team_rpm,
+            tpm=team_tpm,
+        )
 
     def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
         if self._inner is not None:
@@ -226,13 +268,13 @@ class PostgresVirtualKeyStore:
             with conn.cursor() as cur:
                 if team_id:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
                         " FROM teams WHERE team_id = %s",
                         (team_id,),
                     )
                 else:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
                         " FROM teams WHERE name = %s",
                         (name,),
                     )
@@ -244,6 +286,8 @@ class PostgresVirtualKeyStore:
             name=row[1],
             budget_windows=self._parse_windows(row[2]),
             region_pin=row[3],
+            rpm=int(row[4] or 0),
+            tpm=int(row[5] or 0),
         )
 
     def team_client_ids(self, team_id: str) -> list[str]:
@@ -654,20 +698,22 @@ class PostgresVirtualKeyStore:
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT v.key_id, v.client_id, t.name FROM virtual_keys v"
+                    "SELECT v.key_id, v.client_id, t.name, t.rpm, t.tpm FROM virtual_keys v"
                     " JOIN teams t ON t.team_id = v.team_id"
                 )
                 rows = cur.fetchall()
-        owner: dict[str, str] = {}
-        for key_id, client_id, team_name in rows:
-            owner[key_id] = team_name
+        owner: dict[str, tuple[str, int, int]] = {}
+        for key_id, client_id, team_name, team_rpm, team_tpm in rows:
+            meta = (team_name, int(team_rpm or 0), int(team_tpm or 0))
+            owner[key_id] = meta
             if client_id:
-                owner[client_id] = team_name
+                owner[client_id] = meta
         teams: dict[str, dict[str, Any]] = {}
         for entry in clients:
-            team_name = owner.get(entry.get("client_id") or "")
-            if not team_name:
+            meta = owner.get(entry.get("client_id") or "")
+            if not meta:
                 continue
+            team_name, team_rpm, team_tpm = meta
             bucket = teams.setdefault(
                 team_name,
                 {
@@ -677,6 +723,8 @@ class PostgresVirtualKeyStore:
                     "local_requests": 0,
                     "frontier_requests": 0,
                     "estimated_saved_usd": 0.0,
+                    "rpm": team_rpm,
+                    "tpm": team_tpm,
                 },
             )
             for field_name in (
