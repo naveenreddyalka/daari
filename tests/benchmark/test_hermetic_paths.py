@@ -35,6 +35,9 @@ BATCH_ENQUEUE_CEILING_S = 0.200  # per BatchStore.create (inline 1 request)
 # N concurrent identical cold misses sharing one fill (#520).
 L0_SINGLEFLIGHT_BURST_CEILING_S = 0.500
 L0_SINGLEFLIGHT_CONCURRENCY = 32
+# N concurrent same-embed-key L1 cold misses (distinct L0 keys) (#528).
+L1_SINGLEFLIGHT_BURST_CEILING_S = 0.750
+L1_SINGLEFLIGHT_CONCURRENCY = 32
 
 
 class FakeLedger:
@@ -266,4 +269,106 @@ async def test_l0_singleflight_concurrent_cold_miss_under_ceiling(tmp_path):
     assert elapsed < L0_SINGLEFLIGHT_BURST_CEILING_S, (
         f"L0 singleflight burst {elapsed:.4f}s exceeds ceiling "
         f"{L0_SINGLEFLIGHT_BURST_CEILING_S}s (stampede / coalesce regression)"
+    )
+
+
+class _BarrierEmbedder:
+    """Blocks inside embed until release so concurrent L1 nearest calls overlap."""
+
+    def __init__(self, vector: list[float] | None = None) -> None:
+        self.vector = vector or [1.0, 0.0, 0.0]
+        self.calls = 0
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+        self.calls += 1
+        self.entered.set()
+        await self.release.wait()
+        return list(self.vector)
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_l1_singleflight_concurrent_cold_miss_under_ceiling(tmp_path):
+    """N same-embed-key cold misses → 1 embed + 1 upstream under a wall ceiling (#528)."""
+    from daari.cache.exact import cache_key
+    from daari.cache.normalize import normalize_for_embedding
+    from daari.cache.semantic import extract_embed_text, l1_flight_key
+
+    embedder = _BarrierEmbedder()
+    # Instant embeds after the timed barrier phase (L1 put after fill).
+    embedder.release.set()
+
+    cache = ExactCache(str(tmp_path / "c"), enabled=True)
+    upstream_calls = 0
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        entered.set()
+        await release.wait()
+        await asyncio.sleep(0.001)
+        return InternalResponse(
+            content="A confident l1-shared body with plenty of length to avoid escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+            ),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    semantic = SemanticCache(
+        str(tmp_path / "l1"),
+        embedder,
+        enabled=True,
+        similarity_threshold=0.99,
+    )
+    router = Router(
+        cache=cache,
+        semantic_cache=semantic,
+        ollama=ollama,
+        metrics=Metrics(),
+        frontier_enabled=False,
+    )
+
+    # Distinct L0 keys, identical normalized embed text → L1 singleflight key.
+    requests = [
+        InternalRequest(
+            messages=[Message(role="user", content=f"hello{' ' * (i + 1)}world")],
+            model="llama3.2:3b",
+        )
+        for i in range(L1_SINGLEFLIGHT_CONCURRENCY)
+    ]
+    assert len({cache_key(r) for r in requests}) == L1_SINGLEFLIGHT_CONCURRENCY
+    flight_keys = {
+        l1_flight_key(r, text=normalize_for_embedding(extract_embed_text(r)))
+        for r in requests
+    }
+    assert len(flight_keys) == 1
+
+    embedder.calls = 0
+    embedder.entered.clear()
+    embedder.release.clear()
+
+    start = time.perf_counter()
+    tasks = [asyncio.create_task(router.route(r)) for r in requests]
+    await asyncio.wait_for(embedder.entered.wait(), timeout=2.0)
+    # Unblock the shared embed so nearest can miss and the fill flight starts.
+    embedder.release.set()
+    await asyncio.wait_for(entered.wait(), timeout=2.0)
+    # Nearest phase must have coalesced before the shared upstream starts.
+    assert embedder.calls == 1, f"expected 1 embed before fill, got {embedder.calls}"
+    release.set()
+    bodies = [(await t).content for t in tasks]
+    elapsed = time.perf_counter() - start
+
+    assert upstream_calls == 1, f"expected 1 upstream fill, got {upstream_calls}"
+    assert len(set(bodies)) == 1
+    assert elapsed < L1_SINGLEFLIGHT_BURST_CEILING_S, (
+        f"L1 singleflight burst {elapsed:.4f}s exceeds ceiling "
+        f"{L1_SINGLEFLIGHT_BURST_CEILING_S}s (embed/upstream stampede regression)"
     )
