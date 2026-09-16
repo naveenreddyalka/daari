@@ -234,8 +234,7 @@ def keys_list() -> None:
             if status.quota == "requests":
                 soft = ""
                 soft_ratio = float(
-                    getattr(getattr(settings, "frontier", None), "soft_budget_ratio", 0.8)
-                    or 0.0
+                    getattr(getattr(settings, "frontier", None), "soft_budget_ratio", 0.8) or 0.0
                 )
                 if status.in_soft_band(soft_ratio):
                     soft = " soft"
@@ -562,9 +561,7 @@ def _audit_log_from_settings():
 def audit_list(
     limit: int = typer.Option(50, "--limit", help="Max rows (newest first)."),
     actor: str | None = typer.Option(None, "--actor", help="Exact actor match."),
-    action: str | None = typer.Option(
-        None, "--action", help="Action prefix match (e.g. budget.)."
-    ),
+    action: str | None = typer.Option(None, "--action", help="Action prefix match (e.g. budget.)."),
     since: str | None = typer.Option(
         None, "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
     ),
@@ -605,9 +602,7 @@ def audit_export(
         None, "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
     ),
     actor: str | None = typer.Option(None, "--actor", help="Exact actor match."),
-    action: str | None = typer.Option(
-        None, "--action", help="Action prefix match (e.g. budget.)."
-    ),
+    action: str | None = typer.Option(None, "--action", help="Action prefix match (e.g. budget.)."),
     out: Path | None = typer.Option(None, "--out", help="Write to FILE (default stdout)."),
 ) -> None:
     """Stream audit rows as JSONL for SIEM ingestion (issue #345)."""
@@ -661,9 +656,7 @@ def audit_verify(
     if as_json:
         typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
     elif result.ok:
-        typer.echo(
-            f"OK: {result.total} rows ({result.legacy} legacy, {result.chained} chained)"
-        )
+        typer.echo(f"OK: {result.total} rows ({result.legacy} legacy, {result.chained} chained)")
     else:
         typer.echo(
             f"TAMPER at seq={result.broken_seq}: {result.reason} "
@@ -1199,8 +1192,7 @@ def report(
     if quotas:
         typer.echo("")
         typer.echo(
-            f"{'key':<18} {'scope':<6} {'window':<6} {'used':>6} {'cap':>6} "
-            f"{'left':>6} soft"
+            f"{'key':<18} {'scope':<6} {'window':<6} {'used':>6} {'cap':>6} {'left':>6} soft"
         )
         for row in quotas:
             soft = "yes" if row.get("soft") else "-"

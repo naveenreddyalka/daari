@@ -687,7 +687,9 @@ class VirtualKeyStore:
         if not windows:
             from daari.auth.budgets import windows_from_flat
 
-            windows = windows_from_flat(daily_usd=float(daily or 0), monthly_usd=float(monthly or 0))
+            windows = windows_from_flat(
+                daily_usd=float(daily or 0), monthly_usd=float(monthly or 0)
+            )
         return CreatedKey(
             key=VirtualKey(
                 key_id=key_id,
@@ -974,8 +976,7 @@ class VirtualKeyStore:
         schema = document.get("schema")
         if schema != KEYS_EXPORT_SCHEMA:
             raise ValueError(
-                f"unsupported keys export schema {schema!r}; "
-                f"expected {KEYS_EXPORT_SCHEMA}"
+                f"unsupported keys export schema {schema!r}; expected {KEYS_EXPORT_SCHEMA}"
             )
         teams_in = list(document.get("teams") or [])
         keys_in = list(document.get("keys") or [])

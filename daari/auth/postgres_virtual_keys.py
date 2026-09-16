@@ -77,7 +77,9 @@ _MEMORY_META = threading.Lock()
 def _memory_sqlite_path(dsn: str) -> Path:
     with _MEMORY_META:
         if dsn not in _MEMORY_PATHS:
-            handle = tempfile.NamedTemporaryFile(prefix="daari-vk-", suffix=".sqlite3", delete=False)
+            handle = tempfile.NamedTemporaryFile(
+                prefix="daari-vk-", suffix=".sqlite3", delete=False
+            )
             handle.close()
             _MEMORY_PATHS[dsn] = Path(handle.name)
         return _MEMORY_PATHS[dsn]
@@ -562,7 +564,9 @@ class PostgresVirtualKeyStore:
         if not windows:
             from daari.auth.budgets import windows_from_flat
 
-            windows = windows_from_flat(daily_usd=float(daily or 0), monthly_usd=float(monthly or 0))
+            windows = windows_from_flat(
+                daily_usd=float(daily or 0), monthly_usd=float(monthly or 0)
+            )
         return CreatedKey(
             key=VirtualKey(
                 key_id=key_id,
@@ -821,8 +825,7 @@ class PostgresVirtualKeyStore:
         schema = document.get("schema")
         if schema != KEYS_EXPORT_SCHEMA:
             raise ValueError(
-                f"unsupported keys export schema {schema!r}; "
-                f"expected {KEYS_EXPORT_SCHEMA}"
+                f"unsupported keys export schema {schema!r}; expected {KEYS_EXPORT_SCHEMA}"
             )
         # Validate + count via SQLite bridge, then upsert into Postgres.
         handle = tempfile.NamedTemporaryFile(
@@ -855,8 +858,7 @@ class PostgresVirtualKeyStore:
                                 team["team_id"],
                                 team["name"],
                                 windows,
-                                team.get("created_at")
-                                or datetime.now(timezone.utc).isoformat(),
+                                team.get("created_at") or datetime.now(timezone.utc).isoformat(),
                                 team.get("region_pin"),
                                 int(team.get("rpm") or 0),
                                 int(team.get("tpm") or 0),
@@ -899,8 +901,7 @@ class PostgresVirtualKeyStore:
                                 key["key_id"],
                                 key["name"],
                                 key["prefix"],
-                                key.get("created_at")
-                                or datetime.now(timezone.utc).isoformat(),
+                                key.get("created_at") or datetime.now(timezone.utc).isoformat(),
                                 key.get("revoked_at"),
                                 key.get("expires_at"),
                                 float(key.get("daily_budget_usd") or 0),
@@ -933,9 +934,7 @@ def virtual_key_store_from_settings(settings: Any) -> VirtualKeyStore | Postgres
     vk = getattr(getattr(settings, "server", None), "virtual_keys", None)
     enabled = bool(getattr(vk, "enabled", True))
     backend = getattr(vk, "backend", "sqlite") or "sqlite"
-    pg_url = (
-        getattr(getattr(settings, "observability", None), "postgres_url", "") or ""
-    ).strip()
+    pg_url = (getattr(getattr(settings, "observability", None), "postgres_url", "") or "").strip()
     if backend == "postgres" and pg_url:
         return PostgresVirtualKeyStore(pg_url, enabled=enabled)
     path = getattr(settings, "virtual_keys_path", None) or getattr(
