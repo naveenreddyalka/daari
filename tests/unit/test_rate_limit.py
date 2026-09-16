@@ -193,11 +193,15 @@ class TestRateLimiter:
 
 
 @pytest.mark.asyncio
-async def test_rpm_soft_warn_header_then_hard_429(settings):
-    """Crossing soft_budget_ratio warns; exceeding RPM still 429s (#518)."""
-    settings.rate_limit.rpm = 5
+async def test_rpm_soft_warn_header_then_hard_429(settings, monkeypatch):
+    """Crossing soft_budget_ratio warns; exceeding RPM still 429s (#518).
+
+    Freeze wall clock mid-window so a 60s counter rollover mid-loop cannot
+    reset RPM counts and drop the soft header (CI flake).
+    """
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_030.0)
     settings.frontier.soft_budget_ratio = 0.8
-    app = _app(settings)
+    app = _app(settings, limiter=RateLimiter(MemoryCounterBackend(), default_rpm=5))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         bodies = []
         for i in range(5):

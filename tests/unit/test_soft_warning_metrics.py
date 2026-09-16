@@ -5,7 +5,11 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from daari.auth.rate_limit import RATELIMIT_WARNING_HEADER
+from daari.auth.rate_limit import (
+    MemoryCounterBackend,
+    RATELIMIT_WARNING_HEADER,
+    RateLimiter,
+)
 from daari.auth.virtual_keys import BudgetWindow, VirtualKeyStore
 from daari.gateway.budget_headers import QUOTA_REQUESTS_WARNING_HEADER
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
@@ -104,12 +108,16 @@ async def test_request_quota_soft_increments_counter_hard_402_does_not(settings,
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_soft_increments_counter_hard_429_does_not(settings):
-    settings.rate_limit.rpm = 5
+async def test_rate_limit_soft_increments_counter_hard_429_does_not(settings, monkeypatch):
+    """Freeze time mid-window so RPM soft-band counts stay stable (#526)."""
+    import time
+
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_030.0)
     settings.frontier.soft_budget_ratio = 0.8
     settings.observability.prometheus = True
     app = create_app(settings)
     app.state.ctx = AppContext.from_settings(settings)
+    app.state.rate_limiter = RateLimiter(MemoryCounterBackend(), default_rpm=5)
     _mock_execute(app)
 
     transport = ASGITransport(app=app)

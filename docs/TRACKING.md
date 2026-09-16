@@ -2551,6 +2551,14 @@ headers are set; hard 402/429 do not increment. Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_soft_warning_metrics.py`.
 
+### Report CLI JSON format ([#527](https://github.com/naveenreddyalka/daari/issues/527))
+
+<!-- tracking:#527 -->
+**Status:** Done (2026-09-16). `daari report --format json` dumps the same
+payload as `GET /v1/daari/report` (including `request_quotas` / `frontier`).
+Docs: [savings-report.md](developer/guides/observability/savings-report.md).
+Covered by `tests/unit/test_render_markdown.py`.
+
 ---
 
 ## How to update
