@@ -147,6 +147,19 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 10,
+      "title": "Soft warnings by kind (before hard 402/429)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(daari_soft_warnings_total[5m]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
