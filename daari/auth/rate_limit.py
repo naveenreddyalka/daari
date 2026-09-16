@@ -64,7 +64,9 @@ class RateLimitDecision:
 class CounterBackend(Protocol):
     name: str
 
-    def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int: ...
+    def increment(
+        self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS
+    ) -> int: ...
 
 
 class MemoryCounterBackend:
@@ -196,6 +198,7 @@ class RateLimiter:
         self._state_lock = threading.Lock()
         self._degraded = False
         self._degraded_logged = False
+        self._degrade_mode: str | None = None
         self._last_probe = 0.0
         self._probe_interval = max(0.0, float(probe_interval_seconds))
 
@@ -236,6 +239,8 @@ class RateLimiter:
 
         with self._state_lock:
             self._degraded = True
+            mode = "fail_open" if self.fail_open else "sqlite_fallback"
+            self._degrade_mode = mode
             if self.fail_open:
                 # Keep primary as named backend for diagnostics; counting skipped.
                 pass
@@ -244,7 +249,6 @@ class RateLimiter:
             should_log = not self._degraded_logged
             if should_log:
                 self._degraded_logged = True
-            mode = "fail_open" if self.fail_open else "sqlite_fallback"
         if should_log:
             log_gateway_event(
                 "rate_limit.degraded",
@@ -278,6 +282,7 @@ class RateLimiter:
             self.backend = self._primary
             self._degraded = False
             self._degraded_logged = False
+            self._degrade_mode = None
         log_gateway_event("rate_limit.recovered", {"backend": "redis"})
 
     def _increment(self, key: str, amount: int) -> int:
@@ -427,9 +432,13 @@ class RateLimiter:
             self._cond.notify()
 
     def snapshot(self) -> dict[str, Any]:
+        with self._state_lock:
+            degraded = self._degraded
+            mode = self._degrade_mode
         return {
             "backend": self.backend.name,
-            "degraded": self.degraded,
+            "degraded": degraded,
+            "degrade_mode": mode,
             "rpm_limit": self.default_rpm,
             "tpm_limit": self.default_tpm,
             "in_flight": self.in_flight,

@@ -173,6 +173,19 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 12,
+      "title": "Rate-limit Redis degraded",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        {
+          "expr": "daari_rate_limit_degraded",
+          "legendFormat": "{{mode}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
