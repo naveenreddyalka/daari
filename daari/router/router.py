@@ -1864,385 +1864,460 @@ class Router:
                     draft_used = True
                     add_step("draft_injected", similarity=round(nearest_similarity, 4))
 
+        # L0 singleflight for stream path (#506); shares map with non-stream `do()`.
+        stream_flight_key: str | None = None
+        stream_flight_fut: asyncio.Future | None = None
+        stream_flight_result: InternalResponse | None = None
+        if cacheable:
+            stream_flight_key = cache_key(request)
+            stream_flight_fut, is_leader = self._l0_singleflight.begin(stream_flight_key)
+            if not is_leader:
+                try:
+                    shared = await stream_flight_fut
+                except Exception as exc:
+                    yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    add_step("served", tier=None, error=str(exc)[:120])
+                    finish_trace(None)
+                    return
+                if isinstance(shared, InternalResponse) and (shared.content or "").strip():
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
+                    if self.usage_ledger is not None:
+                        self.usage_ledger.record(
+                            tier="L0",
+                            cache_hit=True,
+                            prompt_chars=prompt_chars,
+                            completion_chars=len(shared.content),
+                            client_id=request.meta.client_id,
+                            user_id=request.meta.user,
+                        )
+                    log_gateway_event(
+                        "stream_cache_hit",
+                        {"tier": "L0", "model": client_model, "singleflight": True},
+                    )
+                    outcome.note("L0", cache_hit=True)
+                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={'content': shared.content}))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                    yield usage_chunk(len(shared.content), stream_tier="L0")
+                    yield "data: [DONE]\n\n"
+                    add_step(
+                        "served",
+                        tier="L0",
+                        cache_hit=True,
+                        latency_ms=latency_ms,
+                        singleflight=True,
+                    )
+                    finish_trace("L0")
+                    return
+                stream_flight_fut, _ = self._l0_singleflight.begin(stream_flight_key)
+
         last_error: Exception | None = None
-        for tier_index, tier in enumerate(tier_chain):
-            stream_slot = None
-            stream_executor = self._executor_for_tier(tier)
-            if self.local_pool is not None:
-                stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
-                stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
-                self.local_pool.acquire(stream_slot)
-                add_step(
-                    "backend_pick",
-                    tier=tier,
-                    backend_id=stream_slot.id,
-                    strategy=self.local_pool.strategy,
-                    stream=True,
-                )
-            ollama_model = stream_executor.default_model
-            stream_request.model = ollama_model
-            add_step("tier_attempt", tier=tier, stream=True)
-            log_gateway_event("stream_attempt", {"tier": tier, "ollama_model": ollama_model})
+        try:
+            last_error = None
+            for tier_index, tier in enumerate(tier_chain):
+                stream_slot = None
+                stream_executor = self._executor_for_tier(tier)
+                if self.local_pool is not None:
+                    stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
+                    stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
+                    self.local_pool.acquire(stream_slot)
+                    add_step(
+                        "backend_pick",
+                        tier=tier,
+                        backend_id=stream_slot.id,
+                        strategy=self.local_pool.strategy,
+                        stream=True,
+                    )
+                ollama_model = stream_executor.default_model
+                stream_request.model = ollama_model
+                add_step("tier_attempt", tier=tier, stream=True)
+                log_gateway_event("stream_attempt", {"tier": tier, "ollama_model": ollama_model})
 
-            role_chunk = f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-            pending_chunks: list[str] = []
-            tier_text_parts: list[str] = []
-            content_sent = False
-            tool_calls_sent = False
-            tier_completion_chars = 0
-            reported_usage: tuple[int, int] | None = None
-            first_delta_at: float | None = None
-            last_delta_at: float | None = None
-            delta_count = 0
-            try:
-                async for event in stream_executor.stream(stream_request):
-                    if event.get("prompt_eval_count") is not None:
-                        # Ollama reports real counts on the terminal event (#156).
-                        reported_usage = (
-                            int(event.get("prompt_eval_count") or 0),
-                            int(event.get("eval_count") or 0),
-                        )
-                    message = event.get("message", {})
-                    delta = message.get("content", "")
-                    raw_tool_calls = message.get("tool_calls")
-                    if raw_tool_calls and agent_flow:
-                        if not content_sent:
-                            pending_chunks.append(role_chunk)
-                            content_sent = True
-                        tool_calls_sent = True
-                        deltas = _openai_tool_call_deltas(raw_tool_calls)
-                        pending_chunks.append(
-                            f"data: {json.dumps(chunk_payload(delta={'tool_calls': deltas}))}\n\n"
-                        )
-                    elif not delta and raw_tool_calls:
-                        # Ask mode: model ignored the no-tools hint; degrade to text.
-                        delta = json.dumps(raw_tool_calls)
-                    if delta:
-                        if not content_sent:
-                            pending_chunks.append(role_chunk)
-                            content_sent = True
-                        last_delta_at = time.perf_counter()
-                        if first_delta_at is None:
-                            first_delta_at = last_delta_at
-                        delta_count += 1
-                        tier_completion_chars += len(delta)
-                        tier_text_parts.append(delta)
-                        pending_chunks.append(
-                            f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
-                        )
-                    if event.get("done"):
-                        break
-            except Exception as exc:
-                last_error = exc
-                log_gateway_event(
-                    "stream_attempt_failed",
-                    {"tier": tier, "ollama_model": ollama_model, "error": str(exc)[:300]},
-                )
-                if tier_index < len(tier_chain) - 1:
-                    from daari.router.failover import is_context_length_error
+                role_chunk = f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                pending_chunks: list[str] = []
+                tier_text_parts: list[str] = []
+                content_sent = False
+                tool_calls_sent = False
+                tier_completion_chars = 0
+                reported_usage: tuple[int, int] | None = None
+                first_delta_at: float | None = None
+                last_delta_at: float | None = None
+                delta_count = 0
+                try:
+                    async for event in stream_executor.stream(stream_request):
+                        if event.get("prompt_eval_count") is not None:
+                            # Ollama reports real counts on the terminal event (#156).
+                            reported_usage = (
+                                int(event.get("prompt_eval_count") or 0),
+                                int(event.get("eval_count") or 0),
+                            )
+                        message = event.get("message", {})
+                        delta = message.get("content", "")
+                        raw_tool_calls = message.get("tool_calls")
+                        if raw_tool_calls and agent_flow:
+                            if not content_sent:
+                                pending_chunks.append(role_chunk)
+                                content_sent = True
+                            tool_calls_sent = True
+                            deltas = _openai_tool_call_deltas(raw_tool_calls)
+                            pending_chunks.append(
+                                f"data: {json.dumps(chunk_payload(delta={'tool_calls': deltas}))}\n\n"
+                            )
+                        elif not delta and raw_tool_calls:
+                            # Ask mode: model ignored the no-tools hint; degrade to text.
+                            delta = json.dumps(raw_tool_calls)
+                        if delta:
+                            if not content_sent:
+                                pending_chunks.append(role_chunk)
+                                content_sent = True
+                            last_delta_at = time.perf_counter()
+                            if first_delta_at is None:
+                                first_delta_at = last_delta_at
+                            delta_count += 1
+                            tier_completion_chars += len(delta)
+                            tier_text_parts.append(delta)
+                            pending_chunks.append(
+                                f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+                            )
+                        if event.get("done"):
+                            break
+                except Exception as exc:
+                    last_error = exc
+                    log_gateway_event(
+                        "stream_attempt_failed",
+                        {"tier": tier, "ollama_model": ollama_model, "error": str(exc)[:300]},
+                    )
+                    if tier_index < len(tier_chain) - 1:
+                        from daari.router.failover import is_context_length_error
 
-                    if is_context_length_error(exc):
-                        add_step(
-                            "context_length_failover",
-                            from_tier=tier,
-                            to_tier=tier_chain[tier_index + 1],
-                            reason="context_too_long",
-                        )
-                    else:
-                        add_step("fallback", from_tier=tier, error=str(exc)[:120])
+                        if is_context_length_error(exc):
+                            add_step(
+                                "context_length_failover",
+                                from_tier=tier,
+                                to_tier=tier_chain[tier_index + 1],
+                                reason="context_too_long",
+                            )
+                        else:
+                            add_step("fallback", from_tier=tier, error=str(exc)[:120])
+                        continue
+                    yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+                    yield "data: [DONE]\n\n"
+                    add_step("served", tier=None, error=str(exc)[:120])
+                    if getattr(self, "otel_enabled", False) and trace is not None:
+                        from daari.observability.otel import export_trace
+
+                        export_trace(trace, request=request, error_type=type(exc).__name__)
+                    finish_trace(None)
+                    return
+                finally:
+                    if stream_slot is not None and self.local_pool is not None:
+                        self.local_pool.release(stream_slot)
+
+                if not content_sent and tier_index < len(tier_chain) - 1:
+                    add_step("fallback", from_tier=tier, error="empty_response")
+                    log_gateway_event("stream_empty_retry", {"tier": tier, "ollama_model": ollama_model})
                     continue
-                yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+
+                if tier_index > 0 and content_sent:
+                    log_gateway_event("stream_fallback_ok", {"tier": tier, "ollama_model": ollama_model})
+
+                streamed_text = "".join(tier_text_parts)
+                served = InternalResponse(
+                    content=streamed_text,
+                    model=ollama_model,
+                    daari_meta=DaariMeta(
+                        tier=tier,
+                        cache_hit=False,
+                        executor="ollama",
+                        provider_id=f"ollama:{tier.lower()}",
+                        model=ollama_model,
+                        input_tokens=reported_usage[0] if reported_usage else None,
+                        output_tokens=reported_usage[1] if reported_usage else None,
+                        usage_estimated=reported_usage is None,
+                    ),
+                )
+                # A low-confidence answer escalates to L6. When nothing needs the
+                # complete text first, relay the frontier SSE straight through so
+                # the client sees tokens as they arrive (#155).
+                confidence = score_l3_confidence(streamed_text)
+                threshold = self._confidence_threshold_for(stream_request, profile)
+                if not tool_calls_sent and self._can_relay_frontier_stream(
+                    stream_request, streamed_text, confidence, threshold
+                ):
+                    budget_state = self._frontier_budget_state()
+                    add_step("escalate", to="L6", local_confidence=confidence, relay=True)
+                    log_gateway_event("stream_frontier_relay", {"from": tier, "to": "L6"})
+                    relayed: list[str] = []
+                    scanner = self._incremental_output_scanner()
+                    outcome.note("L6", draft=draft_used)
+                    try:
+                        l6_request = await self._frontier_request(stream_request)
+                        yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                        async for delta in self.frontier.stream(
+                            l6_request, escalated_from=tier, local_confidence=confidence
+                        ):
+                            relayed.append(delta)
+                            if scanner is not None:
+                                release = scanner.push(delta)
+                                if release.text:
+                                    yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                                if release.blocked:
+                                    self._record_stream_guardrail(scanner)
+                                    break
+                            else:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+                    except Exception as exc:
+                        log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
+                        # Nothing was emitted yet if the failure came before the
+                        # first delta; otherwise the partial answer stands.
+                        if not relayed:
+                            if scanner is not None:
+                                release = scanner.push(streamed_text)
+                                if release.text:
+                                    yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                                flush = scanner.flush()
+                                if flush.text:
+                                    yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                                self._record_stream_guardrail(scanner)
+                                relayed.append(scanner.scanned_text)
+                            else:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
+                                relayed.append(streamed_text)
+                    if scanner is not None and not scanner.blocked:
+                        flush = scanner.flush()
+                        if flush.text:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                        self._record_stream_guardrail(scanner)
+                        relayed_text = scanner.scanned_text
+                    elif scanner is not None:
+                        relayed_text = scanner.scanned_text
+                    else:
+                        relayed_text = "".join(relayed)
+                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                    yield usage_chunk(len(relayed_text), stream_tier="L6")
+                    yield "data: [DONE]\n\n"
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
+                    self.metrics.record_escalation()
+                    if budget_state == "soft":
+                        add_step("budget_check", exceeded=False, soft=True)
+                    if self.usage_ledger is not None:
+                        self.usage_ledger.record(
+                            tier="L6",
+                            cache_hit=False,
+                            prompt_chars=prompt_chars,
+                            completion_chars=len(relayed_text),
+                            client_id=request.meta.client_id,
+                            user_id=request.meta.user,
+                        )
+                    add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+                    stream_flight_result = InternalResponse(
+                        content=relayed_text,
+                        model=served.model,
+                        daari_meta=DaariMeta(
+                            tier="L6",
+                            cache_hit=False,
+                            executor="frontier",
+                            provider_id="frontier",
+                        ),
+                    )
+                    finish_trace("L6")
+                    return
+
+                if not tool_calls_sent and streamed_text.strip():
+                    try:
+                        escalated = await self._maybe_escalate(
+                            stream_request, served, started, profile=profile, local_ladder=False
+                        )
+                    except Exception:
+                        escalated = served
+                    if escalated.daari_meta.tier != tier and escalated.content.strip():
+                        add_step(
+                            "stream_escalated", from_tier=tier, to_tier=escalated.daari_meta.tier
+                        )
+                        log_gateway_event(
+                            "stream_escalated",
+                            {"from": tier, "to": escalated.daari_meta.tier},
+                        )
+                        served = escalated
+                # Output guardrails: buffered scans the full answer before the first
+                # client byte; incremental replays deltas through a holdback scanner
+                # so secrets spanning chunks never leak (#154, #375).
+                scanner = (
+                    self._incremental_output_scanner()
+                    if not tool_calls_sent and served.content.strip()
+                    else None
+                )
+                incremental_emitted = False
+                if scanner is not None and served.content == streamed_text:
+                    # Local (or non-rewritten escalate) text — scan delta-by-delta.
+                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    for part in tier_text_parts:
+                        release = scanner.push(part)
+                        if release.text:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                        if release.blocked:
+                            break
+                    if not scanner.blocked:
+                        flush = scanner.flush()
+                        if flush.text:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                    self._record_stream_guardrail(scanner)
+                    served = served.model_copy(update={"content": scanner.scanned_text})
+                    incremental_emitted = True
+                elif scanner is not None:
+                    # Escalated answer arrived as one blob — still scan with holdback.
+                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    release = scanner.push(served.content)
+                    if release.text:
+                        yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
+                    if not scanner.blocked:
+                        flush = scanner.flush()
+                        if flush.text:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
+                    self._record_stream_guardrail(scanner)
+                    served = served.model_copy(update={"content": scanner.scanned_text})
+                    incremental_emitted = True
+                elif not tool_calls_sent and served.content.strip():
+                    served = self._apply_output_policy(served)
+
+                served_tier = served.daari_meta.tier or tier
+                served_model = served.daari_meta.model or served.model or ollama_model
+                self._finish_session_pin(request, served)
+                rewritten = served.content != streamed_text
+                completion_chars = len(served.content) if rewritten else tier_completion_chars
+                outcome.note(served_tier, draft=draft_used)
+                if incremental_emitted:
+                    pass  # content already yielded through the scanner
+                elif rewritten:
+                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
+                elif content_sent:
+                    for chunk in pending_chunks:
+                        yield chunk
+                else:
+                    yield role_chunk
+                finish_reason = "tool_calls" if tool_calls_sent else "stop"
+                yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
+                # One usage figure feeds the client-visible usage chunk and the
+                # ledger row, so both see the provider's final count once (#320).
+                stream_in, stream_out, usage_estimated = response_token_usage(served, prompt_chars)
+                yield usage_chunk(
+                    completion_chars,
+                    tokens=None if usage_estimated else (stream_in, stream_out),
+                    stream_tier=served_tier,
+                    served=served,
+                )
                 yield "data: [DONE]\n\n"
-                add_step("served", tier=None, error=str(exc)[:120])
+
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                tier = served_tier
+                ollama_model = served_model
+                streamed_text = served.content
+                self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
+                if self.usage_ledger is not None:
+                    self.usage_ledger.record(
+                        tier=tier,
+                        cache_hit=False,
+                        prompt_chars=prompt_chars,
+                        completion_chars=completion_chars,
+                        client_id=request.meta.client_id,
+                            user_id=request.meta.user,
+                        model=served.daari_meta.model or served.model,
+                        provider=served.daari_meta.provider_id,
+                        input_tokens=stream_in,
+                        output_tokens=stream_out,
+                    )
+                if self.feedback_store is not None:
+                    try:
+                        self.feedback_store.record_outcome(
+                            trace_id=trace.trace_id if trace is not None else None,
+                            category=profile.category,
+                            complexity=profile.complexity,
+                            tier=tier,
+                            confidence=served.daari_meta.confidence,
+                            escalated=served.daari_meta.escalated_from is not None,
+                            latency_ms=latency_ms,
+                        )
+                    except Exception:
+                        pass
+                if not tool_calls_sent:
+                    if not served.daari_meta.tier:
+                        served.daari_meta.tier = tier
+                    self._maybe_tier_shadow(request, profile, served)
+                if (
+                    self.example_store is not None
+                    and not tool_calls_sent
+                    and not request.tools
+                    and not request.has_tool_calls_in_history
+                    and streamed_text.strip()
+                ):
+                    try:
+                        self.example_store.record(
+                            trace_id=trace.trace_id if trace is not None else None,
+                            category=profile.category,
+                            complexity=profile.complexity,
+                            tier=tier,
+                            model=ollama_model,
+                            messages=[
+                                {"role": message.role, "content": message.content}
+                                for message in request.messages
+                                if message.content
+                            ],
+                            completion=streamed_text,
+                        )
+                    except Exception:
+                        pass
+                if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
+                    streamed_response = served.model_copy(deep=True)
+                    streamed_response.daari_meta.latency_ms = latency_ms
+                    try:
+                        self.cache.put(request, streamed_response)
+                    except Exception:
+                        pass
+                    # L1 write-back happens after [DONE] was yielded, so it never
+                    # delays chunk delivery to the client. Agent turns stay off L1.
+                    if not agent_flow:
+                        try:
+                            await self.semantic_cache.put(request, streamed_response)
+                        except Exception:
+                            pass
+                add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
                 if getattr(self, "otel_enabled", False) and trace is not None:
                     from daari.observability.otel import export_trace
 
-                    export_trace(trace, request=request, error_type=type(exc).__name__)
-                finish_trace(None)
+                    first_chunk_s = (
+                        first_delta_at - started if first_delta_at is not None else None
+                    )
+                    per_chunk_s = None
+                    if first_delta_at is not None and last_delta_at is not None and delta_count > 1:
+                        per_chunk_s = (last_delta_at - first_delta_at) / (delta_count - 1)
+                    served.daari_meta.latency_ms = latency_ms
+                    export_trace(
+                        trace,
+                        request=request,
+                        response=served,
+                        time_to_first_chunk=first_chunk_s,
+                        time_per_output_chunk=per_chunk_s,
+                    )
+                stream_flight_result = served.model_copy(deep=True)
+                finish_trace(tier)
                 return
-            finally:
-                if stream_slot is not None and self.local_pool is not None:
-                    self.local_pool.release(stream_slot)
 
-            if not content_sent and tier_index < len(tier_chain) - 1:
-                add_step("fallback", from_tier=tier, error="empty_response")
-                log_gateway_event("stream_empty_retry", {"tier": tier, "ollama_model": ollama_model})
-                continue
-
-            if tier_index > 0 and content_sent:
-                log_gateway_event("stream_fallback_ok", {"tier": tier, "ollama_model": ollama_model})
-
-            streamed_text = "".join(tier_text_parts)
-            served = InternalResponse(
-                content=streamed_text,
-                model=ollama_model,
-                daari_meta=DaariMeta(
-                    tier=tier,
-                    cache_hit=False,
-                    executor="ollama",
-                    provider_id=f"ollama:{tier.lower()}",
-                    model=ollama_model,
-                    input_tokens=reported_usage[0] if reported_usage else None,
-                    output_tokens=reported_usage[1] if reported_usage else None,
-                    usage_estimated=reported_usage is None,
-                ),
-            )
-            # A low-confidence answer escalates to L6. When nothing needs the
-            # complete text first, relay the frontier SSE straight through so
-            # the client sees tokens as they arrive (#155).
-            confidence = score_l3_confidence(streamed_text)
-            threshold = self._confidence_threshold_for(stream_request, profile)
-            if not tool_calls_sent and self._can_relay_frontier_stream(
-                stream_request, streamed_text, confidence, threshold
-            ):
-                budget_state = self._frontier_budget_state()
-                add_step("escalate", to="L6", local_confidence=confidence, relay=True)
-                log_gateway_event("stream_frontier_relay", {"from": tier, "to": "L6"})
-                relayed: list[str] = []
-                scanner = self._incremental_output_scanner()
-                outcome.note("L6", draft=draft_used)
-                try:
-                    l6_request = await self._frontier_request(stream_request)
-                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                    async for delta in self.frontier.stream(
-                        l6_request, escalated_from=tier, local_confidence=confidence
-                    ):
-                        relayed.append(delta)
-                        if scanner is not None:
-                            release = scanner.push(delta)
-                            if release.text:
-                                yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
-                            if release.blocked:
-                                self._record_stream_guardrail(scanner)
-                                break
-                        else:
-                            yield f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
-                except Exception as exc:
-                    log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
-                    # Nothing was emitted yet if the failure came before the
-                    # first delta; otherwise the partial answer stands.
-                    if not relayed:
-                        if scanner is not None:
-                            release = scanner.push(streamed_text)
-                            if release.text:
-                                yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
-                            flush = scanner.flush()
-                            if flush.text:
-                                yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
-                            self._record_stream_guardrail(scanner)
-                            relayed.append(scanner.scanned_text)
-                        else:
-                            yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
-                            relayed.append(streamed_text)
-                if scanner is not None and not scanner.blocked:
-                    flush = scanner.flush()
-                    if flush.text:
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
-                    self._record_stream_guardrail(scanner)
-                    relayed_text = scanner.scanned_text
-                elif scanner is not None:
-                    relayed_text = scanner.scanned_text
+        finally:
+            if stream_flight_fut is not None and stream_flight_key is not None and not stream_flight_fut.done():
+                if stream_flight_result is not None:
+                    self._l0_singleflight.finish(
+                        stream_flight_key, stream_flight_fut, result=stream_flight_result
+                    )
                 else:
-                    relayed_text = "".join(relayed)
-                yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                yield usage_chunk(len(relayed_text), stream_tier="L6")
-                yield "data: [DONE]\n\n"
-                latency_ms = int((time.perf_counter() - started) * 1000)
-                self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
-                self.metrics.record_escalation()
-                if budget_state == "soft":
-                    add_step("budget_check", exceeded=False, soft=True)
-                if self.usage_ledger is not None:
-                    self.usage_ledger.record(
-                        tier="L6",
-                        cache_hit=False,
-                        prompt_chars=prompt_chars,
-                        completion_chars=len(relayed_text),
-                        client_id=request.meta.client_id,
-                        user_id=request.meta.user,
+                    self._l0_singleflight.finish(
+                        stream_flight_key,
+                        stream_flight_fut,
+                        exc=last_error or RuntimeError("stream fill abandoned"),
                     )
-                add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
-                finish_trace("L6")
-                return
-
-            if not tool_calls_sent and streamed_text.strip():
-                try:
-                    escalated = await self._maybe_escalate(
-                        stream_request, served, started, profile=profile, local_ladder=False
-                    )
-                except Exception:
-                    escalated = served
-                if escalated.daari_meta.tier != tier and escalated.content.strip():
-                    add_step(
-                        "stream_escalated", from_tier=tier, to_tier=escalated.daari_meta.tier
-                    )
-                    log_gateway_event(
-                        "stream_escalated",
-                        {"from": tier, "to": escalated.daari_meta.tier},
-                    )
-                    served = escalated
-            # Output guardrails: buffered scans the full answer before the first
-            # client byte; incremental replays deltas through a holdback scanner
-            # so secrets spanning chunks never leak (#154, #375).
-            scanner = (
-                self._incremental_output_scanner()
-                if not tool_calls_sent and served.content.strip()
-                else None
-            )
-            incremental_emitted = False
-            if scanner is not None and served.content == streamed_text:
-                # Local (or non-rewritten escalate) text — scan delta-by-delta.
-                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                for part in tier_text_parts:
-                    release = scanner.push(part)
-                    if release.text:
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
-                    if release.blocked:
-                        break
-                if not scanner.blocked:
-                    flush = scanner.flush()
-                    if flush.text:
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
-                self._record_stream_guardrail(scanner)
-                served = served.model_copy(update={"content": scanner.scanned_text})
-                incremental_emitted = True
-            elif scanner is not None:
-                # Escalated answer arrived as one blob — still scan with holdback.
-                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                release = scanner.push(served.content)
-                if release.text:
-                    yield f"data: {json.dumps(chunk_payload(delta={'content': release.text}))}\n\n"
-                if not scanner.blocked:
-                    flush = scanner.flush()
-                    if flush.text:
-                        yield f"data: {json.dumps(chunk_payload(delta={'content': flush.text}))}\n\n"
-                self._record_stream_guardrail(scanner)
-                served = served.model_copy(update={"content": scanner.scanned_text})
-                incremental_emitted = True
-            elif not tool_calls_sent and served.content.strip():
-                served = self._apply_output_policy(served)
-
-            served_tier = served.daari_meta.tier or tier
-            served_model = served.daari_meta.model or served.model or ollama_model
-            self._finish_session_pin(request, served)
-            rewritten = served.content != streamed_text
-            completion_chars = len(served.content) if rewritten else tier_completion_chars
-            outcome.note(served_tier, draft=draft_used)
-            if incremental_emitted:
-                pass  # content already yielded through the scanner
-            elif rewritten:
-                yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                yield f"data: {json.dumps(chunk_payload(delta={'content': served.content}))}\n\n"
-            elif content_sent:
-                for chunk in pending_chunks:
-                    yield chunk
-            else:
-                yield role_chunk
-            finish_reason = "tool_calls" if tool_calls_sent else "stop"
-            yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
-            # One usage figure feeds the client-visible usage chunk and the
-            # ledger row, so both see the provider's final count once (#320).
-            stream_in, stream_out, usage_estimated = response_token_usage(served, prompt_chars)
-            yield usage_chunk(
-                completion_chars,
-                tokens=None if usage_estimated else (stream_in, stream_out),
-                stream_tier=served_tier,
-                served=served,
-            )
-            yield "data: [DONE]\n\n"
-
-            latency_ms = int((time.perf_counter() - started) * 1000)
-            tier = served_tier
-            ollama_model = served_model
-            streamed_text = served.content
-            self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
-            if self.usage_ledger is not None:
-                self.usage_ledger.record(
-                    tier=tier,
-                    cache_hit=False,
-                    prompt_chars=prompt_chars,
-                    completion_chars=completion_chars,
-                    client_id=request.meta.client_id,
-                        user_id=request.meta.user,
-                    model=served.daari_meta.model or served.model,
-                    provider=served.daari_meta.provider_id,
-                    input_tokens=stream_in,
-                    output_tokens=stream_out,
-                )
-            if self.feedback_store is not None:
-                try:
-                    self.feedback_store.record_outcome(
-                        trace_id=trace.trace_id if trace is not None else None,
-                        category=profile.category,
-                        complexity=profile.complexity,
-                        tier=tier,
-                        confidence=served.daari_meta.confidence,
-                        escalated=served.daari_meta.escalated_from is not None,
-                        latency_ms=latency_ms,
-                    )
-                except Exception:
-                    pass
-            if not tool_calls_sent:
-                if not served.daari_meta.tier:
-                    served.daari_meta.tier = tier
-                self._maybe_tier_shadow(request, profile, served)
-            if (
-                self.example_store is not None
-                and not tool_calls_sent
-                and not request.tools
-                and not request.has_tool_calls_in_history
-                and streamed_text.strip()
-            ):
-                try:
-                    self.example_store.record(
-                        trace_id=trace.trace_id if trace is not None else None,
-                        category=profile.category,
-                        complexity=profile.complexity,
-                        tier=tier,
-                        model=ollama_model,
-                        messages=[
-                            {"role": message.role, "content": message.content}
-                            for message in request.messages
-                            if message.content
-                        ],
-                        completion=streamed_text,
-                    )
-                except Exception:
-                    pass
-            if cacheable and not tool_calls_sent and streamed_text.strip() and tier in {"L3", "L4", "L5"}:
-                streamed_response = served.model_copy(deep=True)
-                streamed_response.daari_meta.latency_ms = latency_ms
-                try:
-                    self.cache.put(request, streamed_response)
-                except Exception:
-                    pass
-                # L1 write-back happens after [DONE] was yielded, so it never
-                # delays chunk delivery to the client. Agent turns stay off L1.
-                if not agent_flow:
-                    try:
-                        await self.semantic_cache.put(request, streamed_response)
-                    except Exception:
-                        pass
-            add_step("served", tier=tier, cache_hit=False, latency_ms=latency_ms)
-            if getattr(self, "otel_enabled", False) and trace is not None:
-                from daari.observability.otel import export_trace
-
-                first_chunk_s = (
-                    first_delta_at - started if first_delta_at is not None else None
-                )
-                per_chunk_s = None
-                if first_delta_at is not None and last_delta_at is not None and delta_count > 1:
-                    per_chunk_s = (last_delta_at - first_delta_at) / (delta_count - 1)
-                served.daari_meta.latency_ms = latency_ms
-                export_trace(
-                    trace,
-                    request=request,
-                    response=served,
-                    time_to_first_chunk=first_chunk_s,
-                    time_per_output_chunk=per_chunk_s,
-                )
-            finish_trace(tier)
-            return
 
         end_trace()
         if last_error is not None:

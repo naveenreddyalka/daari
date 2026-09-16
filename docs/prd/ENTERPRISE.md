@@ -11,27 +11,20 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-15 late)
+## Where daari stands (verified in-tree, 2026-09-16)
 
-**Fleet-completeness sprint closed the same day it opened.** #481–#485 all
-merged (PRs #490–#494): Postgres Responses, Redis session pins + cost rollup,
-Postgres hash-chained audit, signed budget webhooks, W3C traceparent
-propagation. Helm/doctor/bench hygiene (#476–#478) shipped earlier the same
-day. The backlog drained to empty mid-session; this refill keeps the loop fed.
+**Late-15 leftovers all shipped** (profile pins, doctor audit/webhook,
+Responses retention, request-quota soft band, L0 singleflight). Mid-session
+drain emptied the backlog again; this refill keeps the loop fed.
 
-**Positioning:** LiteLLM’s stable line advanced again — **v1.100.0 (2026-09-06)**
-adds access-group budgets, custom auto-router tiers, MCP token introspection,
-and `GET /public/v1/model_hub`; v1.101’s routing offensive +
-`/v1/responses/input_tokens` + OpenAI WIF remain the parity bar. daari’s
-routing stays Apache 2.0 (LiteLLM meters `auto_router` behind enterprise).
-Portkey / Kong / OpenRouter / Ollama / vLLM / MCP SEP-1933: no material
-delta since the morning scan.
+**Positioning:** LiteLLM stable **v1.100.1** (2026-09-10) is maintenance on
+v1.100.0 (access-group budgets, custom auto-router tiers, MCP introspection,
+model hub). v1.101 / v1.102 remain RC for `/v1/responses/input_tokens` and
+routing offensive. Portkey / Kong / OpenRouter / Ollama / MCP SEP-1933: flat.
 
-**Inward theme of this refill: finish the leftovers and raise the soft
-edges.** Profile pins were skipped when session affinity moved to Redis;
-doctor still doesn’t warn on sqlite audit under fleet signals or unsigned
-webhooks; Responses grow without retention; request-count quotas hard-402
-with no soft band; L0 cold misses stampede under concurrent identical keys.
+**Inward theme:** close stream-path cache stampede leftover; open Responses
+token-count parity; start TTFT observability; facade-wide soft quota warn;
+doctor HA footgun for disk L0 under replicas.
 
 ---
 
@@ -39,37 +32,38 @@ with no soft band; L0 cold misses stampede under concurrent identical keys.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Profile pins still per-process** — #482 moved session pins to Redis; `ProfilePinStore` left behind | 3 | 2 | LiteLLM (central sessions) | Same Redis + fail-open pattern; agent tool loops skip re-classify across replicas | **Filed** (P2) |
-| 2 | **Doctor blind to audit backend + unsigned webhooks** — #478 covered batches/files only | 3 | 1 | — | Warn only when fleet signals / webhook URL already set; SQLite stays fine for single-node | **Filed** (P2) |
-| 3 | **Stored Responses never prune** — Files got retention (#456); Responses accumulate forever | 3 | 2 | LiteLLM (TTL everywhere) | Opt-in local retention; reuse existing sweep | **Filed** (P2) |
-| 4 | **Request-count quotas have no soft warning/alert** — USD soft-band only; local $0 traffic cliffs at 402 | 3 | 2 | LiteLLM budgets | Soft signal keeps agents on L3–L5 before the hard stop | **Filed** (P2) |
-| 5 | **L0 exact-cache stampede** — concurrent identical cold misses all hit upstream | 3 | 2 | GPTCache / LiteLLM singleflight | One in-flight fill + fan-out maximizes $0 hits under agent fan-out | **Filed** (P2) |
-| 6 | **`/v1/responses/input_tokens`** — LiteLLM v1.101 stable | 2 | 2 | LiteLLM | Reuse local estimate / Anthropic count path | Watch (client ask) |
-| 7 | **Percentile-TTFT routing** — LiteLLM still partly rc | 2 | 3 | LiteLLM | Need Prometheus TTFT histograms first | Watch |
-| 8 | **WIF upstream provider auth** | 3 | 3 | Portkey | `secret://oauth` covers most | Watch |
-| 9 | **MCP agent identity (SEP-1933)** | 3 | 3 | MCP Tier-1 SDKs | Draft | Watch |
-| 10 | **SOC 2 / Gemini facade / A2A / admin UI / images / realtime** | 2–3 | 2–5 | Kong / LiteLLM | No new client demand | Watch / non-goal |
+| 1 | **Stream path skips L0 singleflight** — #499 covered non-stream only | 3 | 2 | GPTCache / LiteLLM | Same in-process map; Cursor streams by default | **Filed** (P2) |
+| 2 | **`POST /v1/responses/input_tokens`** — LiteLLM stable parity | 2 | 2 | LiteLLM | Local estimate / Anthropic count; $0 | **Filed** (P2) |
+| 3 | **No Prometheus TTFT histogram** — blocks percentile-TTFT routing | 2 | 2 | LiteLLM | Instrument local stream first-byte | **Filed** (P2) |
+| 4 | **Request-quota soft warn OpenAI-only** — Anthropic/Responses miss `daari_meta` | 3 | 1 | — | One soft signal across facades | **Filed** (P2) |
+| 5 | **Doctor quiet on multi-replica disk L0** — fleet still stamps per pod | 2 | 1 | — | Warn when replicas>1 without Redis cache | **Filed** (P3) |
+| 6 | **Percentile-TTFT routing** | 2 | 3 | LiteLLM | Needs TTFT histograms first | Watch |
+| 7 | **WIF upstream provider auth** | 3 | 3 | Portkey | `secret://oauth` covers most | Watch |
+| 8 | **MCP agent identity (SEP-1933)** | 3 | 3 | MCP Tier-1 SDKs | Draft | Watch |
+| 9 | **SOC 2 / Gemini facade / A2A / admin UI / images / realtime** | 2–3 | 2–5 | Kong / LiteLLM | No new client demand | Watch / non-goal |
 
-Pruned this run: #476–#485 rows (all shipped same day).
+Pruned this run: late-15 filed rows (all shipped 2026-09-16 morning).
 
-Open backlog after this run: five new P2 issues from the late-15 refill
-(profile pins, doctor follow-on, Responses retention, request-quota soft
-band, L0 singleflight).
+Open backlog after this run: four P2 + one P3 from the 2026-09-16 refill.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Close the Redis leftover** — profile pins must share the same fleet path as session pins.
-2. **Honest fleet doctor** — audit backend + signed webhook checks so operators see config lies early.
-3. **Bounded local artifact stores** — Responses retention parity with Files.
-4. **Soft capacity signals** — request-quota warnings/alerts before the 402 cliff.
-5. **Cache stampede resistance** — L0 singleflight under concurrent identical misses.
+1. **Stream L0 singleflight** — Cursor-class clients stop stampeding on stream.
+2. **Responses input_tokens** — count without a full round-trip.
+3. **TTFT metrics** — foundation for percentile local routing.
+4. **Facade-wide soft quotas** — Anthropic/Responses match OpenAI soft warn.
+5. **Honest multi-replica doctor** — disk L0 under replicas is a loud warn.
 
 ---
 
 ## Changelog
 
+- **2026-09-16** — Late-15 leftovers shipped (PRs #501–#505). Backlog empty;
+  refilled five issues (stream singleflight, Responses input_tokens, TTFT
+  histogram, facade soft quota, doctor multi-replica Redis). Outward: LiteLLM
+  v1.100.1 noted; v1.101/102 still RC. Portkey/Kong/OpenRouter flat.
 - **2026-09-15 (late)** — Same-day fleet sprint closed (#481–#485 → PRs
   #490–#494; #476–#478 earlier). Backlog empty mid-session; refilled five P2
   leftovers (profile pins, doctor audit/webhook warnings, Responses
