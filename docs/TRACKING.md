@@ -2488,6 +2488,15 @@ already middleware-wide. Docs:
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
 Covered by `tests/unit/test_request_quotas.py`.
 
+### Doctor fleet cache without Redis ([#510](https://github.com/naveenreddyalka/daari/issues/510))
+
+<!-- tracking:#510 -->
+**Status:** Done (2026-09-16). `daari doctor` warns (`fleet_cache`) when
+`DAARI_FLEET_REPLICAS>1` without `cache.backend=redis` (L0/session/singleflight
+per-pod). Single-replica stays quiet. Docs:
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/test_doctor.py`.
+
 ---
 
 ## How to update

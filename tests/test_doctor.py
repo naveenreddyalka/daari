@@ -438,6 +438,35 @@ class TestDoctorSecretRefs:
         assert "enterprise.audit_backend=sqlite" in by_name["fleet_artifacts"].detail
         assert "enterprise.audit_backend=postgres" in by_name["fleet_artifacts"].detail
 
+    def test_fleet_replicas_without_redis_cache_warns(self, settings, monkeypatch):
+        monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
+        settings.cache.backend = "disk"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_cache"].ok is False
+        assert by_name["fleet_cache"].optional is True
+        assert "cache.backend=disk" in by_name["fleet_cache"].detail
+        assert "cache.backend=redis" in by_name["fleet_cache"].detail
+
+    def test_fleet_replicas_with_redis_cache_ok(self, settings, monkeypatch):
+        monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
+        settings.cache.backend = "redis"
+        settings.batches.backend = "postgres"
+        settings.files.backend = "postgres"
+        settings.responses.backend = "postgres"
+        settings.observability.backend = "postgres"
+        settings.enterprise.audit_backend = "postgres"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_cache"].ok is True
+
+    def test_single_replica_disk_cache_is_ok(self, settings, monkeypatch):
+        monkeypatch.delenv("DAARI_FLEET_REPLICAS", raising=False)
+        settings.cache.backend = "disk"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_cache"].ok is True
+
     def test_budget_webhook_without_secret_warns(self, settings):
         settings.alerts.budget_webhook_url = "https://hooks.example/budget"
         settings.alerts.budget_webhook_secret = ""
