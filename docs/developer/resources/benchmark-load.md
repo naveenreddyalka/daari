@@ -20,7 +20,9 @@ pytest -m benchmark -q
 
 Each hermetic test asserts a **loose absolute ceiling** (roughly 10× typical
 local medians) so only order-of-magnitude regressions fail. They do **not**
-replace this page's live load numbers.
+replace this page's live load numbers. The suite also guards L0 exact-cache
+singleflight: N concurrent identical cold misses must share exactly one
+upstream fill under a wall-clock ceiling (#520).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`

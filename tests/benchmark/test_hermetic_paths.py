@@ -7,6 +7,7 @@ only order-of-magnitude regressions fail.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 
@@ -16,8 +17,12 @@ from daari.auth.budgets import budget_status
 from daari.auth.rate_limit import RateLimiter, SqliteCounterBackend
 from daari.auth.virtual_keys import BudgetWindow, VirtualKey
 from daari.cache.exact import ExactCache
+from daari.cache.semantic import SemanticCache
 from daari.gateway.batches import BatchStore
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.observability.metrics import Metrics
+from daari.router.router import OllamaExecutor, Router
+from tests.conftest import NoopEmbedder
 
 NOW = datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -27,6 +32,9 @@ EXACT_CACHE_GET_CEILING_S = 0.050  # per get after warm put
 BUDGET_STATUS_CEILING_S = 0.020  # per budget_status call
 RATE_LIMIT_CHECK_CEILING_S = 0.100  # per SQLite-backed RateLimiter.check
 BATCH_ENQUEUE_CEILING_S = 0.200  # per BatchStore.create (inline 1 request)
+# N concurrent identical cold misses sharing one fill (#520).
+L0_SINGLEFLIGHT_BURST_CEILING_S = 0.500
+L0_SINGLEFLIGHT_CONCURRENCY = 32
 
 
 class FakeLedger:
@@ -200,4 +208,62 @@ def test_batch_job_enqueue_under_ceiling(tmp_path):
     assert median < BATCH_ENQUEUE_CEILING_S, (
         f"BatchStore.create median {median:.4f}s exceeds ceiling "
         f"{BATCH_ENQUEUE_CEILING_S}s (10×-regression guard)"
+    )
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_l0_singleflight_concurrent_cold_miss_under_ceiling(tmp_path):
+    """N identical cold misses → exactly one upstream within a wall ceiling (#520)."""
+    cache = ExactCache(str(tmp_path / "c"), enabled=True)
+    calls = 0
+    release = asyncio.Event()
+    entered = asyncio.Event()
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        nonlocal calls
+        calls += 1
+        entered.set()
+        await release.wait()
+        # Tiny synthetic work so wall time is measurable but tiny.
+        await asyncio.sleep(0.001)
+        return InternalResponse(
+            content="A confident shared body with plenty of length to avoid escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+            ),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(
+        cache=cache,
+        semantic_cache=SemanticCache(
+            str(tmp_path / "l1"), NoopEmbedder(), enabled=False
+        ),
+        ollama=ollama,
+        metrics=Metrics(),
+        frontier_enabled=False,
+    )
+    request = InternalRequest(
+        messages=[Message(role="user", content="singleflight bench")],
+        model="llama3.2:3b",
+    )
+
+    async def one() -> str:
+        return (await router.route(request)).content
+
+    start = time.perf_counter()
+    tasks = [asyncio.create_task(one()) for _ in range(L0_SINGLEFLIGHT_CONCURRENCY)]
+    await asyncio.wait_for(entered.wait(), timeout=2.0)
+    release.set()
+    bodies = await asyncio.gather(*tasks)
+    elapsed = time.perf_counter() - start
+
+    assert calls == 1, f"expected 1 upstream fill, got {calls}"
+    assert len(set(bodies)) == 1
+    assert elapsed < L0_SINGLEFLIGHT_BURST_CEILING_S, (
+        f"L0 singleflight burst {elapsed:.4f}s exceeds ceiling "
+        f"{L0_SINGLEFLIGHT_BURST_CEILING_S}s (stampede / coalesce regression)"
     )

@@ -2534,6 +2534,14 @@ windows. Docs: [savings-report.md](developer/guides/observability/savings-report
 [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
 Covered by `tests/unit/test_request_quotas.py`.
 
+### L0 singleflight hermetic ceiling ([#520](https://github.com/naveenreddyalka/daari/issues/520))
+
+<!-- tracking:#520 -->
+**Status:** Done (2026-09-16). Hermetic `@pytest.mark.benchmark` burst:
+N concurrent identical L0 cold misses → exactly one upstream under a wall
+ceiling. Docs: [benchmark-load.md](developer/resources/benchmark-load.md).
+Covered by `tests/benchmark/test_hermetic_paths.py`.
+
 ---
 
 ## How to update
