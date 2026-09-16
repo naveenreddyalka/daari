@@ -628,6 +628,20 @@ class WindowStatus:
         return float(self.spend) >= self.limit
 
     @property
+    def ratio(self) -> float:
+        cap = float(self.limit)
+        if cap <= 0:
+            return 0.0
+        return float(self.spend) / cap
+
+    def in_soft_band(self, soft_ratio: float) -> bool:
+        """True when spend crossed the soft line but not the hard cap (#498)."""
+        mark = float(soft_ratio)
+        if mark <= 0 or mark > 1.0 or self.exceeded:
+            return False
+        return self.ratio >= mark
+
+    @property
     def reset_at(self) -> str:
         return reset_at(self.window.duration, now=self.now)
 

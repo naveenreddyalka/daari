@@ -2430,6 +2430,18 @@ daily sweep. Docs: [batches.md](developer/guides/features/batches.md).
 Covered by `tests/unit/test_response_store.py`,
 `tests/unit/test_retention.py`, `tests/unit/test_postgres_responses.py`.
 
+### Request-quota soft warning and budget alerts ([#498](https://github.com/naveenreddyalka/daari/issues/498))
+
+<!-- tracking:#498 -->
+**Status:** Done (2026-09-16). Request-count quotas reuse
+`frontier.soft_budget_ratio` for a soft band before the hard `402`:
+`x-daari-quota-requests-warning: soft` and
+`daari_meta.warning=request_quota_warning`. `BudgetAlerter` fires on
+request-quota threshold crossings with `quota: "requests"` payload fields.
+Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md),
+[headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_request_quotas.py` and `tests/unit/test_budget_alerts.py`.
+
 ---
 
 ## How to update

@@ -20,6 +20,7 @@ from daari.auth.virtual_keys import BudgetWindow, VirtualKeyStore
 from daari.gateway.budget_headers import (
     QUOTA_REQUESTS_LIMIT_HEADER,
     QUOTA_REQUESTS_REMAINING_HEADER,
+    QUOTA_REQUESTS_WARNING_HEADER,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.observability.usage import UsageLedger
@@ -280,6 +281,49 @@ async def test_successful_response_exposes_request_remaining(settings, tmp_path)
     assert response.status_code == 200
     assert response.headers[QUOTA_REQUESTS_REMAINING_HEADER] == "7"
     assert response.headers[QUOTA_REQUESTS_LIMIT_HEADER] == "10"
+    assert QUOTA_REQUESTS_WARNING_HEADER not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_request_quota_soft_band_warns_before_402(settings, tmp_path):
+    """Crossing soft_budget_ratio surfaces a warning; hard cap still 402s (#498)."""
+    settings.frontier.soft_budget_ratio = 0.8
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    key = store.create(
+        "a",
+        client_id="key-a",
+        budget_windows=[BudgetWindow("day", 0.0, max_requests=10)],
+    )
+    _record_requests(ledger, "key-a", 8)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        soft = await client.post(
+            "/v1/chat/completions",
+            json=CHAT,
+            headers={
+                "Authorization": f"Bearer {key.plaintext}",
+                "X-Daari-No-Cache": "true",
+                "X-Daari-Meta": "true",
+            },
+        )
+        assert soft.status_code == 200
+        assert soft.headers[QUOTA_REQUESTS_WARNING_HEADER] == "soft"
+        assert soft.headers[QUOTA_REQUESTS_REMAINING_HEADER] == "2"
+        assert soft.json()["daari_meta"]["warning"] == "request_quota_warning"
+
+        _record_requests(ledger, "key-a", 2)  # total 10 → hard
+        hard = await client.post(
+            "/v1/chat/completions",
+            json=CHAT,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+
+    assert hard.status_code == 402
+    assert hard.json()["error"]["quota"] == "requests"
+    assert hard.headers[QUOTA_REQUESTS_REMAINING_HEADER] == "0"
+    assert hard.headers[QUOTA_REQUESTS_LIMIT_HEADER] == "10"
+    assert "Retry-After" in hard.headers
 
 
 def test_keys_create_window_requests_cli(tmp_path, monkeypatch):
