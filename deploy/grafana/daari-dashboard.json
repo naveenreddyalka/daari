@@ -160,6 +160,19 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 11,
+      "title": "Hard rejects by kind (402/429)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(daari_rejects_total[5m]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

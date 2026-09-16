@@ -259,6 +259,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             err_kwargs["quota"] = "requests"
                             err_kwargs["spend_requests"] = int(exceeded.spend)
                             err_kwargs["limit_requests"] = int(exceeded.limit)
+                        metrics = getattr(
+                            getattr(request.app.state, "ctx", None), "metrics", None
+                        )
+                        if metrics is not None and hasattr(metrics, "record_reject"):
+                            kind = (
+                                "request_quota"
+                                if exceeded.quota == "requests"
+                                else "budget"
+                            )
+                            metrics.record_reject(kind)
                         return JSONResponse(
                             status_code=402,
                             content={"error": budget_error(**err_kwargs)},
@@ -369,6 +379,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tpm=tpm,
         )
         if not decision.allowed:
+            metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+            if metrics is not None and hasattr(metrics, "record_reject"):
+                metrics.record_reject("rate_limit")
             return JSONResponse(
                 status_code=429,
                 content={
