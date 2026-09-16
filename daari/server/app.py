@@ -375,6 +375,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers=decision.headers(),
             )
 
+        soft_ratio = 0.8
+        ctx = getattr(request.app.state, "ctx", None)
+        settings = getattr(ctx, "settings", None) if ctx is not None else None
+        if settings is not None:
+            soft_ratio = float(
+                getattr(getattr(settings, "frontier", None), "soft_budget_ratio", 0.8) or 0.0
+            )
+        rate_soft = decision.in_soft_band(soft_ratio)
+        if rate_soft:
+            request.state.rate_limit_soft = True
+
         slot = await limiter.acquire()
         if not slot.allowed:
             headers = slot.headers()
@@ -399,7 +410,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if track_interactive:
                 limiter.end_interactive()
             await limiter.release()
-        for header, value in decision.headers().items():
+        for header, value in decision.headers(soft=rate_soft).items():
             response.headers.setdefault(header, value)
         return response
 

@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from daari.auth.rate_limit import (
     MemoryCounterBackend,
+    RATELIMIT_WARNING_HEADER,
     RateLimiter,
     RedisCounterBackend,
     SqliteCounterBackend,
@@ -166,6 +167,57 @@ class TestRateLimiter:
         assert decision.limit == 5
         assert decision.remaining == 4
         assert decision.reset_epoch >= int(time.time())
+
+    def test_rpm_soft_band_before_hard_deny(self):
+        limiter = RateLimiter(MemoryCounterBackend(), default_rpm=5)
+        soft_ratio = 0.8
+        decisions = [
+            limiter.check(key_id="alice", model="daari", tokens=1) for _ in range(5)
+        ]
+        # used 1..5 against limit 5; soft at >=4 (0.8).
+        assert all(d.allowed for d in decisions)
+        assert [d.in_soft_band(soft_ratio) for d in decisions] == [
+            False,
+            False,
+            False,
+            True,
+            True,
+        ]
+        hard = limiter.check(key_id="alice", model="daari", tokens=1)
+        assert not hard.allowed
+        assert hard.scope == "rpm"
+        assert not hard.in_soft_band(soft_ratio)
+        assert RATELIMIT_WARNING_HEADER not in hard.headers()
+        soft_headers = decisions[3].headers(soft=True)
+        assert soft_headers[RATELIMIT_WARNING_HEADER] == "soft"
+
+
+@pytest.mark.asyncio
+async def test_rpm_soft_warn_header_then_hard_429(settings):
+    """Crossing soft_budget_ratio warns; exceeding RPM still 429s (#518)."""
+    settings.rate_limit.rpm = 5
+    settings.frontier.soft_budget_ratio = 0.8
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        bodies = []
+        for i in range(5):
+            response = await client.post(
+                "/v1/chat/completions",
+                json=CHAT,
+                headers={"X-Daari-Meta": "true", "X-Daari-No-Cache": "true"},
+            )
+            bodies.append(response)
+            assert response.status_code == 200, response.text
+            if i < 3:
+                assert RATELIMIT_WARNING_HEADER not in response.headers
+            else:
+                assert response.headers[RATELIMIT_WARNING_HEADER] == "soft"
+                assert response.json()["daari_meta"]["warning"] == "rate_limit_warning"
+        hard = await client.post("/v1/chat/completions", json=CHAT)
+    assert hard.status_code == 429
+    assert hard.json()["error"]["type"] == "rate_limit_error"
+    assert "x-ratelimit-limit" in hard.headers
+    assert RATELIMIT_WARNING_HEADER not in hard.headers
 
 
 class TestBuildRateLimiter:
