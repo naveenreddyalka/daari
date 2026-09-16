@@ -49,7 +49,7 @@ rate_limit:
   fail_open: false      # true = allow (uncounted) if Redis is down
 ```
 
-Counters live in Redis when `cache.backend: redis` (`daari:rl:` prefix); otherwise SQLite next to the virtual-key store. Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `X-RateLimit-Backend`. `/metrics` exposes the configured limits and current in-flight / queued gauges.
+Counters live in Redis when `cache.backend: redis` (`daari:rl:` prefix); otherwise SQLite next to the virtual-key store. Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `X-RateLimit-Backend`. When usage crosses `frontier.soft_budget_ratio` (default 0.8) but is still under the hard RPM/TPM cap, responses also carry `x-daari-ratelimit-warning: soft` and (with `X-Daari-Meta`) `daari_meta.warning=rate_limit_warning` so agents can back off before the hard `429` (#518). Hard denials stay `429` with the existing rate-limit headers unchanged. `/metrics` exposes the configured limits and current in-flight / queued gauges.
 
 ### Redis outage semantics (fleet)
 

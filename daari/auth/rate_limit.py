@@ -18,6 +18,7 @@ from daari.cache.redis_client import DEFAULT_REDIS_TIMEOUT_SECONDS, connect_redi
 
 WINDOW_SECONDS = 60
 DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
+RATELIMIT_WARNING_HEADER = "x-daari-ratelimit-warning"
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,20 @@ class RateLimitDecision:
     scope: str = ""
     backend: str = ""
 
-    def headers(self) -> dict[str, str]:
+    @property
+    def used(self) -> int:
+        if self.limit <= 0:
+            return 0
+        return max(0, self.limit - self.remaining)
+
+    def in_soft_band(self, soft_ratio: float) -> bool:
+        """True when usage crossed the soft line but the hard cap still allows (#518)."""
+        mark = float(soft_ratio)
+        if not self.allowed or mark <= 0 or mark > 1.0 or self.limit <= 0:
+            return False
+        return (self.used / float(self.limit)) >= mark
+
+    def headers(self, *, soft: bool = False) -> dict[str, str]:
         if self.limit <= 0:
             return {}
         headers = {
@@ -42,6 +56,8 @@ class RateLimitDecision:
             headers["X-RateLimit-Backend"] = self.backend
         if self.retry_after is not None:
             headers["Retry-After"] = str(self.retry_after)
+        if soft and self.allowed:
+            headers[RATELIMIT_WARNING_HEADER] = "soft"
         return headers
 
 

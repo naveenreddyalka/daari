@@ -2506,6 +2506,17 @@ singleflight; agent turns stay on exact-L0 coalescing only. Docs:
 [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
 `tests/unit/test_l1_singleflight.py`.
 
+### Virtual-key RPM soft warning ([#518](https://github.com/naveenreddyalka/daari/issues/518))
+
+<!-- tracking:#518 -->
+**Status:** Done (2026-09-16). RPM/TPM usage at or above
+`frontier.soft_budget_ratio` (still under the hard cap) sets
+`x-daari-ratelimit-warning: soft` and optional `daari_meta.warning=
+rate_limit_warning`. Hard `429` + existing rate-limit headers unchanged.
+Docs: [headers.md](developer/reference/headers.md),
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
+Covered by `tests/unit/test_rate_limit.py`.
+
 ---
 
 ## How to update
