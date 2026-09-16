@@ -53,6 +53,28 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+
+def _version_callback(value: bool) -> None:
+    if value:
+        from daari import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+@app.callback()
+def _root(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show package version and exit.",
+    ),
+) -> None:
+    """Local-first execution router — cache before cloud."""
+
+
 setup_app = typer.Typer(help="Configure client integrations.")
 context_app = typer.Typer(help="Manage daari caches and context.")
 org_cache_app = typer.Typer(help="Run org shared-cache service.")
