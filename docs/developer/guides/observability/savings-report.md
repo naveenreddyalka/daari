@@ -13,7 +13,11 @@ curl -s 'http://127.0.0.1:11435/v1/daari/report?days=7' | python -m json.tool
 ```
 
 The report payload includes `clients`, `teams`, and `users` (per OpenAI `user`
-on each virtual-key `client_id`). `daari usage` is an alias of `daari report`.
+on each virtual-key `client_id`). Virtual keys with request-count caps also
+contribute `request_quotas`: per-key `used` / `cap` / `remaining` plus
+`soft: true` when usage ≥ `frontier.soft_budget_ratio` (#519). Text and
+markdown `daari report` print that table; `daari keys list` marks soft
+windows as `req used/cap soft`. `daari usage` is an alias of `daari report`.
 
 Includes cache-trust panels when shadow samples exist.
 

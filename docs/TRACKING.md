@@ -2525,6 +2525,15 @@ p50/p95 by tier via `daari_ttft_ms`. Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Report request-quota soft-band ([#519](https://github.com/naveenreddyalka/daari/issues/519))
+
+<!-- tracking:#519 -->
+**Status:** Done (2026-09-16). `GET /v1/daari/report` and `daari report`
+expose `request_quotas` (used/cap/remaining/soft); `keys list` marks soft
+windows. Docs: [savings-report.md](developer/guides/observability/savings-report.md),
+[budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+Covered by `tests/unit/test_request_quotas.py`.
+
 ---
 
 ## How to update
