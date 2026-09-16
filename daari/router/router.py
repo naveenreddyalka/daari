@@ -15,8 +15,9 @@ from typing import Any, AsyncIterator, Awaitable, Callable
 import httpx
 
 from daari.cache.command_context import CommandContextStore
-from daari.cache.exact import ExactCache
+from daari.cache.exact import ExactCache, cache_key
 from daari.cache.semantic import OllamaEmbedder, SemanticCache, cosine_similarity
+from daari.cache.singleflight import SingleFlight
 from daari.cache.verify import build_verifier
 from daari.config.settings import Settings
 from daari.enterprise.cache import resolve_org_scoped_path
@@ -421,6 +422,7 @@ class Router:
         context_windows: dict[str, int] | None = None,
     ) -> None:
         self.cache = cache
+        self._l0_singleflight = SingleFlight()
         self.semantic_cache = semantic_cache
         self.ollama_l3 = ollama_l3 or ollama or OllamaExecutor(
             base_url="http://127.0.0.1:11434",
@@ -1433,8 +1435,31 @@ class Router:
         """Local model tiers, confidence escalation, and cache write-back.
 
         `gen_request` may carry a draft hint; `request` stays pristine so cache
-        keys are unaffected.
+        keys are unaffected. Concurrent identical L0 keys share one fill (#499).
         """
+        if request.meta.no_cache or cache_skip:
+            return await self._route_generation_fill(
+                gen_request, request, profile, started, cache_skip
+            )
+
+        async def _fill() -> InternalResponse:
+            return await self._route_generation_fill(
+                gen_request, request, profile, started, cache_skip
+            )
+
+        result = await self._l0_singleflight.do(cache_key(request), _fill)
+        # Waiters get a copy so concurrent daari_meta mutations stay isolated.
+        return result.model_copy(deep=True)
+
+    async def _route_generation_fill(
+        self,
+        gen_request: InternalRequest,
+        request: InternalRequest,
+        profile: PromptProfile | None,
+        started: float,
+        cache_skip: bool,
+    ) -> InternalResponse:
+        """Upstream execute + L0 write-back (singleflight leader only)."""
         await self._refresh_warm_models()
         initial_tier = self._choose_initial_tier(request, profile)
         try:
