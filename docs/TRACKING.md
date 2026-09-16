@@ -2517,6 +2517,14 @@ Docs: [headers.md](developer/reference/headers.md),
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md).
 Covered by `tests/unit/test_rate_limit.py`.
 
+### Prometheus TTFT Grafana panel ([#516](https://github.com/naveenreddyalka/daari/issues/516))
+
+<!-- tracking:#516 -->
+**Status:** Done (2026-09-16). Grafana overview dashboard charts stream TTFT
+p50/p95 by tier via `daari_ttft_ms`. Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update

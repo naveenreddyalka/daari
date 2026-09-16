@@ -10,7 +10,8 @@ Enable exposition (see config `observability` / prometheus flags in reference). 
 curl -s http://127.0.0.1:11435/metrics | head
 ```
 
-Import Grafana dashboard: `deploy/grafana/daari-dashboard.json`.
+Import Grafana dashboard: `deploy/grafana/daari-dashboard.json` (includes a
+**TTFT p50 / p95 by tier** panel on `daari_ttft_ms` for stream startup health).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
