@@ -35,8 +35,9 @@ flowchart TD
 **$0 tiers** = L0, L1, L2, Lt (no frontier invoice).
 
 Concurrent identical L0 cold misses coalesce in-process (singleflight): one
-upstream fill, waiters share the body, cache writes once. An upstream error
-clears the in-flight slot so the next attempt can retry (#499).
+upstream fill, waiters share the body, cache writes once. Stream and
+non-stream share the same in-flight map (#499 / #506). An upstream error
+clears the in-flight slot so the next attempt can retry.
 
 ## Escalation
 

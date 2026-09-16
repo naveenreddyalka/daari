@@ -2451,6 +2451,15 @@ writes once. Upstream errors clear the in-flight slot so retries work.
 Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
 `tests/unit/test_l0_singleflight.py`.
 
+### Stream L0 singleflight ([#506](https://github.com/naveenreddyalka/daari/issues/506))
+
+<!-- tracking:#506 -->
+**Status:** Done (2026-09-16). Streaming cold misses join the same
+in-process singleflight map as non-stream fills; waiters replay the leader
+body as SSE; cache writes once. Mixed stream + `route()` coalesce.
+Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_l0_singleflight.py`.
+
 ---
 
 ## How to update
