@@ -63,6 +63,7 @@ keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier cap
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
+route_app = typer.Typer(help="Inspect routing without sending a generation.")
 app.add_typer(setup_app, name="setup")
 app.add_typer(service_app, name="service")
 app.add_typer(context_app, name="context")
@@ -72,6 +73,7 @@ app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
 app.add_typer(audit_app, name="audit")
+app.add_typer(route_app, name="route")
 
 
 @keys_app.command("create")
@@ -2202,6 +2204,32 @@ def learn_recommend(
     stats = _feedback_store().stats(days=days)
     recommendations = recommend_policies(stats, min_samples=min_samples)
     typer.echo(recommendation_yaml(recommendations), nl=False)
+
+
+def _route_preview_router():
+    """Local router for dry-run preview (no HTTP, no Ollama)."""
+    from daari.router.router import AppContext
+
+    return AppContext.from_settings(get_settings()).router
+
+
+@route_app.command("preview")
+def route_preview(
+    prompt: str = typer.Argument(..., help="Sample user prompt to classify"),
+    model: str = typer.Option("daari", "--model", help="Requested model / alias"),
+    latency_budget_ms: int | None = typer.Option(
+        None, "--latency-budget-ms", help="X-Daari-Latency-Budget equivalent"
+    ),
+) -> None:
+    """Print the would-be initial local tier without calling a model."""
+    from daari.gateway.internal import InternalRequest, Message, RequestMeta
+
+    request = InternalRequest(
+        messages=[Message(role="user", content=prompt)],
+        model=model,
+        meta=RequestMeta(latency_budget_ms=latency_budget_ms),
+    )
+    typer.echo(json.dumps(_route_preview_router().preview_initial_tier(request), indent=2))
 
 
 if __name__ == "__main__":

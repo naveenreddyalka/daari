@@ -890,6 +890,50 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 content["backends"] = backends
             return JSONResponse(status_code=http_status, content=content)
 
+        @router.get("/v1/daari/route/preview")
+        async def daari_route_preview_get(
+            request: Request,
+            prompt: str = "",
+            model: str | None = None,
+        ) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            text = (prompt or "").strip() or "hi"
+            internal = InternalRequest(
+                messages=[Message(role="user", content=text)],
+                model=model or ctx.settings.models.l3,
+            )
+            return ctx.router.preview_initial_tier(internal)
+
+        @router.post("/v1/daari/route/preview")
+        async def daari_route_preview_post(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            payload = {}
+            try:
+                payload = await request.json()
+            except Exception:
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            if payload.get("messages"):
+                body = ChatCompletionRequest.model_validate(
+                    {
+                        "model": payload.get("model") or ctx.settings.models.l3,
+                        "messages": payload["messages"],
+                    }
+                )
+                internal = _prepare_internal_request(
+                    body,
+                    default_model=ctx.settings.models.l3,
+                    meta=RequestMeta(),
+                )
+            else:
+                text = str(payload.get("prompt") or "hi").strip() or "hi"
+                internal = InternalRequest(
+                    messages=[Message(role="user", content=text)],
+                    model=str(payload.get("model") or ctx.settings.models.l3),
+                )
+            return ctx.router.preview_initial_tier(internal)
+
         @router.get("/v1/daari/stats")
         async def daari_stats(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx

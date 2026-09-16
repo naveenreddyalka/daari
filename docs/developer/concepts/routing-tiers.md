@@ -149,6 +149,12 @@ delta, from, to).
 
 ## TTFT-aware local preference
 
+Dry-run the initial local pick without calling Ollama or frontier:
+`POST /v1/daari/route/preview` (body `messages` or `prompt`) or
+`daari route preview "sample prompt"`. The response is `{tier, reasons}`
+where `reasons` has `heuristic`, `phase`, `latency_budget`, and
+`ttft_preference` (a later field is set only when that step changed the pick).
+
 `routing.ttft_aware` (default off) uses recent stream `daari_ttft_ms` samples
 to prefer a **faster** local tier (never escalate) when that tier has at least
 `routing.ttft_min_samples` (default 20) and a lower

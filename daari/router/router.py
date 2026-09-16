@@ -3369,6 +3369,62 @@ class Router:
             prefix_hash=prefix,
         )
 
+    def preview_initial_tier(self, request: InternalRequest) -> dict[str, Any]:
+        """Would-be initial local tier without calling Ollama or frontier."""
+        profile = self._build_prompt_profile(request)
+        reasons: dict[str, str | None] = {
+            "heuristic": None,
+            "phase": None,
+            "latency_budget": None,
+            "ttft_preference": None,
+        }
+        from daari.router.aliases import local_model_alias
+
+        alias = local_model_alias(request.model)
+        if alias == "floor":
+            capable = self._filter_capable_tiers(["L3", "L4", "L5"], request)
+            chosen = capable[0] if capable else "L3"
+            reasons["heuristic"] = chosen
+            return {"tier": chosen, "reasons": reasons}
+        if alias == "nitro":
+            chosen = self._nitro_tier(request)
+            reasons["heuristic"] = chosen
+            return {"tier": chosen, "reasons": reasons}
+
+        override = (request.meta.tier_override or "").upper()
+        if override in {"L3", "L4", "L5"}:
+            capable = self._filter_capable_tiers([override, "L5", "L4", "L3"], request)
+            chosen = capable[0] if capable else override
+            reasons["heuristic"] = chosen
+            return {"tier": chosen, "reasons": reasons}
+        pinned = self._session_pin_tier(request)
+        if pinned is not None:
+            capable = self._filter_capable_tiers([pinned, "L5", "L4", "L3"], request)
+            chosen = capable[0] if capable else pinned
+            chosen = self._apply_context_window_escalation(request, profile, chosen)
+            chosen = self._cap_tier(chosen, self._effective_tier_cap(request))
+            reasons["heuristic"] = pinned
+            return {"tier": chosen, "reasons": reasons}
+
+        heuristic = self._choose_uncapped_tier(request, profile)
+        reasons["heuristic"] = heuristic
+        after_phase = self._apply_phase_routing(request, heuristic)
+        if after_phase != heuristic:
+            reasons["phase"] = after_phase
+        after_cap = self._cap_tier(after_phase, self._effective_tier_cap(request))
+        after_budget = self._apply_latency_budget(after_cap, request, profile)
+        if after_budget != after_cap:
+            reasons["latency_budget"] = after_budget
+        after_ttft = self._apply_ttft_preference(after_budget, request)
+        if after_ttft != after_budget:
+            reasons["ttft_preference"] = after_ttft
+        capable = self._filter_capable_tiers([after_ttft, "L5", "L4", "L3"], request)
+        chosen = capable[0] if capable else after_ttft
+        chosen = self._apply_stall_escalation(request, chosen)
+        chosen = self._apply_context_window_escalation(request, profile, chosen)
+        chosen = self._cap_tier(chosen, self._effective_tier_cap(request))
+        return {"tier": chosen, "reasons": reasons}
+
     def _choose_initial_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
     ) -> str:
