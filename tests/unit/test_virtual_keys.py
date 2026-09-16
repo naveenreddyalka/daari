@@ -248,5 +248,7 @@ class TestCLI:
                 "local_requests": 4,
                 "frontier_requests": 1,
                 "estimated_saved_usd": 0.3,
+                "rpm": 0,
+                "tpm": 0,
             }
         ]

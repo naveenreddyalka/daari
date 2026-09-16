@@ -2641,6 +2641,18 @@ Helm + doctor fleet warnings list the auth store. Docs:
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_chart.py`.
 
+### Team-level aggregate RPM/TPM ([#546](https://github.com/naveenreddyalka/daari/issues/546))
+
+<!-- tracking:#546 -->
+**Status:** Done (2026-09-16). `Team.rpm`/`tpm` (0 = unlimited) with SQLite
+migration + Postgres schema, `daari keys team-create/update --rpm/--tpm`, and
+gateway checks of `rpm:team:{id}` / `tpm:team:{id}` after per-key counters
+(same Redis/SQLite backend). Soft-warn header + `Retry-After` on 429 match
+key limits. `daari report --by-team` shows configured limits. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md),
+[virtual-keys.md](developer/guides/features/virtual-keys.md). Covered by
+`tests/unit/test_team_rate_limits.py`.
+
 ---
 
 ## How to update

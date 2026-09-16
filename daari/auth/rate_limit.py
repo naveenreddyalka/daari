@@ -316,6 +316,9 @@ class RateLimiter:
         tpm: int | None = None,
         model_rpm: int | None = None,
         model_tpm: int | None = None,
+        team_id: str | None = None,
+        team_rpm: int | None = None,
+        team_tpm: int | None = None,
     ) -> RateLimitDecision:
         key_rpm = self.default_rpm if rpm is None else rpm
         key_tpm = self.default_tpm if tpm is None else tpm
@@ -325,6 +328,8 @@ class RateLimiter:
             per_model_rpm = key_rpm
         if per_model_tpm <= 0:
             per_model_tpm = key_tpm
+        agg_team_rpm = 0 if team_rpm is None else int(team_rpm)
+        agg_team_tpm = 0 if team_tpm is None else int(team_tpm)
 
         reset = (int(time.time() // WINDOW_SECONDS) + 1) * WINDOW_SECONDS
         tightest = RateLimitDecision(
@@ -343,6 +348,11 @@ class RateLimiter:
             checks.append((f"tpm:{key_id}", "tpm", max(1, tokens), key_tpm))
         if per_model_tpm > 0:
             checks.append((f"tpm:{key_id}:{model}", "tpm", max(1, tokens), per_model_tpm))
+        # Team aggregate ceilings share the same counter backend (#546).
+        if team_id and agg_team_rpm > 0:
+            checks.append((f"rpm:team:{team_id}", "rpm", 1, agg_team_rpm))
+        if team_id and agg_team_tpm > 0:
+            checks.append((f"tpm:team:{team_id}", "tpm", max(1, tokens), agg_team_tpm))
 
         for counter_key, scope, amount, limit in checks:
             count = self._increment(counter_key, amount)

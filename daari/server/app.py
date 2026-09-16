@@ -370,12 +370,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         rpm = int(getattr(virtual, "rpm", 0) or 0) or None
         tpm = int(getattr(virtual, "tpm", 0) or 0) or None
+        team_id = getattr(virtual, "team_id", None) if virtual is not None else None
+        team_rpm = None
+        team_tpm = None
+        if team_id:
+            store = getattr(request.app.state, "virtual_key_store", None)
+            team = store.get_team(team_id) if store is not None and hasattr(store, "get_team") else None
+            if team is not None:
+                team_rpm = int(getattr(team, "rpm", 0) or 0) or None
+                team_tpm = int(getattr(team, "tpm", 0) or 0) or None
         decision = limiter.check(
             key_id=key_id,
             model=model,
             tokens=tokens,
             rpm=rpm,
             tpm=tpm,
+            team_id=team_id,
+            team_rpm=team_rpm,
+            team_tpm=team_tpm,
         )
         if not decision.allowed:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)

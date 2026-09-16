@@ -35,7 +35,7 @@ daari keys create --name ci --rpm 60 --tpm 40000
 
 ## Rate limits
 
-Defaults apply to every key (including the master key). A virtual key's `--rpm` / `--tpm` override the global defaults for that key. `0` means unlimited.
+Defaults apply to every key (including the master key). A virtual key's `--rpm` / `--tpm` override the global defaults for that key. `0` means unlimited. Teams can also set aggregate ceilings with `daari keys team-create --rpm/--tpm` (or `team-update`); those counters use `rpm:team:{team_id}` / `tpm:team:{team_id}` and are checked after per-key limits so N keys on one team share one budget (#546).
 
 ```yaml
 rate_limit:

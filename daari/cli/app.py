@@ -326,6 +326,8 @@ def keys_team_create(
         "--region-pin",
         help="Restrict L6 for every key on this team (e.g. us, eu).",
     ),
+    rpm: int = typer.Option(0, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
+    tpm: int = typer.Option(0, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import os
@@ -350,11 +352,16 @@ def keys_team_create(
         daily_budget_usd=daily_budget,
         monthly_budget_usd=monthly_budget,
         region_pin=region_pin,
+        rpm=rpm,
+        tpm=tpm,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     if team.region_pin:
         typer.echo(f"region:  {team.region_pin}")
+    if team.rpm or team.tpm:
+        typer.echo(f"rpm:     {team.rpm}")
+        typer.echo(f"tpm:     {team.tpm}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
@@ -374,6 +381,8 @@ def keys_team_create(
                     {"duration": w.duration, "max_usd": w.max_usd} for w in team.budget_windows
                 ],
                 "region_pin": team.region_pin,
+                "rpm": team.rpm,
+                "tpm": team.tpm,
             },
         )
 
@@ -394,8 +403,10 @@ def keys_team_update(
         "--region-pin",
         help="Set or clear L6 region pin (empty string clears).",
     ),
+    rpm: int | None = typer.Option(None, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
+    tpm: int | None = typer.Option(None, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
 ) -> None:
-    """Update a team's budget windows (#464)."""
+    """Update a team's budget windows (#464) and optional rpm/tpm (#546)."""
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
@@ -418,12 +429,17 @@ def keys_team_update(
             daily_budget_usd=daily_budget,
             monthly_budget_usd=monthly_budget,
             region_pin=region_pin,
+            rpm=rpm,
+            tpm=tpm,
         )
     except KeyError:
         typer.echo(f"No team {team_id}", err=True)
         raise typer.Exit(code=1) from None
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
+    if team.rpm or team.tpm:
+        typer.echo(f"rpm:     {team.rpm}")
+        typer.echo(f"tpm:     {team.tpm}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
@@ -439,6 +455,8 @@ def keys_team_update(
             "team_id": team.team_id,
             "name": team.name,
             "windows": [w.as_dict() for w in team.budget_windows],
+            "rpm": team.rpm,
+            "tpm": team.tpm,
         },
     )
 
@@ -1126,12 +1144,14 @@ def report(
             typer.echo("No per-team usage recorded yet.")
         else:
             typer.echo(
-                f"{'team':<14} {'requests':>9} {'cache hits':>11} {'frontier':>9} {'saved $':>9}"
+                f"{'team':<14} {'requests':>9} {'cache hits':>11} {'frontier':>9}"
+                f" {'rpm':>5} {'tpm':>7} {'saved $':>9}"
             )
             for entry in teams:
                 typer.echo(
                     f"{entry['team']:<14} {entry['requests']:>9} "
                     f"{entry['cache_hits']:>11} {entry['frontier_requests']:>9} "
+                    f"{entry.get('rpm', 0):>5} {entry.get('tpm', 0):>7} "
                     f"{entry['estimated_saved_usd']:>9.4f}"
                 )
 
