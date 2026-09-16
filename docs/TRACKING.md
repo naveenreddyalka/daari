@@ -2460,6 +2460,16 @@ body as SSE; cache writes once. Mixed stream + `route()` coalesce.
 Docs: [routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
 `tests/unit/test_l0_singleflight.py`.
 
+### Responses input_tokens endpoint ([#507](https://github.com/naveenreddyalka/daari/issues/507))
+
+<!-- tracking:#507 -->
+**Status:** Done (2026-09-16). `POST /v1/responses/input_tokens` returns a
+local `input_tokens` estimate (instructions + input + tools) via
+`estimate_tokens` — same pattern as Anthropic `count_tokens`, no L6 hop.
+Docs: [clients-and-gateways.md](developer/concepts/clients-and-gateways.md),
+[http-api.md](developer/reference/http-api.md). Covered by
+`tests/unit/test_responses_input_tokens.py`.
+
 ---
 
 ## How to update

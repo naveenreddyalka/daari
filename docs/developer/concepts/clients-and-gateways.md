@@ -7,7 +7,7 @@
 | Surface | Paths | Typical client |
 |---------|-------|----------------|
 | OpenAI Chat | `POST /v1/chat/completions` | Cursor BYOK, VS Code, SDKs |
-| OpenAI Responses | `POST /v1/responses`, `GET /v1/responses/{id}` | Newer OpenAI SDKs |
+| OpenAI Responses | `POST /v1/responses`, `POST /v1/responses/input_tokens`, `GET /v1/responses/{id}` | Newer OpenAI SDKs |
 | Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code, Claude Desktop (gateway mode) |
 | Ollama facade | `/api/chat`, `/api/generate`, `/api/embed`, `/api/tags`, … | JetBrains AI Assistant, ChatGPT Desktop |
 | MCP | `POST /mcp` (JSON-RPC 2.0), `POST /v1/mcp/query` (deprecated) | Cursor, Claude Desktop |
@@ -64,6 +64,9 @@ The Responses surface round-trips `function_call` / `function_call_output` items
 chains turns with `previous_response_id`, honors `store: false`, and returns
 `queued` for `background: true` (poll `GET /v1/responses/{id}`). `include` is
 rejected with 400 rather than ignored; `metadata` is echoed.
+`POST /v1/responses/input_tokens` is a local estimate (`estimate_tokens` on
+instructions + input messages + tools), matching Anthropic
+`/v1/messages/count_tokens` — not an L6 round-trip.
 
 ## Auth
 

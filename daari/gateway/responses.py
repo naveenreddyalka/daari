@@ -28,6 +28,7 @@ from daari.gateway.request_log import log_gateway_event
 from daari.gateway.response_store import ResponseStore
 from daari.gateway.sampling import SamplingParams
 from daari.gateway.streaming import SSE_KEEPALIVE_FRAME, stream_with_keepalive
+from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
@@ -311,6 +312,22 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             if stored is None or not visible:
                 raise HTTPException(status_code=404, detail="response not found")
             return _public_body(stored)
+
+        @router.post("/v1/responses/input_tokens")
+        async def input_tokens(body: ResponsesRequest) -> dict[str, int]:
+            """Count prompt tokens locally for Responses clients (#507).
+
+            Ingress helper only — same local `estimate_tokens` path as
+            `/v1/messages/count_tokens`, not an L6 round-trip.
+            """
+            chars = 0
+            if body.instructions:
+                chars += len(body.instructions)
+            for message in responses_input_to_messages(body):
+                chars += len(message.content or "")
+            if body.tools:
+                chars += len(json.dumps(body.tools))
+            return {"input_tokens": max(1, estimate_tokens(chars))}
 
         @router.post("/v1/responses", response_model=None)
         async def responses(
