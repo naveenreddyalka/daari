@@ -500,7 +500,8 @@ async def test_stats_includes_backends_with_circuit(settings):
     assert by_id["a"]["circuit"] == "closed"
     assert by_id["b"]["circuit"] == "open"
     assert health.status_code == 200
-    assert health.json() == {"status": "ok"}
+    assert health.json()["status"] == "ok"
+    assert "version" in health.json()
 
 
 @pytest.mark.asyncio
