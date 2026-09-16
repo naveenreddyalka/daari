@@ -387,6 +387,8 @@ class TestDoctorSecretRefs:
         assert by_name["fleet_artifacts"].optional is True
         assert "sqlite" in by_name["fleet_artifacts"].detail.lower()
         assert "batches.backend=postgres" in by_name["fleet_artifacts"].detail
+        assert "server.virtual_keys.backend=sqlite" in by_name["fleet_artifacts"].detail
+        assert "server.virtual_keys.backend=postgres" in by_name["fleet_artifacts"].detail
 
     def test_fleet_replicas_with_postgres_artifacts_ok(self, settings, monkeypatch):
         monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
@@ -395,6 +397,7 @@ class TestDoctorSecretRefs:
         settings.responses.backend = "postgres"
         settings.observability.backend = "postgres"
         settings.enterprise.audit_backend = "postgres"
+        settings.server.virtual_keys.backend = "postgres"
         results = run_doctor(settings, httpx_client=self._down_client())
         by_name = {r.name: r for r in results}
         assert by_name["fleet_artifacts"].ok is True

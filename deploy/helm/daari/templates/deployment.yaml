@@ -7,8 +7,9 @@ metadata:
   {{- if eq (include "daari.fleetSqliteWarning" .) "true" }}
   annotations:
     daari.dev/fleet-sqlite-warning: |
-      Effective replicas > 1 with postgres.enabled=false: batches, files, and
-      the usage ledger are per-pod SQLite (split-brain / 404 across replicas).
+      Effective replicas > 1 with postgres.enabled=false: batches, files,
+      virtual keys/teams, and the usage ledger are per-pod SQLite
+      (split-brain / 404 / 401 across replicas).
   {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
@@ -52,6 +53,8 @@ spec:
             - name: DAARI_RESPONSES__BACKEND
               value: postgres
             - name: DAARI_ENTERPRISE__AUDIT_BACKEND
+              value: postgres
+            - name: DAARI_SERVER__VIRTUAL_KEYS__BACKEND
               value: postgres
             {{- end }}
           livenessProbe:

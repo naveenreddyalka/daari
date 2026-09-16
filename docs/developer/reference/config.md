@@ -13,6 +13,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.api_key` | str | `''` |  |
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
+| `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (`observability.postgres_url`) so keys/teams resolve across replicas (#544). Env: `DAARI_SERVER__VIRTUAL_KEYS__BACKEND`. |
 | `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds before a streaming response emits a keepalive frame (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow-to-first-token streams. 0 disables. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |

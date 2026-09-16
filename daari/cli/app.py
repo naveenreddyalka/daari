@@ -126,12 +126,11 @@ def keys_create(
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
-    from daari.auth.virtual_keys import VirtualKeyStore, expiry_from
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import expiry_from
 
     settings = get_settings()
-    store = VirtualKeyStore(
-        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
-    )
+    store = virtual_key_store_from_settings(settings)
     try:
         extra = coalesce_windows(
             [parse_window_flag(item) for item in window]
@@ -191,13 +190,11 @@ def keys_create(
 def keys_list() -> None:
     """List virtual keys (prefixes only — never plaintext)."""
     from daari.auth.budgets import budget_status
-    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
     from daari.observability.usage import UsageLedger
 
     settings = get_settings()
-    store = VirtualKeyStore(
-        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
-    )
+    store = virtual_key_store_from_settings(settings)
     keys = store.list()
     if not keys:
         typer.echo("No virtual keys.")
@@ -251,12 +248,10 @@ def keys_list() -> None:
 @keys_app.command("revoke")
 def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys list`")) -> None:
     """Revoke a virtual key immediately."""
-    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 
     settings = get_settings()
-    store = VirtualKeyStore(
-        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
-    )
+    store = virtual_key_store_from_settings(settings)
     if store.revoke(key_id):
         typer.echo(f"Revoked {key_id}")
         import os
@@ -284,12 +279,10 @@ def keys_rotate(
     """Mint a new secret for the same key identity with a grace overlap (#377)."""
     import os
 
-    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 
     settings = get_settings()
-    store = VirtualKeyStore(
-        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
-    )
+    store = virtual_key_store_from_settings(settings)
     try:
         created = store.rotate(key_id, grace=grace)
     except KeyError:
@@ -338,12 +331,10 @@ def keys_team_create(
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
-    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 
     settings = get_settings()
-    store = VirtualKeyStore(
-        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
-    )
+    store = virtual_key_store_from_settings(settings)
     try:
         extra = coalesce_windows(
             [parse_window_flag(item) for item in window]
@@ -408,12 +399,10 @@ def keys_team_update(
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
-    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 
     settings = get_settings()
-    store = VirtualKeyStore(
-        settings.virtual_keys_path, enabled=settings.server.virtual_keys.enabled
-    )
+    store = virtual_key_store_from_settings(settings)
     try:
         extra = coalesce_windows(
             [parse_window_flag(item) for item in window]

@@ -13,6 +13,7 @@ from daari.auth.rate_limit import (
     estimate_request_tokens,
     request_model,
 )
+from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 from daari.auth.virtual_keys import VirtualKeyStore
 from daari.config.settings import Settings
 from daari.gateway.anthropic import AnthropicGatewayAdapter
@@ -39,9 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     vk_store: VirtualKeyStore | None = None
     if resolved.server.virtual_keys.enabled:
-        vk_store = VirtualKeyStore(
-            resolved.virtual_keys_path, enabled=resolved.server.virtual_keys.enabled
-        )
+        vk_store = virtual_key_store_from_settings(resolved)  # type: ignore[assignment]
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

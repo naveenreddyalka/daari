@@ -1171,14 +1171,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "issuer": claims.get("iss"),
             }
             if sso.mint_virtual_key_on_login and subject:
-                from daari.auth.virtual_keys import VirtualKeyStore
+                from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
                 from daari.enterprise.postgres_audit import audit_log_from_settings
                 from daari.enterprise.sso_keys import UnmappedSsoPolicy, sync_sso_virtual_key
 
-                store = VirtualKeyStore(
-                    ctx.settings.virtual_keys_path,
-                    enabled=True,
+                store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                    ctx, "virtual_key_store", None
                 )
+                if store is None:
+                    store = virtual_key_store_from_settings(ctx.settings)
                 try:
                     minted = sync_sso_virtual_key(
                         store,

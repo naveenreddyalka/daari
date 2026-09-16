@@ -2623,6 +2623,15 @@ and router tier stay on the user task. Docs:
 [routing-tiers.md](developer/concepts/routing-tiers.md#harness-aware-profiling).
 Covered by `tests/unit/test_harness_strip_parity.py`.
 
+### Postgres virtual keys / teams ([#544](https://github.com/naveenreddyalka/daari/issues/544))
+
+<!-- tracking:#544 -->
+**Status:** Done (2026-09-16). `server.virtual_keys.backend=postgres` shares
+keys/teams via `observability.postgres_url`; factory wires app/SSO/CLI;
+Helm + doctor fleet warnings list the auth store. Docs:
+[config.md](developer/reference/config.md). Covered by
+`tests/unit/test_postgres_virtual_keys.py`.
+
 ---
 
 ## How to update
