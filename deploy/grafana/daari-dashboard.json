@@ -119,9 +119,27 @@
     },
     {
       "id": 8,
+      "title": "TTFT p50 / p95 by tier (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, tier) (rate(daari_ttft_ms_bucket[5m])))",
+          "legendFormat": "p50 {{tier}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, tier) (rate(daari_ttft_ms_bucket[5m])))",
+          "legendFormat": "p95 {{tier}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 9,
       "title": "Guardrail trips",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "targets": [
         {
           "expr": "sum by (action) (rate(daari_guardrail_trips_total[5m]))",
