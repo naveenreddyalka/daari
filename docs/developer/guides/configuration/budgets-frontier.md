@@ -188,7 +188,9 @@ Exceeding a request quota returns the same `402` `budget_exceeded` shape with
 `x-daari-quota-requests-remaining` / `-limit` (and `Retry-After`). Successful
 responses for a quota-bound key carry the remaining/limit headers so clients
 can back off before the hard stop. `daari keys list` prints live
-`req used/cap` next to USD usage for each window.
+`req used/cap` next to USD usage for each window (appends ` soft` when the
+window is in the soft band). `daari report` / `GET /v1/daari/report` include
+a `request_quotas` array with the same used/cap/remaining/soft fields.
 
 Soft band (same `frontier.soft_budget_ratio`, default `0.8`): when used/cap
 crosses the soft line but not the hard cap, responses still succeed and add

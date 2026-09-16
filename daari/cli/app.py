@@ -233,7 +233,14 @@ def keys_list() -> None:
         for status in statuses:
             label = status.window.duration
             if status.quota == "requests":
-                parts.append(f"req {int(status.spend)}/{int(status.limit)} ({label})")
+                soft = ""
+                soft_ratio = float(
+                    getattr(getattr(settings, "frontier", None), "soft_budget_ratio", 0.8)
+                    or 0.0
+                )
+                if status.in_soft_band(soft_ratio):
+                    soft = " soft"
+                parts.append(f"req {int(status.spend)}/{int(status.limit)}{soft} ({label})")
             else:
                 parts.append(f"${status.spend:.2f}/${status.limit:.2f} ({label})")
         typer.echo(f"  budget: {', '.join(parts)}")
@@ -1079,6 +1086,21 @@ def report(
             f" month=${frontier.get('month_spend_usd', 0.0):.4f}"
             f"/{frontier.get('monthly_budget_usd', 0.0) or '∞'}"
         )
+
+    quotas = payload.get("request_quotas") or []
+    if quotas:
+        typer.echo("")
+        typer.echo(
+            f"{'key':<18} {'scope':<6} {'window':<6} {'used':>6} {'cap':>6} "
+            f"{'left':>6} soft"
+        )
+        for row in quotas:
+            soft = "yes" if row.get("soft") else "-"
+            typer.echo(
+                f"{row.get('key_id', ''):<18} {row.get('scope', ''):<6} "
+                f"{row.get('window', ''):<6} {int(row.get('used', 0)):>6} "
+                f"{int(row.get('cap', 0)):>6} {int(row.get('remaining', 0)):>6} {soft}"
+            )
 
     if by_client:
         clients = payload.get("clients") or []

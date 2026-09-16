@@ -411,3 +411,66 @@ def test_keys_list_surfaces_request_usage(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "4/100" in result.output or "req 4/100" in result.output
     assert "$" in result.output or "0.00/5" in result.output
+
+
+@pytest.mark.asyncio
+async def test_report_includes_request_quota_soft_band(settings, tmp_path):
+    """Report surfaces request-quota used/cap and soft flag (#519)."""
+    settings.frontier.soft_budget_ratio = 0.8
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    store.create(
+        "bot",
+        client_id="bot",
+        budget_windows=[BudgetWindow("day", 0.0, max_requests=10)],
+    )
+    _record_requests(ledger, "bot", 8)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/v1/daari/report?days=1",
+            headers={"Authorization": "Bearer master"},
+        )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    quotas = payload.get("request_quotas") or []
+    assert len(quotas) == 1
+    row = quotas[0]
+    assert row["used"] == 8
+    assert row["cap"] == 10
+    assert row["remaining"] == 2
+    assert row["soft"] is True
+    assert row["scope"] == "key"
+    assert row["window"] in {"1d", "day"}
+
+    from daari.observability.render import report_markdown
+
+    md = report_markdown(payload, days=1)
+    assert "Request quotas" in md
+    assert "8" in md and "10" in md and "yes" in md
+
+
+def test_keys_list_marks_request_quota_soft(tmp_path, monkeypatch):
+    from daari.cli.app import app as cli_app
+    from daari.config.settings import Settings
+
+    settings = Settings()
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.server.virtual_keys.enabled = True
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.frontier.soft_budget_ratio = 0.8
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    store.create(
+        "bot",
+        client_id="bot",
+        budget_windows=[BudgetWindow("day", 0.0, max_requests=10)],
+    )
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    _record_requests(ledger, "bot", 8)
+
+    runner = CliRunner()
+    result = runner.invoke(cli_app, ["keys", "list"])
+    assert result.exit_code == 0, result.output
+    assert "req 8/10 soft" in result.output

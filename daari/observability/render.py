@@ -43,6 +43,22 @@ def report_markdown(payload: dict[str, Any], *, days: int = 7) -> str:
     lines.append("")
     lines.append(f"**Estimated saved:** ${totals.get('estimated_saved_usd', 0.0):.4f}")
     lines.append("")
+
+    quotas = payload.get("request_quotas") or []
+    if quotas:
+        lines.append("## Request quotas")
+        lines.append("")
+        lines.append("| key | scope | window | used | cap | remaining | soft |")
+        lines.append("| --- | --- | --- | ---: | ---: | ---: | --- |")
+        for row in quotas:
+            soft = "yes" if row.get("soft") else "-"
+            lines.append(
+                f"| {row.get('key_id', '')} | {row.get('scope', '')} | "
+                f"{row.get('window', '')} | {int(row.get('used', 0))} | "
+                f"{int(row.get('cap', 0))} | {int(row.get('remaining', 0))} | {soft} |"
+            )
+        lines.append("")
+
     return "\n".join(lines)
 
 

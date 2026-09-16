@@ -737,6 +737,57 @@ def tightest_request_window(statuses: Iterable[WindowStatus]) -> WindowStatus | 
     return best
 
 
+def request_quota_report_rows(
+    store: Any,
+    ledger: Any,
+    *,
+    soft_ratio: float,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> list[dict[str, Any]]:
+    """Per-key request-quota used/cap/soft for report + FinOps (#519)."""
+    rows: list[dict[str, Any]] = []
+    if store is None or not getattr(ledger, "enabled", False):
+        return rows
+    try:
+        keys = store.list()
+    except Exception:
+        return rows
+    for key in keys:
+        try:
+            team = store.get_team(key.team_id) if key.team_id else None
+            client_id = key.client_id or key.key_id
+            team_ids = store.team_client_ids(team.team_id) if team is not None else []
+            statuses = budget_status(
+                key,
+                team,
+                ledger,
+                client_id=client_id,
+                team_client_ids=team_ids,
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+        except Exception:
+            continue
+        for status in statuses:
+            if status.quota != "requests":
+                continue
+            soft = status.in_soft_band(soft_ratio)
+            rows.append(
+                {
+                    "key_id": key.key_id,
+                    "name": key.name,
+                    "scope": status.scope,
+                    "window": window_header_label(status.window.duration),
+                    "used": int(status.spend),
+                    "cap": int(status.limit),
+                    "remaining": int(status.remaining),
+                    "soft": soft,
+                }
+            )
+    return rows
+
+
 def first_exceeded_window(
     key: VirtualKey,
     team: Team | None,

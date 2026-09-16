@@ -969,6 +969,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 payload["teams"] = store.report_by_team(payload["clients"])
             else:
                 payload["teams"] = []
+            from daari.auth.budgets import request_quota_report_rows
+
+            payload["request_quotas"] = request_quota_report_rows(
+                store,
+                ledger,
+                soft_ratio=float(ctx.settings.frontier.soft_budget_ratio or 0.0),
+                pricing=getattr(ctx.settings, "pricing", None),
+                fallback_per_1k=float(
+                    getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                ),
+            )
             # Trust PRD T1d: false-hit rates + answer diversity per category.
             trust: dict[str, Any] = {}
             feedback = ctx.router.feedback_store
