@@ -39,6 +39,10 @@ upstream fill, waiters share the body, cache writes once. Stream and
 non-stream share the same in-flight map (#499 / #506). An upstream error
 clears the in-flight slot so the next attempt can retry.
 
+Ask-path L1 cold misses with the same normalized embed key likewise share
+one nearest lookup and one upstream fill (#517); agent turns still skip L1
+and keep exact-L0 singleflight only.
+
 ## Escalation
 
 Local models escalate on low confidence, latency budget miss, or capability gaps (tools/vision/json). Image blocks on user **or tool-result** messages require `vision` (#397); hops log `modality_escalation`. Caps:

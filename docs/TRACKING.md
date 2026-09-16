@@ -2497,6 +2497,15 @@ per-pod). Single-replica stays quiet. Docs:
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/test_doctor.py`.
 
+### L1 semantic-cache cold-miss singleflight ([#517](https://github.com/naveenreddyalka/daari/issues/517))
+
+<!-- tracking:#517 -->
+**Status:** Done (2026-09-16). Concurrent Ask-path L1 lookups/fills for the
+same normalized embed key share one nearest + upstream via in-process
+singleflight; agent turns stay on exact-L0 coalescing only. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_l1_singleflight.py`.
+
 ---
 
 ## How to update

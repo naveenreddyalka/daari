@@ -11,6 +11,7 @@ import httpx
 
 from daari.cache.exact import tools_schema_hash
 from daari.cache.normalize import normalize_for_embedding
+from daari.cache.singleflight import SingleFlight
 from daari.gateway.internal import InternalRequest, InternalResponse
 from daari.gateway.request_log import log_gateway_event
 
@@ -58,6 +59,23 @@ def semantic_context_key(request: InternalRequest) -> str:
             request.meta.tier_override or "",
         ]
     )
+
+
+def l1_flight_key(
+    request: InternalRequest,
+    *,
+    text: str | None = None,
+    context_key: str | None = None,
+) -> str:
+    """In-process singleflight key for identical normalized embeds (#517).
+
+    Near-identical Ask prompts that collapse to the same embed text share one
+    nearest/fill; exact L0 keys may still differ (whitespace, scaffolding).
+    """
+    ctx = context_key if context_key is not None else semantic_context_key(request)
+    embed_text = text if text is not None else extract_embed_text(request)
+    digest = hashlib.sha256(embed_text.encode("utf-8")).hexdigest()
+    return f"{ctx}|{digest}"
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -159,6 +177,22 @@ class SemanticCache:
         self._clock = clock or time.time
         self._path = path
         self._cache: Any = None
+        # Concurrent same-key nearest() share one embed+scan (#517).
+        self._lookup_flight = SingleFlight()
+
+    def flight_key(
+        self,
+        request: InternalRequest,
+        *,
+        context_key: str | None = None,
+        text: str | None = None,
+    ) -> str:
+        embed_text = text if text is not None else self._embed_text(request)
+        return l1_flight_key(
+            request,
+            text=embed_text,
+            context_key=context_key,
+        )
 
     def _embed_text(self, request: InternalRequest) -> str:
         text = extract_embed_text(request)
@@ -258,11 +292,38 @@ class SemanticCache:
         """Best entry plus the prompt that produced it, for verification (#168).
 
         The stored text is returned rather than stashed on the instance because
-        concurrent requests share this object.
+        concurrent requests share this object. Concurrent identical embed keys
+        share one embed+scan via singleflight (#517).
         """
         if not self.enabled:
             return None, 0.0, None
 
+        text = text if text is not None else self._embed_text(request)
+        if not text.strip():
+            return None, 0.0, None
+
+        ctx = context_key or semantic_context_key(request)
+        flight = f"{self.flight_key(request, context_key=ctx, text=text)}|age={max_age}"
+
+        async def _scan() -> tuple[InternalResponse | None, float, str | None]:
+            return await self._nearest_entry_uncached(
+                request, max_age=max_age, context_key=ctx, text=text
+            )
+
+        response, score, source = await self._lookup_flight.do(flight, _scan)
+        if response is None:
+            return None, score, source
+        # Waiters mutate daari_meta on serve paths; isolate copies.
+        return response.model_copy(deep=True), score, source
+
+    async def _nearest_entry_uncached(
+        self,
+        request: InternalRequest,
+        *,
+        max_age: float | None = None,
+        context_key: str | None = None,
+        text: str | None = None,
+    ) -> tuple[InternalResponse | None, float, str | None]:
         text = text if text is not None else self._embed_text(request)
         if not text.strip():
             return None, 0.0, None
