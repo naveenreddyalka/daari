@@ -53,6 +53,7 @@ def run_doctor(
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
+    results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_daemon(cfg, httpx_client))
@@ -472,6 +473,76 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
         name="fleet_cache",
         ok=True,
         detail=f"fleet_replicas={replicas}; cache.backend=redis",
+        optional=True,
+    )
+
+
+def _has_request_quota_windows(settings: Settings) -> bool:
+    """True when any key/team budget window carries a request cap."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return False
+    try:
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        store = VirtualKeyStore(settings.virtual_keys_path)
+    except Exception:
+        return False
+    for key in store.list():
+        for window in key.budget_windows:
+            if int(getattr(window, "max_requests", 0) or 0) > 0:
+                return True
+        if int(getattr(key, "rpm", 0) or 0) > 0 or int(getattr(key, "tpm", 0) or 0) > 0:
+            return True
+    try:
+        teams = getattr(store, "list_teams", None)
+        if callable(teams):
+            for team in teams():
+                for window in getattr(team, "budget_windows", ()) or ():
+                    if int(getattr(window, "max_requests", 0) or 0) > 0:
+                        return True
+    except Exception:
+        pass
+    return False
+
+
+def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
+    """Warn when soft_budget_ratio=0 disables soft bands while hard caps remain (#530)."""
+    ratio = float(getattr(settings.frontier, "soft_budget_ratio", 0.8) or 0.0)
+    rl = settings.rate_limit
+    rate_caps = (
+        int(getattr(rl, "rpm", 0) or 0) > 0
+        or int(getattr(rl, "tpm", 0) or 0) > 0
+        or int(getattr(rl, "model_rpm", 0) or 0) > 0
+        or int(getattr(rl, "model_tpm", 0) or 0) > 0
+    )
+    quota_caps = _has_request_quota_windows(settings)
+    if ratio > 0:
+        return CheckResult(
+            name="soft_budget_ratio",
+            ok=True,
+            detail=f"frontier.soft_budget_ratio={ratio}",
+            optional=True,
+        )
+    if not rate_caps and not quota_caps:
+        return CheckResult(
+            name="soft_budget_ratio",
+            ok=True,
+            detail="soft_budget_ratio=0 and no request-quota/RPM caps configured",
+            optional=True,
+        )
+    reasons: list[str] = []
+    if rate_caps:
+        reasons.append("rate_limit rpm/tpm")
+    if quota_caps:
+        reasons.append("request-quota or per-key rpm/tpm")
+    return CheckResult(
+        name="soft_budget_ratio",
+        ok=False,
+        detail=(
+            f"frontier.soft_budget_ratio=0 with {' + '.join(reasons)} — soft "
+            "402/429 warnings are disabled while hard caps remain; set "
+            "soft_budget_ratio (e.g. 0.8) so agents can back off before cliffs"
+        ),
         optional=True,
     )
 

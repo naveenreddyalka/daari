@@ -2577,6 +2577,15 @@ prefers a faster local tier with better recent stream TTFT percentile when
 [config.md](developer/reference/config.md). Covered by
 `tests/unit/test_ttft_aware_routing.py`.
 
+### Doctor soft_budget_ratio=0 warning ([#530](https://github.com/naveenreddyalka/daari/issues/530))
+
+<!-- tracking:#530 -->
+**Status:** Done (2026-09-16). `daari doctor` warns (`soft_budget_ratio`) when
+`frontier.soft_budget_ratio` is 0 while request quotas or rate_limit RPM/TPM
+are configured. Quiet when ratio > 0 or no caps. Docs:
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_doctor_soft_budget_ratio.py`.
+
 ---
 
 ## How to update
