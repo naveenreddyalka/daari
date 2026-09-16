@@ -233,4 +233,15 @@ def render_prometheus(
                 f"daari_budget_alerts_total{_labels(scope=scope, threshold=threshold)} {int(count)}"
             )
 
+    soft_warnings = snap.get("soft_warnings") or {}
+    if soft_warnings:
+        lines.append(
+            "# HELP daari_soft_warnings_total Soft-band warnings before hard 402/429, by kind."
+        )
+        lines.append("# TYPE daari_soft_warnings_total counter")
+        for kind, count in soft_warnings.items():
+            lines.append(
+                f"daari_soft_warnings_total{_labels(kind=kind)} {int(count)}"
+            )
+
     return "\n".join(lines) + "\n"

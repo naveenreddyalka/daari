@@ -62,6 +62,7 @@ class Metrics:
     backends: dict[str, int] = field(default_factory=dict)
     tier_shadow: dict[str, int] = field(default_factory=dict)
     budget_alerts: dict[str, int] = field(default_factory=dict)
+    soft_warnings: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -130,6 +131,11 @@ class Metrics:
         with self._lock:
             self.budget_alerts[key] = self.budget_alerts.get(key, 0) + 1
 
+    def record_soft_warning(self, kind: str) -> None:
+        """Soft band before hard 402/429 (request_quota or rate_limit, #526)."""
+        with self._lock:
+            self.soft_warnings[kind] = self.soft_warnings.get(kind, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -166,4 +172,5 @@ class Metrics:
                 "backends": dict(self.backends),
                 "tier_shadow": dict(self.tier_shadow),
                 "budget_alerts": dict(self.budget_alerts),
+                "soft_warnings": dict(self.soft_warnings),
             }

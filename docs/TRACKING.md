@@ -2542,6 +2542,15 @@ N concurrent identical L0 cold misses → exactly one upstream under a wall
 ceiling. Docs: [benchmark-load.md](developer/resources/benchmark-load.md).
 Covered by `tests/benchmark/test_hermetic_paths.py`.
 
+### Soft-warning Prometheus counters ([#526](https://github.com/naveenreddyalka/daari/issues/526))
+
+<!-- tracking:#526 -->
+**Status:** Done (2026-09-16). `/metrics` exposes
+`daari_soft_warnings_total{kind="request_quota"|"rate_limit"}` when soft
+headers are set; hard 402/429 do not increment. Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_soft_warning_metrics.py`.
+
 ---
 
 ## How to update
