@@ -42,6 +42,17 @@ After a tagged release (e.g. `v1.4.0`), update **both** in the same change — d
 
 Keep them equal to `pyproject.toml` / `daari.__version__`. `tests/unit/test_helm_chart.py` fails if they drift.
 
+### Graceful rollouts / drains
+
+Defaults leave interactive SSE streams (chat, Responses, MCP) and in-flight
+batch drains a window to finish before kubelet SIGTERMs the pod:
+
+| Value | Default | Role |
+|-------|---------|------|
+| `terminationGracePeriodSeconds` | `60` | Total time after SIGTERM before SIGKILL. Size above the longest stream you expect (and `sse_keepalive_seconds`). |
+| `lifecycle.preStopSleepSeconds` | `5` | `preStop` sleep so Service endpoint removal propagates before SIGTERM. Set `0` to omit the lifecycle block. |
+| `strategy.rollingUpdate` | `maxUnavailable: 0` / `maxSurge: 1` | Never drop capacity during upgrades. |
+
 ## Next
 
 → [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md) · [Batches](../features/batches.md)
