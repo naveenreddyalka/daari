@@ -2594,6 +2594,16 @@ are configured. Quiet when ratio > 0 or no caps. Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Route preview dry-run ([#538](https://github.com/naveenreddyalka/daari/issues/538))
+
+<!-- tracking:#538 -->
+**Status:** Done (2026-09-16). `POST`/`GET /v1/daari/route/preview` and
+`daari route preview` return the would-be initial local tier plus
+heuristic / phase / latency_budget / ttft_preference reason fields, without
+calling Ollama or frontier. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md). Covered by
+`tests/unit/test_route_preview.py`.
+
 ---
 
 ## How to update
