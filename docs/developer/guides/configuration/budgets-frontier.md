@@ -193,7 +193,8 @@ can back off before the hard stop. `daari keys list` prints live
 Soft band (same `frontier.soft_budget_ratio`, default `0.8`): when used/cap
 crosses the soft line but not the hard cap, responses still succeed and add
 `x-daari-quota-requests-warning: soft` plus `daari_meta.warning =
-"request_quota_warning"` (when `X-Daari-Meta` is set). Operator webhooks from
+"request_quota_warning"` on OpenAI chat, Anthropic Messages, and Responses
+(when `X-Daari-Meta` is set). Operator webhooks from
 `alerts.budget_webhook_url` also fire on request-quota threshold crossings
 with `quota: "requests"` and `limit_requests` / `spent_requests` /
 `remaining_requests` (USD payloads unchanged).

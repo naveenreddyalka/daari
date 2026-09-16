@@ -326,6 +326,44 @@ async def test_request_quota_soft_band_warns_before_402(settings, tmp_path):
     assert "Retry-After" in hard.headers
 
 
+@pytest.mark.asyncio
+async def test_request_quota_soft_warn_on_anthropic_and_responses(settings, tmp_path):
+    """Soft band sets daari_meta.warning on Anthropic + Responses (#509)."""
+    settings.frontier.soft_budget_ratio = 0.8
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    key = store.create(
+        "a",
+        client_id="key-a",
+        budget_windows=[BudgetWindow("day", 0.0, max_requests=10)],
+    )
+    _record_requests(ledger, "key-a", 8)
+    auth = {"Authorization": f"Bearer {key.plaintext}", "X-Daari-No-Cache": "true"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        anthropic = await client.post(
+            "/v1/messages",
+            json={
+                "model": "daari",
+                "max_tokens": 64,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            headers=auth,
+        )
+        assert anthropic.status_code == 200
+        assert anthropic.headers[QUOTA_REQUESTS_WARNING_HEADER] == "soft"
+        assert anthropic.json()["daari_meta"]["warning"] == "request_quota_warning"
+
+        responses = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "hi"},
+            headers={**auth, "X-Daari-Meta": "true"},
+        )
+        assert responses.status_code == 200
+        assert responses.headers[QUOTA_REQUESTS_WARNING_HEADER] == "soft"
+        assert responses.json()["daari_meta"]["warning"] == "request_quota_warning"
+
+
 def test_keys_create_window_requests_cli(tmp_path, monkeypatch):
     from daari.cli.app import app as cli_app
     from daari.config.settings import Settings

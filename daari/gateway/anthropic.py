@@ -431,6 +431,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)
+            if getattr(request.state, "request_quota_soft", False):
+                result.daari_meta.warning = "request_quota_warning"
             payload = AnthropicMessageResponse(
                 id=f"msg_{uuid.uuid4().hex[:12]}",
                 model=result.model,
