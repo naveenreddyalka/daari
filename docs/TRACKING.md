@@ -2613,6 +2613,16 @@ calling Ollama or frontier. Docs:
 Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_reject_metrics.py`.
 
+### Harness strip parity for Claude Code / Codex ([#541](https://github.com/naveenreddyalka/daari/issues/541))
+
+<!-- tracking:#541 -->
+**Status:** Done (2026-09-16). `strip_harness_text` matches LiteLLM Codex
+reminder markers (`user_instructions`, `environments_instructions`, agents.md
+envelope) plus existing Claude Code blocks; fixtures assert category/complexity
+and router tier stay on the user task. Docs:
+[routing-tiers.md](developer/concepts/routing-tiers.md#harness-aware-profiling).
+Covered by `tests/unit/test_harness_strip_parity.py`.
+
 ---
 
 ## How to update

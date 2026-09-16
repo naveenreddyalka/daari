@@ -100,11 +100,23 @@ failure, context-length failover, an open circuit, a down model, and
 
 `routing.harness_aware_profile` (default on) keeps Claude Code / Cursor /
 Codex catalogs from flipping `complexity`. System messages and recognized
-harness blocks (`<environment_context>`, `<recommended_plugins>`,
-`<system-reminder>`) are ignored for category and complexity. `prompt_tokens_est`
-still counts the full request so context-window escalation (#385) sees real
-size. A no-op when those markers are absent. Off restores the old sum-every-
-message heuristic. Trace/event: `harness_profile` with `stripped_chars`.
+harness blocks are ignored for category and complexity:
+
+- `<system-reminder>…</system-reminder>` (Claude Code)
+- `<environment_context>…</environment_context>`
+- `<recommended_plugins>…</recommended_plugins>`
+- `<user_instructions>…</user_instructions>`
+- `<environments_instructions>…</environments_instructions>`
+- `# agents.md instructions for …</instructions>` (Codex repository envelope)
+
+`prompt_tokens_est` still counts the full request so context-window
+escalation (#385) sees real size. A no-op when those markers are absent. Off
+restores the old sum-every-message heuristic. Trace/event: `harness_profile`
+with `stripped_chars`.
+
+Agent User-Agents (`cursor` / `claude-code` / `codex`) also get the
+[classify user turn](#classify-user-turn) UA shortcut so tool-result
+continuations reuse the stripped profile without re-scoring harness noise.
 
 ## Classify user turn
 
