@@ -1,8 +1,10 @@
-"""In-process singleflight for L0 exact-cache fills (#499, #506).
+"""In-process singleflight for L0 exact-cache and L1 embed-key fills
+(#499, #506, #517).
 
 Concurrent identical cold misses share one upstream execution; waiters await
 the leader's result. Errors clear the in-flight slot so the next attempt can
-retry (no permanent poison). Stream and non-stream share the same map.
+retry (no permanent poison). Stream and non-stream share the same map. Ask
+path with L1 enabled also coalesces near-identical embeds under one key.
 """
 
 from __future__ import annotations

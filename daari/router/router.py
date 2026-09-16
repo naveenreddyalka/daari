@@ -1436,6 +1436,7 @@ class Router:
 
         `gen_request` may carry a draft hint; `request` stays pristine so cache
         keys are unaffected. Concurrent identical L0 keys share one fill (#499).
+        Ask-path same L1 embed keys also coalesce when L1 is on (#517).
         """
         if request.meta.no_cache or cache_skip:
             return await self._route_generation_fill(
@@ -1447,9 +1448,21 @@ class Router:
                 gen_request, request, profile, started, cache_skip
             )
 
-        result = await self._l0_singleflight.do(cache_key(request), _fill)
+        result = await self._l0_singleflight.do(self._fill_flight_key(request), _fill)
         # Waiters get a copy so concurrent daari_meta mutations stay isolated.
         return result.model_copy(deep=True)
+
+    def _fill_flight_key(self, request: InternalRequest) -> str:
+        """Singleflight key for generation fills (#499 / #517).
+
+        Agent turns and L1-off stay on exact L0 keys. Ask with L1 enabled uses
+        the normalized embed key so near-identical cold misses share one
+        upstream + L1 put.
+        """
+        agent_turn = bool(request.tools) or request.has_tool_calls_in_history
+        if not agent_turn and self.semantic_cache.enabled:
+            return "l1:" + self.semantic_cache.flight_key(request)
+        return "l0:" + cache_key(request)
 
     async def _route_generation_fill(
         self,
@@ -1864,12 +1877,13 @@ class Router:
                     draft_used = True
                     add_step("draft_injected", similarity=round(nearest_similarity, 4))
 
-        # L0 singleflight for stream path (#506); shares map with non-stream `do()`.
+        # Fill singleflight for stream path (#506 / #517); shares map with
+        # non-stream `do()` (L0 exact or L1 embed key via `_fill_flight_key`).
         stream_flight_key: str | None = None
         stream_flight_fut: asyncio.Future | None = None
         stream_flight_result: InternalResponse | None = None
         if cacheable:
-            stream_flight_key = cache_key(request)
+            stream_flight_key = self._fill_flight_key(request)
             stream_flight_fut, is_leader = self._l0_singleflight.begin(stream_flight_key)
             if not is_leader:
                 try:
