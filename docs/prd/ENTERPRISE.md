@@ -11,27 +11,25 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-16 late)
+## Where daari stands (verified in-tree, 2026-09-16 night)
 
-Three prd runs today; the evening refill's Grafana soft-warn row shipped within
-minutes (PR merged 14:35). Four evening issues remain open. This late run
-audited the **fleet auth story**: `postgres.enabled=true` flips five stores to
-Postgres, but virtual keys/teams stay per-pod SQLite (`daari/auth/virtual_keys.py`)
-— SSO-minted keys 401 on sibling replicas, revocation doesn't propagate, and
-neither doctor's `sqlite_artifacts` nor the chart's fleet-sqlite-warning
-annotation mention the keys store. Helm also has no preStop/termination-grace/
-rolling strategy; teams have budgets but no aggregate RPM/TPM; the Ollama
-facade hardcodes `capabilities: ["completion"]`; keys/teams have no
-export/import (backup/DR).
+Fourth prd run today. Route dry-run preview shipped on `main` (squash merge
+same evening). Eight fleet/ops issues remain open from evening + late runs.
+This night run audited **operator observability and chart hardening**: soft
+402/429 warnings are metered (`daari_soft_warnings_total`) but hard rejects
+are silent; Redis rate-limit degradation only logs; `/health` and the CLI
+expose no package version (upgrade.md already calls this out); Helm still
+lacks `securityContext` / PDB / ServiceMonitor; SSO `analyst` exists in
+`daari/enterprise/rbac.py` but mutating admin routes and read surfaces are
+under-gated.
 
-**Positioning:** LiteLLM **v1.101.0 stable** (09-15; v1.103.0-dev.1 on 09-16 is
-fixes only). **Ollama v0.34.1 stable** (09-14): consistent capability reporting
-on `/api/tags` — clients gate tools/thinking on it, so the facade must
-advertise real capabilities. Portkey v2.22.0 / Kong 2.0.3 / OpenRouter (08-19)
-/ vLLM 0.29.0 unchanged.
+**Positioning:** LiteLLM **v1.101.0 stable** (09-15; v1.103.0-dev.1 fixes-only
+on 09-16). **Ollama v0.34.1 stable** / **v0.34.2-rc0** (llama.cpp bump only).
+Portkey gateway OSS last tagged 2026-01; Kong 3.9.3 (06-17); vLLM 0.29.0;
+OpenRouter flat. Competitive delta is quiet — inward ops/RBAC wins.
 
-**Inward theme:** fleet-wide auth (Postgres keys), rollout safety, team quotas,
-facade capability parity, auth-store backup/DR.
+**Inward theme:** hard-reject metrics, version discovery, rate-limit
+degradation scrape signal, Helm hardening, SSO RBAC leftovers.
 
 ---
 
@@ -39,64 +37,60 @@ facade capability parity, auth-store backup/DR.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Postgres virtual keys/teams** — last per-pod SQLite store; SSO mints 401 across replicas | 5 | 3 | LiteLLM | On-box resolve, psycopg pattern in 5 sibling stores, zero new deps | **Filed** (P2) |
-| 2 | **Helm graceful rollout** — no preStop/termGrace/strategy; SSE cut on upgrade | 3 | 2 | Kong | Local streams are the longest requests; batch resume already restart-safe | **Filed** (P2) |
-| 3 | **Team-level RPM/TPM** — teams have budgets only; N keys = N× per-key RPM | 3 | 2 | LiteLLM | Team ceilings map to shared on-box GPU capacity | **Filed** (P2) |
-| 4 | **Keys/teams export/import** — no backup/DR for the auth store | 3 | 2 | LiteLLM (control plane) | On-box state needs portable export; hashes only | **Filed** (P2) |
-| 5 | **Facade capabilities parity** — Ollama 0.34.1 clients gate tools on capability lists | 2 | 2 | Ollama | Router handles tools; facade under-advertises | **Filed** (P3) |
-| 6 | **Route dry-run API/CLI** — LiteLLM `/auto_router/test_routing` parity | 3 | 2 | LiteLLM | Preview L3–L5 without upstream | Open (P2) |
-| 7 | **Harness strip corpus** — Claude Code / Codex envelopes | 3 | 2 | LiteLLM | Correct local picks for agent UAs | Open (P2) |
-| 8 | **TTFT-preference counter / soft RPM hermetic bench** | 2 | 1 | — | Observability for the new soft-band paths | Open (P3) |
-| 9 | **WIF upstream provider auth** | 3 | 3 | Portkey | `secret://oauth` covers most | Watch |
-| 10 | **MCP agent identity (SEP-1933)** | 3 | 3 | MCP Tier-1 SDKs | Draft | Watch |
-| 11 | **SOC 2 / Gemini facade / A2A / admin UI / images / realtime** | 2–3 | 2–5 | Kong / LiteLLM | No new client demand | Watch / non-goal |
+| 1 | **Hard 402/429 Prometheus counters** — soft band metered; cliffs silent | 4 | 1 | LiteLLM / Kong | Alert when local soft warnings become denials | **Filed** (P1) |
+| 2 | **CLI `--version` + `/health` version** — upgrade.md documents the hole | 3 | 1 | Every gateway | On-box upgrade/rollback without `pip show` | **Filed** (P2) |
+| 3 | **Rate-limit Redis degraded gauge** — log-only today | 3 | 1 | Kong | Page on silent per-pod SQLite fallback | **Filed** (P2) |
+| 4 | **Helm securityContext + PDB** — chart has Deploy/Svc/HPA only | 4 | 2 | Kong | Secure defaults + drain floor for local streams | **Filed** (P2) |
+| 5 | **SSO RBAC leftovers** — reload-caches ungated; analyst can't read | 4 | 2 | LiteLLM / Portkey | Local SSO without control-plane SaaS | **Filed** (P2) |
+| 6 | **Postgres virtual keys/teams** — last per-pod SQLite auth store | 5 | 3 | LiteLLM | On-box resolve, sibling store pattern | Open (P2) |
+| 7 | **Helm graceful rollout** — no preStop/termGrace/strategy | 3 | 2 | Kong | Longest requests are local SSE | Open (P2) |
+| 8 | **Team RPM/TPM + keys export/import** | 3 | 2 | LiteLLM | Shared GPU ceilings + on-box DR | Open (P2) |
+| 9 | **Harness strip corpus / facade capabilities / TTFT+soft benches** | 2–3 | 1–2 | LiteLLM / Ollama | Correct local picks + scrape parity | Open (P2/P3) |
+| 10 | **WIF / MCP SEP-1933 / SOC 2 / Gemini / A2A / admin UI** | 2–3 | 2–5 | Kong / LiteLLM | No new client demand | Watch / non-goal |
 
-Pruned this run: Grafana soft-warn panel (shipped 2026-09-16 14:35).
+Pruned this run: route dry-run API/CLI (shipped same evening).
 
-Open backlog after this run: four evening rows + five late-run rows.
+Open backlog after this run: eight prior rows + five night-run rows.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Fleet-wide auth** — Postgres keys/teams; the last split-brain store.
-2. **Zero-downtime rollouts** — Helm drain lifecycle for long local streams.
-3. **Team quotas** — aggregate RPM/TPM mapping to shared GPU capacity.
-4. **Auth backup/DR** — versioned keys/teams export/import, hashes only.
-5. **Operator preview + parity** — route dry-run, harness corpus, facade
-   capabilities.
+1. **Fleet-wide auth** — Postgres keys/teams (still the split-brain store).
+2. **Operator scrape parity** — hard rejects + rate-limit degradation gauges.
+3. **Zero-downtime + hardened chart** — drain lifecycle, securityContext, PDB.
+4. **SSO RBAC completeness** — analyst read / admin mutate on every surface.
+5. **Version discovery + DR** — `--version`/`/health`, keys export/import.
 
 ---
 
 ## Changelog
 
+- **2026-09-16 (night)** — Delta scan: LiteLLM v1.103.0-dev.1 still fixes-only;
+  Ollama v0.34.2-rc0 llama.cpp-only; Portkey/Kong/vLLM/OpenRouter flat. Inward
+  ops/RBAC audit after dry-run ship; filed five issues (hard-reject metrics,
+  version exposure, rate-limit degraded gauge, Helm securityContext+PDB, SSO
+  RBAC leftovers). Pruned shipped route dry-run row.
 - **2026-09-16 (late)** — Delta scan: LiteLLM v1.103.0-dev.1 fixes-only;
   Ollama v0.34.1 stable (capability reporting, faster `/api/tags`); rest flat.
   Inward fleet-auth audit; filed five issues (Postgres keys/teams, Helm
   graceful rollout, team RPM/TPM, keys export/import, facade capabilities).
   Pruned shipped Grafana soft-warn row.
-- **2026-09-16 (evening)** — Drain shipped #526–#530 (PRs #532–#536). Backlog
-  empty; refilled five issues (Grafana soft-warn, route dry-run, harness
-  corpus, TTFT-preference counter, soft RPM hermetic). Outward: LiteLLM
-  harness-aware auto-router (Sep 10) + v1.100.x still stable bar.
-- **2026-09-16 (afternoon)** — Drain shipped #516–#520 (PRs #521–#525). Backlog
-  empty; refilled five issues (soft-warn Prometheus, report JSON, L1 hermetic
-  ceiling, TTFT-aware routing, doctor soft_ratio=0). Outward: LiteLLM harness-
-  aware / modality auto-router posts noted; v1.100.1 still stable bar.
-- **2026-09-16** — Late-15 leftovers shipped (PRs #501–#505). Backlog empty;
-  refilled five issues (stream singleflight, Responses input_tokens, TTFT
-  histogram, facade soft quota, doctor multi-replica Redis). Outward: LiteLLM
-  v1.100.1 noted; v1.101/102 still RC. Portkey/Kong/OpenRouter flat.
-- **2026-09-15 (late)** — Same-day fleet sprint closed (#481–#485 → PRs
-  #490–#494; #476–#478 earlier). Backlog empty mid-session; refilled five P2
-  leftovers (profile pins, doctor audit/webhook warnings, Responses
-  retention, request-quota soft band, L0 singleflight). Outward: LiteLLM
-  v1.100.0 (access-group budgets, custom router tiers) noted; v1.101 bar
-  unchanged. Portkey/Kong/OpenRouter/Ollama flat.
-- **2026-09-15** — Fifth same-day drain: #463–#467 merged overnight (PRs
-  #469–#473). Never-empty refill + scheduled Actions `prd-cycle` (PR #479)
-  and session cost rollup (PR #480). Filed #481–#485 (fleet half-finished).
-- **2026-09-14** — Redis resilience audit; filed #463–#467; all shipped
-  overnight.
-- **2026-09-13→08-28** (condensed) — tenancy, batches, Kong parity, labeler,
-  Apache 2.0, this PRD.
+- **2026-09-16 (evening)** — Drain shipped; backlog empty; refilled five
+  issues (Grafana soft-warn, route dry-run, harness corpus, TTFT-preference
+  counter, soft RPM hermetic). Outward: LiteLLM harness-aware auto-router
+  noted; v1.100.x still stable bar.
+- **2026-09-16 (afternoon)** — Drain shipped; backlog empty; refilled five
+  issues (soft-warn Prometheus, report JSON, L1 hermetic ceiling, TTFT-aware
+  routing, doctor soft_ratio=0). Outward: LiteLLM harness-/modality
+  auto-router posts noted.
+- **2026-09-16** — Late-15 leftovers shipped. Backlog empty; refilled five
+  issues (stream singleflight, Responses input_tokens, TTFT histogram,
+  facade soft quota, doctor multi-replica Redis). Outward: LiteLLM v1.100.1
+  noted; v1.101/102 still RC.
+- **2026-09-15 (late)** — Same-day fleet sprint closed. Backlog empty
+  mid-session; refilled five P2 leftovers. Outward: LiteLLM v1.100.0 noted.
+- **2026-09-15** — Fifth same-day drain; never-empty refill + scheduled
+  Actions `prd-cycle`.
+- **2026-09-14→08-28** (condensed) — Redis resilience, tenancy, batches,
+  Kong parity, labeler, Apache 2.0, this PRD.
