@@ -2663,6 +2663,15 @@ versions. Round-trip preserves rotated-key grace. Docs:
 [upgrade.md](developer/guides/operations/upgrade.md#virtual-keys-backup--restore).
 Covered by `tests/unit/test_keys_export_import.py`.
 
+### Package version discovery ([#552](https://github.com/naveenreddyalka/daari/issues/552))
+
+<!-- tracking:#552 -->
+**Status:** Done (2026-09-16). `daari --version` prints `daari.__version__`.
+`GET /health` returns `{"status":"ok","version":"…"}` (status unchanged for
+probes). Docs: [upgrade.md](developer/guides/operations/upgrade.md),
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_version_discovery.py`.
+
 ---
 
 ## How to update

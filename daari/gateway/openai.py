@@ -14,7 +14,11 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
-from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import (
+    backend_unavailable_message,
+    routing_failure_detail,
+    safe_detail,
+)
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
@@ -171,7 +175,9 @@ def _prepare_internal_request(
             }
             for message in body.messages
         ]
-        log_gateway_event("no_user_messages_after_normalize", {"raw": raw_types, "model": body.model})
+        log_gateway_event(
+            "no_user_messages_after_normalize", {"raw": raw_types, "model": body.model}
+        )
     tools = body.tools
     mode = (tools_mode or "").strip().lower()
     has_tool_history = any(
@@ -228,7 +234,9 @@ class ChatCompletionResponse(BaseModel):
     created: int
     model: str
     choices: list[ChatCompletionChoice]
-    usage: dict[str, int] = Field(default_factory=lambda: {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+    usage: dict[str, int] = Field(
+        default_factory=lambda: {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    )
     daari_meta: dict[str, Any] | None = None
 
 
@@ -526,7 +534,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
-            x_daari_latency_budget: str | None = Header(default=None, alias="X-Daari-Latency-Budget"),
+            x_daari_latency_budget: str | None = Header(
+                default=None, alias="X-Daari-Latency-Budget"
+            ),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_session: str | None = Header(default=None, alias="X-Daari-Session"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
@@ -628,15 +638,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tools_mode=x_daari_tools,
                 meta=meta,
             )
-            if (
-                internal.provider
-                and internal.provider.zdr
-                and ctx.settings.frontier.enabled
-            ):
+            if internal.provider and internal.provider.zdr and ctx.settings.frontier.enabled:
                 try:
-                    require_zdr_slot(
-                        internal.provider, configured_frontier_slots(ctx.settings)
-                    )
+                    require_zdr_slot(internal.provider, configured_frontier_slots(ctx.settings))
                 except ZdrUnavailable as exc:
                     raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
@@ -766,7 +770,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/health")
         async def health() -> dict[str, str]:
-            return {"status": "ok"}
+            from daari import __version__
+
+            return {"status": "ok", "version": __version__}
 
         @router.get("/metrics")
         async def prometheus_metrics(request: Request):
@@ -1291,9 +1297,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.settings.cache.l1.ttl_seconds = cache["l1_ttl_seconds"]
             if "l1_similarity_threshold" in cache:
                 ctx.settings.cache.l1.similarity_threshold = cache["l1_similarity_threshold"]
-                ctx.router.semantic_cache.similarity_threshold = cache[
-                    "l1_similarity_threshold"
-                ]
+                ctx.router.semantic_cache.similarity_threshold = cache["l1_similarity_threshold"]
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,
@@ -1498,9 +1502,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             stored = store.get(file_id) if store is not None else None
             claims = getattr(request.state, "auth_claims", None)
             visible = (
-                store is not None
-                and stored is not None
-                and file_visible_to_caller(stored, claims)
+                store is not None and stored is not None and file_visible_to_caller(stored, claims)
             )
             maybe_audit_tenancy_denied(
                 ctx.settings,
@@ -1523,9 +1525,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if store is None:
                 settings = ctx.settings
                 pg_url = (settings.observability.postgres_url or "").strip()
-                file_store = (
-                    _ensure_file_store(ctx) if settings.files.enabled else None
-                )
+                file_store = _ensure_file_store(ctx) if settings.files.enabled else None
                 if (
                     settings.batches.enabled
                     and getattr(settings.batches, "backend", "sqlite") == "postgres"
@@ -1545,9 +1545,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 else:
                     from daari.gateway.batches import BatchStore
 
-                    batch_path = (
-                        settings.batches_store_path if settings.batches.enabled else None
-                    )
+                    batch_path = settings.batches_store_path if settings.batches.enabled else None
                     store = BatchStore(
                         file_store=file_store,
                         path=batch_path,
@@ -1572,9 +1570,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             governance = job.governance
 
             async def execute_one(item_body: dict[str, Any]) -> dict[str, Any]:
-                return await _execute_batch_chat_body(
-                    ctx, item_body, governance=governance
-                )
+                return await _execute_batch_chat_body(ctx, item_body, governance=governance)
 
             store.schedule(job.id, execute_one)
             return store.as_public(job)
@@ -1584,7 +1580,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             store = ctx.batch_store
             if store is None:
-                return {"object": "list", "data": [], "first_id": None, "last_id": None, "has_more": False}
+                return {
+                    "object": "list",
+                    "data": [],
+                    "first_id": None,
+                    "last_id": None,
+                    "has_more": False,
+                }
             claims = getattr(request.state, "auth_claims", None)
             owner_filter = (
                 getattr(claims, "key_id", None)

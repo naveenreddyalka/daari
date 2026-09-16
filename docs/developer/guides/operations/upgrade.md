@@ -11,10 +11,10 @@ verify it against the version you are about to install.
 
 1. Read `CHANGELOG.md` and `docs/RELEASE-vX.Y.Z.md` for the target version.
    Breaking changes are called out there; there is no in-app migration wizard.
-2. Note the running version: `pip show daari` (or `brew info daari`,
-   `docker image inspect`, `helm get values`). There is no `daari --version`
-   flag and `/health` returns only `{"status": "ok"}`
-   (`daari/gateway/openai.py`, the `/health` route).
+2. Note the running version: `daari --version` or
+   `curl -fsS http://127.0.0.1:11435/health` (JSON includes `"version"`).
+   Image/Helm installs can still use `pip show daari`, `docker image inspect`,
+   or `helm get values` when the process is not reachable.
 3. Back up `~/.daari/config.yaml` and the durable stores listed under
    [What survives](#what-survives-and-what-is-rebuilt). Caches can be skipped.
 4. Run `daari doctor` and keep the output — it is your rollback baseline

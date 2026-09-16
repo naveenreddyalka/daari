@@ -5,13 +5,16 @@
 ## Steps
 
 ```bash
-curl -fsS http://127.0.0.1:11435/health
+curl -fsS http://127.0.0.1:11435/health   # {"status":"ok","version":"…"}
 curl -fsS http://127.0.0.1:11435/ready
+daari --version
 daari doctor
 daari doctor --suggest-models   # VRAM-aware stack advice
 ```
 
 Orchestrators should use `/ready` (Ollama + cache handles), not only `/health`.
+`/health` stays a liveness probe (`status=ok`) and now also reports the running
+package `version` for upgrade/rollback discovery.
 
 ## Troubleshoot
 
