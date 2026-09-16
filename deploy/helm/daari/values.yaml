@@ -35,6 +35,20 @@ probes:
   readinessPath: /ready
   livenessPath: /health
 
+# Graceful rollout / drain (#545). Size terminationGracePeriodSeconds above the
+# longest SSE stream you expect (and sse_keepalive_seconds). preStop sleeps so
+# Service endpoint removal propagates before SIGTERM; 0 omits the lifecycle block.
+terminationGracePeriodSeconds: 60
+lifecycle:
+  preStopSleepSeconds: 5
+
+# Zero-downtime rolling updates: never drop capacity during upgrades.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
 redis:
   enabled: false

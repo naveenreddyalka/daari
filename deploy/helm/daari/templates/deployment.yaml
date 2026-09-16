@@ -13,6 +13,10 @@ metadata:
   {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- with .Values.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: daari
@@ -21,6 +25,7 @@ spec:
       labels:
         app.kubernetes.io/name: daari
     spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 60 }}
       containers:
         - name: daari
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -57,6 +62,16 @@ spec:
             - name: DAARI_SERVER__VIRTUAL_KEYS__BACKEND
               value: postgres
             {{- end }}
+          {{- $preStop := 5 }}
+          {{- if and .Values.lifecycle (hasKey .Values.lifecycle "preStopSleepSeconds") }}
+          {{- $preStop = int .Values.lifecycle.preStopSleepSeconds }}
+          {{- end }}
+          {{- if gt $preStop 0 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep {{ $preStop }}"]
+          {{- end }}
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.livenessPath }}

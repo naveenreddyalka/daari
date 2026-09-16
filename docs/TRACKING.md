@@ -2632,6 +2632,15 @@ Helm + doctor fleet warnings list the auth store. Docs:
 [config.md](developer/reference/config.md). Covered by
 `tests/unit/test_postgres_virtual_keys.py`.
 
+### Helm graceful rollout lifecycle ([#545](https://github.com/naveenreddyalka/daari/issues/545))
+
+<!-- tracking:#545 -->
+**Status:** Done (2026-09-16). Chart defaults:
+`terminationGracePeriodSeconds=60`, `lifecycle.preStopSleepSeconds=5`
+(omit when 0), rollingUpdate `maxUnavailable: 0` / `maxSurge: 1`. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_chart.py`.
+
 ---
 
 ## How to update

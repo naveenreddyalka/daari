@@ -128,3 +128,22 @@ class TestHelmNotesAndFleetEnv:
         assert re.search(
             r"name: DAARI_OBSERVABILITY__BACKEND\s+value: postgres", rendered
         )
+
+
+class TestHelmGracefulRollout:
+    def test_defaults_render_grace_prestop_and_strategy(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "terminationGracePeriodSeconds: 60" in rendered
+        assert "preStop:" in rendered
+        assert "sleep 5" in rendered
+        assert "maxUnavailable: 0" in rendered
+        assert "maxSurge: 1" in rendered
+        values = _load_yaml(VALUES)
+        assert values["terminationGracePeriodSeconds"] == 60
+        assert values["lifecycle"]["preStopSleepSeconds"] == 5
+        assert values["strategy"]["rollingUpdate"]["maxUnavailable"] == 0
+
+    def test_prestop_omitted_when_sleep_zero(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "lifecycle.preStopSleepSeconds=0")
+        assert "preStop:" not in rendered
+        assert "terminationGracePeriodSeconds: 60" in rendered
