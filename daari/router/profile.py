@@ -47,11 +47,15 @@ _EXPLAIN_MARKERS = (
 _GEN_VERBS = ("write", "create", "implement", "add ", "build", "generate", "refactor", "fix")
 _QUESTION_STARTERS = ("what", "why", "how", "when", "where", "who", "which", "is ", "are ", "can ")
 
-# Codex / Claude Code envelopes that dominate classifier input (LiteLLM 09-10).
-_HARNESS_BLOCK_RE = re.compile(
-    r"<(environment_context|recommended_plugins|system-reminder)(?:\s[^>]*)?>"
-    r".*?</\1>",
-    re.DOTALL | re.IGNORECASE,
+# Codex / Claude Code envelopes that dominate classifier input (LiteLLM 09-26 #541).
+# Marker pairs match LiteLLM `_CODEX_REMINDER_MARKERS` (asymmetric agents.md open).
+_HARNESS_MARKER_PAIRS: tuple[tuple[str, str], ...] = (
+    ("<system-reminder>", "</system-reminder>"),
+    ("<environment_context>", "</environment_context>"),
+    ("<recommended_plugins>", "</recommended_plugins>"),
+    ("<user_instructions>", "</user_instructions>"),
+    ("<environments_instructions>", "</environments_instructions>"),
+    ("# agents.md instructions for ", "</instructions>"),
 )
 
 
@@ -62,11 +66,48 @@ class PromptProfile(BaseModel):
     stripped_chars: int = 0
 
 
+def _harness_block_spans(
+    lowered: str, open_marker: str, close_marker: str
+) -> list[tuple[int, int]]:
+    """Complete open→close spans for one marker pair (linear scan, LiteLLM-style)."""
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    while True:
+        start = lowered.find(open_marker, cursor)
+        if start < 0:
+            break
+        end = lowered.find(close_marker, start + len(open_marker))
+        if end < 0:
+            break
+        cursor = end + len(close_marker)
+        spans.append((start, cursor))
+    return spans
+
+
 def strip_harness_text(text: str) -> tuple[str, int]:
-    """Remove recognized harness XML blocks. Returns (cleaned, stripped_chars)."""
+    """Remove recognized harness blocks. Returns (cleaned, stripped_chars)."""
     if not text:
         return text or "", 0
-    cleaned = _HARNESS_BLOCK_RE.sub("", text)
+    lowered = text.lower()
+    spans: list[tuple[int, int]] = []
+    for open_marker, close_marker in _HARNESS_MARKER_PAIRS:
+        spans.extend(_harness_block_spans(lowered, open_marker, close_marker))
+    if not spans:
+        return text, 0
+    spans.sort()
+    merged: list[tuple[int, int]] = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    parts: list[str] = []
+    cursor = 0
+    for start, end in merged:
+        parts.append(text[cursor:start])
+        cursor = end
+    parts.append(text[cursor:])
+    cleaned = "".join(parts)
     return cleaned, len(text) - len(cleaned)
 
 

@@ -47,7 +47,7 @@ from daari.router.frontier import FrontierExecutor
 from daari.router.retry import RetryPolicy, run_upstream
 from daari.router.mlx_executor import MLXExecutor
 from daari.router.context_optimizer import optimize_messages
-from daari.router.profile import PromptProfile, build_prompt_profile, categorize
+from daari.router.profile import PromptProfile, build_prompt_profile, categorize, strip_harness_text
 from daari.tools.shell import ShellExecutor
 
 
@@ -3713,6 +3713,8 @@ class Router:
         if policy_tier in {"L3", "L4", "L5"}:
             return policy_tier
         text = self._last_user_text(request.messages)
+        if self.harness_aware_profile:
+            text, _ = strip_harness_text(text)
         words = len(re.findall(r"\S+", text))
         if words > 900 and self.model_preference == "accuracy":
             return "L5"

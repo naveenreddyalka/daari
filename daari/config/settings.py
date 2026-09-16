@@ -405,9 +405,11 @@ class RoutingSettings(RuntimeSettings):
         default=True,
         description=(
             "When true, complexity/category ignore system catalogs and "
-            "recognized Codex/Claude Code harness blocks. prompt_tokens_est "
-            "still counts the full request (#418). Default on (no-op without "
-            "those markers)."
+            "recognized Codex/Claude Code harness blocks (system-reminder, "
+            "environment_context, recommended_plugins, user_instructions, "
+            "environments_instructions, agents.md envelope). prompt_tokens_est "
+            "still counts the full request (#418, #541). Default on (no-op "
+            "without those markers)."
         ),
     )
     context_window_escalation: bool = Field(
