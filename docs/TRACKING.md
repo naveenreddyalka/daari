@@ -2586,6 +2586,14 @@ are configured. Quiet when ratio > 0 or no caps. Docs:
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_doctor_soft_budget_ratio.py`.
 
+### Soft-warning Grafana panel ([#537](https://github.com/naveenreddyalka/daari/issues/537))
+
+<!-- tracking:#537 -->
+**Status:** Done (2026-09-16). Grafana overview charts
+`daari_soft_warnings_total` by kind. Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update
