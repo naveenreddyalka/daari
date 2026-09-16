@@ -36,6 +36,23 @@ class TestRenderPrometheus:
         assert 'daari_request_latency_ms_bucket{tier="L3",le="250"}' in text
         assert 'daari_request_latency_ms_bucket{tier="L3",le="+Inf"} 2' in text
 
+    def test_ttft_histogram_by_tier(self):
+        metrics = Metrics()
+        metrics.record_ttft("L3", ttft_ms=40)
+        metrics.record_ttft("L3", ttft_ms=80)
+        metrics.record_ttft("L6", ttft_ms=300)
+        text = render_prometheus(metrics)
+        assert "# TYPE daari_ttft_ms histogram" in text
+        assert 'daari_ttft_ms_bucket{tier="L3",le="50"} 1' in text
+        assert 'daari_ttft_ms_bucket{tier="L3",le="100"} 2' in text
+        assert 'daari_ttft_ms_sum{tier="L3"} 120' in text
+        assert 'daari_ttft_ms_count{tier="L3"} 2' in text
+        assert 'daari_ttft_ms_count{tier="L6"} 1' in text
+        # Non-stream latency recording alone must not invent TTFT series.
+        only_latency = Metrics()
+        only_latency.record("L3", latency_ms=100)
+        assert "daari_ttft_ms" not in render_prometheus(only_latency)
+
     def test_budget_and_false_hit_gauges(self):
         text = render_prometheus(
             Metrics(),

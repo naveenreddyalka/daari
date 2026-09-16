@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from daari.observability.metrics import LATENCY_BUCKETS_MS, Metrics
+from daari.observability.metrics import LATENCY_BUCKETS_MS, TTFT_BUCKETS_MS, Metrics
 
 
 def _escape_label(value: str) -> str:
@@ -113,6 +113,29 @@ def render_prometheus(
             f"daari_request_latency_ms_sum{_labels(tier=tier)} {stats['total_latency_ms']}"
         )
         lines.append(f"daari_request_latency_ms_count{_labels(tier=tier)} {stats['count']}")
+
+    ttft = snap.get("ttft") or {}
+    if ttft:
+        lines.append(
+            "# HELP daari_ttft_ms Stream time-to-first-token histogram in milliseconds, by tier."
+        )
+        lines.append("# TYPE daari_ttft_ms histogram")
+        for tier, stats in ttft.items():
+            buckets = stats.get("buckets") or {}
+            cumulative = 0
+            for bound in TTFT_BUCKETS_MS:
+                cumulative += buckets.get(bound, 0)
+                lines.append(
+                    f"daari_ttft_ms_bucket{_labels(tier=tier, le=str(bound))} {cumulative}"
+                )
+            cumulative += buckets.get("+Inf", 0)
+            lines.append(
+                f'daari_ttft_ms_bucket{_labels(tier=tier, le="+Inf")} {cumulative}'
+            )
+            lines.append(
+                f"daari_ttft_ms_sum{_labels(tier=tier)} {stats['total_ttft_ms']}"
+            )
+            lines.append(f"daari_ttft_ms_count{_labels(tier=tier)} {stats['count']}")
 
     if budget_state is not None:
         lines.append("# HELP daari_frontier_spend_usd Estimated frontier spend in USD.")

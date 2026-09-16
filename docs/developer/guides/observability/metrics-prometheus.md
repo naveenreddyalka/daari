@@ -12,7 +12,9 @@ curl -s http://127.0.0.1:11435/metrics | head
 
 Import Grafana dashboard: `deploy/grafana/daari-dashboard.json`.
 
-Useful series: request latency histograms by tier, `daari_guardrail_trips_total`,
+Useful series: request latency histograms by tier (`daari_request_latency_ms`),
+stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
+only; non-stream omits TTFT), `daari_guardrail_trips_total`,
 `daari_boundary_decisions_total`.
 
 Two counters worth alerting on:

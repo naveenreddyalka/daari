@@ -2052,12 +2052,15 @@ class Router:
                     relayed: list[str] = []
                     scanner = self._incremental_output_scanner()
                     outcome.note("L6", draft=draft_used)
+                    l6_first_at: float | None = None
                     try:
                         l6_request = await self._frontier_request(stream_request)
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                         async for delta in self.frontier.stream(
                             l6_request, escalated_from=tier, local_confidence=confidence
                         ):
+                            if l6_first_at is None and delta:
+                                l6_first_at = time.perf_counter()
                             relayed.append(delta)
                             if scanner is not None:
                                 release = scanner.push(delta)
@@ -2101,6 +2104,11 @@ class Router:
                     latency_ms = int((time.perf_counter() - started) * 1000)
                     self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
                     self.metrics.record_escalation()
+                    if l6_first_at is not None:
+                        self.metrics.record_ttft(
+                            "L6",
+                            ttft_ms=max(0, int((l6_first_at - started) * 1000)),
+                        )
                     if budget_state == "soft":
                         add_step("budget_check", exceeded=False, soft=True)
                     if self.usage_ledger is not None:
@@ -2217,6 +2225,11 @@ class Router:
                 ollama_model = served_model
                 streamed_text = served.content
                 self.metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
+                if first_delta_at is not None:
+                    self.metrics.record_ttft(
+                        tier,
+                        ttft_ms=max(0, int((first_delta_at - started) * 1000)),
+                    )
                 if self.usage_ledger is not None:
                     self.usage_ledger.record(
                         tier=tier,
