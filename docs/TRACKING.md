@@ -2470,6 +2470,14 @@ Docs: [clients-and-gateways.md](developer/concepts/clients-and-gateways.md),
 [http-api.md](developer/reference/http-api.md). Covered by
 `tests/unit/test_responses_input_tokens.py`.
 
+### Prometheus TTFT histogram ([#508](https://github.com/naveenreddyalka/daari/issues/508))
+
+<!-- tracking:#508 -->
+**Status:** Done (2026-09-16). Stream path records time-to-first-token into
+`daari_ttft_ms` (by tier) on `/metrics`. Non-stream requests omit TTFT.
+Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_prometheus.py`, `tests/unit/test_ttft_metrics.py`.
+
 ---
 
 ## How to update

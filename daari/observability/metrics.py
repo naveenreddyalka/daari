@@ -6,6 +6,8 @@ from typing import Any
 
 # Prometheus histogram upper bounds (ms). Keep sorted; +Inf is implicit.
 LATENCY_BUCKETS_MS: tuple[float, ...] = (5, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000)
+# TTFT tends to be shorter than full request latency; reuse the same bounds.
+TTFT_BUCKETS_MS: tuple[float, ...] = LATENCY_BUCKETS_MS
 
 
 @dataclass
@@ -30,8 +32,27 @@ class TierStats:
 
 
 @dataclass
+class TtftStats:
+    """Stream time-to-first-token histogram for one tier (#508)."""
+
+    count: int = 0
+    total_ttft_ms: int = 0
+    buckets: dict[float | str, int] = field(default_factory=dict)
+
+    def observe(self, ttft_ms: int) -> None:
+        self.count += 1
+        self.total_ttft_ms += max(0, int(ttft_ms))
+        for bound in TTFT_BUCKETS_MS:
+            if ttft_ms <= bound:
+                self.buckets[bound] = self.buckets.get(bound, 0) + 1
+                return
+        self.buckets["+Inf"] = self.buckets.get("+Inf", 0) + 1
+
+
+@dataclass
 class Metrics:
     tiers: dict[str, TierStats] = field(default_factory=dict)
+    ttft: dict[str, TtftStats] = field(default_factory=dict)
     errors: int = 0
     escalations: int = 0
     guardrails: dict[str, int] = field(default_factory=dict)
@@ -61,6 +82,11 @@ class Metrics:
                 stats.observe_latency(latency_ms)
             if backend_id:
                 self.backends[backend_id] = self.backends.get(backend_id, 0) + 1
+
+    def record_ttft(self, tier: str, *, ttft_ms: int) -> None:
+        """Record stream time-to-first-token. Non-stream requests omit TTFT (#508)."""
+        with self._lock:
+            self.ttft.setdefault(tier, TtftStats()).observe(ttft_ms)
 
     def record_error(self) -> None:
         with self._lock:
@@ -121,8 +147,16 @@ class Metrics:
                 tiers[tier] = entry
             if not include_histograms:
                 return tiers
+            ttft: dict[str, dict[str, Any]] = {}
+            for tier, stats in sorted(self.ttft.items()):
+                ttft[tier] = {
+                    "count": stats.count,
+                    "total_ttft_ms": stats.total_ttft_ms,
+                    "buckets": dict(stats.buckets),
+                }
             return {
                 "tiers": tiers,
+                "ttft": ttft,
                 "errors": self.errors,
                 "escalations": self.escalations,
                 "guardrails": dict(self.guardrails),
