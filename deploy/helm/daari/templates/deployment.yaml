@@ -41,12 +41,21 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
+            {{- $metricsPort := int ((.Values.observability).metricsPort | default 0) }}
+            {{- if gt $metricsPort 0 }}
+            - name: metrics
+              containerPort: {{ $metricsPort }}
+            {{- end }}
           env:
             - name: DAARI_FLEET_REPLICAS
               value: {{ include "daari.fleetReplicas" . | quote }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
+            {{- end }}
+            {{- if gt $metricsPort 0 }}
+            - name: DAARI_OBSERVABILITY__METRICS_PORT
+              value: {{ $metricsPort | quote }}
             {{- end }}
             {{- if .Values.redis.enabled }}
             - name: DAARI_CACHE__BACKEND

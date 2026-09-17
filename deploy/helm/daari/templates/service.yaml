@@ -12,3 +12,9 @@ spec:
     - name: http
       port: {{ .Values.service.port }}
       targetPort: http
+    {{- $metricsPort := int ((.Values.observability).metricsPort | default 0) }}
+    {{- if gt $metricsPort 0 }}
+    - name: metrics
+      port: {{ $metricsPort }}
+      targetPort: metrics
+    {{- end }}

@@ -235,6 +235,50 @@ class TestHelmServiceMonitor:
             and "key: token" in sm
         )
 
+    def test_servicemonitor_targets_metrics_port_when_set(
+        self, helm_available: None
+    ) -> None:
+        """Private scrape listener needs no bearer (#602)."""
+        rendered = _helm_template(
+            "--set",
+            "serviceMonitor.enabled=true",
+            "--set",
+            "observability.metricsPort=9090",
+            "--set",
+            "serviceMonitor.bearerTokenSecret.name=daari-metrics-token",
+            "--set",
+            "serviceMonitor.bearerTokenSecret.key=token",
+        )
+        sm = rendered.split("kind: ServiceMonitor")[1]
+        assert "port: metrics" in sm
+        assert "path: /metrics" in sm
+        assert "authorization:" not in sm
+        assert "bearerTokenSecret:" not in sm
+
+
+class TestHelmMetricsPort:
+    def test_metrics_port_off_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_OBSERVABILITY__METRICS_PORT" not in rendered
+        assert "name: metrics" not in rendered
+        values = _load_yaml(VALUES)
+        assert int(values.get("observability", {}).get("metricsPort") or 0) == 0
+
+    def test_metrics_port_wires_env_container_and_service(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template("--set", "observability.metricsPort=9090")
+        assert re.search(
+            r'name: DAARI_OBSERVABILITY__METRICS_PORT\s+value: "9090"', rendered
+        )
+        assert re.search(
+            r"name: metrics\s+containerPort: 9090", rendered
+        ) or ("containerPort: 9090" in rendered and "name: metrics" in rendered)
+        svc = rendered.split("kind: Service")[1].split("---")[0]
+        assert "name: metrics" in svc
+        assert "port: 9090" in svc
+        assert "targetPort: metrics" in svc
+
 
 class TestHelmOrgPool:
     def test_org_pool_env_absent_by_default(self, helm_available: None) -> None:
