@@ -92,9 +92,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return execute_one
 
             batch_store.resume_incomplete_with(_make_execute)
+        metrics_stop = None
+        obs = resolved.observability
+        metrics_port = int(getattr(obs, "metrics_port", 0) or 0)
+        if obs.prometheus and metrics_port > 0:
+            from daari.gateway.request_log import log_gateway_event
+            from daari.observability.metrics_listen import start_metrics_listener
+
+            bound, metrics_stop = await start_metrics_listener(
+                app, host="127.0.0.1", port=metrics_port
+            )
+            log_gateway_event(
+                "metrics_listener",
+                {"host": "127.0.0.1", "port": bound},
+            )
+            app.state.metrics_listen_port = bound
         try:
             yield
         finally:
+            if metrics_stop is not None:
+                await metrics_stop()
             await app.state.ctx.stop_backend_health()
             await app.state.ctx.stop_org_learning_sync()
             await app.state.ctx.stop_retention_sweep()

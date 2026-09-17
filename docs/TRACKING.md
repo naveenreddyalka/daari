@@ -2820,6 +2820,15 @@ Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.
 [web-ui README](../packages/web-ui/README.md). Covered by
 `tests/unit/test_stats_cliff_counters.py` and web-ui DOM tests.
 
+### Optional Prometheus metrics scrape port ([#594](https://github.com/naveenreddyalka/daari/issues/594))
+
+<!-- tracking:#594 -->
+**Status:** Done (2026-09-17). `observability.metrics_port` (0 = off) binds a
+scrape-only `127.0.0.1` listener with the same `/metrics` body and no API key;
+main-port auth unchanged. Docs: [config.md](developer/reference/config.md),
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_metrics_port.py`.
+
 ---
 
 ## How to update
