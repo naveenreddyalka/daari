@@ -2876,6 +2876,16 @@ turns (tools / tool history); omitted for plain chat via `exclude_none`.
 ADR-0004 checklist item checked. Covered by
 `tests/unit/test_agent_turn_meta.py`.
 
+### Hermetic hard 402 budget/quota burst ([#592](https://github.com/naveenreddyalka/daari/issues/592))
+
+<!-- tracking:#592 -->
+**Status:** Done (2026-09-17). `@pytest.mark.benchmark` bursts: N concurrent
+chat requests after USD budget or `max_requests` exhausted → all 402,
+`daari_rejects_total{kind="budget"|"request_quota"}` ≥ N, wall ceiling,
+upstream must not run. Docs:
+[benchmark-load.md](developer/resources/benchmark-load.md). Covered by
+`tests/benchmark/test_hermetic_paths.py`.
+
 ---
 
 ## How to update

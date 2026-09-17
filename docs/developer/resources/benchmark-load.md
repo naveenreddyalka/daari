@@ -34,6 +34,10 @@ all prefer the faster local tier with `daari_ttft_preference_total` ≥ N under 
 wall ceiling (#574). Hard RPM rejects are also guarded: N concurrent requests
 after the memory rate limiter is exhausted must all return 429 with
 `daari_rejects_total{kind="rate_limit"}` ≥ N under a wall ceiling (#585).
+Hard 402 budget and request-quota rejects are also guarded: N concurrent
+requests after USD budget or `max_requests` is exhausted must all return 402
+with `daari_rejects_total{kind="budget"|"request_quota"}` ≥ N under a wall
+ceiling (#592).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`
