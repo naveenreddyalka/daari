@@ -139,3 +139,17 @@ def test_grafana_dashboard_includes_budget_alerts_panel():
     exprs = [t.get("expr", "") for t in panel.get("targets", [])]
     assert any("daari_budget_alerts_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_mcp_tool_ingress_panel():
+    """MCP tool-call outcomes should be visible on the overview (#619)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "MCP tool" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected an MCP tool ingress panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_mcp_tool_calls_total" in expr for expr in exprs)
+    assert any("outcome" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)

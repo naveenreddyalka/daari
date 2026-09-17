@@ -2948,6 +2948,14 @@ leaking secrets; inactive tokens â†’ `{"active": false}` / 200; no caller auth â
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
 `tests/unit/test_introspect.py`.
 
+### Grafana MCP tool ingress panels ([#619](https://github.com/naveenreddyalka/daari/issues/619))
+
+<!-- tracking:#619 -->
+**Status:** Done (2026-09-17). Overview dashboard adds **MCP tool ingress by
+outcome** (`sum by (outcome) (rate(daari_mcp_tool_calls_total[5m]))`). Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update
