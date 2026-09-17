@@ -28,6 +28,10 @@ embed-key singleflight: N concurrent same-normalized-embed cold misses
 under a wall ceiling (#528). Soft RPM soft-band bursts are also guarded: N
 concurrent allowed requests (memory rate limiter, frozen mid-window) must all
 return 200 with `x-daari-ratelimit-warning: soft` under a wall ceiling (#540).
+TTFT-aware preference rewrites are also guarded: N concurrent
+`_choose_initial_tier` calls (seeded TTFT histograms, `ttft_aware=True`) must
+all prefer the faster local tier with `daari_ttft_preference_total` ≥ N under a
+wall ceiling (#574).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`

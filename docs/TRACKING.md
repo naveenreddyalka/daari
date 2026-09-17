@@ -2758,6 +2758,15 @@ Covered by `tests/unit/test_grafana_dashboard.py`.
 advertise `completion` / `tools` / `vision` / `thinking` from the catalog.
 Docs: [chatgpt-desktop.md](developer/guides/clients/chatgpt-desktop.md).
 
+### Hermetic TTFT preference burst ([#574](https://github.com/naveenreddyalka/daari/issues/574))
+
+<!-- tracking:#574 -->
+**Status:** Done (2026-09-17). `@pytest.mark.benchmark` burst: N concurrent
+`_choose_initial_tier` preference rewrites (seeded TTFT) → all faster tier,
+counter ≥ N, wall ceiling. Docs:
+[benchmark-load.md](developer/resources/benchmark-load.md). Covered by
+`tests/benchmark/test_hermetic_paths.py`.
+
 ---
 
 ## How to update

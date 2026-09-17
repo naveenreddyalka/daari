@@ -50,6 +50,9 @@ SOFT_RATE_LIMIT_BURST_CEILING_S = 5.000
 SOFT_RATE_LIMIT_CONCURRENCY = 32
 SOFT_RATE_LIMIT_RPM = 200
 SOFT_RATE_LIMIT_PREFILL = 159  # soft line at 0.8 * 200 = 160
+# N concurrent TTFT preference rewrites (seeded histograms, ttft_aware) (#574).
+TTFT_PREFERENCE_BURST_CEILING_S = 0.500
+TTFT_PREFERENCE_CONCURRENCY = 32
 
 
 class FakeLedger:
@@ -441,4 +444,72 @@ async def test_soft_rate_limit_warn_burst_under_ceiling(settings, monkeypatch):
     assert elapsed < SOFT_RATE_LIMIT_BURST_CEILING_S, (
         f"soft rate-limit burst {elapsed:.4f}s exceeds ceiling "
         f"{SOFT_RATE_LIMIT_BURST_CEILING_S}s (soft-header middleware regression)"
+    )
+
+
+@pytest.mark.benchmark
+def test_ttft_preference_rewrite_burst_under_ceiling(tmp_path):
+    """N concurrent TTFT preference rewrites → all L3; counter ≥ N under a wall (#574)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from daari.observability.prometheus import render_prometheus
+
+    metrics = Metrics()
+    for _ in range(30):
+        metrics.record_ttft("L3", ttft_ms=30)
+        metrics.record_ttft("L4", ttft_ms=400)
+
+    cache = ExactCache(str(tmp_path / "l0"), enabled=False)
+    semantic = SemanticCache(
+        str(tmp_path / "l1"), NoopEmbedder(), enabled=False
+    )
+    router = Router(
+        cache=cache,
+        semantic_cache=semantic,
+        ollama=OllamaExecutor(
+            base_url="http://test", default_model="llama3.2:3b", tier="L3"
+        ),
+        ollama_l4=OllamaExecutor(
+            base_url="http://test", default_model="llama3.1:8b", tier="L4"
+        ),
+        ollama_l5=OllamaExecutor(
+            base_url="http://test", default_model="qwen2.5:14b", tier="L5"
+        ),
+        metrics=metrics,
+        frontier_enabled=False,
+        ttft_aware=True,
+        ttft_percentile=0.95,
+        ttft_min_samples=20,
+    )
+    # ~300 words → heuristic L4; seeded TTFT prefers L3.
+    req = InternalRequest(
+        messages=[Message(role="user", content=" ".join(["word"] * 300))],
+        model="daari",
+    )
+
+    def one() -> str:
+        return router._choose_initial_tier(req)
+
+    start = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=TTFT_PREFERENCE_CONCURRENCY) as pool:
+        futures = [
+            pool.submit(one) for _ in range(TTFT_PREFERENCE_CONCURRENCY)
+        ]
+        tiers = [f.result() for f in as_completed(futures)]
+    elapsed = time.perf_counter() - start
+
+    assert tiers == ["L3"] * TTFT_PREFERENCE_CONCURRENCY
+    text_out = render_prometheus(metrics)
+    assert 'daari_ttft_preference_total{from="L4",to="L3"}' in text_out
+    # Extract the counter value after the labels.
+    line = next(
+        ln
+        for ln in text_out.splitlines()
+        if ln.startswith('daari_ttft_preference_total{from="L4",to="L3"}')
+    )
+    count = float(line.rsplit(" ", 1)[-1])
+    assert count >= TTFT_PREFERENCE_CONCURRENCY
+    assert elapsed < TTFT_PREFERENCE_BURST_CEILING_S, (
+        f"TTFT preference burst {elapsed:.4f}s exceeds ceiling "
+        f"{TTFT_PREFERENCE_BURST_CEILING_S}s (preference-path regression)"
     )
