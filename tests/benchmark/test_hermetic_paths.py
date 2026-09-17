@@ -60,6 +60,11 @@ HARD_REJECT_RPM = 10
 # N concurrent hard 402s after USD budget / request quota exhausted (#592).
 HARD_402_BURST_CEILING_S = 5.000
 HARD_402_CONCURRENCY = 32
+# N concurrent soft-band request-quota warns (VK + ledger prefill) (#620).
+SOFT_REQUEST_QUOTA_BURST_CEILING_S = 5.000
+SOFT_REQUEST_QUOTA_CONCURRENCY = 32
+SOFT_REQUEST_QUOTA_CAP = 200
+SOFT_REQUEST_QUOTA_PREFILL = 160  # soft line at 0.8 * 200 = 160
 
 
 class FakeLedger:
@@ -733,4 +738,85 @@ async def test_hard_request_quota_402_burst_under_ceiling(settings, tmp_path):
     assert elapsed < HARD_402_BURST_CEILING_S, (
         f"hard request-quota 402 burst {elapsed:.4f}s exceeds ceiling "
         f"{HARD_402_BURST_CEILING_S}s (402 reject-path middleware regression)"
+    )
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_soft_request_quota_warn_burst_under_ceiling(settings, tmp_path):
+    """N concurrent soft-band quota requests → 200 + soft header; soft_warnings ≥ N (#620)."""
+    from httpx import ASGITransport, AsyncClient
+
+    from daari.gateway.budget_headers import QUOTA_REQUESTS_WARNING_HEADER
+
+    settings.frontier.soft_budget_ratio = 0.8
+    app, store, ledger = _app_with_virtual_key(settings, tmp_path)
+    key = store.create(
+        "soft-quota-burst",
+        client_id="key-soft-quota",
+        budget_windows=[
+            BudgetWindow("day", 0.0, max_requests=SOFT_REQUEST_QUOTA_CAP)
+        ],
+    )
+    _record_requests(ledger, "key-soft-quota", SOFT_REQUEST_QUOTA_PREFILL)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content=(
+                "A confident soft-quota body with plenty of length to avoid escalation."
+            ),
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+            ),
+        )
+
+    app.state.ctx.router.ollama.execute = fake_execute  # type: ignore[method-assign]
+
+    chat = {
+        "model": "daari",
+        "messages": [{"role": "user", "content": "soft-quota-burst"}],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+
+        async def one():
+            return await client.post(
+                "/v1/chat/completions",
+                json=chat,
+                headers={
+                    "Authorization": f"Bearer {key.plaintext}",
+                    "X-Daari-No-Cache": "true",
+                },
+            )
+
+        start = time.perf_counter()
+        responses = await asyncio.gather(
+            *[one() for _ in range(SOFT_REQUEST_QUOTA_CONCURRENCY)]
+        )
+        elapsed = time.perf_counter() - start
+
+        metrics = await client.get(
+            "/metrics", headers={"Authorization": "Bearer master"}
+        )
+
+    assert all(r.status_code == 200 for r in responses), [
+        r.status_code for r in responses
+    ]
+    assert all(
+        r.headers.get(QUOTA_REQUESTS_WARNING_HEADER) == "soft" for r in responses
+    )
+    text_out = metrics.text
+    assert 'daari_soft_warnings_total{kind="request_quota"}' in text_out
+    line = next(
+        ln
+        for ln in text_out.splitlines()
+        if ln.startswith('daari_soft_warnings_total{kind="request_quota"}')
+    )
+    count = float(line.rsplit(" ", 1)[-1])
+    assert count >= SOFT_REQUEST_QUOTA_CONCURRENCY
+    assert elapsed < SOFT_REQUEST_QUOTA_BURST_CEILING_S, (
+        f"soft request-quota warn burst {elapsed:.4f}s exceeds ceiling "
+        f"{SOFT_REQUEST_QUOTA_BURST_CEILING_S}s "
+        f"(soft-quota warn middleware regression)"
     )
