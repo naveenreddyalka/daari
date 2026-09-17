@@ -55,6 +55,61 @@ class TestHelmChartReleasePin:
         assert "per-pod SQLite" in text
         assert "DAARI_BATCHES__BACKEND" in text
 
+    def test_notes_txt_documents_servicemonitor_and_org_pool(self) -> None:
+        text = NOTES.read_text(encoding="utf-8")
+        assert ".Values.serviceMonitor.enabled" in text
+        assert "/metrics" in text
+        assert "bearerTokenSecret" in text
+        assert ".Values.orgPool.enabled" in text
+        assert ".Values.orgPool.baseUrl" in text
+        assert "DAARI_ROUTING__ORG_POOL" in text
+
+
+def _helm_notes(*set_args: str) -> str:
+    """Render NOTES.txt (helm template skips NOTES; wrap via tpl + ConfigMap)."""
+    import shutil
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dest = Path(tmp) / "daari"
+        shutil.copytree(CHART, dest)
+        notes_src = dest / "templates" / "NOTES.txt"
+        notes_body = notes_src.read_text(encoding="utf-8")
+        notes_src.unlink()
+        (dest / "notes-body.txt").write_text(notes_body, encoding="utf-8")
+        (dest / "templates" / "notes-render.yaml").write_text(
+            "\n".join(
+                [
+                    "apiVersion: v1",
+                    "kind: ConfigMap",
+                    "metadata:",
+                    "  name: daari-notes-render",
+                    "data:",
+                    "  notes: |",
+                    '{{ tpl (.Files.Get "notes-body.txt") . | indent 4 }}',
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        cmd = ["helm", "template", "daari", str(dest), *set_args]
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        block = result.stdout.split("name: daari-notes-render")[-1]
+        lines: list[str] = []
+        in_notes = False
+        for line in block.splitlines():
+            if line.startswith("  notes:"):
+                in_notes = True
+                continue
+            if in_notes:
+                if line.startswith("    "):
+                    lines.append(line[4:])
+                elif line.strip() == "":
+                    lines.append("")
+                else:
+                    break
+        return "\n".join(lines)
+
 
 class TestHelmNotesAndFleetEnv:
     def test_annotation_warns_when_multi_replica_without_postgres(
@@ -302,3 +357,32 @@ class TestHelmOrgPool:
             r'name: DAARI_ROUTING__ORG_POOL__BASE_URL\s+value: "http://gpu-pool:11434"',
             rendered,
         )
+
+
+class TestHelmNotesServiceMonitorAndOrgPool:
+    def test_notes_omit_servicemonitor_and_org_pool_by_default(
+        self, helm_available: None
+    ) -> None:
+        notes = _helm_notes()
+        assert "ServiceMonitor enabled" not in notes
+        assert "Org pool enabled" not in notes
+
+    def test_notes_servicemonitor_scrape_and_bearer_hint(
+        self, helm_available: None
+    ) -> None:
+        notes = _helm_notes("--set", "serviceMonitor.enabled=true")
+        assert "ServiceMonitor enabled" in notes
+        assert "/metrics" in notes
+        assert "bearerTokenSecret" in notes
+        assert "Bearer" in notes
+
+    def test_notes_org_pool_echoes_base_url(self, helm_available: None) -> None:
+        notes = _helm_notes(
+            "--set",
+            "orgPool.enabled=true",
+            "--set",
+            "orgPool.baseUrl=http://gpu-pool:11434",
+        )
+        assert "Org pool enabled" in notes
+        assert "DAARI_ROUTING__ORG_POOL__ENABLED" in notes
+        assert "http://gpu-pool:11434" in notes

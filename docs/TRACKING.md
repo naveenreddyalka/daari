@@ -2886,6 +2886,15 @@ upstream must not run. Docs:
 [benchmark-load.md](developer/resources/benchmark-load.md). Covered by
 `tests/benchmark/test_hermetic_paths.py`.
 
+### Helm NOTES ServiceMonitor bearer and orgPool ([#595](https://github.com/naveenreddyalka/daari/issues/595))
+
+<!-- tracking:#595 -->
+**Status:** Done (2026-09-17). Post-install `NOTES.txt` echoes ServiceMonitor
+`/metrics` scrape + Bearer/`bearerTokenSecret` when enabled, and org pool env
+(including `baseUrl`) when `orgPool.enabled`. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_chart.py`.
+
 ---
 
 ## How to update
