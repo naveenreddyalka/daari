@@ -685,6 +685,32 @@ def _has_request_quota_windows(settings: Settings) -> bool:
     return False
 
 
+def _has_usd_budget_windows(settings: Settings) -> bool:
+    """True when any key/team budget window carries a USD cap (#637)."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return False
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception:
+        return False
+    for key in store.list():
+        for window in key.budget_windows:
+            if float(getattr(window, "max_usd", 0) or 0) > 0:
+                return True
+    try:
+        teams = getattr(store, "list_teams", None)
+        if callable(teams):
+            for team in teams():
+                for window in getattr(team, "budget_windows", ()) or ():
+                    if float(getattr(window, "max_usd", 0) or 0) > 0:
+                        return True
+    except Exception:
+        pass
+    return False
+
+
 def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
     """Warn when soft_budget_ratio=0 disables soft bands while hard caps remain (#530)."""
     ratio = float(getattr(settings.frontier, "soft_budget_ratio", 0.8) or 0.0)
@@ -696,6 +722,7 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
         or int(getattr(rl, "model_tpm", 0) or 0) > 0
     )
     quota_caps = _has_request_quota_windows(settings)
+    usd_caps = _has_usd_budget_windows(settings)
     if ratio > 0:
         return CheckResult(
             name="soft_budget_ratio",
@@ -703,11 +730,11 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
             detail=f"frontier.soft_budget_ratio={ratio}",
             optional=True,
         )
-    if not rate_caps and not quota_caps:
+    if not rate_caps and not quota_caps and not usd_caps:
         return CheckResult(
             name="soft_budget_ratio",
             ok=True,
-            detail="soft_budget_ratio=0 and no request-quota/RPM caps configured",
+            detail="soft_budget_ratio=0 and no request-quota/RPM/USD caps configured",
             optional=True,
         )
     reasons: list[str] = []
@@ -715,6 +742,8 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
         reasons.append("rate_limit rpm/tpm")
     if quota_caps:
         reasons.append("request-quota or per-key rpm/tpm")
+    if usd_caps:
+        reasons.append("USD budget windows")
     return CheckResult(
         name="soft_budget_ratio",
         ok=False,

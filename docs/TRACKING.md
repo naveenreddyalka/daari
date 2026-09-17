@@ -3015,6 +3015,15 @@ set (true/false); omitted when unset. Docs:
 [otel-genai.md](developer/guides/observability/otel-genai.md). Covered by
 `tests/unit/test_otel_genai.py`.
 
+### Doctor soft_budget_ratio covers USD windows ([#637](https://github.com/naveenreddyalka/daari/issues/637))
+
+<!-- tracking:#637 -->
+**Status:** Done (2026-09-17). `daari doctor` warns when
+`frontier.soft_budget_ratio=0` while any VK/team USD budget window is set
+(same advisory as request-quota/RPM). Docs:
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_doctor_soft_budget_ratio.py`.
+
 ---
 
 ## How to update
