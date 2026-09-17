@@ -439,8 +439,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 id=f"msg_{uuid.uuid4().hex[:12]}",
                 model=result.model,
                 content=[AnthropicTextBlock(text=result.content)],
-                daari_meta=result.daari_meta.model_dump(),
-            ).model_dump()
+                daari_meta=result.daari_meta.model_dump(exclude_none=True),
+            ).model_dump(exclude_none=True)
             prompt_chars = sum(len(message.content or "") for message in internal.messages)
             return JSONResponse(
                 payload,

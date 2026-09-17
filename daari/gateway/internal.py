@@ -147,6 +147,8 @@ class DaariMeta(BaseModel):
     reasoning_effort: str | None = None
     # Client service_tier when present (#430).
     service_tier: str | None = None
+    # True when tools / tool history make this an agent turn (ADR-0004 / #604).
+    agent_turn: bool | None = None
 
 
 class InternalResponse(BaseModel):

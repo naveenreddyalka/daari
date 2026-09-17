@@ -768,7 +768,7 @@ class Router:
                     trace, tier=policy.refusal_tier, category=profile.category
                 )
             end_trace()
-            return response
+            return self._stamp_agent_turn(request, response)
         try:
             response = await self._route_impl(request, profile)
         except Exception:
@@ -817,9 +817,18 @@ class Router:
         self._feedback_record(profile, response)
         self._example_record(request, profile, response)
         self._maybe_tier_shadow(request, profile, response)
-        return response
+        return self._stamp_agent_turn(request, response)
 
     _MODEL_TIERS = {"L3", "L4", "L5", "L6"}
+
+    @staticmethod
+    def _stamp_agent_turn(
+        request: InternalRequest, response: InternalResponse
+    ) -> InternalResponse:
+        """Surface ADR-0004 agent-turn detection on daari_meta (#604)."""
+        if bool(request.tools) or request.has_tool_calls_in_history:
+            response.daari_meta.agent_turn = True
+        return response
 
     def _feedback_record(self, profile: PromptProfile | None, response: InternalResponse) -> None:
         """Implicit D1 outcome capture — metadata only, best-effort."""
@@ -2449,6 +2458,8 @@ class Router:
                 "provider_id": tier_label,
                 "stream": True,
             }
+            if agent_flow:
+                event_meta["agent_turn"] = True
             return [
                 sse(
                     "message_start",
@@ -2613,6 +2624,8 @@ class Router:
                 "model": model_name,
                 "stream": True,
             }
+            if agent_flow:
+                meta["agent_turn"] = True
             def message_start_event(prompt_tokens: int) -> str:
                 return sse(
                     "message_start",
