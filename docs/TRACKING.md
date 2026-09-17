@@ -2829,6 +2829,17 @@ main-port auth unchanged. Docs: [config.md](developer/reference/config.md),
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_metrics_port.py`.
 
+### Anthropic SSE L0 exact-cache parity ([#600](https://github.com/naveenreddyalka/daari/issues/600))
+
+<!-- tracking:#600 -->
+**Status:** Done (2026-09-17). `stream_anthropic_events` performs the same
+exact L0 lookup (and org-L0 when enabled) as the OpenAI stream path before
+the model tier chain; hits emit `daari_meta.tier=L0` / `L0-org`, record
+cache-hit metrics / usage ledger, and skip upstream. Successful Anthropic
+streams write back exact L0. Agent turns keep exact-key semantics; no new
+L1. ADR-0004 negative note updated. Covered by
+`tests/unit/test_anthropic_stream_l0.py`.
+
 ---
 
 ## How to update

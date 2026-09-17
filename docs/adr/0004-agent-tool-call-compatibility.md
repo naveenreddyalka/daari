@@ -85,7 +85,7 @@ Add `daari_meta` as sibling field in response body (non-standard extension clien
 **Negative**
 - L1 for agent turns is prefix-scoped: a changed prefix wording can hit, a changed tool result cannot
 - Local models without tool-call support force L6 more often
-- Anthropic SSE path does not yet share the OpenAI-stream L0 lookup
+- Anthropic SSE shares the OpenAI-stream exact L0 lookup (and org-L0 when enabled); agent streams stay exact-key only (no new L1) per G1
 
 ## MVP implementation checklist
 
