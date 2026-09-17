@@ -3032,6 +3032,15 @@ Covered by `tests/unit/test_grafana_dashboard.py`.
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_doctor_soft_budget_ratio.py`.
 
+### Stats backend_summary counts ([#639](https://github.com/naveenreddyalka/daari/issues/639))
+
+<!-- tracking:#639 -->
+**Status:** Done (2026-09-17). `GET /v1/daari/stats` adds `backend_summary`
+(`total` / `healthy` / `unhealthy` / `open_circuit`) derived from
+`backends`. Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
+[web-ui README](../packages/web-ui/README.md). Covered by
+`tests/unit/test_local_pool.py`.
+
 ---
 
 ## How to update
