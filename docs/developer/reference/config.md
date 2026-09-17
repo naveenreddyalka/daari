@@ -261,7 +261,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.sso.discovery_url` | str | `''` |  |
 | `enterprise.sso.audience` | str | `''` |  |
 | `enterprise.sso.role_claim` | str | `'role'` |  |
-| `enterprise.sso.admin_min_role` | str | `'admin'` |  |
+| `enterprise.sso.admin_min_role` | str | `'admin'` | Minimum role for mutating admin surfaces + config GET |
 | `enterprise.sso.mint_virtual_key_on_login` | bool | `False` |  |
 | `enterprise.sso.mapping_claim` | str | `'groups'` |  |
 | `enterprise.sso.key_mappings` | dict | `{}` |  |

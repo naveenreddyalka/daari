@@ -1,7 +1,8 @@
-"""Role-based access helpers for admin surfaces (issue #119).
+"""Role-based access helpers for admin / ops surfaces (issues #119, #555).
 
 Roles: admin > analyst > user. Virtual-key / SSO claims may carry a role;
-master API key is always treated as admin.
+master API key is always treated as admin. Analyst may read stats/traces/
+report/audit; mutating admin routes require admin_min_role (default admin).
 """
 
 from __future__ import annotations
