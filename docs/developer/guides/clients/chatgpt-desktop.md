@@ -18,6 +18,11 @@
    Ollama base URL to `http://127.0.0.1:11435` (daari root — **no `/v1`**).
 4. Pick model **daari** (or any L3/L4/L5 name listed by `GET /api/tags`).
 
+`/api/tags` and `/api/show` advertise Ollama-shaped `capabilities` derived from
+the mapped tier (`completion`, plus `tools` / `vision` / `thinking` when the
+catalog supports them), so Desktop does not disable tools/vision UI against the
+facade. Same note: [JetBrains](intellij.md).
+
 Optional: send `X-Daari-Client-Id: chatgpt-desktop` when the client allows
 custom headers so `daari report` attributes traffic correctly.
 
