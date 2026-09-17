@@ -2743,6 +2743,14 @@ from→to** on `rate(daari_ttft_preference_total[5m])`. Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### SSO analyst GET config ([#572](https://github.com/naveenreddyalka/daari/issues/572))
+
+<!-- tracking:#572 -->
+**Status:** Done (2026-09-17). When SSO is on, `GET /v1/daari/config` allows
+`analyst+`; `PATCH` still requires `admin_min_role`. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/integration/test_oidc_sso_gateway.py`.
+
 ---
 
 ## How to update

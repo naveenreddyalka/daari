@@ -75,8 +75,8 @@ Roles rank `admin` > `analyst` > `user` (`daari/enterprise/rbac.py`). The master
 
 | Surface | Minimum role |
 |---------|----------------|
-| `GET /v1/daari/stats`, `traces`, `report`, `audit` | `analyst` |
-| `GET`/`PATCH /v1/daari/config` | `enterprise.sso.admin_min_role` (default `admin`) |
+| `GET /v1/daari/stats`, `traces`, `report`, `audit`, `config` | `analyst` |
+| `PATCH /v1/daari/config` | `enterprise.sso.admin_min_role` (default `admin`) |
 | `POST /v1/daari/reload-caches`, `POST /v1/org-learning/sync` | `admin_min_role` |
 
 With SSO off (or no JWKS/secret configured), these gates are skipped so

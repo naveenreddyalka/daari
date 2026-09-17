@@ -111,7 +111,7 @@ async def test_sso_session_and_config_with_oidc(settings, monkeypatch, tmp_path)
 
 @pytest.mark.asyncio
 async def test_sso_rbac_role_matrix_for_admin_surfaces(settings, monkeypatch, tmp_path):
-    """user: 403 read+mutate; analyst: 200 read / 403 mutate; admin: 200 both (#555)."""
+    """user: 403 read+mutate; analyst: 200 read / 403 mutate; admin: 200 both (#555/#572)."""
     from daari.router.router import AppContext
     from daari.server.app import create_app
 
@@ -157,6 +157,7 @@ async def test_sso_rbac_role_matrix_for_admin_surfaces(settings, monkeypatch, tm
         "/v1/daari/traces",
         "/v1/daari/report",
         "/v1/daari/audit",
+        "/v1/daari/config",
     )
     mutate_paths = (
         ("POST", "/v1/daari/reload-caches"),

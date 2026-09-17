@@ -1214,7 +1214,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             """Safe config subset for the web UI editor (issue #115)."""
             ctx: AppContext = request.app.state.ctx
             _require_config_editor(ctx)
-            _require_admin_role(request, ctx)
+            _require_role(request, ctx, "analyst")
             s = ctx.settings
             return {
                 "routing": {
