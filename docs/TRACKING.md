@@ -2859,6 +2859,15 @@ wires `DAARI_OBSERVABILITY__METRICS_PORT`, containerPort, and Service port
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_chart.py`.
 
+### Prometheus counters for MCP tool ingress ([#603](https://github.com/naveenreddyalka/daari/issues/603))
+
+<!-- tracking:#603 -->
+**Status:** Done (2026-09-17). `daari_mcp_tool_calls_total{tool,outcome}` for
+MCP ingress (`ok` / `deny` / `error` / `guardrail`); no-op when
+`observability.prometheus=false`. Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_mcp_prometheus.py`.
+
 ---
 
 ## How to update
