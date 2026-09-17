@@ -2917,6 +2917,15 @@ prometheus off, no api_key, or scrape already open. Docs:
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_doctor_metrics_auth.py`.
 
+### Team budget remaining Prometheus gauges ([#616](https://github.com/naveenreddyalka/daari/issues/616))
+
+<!-- tracking:#616 -->
+**Status:** Done (2026-09-17). `GET /metrics` exposes
+`daari_team_budget_remaining_usd` / `_limit_usd` / `_remaining_hours` per team
+USD window (scrape-time snapshot via `list_teams` + ledger). Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_prometheus.py`.
+
 ---
 
 ## How to update

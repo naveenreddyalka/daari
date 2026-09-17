@@ -66,12 +66,25 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
     rate_limit = limiter.snapshot() if limiter is not None else None
     pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
     backend_pool = pool.snapshot() if pool is not None else None
+    team_budgets: list[dict[str, Any]] | None = None
+    store = getattr(app.state, "virtual_key_store", None) or getattr(ctx, "virtual_key_store", None)
+    if store is not None and ledger is not None and getattr(ledger, "enabled", False):
+        try:
+            from daari.auth.budgets import collect_team_budget_gauges
+
+            rows = collect_team_budget_gauges(
+                store, ledger, fallback_per_1k=price
+            )
+            team_budgets = rows or None
+        except Exception:
+            team_budgets = None
     return render_prometheus(
         ctx.metrics,
         budget_state=budget_state,
         false_hit_rate=false_hit_rate,
         rate_limit=rate_limit,
         backend_pool=backend_pool,
+        team_budgets=team_budgets,
     )
 
 

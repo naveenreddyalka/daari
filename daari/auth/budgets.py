@@ -829,3 +829,51 @@ def first_exceeded_window(
         scope=exceeded.scope,
         limit_usd=exceeded.limit,
     )
+
+
+def collect_team_budget_gauges(
+    store: Any,
+    ledger: Any,
+    *,
+    fallback_per_1k: float = 0.002,
+    pricing: Any = None,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Snapshot team USD window remaining/limit for Prometheus (#616)."""
+    if store is None or not getattr(store, "enabled", False):
+        return []
+    list_teams = getattr(store, "list_teams", None)
+    if not callable(list_teams):
+        return []
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return []
+    moment = now or datetime.now(timezone.utc)
+    epoch_now = int(moment.timestamp())
+    rows: list[dict[str, Any]] = []
+    for team in list_teams():
+        windows = getattr(team, "budget_windows", ()) or ()
+        usd_windows = [w for w in windows if float(getattr(w, "max_usd", 0) or 0) > 0]
+        if not usd_windows:
+            continue
+        client_ids = store.team_client_ids(team.team_id)
+        for window in usd_windows:
+            spend = spend_for_window(
+                ledger,
+                client_ids,
+                window.duration,
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            limit = float(window.max_usd)
+            remaining = max(0.0, limit - float(spend))
+            hours = max(0.0, (reset_epoch(window.duration, now=moment) - epoch_now) / 3600.0)
+            rows.append(
+                {
+                    "team": team.name,
+                    "window": window_label(window.duration),
+                    "remaining_usd": round(remaining, 6),
+                    "limit_usd": round(limit, 6),
+                    "remaining_hours": round(hours, 4),
+                }
+            )
+    return rows

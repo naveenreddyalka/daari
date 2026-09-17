@@ -110,3 +110,62 @@ async def test_metrics_disabled_returns_404(settings):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/metrics")
     assert response.status_code == 404
+
+
+def test_team_budget_gauges_in_render():
+    text = render_prometheus(
+        Metrics(),
+        team_budgets=[
+            {
+                "team": "alpha",
+                "window": "daily",
+                "remaining_usd": 0.6,
+                "limit_usd": 1.0,
+                "remaining_hours": 12.0,
+            }
+        ],
+    )
+    assert 'daari_team_budget_remaining_usd{team="alpha",window="daily"} 0.6' in text
+    assert 'daari_team_budget_limit_usd{team="alpha",window="daily"} 1.0' in text
+    assert 'daari_team_budget_remaining_hours{team="alpha",window="daily"} 12.0' in text
+
+
+@pytest.mark.asyncio
+async def test_metrics_endpoint_exposes_team_budget_remaining(settings, tmp_path):
+    from daari.auth.virtual_keys import BudgetWindow, VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = ""
+    settings.observability.prometheus = True
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    store.create_team(
+        "alpha",
+        budget_windows=[BudgetWindow("day", 1.0)],
+    )
+    store.create("k1", client_id="cid-1", team="alpha")
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    # $0.40 spend at $0.002 / 1k tokens → 200_000 input tokens
+    ledger.record(
+        tier="L6",
+        client_id="cid-1",
+        model="",
+        input_tokens=200_000,
+        output_tokens=0,
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    app.state.ctx.router.usage_ledger = ledger
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/metrics")
+    assert response.status_code == 200
+    text = response.text
+    assert 'daari_team_budget_limit_usd{team="alpha",window="daily"} 1.0' in text
+    assert 'daari_team_budget_remaining_usd{team="alpha",window="daily"} 0.6' in text
+    assert 'daari_team_budget_remaining_hours{team="alpha",window="daily"}' in text
