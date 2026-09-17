@@ -775,6 +775,10 @@ class ObservabilitySettings(RuntimeSettings):
     # F3: expose GET /metrics in Prometheus exposition format. Open when
     # server.api_key is unset; honors auth otherwise (issue #107).
     prometheus: bool = True
+    # Optional scrape-only listen port (issue #594). 0 = off. When set and
+    # prometheus=true, binds 127.0.0.1:<port> with GET /metrics and no API key.
+    # Keep off public ingress; main-port /metrics auth is unchanged.
+    metrics_port: int = Field(default=0, ge=0)
     # Optional OTel export of RequestTrace steps (issue #115). Requires
     # opentelemetry-api; no-op when the package is missing.
     otel: bool = False

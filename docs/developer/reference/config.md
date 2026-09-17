@@ -140,6 +140,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.request_log_max_bytes` | int | `5242880` |  |
 | `observability.request_log_backups` | int | `3` |  |
 | `observability.prometheus` | bool | `True` |  |
+| `observability.metrics_port` | int | `0` | Optional scrape-only listen port on `127.0.0.1` (`0` = off). Serves the same Prometheus body as `GET /metrics` **without** requiring `server.api_key`. Keep off public ingress; main-port `/metrics` auth is unchanged (#594). Env: `DAARI_OBSERVABILITY__METRICS_PORT`. |
 | `observability.otel` | bool | `False` |  |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |

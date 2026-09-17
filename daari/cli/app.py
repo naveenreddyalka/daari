@@ -887,6 +887,12 @@ def serve(
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
     typer.echo(f"daari serving on http://{bind_host}:{bind_port}/v1")
+    metrics_port = int(getattr(settings.observability, "metrics_port", 0) or 0)
+    if settings.observability.prometheus and metrics_port > 0:
+        typer.echo(
+            f"prometheus scrape on http://127.0.0.1:{metrics_port}/metrics "
+            "(no API key; keep off public ingress)"
+        )
     from daari.security.secret_refs import SecretRefError
 
     try:
