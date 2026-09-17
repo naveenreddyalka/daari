@@ -297,7 +297,13 @@ def export_trace(
                         root_attrs["gen_ai.usage.input_tokens"] = usage[0]
                     if usage[1] is not None:
                         root_attrs["gen_ai.usage.output_tokens"] = usage[1]
-                for fact in ("tier", "cache_hit", "backend_id", "escalated_from"):
+                for fact in (
+                    "tier",
+                    "cache_hit",
+                    "backend_id",
+                    "escalated_from",
+                    "agent_turn",
+                ):
                     value = getattr(meta, fact, None)
                     if value is not None:
                         root_attrs[f"daari.{fact}"] = _attr_value(value)
