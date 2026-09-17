@@ -12,7 +12,15 @@ frontier:
   soft_budget_ratio: 0.8
 ```
 
-Soft warnings then hard stop.
+Soft warnings then hard stop. The same `frontier.soft_budget_ratio` (default
+`0.8`) drives USD soft bands: when spend/limit crosses the soft line but not
+the hard cap, responses still succeed and add `x-daari-budget-warning: soft`
+plus `daari_meta.warning=budget_warning` (OpenAI chat, Anthropic Messages, and
+Responses when `X-Daari-Meta` is set). Prometheus increments
+`daari_soft_warnings_total{kind="budget"}` on those 2xx responses; hard `402`
+bumps `daari_rejects_total{kind="budget"}` only. See
+[Response headers](../../reference/headers.md#budget-headers) and
+[metrics](../observability/metrics-prometheus.md).
 
 ## Per-key budgets
 
@@ -82,7 +90,9 @@ Clients do not have to wait for the `402`. Every successful response to a
 budgeted key carries `x-daari-budget-remaining` / `-limit` / `-window` /
 `-reset` / `-scope` for the window it will hit first (least USD left across
 key and team), and the `402` repeats them with remaining `0` plus
-`Retry-After`. See [Response headers](../../reference/headers.md#budget-headers).
+`Retry-After`. In the soft band, successful responses also carry
+`x-daari-budget-warning: soft` (omitted on hard `402`). See
+[Response headers](../../reference/headers.md#budget-headers).
 
 ### Operator alerts
 

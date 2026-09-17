@@ -3023,6 +3023,14 @@ warnings** (`rate(daari_soft_warnings_total{kind="budget"}[5m])`). Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Document USD soft budget warning in budgets guide ([#638](https://github.com/naveenreddyalka/daari/issues/638))
+
+<!-- tracking:#638 -->
+**Status:** Done (2026-09-17). `budgets-frontier.md` documents soft USD band →
+`x-daari-budget-warning: soft`, `daari_meta.warning=budget_warning`, and
+`daari_soft_warnings_total{kind="budget"}`, parallel to request-quota soft
+band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+
 ---
 
 ## How to update
