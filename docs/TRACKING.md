@@ -2690,6 +2690,16 @@ Optional `podDisruptionBudget` (off by default). Docs:
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_chart.py`.
 
+### SSO RBAC: analyst read / admin mutate ([#555](https://github.com/naveenreddyalka/daari/issues/555))
+
+<!-- tracking:#555 -->
+**Status:** Done (2026-09-17). When SSO is on, mutating admin routes
+(`reload-caches`, config PATCH, org-learning sync) require `admin_min_role`;
+ops reads (stats / traces / report / audit) allow `analyst+`. Master API key
+remains admin. Docs:
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/integration/test_oidc_sso_gateway.py`.
+
 ---
 
 ## How to update

@@ -67,6 +67,21 @@ first entry). Verification tries each JWKS until the token's `kid` matches; if
 every document misses, the request is rejected with the same 401 as a single
 unknown key.
 
+### Role matrix (when `enterprise.sso.enabled`)
+
+Roles rank `admin` > `analyst` > `user` (`daari/enterprise/rbac.py`). The master
+`server.api_key` always counts as admin. Claim name defaults to `role`
+(`enterprise.sso.role_claim`).
+
+| Surface | Minimum role |
+|---------|----------------|
+| `GET /v1/daari/stats`, `traces`, `report`, `audit` | `analyst` |
+| `GET`/`PATCH /v1/daari/config` | `enterprise.sso.admin_min_role` (default `admin`) |
+| `POST /v1/daari/reload-caches`, `POST /v1/org-learning/sync` | `admin_min_role` |
+
+With SSO off (or no JWKS/secret configured), these gates are skipped so
+single-user installs stay open behind API-key middleware alone.
+
 ### IdP-minted virtual keys (MDM)
 
 Alongside `daari enterprise bootstrap`, map an IdP claim to key policy so

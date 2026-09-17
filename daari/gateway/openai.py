@@ -943,6 +943,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/stats")
         async def daari_stats(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             snapshot = ctx.metrics.snapshot()
             total = sum(t["count"] for t in snapshot.values())
             pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
@@ -957,6 +958,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/traces")
         async def daari_traces(request: Request, limit: int = 20) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             store = ctx.router.trace_store
             if store is None:
                 raise HTTPException(status_code=404, detail="trace store is not configured")
@@ -965,6 +967,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/traces/{trace_id}")
         async def daari_trace_detail(trace_id: str, request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             store = ctx.router.trace_store
             if store is None:
                 raise HTTPException(status_code=404, detail="trace store is not configured")
@@ -976,6 +979,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/report")
         async def daari_report(request: Request, days: int = 7) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             ledger = ctx.router.usage_ledger
             if ledger is None:
                 raise HTTPException(status_code=404, detail="usage ledger is not configured")
@@ -1111,6 +1115,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/daari/reload-caches")
         async def daari_reload_caches(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
             payload = ctx.reload_cache_handles()
             return {"status": "ok", **payload}
 
@@ -1118,8 +1123,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if not ctx.settings.observability.config_editor:
                 raise HTTPException(status_code=404, detail="config editor disabled")
 
-        def _require_admin_role(request: Request, ctx: AppContext) -> str:
-            """SSO role gate for admin surfaces when enterprise.sso.enabled."""
+        def _require_role(request: Request, ctx: AppContext, minimum: str) -> str:
+            """SSO role gate for admin/ops surfaces when enterprise.sso.enabled."""
             sso = ctx.settings.enterprise.sso
             oidc_ready = bool(
                 sso.jwks_url.strip()
@@ -1146,10 +1151,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             except Exception as exc:  # noqa: BLE001 — surface auth failures as 401
                 raise HTTPException(status_code=401, detail=safe_detail(exc)) from exc
             role = role_from_claims(claims, role_claim=sso.role_claim)
-            if not role_at_least(role, sso.admin_min_role):
+            if not role_at_least(role, minimum):
                 raise HTTPException(status_code=403, detail="insufficient role")
             request.state.sso_claims = claims
             return role
+
+        def _require_admin_role(request: Request, ctx: AppContext) -> str:
+            """Require enterprise.sso.admin_min_role (default admin) when SSO is on."""
+            return _require_role(request, ctx, ctx.settings.enterprise.sso.admin_min_role)
 
         @router.post("/v1/daari/sso/session")
         async def daari_sso_session(request: Request) -> dict[str, Any]:
@@ -1341,7 +1350,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/audit")
         async def daari_audit_list(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            _require_admin_role(request, ctx)
+            _require_role(request, ctx, "analyst")
             from daari.enterprise.postgres_audit import audit_log_from_settings
 
             entries = audit_log_from_settings(ctx.settings).list(limit=100)
@@ -1350,6 +1359,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/org-learning/sync")
         async def org_learning_sync(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
             if ctx.org_learning_client is None:
                 raise HTTPException(status_code=404, detail="org learning is not configured")
             changed = await ctx.sync_org_learning_profile_once()
