@@ -113,6 +113,22 @@ test("soft warnings and hard rejects tables render from stats", async (t) => {
   assert.match(rejectRows.map((r) => r.textContent).join("|"), /rate_limit/);
 });
 
+test("tier table renders p50/p95 from stats payload", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const rows = [...doc.querySelectorAll("#tiers-table tr")];
+  assert.ok(rows.length >= 2);
+  const text = rows.map((r) => r.textContent).join("|");
+  assert.match(text, /L3/);
+  assert.match(text, /900/);
+  assert.match(text, /2100/);
+  assert.doesNotMatch(text, /L3.*-\s*-/);
+});
+
 test("local pool backends table renders id/healthy/circuit/outstanding", async (t) => {
   const fetch = fakeFetch(routes());
   const dom = loadDashboard({ fetch });
