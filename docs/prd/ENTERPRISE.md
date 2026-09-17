@@ -13,20 +13,21 @@
 
 ## Where daari stands (verified in-tree, 2026-09-17)
 
-Afternoon drain closed the morning refill: Helm ServiceMonitor, Grafana TTFT
-preference panel, SSO analyst GET config, ChatGPT Desktop capability docs, and
-TTFT preference hermetic burst all merged. Prior fleet/RBAC/ops rows remain on
+Evening drain closed the afternoon refill: Helm orgPool wiring, ServiceMonitor
+bearer auth, Grafana backend-pool + concurrency panels, doctor Redis + `/ready`,
+and hard-reject hermetic burst all merged. Prior fleet/RBAC/ops rows remain on
 `main`.
 
-**Positioning:** LiteLLM still the outward bar (Prometheus multiproc / optional
-metrics port, Grafana GenAI OTLP). Ollama capability reporting matched in-tree.
-Portkey / Kong / OpenRouter quiet on net-new gateway surfaces. Competitive
-delta stays inward: chart/env honesty, scrape auth under API key, doctor
-readiness, dashboard parity for pool/concurrency.
+**Positioning:** LiteLLM v1.101.0 is the outward bar (heuristic auto-router,
+semantic MCP tool search, optional Prometheus metrics port / multiproc, GenAI
+OTLP). Portkey / Kong / OpenRouter quiet on net-new gateway surfaces. Competitive
+delta stays inward: local stats/web-ui parity for soft/hard rejects, scrape-only
+metrics listen port, install NOTES honesty, doctor metrics-auth advisory, and
+hermetic 402 budget/quota burst coverage.
 
-**Inward theme:** Wire unused Helm `orgPool`, ServiceMonitor bearer auth when
-`server.api_key` is set, Grafana backend-pool + concurrency panels, doctor Redis
-+ `/ready`, hard-reject hermetic burst.
+**Inward theme:** Stats + web-ui soft_warnings/rejects, optional metrics scrape
+port, Helm NOTES for ServiceMonitor bearer + orgPool, doctor metrics auth warn,
+hermetic hard 402 budget/request-quota burst.
 
 ---
 
@@ -34,31 +35,35 @@ readiness, dashboard parity for pool/concurrency.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Helm orgPool wiring** — values exist; Deployment never sets env | 3 | 1 | LiteLLM multi-deployment | Point tiers at org GPU pool from one chart toggle | **File** (P2) |
-| 2 | **ServiceMonitor scrape auth** — `/metrics` needs Bearer when api_key set | 3 | 2 | Kong / LiteLLM | kube-prometheus scrapes stay green with master key | **File** (P2) |
-| 3 | **Grafana backend pool / concurrency** — series exist; dashboard silent | 2 | 1 | LiteLLM | See pool health + in-flight saturation locally | **File** (P3) |
-| 4 | **Doctor Redis + /ready** — docs mention; checks missing | 2 | 2 | Portkey health | Catch degraded Redis/pool before kube probes | **File** (P3) |
-| 5 | **Hard-reject hermetic burst** — soft-band + TTFT guarded; 402/429 not | 2 | 1 | LiteLLM | Catch reject-path middleware regressions under load | **File** (P3) |
-| 6 | **Access-group budgets / MCP introspect / OTLP GenAI** — LiteLLM deltas | 3 | 4 | LiteLLM | Watch until local demand | Watch |
+| 1 | **Stats + web-ui soft/hard rejects** — Grafana has panels; `/v1/daari/stats` silent | 3 | 2 | LiteLLM dashboard | Local cliff visibility without Prometheus | **File** (P2) |
+| 2 | **Optional metrics scrape port** — `/metrics` only on API port + api_key | 3 | 2 | LiteLLM `--prometheus_metrics_port` | Private scrapes without Bearer on every monitor | **File** (P2) |
+| 3 | **Helm NOTES bearer + orgPool** — chart features shipped; NOTES omit them | 2 | 1 | Helm ecosystem | Install-time hints catch dark scrapes / unused pool | **File** (P3) |
+| 4 | **Doctor metrics auth advisory** — api_key locks `/metrics`; doctor quiet | 2 | 1 | Portkey health | Warn before kube scrapes go 401 | **File** (P3) |
+| 5 | **Hermetic hard 402 burst** — 429 guarded; budget/quota 402 not | 2 | 1 | LiteLLM | Catch 402 reject-path regressions under load | **File** (P3) |
+| 6 | **Access-group budgets / MCP introspect / OTLP GenAI / multiproc** — LiteLLM deltas | 3 | 4 | LiteLLM | Watch until local demand | Watch |
 | 7 | **WIF / A2A / SOC 2 / admin UI** | 2–3 | 3–5 | Kong / cloud | No new client demand | Watch / non-goal |
 
-Pruned this run: ServiceMonitor, Grafana TTFT preference, analyst GET config,
-ChatGPT Desktop caps docs, TTFT preference hermetic (all shipped morning→afternoon).
+Pruned this run: orgPool wiring, ServiceMonitor bearer, Grafana pool/concurrency,
+doctor Redis+/ready, hard-reject hermetic (all shipped afternoon→evening).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Chart honesty** — orgPool values actually reach the Deployment.
-2. **Scrape under lock** — ServiceMonitor bearer when master API key is on.
-3. **Operator dashboard parity** — backend pool + concurrency gauges.
-4. **Local doctor readiness** — Redis ping and `/ready` before fleet deploys.
-5. **Hermetic reject path** — hard 402/429 burst stays ceiling-guarded.
+1. **Local cliff visibility** — soft_warnings / rejects on stats + web-ui.
+2. **Scrape-only metrics port** — optional internal listener without inference auth.
+3. **Install-time chart honesty** — NOTES for bearer scrapes and orgPool.
+4. **Doctor metrics auth** — warn when master key locks `/metrics`.
+5. **Hermetic 402 path** — budget and request-quota bursts stay ceiling-guarded.
 
 ---
 
 ## Changelog
 
+- **2026-09-17 (evening)** — Afternoon refill drained. Outward: LiteLLM v1.101.0
+  (heuristic auto-router, semantic MCP search, metrics port) still the bar; no
+  net-new Kong/Portkey gateway surfaces. Inward stats/web-ui, scrape port, NOTES,
+  doctor metrics-auth, and hermetic 402 burst; filing five issues.
 - **2026-09-17 (afternoon)** — Morning refill drained (ServiceMonitor → TTFT
   hermetic). Outward: LiteLLM Prometheus multiproc / metrics-port still the
   bar; no net-new Kong/Portkey gateway surfaces. Inward chart/doctor/dashboard
