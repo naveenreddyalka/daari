@@ -3006,6 +3006,14 @@ values. Docs: [web-ui README](../packages/web-ui/README.md). Covered by
 row when the pool is empty. Docs: [web-ui README](../packages/web-ui/README.md).
 Covered by web-ui DOM tests.
 
+### Grafana soft USD budget warnings panel ([#636](https://github.com/naveenreddyalka/daari/issues/636))
+
+<!-- tracking:#636 -->
+**Status:** Done (2026-09-17). Overview dashboard adds **Soft USD budget
+warnings** (`rate(daari_soft_warnings_total{kind="budget"}[5m])`). Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update

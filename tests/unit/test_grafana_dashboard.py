@@ -185,3 +185,19 @@ def test_grafana_dashboard_includes_team_rate_limit_remaining_panel():
     exprs = [t.get("expr", "") for t in panel.get("targets", [])]
     assert any("daari_team_rate_limit_remaining" in expr for expr in exprs)
     assert any("daari_team_rate_limit_limit" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_soft_usd_budget_warnings_panel():
+    """Dedicated soft USD budget warn series from #626 should be visible (#636)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Soft USD budget" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, (
+        "expected a Soft USD budget warnings panel in daari-dashboard.json"
+    )
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_soft_warnings_total" in expr for expr in exprs)
+    assert any('kind="budget"' in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
