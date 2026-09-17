@@ -3015,6 +3015,14 @@ set (true/false); omitted when unset. Docs:
 [otel-genai.md](developer/guides/observability/otel-genai.md). Covered by
 `tests/unit/test_otel_genai.py`.
 
+### Grafana soft USD budget warnings panel ([#636](https://github.com/naveenreddyalka/daari/issues/636))
+
+<!-- tracking:#636 -->
+**Status:** Done (2026-09-17). Overview dashboard adds **Soft USD budget
+warnings** (`rate(daari_soft_warnings_total{kind="budget"}[5m])`). Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update
