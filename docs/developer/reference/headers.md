@@ -52,6 +52,7 @@ remaining across key and team scopes.
 | `x-daari-quota-requests-limit` | That window's request cap. |
 | `x-daari-quota-requests-warning` | `soft` when used/cap ≥ `frontier.soft_budget_ratio` but under the hard cap (#498). Omitted otherwise. |
 | `x-daari-ratelimit-warning` | `soft` when RPM/TPM usage ≥ `frontier.soft_budget_ratio` but under the hard cap (#518). Omitted on hard `429`. |
+| `X-RateLimit-Scope` | `key` / `team` / `model` — which rate-limit counter was tightest on this response (also on hard `429`). |
 
 Rules:
 

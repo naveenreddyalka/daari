@@ -30,6 +30,7 @@ def render_prometheus(
     rate_limit: dict[str, Any] | None = None,
     backend_pool: dict[str, Any] | None = None,
     team_budgets: list[dict[str, Any]] | None = None,
+    team_rate_limits: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -211,6 +212,26 @@ def render_prometheus(
         for candidate in ("sqlite_fallback", "fail_open"):
             value = 1 if degraded and mode == candidate else 0
             lines.append(f"daari_rate_limit_degraded{_labels(mode=candidate)} {value}")
+
+    if team_rate_limits:
+        lines.append(
+            "# HELP daari_team_rate_limit_remaining Team RPM/TPM remaining in the current window."
+        )
+        lines.append("# TYPE daari_team_rate_limit_remaining gauge")
+        lines.append(
+            "# HELP daari_team_rate_limit_limit Configured team RPM/TPM ceilings."
+        )
+        lines.append("# TYPE daari_team_rate_limit_limit gauge")
+        for row in team_rate_limits:
+            team = str(row.get("team") or "unknown")
+            kind = str(row.get("kind") or "rpm")
+            labels = _labels(team=team, kind=kind, scope="team")
+            lines.append(
+                f"daari_team_rate_limit_remaining{labels} {int(row.get('remaining') or 0)}"
+            )
+            lines.append(
+                f"daari_team_rate_limit_limit{labels} {int(row.get('limit') or 0)}"
+            )
 
     pool = backend_pool or {}
     backends = list(pool.get("backends") or [])

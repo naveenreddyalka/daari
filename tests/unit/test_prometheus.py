@@ -169,3 +169,16 @@ async def test_metrics_endpoint_exposes_team_budget_remaining(settings, tmp_path
     assert 'daari_team_budget_limit_usd{team="alpha",window="daily"} 1.0' in text
     assert 'daari_team_budget_remaining_usd{team="alpha",window="daily"} 0.6' in text
     assert 'daari_team_budget_remaining_hours{team="alpha",window="daily"}' in text
+
+
+def test_team_rate_limit_gauges_in_render():
+    text = render_prometheus(
+        Metrics(),
+        team_rate_limits=[
+            {"team": "eng", "kind": "rpm", "limit": 10, "remaining": 7},
+        ],
+    )
+    assert (
+        'daari_team_rate_limit_remaining{team="eng",kind="rpm",scope="team"} 7' in text
+    )
+    assert 'daari_team_rate_limit_limit{team="eng",kind="rpm",scope="team"} 10' in text

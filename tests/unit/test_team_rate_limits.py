@@ -59,6 +59,8 @@ class TestTeamRateLimiterUnit:
         assert a1.allowed and b1.allowed
         assert not a2.allowed
         assert a2.scope == "rpm"
+        assert a2.bucket == "team"
+        assert a2.headers()["X-RateLimit-Scope"] == "team"
         assert a2.retry_after is not None
         assert "Retry-After" in a2.headers()
 
@@ -241,6 +243,7 @@ async def test_two_keys_jointly_exhaust_team_rpm_via_gateway(settings, tmp_path,
     assert r2.status_code == 200
     assert r3.status_code == 429
     assert "Retry-After" in r3.headers
+    assert r3.headers.get("X-RateLimit-Scope") == "team"
     assert r3.json()["error"]["type"] == "rate_limit_error"
 
 
@@ -276,6 +279,7 @@ async def test_team_rpm_soft_warn_then_hard_429(settings, tmp_path, monkeypatch)
         )
     assert hard.status_code == 429
     assert "Retry-After" in hard.headers
+    assert hard.headers.get("X-RateLimit-Scope") == "team"
     assert RATELIMIT_WARNING_HEADER not in hard.headers
 
 
