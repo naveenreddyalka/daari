@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.router.router import AppContext
 from daari.server.app import create_app
 
