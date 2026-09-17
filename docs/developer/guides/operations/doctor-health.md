@@ -22,7 +22,9 @@ package `version` for upgrade/rollback discovery.
 |-------|-----------------|
 | `/health` | Process not listening |
 | `/ready` | Dependency (Ollama/cache) not ready |
-| doctor mlx/redis | Optional backend misconfigured |
+| doctor `redis` | Optional: when `cache.backend=redis`, PING `cache.redis_url` — timeout/unreachable means shared L0/rate-limit counters are dark |
+| doctor `ready` | Optional: when the daemon answers, `GET /ready` — warn on `degraded` / `not_ready` (same signal as kube probes) |
+| doctor mlx | Optional backend misconfigured |
 | doctor `fleet_artifacts` | Optional: fleet signals (`DAARI_FLEET_REPLICAS` > 1, `cache.backend=redis`, or `observability.backend=postgres`) with sqlite `batches` / `files` / `responses` / ledger / `enterprise.audit_backend` — split-brain, 404, or incomplete audit-export risk |
 | doctor `fleet_cache` | Optional: `DAARI_FLEET_REPLICAS` > 1 without `cache.backend=redis` — L0 / session pins / singleflight stay per-pod |
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
