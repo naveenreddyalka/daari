@@ -2767,6 +2767,14 @@ counter ≥ N, wall ceiling. Docs:
 [benchmark-load.md](developer/resources/benchmark-load.md). Covered by
 `tests/benchmark/test_hermetic_paths.py`.
 
+### Helm orgPool Deployment env ([#581](https://github.com/naveenreddyalka/daari/issues/581))
+
+<!-- tracking:#581 -->
+**Status:** Done (2026-09-17). `orgPool.enabled` wires
+`DAARI_ROUTING__ORG_POOL__ENABLED` + `BASE_URL` into the Deployment. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_chart.py`.
+
 ---
 
 ## How to update

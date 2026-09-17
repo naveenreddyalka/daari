@@ -97,6 +97,18 @@ serviceMonitor:
 
 See [Prometheus metrics](../observability/metrics-prometheus.md).
 
+### Org GPU pool
+
+`orgPool` defaults to **disabled**. When enabled, the Deployment sets
+`DAARI_ROUTING__ORG_POOL__ENABLED` and `DAARI_ROUTING__ORG_POOL__BASE_URL` so
+local tiers can fall through to a shared Ollama/vLLM pool before frontier:
+
+```yaml
+orgPool:
+  enabled: true
+  baseUrl: http://gpu-pool.internal:11434
+```
+
 ## Next
 
 → [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md) · [Batches](../features/batches.md)
