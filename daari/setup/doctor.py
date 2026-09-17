@@ -60,6 +60,7 @@ def run_doctor(
     daemon = _check_daemon(cfg, httpx_client)
     results.append(daemon)
     results.append(_check_ready(cfg, httpx_client, daemon_ok=daemon.ok))
+    results.append(_check_metrics_auth(cfg, httpx_client, daemon_ok=daemon.ok))
     if tunnel_url:
         results.append(_check_tunnel(tunnel_url, httpx_client))
 
@@ -447,6 +448,78 @@ def _check_ready(
             name="ready",
             ok=False,
             detail=f"GET /ready failed: {type(exc).__name__}: {exc}",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_metrics_auth(
+    settings: Settings,
+    client: httpx.Client | None,
+    *,
+    daemon_ok: bool,
+) -> CheckResult:
+    """Warn when unauthenticated GET /metrics is locked by server.api_key (#596)."""
+    if not daemon_ok:
+        return CheckResult(
+            name="metrics_auth",
+            ok=True,
+            detail="skipped (daemon not running)",
+            optional=True,
+        )
+    if not getattr(settings.observability, "prometheus", True):
+        return CheckResult(
+            name="metrics_auth",
+            ok=True,
+            detail="disabled (observability.prometheus=false)",
+            optional=True,
+        )
+    api_key = str(getattr(settings.server, "api_key", "") or "").strip()
+    if not api_key:
+        return CheckResult(
+            name="metrics_auth",
+            ok=True,
+            detail="open (server.api_key unset — /metrics needs no Bearer)",
+            optional=True,
+        )
+    host = settings.server.host
+    port = settings.server.port
+    url = f"http://{host}:{port}/metrics"
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    try:
+        response = http.get(url)
+        if response.status_code == 401:
+            return CheckResult(
+                name="metrics_auth",
+                ok=False,
+                detail=(
+                    "GET /metrics returned 401 without Authorization — scrapers need "
+                    "Bearer <server.api_key> (Helm: serviceMonitor.bearerTokenSecret), "
+                    "or set observability.metrics_port for an auth-free scrape listener"
+                ),
+                optional=True,
+            )
+        if response.status_code == 200:
+            return CheckResult(
+                name="metrics_auth",
+                ok=True,
+                detail="open (unauthenticated GET /metrics returned 200)",
+                optional=True,
+            )
+        return CheckResult(
+            name="metrics_auth",
+            ok=True,
+            detail=f"HTTP {response.status_code} (no 401 lock detected)",
+            optional=True,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="metrics_auth",
+            ok=False,
+            detail=f"GET /metrics failed: {type(exc).__name__}: {exc}",
             optional=True,
         )
     finally:

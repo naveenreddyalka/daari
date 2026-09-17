@@ -2907,6 +2907,16 @@ to 60; the agent loops pick → PR → auto-merge and stops picking with under
 `docs/automations/dev-cycle.md` and `docs/AUTOMATION.md`. Contract test
 `test_workflow_time_boxes_loop_before_job_timeout`.
 
+### Doctor metrics_auth when API key protects /metrics ([#596](https://github.com/naveenreddyalka/daari/issues/596))
+
+<!-- tracking:#596 -->
+**Status:** Done (2026-09-17). Optional `metrics_auth` check: daemon up +
+prometheus on + `server.api_key` set and unauthenticated `GET /metrics` → 401
+warns with Bearer / `serviceMonitor.bearerTokenSecret` guidance; quiet when
+prometheus off, no api_key, or scrape already open. Docs:
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_doctor_metrics_auth.py`.
+
 ---
 
 ## How to update
