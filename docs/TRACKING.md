@@ -2681,6 +2681,15 @@ counting is degraded, 0 after recover). Docs + Grafana panel:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_rate_limit.py`.
 
+### Helm securityContext and PDB ([#554](https://github.com/naveenreddyalka/daari/issues/554))
+
+<!-- tracking:#554 -->
+**Status:** Done (2026-09-16). Chart defaults: non-root uid 1000, drop ALL
+caps, `readOnlyRootFilesystem` with emptyDir mounts for `~/.daari` and `/tmp`.
+Optional `podDisruptionBudget` (off by default). Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_chart.py`.
+
 ---
 
 ## How to update

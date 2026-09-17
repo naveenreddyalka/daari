@@ -1,0 +1,17 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "daari.fullname" . }}
+  labels:
+    app.kubernetes.io/name: daari
+spec:
+  {{- if hasKey .Values.podDisruptionBudget "maxUnavailable" }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: daari
+{{- end }}
