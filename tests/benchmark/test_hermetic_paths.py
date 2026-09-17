@@ -53,6 +53,10 @@ SOFT_RATE_LIMIT_PREFILL = 159  # soft line at 0.8 * 200 = 160
 # N concurrent TTFT preference rewrites (seeded histograms, ttft_aware) (#574).
 TTFT_PREFERENCE_BURST_CEILING_S = 0.500
 TTFT_PREFERENCE_CONCURRENCY = 32
+# N concurrent hard 429s after RPM exhausted (memory limiter + frozen window) (#585).
+HARD_REJECT_BURST_CEILING_S = 5.000
+HARD_REJECT_CONCURRENCY = 32
+HARD_REJECT_RPM = 10
 
 
 class FakeLedger:
@@ -512,4 +516,66 @@ def test_ttft_preference_rewrite_burst_under_ceiling(tmp_path):
     assert elapsed < TTFT_PREFERENCE_BURST_CEILING_S, (
         f"TTFT preference burst {elapsed:.4f}s exceeds ceiling "
         f"{TTFT_PREFERENCE_BURST_CEILING_S}s (preference-path regression)"
+    )
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_hard_rate_limit_reject_burst_under_ceiling(settings, monkeypatch):
+    """N concurrent over-RPM requests → all 429; rejects_total ≥ N under a wall (#585)."""
+    from httpx import ASGITransport, AsyncClient
+
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_030.0)
+    # Disable soft band so the prefilled window hard-rejects immediately.
+    settings.frontier.soft_budget_ratio = 0.0
+    settings.observability.prometheus = True
+
+    limiter = RateLimiter(MemoryCounterBackend(), default_rpm=HARD_REJECT_RPM)
+    for _ in range(HARD_REJECT_RPM):
+        decision = limiter.check(key_id="master", model="daari", tokens=8)
+        assert decision.allowed
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.rate_limiter = limiter
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        raise AssertionError("upstream must not run after hard rate-limit reject")
+
+    app.state.ctx.router.ollama.execute = fake_execute  # type: ignore[method-assign]
+
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "hard-burst"}]}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+
+        async def one():
+            return await client.post(
+                "/v1/chat/completions",
+                json=chat,
+                headers={"X-Daari-No-Cache": "true"},
+            )
+
+        start = time.perf_counter()
+        responses = await asyncio.gather(
+            *[one() for _ in range(HARD_REJECT_CONCURRENCY)]
+        )
+        elapsed = time.perf_counter() - start
+
+        metrics = await client.get("/metrics")
+
+    assert all(r.status_code == 429 for r in responses), [
+        r.status_code for r in responses
+    ]
+    text_out = metrics.text
+    assert 'daari_rejects_total{kind="rate_limit"}' in text_out
+    line = next(
+        ln
+        for ln in text_out.splitlines()
+        if ln.startswith('daari_rejects_total{kind="rate_limit"}')
+    )
+    count = float(line.rsplit(" ", 1)[-1])
+    assert count >= HARD_REJECT_CONCURRENCY
+    assert elapsed < HARD_REJECT_BURST_CEILING_S, (
+        f"hard reject burst {elapsed:.4f}s exceeds ceiling "
+        f"{HARD_REJECT_BURST_CEILING_S}s (reject-path middleware regression)"
     )

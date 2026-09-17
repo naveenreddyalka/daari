@@ -2803,6 +2803,14 @@ daemon is up and warns on `degraded` / `not_ready`. Docs:
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_doctor_redis_ready.py`.
 
+### Hermetic hard-reject burst ceiling ([#585](https://github.com/naveenreddyalka/daari/issues/585))
+
+<!-- tracking:#585 -->
+**Status:** Done (2026-09-17). `@pytest.mark.benchmark` burst: N concurrent
+chat requests after RPM exhausted → all 429, `daari_rejects_total` ≥ N, wall
+ceiling. Docs: [benchmark-load.md](developer/resources/benchmark-load.md).
+Covered by `tests/benchmark/test_hermetic_paths.py`.
+
 ---
 
 ## How to update
