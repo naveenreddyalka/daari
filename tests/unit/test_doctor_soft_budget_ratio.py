@@ -40,6 +40,21 @@ class TestSoftBudgetRatioDoctor:
         assert result.ok is False
         assert "request-quota" in result.detail
 
+    def test_warns_when_ratio_zero_and_usd_budget_on_key(self, settings, tmp_path):
+        """USD-only windows also need soft bands (#637)."""
+        settings.frontier.soft_budget_ratio = 0.0
+        settings.rate_limit.rpm = 0
+        settings.rate_limit.tpm = 0
+        settings.rate_limit.model_rpm = 0
+        settings.rate_limit.model_tpm = 0
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        settings.server.virtual_keys.enabled = True
+        store = VirtualKeyStore(settings.virtual_keys_path)
+        store.create("bot", client_id="bot", daily_budget_usd=5.0)
+        result = _check_soft_budget_ratio(settings)
+        assert result.ok is False
+        assert "USD budget" in result.detail
+
     def test_quiet_when_ratio_positive(self, settings):
         settings.frontier.soft_budget_ratio = 0.8
         settings.rate_limit.rpm = 60
