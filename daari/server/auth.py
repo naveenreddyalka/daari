@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from daari.auth.virtual_keys import VirtualKey, VirtualKeyStore
@@ -85,3 +86,53 @@ def resolve_auth(
         return None
     # No master key and no virtual keys configured → open.
     return AuthClaims(kind="master")
+
+
+def introspect_token(
+    token: str,
+    *,
+    master_key: str,
+    store: VirtualKeyStore | None,
+) -> dict[str, Any]:
+    """RFC 7662 introspection payload for a token (#618). Never returns secrets."""
+    supplied = (token or "").strip()
+    if not supplied:
+        return {"active": False}
+    if master_key and hmac.compare_digest(supplied, master_key):
+        return {
+            "active": True,
+            "username": "master",
+            "token_type": "master",
+        }
+    if store is None or not store.enabled:
+        return {"active": False}
+    key = store.resolve(supplied)
+    if key is None:
+        return {"active": False}
+    if key.is_expired():
+        return {"active": False}
+    payload: dict[str, Any] = {
+        "active": True,
+        "client_id": key.client_id or key.key_id,
+        "username": key.name,
+        "token_type": "virtual",
+    }
+    if key.expires_at:
+        try:
+            exp = datetime.fromisoformat(key.expires_at.replace("Z", "+00:00"))
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            payload["exp"] = int(exp.timestamp())
+        except ValueError:
+            pass
+    if key.team_id:
+        payload["team_id"] = key.team_id
+    if key.team_name:
+        payload["team_name"] = key.team_name
+    if key.tier_cap:
+        payload["tier_cap"] = key.tier_cap
+    if int(key.rpm or 0) > 0:
+        payload["rpm"] = int(key.rpm)
+    if int(key.tpm or 0) > 0:
+        payload["tpm"] = int(key.tpm)
+    return payload

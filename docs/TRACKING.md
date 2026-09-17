@@ -2938,6 +2938,16 @@ Docs: [headers.md](developer/reference/headers.md),
 Covered by `tests/unit/test_team_rate_limits.py` and
 `tests/unit/test_prometheus.py`.
 
+### RFC 7662 POST /introspect ([#618](https://github.com/naveenreddyalka/daari/issues/618))
+
+<!-- tracking:#618 -->
+**Status:** Done (2026-09-17). Authenticated `POST /introspect` (JSON or form
+`token`) returns RFC 7662 `active` payloads for master/virtual keys without
+leaking secrets; inactive tokens → `{"active": false}` / 200; no caller auth →
+401. Docs: [mcp.md](developer/guides/clients/mcp.md),
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
+`tests/unit/test_introspect.py`.
+
 ---
 
 ## How to update
