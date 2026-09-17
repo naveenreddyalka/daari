@@ -2897,6 +2897,18 @@ upstream must not run. Docs:
 
 ---
 
+### Time-boxed autodev dev-cycle loop ([#611](https://github.com/naveenreddyalka/daari/issues/611))
+
+<!-- tracking:#611 -->
+**Status:** Done (2026-09-17). `autodev-cycle` exports
+`AUTODEV_DEADLINE_EPOCH` (job start + 50 min) and raises `timeout-minutes`
+to 60; the agent loops pick → PR → auto-merge and stops picking with under
+10 min left, exiting 0 instead of being killed mid-wait. Documented in
+`docs/automations/dev-cycle.md` and `docs/AUTOMATION.md`. Contract test
+`test_workflow_time_boxes_loop_before_job_timeout`.
+
+---
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
