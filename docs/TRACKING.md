@@ -3023,6 +3023,15 @@ warnings** (`rate(daari_soft_warnings_total{kind="budget"}[5m])`). Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Doctor soft_budget_ratio covers USD windows ([#637](https://github.com/naveenreddyalka/daari/issues/637))
+
+<!-- tracking:#637 -->
+**Status:** Done (2026-09-17). `daari doctor` warns when
+`frontier.soft_budget_ratio=0` while any VK/team USD budget window is set
+(same advisory as request-quota/RPM). Docs:
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_doctor_soft_budget_ratio.py`.
+
 ---
 
 ## How to update
