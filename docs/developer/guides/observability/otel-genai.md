@@ -49,9 +49,10 @@ Token usage attributes appear **only when the provider reported real counts**
 as measurements. Numeric attributes are numbers, not strings.
 
 daari-specific facts stay under the `daari.*` namespace — `daari.tier`,
-`daari.cache_hit`, `daari.backend_id`, `daari.escalated_from`, plus one child
-span per routing step (`profile`, `tier_attempt`, `backend_pick`, `served`,
-…) with its detail fields.
+`daari.cache_hit`, `daari.backend_id`, `daari.escalated_from`,
+`daari.agent_turn` (ADR-0004), plus one child span per routing step
+(`profile`, `tier_attempt`, `backend_pick`, `served`, …) with its detail
+fields.
 
 Metrics, per the conventions:
 

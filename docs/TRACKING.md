@@ -3006,6 +3006,15 @@ values. Docs: [web-ui README](../packages/web-ui/README.md). Covered by
 row when the pool is empty. Docs: [web-ui README](../packages/web-ui/README.md).
 Covered by web-ui DOM tests.
 
+### OTel daari.agent_turn on GenAI root spans ([#630](https://github.com/naveenreddyalka/daari/issues/630))
+
+<!-- tracking:#630 -->
+**Status:** Done (2026-09-17). `export_trace()` stamps boolean
+`daari.agent_turn` on the GenAI root span when `daari_meta.agent_turn` is
+set (true/false); omitted when unset. Docs:
+[otel-genai.md](developer/guides/observability/otel-genai.md). Covered by
+`tests/unit/test_otel_genai.py`.
+
 ---
 
 ## How to update
