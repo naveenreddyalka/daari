@@ -15,6 +15,9 @@ flowchart LR
         PR --> CI[CI test check]
         CI -->|green| MergeStep[Auto-merge to main]
         CI -->|red| Fix[Agent comments or fixes]
+        MergeStep --> Clock{Under 10 min left?}
+        Clock -->|no| Pick
+        Clock -->|yes| Done[Exit 0: time box reached]
     end
     subgraph macLoop [Local runner on Mac]
         Watch[launchd watchdog every 2h] --> Pull[Pull main + redeploy daari serve]
@@ -32,7 +35,7 @@ flowchart LR
 | Backlog | GitHub issues labeled `auto-dev` (+`P1/P2/P3`) | seeded #1–#8 |
 | Agent contract | [AGENTS.md](https://github.com/naveenreddyalka/daari/blob/main/AGENTS.md) | active |
 | Merge gate | branch protection on `main` (requires CI check `test`, strict, no force-push) + repo auto-merge | active |
-| Dev-cycle agent | Cursor Automation draft: [automations/dev-cycle.md](automations/dev-cycle.md); CI fallback: [.github/workflows/autodev.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/autodev.yml) | fallback committed; needs `CURSOR_API_KEY` secret or Automation creation |
+| Dev-cycle agent | Cursor Automation draft: [automations/dev-cycle.md](automations/dev-cycle.md); CI fallback: [.github/workflows/autodev.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/autodev.yml) — drains issues back-to-back for 50 min (`AUTODEV_DEADLINE_EPOCH`), exits 0 before `timeout-minutes: 60` | fallback committed; needs `CURSOR_API_KEY` secret or Automation creation |
 | PR review agent | [automations/pr-review.md](automations/pr-review.md) or enable Bugbot on cursor.com | draft |
 | PRD cycle (backlog replenishment) | [automations/prd-cycle.md](automations/prd-cycle.md); CI fallback: [.github/workflows/prd-cycle.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/prd-cycle.yml) — daily scan + never-empty 3–5 issue refill (features or tech debt) | fallback committed; same `CURSOR_API_KEY` as autodev |
 | Issue labeler | [.github/workflows/issue-labeler.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/issue-labeler.yml) + `scripts/apply_intended_labels.py` — applies the `**Intended labels:**` first line of new/edited issues (#330) | active |

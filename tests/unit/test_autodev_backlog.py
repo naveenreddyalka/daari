@@ -172,6 +172,16 @@ def test_workflow_refills_instead_of_stopping_on_empty_backlog():
     assert "prd-cycle.md" in text
 
 
+def test_workflow_time_boxes_loop_before_job_timeout():
+    text = (REPO_ROOT / ".github" / "workflows" / "autodev.yml").read_text(encoding="utf-8")
+    dev_cycle = text.split("dev-cycle:", 1)[1]
+    assert "timeout-minutes: 60" in dev_cycle
+    assert "AUTODEV_DEADLINE_EPOCH" in dev_cycle
+    assert "date +%s" in dev_cycle
+    assert "do not pick another issue" in dev_cycle
+    assert "exit 0" in dev_cycle.lower() or "exit cleanly" in dev_cycle.lower()
+
+
 def test_prd_cycle_workflow_is_scheduled():
     path = REPO_ROOT / ".github" / "workflows" / "prd-cycle.yml"
     assert path.is_file()
