@@ -199,6 +199,52 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 14,
+      "title": "Backend pool health & outstanding",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "targets": [
+        {
+          "expr": "daari_backend_up",
+          "legendFormat": "up {{backend}} ({{circuit}})",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_backend_outstanding",
+          "legendFormat": "outstanding {{backend}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (backend) (rate(daari_backend_requests_total[5m]))",
+          "legendFormat": "req/s {{backend}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Concurrency gate (in-flight / max / queued)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "targets": [
+        {
+          "expr": "daari_rate_limit_in_flight",
+          "legendFormat": "in_flight",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_rate_limit_in_flight_max",
+          "legendFormat": "in_flight_max",
+          "refId": "B"
+        },
+        {
+          "expr": "daari_rate_limit_queued",
+          "legendFormat": "queued",
+          "refId": "C"
+        }
+      ]
     }
   ],
   "refresh": "30s",

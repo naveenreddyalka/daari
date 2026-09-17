@@ -73,3 +73,30 @@ def test_grafana_dashboard_includes_ttft_preference_panel():
     exprs = [t.get("expr", "") for t in panel.get("targets", [])]
     assert any("daari_ttft_preference_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_backend_pool_panel():
+    """Local pool health/outstanding gauges should be on the overview (#583)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Backend pool" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a backend pool panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_backend_up" in expr for expr in exprs)
+    assert any("daari_backend_outstanding" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_concurrency_gate_panel():
+    """In-flight vs max (and queued) concurrency gauges from the rate limiter (#583)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Concurrency" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a concurrency gate panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_rate_limit_in_flight" in expr for expr in exprs)
+    assert any("daari_rate_limit_in_flight_max" in expr for expr in exprs)
+    assert any("daari_rate_limit_queued" in expr for expr in exprs)

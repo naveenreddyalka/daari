@@ -2785,6 +2785,15 @@ API key protects `/metrics`. Docs:
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_chart.py`.
 
+### Grafana backend pool and concurrency panels ([#583](https://github.com/naveenreddyalka/daari/issues/583))
+
+<!-- tracking:#583 -->
+**Status:** Done (2026-09-17). Overview dashboard adds **Backend pool health
+& outstanding** (`daari_backend_up` / `_outstanding` / request rate) and
+**Concurrency gate** (`daari_rate_limit_in_flight` vs `_max` / `_queued`).
+Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update
