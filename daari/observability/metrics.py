@@ -95,6 +95,7 @@ class Metrics:
     soft_warnings: dict[str, int] = field(default_factory=dict)
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
+    mcp_tool_calls: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -179,6 +180,12 @@ class Metrics:
         with self._lock:
             self.ttft_preferences[key] = self.ttft_preferences.get(key, 0) + 1
 
+    def record_mcp_tool_call(self, *, tool: str, outcome: str) -> None:
+        """MCP ingress tools/call outcome (ok, deny, error, guardrail) (#603)."""
+        key = f"{tool}:{outcome}"
+        with self._lock:
+            self.mcp_tool_calls[key] = self.mcp_tool_calls.get(key, 0) + 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -218,4 +225,5 @@ class Metrics:
                 "soft_warnings": dict(self.soft_warnings),
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
+                "mcp_tool_calls": dict(self.mcp_tool_calls),
             }

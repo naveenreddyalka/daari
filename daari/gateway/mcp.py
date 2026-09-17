@@ -50,6 +50,16 @@ LEGACY_HEADERS = {
 }
 
 
+def _record_mcp_tool(ctx: AppContext, tool: str, outcome: str) -> None:
+    """Bump MCP Prometheus counters when exposition is enabled (#603)."""
+    if not getattr(ctx.settings.observability, "prometheus", True):
+        return
+    metrics = getattr(ctx.router, "metrics", None)
+    if metrics is None or not hasattr(metrics, "record_mcp_tool_call"):
+        return
+    metrics.record_mcp_tool_call(tool=tool.strip().lower() or "unknown", outcome=outcome)
+
+
 class MCPQueryRequest(BaseModel):
     tool: str = Field(default="route")
     input: str | None = None
@@ -527,6 +537,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                 normalized_name = name.strip().lower()
                 denied = governance.check(normalized_name, transport="rest")
                 if denied is not None:
+                    _record_mcp_tool(ctx, denied, "deny")
                     return _legacy_denied(denied)
                 schema = (catalog_by_name.get(normalized_name) or {}).get("input_schema")
                 if schema is not None:
@@ -548,9 +559,13 @@ class MCPGatewayAdapter(GatewayAdapter):
                         )
                 rule = governance.tripped_rule(normalized_name, arguments)
                 if rule is not None:
+                    _record_mcp_tool(ctx, normalized_name, "guardrail")
                     return _legacy_guardrail_blocked(normalized_name, rule)
                 tool_response = governance.guard_legacy(
                     await _run_tool(ctx, name, arguments.get("input"), arguments, model=body.model)
+                )
+                _record_mcp_tool(
+                    ctx, tool_response.tool or normalized_name, "ok" if tool_response.ok else "error"
                 )
                 return _legacy(
                     MCPQueryResponse(
@@ -567,13 +582,16 @@ class MCPGatewayAdapter(GatewayAdapter):
 
             denied = governance.check(tool, transport="rest")
             if denied is not None:
+                _record_mcp_tool(ctx, denied, "deny")
                 return _legacy_denied(denied)
             rule = governance.tripped_rule(tool, {"input": body.input, **body.args})
             if rule is not None:
+                _record_mcp_tool(ctx, tool, "guardrail")
                 return _legacy_guardrail_blocked(tool, rule)
             response = governance.guard_legacy(
                 await _run_tool(ctx, tool, body.input, body.args, model=body.model)
             )
+            _record_mcp_tool(ctx, response.tool or tool, "ok" if response.ok else "error")
             return _legacy(response.model_dump())
 
         @router.post("/mcp")
@@ -647,6 +665,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                         )
                     denied = governance.check(name, transport="jsonrpc")
                     if denied is not None:
+                        _record_mcp_tool(ctx, denied, "deny")
                         return _rpc_response(
                             request,
                             _jsonrpc_error(
@@ -671,6 +690,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                     normalized_name = name.strip().lower()
                     rule = governance.tripped_rule(normalized_name, arguments)
                     if rule is not None:
+                        _record_mcp_tool(ctx, normalized_name, "guardrail")
                         return _rpc_response(
                             request,
                             _jsonrpc_error(
@@ -698,6 +718,11 @@ class MCPGatewayAdapter(GatewayAdapter):
                             tool_response = await _run_tool(
                                 ctx, name, arguments.get("input"), arguments, model=None
                             )
+                            _record_mcp_tool(
+                                ctx,
+                                name,
+                                "ok" if tool_response.ok else "error",
+                            )
                             return governance.guard_tool_result(
                                 name, _tool_call_result_payload(name, tool_response)
                             )
@@ -709,6 +734,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                         )
                     tool_response = await _run_tool(
                         ctx, name, arguments.get("input"), arguments, model=None
+                    )
+                    _record_mcp_tool(
+                        ctx, name, "ok" if tool_response.ok else "error"
                     )
                     payload = governance.guard_tool_result(
                         name, _tool_call_result_payload(name, tool_response)
