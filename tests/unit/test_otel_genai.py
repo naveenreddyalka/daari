@@ -73,6 +73,7 @@ def _response(
     executor: str = "ollama",
     provider_id: str | None = "ollama:l3",
     latency_ms: int = 250,
+    agent_turn: bool | None = None,
 ) -> InternalResponse:
     return InternalResponse(
         content="hello",
@@ -87,6 +88,7 @@ def _response(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             usage_estimated=usage_estimated,
+            agent_turn=agent_turn,
         ),
     )
 
@@ -161,6 +163,21 @@ def test_daari_facts_on_root_span():
     assert attrs["daari.tier"] == "L3"
     assert attrs["daari.cache_hit"] is False
     assert attrs["daari.trace_id"] == trace.trace_id
+
+
+def test_daari_agent_turn_on_root_span():
+    """ADR-0004 agent_turn lands on the GenAI root span (#630)."""
+    trace = RequestTrace()
+    export_trace(trace, request=_request(), response=_response(agent_turn=True))
+    assert dict(_root_span().attributes)["daari.agent_turn"] is True
+
+    _EXPORTER.clear()
+    export_trace(trace, request=_request(), response=_response(agent_turn=False))
+    assert dict(_root_span().attributes)["daari.agent_turn"] is False
+
+    _EXPORTER.clear()
+    export_trace(trace, request=_request(), response=_response())
+    assert "daari.agent_turn" not in dict(_root_span().attributes)
 
 
 def test_error_type_attribute():
