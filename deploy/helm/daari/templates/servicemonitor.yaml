@@ -15,4 +15,13 @@ spec:
   endpoints:
     - port: http
       path: /metrics
+      {{- with .Values.serviceMonitor.bearerTokenSecret }}
+      {{- if and .name .key }}
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ .name }}
+          key: {{ .key }}
+      {{- end }}
+      {{- end }}
 {{- end }}
