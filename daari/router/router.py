@@ -1815,6 +1815,33 @@ class Router:
                 finish_trace("L0")
                 return
 
+            if self.org_cache_client is not None:
+                org_l0_hit = await self.org_cache_client.get_l0(request)
+                if org_l0_hit is not None and org_l0_hit.content.strip():
+                    latency_ms = int((time.perf_counter() - started) * 1000)
+                    self.metrics.record("L0-org", cache_hit=True, latency_ms=latency_ms)
+                    if self.usage_ledger is not None:
+                        self.usage_ledger.record(
+                            tier="L0-org",
+                            cache_hit=True,
+                            prompt_chars=prompt_chars,
+                            completion_chars=len(org_l0_hit.content),
+                            client_id=request.meta.client_id,
+                            user_id=request.meta.user,
+                        )
+                    log_gateway_event(
+                        "stream_cache_hit", {"tier": "L0-org", "model": client_model}
+                    )
+                    outcome.note("L0-org", cache_hit=True)
+                    yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={'content': org_l0_hit.content}))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                    yield usage_chunk(len(org_l0_hit.content), stream_tier="L0-org")
+                    yield "data: [DONE]\n\n"
+                    add_step("served", tier="L0-org", cache_hit=True, latency_ms=latency_ms)
+                    finish_trace("L0-org")
+                    return
+
             if not agent_flow:
                 # L1 semantic lookup (issue #43): parity with the non-stream path.
                 # One nearest() call serves both the hit path and the draft band.
@@ -2397,6 +2424,12 @@ class Router:
         # Agent flows (issue #84: Claude Code tool turns) keep the full tool
         # protocol; plain chat gets sanitization + context optimization.
         agent_flow = bool(request.tools) or request.has_tool_calls_in_history
+        # G1 / ADR-0004: exact L0 is on for agent turns. L1 stays off on this
+        # path unless a later change specifies Anthropic stream L1 (#600).
+        cacheable = (
+            not request.meta.no_cache
+            and not self._category_cache_skip(profile)
+        )
         stream_request = request.model_copy(deep=True)
         if not agent_flow:
             stream_request.tools = None
@@ -2509,6 +2542,52 @@ class Router:
                         user_id=request.meta.user,
                     )
                 return
+
+        # Exact L0 (+ org-L0) before the model tier chain — parity with
+        # stream_openai_chunks (#600 / ADR-0004).
+        if cacheable:
+            try:
+                cached = self.cache.get(request, max_age=self._category_cache_max_age(profile))
+            except Exception:
+                cached = None
+            add_step("l0_lookup", hit=cached is not None)
+            if cached is not None and cached.content.strip():
+                latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                self.metrics.record("L0", cache_hit=True, latency_ms=latency_ms)
+                if self.usage_ledger is not None:
+                    self.usage_ledger.record(
+                        tier="L0",
+                        cache_hit=True,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(cached.content),
+                        client_id=request.meta.client_id,
+                        user_id=request.meta.user,
+                    )
+                log_gateway_event("anthropic_stream_cache_hit", {"tier": "L0"})
+                outcome.note("L0", cache_hit=True)
+                for event in terminal_events(cached.content, "L0"):
+                    yield event
+                return
+
+            if self.org_cache_client is not None:
+                org_l0_hit = await self.org_cache_client.get_l0(request)
+                if org_l0_hit is not None and org_l0_hit.content.strip():
+                    latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                    self.metrics.record("L0-org", cache_hit=True, latency_ms=latency_ms)
+                    if self.usage_ledger is not None:
+                        self.usage_ledger.record(
+                            tier="L0-org",
+                            cache_hit=True,
+                            prompt_chars=prompt_chars,
+                            completion_chars=len(org_l0_hit.content),
+                            client_id=request.meta.client_id,
+                            user_id=request.meta.user,
+                        )
+                    log_gateway_event("anthropic_stream_cache_hit", {"tier": "L0-org"})
+                    outcome.note("L0-org", cache_hit=True)
+                    for event in terminal_events(org_l0_hit.content, "L0-org"):
+                        yield event
+                    return
 
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
@@ -2729,6 +2808,19 @@ class Router:
                     output_tokens=tokens_out,
                 )
 
+            def write_l0_cache(response: InternalResponse, latency_ms: int) -> None:
+                # Exact L0 write-back so a repeat Anthropic stream hits (#600).
+                if not cacheable or tool_use_sent:
+                    return
+                if not (response.content or "").strip() or tier not in {"L3", "L4", "L5"}:
+                    return
+                streamed_response = response.model_copy(deep=True)
+                streamed_response.daari_meta.latency_ms = latency_ms
+                try:
+                    self.cache.put(request, streamed_response)
+                except Exception:
+                    pass
+
             # Events are buffered until the tier completes, so the confidence
             # ladder, org pool, and L6 can run before the client sees anything,
             # and output guardrails can rewrite the text (#154, #155, #375).
@@ -2803,6 +2895,7 @@ class Router:
                     yield sse("message_stop", {"type": "message_stop"})
                     latency_ms = int((time.perf_counter() - stream_started) * 1000)
                     record_served(served, latency_ms)
+                    write_l0_cache(served, latency_ms)
                     log_gateway_event(
                         "anthropic_stream_done",
                         {
@@ -2832,6 +2925,7 @@ class Router:
                     yield event
                 latency_ms = int((time.perf_counter() - stream_started) * 1000)
                 record_served(served, latency_ms)
+                write_l0_cache(served, latency_ms)
                 log_gateway_event(
                     "anthropic_stream_done",
                     {
@@ -2894,6 +2988,7 @@ class Router:
             yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
             latency_ms = int((time.perf_counter() - stream_started) * 1000)
             record_served(served, latency_ms)
+            write_l0_cache(served, latency_ms)
             # Mirror chat_completions_stream_done (issue #101) so the final
             # outcome of a fallback chain is visible in cursor-requests.log.
             log_gateway_event(
