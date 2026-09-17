@@ -489,6 +489,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
             if getattr(request.state, "request_quota_soft", False):
                 result.daari_meta.warning = "request_quota_warning"
+            elif getattr(request.state, "budget_soft", False):
+                result.daari_meta.warning = "budget_warning"
             elif getattr(request.state, "rate_limit_soft", False):
                 result.daari_meta.warning = "rate_limit_warning"
             payload = _response_body(

@@ -27,10 +27,12 @@ def test_soft_warnings_prometheus_kinds():
     metrics.record_soft_warning("request_quota")
     metrics.record_soft_warning("rate_limit")
     metrics.record_soft_warning("rate_limit")
+    metrics.record_soft_warning("budget")
     text = render_prometheus(metrics)
     assert "# TYPE daari_soft_warnings_total counter" in text
     assert 'daari_soft_warnings_total{kind="request_quota"} 1' in text
     assert 'daari_soft_warnings_total{kind="rate_limit"} 2' in text
+    assert 'daari_soft_warnings_total{kind="budget"} 1' in text
 
 
 def _mock_execute(app):
@@ -63,6 +65,60 @@ def _app_with_keys(settings, tmp_path):
 def _record_requests(ledger: UsageLedger, client_id: str, n: int) -> None:
     for _ in range(n):
         ledger.record(tier="L3", client_id=client_id, cache_hit=False)
+
+
+def _record_frontier_spend(ledger: UsageLedger, client_id: str, *, usd: float) -> None:
+    ledger.record(
+        tier="L6",
+        client_id=client_id,
+        model="",
+        input_tokens=int(usd / 0.002 * 1000),
+        output_tokens=0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_budget_soft_increments_counter_hard_402_does_not(settings, tmp_path):
+    """Soft USD band warns + counts; hard 402 does not bump soft_warnings (#626)."""
+    from daari.gateway.budget_headers import BUDGET_WARNING_HEADER
+
+    settings.frontier.soft_budget_ratio = 0.8
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    key = store.create("a", client_id="key-a", daily_budget_usd=1.0)
+    _record_frontier_spend(ledger, "key-a", usd=0.8)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        soft = await client.post(
+            "/v1/chat/completions",
+            json=CHAT,
+            headers={
+                "Authorization": f"Bearer {key.plaintext}",
+                "X-Daari-No-Cache": "true",
+                "X-Daari-Meta": "true",
+            },
+        )
+        assert soft.status_code == 200
+        assert soft.headers[BUDGET_WARNING_HEADER] == "soft"
+        assert soft.json()["daari_meta"]["warning"] == "budget_warning"
+
+        metrics = await client.get("/metrics", headers={"Authorization": "Bearer master"})
+        assert metrics.status_code == 200
+        assert 'daari_soft_warnings_total{kind="budget"} 1' in metrics.text
+
+        _record_frontier_spend(ledger, "key-a", usd=0.2)
+        hard = await client.post(
+            "/v1/chat/completions",
+            json=CHAT,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+        assert hard.status_code == 402
+        assert BUDGET_WARNING_HEADER not in hard.headers
+
+        after = await client.get("/metrics", headers={"Authorization": "Bearer master"})
+    assert 'daari_soft_warnings_total{kind="budget"} 1' in after.text
+    assert 'daari_rejects_total{kind="budget"} 1' in after.text
+    assert 'daari_soft_warnings_total{kind="request_quota"}' not in after.text
 
 
 @pytest.mark.asyncio

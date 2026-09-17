@@ -42,7 +42,11 @@ concurrent allowed requests (VK ledger prefilled to
 `frontier.soft_budget_ratio`) must all return 200 with
 `x-daari-quota-requests-warning: soft` and
 `daari_soft_warnings_total{kind="request_quota"}` ≥ N under a wall ceiling,
-with no hard 402 (#620).
+with no hard 402 (#620). Soft USD budget soft-band bursts are also guarded: N
+concurrent allowed requests (VK frontier spend prefilled to
+`frontier.soft_budget_ratio`) must all return 200 with
+`x-daari-budget-warning: soft` and `daari_soft_warnings_total{kind="budget"}`
+≥ N under a wall ceiling, with no hard 402 (#626).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`
