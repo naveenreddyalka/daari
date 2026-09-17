@@ -2700,6 +2700,14 @@ remains admin. Docs:
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
 `tests/integration/test_oidc_sso_gateway.py`.
 
+### TTFT preference Prometheus counter ([#539](https://github.com/naveenreddyalka/daari/issues/539))
+
+<!-- tracking:#539 -->
+**Status:** Done (2026-09-17). `daari_ttft_preference_total{from,to}` increments
+when `routing.ttft_aware` rewrites the heuristic local tier. Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_ttft_aware_routing.py`.
+
 ---
 
 ## How to update

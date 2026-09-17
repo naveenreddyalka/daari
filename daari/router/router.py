@@ -3700,6 +3700,8 @@ class Router:
         }
         add_step("ttft_preference", **detail)
         log_gateway_event("ttft_preference", detail)
+        if hasattr(metrics, "record_ttft_preference"):
+            metrics.record_ttft_preference(from_tier=tier, to_tier=best_tier)
         return best_tier
 
     def _choose_uncapped_tier(

@@ -242,4 +242,18 @@ def render_prometheus(
         for kind, count in rejects.items():
             lines.append(f"daari_rejects_total{_labels(kind=kind)} {int(count)}")
 
+    ttft_prefs = snap.get("ttft_preferences") or {}
+    if ttft_prefs:
+        lines.append(
+            "# HELP daari_ttft_preference_total TTFT-aware routing rewrote the "
+            "heuristic local tier pick, by from/to."
+        )
+        lines.append("# TYPE daari_ttft_preference_total counter")
+        for key, count in sorted(ttft_prefs.items()):
+            from_tier, _, to_tier = str(key).partition(":")
+            lines.append(
+                f"daari_ttft_preference_total{_labels(**{'from': from_tier, 'to': to_tier})} "
+                f"{int(count)}"
+            )
+
     return "\n".join(lines) + "\n"
