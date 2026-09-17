@@ -57,6 +57,9 @@ TTFT_PREFERENCE_CONCURRENCY = 32
 HARD_REJECT_BURST_CEILING_S = 5.000
 HARD_REJECT_CONCURRENCY = 32
 HARD_REJECT_RPM = 10
+# N concurrent hard 402s after USD budget / request quota exhausted (#592).
+HARD_402_BURST_CEILING_S = 5.000
+HARD_402_CONCURRENCY = 32
 
 
 class FakeLedger:
@@ -578,4 +581,156 @@ async def test_hard_rate_limit_reject_burst_under_ceiling(settings, monkeypatch)
     assert elapsed < HARD_REJECT_BURST_CEILING_S, (
         f"hard reject burst {elapsed:.4f}s exceeds ceiling "
         f"{HARD_REJECT_BURST_CEILING_S}s (reject-path middleware regression)"
+    )
+
+
+def _record_frontier_spend(ledger, client_id: str, *, usd: float) -> None:
+    """Record frontier usage at the flat fallback rate ($0.002 / 1k tokens)."""
+    ledger.record(
+        tier="L6",
+        client_id=client_id,
+        model="",
+        input_tokens=int(usd / 0.002 * 1000),
+        output_tokens=0,
+    )
+
+
+def _record_requests(ledger, client_id: str, n: int) -> None:
+    for _ in range(n):
+        ledger.record(tier="L3", client_id=client_id, cache_hit=False)
+
+
+def _app_with_virtual_key(settings, tmp_path):
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.observability.usage import UsageLedger
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.observability.prometheus = True
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    app.state.ctx.router.usage_ledger = ledger
+    return app, store, ledger
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_hard_budget_402_burst_under_ceiling(settings, tmp_path):
+    """N concurrent over-budget requests → all 402; rejects_total ≥ N under a wall (#592)."""
+    from httpx import ASGITransport, AsyncClient
+
+    app, store, ledger = _app_with_virtual_key(settings, tmp_path)
+    key = store.create("budget-burst", client_id="key-budget", daily_budget_usd=1.0)
+    _record_frontier_spend(ledger, "key-budget", usd=1.0)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        raise AssertionError("upstream must not run after hard budget 402")
+
+    app.state.ctx.router.ollama.execute = fake_execute  # type: ignore[method-assign]
+
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "budget-burst"}]}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+
+        async def one():
+            return await client.post(
+                "/v1/chat/completions",
+                json=chat,
+                headers={
+                    "Authorization": f"Bearer {key.plaintext}",
+                    "X-Daari-No-Cache": "true",
+                },
+            )
+
+        start = time.perf_counter()
+        responses = await asyncio.gather(
+            *[one() for _ in range(HARD_402_CONCURRENCY)]
+        )
+        elapsed = time.perf_counter() - start
+
+        metrics = await client.get(
+            "/metrics", headers={"Authorization": "Bearer master"}
+        )
+
+    assert all(r.status_code == 402 for r in responses), [
+        r.status_code for r in responses
+    ]
+    text_out = metrics.text
+    assert 'daari_rejects_total{kind="budget"}' in text_out
+    line = next(
+        ln
+        for ln in text_out.splitlines()
+        if ln.startswith('daari_rejects_total{kind="budget"}')
+    )
+    count = float(line.rsplit(" ", 1)[-1])
+    assert count >= HARD_402_CONCURRENCY
+    assert elapsed < HARD_402_BURST_CEILING_S, (
+        f"hard budget 402 burst {elapsed:.4f}s exceeds ceiling "
+        f"{HARD_402_BURST_CEILING_S}s (402 reject-path middleware regression)"
+    )
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_hard_request_quota_402_burst_under_ceiling(settings, tmp_path):
+    """N concurrent over-quota requests → all 402; rejects_total ≥ N under a wall (#592)."""
+    from httpx import ASGITransport, AsyncClient
+
+    app, store, ledger = _app_with_virtual_key(settings, tmp_path)
+    key = store.create(
+        "quota-burst",
+        client_id="key-quota",
+        budget_windows=[BudgetWindow("day", 0.0, max_requests=1)],
+    )
+    _record_requests(ledger, "key-quota", 1)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        raise AssertionError("upstream must not run after hard request-quota 402")
+
+    app.state.ctx.router.ollama.execute = fake_execute  # type: ignore[method-assign]
+
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "quota-burst"}]}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+
+        async def one():
+            return await client.post(
+                "/v1/chat/completions",
+                json=chat,
+                headers={
+                    "Authorization": f"Bearer {key.plaintext}",
+                    "X-Daari-No-Cache": "true",
+                },
+            )
+
+        start = time.perf_counter()
+        responses = await asyncio.gather(
+            *[one() for _ in range(HARD_402_CONCURRENCY)]
+        )
+        elapsed = time.perf_counter() - start
+
+        metrics = await client.get(
+            "/metrics", headers={"Authorization": "Bearer master"}
+        )
+
+    assert all(r.status_code == 402 for r in responses), [
+        r.status_code for r in responses
+    ]
+    text_out = metrics.text
+    assert 'daari_rejects_total{kind="request_quota"}' in text_out
+    line = next(
+        ln
+        for ln in text_out.splitlines()
+        if ln.startswith('daari_rejects_total{kind="request_quota"}')
+    )
+    count = float(line.rsplit(" ", 1)[-1])
+    assert count >= HARD_402_CONCURRENCY
+    assert elapsed < HARD_402_BURST_CEILING_S, (
+        f"hard request-quota 402 burst {elapsed:.4f}s exceeds ceiling "
+        f"{HARD_402_BURST_CEILING_S}s (402 reject-path middleware regression)"
     )
