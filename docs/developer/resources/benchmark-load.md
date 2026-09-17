@@ -31,7 +31,9 @@ return 200 with `x-daari-ratelimit-warning: soft` under a wall ceiling (#540).
 TTFT-aware preference rewrites are also guarded: N concurrent
 `_choose_initial_tier` calls (seeded TTFT histograms, `ttft_aware=True`) must
 all prefer the faster local tier with `daari_ttft_preference_total` ≥ N under a
-wall ceiling (#574).
+wall ceiling (#574). Hard RPM rejects are also guarded: N concurrent requests
+after the memory rate limiter is exhausted must all return 429 with
+`daari_rejects_total{kind="rate_limit"}` ≥ N under a wall ceiling (#585).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`
