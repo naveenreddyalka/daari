@@ -9,6 +9,10 @@ const STATS = {
   tiers: { L0: { count: 10, p50_ms: 1, p95_ms: 2 }, L3: { count: 32, p50_ms: 900, p95_ms: 2100 } },
   soft_warnings: { rate_limit: 3, request_quota: 1 },
   rejects: { budget: 2, rate_limit: 4 },
+  backends: [
+    { id: "gpu-a", healthy: true, circuit: "closed", outstanding: 1 },
+    { id: "gpu-b", healthy: false, circuit: "open", outstanding: 0 },
+  ],
 };
 
 const REPORT = {
@@ -123,6 +127,36 @@ test("tier table renders p50/p95 from stats payload", async (t) => {
   assert.match(text, /900/);
   assert.match(text, /2100/);
   assert.doesNotMatch(text, /L3.*-\s*-/);
+});
+
+test("local pool backends table renders id/healthy/circuit/outstanding", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const rows = [...doc.querySelectorAll("#backends-table tr")];
+  assert.equal(rows.length, 2);
+  const text = rows.map((r) => r.textContent).join("|");
+  assert.match(text, /gpu-a/);
+  assert.match(text, /closed/);
+  assert.match(text, /gpu-b/);
+  assert.match(text, /open/);
+  assert.match(text, /yes/);
+  assert.match(text, /no/);
+});
+
+test("empty backends shows clear empty state", async (t) => {
+  const fetch = fakeFetch(routes({ "/v1/daari/stats": { ...STATS, backends: [] } }));
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const rows = doc.querySelectorAll("#backends-table tr");
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].textContent, /No local pool backends/);
 });
 
 test("cache trust panel shows false-hit rate and diversity per category", async (t) => {

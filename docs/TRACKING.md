@@ -2998,6 +2998,14 @@ Web-ui tier table already rendered these fields; DOM test pins non-dash
 values. Docs: [web-ui README](../packages/web-ui/README.md). Covered by
 `tests/unit/test_stats_cliff_counters.py` and web-ui DOM tests.
 
+### Web-ui local pool backends ([#629](https://github.com/naveenreddyalka/daari/issues/629))
+
+<!-- tracking:#629 -->
+**Status:** Done (2026-09-17). Dashboard **Local pool backends** table renders
+`stats.backends` (`id`, healthy, circuit, outstanding) with an empty-state
+row when the pool is empty. Docs: [web-ui README](../packages/web-ui/README.md).
+Covered by web-ui DOM tests.
+
 ---
 
 ## How to update

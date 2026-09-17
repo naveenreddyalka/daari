@@ -7,6 +7,7 @@ const tiersNode = document.getElementById("tiers-table");
 const tiersChartNode = document.getElementById("tiers-chart");
 const softWarningsNode = document.getElementById("soft-warnings-table");
 const rejectsNode = document.getElementById("rejects-table");
+const backendsNode = document.getElementById("backends-table");
 const orgNode = document.getElementById("org-learning");
 const orgSummaryNode = document.getElementById("org-summary");
 const statusNode = document.getElementById("status");
@@ -132,6 +133,30 @@ function renderKindCounts(tbody, counts, emptyLabel) {
     const row = document.createElement("tr");
     row.innerHTML = `<td>${kind}</td><td>${formatNumber(typeof count === "number" ? count : 0)}</td>`;
     tbody.appendChild(row);
+  }
+}
+
+function renderBackends(backends) {
+  if (!backendsNode) {
+    return;
+  }
+  backendsNode.innerHTML = "";
+  const rows = Array.isArray(backends) ? backends : [];
+  if (rows.length === 0) {
+    backendsNode.innerHTML = '<tr><td colspan="4">No local pool backends.</td></tr>';
+    return;
+  }
+  const sorted = [...rows].sort((a, b) => String(a?.id || "").localeCompare(String(b?.id || "")));
+  for (const backend of sorted) {
+    const row = document.createElement("tr");
+    const id = backend?.id != null ? String(backend.id) : "-";
+    const healthy =
+      typeof backend?.healthy === "boolean" ? (backend.healthy ? "yes" : "no") : "-";
+    const circuit = backend?.circuit != null ? String(backend.circuit) : "-";
+    const outstanding =
+      typeof backend?.outstanding === "number" ? formatNumber(backend.outstanding) : "-";
+    row.innerHTML = `<td>${id}</td><td>${healthy}</td><td>${circuit}</td><td>${outstanding}</td>`;
+    backendsNode.appendChild(row);
   }
 }
 
@@ -270,6 +295,7 @@ async function loadStats() {
     renderTiers(stats.tiers || {});
     renderKindCounts(softWarningsNode, stats.soft_warnings, "No soft warnings yet.");
     renderKindCounts(rejectsNode, stats.rejects, "No hard rejects yet.");
+    renderBackends(stats.backends);
 
     try {
       const profile = await fetchJson(`${apiBaseUrl}/v1/org-learning/profile`);
@@ -299,6 +325,7 @@ async function loadStats() {
     renderTiers({});
     renderKindCounts(softWarningsNode, {}, "No soft warnings yet.");
     renderKindCounts(rejectsNode, {}, "No hard rejects yet.");
+    renderBackends([]);
     orgSummaryNode.textContent = "Not available";
     orgNode.textContent = "Not available";
     statusNode.textContent = `Could not reach ${apiBaseUrl}/v1/daari/stats (${error.message})`;
