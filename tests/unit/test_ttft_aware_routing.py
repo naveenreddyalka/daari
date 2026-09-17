@@ -88,3 +88,44 @@ def test_ttft_aware_skips_when_under_min_samples(tmp_path):
     )
     text = " ".join(["word"] * 300)
     assert router._choose_initial_tier(_request(text)) == "L4"
+
+
+def test_ttft_preference_increments_prometheus_counter(tmp_path):
+    """Preference rewrite bumps daari_ttft_preference_total{from,to}; no-op does not (#539)."""
+    from daari.observability.prometheus import render_prometheus
+
+    metrics = Metrics()
+    _seed_ttft(metrics, "L3", [30] * 30)
+    _seed_ttft(metrics, "L4", [400] * 30)
+    router = _router(
+        tmp_path,
+        metrics=metrics,
+        ttft_aware=True,
+        ttft_percentile=0.95,
+        ttft_min_samples=20,
+    )
+    text = " ".join(["word"] * 300)
+    assert router._choose_initial_tier(_request(text)) == "L3"
+    text_out = render_prometheus(metrics)
+    assert "# TYPE daari_ttft_preference_total counter" in text_out
+    assert 'daari_ttft_preference_total{from="L4",to="L3"} 1' in text_out
+
+    # Flag off: heuristic L4, counter unchanged.
+    off = Metrics()
+    _seed_ttft(off, "L3", [30] * 30)
+    _seed_ttft(off, "L4", [400] * 30)
+    router_off = _router(tmp_path, metrics=off, ttft_aware=False)
+    assert router_off._choose_initial_tier(_request(text)) == "L4"
+    assert "daari_ttft_preference_total" not in render_prometheus(off)
+
+    # Aware but no faster candidate (same tier wins): still no increment.
+    noop = Metrics()
+    _seed_ttft(noop, "L4", [30] * 30)
+    router_noop = _router(
+        tmp_path,
+        metrics=noop,
+        ttft_aware=True,
+        ttft_min_samples=20,
+    )
+    assert router_noop._choose_initial_tier(_request(text)) == "L4"
+    assert "daari_ttft_preference_total" not in render_prometheus(noop)
