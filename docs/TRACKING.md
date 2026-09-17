@@ -2989,6 +2989,15 @@ rate-limit remaining** (`daari_team_rate_limit_remaining` / `_limit`). Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Stats tier p50/p95 latency ([#628](https://github.com/naveenreddyalka/daari/issues/628))
+
+<!-- tracking:#628 -->
+**Status:** Done (2026-09-17). `GET /v1/daari/stats` tier objects include
+`p50_ms` / `p95_ms` from latency histogram buckets (same helper as TTFT).
+Web-ui tier table already rendered these fields; DOM test pins non-dash
+values. Docs: [web-ui README](../packages/web-ui/README.md). Covered by
+`tests/unit/test_stats_cliff_counters.py` and web-ui DOM tests.
+
 ---
 
 ## How to update

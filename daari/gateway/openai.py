@@ -926,15 +926,25 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         async def daari_stats(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
             _require_role(request, ctx, "analyst")
+            from daari.observability.metrics import histogram_percentile_ms
+
             full = ctx.metrics.snapshot(include_histograms=True)
-            tiers = {
-                tier: {
-                    "count": stats["count"],
+            tiers = {}
+            for tier, stats in full["tiers"].items():
+                count = int(stats["count"])
+                buckets = stats.get("latency_buckets") or {}
+                entry: dict[str, Any] = {
+                    "count": count,
                     "cache_hits": stats["cache_hits"],
                     "avg_latency_ms": stats["avg_latency_ms"],
                 }
-                for tier, stats in full["tiers"].items()
-            }
+                p50 = histogram_percentile_ms(buckets, count=count, percentile=0.50)
+                p95 = histogram_percentile_ms(buckets, count=count, percentile=0.95)
+                if p50 is not None and p50 != float("inf"):
+                    entry["p50_ms"] = float(p50)
+                if p95 is not None and p95 != float("inf"):
+                    entry["p95_ms"] = float(p95)
+                tiers[tier] = entry
             total = sum(t["count"] for t in tiers.values())
             pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
             backends = list((pool.snapshot() if pool is not None else {}).get("backends") or [])
