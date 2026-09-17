@@ -49,6 +49,30 @@ strategy:
     maxUnavailable: 0
     maxSurge: 1
 
+# Pod / container hardening (#554). Image runs as uid 1000 (`USER daari`).
+# readOnlyRootFilesystem needs the emptyDir mounts below for ~/.daari and /tmp.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Voluntary disruption floor during node drains / voluntary evictions.
+# Enable for multi-replica fleets; with replicaCount=1 prefer maxUnavailable: 1
+# over minAvailable: 1 (the latter blocks draining the only pod).
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
 redis:
   enabled: false

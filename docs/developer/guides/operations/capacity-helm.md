@@ -53,6 +53,32 @@ batch drains a window to finish before kubelet SIGTERMs the pod:
 | `lifecycle.preStopSleepSeconds` | `5` | `preStop` sleep so Service endpoint removal propagates before SIGTERM. Set `0` to omit the lifecycle block. |
 | `strategy.rollingUpdate` | `maxUnavailable: 0` / `maxSurge: 1` | Never drop capacity during upgrades. |
 
+### Pod security and disruption budget
+
+Defaults harden the pod (`runAsNonRoot` uid `1000`, drop all capabilities,
+`readOnlyRootFilesystem`) and mount emptyDirs at `/home/daari/.daari` and
+`/tmp` so the gateway can still write local state under a read-only root.
+Swap the `daari-home` emptyDir for a PVC when you need durable per-pod SQLite
+across restarts.
+
+`podDisruptionBudget` defaults to **disabled**. For multi-replica fleets
+(alongside HPA / `replicaCount` ≥ 2 and Postgres), enable it so voluntary
+node drains keep interactive SSE alive:
+
+```yaml
+replicaCount: 2
+autoscaling:
+  minReplicas: 2
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+```
+
+Use `maxUnavailable: 1` instead of `minAvailable` when you have a single
+replica and still want a PDB (minAvailable=1 blocks draining the only pod).
+PDB and HPA compose: HPA sets desired replicas; the PDB only constrains
+voluntary evictions during drains/upgrades.
+
 ## Next
 
 → [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md) · [Batches](../features/batches.md)

@@ -147,3 +147,44 @@ class TestHelmGracefulRollout:
         rendered = _helm_template("--set", "lifecycle.preStopSleepSeconds=0")
         assert "preStop:" not in rendered
         assert "terminationGracePeriodSeconds: 60" in rendered
+
+
+class TestHelmSecurityAndPdb:
+    def test_defaults_render_security_contexts_and_writable_mounts(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template()
+        assert "runAsNonRoot: true" in rendered
+        assert "runAsUser: 1000" in rendered
+        assert "readOnlyRootFilesystem: true" in rendered
+        assert "allowPrivilegeEscalation: false" in rendered
+        assert "drop:" in rendered
+        assert "ALL" in rendered
+        assert "mountPath: /home/daari/.daari" in rendered
+        assert "mountPath: /tmp" in rendered
+        assert "kind: PodDisruptionBudget" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["podSecurityContext"]["runAsNonRoot"] is True
+        assert values["securityContext"]["readOnlyRootFilesystem"] is True
+        assert values["podDisruptionBudget"]["enabled"] is False
+
+    def test_pdb_renders_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "podDisruptionBudget.enabled=true",
+            "--set",
+            "podDisruptionBudget.minAvailable=2",
+        )
+        assert "kind: PodDisruptionBudget" in rendered
+        assert "minAvailable: 2" in rendered
+
+    def test_pdb_prefers_max_unavailable_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "podDisruptionBudget.enabled=true",
+            "--set",
+            "podDisruptionBudget.maxUnavailable=1",
+        )
+        assert "kind: PodDisruptionBudget" in rendered
+        assert "maxUnavailable: 1" in rendered
+        assert "minAvailable:" not in rendered.split("kind: PodDisruptionBudget")[1]

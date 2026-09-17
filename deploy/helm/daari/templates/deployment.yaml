@@ -26,10 +26,18 @@ spec:
         app.kubernetes.io/name: daari
     spec:
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 60 }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: daari
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
@@ -86,3 +94,13 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: daari-home
+              mountPath: /home/daari/.daari
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: daari-home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
