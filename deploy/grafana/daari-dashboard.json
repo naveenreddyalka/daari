@@ -245,6 +245,45 @@
           "refId": "C"
         }
       ]
+    },
+    {
+      "id": 16,
+      "title": "Upstream retries",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_upstream_retries_total[5m]))",
+          "legendFormat": "retries/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "False-hits avoided (L1 verification veto)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_cache_false_hits_avoided_total[5m]))",
+          "legendFormat": "avoided/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Budget alerts by scope",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "targets": [
+        {
+          "expr": "sum by (scope) (rate(daari_budget_alerts_total[5m]))",
+          "legendFormat": "{{scope}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
