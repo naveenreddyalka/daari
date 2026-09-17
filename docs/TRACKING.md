@@ -2956,6 +2956,17 @@ outcome** (`sum by (outcome) (rate(daari_mcp_tool_calls_total[5m]))`). Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Hermetic soft request-quota warn burst ([#620](https://github.com/naveenreddyalka/daari/issues/620))
+
+<!-- tracking:#620 -->
+**Status:** Done (2026-09-17). Hermetic `@pytest.mark.benchmark` guard: N
+concurrent soft-band request-quota requests (VK ledger prefilled to
+`soft_budget_ratio`) all return 200 with `x-daari-quota-requests-warning:
+soft`, `daari_soft_warnings_total{kind="request_quota"}` ≥ N under a wall
+ceiling, and no hard 402. Docs:
+[benchmark-load.md](developer/resources/benchmark-load.md). Covered by
+`tests/benchmark/test_hermetic_paths.py`.
+
 ---
 
 ## How to update

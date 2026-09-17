@@ -37,7 +37,12 @@ after the memory rate limiter is exhausted must all return 429 with
 Hard 402 budget and request-quota rejects are also guarded: N concurrent
 requests after USD budget or `max_requests` is exhausted must all return 402
 with `daari_rejects_total{kind="budget"|"request_quota"}` ≥ N under a wall
-ceiling (#592).
+ceiling (#592). Soft request-quota soft-band bursts are also guarded: N
+concurrent allowed requests (VK ledger prefilled to
+`frontier.soft_budget_ratio`) must all return 200 with
+`x-daari-quota-requests-warning: soft` and
+`daari_soft_warnings_total{kind="request_quota"}` ≥ N under a wall ceiling,
+with no hard 402 (#620).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`
