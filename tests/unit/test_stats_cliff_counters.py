@@ -61,3 +61,22 @@ async def test_stats_includes_soft_warnings_and_rejects(settings):
     assert body["soft_warnings"] == {"rate_limit": 1, "request_quota": 1}
     assert body["rejects"] == {"budget": 1, "rate_limit": 2}
     assert body["total_requests"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_stats_includes_tier_p50_p95_from_latency_buckets(settings):
+    """Latency histogram percentiles land on /v1/daari/stats tiers (#628)."""
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    metrics = app.state.ctx.metrics
+    for latency in (10, 10, 10, 10, 200):
+        metrics.record("L3", latency_ms=latency)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/daari/stats")
+
+    assert response.status_code == 200
+    tier = response.json()["tiers"]["L3"]
+    assert tier["count"] == 5
+    assert tier["p50_ms"] == 25.0  # 10ms samples land in ≤25 bucket
+    assert tier["p95_ms"] == 250.0  # 200ms sample lands in ≤250 bucket

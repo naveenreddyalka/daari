@@ -2980,6 +2980,15 @@ not). Hermetic concurrent soft-band burst under a wall ceiling. Docs:
 `tests/unit/test_soft_warning_metrics.py` and
 `tests/benchmark/test_hermetic_paths.py`.
 
+### Stats tier p50/p95 latency ([#628](https://github.com/naveenreddyalka/daari/issues/628))
+
+<!-- tracking:#628 -->
+**Status:** Done (2026-09-17). `GET /v1/daari/stats` tier objects include
+`p50_ms` / `p95_ms` from latency histogram buckets (same helper as TTFT).
+Web-ui tier table already rendered these fields; DOM test pins non-dash
+values. Docs: [web-ui README](../packages/web-ui/README.md). Covered by
+`tests/unit/test_stats_cliff_counters.py` and web-ui DOM tests.
+
 ---
 
 ## How to update
