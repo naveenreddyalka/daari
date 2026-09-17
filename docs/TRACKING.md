@@ -2751,6 +2751,13 @@ Covered by `tests/unit/test_grafana_dashboard.py`.
 [auth-and-keys.md](developer/guides/configuration/auth-and-keys.md). Covered by
 `tests/integration/test_oidc_sso_gateway.py`.
 
+### ChatGPT Desktop capabilities note ([#573](https://github.com/naveenreddyalka/daari/issues/573))
+
+<!-- tracking:#573 -->
+**Status:** Done (2026-09-17). Recipe notes `/api/tags` and `/api/show`
+advertise `completion` / `tools` / `vision` / `thinking` from the catalog.
+Docs: [chatgpt-desktop.md](developer/guides/clients/chatgpt-desktop.md).
+
 ---
 
 ## How to update
