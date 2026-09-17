@@ -293,6 +293,30 @@ class PostgresVirtualKeyStore:
             tpm=int(row[5] or 0),
         )
 
+    def list_teams(self) -> list[Team]:
+        if self._inner is not None:
+            return self._inner.list_teams()
+        if not self.enabled:
+            return []
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
+                    " FROM teams ORDER BY created_at ASC, team_id ASC"
+                )
+                rows = cur.fetchall()
+        return [
+            Team(
+                team_id=row[0],
+                name=row[1],
+                budget_windows=self._parse_windows(row[2]),
+                region_pin=row[3],
+                rpm=int(row[4] or 0),
+                tpm=int(row[5] or 0),
+            )
+            for row in rows
+        ]
+
     def team_client_ids(self, team_id: str) -> list[str]:
         if self._inner is not None:
             return self._inner.team_client_ids(team_id)

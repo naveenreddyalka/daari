@@ -460,6 +460,27 @@ class VirtualKeyStore:
             tpm=int(row[5] or 0) if len(row) > 5 else 0,
         )
 
+    def list_teams(self) -> list[Team]:
+        """All teams with budget/rate metadata (#616)."""
+        if not self.enabled:
+            return []
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
+                " FROM teams ORDER BY created_at ASC, team_id ASC"
+            ).fetchall()
+        return [
+            Team(
+                team_id=row[0],
+                name=row[1],
+                budget_windows=self._parse_windows(row[2]),
+                region_pin=row[3] if len(row) > 3 else None,
+                rpm=int(row[4] or 0) if len(row) > 4 else 0,
+                tpm=int(row[5] or 0) if len(row) > 5 else 0,
+            )
+            for row in rows
+        ]
+
     def team_client_ids(self, team_id: str) -> list[str]:
         if not self.enabled:
             return []

@@ -29,6 +29,7 @@ def render_prometheus(
     false_hit_rate: float | None = None,
     rate_limit: dict[str, Any] | None = None,
     backend_pool: dict[str, Any] | None = None,
+    team_budgets: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -148,6 +149,34 @@ def render_prometheus(
                 f"daari_frontier_budget_state{_labels(state=candidate)} "
                 f"{1 if candidate == state else 0}"
             )
+
+    if team_budgets:
+        lines.append(
+            "# HELP daari_team_budget_remaining_usd Team USD budget remaining by window."
+        )
+        lines.append("# TYPE daari_team_budget_remaining_usd gauge")
+        lines.append("# HELP daari_team_budget_limit_usd Team USD budget limit by window.")
+        lines.append("# TYPE daari_team_budget_limit_usd gauge")
+        lines.append(
+            "# HELP daari_team_budget_remaining_hours Hours until the team budget window resets."
+        )
+        lines.append("# TYPE daari_team_budget_remaining_hours gauge")
+        for row in team_budgets:
+            team = str(row.get("team") or "unknown")
+            window = str(row.get("window") or "day")
+            labels = _labels(team=team, window=window)
+            lines.append(
+                f"daari_team_budget_remaining_usd{labels} "
+                f"{float(row.get('remaining_usd') or 0.0)}"
+            )
+            lines.append(
+                f"daari_team_budget_limit_usd{labels} {float(row.get('limit_usd') or 0.0)}"
+            )
+            if "remaining_hours" in row:
+                lines.append(
+                    f"daari_team_budget_remaining_hours{labels} "
+                    f"{float(row.get('remaining_hours') or 0.0)}"
+                )
 
     if false_hit_rate is not None:
         lines.append("# HELP daari_cache_false_hit_rate Shadow-sampled L1 false-hit rate (0..1).")
