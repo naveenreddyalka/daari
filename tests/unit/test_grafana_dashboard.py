@@ -60,3 +60,16 @@ def test_grafana_dashboard_includes_rate_limit_degraded_panel():
     assert panel is not None, "expected a rate-limit degraded panel in daari-dashboard.json"
     exprs = [t.get("expr", "") for t in panel.get("targets", [])]
     assert any("daari_rate_limit_degraded" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_ttft_preference_panel():
+    """TTFT-aware routing counter from #539 should be visible (#571)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "TTFT preference" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a TTFT preference panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_ttft_preference_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)

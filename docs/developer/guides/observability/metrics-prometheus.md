@@ -14,8 +14,10 @@ Import Grafana dashboard: `deploy/grafana/daari-dashboard.json` (includes a
 **TTFT p50 / p95 by tier** panel on `daari_ttft_ms` for stream startup health,
 a **Soft warnings by kind** panel on `daari_soft_warnings_total` for soft-band
 pressure before hard 402/429, a **Hard rejects by kind** panel on
-`daari_rejects_total` for cliffs after the soft band, and a **Rate-limit Redis
-degraded** panel on `daari_rate_limit_degraded` for shared-counter fallback).
+`daari_rejects_total` for cliffs after the soft band, a **Rate-limit Redis
+degraded** panel on `daari_rate_limit_degraded` for shared-counter fallback,
+and a **TTFT preference by from→to** panel on `daari_ttft_preference_total`
+for TTFT-aware local tier bias).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path

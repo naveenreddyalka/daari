@@ -186,6 +186,19 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 13,
+      "title": "TTFT preference by from→to",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        {
+          "expr": "sum by (from, to) (rate(daari_ttft_preference_total[5m]))",
+          "legendFormat": "{{from}}→{{to}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

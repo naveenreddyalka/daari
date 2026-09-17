@@ -2735,6 +2735,14 @@ Service `/metrics` on port `http`. Docs:
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_chart.py`.
 
+### Grafana TTFT preference panel ([#571](https://github.com/naveenreddyalka/daari/issues/571))
+
+<!-- tracking:#571 -->
+**Status:** Done (2026-09-17). Overview dashboard adds **TTFT preference by
+from→to** on `rate(daari_ttft_preference_total[5m])`. Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update
