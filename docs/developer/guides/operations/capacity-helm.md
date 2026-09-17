@@ -83,25 +83,28 @@ voluntary evictions during drains/upgrades.
 
 `serviceMonitor` defaults to **disabled**. On clusters with the Prometheus
 Operator (`monitoring.coreos.com` CRDs), enable it so kube-prometheus scrapes
-the chart Service at `GET /metrics` on the `http` port (same target as a
-hand-rolled scrape for Kong/LiteLLM). Chart defaults already set
-`DAARI_OBSERVABILITY__PROMETHEUS=true`. Add `serviceMonitor.labels` when your
-operator selects monitors by release label:
+`GET /metrics`. Chart defaults already set `DAARI_OBSERVABILITY__PROMETHEUS=true`.
+Add `serviceMonitor.labels` when your operator selects monitors by release label.
+
+**Scrape path (pick one):**
+
+| Mode | Values | ServiceMonitor target | Auth |
+|------|--------|----------------------|------|
+| API port (default) | `observability.metricsPort: 0` | Service port `http` | Bearer via `serviceMonitor.bearerTokenSecret` when `server.api_key` protects `/metrics` |
+| Private metrics port | `observability.metricsPort: 9090` (example) | Service port `metrics` | None — scrape-only listener; keep off public ingress |
 
 ```yaml
+# Private scrape listener (no Bearer on /metrics):
+observability:
+  metricsPort: 9090
 serviceMonitor:
   enabled: true
   labels:
     release: kube-prometheus-stack
 ```
 
-When `server.api_key` (or the chart equivalent) requires Bearer on
-`GET /metrics`, point `serviceMonitor.bearerTokenSecret` at a Kubernetes
-Secret in the same namespace that holds that key. The rendered ServiceMonitor
-uses Prometheus Operator `authorization` (Bearer + Secret credentials) so
-kube-prometheus scrapes succeed without opening `/metrics`:
-
 ```yaml
+# API-port scrape with Bearer (metricsPort left at 0):
 # kubectl create secret generic daari-metrics-token \
 #   --from-literal=token="$DAARI_SERVER__API_KEY"
 serviceMonitor:
@@ -110,6 +113,10 @@ serviceMonitor:
     name: daari-metrics-token
     key: token
 ```
+
+When `metricsPort > 0`, the chart sets `DAARI_OBSERVABILITY__METRICS_PORT`,
+adds a `metrics` containerPort / Service port, and points ServiceMonitor at
+`metrics` (bearer settings are ignored for that endpoint).
 
 See [Prometheus metrics](../observability/metrics-prometheus.md).
 

@@ -73,17 +73,26 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1
 
-# Prometheus Operator ServiceMonitor for GET /metrics on the HTTP Service port.
+# Prometheus Operator ServiceMonitor for GET /metrics.
+# Default endpoint is the API `http` Service port (may need bearerTokenSecret
+# when server.api_key protects /metrics). When observability.metricsPort > 0,
+# the monitor scrapes the dedicated `metrics` port instead (no Bearer —
+# scrape-only listener, keep off public ingress).
 # Requires the monitoring.coreos.com CRDs (kube-prometheus / prometheus-operator).
 # Chart env already sets DAARI_OBSERVABILITY__PROMETHEUS=true.
-# When server.api_key protects /metrics, set bearerTokenSecret to a Secret
-# (same namespace) holding the master API key so scrapes stay authenticated.
 serviceMonitor:
   enabled: false
   # Extra labels for operator release selectors, e.g. release: kube-prometheus-stack
   labels: {}
-  # Optional: { name, key } — rendered as endpoint authorization Bearer credentials.
+  # Optional: { name, key } — used only when scraping the API http port.
   bearerTokenSecret: {}
+
+# Optional private Prometheus scrape listener (app observability.metrics_port).
+# 0 / unset = off (scrape API port /metrics). Non-zero binds 127.0.0.1-style
+# scrape-only /metrics without inference API key auth — wire containerPort +
+# Service port `metrics` and prefer ServiceMonitor → metrics (no bearer).
+observability:
+  metricsPort: 0
 
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
 redis:

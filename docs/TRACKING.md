@@ -2849,6 +2849,16 @@ L1. ADR-0004 negative note updated. Covered by
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Helm Service port for metrics_port scrapes ([#602](https://github.com/naveenreddyalka/daari/issues/602))
+
+<!-- tracking:#602 -->
+**Status:** Done (2026-09-17). Chart `observability.metricsPort` (0 = off)
+wires `DAARI_OBSERVABILITY__METRICS_PORT`, containerPort, and Service port
+`metrics`; ServiceMonitor scrapes `metrics` (no bearer) when set, else API
+`http` (+ optional bearer). Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_chart.py`.
+
 ---
 
 ## How to update
