@@ -6,8 +6,9 @@ name: autodev-cycle
 
 on:
   schedule:
-    # Every 3h: one issue per run caps throughput at 8/day. If the pick is
-    # empty, refill 3–5 issues (prd-cycle.md) then implement — never idle.
+    # Every 3h. Each run drains issues back-to-back for ~50 min, then exits
+    # cleanly before timeout-minutes (see AUTODEV_DEADLINE_EPOCH). If the pick
+    # is empty, refill 3–5 issues (prd-cycle.md) then implement — never idle.
     - cron: "0 */3 * * *"
   workflow_dispatch:
 
@@ -40,7 +41,9 @@ jobs:
 
   dev-cycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The agent stops picking new issues at the 50-min deadline below; the
+    # extra 10 min lets the final PR's auto-merge settle without a kill.
+    timeout-minutes: 60
     steps:
       - name: Check for API key
         id: gate
@@ -84,5 +87,9 @@ jobs:
         run: |
           git config user.name "daari-autodev"
           git config user.email "autodev@users.noreply.github.com"
+          # Wall-clock budget for picking new issues: 50 min from now, 10 min
+          # inside timeout-minutes so the last auto-merge is never killed.
+          export AUTODEV_DEADLINE_EPOCH=$(( $(date +%s) + 50 * 60 ))
+          echo "AUTODEV_DEADLINE_EPOCH=$AUTODEV_DEADLINE_EPOCH ($(date -u -d @"$AUTODEV_DEADLINE_EPOCH" +%H:%MZ))"
           cursor-agent --print --force \
-            "You are working in the current checkout of naveenreddyalka/daari. Read AGENTS.md and follow it exactly. Pick the highest-priority open GitHub issue labeled auto-dev without the agent:working label and no open linked PR: run python scripts/autodev_backlog.py --pick (it reads the GraphQL repository connection because gh issue list depends on GitHub's stale-prone search index). If it prints 'backlog empty', do not stop — follow docs/automations/prd-cycle.md and refill: file 3-5 new auto-dev issues (new features or improvements to performance, usability, testability, benchmarking, documentation, tooling, tech debt; first body line Intended labels). Then run --pick again and implement the winner. Never print backlog empty and stop. Add agent:working to the picked issue, create branch autodev/<issue-number>-<slug> from latest origin/main, implement the issue TDD-style honoring its acceptance criteria, run pytest -m 'not integration and not benchmark' -q until green, update docs/TRACKING.md when relevant (append a new ### section above ## How to update; on conflict keep both sections), commit with a conventional message, fetch+merge origin/main if behind, push the branch, open a PR whose body contains 'Closes #<issue>', run gh pr merge --auto --squash, then check mergeStateStatus — if DIRTY, merge origin/main, resolve, push. Then remove the agent:working label. If blocked, comment findings on the issue and remove agent:working. Hard limits: no tags, no releases, no force-push, no new runtime dependencies, no edits under .github/workflows/ unless the issue explicitly requires them."
+            "You are working in the current checkout of naveenreddyalka/daari. Read AGENTS.md and follow it exactly. Loop: pick the highest-priority open GitHub issue labeled auto-dev without the agent:working label and no open linked PR: run python scripts/autodev_backlog.py --pick (it reads the GraphQL repository connection because gh issue list depends on GitHub's stale-prone search index). If it prints 'backlog empty', do not stop — follow docs/automations/prd-cycle.md and refill: file 3-5 new auto-dev issues (new features or improvements to performance, usability, testability, benchmarking, documentation, tooling, tech debt; first body line Intended labels). Then run --pick again and implement the winner. Never print backlog empty and stop. Add agent:working to the picked issue, create branch autodev/<issue-number>-<slug> from latest origin/main, implement the issue TDD-style honoring its acceptance criteria, run pytest -m 'not integration and not benchmark' -q until green, update docs/TRACKING.md when relevant (append a new ### section above ## How to update; on conflict keep both sections), commit with a conventional message, fetch+merge origin/main if behind, push the branch, open a PR whose body contains 'Closes #<issue>', run gh pr merge --auto --squash, then check mergeStateStatus — if DIRTY, merge origin/main, resolve, push. Then remove the agent:working label and go back to the top of the loop. Time box: this job has a hard deadline at unix epoch $AUTODEV_DEADLINE_EPOCH (also in env var AUTODEV_DEADLINE_EPOCH). Before every pick, run date +%s and compare: if fewer than 600 seconds remain, do not pick another issue — make sure the current PR has auto-merge enabled and agent:working removed, print 'time box reached', and exit 0 cleanly. Never start an issue you cannot finish before the deadline; a half-done issue must be left with no agent:working label and a comment on the issue. If blocked, comment findings on the issue and remove agent:working. Hard limits: no tags, no releases, no force-push, no new runtime dependencies, no edits under .github/workflows/ unless the issue explicitly requires them."
