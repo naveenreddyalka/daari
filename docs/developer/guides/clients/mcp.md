@@ -6,6 +6,12 @@ configured integrations).
 daari speaks JSON-RPC 2.0 at `POST /mcp` over streamable HTTP. When `server.api_key`
 is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
 
+Edge proxies can validate a virtual key without the signing secret via RFC 7662
+`POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with
+a master or virtual key. Active responses include `client_id`, `username`,
+optional `exp` / team / `tier_cap` / rpm·tpm; revoked, expired, or unknown tokens
+return `{"active": false}` with HTTP 200.
+
 ## Cursor
 
 `~/.cursor/mcp.json` (or project `.cursor/mcp.json`):

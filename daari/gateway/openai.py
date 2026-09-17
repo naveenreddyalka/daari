@@ -526,6 +526,39 @@ class OpenAIGatewayAdapter(GatewayAdapter):
     def router(self) -> APIRouter:
         router = APIRouter()
 
+        @router.post("/introspect")
+        async def introspect(request: Request) -> dict[str, Any]:
+            """RFC 7662 token introspection for master/virtual keys (#618)."""
+            from daari.server.auth import extract_api_key, introspect_token, resolve_auth
+
+            ctx: AppContext = request.app.state.ctx
+            master = (ctx.settings.server.api_key or "").strip()
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            caller = resolve_auth(
+                extract_api_key(request.headers),
+                master_key=master,
+                store=store,
+            )
+            if caller is None or caller.kind not in ("master", "virtual"):
+                raise HTTPException(status_code=401, detail="authentication required")
+
+            token = ""
+            content_type = (request.headers.get("content-type") or "").lower()
+            if "application/json" in content_type:
+                try:
+                    body = await request.json()
+                except Exception:
+                    body = {}
+                if isinstance(body, dict):
+                    token = str(body.get("token") or "")
+            else:
+                form = await request.form()
+                token = str(form.get("token") or "")
+
+            return introspect_token(token, master_key=master, store=store)
+
         @router.post("/v1/chat/completions", response_model=None)
         async def chat_completions(
             body: ChatCompletionRequest,

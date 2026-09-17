@@ -11,6 +11,15 @@ server:
 
 Clients send `Authorization: Bearer <key>` or `x-api-key`. `/health` stays open.
 
+### Token introspection (RFC 7662)
+
+`POST /introspect` lets an authenticated caller (master or virtual key) ask
+whether another token is active without leaking secrets. Accepts JSON
+`{"token":"…"}` or form `token=…`. Response: `{"active": true, …}` with
+`client_id`, `username`, optional `exp`, `team_id` / `team_name`, `tier_cap`,
+`rpm` / `tpm`; or `{"active": false}` for unknown / revoked / expired tokens
+(HTTP 200). Unauthenticated callers get 401.
+
 Tunnel setup (`daari setup cursor --tunnel`) auto-generates a key when unset.
 
 ## Virtual keys
