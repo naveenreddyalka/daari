@@ -5,6 +5,8 @@ const totalNode = document.getElementById("total-requests");
 const errorsNode = document.getElementById("errors");
 const tiersNode = document.getElementById("tiers-table");
 const tiersChartNode = document.getElementById("tiers-chart");
+const softWarningsNode = document.getElementById("soft-warnings-table");
+const rejectsNode = document.getElementById("rejects-table");
 const orgNode = document.getElementById("org-learning");
 const orgSummaryNode = document.getElementById("org-summary");
 const statusNode = document.getElementById("status");
@@ -113,6 +115,23 @@ function renderTiers(tiers) {
       p95
     )}</td>`;
     tiersNode.appendChild(row);
+  }
+}
+
+function renderKindCounts(tbody, counts, emptyLabel) {
+  if (!tbody) {
+    return;
+  }
+  tbody.innerHTML = "";
+  const entries = Object.entries(counts || {}).sort(([a], [b]) => a.localeCompare(b));
+  if (entries.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="2">${emptyLabel}</td></tr>`;
+    return;
+  }
+  for (const [kind, count] of entries) {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td>${kind}</td><td>${formatNumber(typeof count === "number" ? count : 0)}</td>`;
+    tbody.appendChild(row);
   }
 }
 
@@ -249,6 +268,8 @@ async function loadStats() {
     totalNode.textContent = formatNumber(stats.total_requests);
     errorsNode.textContent = formatNumber(stats.errors);
     renderTiers(stats.tiers || {});
+    renderKindCounts(softWarningsNode, stats.soft_warnings, "No soft warnings yet.");
+    renderKindCounts(rejectsNode, stats.rejects, "No hard rejects yet.");
 
     try {
       const profile = await fetchJson(`${apiBaseUrl}/v1/org-learning/profile`);
@@ -276,6 +297,8 @@ async function loadStats() {
     totalNode.textContent = "-";
     errorsNode.textContent = "-";
     renderTiers({});
+    renderKindCounts(softWarningsNode, {}, "No soft warnings yet.");
+    renderKindCounts(rejectsNode, {}, "No hard rejects yet.");
     orgSummaryNode.textContent = "Not available";
     orgNode.textContent = "Not available";
     statusNode.textContent = `Could not reach ${apiBaseUrl}/v1/daari/stats (${error.message})`;

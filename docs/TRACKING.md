@@ -2811,6 +2811,15 @@ chat requests after RPM exhausted → all 429, `daari_rejects_total` ≥ N, wall
 ceiling. Docs: [benchmark-load.md](developer/resources/benchmark-load.md).
 Covered by `tests/benchmark/test_hermetic_paths.py`.
 
+### Stats + web-ui soft_warnings / rejects ([#593](https://github.com/naveenreddyalka/daari/issues/593))
+
+<!-- tracking:#593 -->
+**Status:** Done (2026-09-17). `GET /v1/daari/stats` returns `soft_warnings`
+and `rejects` maps (empty `{}` when zero); web-ui tables render both by kind.
+Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md),
+[web-ui README](../packages/web-ui/README.md). Covered by
+`tests/unit/test_stats_cliff_counters.py` and web-ui DOM tests.
+
 ---
 
 ## How to update

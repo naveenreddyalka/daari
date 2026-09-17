@@ -7,6 +7,8 @@ const STATS = {
   total_requests: 42,
   errors: 1,
   tiers: { L0: { count: 10, p50_ms: 1, p95_ms: 2 }, L3: { count: 32, p50_ms: 900, p95_ms: 2100 } },
+  soft_warnings: { rate_limit: 3, request_quota: 1 },
+  rejects: { budget: 2, rate_limit: 4 },
 };
 
 const REPORT = {
@@ -87,6 +89,24 @@ test("report totals and daily table render", async (t) => {
   assert.equal(rows.length, 2);
   assert.match(rows[0].textContent, /2026-07-11/, "most recent day listed first");
   assert.match(rows[0].textContent, /L0:6/);
+});
+
+test("soft warnings and hard rejects tables render from stats", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const softRows = [...doc.querySelectorAll("#soft-warnings-table tr")];
+  assert.equal(softRows.length, 2);
+  assert.match(softRows[0].textContent, /rate_limit/);
+  assert.match(softRows[0].textContent, /3/);
+  assert.match(softRows[1].textContent, /request_quota/);
+  const rejectRows = [...doc.querySelectorAll("#rejects-table tr")];
+  assert.equal(rejectRows.length, 2);
+  assert.match(rejectRows.map((r) => r.textContent).join("|"), /budget/);
+  assert.match(rejectRows.map((r) => r.textContent).join("|"), /rate_limit/);
 });
 
 test("cache trust panel shows false-hit rate and diversity per category", async (t) => {
