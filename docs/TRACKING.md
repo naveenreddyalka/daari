@@ -3032,6 +3032,14 @@ Covered by `tests/unit/test_grafana_dashboard.py`.
 [doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
 `tests/unit/test_doctor_soft_budget_ratio.py`.
 
+### Document USD soft budget warning in budgets guide ([#638](https://github.com/naveenreddyalka/daari/issues/638))
+
+<!-- tracking:#638 -->
+**Status:** Done (2026-09-17). `budgets-frontier.md` documents soft USD band →
+`x-daari-budget-warning: soft`, `daari_meta.warning=budget_warning`, and
+`daari_soft_warnings_total{kind="budget"}`, parallel to request-quota soft
+band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontier.md).
+
 ### Stats backend_summary counts ([#639](https://github.com/naveenreddyalka/daari/issues/639))
 
 <!-- tracking:#639 -->
