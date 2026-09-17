@@ -2,7 +2,8 @@
 
 Roles: admin > analyst > user. Virtual-key / SSO claims may carry a role;
 master API key is always treated as admin. Analyst may read stats/traces/
-report/audit; mutating admin routes require admin_min_role (default admin).
+report/audit/config GET; mutating admin routes require admin_min_role
+(default admin).
 """
 
 from __future__ import annotations

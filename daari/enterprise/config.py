@@ -60,7 +60,7 @@ class SsoSettings(BaseModel):
     # Claim name used for RBAC (default "role"; also checks daari_role).
     role_claim: str = "role"
     # Require at least this role for mutating admin surfaces (config PATCH,
-    # reload-caches, org-learning sync) and config GET. Read ops surfaces
+    # reload-caches, org-learning sync). Config GET and other read ops
     # (stats/traces/report/audit) allow analyst+ separately.
     admin_min_role: str = "admin"
     # When true, first successful SSO login mints a virtual API key for sub.
