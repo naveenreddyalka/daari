@@ -14,14 +14,20 @@ from datetime import datetime, timezone
 import pytest
 
 from daari.auth.budgets import budget_status
-from daari.auth.rate_limit import RateLimiter, SqliteCounterBackend
+from daari.auth.rate_limit import (
+    MemoryCounterBackend,
+    RATELIMIT_WARNING_HEADER,
+    RateLimiter,
+    SqliteCounterBackend,
+)
 from daari.auth.virtual_keys import BudgetWindow, VirtualKey
 from daari.cache.exact import ExactCache
 from daari.cache.semantic import SemanticCache
 from daari.gateway.batches import BatchStore
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
-from daari.router.router import OllamaExecutor, Router
+from daari.router.router import AppContext, OllamaExecutor, Router
+from daari.server.app import create_app
 from tests.conftest import NoopEmbedder
 
 NOW = datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -38,6 +44,12 @@ L0_SINGLEFLIGHT_CONCURRENCY = 32
 # N concurrent same-embed-key L1 cold misses (distinct L0 keys) (#528).
 L1_SINGLEFLIGHT_BURST_CEILING_S = 0.750
 L1_SINGLEFLIGHT_CONCURRENCY = 32
+# N concurrent soft-band RPM requests (memory limiter + frozen window) (#540).
+# ASGI+httpx burst on shared runners is ~1–2s; keep ~2× headroom.
+SOFT_RATE_LIMIT_BURST_CEILING_S = 5.000
+SOFT_RATE_LIMIT_CONCURRENCY = 32
+SOFT_RATE_LIMIT_RPM = 200
+SOFT_RATE_LIMIT_PREFILL = 159  # soft line at 0.8 * 200 = 160
 
 
 class FakeLedger:
@@ -371,4 +383,62 @@ async def test_l1_singleflight_concurrent_cold_miss_under_ceiling(tmp_path):
     assert elapsed < L1_SINGLEFLIGHT_BURST_CEILING_S, (
         f"L1 singleflight burst {elapsed:.4f}s exceeds ceiling "
         f"{L1_SINGLEFLIGHT_BURST_CEILING_S}s (embed/upstream stampede regression)"
+    )
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_soft_rate_limit_warn_burst_under_ceiling(settings, monkeypatch):
+    """N concurrent soft-band requests → 200 + soft header under a wall ceiling (#540)."""
+    from httpx import ASGITransport, AsyncClient
+
+    # Freeze mid-window so RPM soft-band counts stay stable (same as #526 unit tests).
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_030.0)
+    settings.frontier.soft_budget_ratio = 0.8
+
+    limiter = RateLimiter(MemoryCounterBackend(), default_rpm=SOFT_RATE_LIMIT_RPM)
+    # Open installs (no master/VK) rate-limit under key_id "master" (auth.py).
+    for _ in range(SOFT_RATE_LIMIT_PREFILL):
+        decision = limiter.check(key_id="master", model="daari", tokens=8)
+        assert decision.allowed
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.rate_limiter = limiter
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="A confident soft-band body with plenty of length to avoid escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+            ),
+        )
+
+    app.state.ctx.router.ollama.execute = fake_execute  # type: ignore[method-assign]
+
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "soft-burst"}]}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+
+        async def one():
+            return await client.post(
+                "/v1/chat/completions",
+                json=chat,
+                headers={"X-Daari-No-Cache": "true"},
+            )
+
+        start = time.perf_counter()
+        responses = await asyncio.gather(
+            *[one() for _ in range(SOFT_RATE_LIMIT_CONCURRENCY)]
+        )
+        elapsed = time.perf_counter() - start
+
+    assert all(r.status_code == 200 for r in responses), [
+        r.status_code for r in responses
+    ]
+    assert all(r.headers.get(RATELIMIT_WARNING_HEADER) == "soft" for r in responses)
+    assert elapsed < SOFT_RATE_LIMIT_BURST_CEILING_S, (
+        f"soft rate-limit burst {elapsed:.4f}s exceeds ceiling "
+        f"{SOFT_RATE_LIMIT_BURST_CEILING_S}s (soft-header middleware regression)"
     )
