@@ -73,8 +73,43 @@ async def test_version_and_show_and_ps(app):
     assert "version" in version.json()
     assert show.status_code == 200
     assert "daari" in show.json()["modelfile"]
+    # Default L3 catalog includes tools → facade advertises tools (#547).
+    assert "completion" in show.json()["capabilities"]
+    assert "tools" in show.json()["capabilities"]
     assert ps.status_code == 200
     assert ps.json() == {"models": []}
+
+
+@pytest.mark.asyncio
+async def test_tags_and_show_advertise_capabilities_per_tier(settings):
+    """Tools-capable tier advertises tools; plain tier does not (#547)."""
+    settings.models.l3 = "tools-model:1b"
+    settings.models.l4 = "plain-chat:1b"
+    settings.models.l5 = "plain-chat:1b"
+    settings.models.capabilities = {
+        "tools-model:1b": ["tools"],
+        "plain-chat:1b": [],
+    }
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tags = await client.get("/api/tags")
+        tools_show = await client.post("/api/show", json={"model": "tools-model:1b"})
+        plain_show = await client.post("/api/show", json={"model": "plain-chat:1b"})
+        thinking_show = await client.post("/api/show", json={"model": "qwen3:8b"})
+
+    assert tags.status_code == 200
+    by_name = {entry["name"]: entry for entry in tags.json()["models"]}
+    assert by_name["tools-model:1b"]["capabilities"] == ["completion", "tools"]
+    assert by_name["plain-chat:1b"]["capabilities"] == ["completion"]
+    assert "tools" in by_name["daari"]["capabilities"]
+
+    assert tools_show.json()["capabilities"] == ["completion", "tools"]
+    assert plain_show.json()["capabilities"] == ["completion"]
+    assert "thinking" in thinking_show.json()["capabilities"]
+    assert "completion" in thinking_show.json()["capabilities"]
 
 
 @pytest.mark.asyncio

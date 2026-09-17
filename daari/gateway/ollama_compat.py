@@ -81,8 +81,8 @@ def _now_iso() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def _model_entry(name: str) -> dict[str, Any]:
-    return {
+def _model_entry(name: str, *, capabilities: list[str] | None = None) -> dict[str, Any]:
+    entry: dict[str, Any] = {
         "name": name,
         "model": name,
         "modified_at": _now_iso(),
@@ -95,6 +95,9 @@ def _model_entry(name: str) -> dict[str, Any]:
             "quantization_level": "none",
         },
     }
+    if capabilities is not None:
+        entry["capabilities"] = list(capabilities)
+    return entry
 
 
 def _chat_line(
@@ -207,25 +210,39 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
         @router.get("/api/tags")
         async def tags(request: Request) -> dict[str, Any]:
+            from daari.router.capabilities import ollama_facade_capabilities_for_name
+
             ctx: AppContext = request.app.state.ctx
             names = ["daari", ctx.settings.models.l3, ctx.settings.models.l4, ctx.settings.models.l5]
             unique: list[str] = []
             for name in names:
                 if name and name not in unique:
                     unique.append(name)
-            return {"models": [_model_entry(name) for name in unique]}
+            return {
+                "models": [
+                    _model_entry(
+                        name,
+                        capabilities=ollama_facade_capabilities_for_name(name, ctx.settings),
+                    )
+                    for name in unique
+                ]
+            }
 
         @router.post("/api/show")
-        async def show(body: dict[str, Any]) -> dict[str, Any]:
+        async def show(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+            from daari.router.capabilities import ollama_facade_capabilities_for_name
+
+            ctx: AppContext = request.app.state.ctx
             name = str(body.get("model") or body.get("name") or "daari")
-            entry = _model_entry(name)
+            caps = ollama_facade_capabilities_for_name(name, ctx.settings)
+            entry = _model_entry(name, capabilities=caps)
             return {
                 "modelfile": f"# daari virtual model: {name}",
                 "parameters": "",
                 "template": "",
                 "details": entry["details"],
                 "model_info": {"general.architecture": "daari-router"},
-                "capabilities": ["completion"],
+                "capabilities": caps,
             }
 
         async def _stream_ndjson(

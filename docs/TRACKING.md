@@ -2717,6 +2717,15 @@ header under a wall ceiling. Docs:
 [benchmark-load.md](developer/resources/benchmark-load.md). Covered by
 `tests/benchmark/test_hermetic_paths.py`.
 
+### Ollama facade capability advertisement ([#547](https://github.com/naveenreddyalka/daari/issues/547))
+
+<!-- tracking:#547 -->
+**Status:** Done (2026-09-17). `/api/tags` and `/api/show` advertise
+Ollama-shaped `capabilities` (`completion`, plus `tools` / `vision` /
+`thinking` from the catalog). Docs:
+[intellij.md](developer/guides/clients/intellij.md). Covered by
+`tests/integration/test_ollama_compat.py`.
+
 ---
 
 ## How to update
