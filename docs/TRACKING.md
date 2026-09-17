@@ -2967,6 +2967,15 @@ ceiling, and no hard 402. Docs:
 [benchmark-load.md](developer/resources/benchmark-load.md). Covered by
 `tests/benchmark/test_hermetic_paths.py`.
 
+### Grafana team budget and rate-limit remaining panels ([#627](https://github.com/naveenreddyalka/daari/issues/627))
+
+<!-- tracking:#627 -->
+**Status:** Done (2026-09-17). Overview dashboard adds **Team budget remaining
+(USD)** (`daari_team_budget_remaining_usd` / `_limit_usd`) and **Team
+rate-limit remaining** (`daari_team_rate_limit_remaining` / `_limit`). Docs:
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update
