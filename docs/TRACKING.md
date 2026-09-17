@@ -2708,6 +2708,15 @@ when `routing.ttft_aware` rewrites the heuristic local tier. Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_ttft_aware_routing.py`.
 
+### Soft rate-limit warn hermetic burst ([#540](https://github.com/naveenreddyalka/daari/issues/540))
+
+<!-- tracking:#540 -->
+**Status:** Done (2026-09-17). `@pytest.mark.benchmark` burst: N concurrent
+soft-band RPM requests (memory limiter + frozen window) → all 200 with soft
+header under a wall ceiling. Docs:
+[benchmark-load.md](developer/resources/benchmark-load.md). Covered by
+`tests/benchmark/test_hermetic_paths.py`.
+
 ---
 
 ## How to update

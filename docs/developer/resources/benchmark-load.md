@@ -25,7 +25,9 @@ singleflight: N concurrent identical cold misses must share exactly one
 upstream fill under a wall-clock ceiling (#520). The same pattern covers L1
 embed-key singleflight: N concurrent same-normalized-embed cold misses
 (distinct L0 keys) must share exactly one embed before fill and one upstream
-under a wall ceiling (#528).
+under a wall ceiling (#528). Soft RPM soft-band bursts are also guarded: N
+concurrent allowed requests (memory rate limiter, frozen mid-window) must all
+return 200 with `x-daari-ratelimit-warning: soft` under a wall ceiling (#540).
 
 - **Date:** 2026-08-26
 - **Commit:** `c56999c`
