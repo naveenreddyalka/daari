@@ -948,11 +948,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             total = sum(t["count"] for t in tiers.values())
             pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
             backends = list((pool.snapshot() if pool is not None else {}).get("backends") or [])
+            healthy = sum(1 for b in backends if b.get("healthy") is True)
+            open_circuit = sum(1 for b in backends if b.get("circuit") == "open")
+            backend_summary = {
+                "total": len(backends),
+                "healthy": healthy,
+                "unhealthy": len(backends) - healthy,
+                "open_circuit": open_circuit,
+            }
             return {
                 "total_requests": total,
                 "errors": full["errors"],
                 "tiers": tiers,
                 "backends": backends,
+                "backend_summary": backend_summary,
                 "soft_warnings": full.get("soft_warnings") or {},
                 "rejects": full.get("rejects") or {},
             }

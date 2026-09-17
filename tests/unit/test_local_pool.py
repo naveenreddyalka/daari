@@ -499,6 +499,12 @@ async def test_stats_includes_backends_with_circuit(settings):
     by_id = {row["id"]: row for row in body["backends"]}
     assert by_id["a"]["circuit"] == "closed"
     assert by_id["b"]["circuit"] == "open"
+    assert body["backend_summary"] == {
+        "total": 2,
+        "healthy": 2,  # circuit open does not flip healthy flag in snapshot
+        "unhealthy": 0,
+        "open_circuit": 1,
+    }
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
     assert "version" in health.json()
@@ -512,4 +518,31 @@ async def test_stats_backends_empty_without_pool(settings):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/v1/daari/stats")
     assert response.status_code == 200
-    assert response.json()["backends"] == []
+    body = response.json()
+    assert body["backends"] == []
+    assert body["backend_summary"] == {
+        "total": 0,
+        "healthy": 0,
+        "unhealthy": 0,
+        "open_circuit": 0,
+    }
+
+
+@pytest.mark.asyncio
+async def test_stats_backend_summary_counts_unhealthy(settings):
+    pool = LocalBackendPool(
+        slots=[
+            _slot("up", healthy=True),
+            _slot("down", healthy=False),
+        ]
+    )
+    app = _app(settings, pool=pool)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/daari/stats")
+    assert response.status_code == 200
+    assert response.json()["backend_summary"] == {
+        "total": 2,
+        "healthy": 1,
+        "unhealthy": 1,
+        "open_circuit": 0,
+    }

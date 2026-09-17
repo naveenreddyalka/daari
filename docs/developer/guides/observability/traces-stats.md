@@ -14,6 +14,10 @@ Pass `X-Daari-Meta: true` on chat calls to embed `daari_meta` (tier, cache_hit, 
 
 Web UI: `daari web-ui serve` → `http://127.0.0.1:11437`.
 
+`GET /v1/daari/stats` also returns `backend_summary`
+(`total` / `healthy` / `unhealthy` / `open_circuit`) derived from
+`backends` so scripts can gauge pool pressure without counting rows.
+
 ## Retention
 
 Traces, the usage ledger, the audit log, shadow-check tables, and MCP task
