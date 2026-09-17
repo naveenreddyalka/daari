@@ -188,3 +188,22 @@ class TestHelmSecurityAndPdb:
         assert "kind: PodDisruptionBudget" in rendered
         assert "maxUnavailable: 1" in rendered
         assert "minAvailable:" not in rendered.split("kind: PodDisruptionBudget")[1]
+
+
+class TestHelmServiceMonitor:
+    def test_servicemonitor_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "kind: ServiceMonitor" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["serviceMonitor"]["enabled"] is False
+
+    def test_servicemonitor_scrapes_metrics_when_enabled(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template("--set", "serviceMonitor.enabled=true")
+        assert "kind: ServiceMonitor" in rendered
+        assert "apiVersion: monitoring.coreos.com/v1" in rendered
+        sm = rendered.split("kind: ServiceMonitor")[1]
+        assert "path: /metrics" in sm
+        assert "port: http" in sm
+        assert "app.kubernetes.io/name: daari" in sm

@@ -79,6 +79,24 @@ replica and still want a PDB (minAvailable=1 blocks draining the only pod).
 PDB and HPA compose: HPA sets desired replicas; the PDB only constrains
 voluntary evictions during drains/upgrades.
 
+### Prometheus ServiceMonitor
+
+`serviceMonitor` defaults to **disabled**. On clusters with the Prometheus
+Operator (`monitoring.coreos.com` CRDs), enable it so kube-prometheus scrapes
+the chart Service at `GET /metrics` on the `http` port (same target as a
+hand-rolled scrape for Kong/LiteLLM). Chart defaults already set
+`DAARI_OBSERVABILITY__PROMETHEUS=true`. Add `serviceMonitor.labels` when your
+operator selects monitors by release label:
+
+```yaml
+serviceMonitor:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack
+```
+
+See [Prometheus metrics](../observability/metrics-prometheus.md).
+
 ## Next
 
 → [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md) · [Batches](../features/batches.md)

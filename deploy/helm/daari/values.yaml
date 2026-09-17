@@ -73,6 +73,14 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1
 
+# Prometheus Operator ServiceMonitor for GET /metrics on the HTTP Service port.
+# Requires the monitoring.coreos.com CRDs (kube-prometheus / prometheus-operator).
+# Chart env already sets DAARI_OBSERVABILITY__PROMETHEUS=true.
+serviceMonitor:
+  enabled: false
+  # Extra labels for operator release selectors, e.g. release: kube-prometheus-stack
+  labels: {}
+
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
 redis:
   enabled: false

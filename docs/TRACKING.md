@@ -2726,6 +2726,15 @@ Ollama-shaped `capabilities` (`completion`, plus `tools` / `vision` /
 [intellij.md](developer/guides/clients/intellij.md). Covered by
 `tests/integration/test_ollama_compat.py`.
 
+### Helm ServiceMonitor for /metrics ([#570](https://github.com/naveenreddyalka/daari/issues/570))
+
+<!-- tracking:#570 -->
+**Status:** Done (2026-09-17). Optional `serviceMonitor.enabled` (default
+false) renders a Prometheus Operator ServiceMonitor scraping the chart
+Service `/metrics` on port `http`. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_chart.py`.
+
 ---
 
 ## How to update
