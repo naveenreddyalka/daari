@@ -100,3 +100,42 @@ def test_grafana_dashboard_includes_concurrency_gate_panel():
     assert any("daari_rate_limit_in_flight" in expr for expr in exprs)
     assert any("daari_rate_limit_in_flight_max" in expr for expr in exprs)
     assert any("daari_rate_limit_queued" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_upstream_retries_panel():
+    """Upstream retry counter should be visible on the overview (#601)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Upstream retries" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected an upstream-retries panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_upstream_retries_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_cache_false_hits_avoided_panel():
+    """L1 verification veto counter should be visible on the overview (#601)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "False-hits avoided" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a false-hits-avoided panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_cache_false_hits_avoided_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_budget_alerts_panel():
+    """Budget threshold-crossing counter should be visible on the overview (#601)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Budget alert" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a budget-alerts panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_budget_alerts_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)

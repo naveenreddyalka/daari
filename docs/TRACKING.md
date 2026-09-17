@@ -2840,6 +2840,15 @@ streams write back exact L0. Agent turns keep exact-key semantics; no new
 L1. ADR-0004 negative note updated. Covered by
 `tests/unit/test_anthropic_stream_l0.py`.
 
+### Grafana panels for retries / false-hits / budget alerts ([#601](https://github.com/naveenreddyalka/daari/issues/601))
+
+<!-- tracking:#601 -->
+**Status:** Done (2026-09-17). Bundled Grafana dashboard adds rate panels for
+`daari_upstream_retries_total`, `daari_cache_false_hits_avoided_total`, and
+`daari_budget_alerts_total`. Docs note in
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ## How to update
