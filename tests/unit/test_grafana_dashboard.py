@@ -153,3 +153,35 @@ def test_grafana_dashboard_includes_mcp_tool_ingress_panel():
     assert any("daari_mcp_tool_calls_total" in expr for expr in exprs)
     assert any("outcome" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_team_budget_remaining_panel():
+    """Team USD remaining gauges from #616 should be visible (#627)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Team budget remaining" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a team budget remaining panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_team_budget_remaining_usd" in expr for expr in exprs)
+    assert any("daari_team_budget_limit_usd" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_team_rate_limit_remaining_panel():
+    """Team RPM/TPM remaining gauges from #617 should be visible (#627)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "Team rate-limit remaining" in p.get("title", "")
+        ),
+        None,
+    )
+    assert panel is not None, (
+        "expected a team rate-limit remaining panel in daari-dashboard.json"
+    )
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_team_rate_limit_remaining" in expr for expr in exprs)
+    assert any("daari_team_rate_limit_limit" in expr for expr in exprs)

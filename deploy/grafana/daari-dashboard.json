@@ -297,6 +297,42 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 20,
+      "title": "Team budget remaining (USD)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
+      "targets": [
+        {
+          "expr": "daari_team_budget_remaining_usd",
+          "legendFormat": "remaining {{team}} {{window}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_team_budget_limit_usd",
+          "legendFormat": "limit {{team}} {{window}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Team rate-limit remaining",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 72 },
+      "targets": [
+        {
+          "expr": "daari_team_rate_limit_remaining",
+          "legendFormat": "remaining {{team}} {{kind}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_team_rate_limit_limit",
+          "legendFormat": "limit {{team}} {{kind}}",
+          "refId": "B"
+        }
+      ]
     }
   ],
   "refresh": "30s",
