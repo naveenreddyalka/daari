@@ -2794,6 +2794,15 @@ API key protects `/metrics`. Docs:
 Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Doctor Redis PING and GET /ready ([#584](https://github.com/naveenreddyalka/daari/issues/584))
+
+<!-- tracking:#584 -->
+**Status:** Done (2026-09-17). Optional `redis` check PINGs `cache.redis_url`
+when `cache.backend=redis`; optional `ready` check hits `GET /ready` when the
+daemon is up and warns on `degraded` / `not_ready`. Docs:
+[doctor-health.md](developer/guides/operations/doctor-health.md). Covered by
+`tests/unit/test_doctor_redis_ready.py`.
+
 ---
 
 ## How to update

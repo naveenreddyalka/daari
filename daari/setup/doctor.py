@@ -56,7 +56,10 @@ def run_doctor(
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
-    results.append(_check_daemon(cfg, httpx_client))
+    results.append(_check_redis(cfg))
+    daemon = _check_daemon(cfg, httpx_client)
+    results.append(daemon)
+    results.append(_check_ready(cfg, httpx_client, daemon_ok=daemon.ok))
     if tunnel_url:
         results.append(_check_tunnel(tunnel_url, httpx_client))
 
@@ -345,6 +348,105 @@ def _check_daemon(
             name="daemon",
             ok=False,
             detail="not running (start with: daari serve)",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_redis(settings: Settings) -> CheckResult:
+    """PING configured Redis when cache.backend=redis (#584)."""
+    if getattr(settings.cache, "backend", "disk") != "redis":
+        return CheckResult(
+            name="redis",
+            ok=True,
+            detail="disabled (cache.backend!=redis)",
+            optional=True,
+        )
+    redis_url = str(getattr(settings.cache, "redis_url", "") or "").strip()
+    timeout = float(getattr(settings.cache, "redis_timeout_seconds", 2.0) or 2.0)
+    if not redis_url:
+        return CheckResult(
+            name="redis",
+            ok=False,
+            detail="cache.backend=redis but cache.redis_url is empty",
+            optional=True,
+        )
+    try:
+        from daari.cache.redis_client import connect_redis
+
+        client = connect_redis(redis_url, timeout_seconds=timeout)
+        client.ping()
+        return CheckResult(
+            name="redis",
+            ok=True,
+            detail=f"PING ok ({redis_url})",
+            optional=True,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="redis",
+            ok=False,
+            detail=(
+                f"unreachable at {redis_url}: {type(exc).__name__}: {exc} — "
+                "check redis_url / network, or set cache.backend=disk"
+            ),
+            optional=True,
+        )
+
+
+def _check_ready(
+    settings: Settings,
+    client: httpx.Client | None,
+    *,
+    daemon_ok: bool,
+) -> CheckResult:
+    """Mirror GET /ready when the daemon answered stats (#584)."""
+    if not daemon_ok:
+        return CheckResult(
+            name="ready",
+            ok=True,
+            detail="skipped (daemon not running)",
+            optional=True,
+        )
+    host = settings.server.host
+    port = settings.server.port
+    url = f"http://{host}:{port}/ready"
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    try:
+        response = http.get(url)
+        try:
+            payload = response.json()
+        except Exception:
+            payload = {}
+        status = str(payload.get("status") or "").strip() or f"http_{response.status_code}"
+        checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+        checks_detail = ", ".join(f"{k}={v}" for k, v in checks.items()) if checks else ""
+        detail = f"status={status}"
+        if checks_detail:
+            detail += f" ({checks_detail})"
+        if status == "ready":
+            return CheckResult(name="ready", ok=True, detail=detail, optional=True)
+        if status in ("degraded", "not_ready"):
+            return CheckResult(
+                name="ready",
+                ok=False,
+                detail=f"{detail} — fix dependencies before traffic; see GET /ready",
+                optional=True,
+            )
+        return CheckResult(
+            name="ready",
+            ok=False,
+            detail=f"{detail} (HTTP {response.status_code})",
+            optional=True,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="ready",
+            ok=False,
+            detail=f"GET /ready failed: {type(exc).__name__}: {exc}",
             optional=True,
         )
     finally:
