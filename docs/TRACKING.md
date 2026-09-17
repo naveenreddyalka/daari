@@ -2926,6 +2926,18 @@ USD window (scrape-time snapshot via `list_teams` + ledger). Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_prometheus.py`.
 
+### Team rate-limit scope headers and gauges ([#617](https://github.com/naveenreddyalka/daari/issues/617))
+
+<!-- tracking:#617 -->
+**Status:** Done (2026-09-17). `X-RateLimit-Scope: key|team|model` on
+success and 429 when a counter is active; `/metrics` exposes
+`daari_team_rate_limit_remaining` / `_limit` for teams with rpm/tpm.
+Docs: [headers.md](developer/reference/headers.md),
+[auth-and-keys.md](developer/guides/configuration/auth-and-keys.md),
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
+Covered by `tests/unit/test_team_rate_limits.py` and
+`tests/unit/test_prometheus.py`.
+
 ---
 
 ## How to update

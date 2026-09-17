@@ -30,6 +30,8 @@ class RateLimitDecision:
     retry_after: int | None = None
     scope: str = ""
     backend: str = ""
+    # Entity that owns the tightest counter: key | team | model | concurrency (#617).
+    bucket: str = ""
 
     @property
     def used(self) -> int:
@@ -52,6 +54,8 @@ class RateLimitDecision:
             "X-RateLimit-Remaining": str(max(0, self.remaining)),
             "X-RateLimit-Reset": str(self.reset_epoch),
         }
+        if self.bucket:
+            headers["X-RateLimit-Scope"] = self.bucket
         if self.backend:
             headers["X-RateLimit-Backend"] = self.backend
         if self.retry_after is not None:
@@ -344,22 +348,26 @@ class RateLimiter:
             reset_epoch=reset,
             backend=self.backend.name,
         )
-        checks: list[tuple[str, str, int, int]] = []
+        checks: list[tuple[str, str, str, int, int]] = []
         if key_rpm > 0:
-            checks.append((f"rpm:{key_id}", "rpm", 1, key_rpm))
+            checks.append((f"rpm:{key_id}", "rpm", "key", 1, key_rpm))
         if per_model_rpm > 0:
-            checks.append((f"rpm:{key_id}:{model}", "rpm", 1, per_model_rpm))
+            checks.append((f"rpm:{key_id}:{model}", "rpm", "model", 1, per_model_rpm))
         if key_tpm > 0:
-            checks.append((f"tpm:{key_id}", "tpm", max(1, tokens), key_tpm))
+            checks.append((f"tpm:{key_id}", "tpm", "key", max(1, tokens), key_tpm))
         if per_model_tpm > 0:
-            checks.append((f"tpm:{key_id}:{model}", "tpm", max(1, tokens), per_model_tpm))
+            checks.append(
+                (f"tpm:{key_id}:{model}", "tpm", "model", max(1, tokens), per_model_tpm)
+            )
         # Team aggregate ceilings share the same counter backend (#546).
         if team_id and agg_team_rpm > 0:
-            checks.append((f"rpm:team:{team_id}", "rpm", 1, agg_team_rpm))
+            checks.append((f"rpm:team:{team_id}", "rpm", "team", 1, agg_team_rpm))
         if team_id and agg_team_tpm > 0:
-            checks.append((f"tpm:team:{team_id}", "tpm", max(1, tokens), agg_team_tpm))
+            checks.append(
+                (f"tpm:team:{team_id}", "tpm", "team", max(1, tokens), agg_team_tpm)
+            )
 
-        for counter_key, scope, amount, limit in checks:
+        for counter_key, scope, bucket, amount, limit in checks:
             count = self._increment(counter_key, amount)
             remaining = max(0, limit - count)
             decision = RateLimitDecision(
@@ -370,6 +378,7 @@ class RateLimiter:
                 retry_after=None if count <= limit else self.retry_after_seconds,
                 scope=scope,
                 backend=self.backend.name,
+                bucket=bucket,
             )
             if tightest.limit <= 0 or remaining < tightest.remaining or not decision.allowed:
                 tightest = decision
@@ -386,6 +395,7 @@ class RateLimiter:
                 reset_epoch=int(time.time()) + self.retry_after_seconds,
                 backend=self.backend.name,
                 scope="concurrency",
+                bucket="concurrency",
             )
         async with self._cond:
             if self.in_flight < self.max_in_flight:
@@ -397,6 +407,7 @@ class RateLimiter:
                     reset_epoch=int(time.time()) + self.retry_after_seconds,
                     backend=self.backend.name,
                     scope="concurrency",
+                    bucket="concurrency",
                 )
             if self.queued >= self.queue_size:
                 return RateLimitDecision(
@@ -407,6 +418,7 @@ class RateLimiter:
                     retry_after=self.retry_after_seconds,
                     scope="concurrency",
                     backend=self.backend.name,
+                    bucket="concurrency",
                 )
             self.queued += 1
             try:
@@ -420,6 +432,7 @@ class RateLimiter:
                     reset_epoch=int(time.time()) + self.retry_after_seconds,
                     backend=self.backend.name,
                     scope="concurrency",
+                    bucket="concurrency",
                 )
             finally:
                 self.queued -= 1
@@ -430,6 +443,38 @@ class RateLimiter:
         async with self._cond:
             self.in_flight = max(0, self.in_flight - 1)
             self._cond.notify()
+
+    def team_rate_gauges(self, teams: list[Any]) -> list[dict[str, Any]]:
+        """Scrape-time RPM/TPM remaining for teams with configured ceilings (#617)."""
+        rows: list[dict[str, Any]] = []
+        for team in teams:
+            team_id = str(getattr(team, "team_id", "") or "")
+            name = str(getattr(team, "name", "") or team_id or "unknown")
+            if not team_id:
+                continue
+            rpm = int(getattr(team, "rpm", 0) or 0)
+            tpm = int(getattr(team, "tpm", 0) or 0)
+            if rpm > 0:
+                used = int(self._increment(f"rpm:team:{team_id}", 0))
+                rows.append(
+                    {
+                        "team": name,
+                        "kind": "rpm",
+                        "limit": rpm,
+                        "remaining": max(0, rpm - used),
+                    }
+                )
+            if tpm > 0:
+                used = int(self._increment(f"tpm:team:{team_id}", 0))
+                rows.append(
+                    {
+                        "team": name,
+                        "kind": "tpm",
+                        "limit": tpm,
+                        "remaining": max(0, tpm - used),
+                    }
+                )
+        return rows
 
     def snapshot(self) -> dict[str, Any]:
         with self._state_lock:
