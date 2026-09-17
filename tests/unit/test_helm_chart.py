@@ -207,3 +207,27 @@ class TestHelmServiceMonitor:
         assert "path: /metrics" in sm
         assert "port: http" in sm
         assert "app.kubernetes.io/name: daari" in sm
+
+
+class TestHelmOrgPool:
+    def test_org_pool_env_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ROUTING__ORG_POOL__ENABLED" not in rendered
+        assert "DAARI_ROUTING__ORG_POOL__BASE_URL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["orgPool"]["enabled"] is False
+
+    def test_org_pool_env_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "orgPool.enabled=true",
+            "--set",
+            "orgPool.baseUrl=http://gpu-pool:11434",
+        )
+        assert re.search(
+            r'name: DAARI_ROUTING__ORG_POOL__ENABLED\s+value: "true"', rendered
+        )
+        assert re.search(
+            r'name: DAARI_ROUTING__ORG_POOL__BASE_URL\s+value: "http://gpu-pool:11434"',
+            rendered,
+        )
