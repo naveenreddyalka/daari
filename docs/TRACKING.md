@@ -2967,6 +2967,19 @@ ceiling, and no hard 402. Docs:
 [benchmark-load.md](developer/resources/benchmark-load.md). Covered by
 `tests/benchmark/test_hermetic_paths.py`.
 
+### Soft USD budget warn header + soft_warnings{kind=budget} ([#626](https://github.com/naveenreddyalka/daari/issues/626))
+
+<!-- tracking:#626 -->
+**Status:** Done (2026-09-17). Soft-band USD windows emit
+`x-daari-budget-warning: soft` and `daari_meta.warning=budget_warning`;
+`daari_soft_warnings_total{kind="budget"}` increments on 2xx (hard 402 does
+not). Hermetic concurrent soft-band burst under a wall ceiling. Docs:
+[headers.md](developer/reference/headers.md),
+[metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md),
+[benchmark-load.md](developer/resources/benchmark-load.md). Covered by
+`tests/unit/test_soft_warning_metrics.py` and
+`tests/benchmark/test_hermetic_paths.py`.
+
 ### Grafana team budget and rate-limit remaining panels ([#627](https://github.com/naveenreddyalka/daari/issues/627))
 
 <!-- tracking:#627 -->

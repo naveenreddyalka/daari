@@ -237,6 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         tightest_window,
                     )
                     from daari.gateway.budget_headers import (
+                        BUDGET_WARNING_HEADER,
                         QUOTA_REQUESTS_LIMIT_HEADER,
                         QUOTA_REQUESTS_REMAINING_HEADER,
                         QUOTA_REQUESTS_WARNING_HEADER,
@@ -290,9 +291,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             content={"error": budget_error(**err_kwargs)},
                             headers=headers,
                         )
+                    soft_ratio = float(
+                        getattr(resolved.frontier, "soft_budget_ratio", 0.8) or 0.0
+                    )
                     tightest = tightest_window(statuses)
                     if tightest is not None:
-                        budget_response_headers = budget_headers(tightest)
+                        usd_soft = tightest.in_soft_band(soft_ratio)
+                        budget_response_headers = budget_headers(tightest, soft=usd_soft)
+                        if usd_soft:
+                            request.state.budget_soft = True
                     request_tightest = tightest_request_window(statuses)
                     if request_tightest is not None:
                         # Keep USD window/scope headers when both quotas apply.
@@ -304,9 +311,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
                         if tightest is None:
                             budget_response_headers.update(budget_headers(request_tightest))
-                        soft_ratio = float(
-                            getattr(resolved.frontier, "soft_budget_ratio", 0.8) or 0.0
-                        )
                         if request_tightest.in_soft_band(soft_ratio):
                             budget_response_headers[QUOTA_REQUESTS_WARNING_HEADER] = "soft"
                             request.state.request_quota_soft = True
@@ -315,10 +319,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if budget_response_headers and 200 <= response.status_code < 300:
                 for header, value in budget_response_headers.items():
                     response.headers.setdefault(header, value)
-                if budget_response_headers.get(QUOTA_REQUESTS_WARNING_HEADER) == "soft":
-                    metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
-                    if metrics is not None and hasattr(metrics, "record_soft_warning"):
-                        metrics.record_soft_warning("request_quota")
+                metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+                if (
+                    budget_response_headers.get(QUOTA_REQUESTS_WARNING_HEADER) == "soft"
+                    and metrics is not None
+                    and hasattr(metrics, "record_soft_warning")
+                ):
+                    metrics.record_soft_warning("request_quota")
+                elif (
+                    budget_response_headers.get(BUDGET_WARNING_HEADER) == "soft"
+                    and metrics is not None
+                    and hasattr(metrics, "record_soft_warning")
+                ):
+                    metrics.record_soft_warning("budget")
             alerter = getattr(request.app.state, "budget_alerter", None)
             if (
                 alerter is not None

@@ -21,21 +21,26 @@ BUDGET_LIMIT_HEADER = "x-daari-budget-limit"
 BUDGET_WINDOW_HEADER = "x-daari-budget-window"
 BUDGET_RESET_HEADER = "x-daari-budget-reset"
 BUDGET_SCOPE_HEADER = "x-daari-budget-scope"
+BUDGET_WARNING_HEADER = "x-daari-budget-warning"
 QUOTA_REQUESTS_REMAINING_HEADER = "x-daari-quota-requests-remaining"
 QUOTA_REQUESTS_LIMIT_HEADER = "x-daari-quota-requests-limit"
 QUOTA_REQUESTS_WARNING_HEADER = "x-daari-quota-requests-warning"
 
 
-def budget_headers(status: WindowStatus) -> dict[str, str]:
+def budget_headers(status: WindowStatus, *, soft: bool = False) -> dict[str, str]:
     if status.quota == "requests":
-        return request_quota_headers(status)
-    return {
+        return request_quota_headers(status, soft=soft)
+    headers = {
         BUDGET_REMAINING_HEADER: usd_string(status.remaining),
         BUDGET_LIMIT_HEADER: usd_string(float(status.limit)),
         BUDGET_WINDOW_HEADER: window_header_label(status.window.duration),
         BUDGET_RESET_HEADER: str(status.reset_epoch),
         BUDGET_SCOPE_HEADER: status.scope,
     }
+    if soft and not status.exceeded:
+        headers[BUDGET_WARNING_HEADER] = "soft"
+    return headers
+
 
 
 def request_quota_headers(
