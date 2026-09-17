@@ -2989,6 +2989,14 @@ rate-limit remaining** (`daari_team_rate_limit_remaining` / `_limit`). Docs:
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Web-ui local pool backends ([#629](https://github.com/naveenreddyalka/daari/issues/629))
+
+<!-- tracking:#629 -->
+**Status:** Done (2026-09-17). Dashboard **Local pool backends** table renders
+`stats.backends` (`id`, healthy, circuit, outstanding) with an empty-state
+row when the pool is empty. Docs: [web-ui README](../packages/web-ui/README.md).
+Covered by web-ui DOM tests.
+
 ---
 
 ## How to update
