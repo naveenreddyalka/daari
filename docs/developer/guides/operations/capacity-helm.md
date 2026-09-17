@@ -124,7 +124,11 @@ See [Prometheus metrics](../observability/metrics-prometheus.md).
 
 `orgPool` defaults to **disabled**. When enabled, the Deployment sets
 `DAARI_ROUTING__ORG_POOL__ENABLED` and `DAARI_ROUTING__ORG_POOL__BASE_URL` so
-local tiers can fall through to a shared Ollama/vLLM pool before frontier:
+local tiers can fall through to a shared Ollama/vLLM pool before frontier.
+`helm install` NOTES echo the same when `orgPool.enabled=true` (including
+`baseUrl`). When `serviceMonitor.enabled=true`, NOTES also remind operators that
+Prometheus scrapes Service `/metrics` and that `bearerTokenSecret` is needed if
+the API key protects metrics on the API port.
 
 ```yaml
 orgPool:

@@ -18,4 +18,19 @@ WARNING: Effective replicas={{ include "daari.fleetReplicas" . }} with postgres.
 Postgres enabled: observability, batches, files, responses, virtual keys, and audit backends are set to postgres.
 {{- end }}
 
+{{- if .Values.serviceMonitor.enabled }}
+
+ServiceMonitor enabled: Prometheus scrapes Service `/metrics` (port `http`, or `metrics`
+  when observability.metricsPort > 0). When the master API key protects `/metrics` on
+  the API port, set serviceMonitor.bearerTokenSecret (name + key) for Bearer scrape auth.
+  See docs/developer/guides/operations/capacity-helm.md.
+{{- end }}
+
+{{- if .Values.orgPool.enabled }}
+
+Org pool enabled: Deployment wires DAARI_ROUTING__ORG_POOL__ENABLED and
+  DAARI_ROUTING__ORG_POOL__BASE_URL={{ .Values.orgPool.baseUrl | default "(set orgPool.baseUrl)" }}.
+  Local tiers can fall through to this shared Ollama/vLLM pool before frontier.
+{{- end }}
+
 Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
