@@ -14,6 +14,11 @@
 3. Enable **Ollama**, URL `http://127.0.0.1:11435`
 4. Pick model **daari**
 
+`/api/tags` and `/api/show` advertise Ollama-shaped `capabilities` derived from
+the mapped tier (`completion`, plus `tools` / `vision` / `thinking` when the
+catalog or model name supports them), so capability-aware clients keep tool
+calling and thinking UI enabled against the facade.
+
 Helper (prints steps + reference JSON):
 
 ```bash

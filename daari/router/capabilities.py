@@ -279,6 +279,42 @@ def catalog_from_settings(settings: Any) -> CapabilityCatalog:
     return CapabilityCatalog(models=models)
 
 
+def ollama_facade_capabilities(model: str, catalog: CapabilityCatalog) -> list[str]:
+    """Ollama-shaped capability list for `/api/tags` and `/api/show` (#547).
+
+    Always includes ``completion``. Adds ``tools`` / ``vision`` from the
+    catalog and ``thinking`` when the model is known to accept Ollama ``think``.
+    """
+    from daari.gateway.sampling import model_supports_thinking
+
+    caps: list[str] = ["completion"]
+    declared = catalog.for_model(model)
+    if "tools" in declared:
+        caps.append("tools")
+    if "vision" in declared:
+        caps.append("vision")
+    if model_supports_thinking(model):
+        caps.append("thinking")
+    return caps
+
+
+def ollama_facade_capabilities_for_name(name: str, settings: Any) -> list[str]:
+    """Capabilities for a facade model name, including virtual ``daari``."""
+    catalog = catalog_from_settings(settings)
+    if name == "daari":
+        union: set[str] = set()
+        for model_id in (settings.models.l3, settings.models.l4, settings.models.l5):
+            if model_id:
+                union.update(ollama_facade_capabilities(model_id, catalog))
+        # completion is always present; keep a stable order.
+        ordered = ["completion"]
+        for cap in ("tools", "vision", "thinking"):
+            if cap in union:
+                ordered.append(cap)
+        return ordered
+    return ollama_facade_capabilities(name, catalog)
+
+
 def suggest_models_for_vram(total_ram_gb: float) -> dict[str, str]:
     """VRAM/RAM-aware stack advisor for `daari doctor --suggest-models`."""
     if total_ram_gb >= 64:
