@@ -2868,6 +2868,14 @@ MCP ingress (`ok` / `deny` / `error` / `guardrail`); no-op when
 [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md).
 Covered by `tests/unit/test_mcp_prometheus.py`.
 
+### Expose agent_turn on daari_meta ([#604](https://github.com/naveenreddyalka/daari/issues/604))
+
+<!-- tracking:#604 -->
+**Status:** Done (2026-09-17). `DaariMeta.agent_turn` is set `true` on agent
+turns (tools / tool history); omitted for plain chat via `exclude_none`.
+ADR-0004 checklist item checked. Covered by
+`tests/unit/test_agent_turn_meta.py`.
+
 ---
 
 ## How to update

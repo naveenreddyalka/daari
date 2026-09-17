@@ -93,5 +93,5 @@ Add `daari_meta` as sibling field in response body (non-standard extension clien
 - [x] Exact L0 on for identical agent turns; miss when the last tool result changes (G1 / #223)
 - [x] Include `tools_schema_hash` in cache key
 - [x] Prefix L1 for agent turns; miss on suffix (G1b / #269)
-- [ ] Log `agent_turn: true` in daari_meta
+- [x] Log `agent_turn: true` in daari_meta
 - [ ] Test GP-18 in routing eval set
