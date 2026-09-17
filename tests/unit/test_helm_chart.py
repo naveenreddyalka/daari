@@ -207,6 +207,33 @@ class TestHelmServiceMonitor:
         assert "path: /metrics" in sm
         assert "port: http" in sm
         assert "app.kubernetes.io/name: daari" in sm
+        assert "bearerTokenSecret" not in sm
+        assert "authorization:" not in sm
+        values = _load_yaml(VALUES)
+        assert values["serviceMonitor"].get("bearerTokenSecret") in (None, {})
+
+    def test_servicemonitor_bearer_token_secret_when_set(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "serviceMonitor.enabled=true",
+            "--set",
+            "serviceMonitor.bearerTokenSecret.name=daari-metrics-token",
+            "--set",
+            "serviceMonitor.bearerTokenSecret.key=token",
+        )
+        sm = rendered.split("kind: ServiceMonitor")[1]
+        assert "path: /metrics" in sm
+        assert re.search(
+            r"authorization:\s+type:\s+Bearer\s+credentials:\s+"
+            r"name:\s+daari-metrics-token\s+key:\s+token",
+            sm,
+        ) or (
+            "bearerTokenSecret:" in sm
+            and "name: daari-metrics-token" in sm
+            and "key: token" in sm
+        )
 
 
 class TestHelmOrgPool:

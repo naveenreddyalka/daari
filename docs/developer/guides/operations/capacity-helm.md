@@ -95,6 +95,22 @@ serviceMonitor:
     release: kube-prometheus-stack
 ```
 
+When `server.api_key` (or the chart equivalent) requires Bearer on
+`GET /metrics`, point `serviceMonitor.bearerTokenSecret` at a Kubernetes
+Secret in the same namespace that holds that key. The rendered ServiceMonitor
+uses Prometheus Operator `authorization` (Bearer + Secret credentials) so
+kube-prometheus scrapes succeed without opening `/metrics`:
+
+```yaml
+# kubectl create secret generic daari-metrics-token \
+#   --from-literal=token="$DAARI_SERVER__API_KEY"
+serviceMonitor:
+  enabled: true
+  bearerTokenSecret:
+    name: daari-metrics-token
+    key: token
+```
+
 See [Prometheus metrics](../observability/metrics-prometheus.md).
 
 ### Org GPU pool

@@ -76,10 +76,14 @@ podDisruptionBudget:
 # Prometheus Operator ServiceMonitor for GET /metrics on the HTTP Service port.
 # Requires the monitoring.coreos.com CRDs (kube-prometheus / prometheus-operator).
 # Chart env already sets DAARI_OBSERVABILITY__PROMETHEUS=true.
+# When server.api_key protects /metrics, set bearerTokenSecret to a Secret
+# (same namespace) holding the master API key so scrapes stay authenticated.
 serviceMonitor:
   enabled: false
   # Extra labels for operator release selectors, e.g. release: kube-prometheus-stack
   labels: {}
+  # Optional: { name, key } — rendered as endpoint authorization Bearer credentials.
+  bearerTokenSecret: {}
 
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
 redis:

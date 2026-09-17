@@ -2775,6 +2775,16 @@ counter ≥ N, wall ceiling. Docs:
 [capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
 `tests/unit/test_helm_chart.py`.
 
+### ServiceMonitor bearer auth for /metrics ([#582](https://github.com/naveenreddyalka/daari/issues/582))
+
+<!-- tracking:#582 -->
+**Status:** Done (2026-09-17). Optional `serviceMonitor.bearerTokenSecret`
+(`name` + `key`) renders Prometheus Operator `authorization` Bearer
+credentials on the ServiceMonitor endpoint so scrapes work when the master
+API key protects `/metrics`. Docs:
+[capacity-helm.md](developer/guides/operations/capacity-helm.md). Covered by
+`tests/unit/test_helm_chart.py`.
+
 ---
 
 ## How to update
