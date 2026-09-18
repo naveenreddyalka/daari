@@ -21,6 +21,11 @@ class AuthClaims:
     virtual_key: VirtualKey | None = None
     boundary_profile: str | None = None
     region_pin: str | None = None
+    # Raw allowlist (#708). Expanded against settings.model_groups at request time.
+    allowed_models: tuple[str, ...] | None = None
+    model_groups: tuple[str, ...] | None = None
+    team_allowed_models: tuple[str, ...] | None = None
+    team_model_groups: tuple[str, ...] | None = None
 
 
 def extract_api_key(headers: Any) -> str:
@@ -32,7 +37,12 @@ def extract_api_key(headers: Any) -> str:
     return supplied
 
 
-def apply_auth_claims_to_meta(meta: Any, claims: AuthClaims | None) -> None:
+def apply_auth_claims_to_meta(
+    meta: Any,
+    claims: AuthClaims | None,
+    *,
+    model_groups: dict | None = None,
+) -> None:
     """Fill RequestMeta defaults from a virtual key; explicit headers win."""
     if claims is None or claims.kind != "virtual":
         return
@@ -44,6 +54,11 @@ def apply_auth_claims_to_meta(meta: Any, claims: AuthClaims | None) -> None:
         meta.boundary_profile = claims.boundary_profile
     if not getattr(meta, "region_pin", None) and claims.region_pin:
         meta.region_pin = claims.region_pin
+    from daari.auth.model_access import patterns_from_claims
+
+    key_patterns, team_patterns = patterns_from_claims(claims, model_groups)
+    meta.key_model_patterns = key_patterns
+    meta.team_model_patterns = team_patterns
 
 
 def resolve_auth(
@@ -66,10 +81,15 @@ def resolve_auth(
                     virtual_key=key,
                 )
             region_pin = key.region_pin
-            if not region_pin and key.team_id:
+            team_allowed = None
+            team_groups = None
+            if key.team_id:
                 team = store.get_team(key.team_id)
-                if team is not None and team.region_pin:
-                    region_pin = team.region_pin
+                if team is not None:
+                    if not region_pin and team.region_pin:
+                        region_pin = team.region_pin
+                    team_allowed = team.allowed_models
+                    team_groups = team.model_groups
             return AuthClaims(
                 kind="virtual",
                 key_id=key.key_id,
@@ -80,6 +100,10 @@ def resolve_auth(
                 virtual_key=key,
                 boundary_profile=(key.metadata or {}).get("boundary_profile"),
                 region_pin=region_pin,
+                allowed_models=key.allowed_models,
+                model_groups=key.model_groups,
+                team_allowed_models=team_allowed,
+                team_model_groups=team_groups,
             )
     # Auth required but nothing matched.
     if master_key or (store is not None and store.enabled and store.list()):

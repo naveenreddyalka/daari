@@ -99,6 +99,28 @@ class FrontierPool:
         region_pin = getattr(request.meta, "region_pin", None)
         require_region_slot(region_pin, slots)
         slots = filter_slots_for_region(region_pin, slots)
+        from daari.auth.model_access import model_permitted
+
+        key_patterns = getattr(request.meta, "key_model_patterns", None)
+        team_patterns = getattr(request.meta, "team_model_patterns", None)
+        if key_patterns is not None or team_patterns is not None:
+            allowed_slots = []
+            for slot in slots:
+                model_name = getattr(getattr(slot, "executor", None), "default_model", "") or ""
+                if model_permitted(
+                    model_name,
+                    key_patterns=key_patterns,
+                    team_patterns=team_patterns,
+                ):
+                    allowed_slots.append(slot)
+                else:
+                    add_step(
+                        "frontier_skip",
+                        provider=slot.id,
+                        reason="model_allowlist",
+                        model=model_name,
+                    )
+            slots = allowed_slots
 
         errors: list[str] = []
         for slot in slots:

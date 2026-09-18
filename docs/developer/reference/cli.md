@@ -53,7 +53,7 @@ Entry point: `daari` (Typer).
 | `org-learning` | `stats`, `sync`, `export` |
 | `web-ui` | `serve` |
 | `project` | `init`, `show` |
-| `keys` | `create`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` |
+| `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` |
 | `enterprise` | `bootstrap`, `policy-sync` |
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 | `audit` | `list`, `export`, `verify` |

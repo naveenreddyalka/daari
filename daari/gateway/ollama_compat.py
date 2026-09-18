@@ -197,6 +197,28 @@ def _resolve_model(client_model: str, ctx: AppContext) -> str:
     return client_model if client_model != "daari" else ctx.settings.models.l3
 
 
+def _enforce_ollama_model(request: Request, ctx: AppContext, meta: RequestMeta, *models: str):
+    """Bind virtual-key allowlists and 403 if any candidate model is outside them."""
+    from daari.gateway.model_access import reject_disallowed_model
+    from daari.server.auth import apply_auth_claims_to_meta
+
+    apply_auth_claims_to_meta(
+        meta,
+        getattr(request.state, "auth_claims", None),
+        model_groups=getattr(ctx.settings, "model_groups", None),
+    )
+    seen: set[str] = set()
+    for model in models:
+        name = (model or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        denied = reject_disallowed_model(request, name, ctx.settings, meta)
+        if denied is not None:
+            return denied
+    return None
+
+
 class OllamaCompatGatewayAdapter(GatewayAdapter):
     id = "ollama-compat"
 
@@ -328,6 +350,11 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 meta=RequestMeta(client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip()),
                 sampling=SamplingParams.from_ollama_options(body.options),
             )
+            denied = _enforce_ollama_model(
+                request, ctx, internal.meta, client_model, internal.model
+            )
+            if denied is not None:
+                return denied
 
             if body.stream:
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_chat_line)
@@ -370,6 +397,11 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 meta=RequestMeta(client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip()),
                 sampling=SamplingParams.from_ollama_options(options or None),
             )
+            denied = _enforce_ollama_model(
+                request, ctx, internal.meta, client_model, internal.model
+            )
+            if denied is not None:
+                return denied
 
             if body.stream:
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_generate_line)
@@ -382,16 +414,28 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             return payload
 
         @router.post("/api/embed")
-        async def embed(body: OllamaEmbedRequest, request: Request) -> dict[str, Any]:
+        async def embed(body: OllamaEmbedRequest, request: Request) -> Any:
             ctx: AppContext = request.app.state.ctx
+            from daari.gateway.internal import RequestMeta
+
+            meta = RequestMeta()
+            denied = _enforce_ollama_model(request, ctx, meta, body.model or "daari")
+            if denied is not None:
+                return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
             vectors = await compute_embeddings(ctx, texts, model=model)
             return {"model": model, "embeddings": vectors}
 
         @router.post("/api/embeddings")
-        async def embeddings(body: OllamaEmbeddingsRequest, request: Request) -> dict[str, Any]:
+        async def embeddings(body: OllamaEmbeddingsRequest, request: Request) -> Any:
             ctx: AppContext = request.app.state.ctx
+            from daari.gateway.internal import RequestMeta
+
+            meta = RequestMeta()
+            denied = _enforce_ollama_model(request, ctx, meta, body.model or "daari")
+            if denied is not None:
+                return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.prompt)
             vectors = await compute_embeddings(ctx, texts, model=model)

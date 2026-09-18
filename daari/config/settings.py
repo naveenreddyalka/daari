@@ -1058,6 +1058,16 @@ class Settings(BaseSettings):
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)
     skills_system_prefix: str = ""
+    # Named model access groups referenced by virtual keys and teams (#708).
+    model_groups: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Named model groups (exact names or globs such as claude-*). "
+            "Keys and teams reference them by name; enforcement is the union "
+            "of allowed_models and the referenced groups, intersected across "
+            "team and key."
+        ),
+    )
 
     @classmethod
     def load(cls, config_path: Path | None = None) -> Settings:

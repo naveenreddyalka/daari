@@ -323,7 +323,16 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
 
-            apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
+            apply_auth_claims_to_meta(
+                meta,
+                getattr(request.state, "auth_claims", None),
+                model_groups=getattr(ctx.settings, "model_groups", None),
+            )
+            from daari.gateway.model_access import reject_disallowed_model
+
+            denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
+            if denied is not None:
+                return denied
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
