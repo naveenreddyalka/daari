@@ -3056,6 +3056,12 @@ band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontie
 `backend_summary == {total:0, healthy:0, unhealthy:0, open_circuit:0}` so the
 shared stats contract cannot drop the field on non-pool installs.
 
+### Note backend_summary on architecture stats surface ([#648](https://github.com/naveenreddyalka/daari/issues/648))
+
+<!-- tracking:#648 -->
+**Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` API table notes
+`soft_warnings` / `rejects` and `backend_summary` on `GET /v1/daari/stats`.
+
 ### Prune shipped ENTERPRISE.md gap rows after soft-budget drain ([#649](https://github.com/naveenreddyalka/daari/issues/649))
 
 <!-- tracking:#649 -->
