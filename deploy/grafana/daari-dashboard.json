@@ -346,6 +346,19 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 23,
+      "title": "Tier shadow agree/disagree",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 80 },
+      "targets": [
+        {
+          "expr": "sum by (agreed) (rate(daari_tier_shadow_samples_total[5m]))",
+          "legendFormat": "agreed={{agreed}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

@@ -27,9 +27,10 @@ panel on `daari_backend_up` / `daari_backend_outstanding` (and request rate),
 a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
 `_in_flight_max` / `_queued`, alert-series panels for
 `daari_upstream_retries_total`, `daari_cache_false_hits_avoided_total`, and
-`daari_budget_alerts_total`, and an **MCP tool ingress by outcome** panel on
-`daari_mcp_tool_calls_total` so operators see flake / false-hit / budget /
-MCP deny pressure without raw PromQL).
+`daari_budget_alerts_total`, an **MCP tool ingress by outcome** panel on
+`daari_mcp_tool_calls_total`, and a **Tier shadow agree/disagree** panel on
+`daari_tier_shadow_samples_total` so operators see flake / false-hit / budget /
+MCP deny / routing-shadow pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path

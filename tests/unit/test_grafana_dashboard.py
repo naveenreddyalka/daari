@@ -201,3 +201,16 @@ def test_grafana_dashboard_includes_soft_usd_budget_warnings_panel():
     assert any("daari_soft_warnings_total" in expr for expr in exprs)
     assert any('kind="budget"' in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+def test_grafana_dashboard_includes_tier_shadow_panel():
+    """Tier shadow agree/disagree counter should be visible on the overview (#689)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Tier shadow" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a tier-shadow panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_tier_shadow_samples_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
