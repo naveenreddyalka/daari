@@ -74,6 +74,7 @@ nav:
       - Backends:
           - Ollama: developer/guides/backends/ollama.md
           - MLX: developer/guides/backends/mlx.md
+          - Speech-to-text: developer/guides/backends/asr.md
       - Features:
           - Boundaries: developer/guides/features/boundaries.md
           - Guardrails: developer/guides/features/guardrails.md

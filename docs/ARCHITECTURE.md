@@ -81,7 +81,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/cli/app.py` | Typer CLI: `serve`, `stats`, `doctor`, `setup` | ✅ |
 | `daari/cli/setup_actions.py` | Shared setup apply helpers | ✅ |
 | `daari/server/app.py` | FastAPI factory, lifespan → `AppContext` | ✅ |
-| `daari/gateway/openai.py` | `POST /v1/chat/completions`, stats, health | ✅ |
+| `daari/gateway/openai.py` | `POST /v1/chat/completions`, audio transcriptions, stats, health | ✅ |
 | `daari/gateway/internal.py` | `InternalRequest` / `InternalResponse` / `DaariMeta` (`agent_turn` per [ADR-0004](adr/0004-agent-tool-call-compatibility.md)) | ✅ |
 | `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L5/L6 + no-frontier + fallback behavior | ✅ |
 | `daari/gateway/base.py` | `GatewayAdapter` protocol | ✅ |
@@ -263,6 +263,7 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat with full SSE streaming (tier fallback, L0/L1, draft injection) |
+| `POST` | `/v1/audio/transcriptions` | OpenAI speech-to-text; local `asr.base_url`, optional frontier fallback (off by default) |
 | `POST` | `/v1/responses` | OpenAI Responses API (function calls, previous_response_id, background) |
 | `GET` | `/v1/responses/{id}` | Retrieve a stored Responses object |
 | `POST` | `/v1/responses/{id}/cancel` | Cancel an in-flight or return the current terminal Responses object |

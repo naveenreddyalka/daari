@@ -1,0 +1,30 @@
+# Local speech-to-text
+
+**Outcome:** `POST /v1/audio/transcriptions` stays on the machine. A cloud upload happens only when you opt in.
+
+## Config
+
+`asr.base_url` is an OpenAI-compatible API root (it includes `/v1`), the same shape as `frontier.base_url`. Point it at vLLM, whisper.cpp's OpenAI server, or any pool member that already serves `POST /v1/audio/transcriptions`. No Whisper or ffmpeg package is installed with daari.
+
+```yaml
+asr:
+  base_url: http://127.0.0.1:8000/v1
+  model: ""                  # optional; when set, replaces the client model
+  frontier_fallback: false   # default — never upload audio implicitly
+```
+
+Leave `base_url` empty and the route returns **501**. `frontier_fallback` stays off so existing installs do not start sending meetings to a hosted API. Set it to `true` only when `frontier.enabled` is true and a frontier key is configured; daari then forwards one request to that frontier base (the first provider in `frontier.providers`, otherwise `frontier.base_url`).
+
+## Request
+
+OpenAI multipart form: `file`, `model` (required unless `asr.model` is set), optional `language`, `prompt`, and `response_format=json`. The JSON body includes `text`.
+
+Auth, virtual-key request budgets, and rate limits apply the same way as chat completions. A successful transcription counts as one request.
+
+## Verify
+
+With `asr.base_url` set, a short clip returns `{ "text": "..." }`. With nothing configured, the same call returns 501 and the file is not uploaded.
+
+## Next
+
+→ [vLLM / llama.cpp](../configuration/vllm-local-tier.md) · [Ollama](ollama.md)

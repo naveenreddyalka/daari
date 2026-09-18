@@ -87,6 +87,7 @@ def test_api_reference_lists_gateway_routes(tmp_path, monkeypatch):
         "/health",
         "/ready",
         "/introspect",
+        "/v1/audio/transcriptions",
     ):
         assert f"`{route}`" in text, f"missing route {route}"
     assert "| `POST` | `/introspect` |" in text
@@ -98,6 +99,7 @@ def test_committed_http_api_md_includes_introspect():
         encoding="utf-8"
     )
     assert "| `POST` | `/introspect` |" in committed
+    assert "| `POST` | `/v1/audio/transcriptions` |" in committed
 
 
 def test_main_writes_both_pages(tmp_path, monkeypatch):

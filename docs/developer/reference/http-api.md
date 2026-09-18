@@ -19,6 +19,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/mcp` | Mcp Jsonrpc |
 | `GET` | `/metrics` | Prometheus Metrics |
 | `GET` | `/ready` | Ready |
+| `POST` | `/v1/audio/transcriptions` | Audio Transcriptions |
 | `GET` | `/v1/batches` | List Batches |
 | `POST` | `/v1/batches` | Create Batch |
 | `GET` | `/v1/batches/{batch_id}` | Retrieve Batch |
@@ -53,6 +54,6 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/org-learning/sync` | Org Learning Sync |
 | `POST` | `/v1/responses` | Responses |
 | `POST` | `/v1/responses/input_tokens` | Input Tokens |
+| `DELETE` | `/v1/responses/{response_id}` | Delete Response |
 | `GET` | `/v1/responses/{response_id}` | Get Response |
 | `POST` | `/v1/responses/{response_id}/cancel` | Cancel Response |
-| `DELETE` | `/v1/responses/{response_id}` | Delete Response |
