@@ -386,3 +386,53 @@ class TestHelmNotesServiceMonitorAndOrgPool:
         assert "Org pool enabled" in notes
         assert "DAARI_ROUTING__ORG_POOL__ENABLED" in notes
         assert "http://gpu-pool:11434" in notes
+
+
+class TestHelmKedaRequestRate:
+    def test_scaledobject_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "kind: ScaledObject" not in rendered
+        assert "keda.sh" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["autoscaling"]["keda"]["enabled"] is False
+        assert "kind: HorizontalPodAutoscaler" in rendered
+
+    def test_enabled_render_has_query_threshold_and_cpu_hpa(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template("--set", "autoscaling.keda.enabled=true")
+        assert "kind: ScaledObject" in rendered
+        assert "apiVersion: keda.sh/v1alpha1" in rendered
+        assert "sum(rate(daari_requests_total[1m]))" in rendered
+        assert 'threshold: "50"' in rendered
+        assert "kind: HorizontalPodAutoscaler" in rendered
+        assert "averageUtilization: 70" in rendered
+        assert "minReplicaCount: 1" in rendered
+
+    def test_keda_min_above_one_without_postgres_is_refused(
+        self, helm_available: None
+    ) -> None:
+        with pytest.raises(subprocess.CalledProcessError) as exc:
+            _helm_template(
+                "--set",
+                "autoscaling.keda.enabled=true",
+                "--set",
+                "autoscaling.keda.minReplicaCount=2",
+                "--set",
+                "postgres.enabled=false",
+            )
+        assert "postgres.enabled" in exc.value.stderr
+        assert "minReplicaCount" in exc.value.stderr
+
+    def test_keda_min_above_one_allowed_with_postgres(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "autoscaling.keda.enabled=true",
+            "--set",
+            "autoscaling.keda.minReplicaCount=2",
+            "--set",
+            "postgres.enabled=true",
+        )
+        assert "minReplicaCount: 2" in rendered
+        assert "kind: HorizontalPodAutoscaler" in rendered
+

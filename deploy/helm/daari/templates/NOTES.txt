@@ -12,10 +12,20 @@ WARNING: Effective replicas={{ include "daari.fleetReplicas" . }} with postgres.
   DAARI_BATCHES__BACKEND / DAARI_FILES__BACKEND / DAARI_RESPONSES__BACKEND /
   DAARI_SERVER__VIRTUAL_KEYS__BACKEND / DAARI_OBSERVABILITY__BACKEND /
   DAARI_ENTERPRISE__AUDIT_BACKEND to postgres, or keep
-  replicaCount and autoscaling.minReplicas at 1. See docs/developer/guides/features/batches.md.
+  replicaCount and autoscaling.minReplicas at 1. autoscaling.keda.minReplicaCount
+  is refused above 1 until postgres is enabled. See docs/developer/guides/features/batches.md.
 {{- else if .Values.postgres.enabled }}
 
 Postgres enabled: observability, batches, files, responses, virtual keys, and audit backends are set to postgres.
+{{- end }}
+
+{{- $keda := .Values.autoscaling.keda | default dict }}
+{{- if $keda.enabled }}
+
+KEDA ScaledObject enabled: scales the Deployment on Prometheus
+  `sum(rate(daari_requests_total[1m]))` (override autoscaling.keda.query).
+  Requires KEDA and Prometheus already installed. minReplicaCount stays 1
+  unless postgres.enabled is true.
 {{- end }}
 
 {{- if .Values.serviceMonitor.enabled }}

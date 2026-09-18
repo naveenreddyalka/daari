@@ -9,7 +9,7 @@
 | Gateway replica | Measured on an M4 Pro: see [benchmark-load.md](../../resources/benchmark-load.md). Older estimate (~50–100 rps cache-heavy, ~5–15 rps L3-heavy) is superseded by that page. |
 | Redis | ~200–400 MB / 100k cache entries |
 | Postgres | ~1 KB/row ledger/traces; retain 30–90 days |
-| HPA | CPU 70%; defaults keep **min 1 replica** until Postgres is on |
+| HPA | CPU 70%; optional KEDA request-rate scaler is off until you enable it |
 
 Redis is an accelerator, not a single point of failure: set `cache.backend: redis` for shared L0/L1 and fleet-wide RPM/TPM counters, but expect a Redis outage to degrade rate limiting to per-replica SQLite (or `rate_limit.fail_open`) and mark `/ready` as `degraded` with HTTP 200 while the gateway keeps serving. Tune `cache.redis_timeout_seconds` (default 2s). Details: [Auth and keys](../configuration/auth-and-keys.md#redis-outage-semantics-fleet).
 
@@ -32,6 +32,30 @@ postgres:
 
 Moving an installed release to a new image tag (`helm upgrade --atomic`, rollback,
 what survives in Redis/Postgres): [Upgrade and config migration](upgrade.md).
+
+### Request-rate autoscaling (KEDA)
+
+CPU HPA misses cache-heavy replicas that stay idle while `daari_requests_total`
+climbs. `autoscaling.keda` is **off** by default and renders nothing — no
+ScaledObject, no CRDs. The chart does not install KEDA. On a cluster that
+already has KEDA and Prometheus:
+
+```yaml
+autoscaling:
+  enabled: true          # CPU HPA still renders
+  keda:
+    enabled: true
+    serverAddress: http://prometheus-operated.monitoring.svc:9090
+    query: sum(rate(daari_requests_total[1m]))
+    threshold: "50"      # desired replicas ≈ query / threshold
+    minReplicaCount: 1   # refused above 1 until postgres.enabled
+    maxReplicaCount: 10
+```
+
+`minReplicaCount` above 1 with `postgres.enabled: false` fails `helm template`
+(per-pod SQLite). NOTES still warn when the effective replica floor is above 1
+without Postgres. KEDA also creates its own HPA; leave `autoscaling.enabled`
+on if you still want the chart's CPU HPA beside it.
 
 ### Bumping `image.tag` / `appVersion`
 
