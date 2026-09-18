@@ -3069,6 +3069,12 @@ shared stats contract cannot drop the field on non-pool installs.
 rows (Anthropic L0 → hermetic 402) plus soft-budget follow-ons; changelog
 bullet; watch rows only. Docs-only.
 
+### Note stats tier p50/p95 in traces-stats ([#655](https://github.com/naveenreddyalka/daari/issues/655))
+
+<!-- tracking:#655 -->
+**Status:** Done (2026-09-18). `traces-stats.md` documents optional
+`tiers.*.p50_ms` / `p95_ms` on `GET /v1/daari/stats`.
+
 ---
 
 ## How to update
