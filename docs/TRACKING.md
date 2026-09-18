@@ -3062,6 +3062,13 @@ shared stats contract cannot drop the field on non-pool installs.
 **Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` API table notes
 `soft_warnings` / `rejects` and `backend_summary` on `GET /v1/daari/stats`.
 
+### Prune shipped ENTERPRISE.md gap rows after soft-budget drain ([#649](https://github.com/naveenreddyalka/daari/issues/649))
+
+<!-- tracking:#649 -->
+**Status:** Done (2026-09-18). `docs/prd/ENTERPRISE.md` drops shipped night-of-17
+rows (Anthropic L0 → hermetic 402) plus soft-budget follow-ons; changelog
+bullet; watch rows only. Docs-only.
+
 ---
 
 ## How to update
