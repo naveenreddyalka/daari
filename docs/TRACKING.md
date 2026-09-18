@@ -3094,6 +3094,12 @@ Covered by `packages/web-ui/test/dashboard.test.js`.
 **Status:** Done (2026-09-18). `metrics-prometheus.md` notes
 `backend_summary` on `GET /v1/daari/stats` (link to traces-stats).
 
+### Assert POST /introspect in architecture API table ([#665](https://github.com/naveenreddyalka/daari/issues/665))
+
+<!-- tracking:#665 -->
+**Status:** Done (2026-09-18). `tests/unit/test_architecture_introspect.py`
+asserts `docs/ARCHITECTURE.md` lists `POST /introspect` (RFC 7662).
+
 ---
 
 ## How to update
