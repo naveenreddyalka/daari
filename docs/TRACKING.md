@@ -3145,11 +3145,19 @@ prose below the contiguous Series table in `metrics-prometheus.md`. Covered by
 **Status:** Done (2026-09-18). `cli.md` lists all top-level Typer commands;
 learn stale names removed; `route preview` documented. Covered by
 `tests/unit/test_cli_reference_catalog.py`.
+
 ### Regenerate http-api.md to include POST /introspect ([#680](https://github.com/naveenreddyalka/daari/issues/680))
 
 <!-- tracking:#680 -->
 **Status:** Done (2026-09-18). Committed `http-api.md` includes
 `| POST | /introspect |`; `test_gen_reference` asserts generator + on-disk.
+
+### Assert daari doctor --help mentions --suggest-models ([#683](https://github.com/naveenreddyalka/daari/issues/683))
+
+<!-- tracking:#683 -->
+**Status:** Done (2026-09-18). `daari doctor --help` contract test asserts
+`--suggest-models` appears in Typer help. Covered by
+`tests/unit/test_doctor_cli_help.py`.
 
 ---
 
