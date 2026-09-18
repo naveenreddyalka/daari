@@ -3196,22 +3196,9 @@ test asserts presence. Covered by `tests/unit/test_metrics_prometheus_docs.py`.
 traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 `tests/unit/test_prune_cli_help.py`.
 
-
-<<<<<<< HEAD
 ### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
 
 <!-- tracking:#699 -->
 **Status:** Done (2026-09-18). `cli.md` documents `--model` /
 `--latency-budget-ms` for `route preview` (not `--json`). Covered by
 `tests/unit/test_cli_reference_catalog.py`.
-
-=======
->>>>>>> origin/main
-
-## How to update
-
-1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
-2. Refresh **Last updated** and pytest count after test changes.
-3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
-4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
-5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
