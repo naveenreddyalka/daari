@@ -3198,6 +3198,14 @@ traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 
 
 
+### Assert context clear --help documents L0/L1/CCS ([#700](https://github.com/naveenreddyalka/daari/issues/700))
+
+<!-- tracking:#700 -->
+**Status:** Done (2026-09-18). `daari context clear --help` contract test
+asserts l0, l1, and ccs appear in Typer help. Covered by
+`tests/unit/test_context_clear_cli_help.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
