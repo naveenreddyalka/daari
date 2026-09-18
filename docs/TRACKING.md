@@ -3182,6 +3182,14 @@ by stage** on `daari_boundary_decisions_total`. Covered by
 
 ---
 
+### Assert prune --help documents retention stores ([#692](https://github.com/naveenreddyalka/daari/issues/692))
+
+<!-- tracking:#692 -->
+**Status:** Done (2026-09-18). `daari prune --help` contract test asserts
+traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
+`tests/unit/test_prune_cli_help.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
