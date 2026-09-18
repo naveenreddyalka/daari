@@ -22,13 +22,24 @@ resources:
     cpu: "1"
     memory: 1Gi
 
-# HPA: scale on CPU. For request-rate, wire KEDA externally.
-# Keep minReplicas at 1 unless postgres.enabled is true (shared batches/files/ledger).
+# HPA: scale on CPU. Optional KEDA ScaledObject (autoscaling.keda) scales on
+# sum(rate(daari_requests_total[1m])). Off unless the cluster already has KEDA
+# and Prometheus. Keep minReplicas / keda.minReplicaCount at 1 unless
+# postgres.enabled is true (shared batches/files/ledger).
 autoscaling:
   enabled: true
   minReplicas: 1
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
+  keda:
+    enabled: false
+    minReplicaCount: 1
+    maxReplicaCount: 10
+    # kube-prometheus default; override to the in-cluster Prometheus service.
+    serverAddress: http://prometheus-operated.monitoring.svc:9090
+    query: sum(rate(daari_requests_total[1m]))
+    # Target requests/sec for the query above (KEDA desired = metric / threshold).
+    threshold: "50"
 
 # Readiness uses /ready (checks model backend). Liveness uses /health.
 probes:

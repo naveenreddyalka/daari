@@ -3283,6 +3283,14 @@ key is present. Auth, request quotas, and rate limits apply; a successful
 transcription counts as one request. Covered by
 `tests/unit/test_audio_transcriptions.py`.
 
+### Optional KEDA request-rate autoscaling ([#716](https://github.com/naveenreddyalka/daari/issues/716))
+
+<!-- tracking:#716 -->
+**Status:** Done (2026-09-18). `autoscaling.keda.enabled` (default false) renders
+a KEDA ScaledObject on `sum(rate(daari_requests_total[1m]))` with a configurable
+threshold. CPU HPA is unchanged. `minReplicaCount` above 1 is refused while
+`postgres.enabled` is false. Covered by `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
