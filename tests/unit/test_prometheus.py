@@ -72,6 +72,17 @@ class TestRenderPrometheus:
         assert 'daari_guardrail_trips_total{action="block"} 1' in text
         assert 'daari_guardrail_trips_total{action="warn"} 1' in text
 
+    def test_boundary_decisions_counter(self):
+        """Prometheus must export boundary decisions with stage/label (#691)."""
+        metrics = Metrics()
+        metrics.record_boundary("tools", "pre")
+        metrics.record_boundary("tools", "pre")
+        metrics.record_boundary("json", "post")
+        text = render_prometheus(metrics)
+        assert "# TYPE daari_boundary_decisions_total counter" in text
+        assert 'daari_boundary_decisions_total{stage="pre",label="tools"} 2' in text
+        assert 'daari_boundary_decisions_total{stage="post",label="json"} 1' in text
+
 
 @pytest.mark.asyncio
 async def test_metrics_endpoint_open_without_auth(settings):

@@ -3165,6 +3165,13 @@ Covered by `tests/unit/test_traces_stats_docs.py`.
 agree/disagree** on `daari_tier_shadow_samples_total`; metrics-prometheus
 intro mentions the panel. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Contract-test boundary_decisions_total Prometheus export ([#691](https://github.com/naveenreddyalka/daari/issues/691))
+
+<!-- tracking:#691 -->
+**Status:** Done (2026-09-18). `test_boundary_decisions_counter` asserts
+`daari_boundary_decisions_total{stage,label}` in `render_prometheus()`. Covered
+by `tests/unit/test_prometheus.py`.
+
 ---
 
 ## How to update
