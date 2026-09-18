@@ -33,6 +33,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
 | `mlx.models` | dict | `{}` |  |
+| `asr.base_url` | str | `''` | OpenAI-compatible ASR base URL, including /v1 (vLLM, whisper.cpp server, or another local pool member). Empty leaves POST /v1/audio/transcriptions unconfigured. |
+| `asr.model` | str | `''` | Optional model name sent to the ASR server. When set, it replaces the client model so a local server always sees its own id. |
+| `asr.frontier_fallback` | bool | `False` | When true and asr.base_url is empty, forward one transcription to the configured frontier base if frontier.enabled and a key is present. Default false so audio is never uploaded to a cloud endpoint implicitly. |
 | `cache.l0.enabled` | bool | `True` |  |
 | `cache.l0.path` | str | `'~/.daari/cache/l0'` |  |
 | `cache.l0.ttl_seconds` | float | `0.0` |  |

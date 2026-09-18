@@ -3273,6 +3273,16 @@ then advances; one timeout does not shrink the next slot. Route preview
 returns `policy` and `chain`. Covered by
 `tests/unit/test_provider_retry_timeout.py`.
 
+### Local-first audio transcriptions ([#715](https://github.com/naveenreddyalka/daari/issues/715))
+
+<!-- tracking:#715 -->
+**Status:** Done (2026-09-18). `POST /v1/audio/transcriptions` forwards the
+OpenAI multipart form to `asr.base_url` when set. With no local ASR the route
+returns 501 unless `asr.frontier_fallback` is true, frontier is enabled, and a
+key is present. Auth, request quotas, and rate limits apply; a successful
+transcription counts as one request. Covered by
+`tests/unit/test_audio_transcriptions.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

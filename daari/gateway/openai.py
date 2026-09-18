@@ -776,6 +776,26 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
             )
 
+        @router.post("/v1/audio/transcriptions", response_model=None)
+        async def audio_transcriptions(
+            request: Request,
+            file: UploadFile = File(...),
+            model: str = Form(default=""),
+            language: str | None = Form(default=None),
+            prompt: str | None = Form(default=None),
+            response_format: str = Form(default="json"),
+        ) -> Any:
+            from daari.gateway.transcriptions import handle_transcription
+
+            return await handle_transcription(
+                request,
+                file=file,
+                model=model,
+                language=language,
+                prompt=prompt,
+                response_format=response_format,
+            )
+
         @router.post("/v1/embeddings")
         async def embeddings(body: EmbeddingsRequest, request: Request) -> Any:
             ctx: AppContext = request.app.state.ctx

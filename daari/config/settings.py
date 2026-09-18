@@ -134,6 +134,39 @@ class MLXSettings(BaseModel):
     models: dict[str, str] = Field(default_factory=dict)
 
 
+class AsrSettings(BaseModel):
+    """Local OpenAI-compatible speech-to-text (#715).
+
+    ``base_url`` is the API root (includes ``/v1``), same shape as
+    ``frontier.base_url``. Empty means transcriptions are not configured.
+    """
+
+    base_url: str = Field(
+        default="",
+        description=(
+            "OpenAI-compatible ASR base URL, including /v1 "
+            "(vLLM, whisper.cpp server, or another local pool member). "
+            "Empty leaves POST /v1/audio/transcriptions unconfigured."
+        ),
+    )
+    model: str = Field(
+        default="",
+        description=(
+            "Optional model name sent to the ASR server. When set, it replaces "
+            "the client model so a local server always sees its own id."
+        ),
+    )
+    frontier_fallback: bool = Field(
+        default=False,
+        description=(
+            "When true and asr.base_url is empty, forward one transcription to "
+            "the configured frontier base if frontier.enabled and a key is "
+            "present. Default false so audio is never uploaded to a cloud "
+            "endpoint implicitly."
+        ),
+    )
+
+
 class L0CacheSettings(RuntimeSettings):
     enabled: bool = True
     path: str = "~/.daari/cache/l0"
@@ -1124,6 +1157,7 @@ class Settings(BaseSettings):
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
+    asr: AsrSettings = Field(default_factory=AsrSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)
