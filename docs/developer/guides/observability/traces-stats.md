@@ -17,6 +17,8 @@ Web UI: `daari web-ui serve` → `http://127.0.0.1:11437`.
 `GET /v1/daari/stats` also returns `backend_summary`
 (`total` / `healthy` / `unhealthy` / `open_circuit`) derived from
 `backends` so scripts can gauge pool pressure without counting rows.
+Each `tiers.*` entry may include optional `p50_ms` / `p95_ms` from the
+latency histogram (absent when that tier has no samples).
 
 ## Retention
 

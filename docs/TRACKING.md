@@ -3082,6 +3082,12 @@ Covered by `packages/web-ui/test/dashboard.test.js`.
 **Status:** Done (2026-09-18). `package-map.md` `observability/` row notes
 stats `soft_warnings` / `rejects` and `backend_summary` (link to traces-stats).
 
+### Note stats tier p50/p95 in traces-stats ([#655](https://github.com/naveenreddyalka/daari/issues/655))
+
+<!-- tracking:#655 -->
+**Status:** Done (2026-09-18). `traces-stats.md` documents optional
+`tiers.*.p50_ms` / `p95_ms` on `GET /v1/daari/stats`.
+
 ---
 
 ## How to update
