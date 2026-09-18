@@ -10,7 +10,7 @@ daari trace <trace_id>
 curl -s http://127.0.0.1:11435/v1/daari/traces?limit=10 | python -m json.tool
 ```
 
-Pass `X-Daari-Meta: true` on chat calls to embed `daari_meta` (tier, cache_hit, trace_id, boundary).
+Pass `X-Daari-Meta: true` on chat calls to embed `daari_meta` (tier, cache_hit, trace_id, boundary, `agent_turn`).
 
 Web UI: `daari web-ui serve` → `http://127.0.0.1:11437`.
 

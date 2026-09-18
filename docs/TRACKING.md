@@ -3100,6 +3100,12 @@ Covered by `packages/web-ui/test/dashboard.test.js`.
 **Status:** Done (2026-09-18). `metrics-prometheus.md` notes
 `backend_summary` on `GET /v1/daari/stats` (link to traces-stats).
 
+### Note agent_turn in traces-stats meta section ([#666](https://github.com/naveenreddyalka/daari/issues/666))
+
+<!-- tracking:#666 -->
+**Status:** Done (2026-09-18). `traces-stats.md` `daari_meta` list includes
+`agent_turn`.
+
 ---
 
 ## How to update
