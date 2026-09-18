@@ -3112,6 +3112,13 @@ includes `soft_warnings` / `rejects` and `backend_summary`.
 **Status:** Done (2026-09-18). `metrics-prometheus.md` notes
 `backend_summary` on `GET /v1/daari/stats` (link to traces-stats).
 
+### Emphasize open_circuit count on web-ui when > 0 ([#667](https://github.com/naveenreddyalka/daari/issues/667))
+
+<!-- tracking:#667 -->
+**Status:** Done (2026-09-18). Dashboard open-circuit metric uses `metric-warn`
+when `backend_summary.open_circuit > 0`. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
 ---
 
 ## How to update

@@ -159,6 +159,10 @@ test("backend_summary counts render near pool backends", async (t) => {
   assert.equal(doc.getElementById("backend-summary-healthy").textContent, "1");
   assert.equal(doc.getElementById("backend-summary-unhealthy").textContent, "1");
   assert.equal(doc.getElementById("backend-summary-open-circuit").textContent, "1");
+  assert.ok(
+    doc.getElementById("backend-summary-open-circuit").classList.contains("metric-warn"),
+    "open_circuit > 0 should emphasize the metric"
+  );
 });
 
 test("backend_summary zeros when pool empty", async (t) => {
@@ -180,6 +184,11 @@ test("backend_summary zeros when pool empty", async (t) => {
   assert.equal(doc.getElementById("backend-summary-healthy").textContent, "0");
   assert.equal(doc.getElementById("backend-summary-unhealthy").textContent, "0");
   assert.equal(doc.getElementById("backend-summary-open-circuit").textContent, "0");
+  assert.equal(
+    doc.getElementById("backend-summary-open-circuit").classList.contains("metric-warn"),
+    false,
+    "open_circuit 0 stays neutral"
+  );
 });
 
 test("empty backends shows clear empty state", async (t) => {

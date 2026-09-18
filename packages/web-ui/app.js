@@ -153,6 +153,13 @@ function renderBackendSummary(summary) {
   set(backendSummaryHealthyNode, "healthy");
   set(backendSummaryUnhealthyNode, "unhealthy");
   set(backendSummaryOpenCircuitNode, "open_circuit");
+  if (backendSummaryOpenCircuitNode) {
+    const open = counts.open_circuit;
+    backendSummaryOpenCircuitNode.classList.toggle(
+      "metric-warn",
+      typeof open === "number" && open > 0
+    );
+  }
 }
 
 function renderBackends(backends) {
