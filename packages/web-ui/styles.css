@@ -68,6 +68,10 @@ body[data-theme="light"] .card {
   font-weight: 700;
 }
 
+.metric.metric-warn {
+  color: #f59e0b;
+}
+
 .card-heading {
   display: flex;
   justify-content: space-between;
