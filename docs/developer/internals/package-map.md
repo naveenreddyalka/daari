@@ -15,7 +15,7 @@
 | `providers/` | Integration + live sources + MCP egress |
 | `auth/` | Virtual keys |
 | `config/` | Settings merge, project profiles, persist |
-| `observability/` | Metrics, ledger, traces, Prometheus, OTel, Postgres |
+| `observability/` | Metrics, ledger, traces, Prometheus, OTel, Postgres; `/v1/daari/stats` cliff maps (`soft_warnings` / `rejects`) and `backend_summary` (see [traces-stats.md](../guides/observability/traces-stats.md)) |
 | `learning/` | Feedback, tuner, finetune, propose-defaults |
 | `enterprise/` | Org cache/learning, SSO, RBAC, audit, bootstrap |
 | `clients/` | One-click setup recipes |
