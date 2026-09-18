@@ -4016,7 +4016,15 @@ class Router:
         cap = self._effective_tier_cap(request)
         if cap in self._TIER_ORDER:
             return False
-        return self.frontier is not None and bool(self.frontier.api_key)
+        if self.frontier is None or not bool(self.frontier.api_key):
+            return False
+        from daari.auth.model_access import frontier_models_permitted
+
+        return frontier_models_permitted(
+            self.frontier,
+            key_patterns=getattr(request.meta, "key_model_patterns", None),
+            team_patterns=getattr(request.meta, "team_model_patterns", None),
+        )
 
     async def _frontier_request(self, request: InternalRequest) -> InternalRequest:
         """Apply the outbound slim/compress/scrub pipeline before leaving the device."""

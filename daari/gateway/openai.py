@@ -633,7 +633,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             # Virtual-key defaults (issue #111); headers keep precedence.
             from daari.server.auth import apply_auth_claims_to_meta
 
-            apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
+            apply_auth_claims_to_meta(
+                meta,
+                getattr(request.state, "auth_claims", None),
+                model_groups=getattr(ctx.settings, "model_groups", None),
+            )
+            from daari.gateway.model_access import reject_disallowed_model
+
+            denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
+            if denied is not None:
+                return denied
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             # Per-end-user daily cap on shared virtual keys (#410). Checked here
@@ -769,8 +778,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
 
         @router.post("/v1/embeddings")
-        async def embeddings(body: EmbeddingsRequest, request: Request) -> dict[str, Any]:
+        async def embeddings(body: EmbeddingsRequest, request: Request) -> Any:
             ctx: AppContext = request.app.state.ctx
+            from daari.gateway.model_access import reject_disallowed_model
+
+            denied = reject_disallowed_model(
+                request, body.model or "daari", ctx.settings
+            )
+            if denied is not None:
+                return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
             vectors = await compute_embeddings(ctx, texts, model=model)

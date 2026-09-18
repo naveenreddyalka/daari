@@ -145,6 +145,16 @@ def keys_create(
         "--region-pin",
         help="Restrict L6 to providers declaring this region (e.g. us, eu).",
     ),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Model name or glob this key may call (e.g. claude-*). Repeatable.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Named model group from settings.model_groups. Repeatable.",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
@@ -183,6 +193,8 @@ def keys_create(
         expires_at=expires_at,
         user_daily_usd_cap=user_daily_cap,
         region_pin=region_pin,
+        allowed_models=allowed_model or None,
+        model_groups=model_group or None,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -190,6 +202,10 @@ def keys_create(
     typer.echo(f"expires: {created.key.expires_at or 'never'}")
     if created.key.region_pin:
         typer.echo(f"region:  {created.key.region_pin}")
+    if created.key.allowed_models:
+        typer.echo(f"models:  {', '.join(created.key.allowed_models)}")
+    if created.key.model_groups:
+        typer.echo(f"groups:  {', '.join(created.key.model_groups)}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -204,6 +220,63 @@ def keys_create(
             "name": created.key.name,
             "prefix": created.key.prefix,
             "region_pin": created.key.region_pin,
+            "allowed_models": list(created.key.allowed_models)
+            if created.key.allowed_models is not None
+            else None,
+            "model_groups": list(created.key.model_groups)
+            if created.key.model_groups is not None
+            else None,
+        },
+    )
+
+
+@keys_app.command("update")
+def keys_update(
+    key_id: str = typer.Argument(..., help="key_id from `daari keys list`"),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Replace the key allowlist with these names or globs. Repeatable.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Replace named model groups on the key. Repeatable.",
+    ),
+) -> None:
+    """Update a virtual key's model allowlist (#708). Omitted flags are unchanged."""
+    import os
+
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import _UNSET
+
+    if not allowed_model and not model_group:
+        typer.echo("pass --allowed-model and/or --model-group", err=True)
+        raise typer.Exit(code=1)
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    updated = store.update_model_access(
+        key_id,
+        allowed_models=allowed_model if allowed_model else _UNSET,
+        model_groups=model_group if model_group else _UNSET,
+    )
+    if not updated:
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1)
+    key = next((item for item in store.list() if item.key_id == key_id), None)
+    typer.echo(f"key_id: {key_id}")
+    if key is not None and key.allowed_models is not None:
+        typer.echo(f"models: {', '.join(key.allowed_models)}")
+    if key is not None and key.model_groups is not None:
+        typer.echo(f"groups: {', '.join(key.model_groups)}")
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="keys.update",
+        detail={
+            "key_id": key_id,
+            "allowed_models": list(key.allowed_models) if key and key.allowed_models else None,
+            "model_groups": list(key.model_groups) if key and key.model_groups else None,
         },
     )
 
@@ -349,6 +422,16 @@ def keys_team_create(
     ),
     rpm: int = typer.Option(0, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
     tpm: int = typer.Option(0, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Model name or glob every key on this team may call. Repeatable.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Named model group from settings.model_groups. Repeatable.",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import os
@@ -375,11 +458,17 @@ def keys_team_create(
         region_pin=region_pin,
         rpm=rpm,
         tpm=tpm,
+        allowed_models=allowed_model or None,
+        model_groups=model_group or None,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     if team.region_pin:
         typer.echo(f"region:  {team.region_pin}")
+    if team.allowed_models:
+        typer.echo(f"models:  {', '.join(team.allowed_models)}")
+    if team.model_groups:
+        typer.echo(f"groups:  {', '.join(team.model_groups)}")
     if team.rpm or team.tpm:
         typer.echo(f"rpm:     {team.rpm}")
         typer.echo(f"tpm:     {team.tpm}")
@@ -426,12 +515,23 @@ def keys_team_update(
     ),
     rpm: int | None = typer.Option(None, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
     tpm: int | None = typer.Option(None, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Replace the team allowlist. Repeatable. Omit to leave unchanged.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Replace named model groups. Repeatable. Omit to leave unchanged.",
+    ),
 ) -> None:
     """Update a team's budget windows (#464) and optional rpm/tpm (#546)."""
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import _UNSET
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -452,6 +552,8 @@ def keys_team_update(
             region_pin=region_pin,
             rpm=rpm,
             tpm=tpm,
+            allowed_models=allowed_model if allowed_model else _UNSET,
+            model_groups=model_group if model_group else _UNSET,
         )
     except KeyError:
         typer.echo(f"No team {team_id}", err=True)

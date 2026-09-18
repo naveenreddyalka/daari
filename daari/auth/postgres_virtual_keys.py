@@ -25,10 +25,12 @@ from daari.auth.virtual_keys import (
     Team,
     VirtualKey,
     VirtualKeyStore,
+    _UNSET,
     _parse_metadata,
     expiry_from,
     grace_from,
 )
+from daari.auth.model_access import coerce_names, decode_names, encode_names
 
 _PG_SCHEMA = """
 CREATE TABLE IF NOT EXISTS teams (
@@ -38,7 +40,9 @@ CREATE TABLE IF NOT EXISTS teams (
     created_at TEXT NOT NULL,
     region_pin TEXT,
     rpm INTEGER NOT NULL DEFAULT 0,
-    tpm INTEGER NOT NULL DEFAULT 0
+    tpm INTEGER NOT NULL DEFAULT 0,
+    allowed_models_json TEXT,
+    model_groups_json TEXT
 );
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
@@ -61,13 +65,21 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     previous_key_hash TEXT,
     previous_prefix TEXT,
     previous_expires_at TEXT,
-    region_pin TEXT
+    region_pin TEXT,
+    allowed_models_json TEXT,
+    model_groups_json TEXT
 );
 """
 
 _PG_TEAM_MIGRATIONS = (
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS rpm INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS tpm INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE teams ADD COLUMN IF NOT EXISTS allowed_models_json TEXT",
+    "ALTER TABLE teams ADD COLUMN IF NOT EXISTS model_groups_json TEXT",
+)
+_PG_KEY_MIGRATIONS = (
+    "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS allowed_models_json TEXT",
+    "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS model_groups_json TEXT",
 )
 
 _MEMORY_PATHS: dict[str, Path] = {}
@@ -108,6 +120,8 @@ class PostgresVirtualKeyStore:
                         cur.execute(_PG_SCHEMA)
                         for stmt in _PG_TEAM_MIGRATIONS:
                             cur.execute(stmt)
+                        for stmt in _PG_KEY_MIGRATIONS:
+                            cur.execute(stmt)
                     conn.commit()
             except Exception:
                 self.enabled = False
@@ -140,6 +154,8 @@ class PostgresVirtualKeyStore:
         region_pin: str | None = None,
         rpm: int = 0,
         tpm: int = 0,
+        allowed_models: list[str] | tuple[str, ...] | None = None,
+        model_groups: list[str] | tuple[str, ...] | None = None,
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -150,6 +166,8 @@ class PostgresVirtualKeyStore:
                 region_pin=region_pin,
                 rpm=rpm,
                 tpm=tpm,
+                allowed_models=allowed_models,
+                model_groups=model_groups,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -162,12 +180,15 @@ class PostgresVirtualKeyStore:
         pin = (region_pin or "").strip() or None
         team_rpm = max(0, int(rpm))
         team_tpm = max(0, int(tpm))
+        models = coerce_names(allowed_models)
+        groups = coerce_names(model_groups)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT team_id, budget_windows_json, region_pin, rpm, tpm"
+                    "SELECT team_id, budget_windows_json, region_pin, rpm, tpm,"
+                    " allowed_models_json, model_groups_json"
                     " FROM teams WHERE name = %s",
                     (name,),
                 )
@@ -180,10 +201,13 @@ class PostgresVirtualKeyStore:
                         region_pin=existing[2],
                         rpm=int(existing[3] or 0),
                         tpm=int(existing[4] or 0),
+                        allowed_models=decode_names(existing[5]) if len(existing) > 5 else None,
+                        model_groups=decode_names(existing[6]) if len(existing) > 6 else None,
                     )
                 cur.execute(
                     "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
-                    " region_pin, rpm, tpm) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    " region_pin, rpm, tpm, allowed_models_json, model_groups_json)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         team_id,
                         name,
@@ -192,6 +216,8 @@ class PostgresVirtualKeyStore:
                         pin,
                         team_rpm,
                         team_tpm,
+                        encode_names(models),
+                        encode_names(groups),
                     ),
                 )
             conn.commit()
@@ -202,6 +228,8 @@ class PostgresVirtualKeyStore:
             region_pin=pin,
             rpm=team_rpm,
             tpm=team_tpm,
+            allowed_models=models,
+            model_groups=groups,
         )
 
     def update_team(
@@ -214,6 +242,8 @@ class PostgresVirtualKeyStore:
         region_pin: str | None = None,
         rpm: int | None = None,
         tpm: int | None = None,
+        allowed_models: list[str] | tuple[str, ...] | None | object = _UNSET,
+        model_groups: list[str] | tuple[str, ...] | None | object = _UNSET,
     ) -> Team:
         if self._inner is not None:
             return self._inner.update_team(
@@ -224,6 +254,8 @@ class PostgresVirtualKeyStore:
                 region_pin=region_pin,
                 rpm=rpm,
                 tpm=tpm,
+                allowed_models=allowed_models,
+                model_groups=model_groups,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -237,7 +269,8 @@ class PostgresVirtualKeyStore:
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT name, region_pin, rpm, tpm FROM teams WHERE team_id = %s",
+                    "SELECT name, region_pin, rpm, tpm, allowed_models_json, model_groups_json"
+                    " FROM teams WHERE team_id = %s",
                     (team_id,),
                 )
                 row = cur.fetchone()
@@ -247,10 +280,29 @@ class PostgresVirtualKeyStore:
                     pin = row[1]
                 team_rpm = max(0, int(rpm)) if rpm is not None else int(row[2] or 0)
                 team_tpm = max(0, int(tpm)) if tpm is not None else int(row[3] or 0)
+                models = (
+                    decode_names(row[4])
+                    if allowed_models is _UNSET
+                    else coerce_names(allowed_models)  # type: ignore[arg-type]
+                )
+                groups = (
+                    decode_names(row[5])
+                    if model_groups is _UNSET
+                    else coerce_names(model_groups)  # type: ignore[arg-type]
+                )
                 cur.execute(
                     "UPDATE teams SET budget_windows_json = %s, region_pin = %s,"
-                    " rpm = %s, tpm = %s WHERE team_id = %s",
-                    (self._windows_json(windows), pin, team_rpm, team_tpm, team_id),
+                    " rpm = %s, tpm = %s, allowed_models_json = %s, model_groups_json = %s"
+                    " WHERE team_id = %s",
+                    (
+                        self._windows_json(windows),
+                        pin,
+                        team_rpm,
+                        team_tpm,
+                        encode_names(models),
+                        encode_names(groups),
+                        team_id,
+                    ),
                 )
             conn.commit()
         return Team(
@@ -260,6 +312,8 @@ class PostgresVirtualKeyStore:
             region_pin=pin,
             rpm=team_rpm,
             tpm=team_tpm,
+            allowed_models=models,
+            model_groups=groups,
         )
 
     def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
@@ -271,13 +325,13 @@ class PostgresVirtualKeyStore:
             with conn.cursor() as cur:
                 if team_id:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json"
                         " FROM teams WHERE team_id = %s",
                         (team_id,),
                     )
                 else:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json"
                         " FROM teams WHERE name = %s",
                         (name,),
                     )
@@ -291,6 +345,8 @@ class PostgresVirtualKeyStore:
             region_pin=row[3],
             rpm=int(row[4] or 0),
             tpm=int(row[5] or 0),
+            allowed_models=decode_names(row[6]) if len(row) > 6 else None,
+            model_groups=decode_names(row[7]) if len(row) > 7 else None,
         )
 
     def list_teams(self) -> list[Team]:
@@ -301,7 +357,7 @@ class PostgresVirtualKeyStore:
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm"
+                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json"
                     " FROM teams ORDER BY created_at ASC, team_id ASC"
                 )
                 rows = cur.fetchall()
@@ -313,6 +369,8 @@ class PostgresVirtualKeyStore:
                 region_pin=row[3],
                 rpm=int(row[4] or 0),
                 tpm=int(row[5] or 0),
+                allowed_models=decode_names(row[6]) if len(row) > 6 else None,
+                model_groups=decode_names(row[7]) if len(row) > 7 else None,
             )
             for row in rows
         ]
@@ -348,6 +406,8 @@ class PostgresVirtualKeyStore:
         expires_at: str | None = None,
         user_daily_usd_cap: float = 0.0,
         region_pin: str | None = None,
+        allowed_models: list[str] | tuple[str, ...] | None = None,
+        model_groups: list[str] | tuple[str, ...] | None = None,
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -364,6 +424,8 @@ class PostgresVirtualKeyStore:
                 expires_at=expires_at,
                 user_daily_usd_cap=user_daily_usd_cap,
                 region_pin=region_pin,
+                allowed_models=allowed_models,
+                model_groups=model_groups,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -383,14 +445,16 @@ class PostgresVirtualKeyStore:
         pin = (region_pin or "").strip() or None
         if pin:
             meta["region_pin"] = pin
+        models = coerce_names(allowed_models)
+        groups = coerce_names(model_groups)
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                     " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                     " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
-                    " region_pin)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    " region_pin, allowed_models_json, model_groups_json)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         self._hash(plaintext),
                         key_id,
@@ -409,6 +473,8 @@ class PostgresVirtualKeyStore:
                         expires_at,
                         float(user_daily_usd_cap),
                         pin,
+                        encode_names(models),
+                        encode_names(groups),
                     ),
                 )
             conn.commit()
@@ -430,6 +496,8 @@ class PostgresVirtualKeyStore:
                 expires_at=expires_at,
                 user_daily_usd_cap=float(user_daily_usd_cap),
                 region_pin=pin,
+                allowed_models=models,
+                model_groups=groups,
             ),
             plaintext=plaintext,
         )
@@ -508,6 +576,50 @@ class PostgresVirtualKeyStore:
                             key_id,
                         ),
                     )
+                updated = cur.rowcount > 0
+            conn.commit()
+        return updated
+
+    def update_model_access(
+        self,
+        key_id: str,
+        *,
+        allowed_models: list[str] | tuple[str, ...] | None | object = _UNSET,
+        model_groups: list[str] | tuple[str, ...] | None | object = _UNSET,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.update_model_access(
+                key_id,
+                allowed_models=allowed_models,
+                model_groups=model_groups,
+            )
+        if not self.enabled:
+            return False
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT allowed_models_json, model_groups_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return False
+                models = (
+                    decode_names(row[0])
+                    if allowed_models is _UNSET
+                    else coerce_names(allowed_models)  # type: ignore[arg-type]
+                )
+                groups = (
+                    decode_names(row[1])
+                    if model_groups is _UNSET
+                    else coerce_names(model_groups)  # type: ignore[arg-type]
+                )
+                cur.execute(
+                    "UPDATE virtual_keys SET allowed_models_json = %s, model_groups_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (encode_names(models), encode_names(groups), key_id),
+                )
                 updated = cur.rowcount > 0
             conn.commit()
         return updated
@@ -644,7 +756,8 @@ class PostgresVirtualKeyStore:
                     "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                     " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
-                    " v.previous_expires_at, v.user_daily_usd_cap"
+                    " v.previous_expires_at, v.user_daily_usd_cap,"
+                    " v.allowed_models_json, v.model_groups_json"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " ORDER BY v.created_at DESC"
@@ -658,6 +771,8 @@ class PostgresVirtualKeyStore:
                 expires_at=r[14],
                 previous_expires_at=r[15],
                 user_daily_usd_cap=float(r[16] or 0),
+                allowed_models=decode_names(r[17]) if len(r) > 17 else None,
+                model_groups=decode_names(r[18]) if len(r) > 18 else None,
             )
             for r in rows
         ]
@@ -674,7 +789,8 @@ class PostgresVirtualKeyStore:
                     "SELECT v.key_id, v.name, v.prefix, v.daily_budget_usd, v.monthly_budget_usd,"
                     " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
-                    " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash"
+                    " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
+                    " v.allowed_models_json, v.model_groups_json"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " WHERE v.key_hash = %s OR v.previous_key_hash = %s",
@@ -695,6 +811,8 @@ class PostgresVirtualKeyStore:
             expires_at=expires_at,
             previous_expires_at=previous_expires_at if digest == current_hash else None,
             user_daily_usd_cap=float(row[16] or 0),
+            allowed_models=decode_names(row[19]) if len(row) > 19 else None,
+            model_groups=decode_names(row[20]) if len(row) > 20 else None,
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:
@@ -776,7 +894,8 @@ class PostgresVirtualKeyStore:
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm"
+                    "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm,"
+                    " allowed_models_json, model_groups_json"
                     " FROM teams ORDER BY created_at ASC, team_id ASC"
                 )
                 team_rows = cur.fetchall()
@@ -784,7 +903,8 @@ class PostgresVirtualKeyStore:
                     "SELECT key_hash, key_id, name, prefix, created_at, revoked_at, expires_at,"
                     " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                     " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
-                    " previous_key_hash, previous_prefix, previous_expires_at, region_pin"
+                    " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
+                    " allowed_models_json, model_groups_json"
                     " FROM virtual_keys ORDER BY created_at ASC, key_id ASC"
                 )
                 key_rows = cur.fetchall()
@@ -798,6 +918,12 @@ class PostgresVirtualKeyStore:
                 "region_pin": row[4],
                 "rpm": int(row[5] or 0),
                 "tpm": int(row[6] or 0),
+                "allowed_models": list(decode_names(row[7]) or ())
+                if len(row) > 7 and row[7] is not None
+                else None,
+                "model_groups": list(decode_names(row[8]) or ())
+                if len(row) > 8 and row[8] is not None
+                else None,
             }
             for row in team_rows
         ]
@@ -824,6 +950,12 @@ class PostgresVirtualKeyStore:
                 "previous_prefix": row[18],
                 "previous_expires_at": row[19],
                 "region_pin": row[20],
+                "allowed_models": list(decode_names(row[21]) or ())
+                if len(row) > 21 and row[21] is not None
+                else None,
+                "model_groups": list(decode_names(row[22]) or ())
+                if len(row) > 22 and row[22] is not None
+                else None,
             }
             for row in key_rows
         ]
@@ -871,13 +1003,16 @@ class PostgresVirtualKeyStore:
                         )
                         cur.execute(
                             "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
-                            " region_pin, rpm, tpm) VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                            " region_pin, rpm, tpm, allowed_models_json, model_groups_json)"
+                            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
                             " ON CONFLICT (team_id) DO UPDATE SET"
                             " name = EXCLUDED.name,"
                             " budget_windows_json = EXCLUDED.budget_windows_json,"
                             " region_pin = EXCLUDED.region_pin,"
                             " rpm = EXCLUDED.rpm,"
-                            " tpm = EXCLUDED.tpm",
+                            " tpm = EXCLUDED.tpm,"
+                            " allowed_models_json = EXCLUDED.allowed_models_json,"
+                            " model_groups_json = EXCLUDED.model_groups_json",
                             (
                                 team["team_id"],
                                 team["name"],
@@ -886,6 +1021,8 @@ class PostgresVirtualKeyStore:
                                 team.get("region_pin"),
                                 int(team.get("rpm") or 0),
                                 int(team.get("tpm") or 0),
+                                encode_names(decode_names(team.get("allowed_models"))),
+                                encode_names(decode_names(team.get("model_groups"))),
                             ),
                         )
                     for key in doc["keys"]:
@@ -898,8 +1035,9 @@ class PostgresVirtualKeyStore:
                             " monthly_budget_usd, rpm, tpm, tier_cap, client_id, team_id,"
                             " budget_windows_json, metadata_json, user_daily_usd_cap,"
                             " previous_key_hash, previous_prefix, previous_expires_at,"
-                            " region_pin) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-                            " %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                            " region_pin, allowed_models_json, model_groups_json)"
+                            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
+                            " %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
                             " ON CONFLICT (key_id) DO UPDATE SET"
                             " key_hash = EXCLUDED.key_hash,"
                             " name = EXCLUDED.name,"
@@ -919,7 +1057,9 @@ class PostgresVirtualKeyStore:
                             " previous_key_hash = EXCLUDED.previous_key_hash,"
                             " previous_prefix = EXCLUDED.previous_prefix,"
                             " previous_expires_at = EXCLUDED.previous_expires_at,"
-                            " region_pin = EXCLUDED.region_pin",
+                            " region_pin = EXCLUDED.region_pin,"
+                            " allowed_models_json = EXCLUDED.allowed_models_json,"
+                            " model_groups_json = EXCLUDED.model_groups_json",
                             (
                                 key["key_hash"],
                                 key["key_id"],
@@ -942,6 +1082,8 @@ class PostgresVirtualKeyStore:
                                 key.get("previous_prefix"),
                                 key.get("previous_expires_at"),
                                 key.get("region_pin"),
+                                encode_names(decode_names(key.get("allowed_models"))),
+                                encode_names(decode_names(key.get("model_groups"))),
                             ),
                         )
                 conn.commit()

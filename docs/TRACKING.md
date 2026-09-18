@@ -3213,6 +3213,17 @@ asserts l0, l1, and ccs appear in Typer help. Covered by
 `--latency-budget-ms` for `route preview` (not `--json`). Covered by
 `tests/unit/test_cli_reference_catalog.py`.
 
+### Per-key and per-team model allowlists ([#708](https://github.com/naveenreddyalka/daari/issues/708))
+
+<!-- tracking:#708 -->
+**Status:** Done (2026-09-18). `VirtualKey` and `Team` take optional
+`allowed_models` globs plus named `model_groups` from settings. Team and key
+lists intersect. Denied gateway calls (chat, responses, embeddings, Anthropic
+messages, Ollama facade) return 403 `model_not_allowed` and an
+`auth.model_denied` audit row. Frontier fallback skips models outside the
+list. Unset keeps the previous unrestricted behavior. Covered by
+`tests/unit/test_model_allowlists.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
