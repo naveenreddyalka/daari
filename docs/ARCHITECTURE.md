@@ -82,7 +82,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/cli/setup_actions.py` | Shared setup apply helpers | ✅ |
 | `daari/server/app.py` | FastAPI factory, lifespan → `AppContext` | ✅ |
 | `daari/gateway/openai.py` | `POST /v1/chat/completions`, stats, health | ✅ |
-| `daari/gateway/internal.py` | `InternalRequest` / `InternalResponse` / `DaariMeta` | ✅ |
+| `daari/gateway/internal.py` | `InternalRequest` / `InternalResponse` / `DaariMeta` (`agent_turn` per [ADR-0004](adr/0004-agent-tool-call-compatibility.md)) | ✅ |
 | `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L5/L6 + no-frontier + fallback behavior | ✅ |
 | `daari/gateway/base.py` | `GatewayAdapter` protocol | ✅ |
 | `daari/gateway/anthropic.py` | `POST /v1/messages` Anthropic-compatible adapter (minimal) | ✅ |

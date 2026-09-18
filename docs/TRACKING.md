@@ -3069,6 +3069,12 @@ shared stats contract cannot drop the field on non-pool installs.
 rows (Anthropic L0 → hermetic 402) plus soft-budget follow-ons; changelog
 bullet; watch rows only. Docs-only.
 
+### Note agent_turn on daari_meta in architecture ([#653](https://github.com/naveenreddyalka/daari/issues/653))
+
+<!-- tracking:#653 -->
+**Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` package map notes
+`DaariMeta.agent_turn` (ADR-0004) on agent tool-history turns.
+
 ### Web-ui backend_summary counts ([#654](https://github.com/naveenreddyalka/daari/issues/654))
 
 <!-- tracking:#654 -->
