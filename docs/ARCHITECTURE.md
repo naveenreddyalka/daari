@@ -91,7 +91,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
 | `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/` + profile overlays + skills prefix) | ✅ |
 | `daari/config/defaults.yaml` | Package defaults (host, port, models) | ✅ |
-| `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` | ✅ |
+| `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` (`soft_warnings` / `rejects` cliff maps, `backend_summary`) | ✅ |
 | `daari/providers/base.py` | `IntegrationProvider` protocol (`execute`, `health`) | ✅ |
 | `daari/providers/registry.py` | Provider registry used by router | ✅ |
 | `daari/providers/integrations.py` | Sourcegraph GraphQL + GHE repo/issue search providers | ✅ |
