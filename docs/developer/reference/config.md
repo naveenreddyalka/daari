@@ -28,6 +28,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `models.l5` | str | `'llama3.1:70b'` |  |
 | `models.weights` | dict | `{}` |  |
 | `models.capabilities` | dict | `{}` |  |
+| `models.timeout_s` | dict | `{}` | Optional per-tier request timeout in seconds (keys L3/L4/L5). Unset tiers use `upstream.local_timeout_seconds`. |
 | `ollama.base_url` | str | `'http://127.0.0.1:11434'` |  |
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
@@ -93,7 +94,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.model` | str | `'gpt-4o-mini'` |  |
 | `frontier.confidence_threshold` | float | `0.7` |  |
 | `frontier.base_url` | str | `'https://api.openai.com/v1'` |  |
-| `frontier.providers` | list | `[]` |  |
+| `frontier.providers` | list | `[]` | Ordered L6 failover chain. Optional per-entry `timeout_s`, `retry_attempts`, and `retry_backoff_s` fall back to `upstream.frontier_timeout_seconds` / `upstream.retry` when unset. |
 | `frontier.daily_budget_usd` | float | `0.0` |  |
 | `frontier.monthly_budget_usd` | float | `0.0` |  |
 | `frontier.soft_budget_ratio` | float | `0.8` |  |
