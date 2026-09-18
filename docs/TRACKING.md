@@ -3094,6 +3094,12 @@ stats `soft_warnings` / `rejects` and `backend_summary` (link to traces-stats).
 **Status:** Done (2026-09-18). `traces-stats.md` documents optional
 `tiers.*.p50_ms` / `p95_ms` on `GET /v1/daari/stats`.
 
+### Note daari stats JSON includes backend_summary ([#664](https://github.com/naveenreddyalka/daari/issues/664))
+
+<!-- tracking:#664 -->
+**Status:** Done (2026-09-18). `daari stats` CLI docstring notes the payload
+includes `soft_warnings` / `rejects` and `backend_summary`.
+
 ### Document POST /introspect in architecture API table ([#657](https://github.com/naveenreddyalka/daari/issues/657))
 
 <!-- tracking:#657 -->
