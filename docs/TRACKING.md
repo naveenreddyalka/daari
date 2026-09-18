@@ -3076,6 +3076,12 @@ bullet; watch rows only. Docs-only.
 healthy / unhealthy / open_circuit) above the local pool backends table.
 Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Note stats tier p50/p95 in traces-stats ([#655](https://github.com/naveenreddyalka/daari/issues/655))
+
+<!-- tracking:#655 -->
+**Status:** Done (2026-09-18). `traces-stats.md` documents optional
+`tiers.*.p50_ms` / `p95_ms` on `GET /v1/daari/stats`.
+
 ---
 
 ## How to update
