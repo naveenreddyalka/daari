@@ -59,6 +59,11 @@ def apply_auth_claims_to_meta(
     key_patterns, team_patterns = patterns_from_claims(claims, model_groups)
     meta.key_model_patterns = key_patterns
     meta.team_model_patterns = team_patterns
+    if not getattr(meta, "key_id", None) and claims.key_id:
+        meta.key_id = claims.key_id
+    team_id = getattr(getattr(claims, "virtual_key", None), "team_id", None)
+    if not getattr(meta, "team_id", None) and team_id:
+        meta.team_id = team_id
 
 
 def resolve_auth(

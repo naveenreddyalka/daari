@@ -3224,6 +3224,15 @@ messages, Ollama facade) return 403 `model_not_allowed` and an
 list. Unset keeps the previous unrestricted behavior. Covered by
 `tests/unit/test_model_allowlists.py`.
 
+### Per-request spend rows and chargeback export ([#709](https://github.com/naveenreddyalka/daari/issues/709))
+
+<!-- tracking:#709 -->
+**Status:** Done (2026-09-18). Opt-in `usage.spend` writes one row per completed
+request (SQLite by default, Postgres when `observability.backend` is postgres).
+`daari spend export --since --format csv|jsonl` streams rows; `spend_days`
+prunes them. Off by default, the day ledger is unchanged. Covered by
+`tests/unit/test_spend_export.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
