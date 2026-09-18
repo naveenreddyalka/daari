@@ -3174,6 +3174,14 @@ by stage** on `daari_boundary_decisions_total`. Covered by
 
 ---
 
+### Cross-link tier_shadow series in metrics-prometheus ([#693](https://github.com/naveenreddyalka/daari/issues/693))
+
+<!-- tracking:#693 -->
+**Status:** Done (2026-09-18). Series table row for
+`daari_tier_shadow_samples_total{agreed}` with routing-tiers link; contract
+test asserts presence. Covered by `tests/unit/test_metrics_prometheus_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
