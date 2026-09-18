@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 import time
 import uuid
@@ -532,7 +531,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             from daari.server.auth import extract_api_key, introspect_token, resolve_auth
 
             ctx: AppContext = request.app.state.ctx
-            master = (ctx.settings.server.api_key or "").strip()
+            master = ctx.settings.server.api_key
             store = getattr(request.app.state, "virtual_key_store", None) or getattr(
                 ctx, "virtual_key_store", None
             )
@@ -1170,8 +1169,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if not token:
                 raise HTTPException(status_code=401, detail="SSO token required")
             # Master API key still counts as admin when it matches.
-            master = ctx.settings.server.api_key.strip()
-            if master and hmac.compare_digest(token, master):
+            from daari.server.auth import master_key_matches
+
+            master_keys = ctx.settings.server.master_keys()
+            if master_key_matches(token, master_keys):
                 return "admin"
             try:
                 claims = verify_access_token(token, sso)

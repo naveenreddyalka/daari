@@ -136,18 +136,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             finally:
                 reset_inbound_context(token)
 
-    master_key = resolved.server.api_key.strip()
+    master_keys = resolved.server.master_keys()
+    if len(master_keys) > 1:
+        from daari.enterprise.postgres_audit import audit_log_from_settings
+
+        audit_log_from_settings(resolved).record(
+            actor="daari",
+            role="system",
+            action="auth.master_key_overlap",
+            detail={"count": len(master_keys)},
+        )
     # Auth middleware runs when a master key is set OR virtual keys exist /
     # are enabled (so newly created keys are enforced without restart... we
     # check the store on each request).
-    auth_active = bool(master_key) or resolved.server.virtual_keys.enabled
+    auth_active = bool(master_keys) or resolved.server.virtual_keys.enabled
     if auth_active:
         # Probes stay open: orchestrators can't attach API keys (issue #105).
         # /metrics follows server.api_key (F3): open only when master unset
         # AND no virtual-key enforcement required — keep previous behavior:
         # when master_key set, /metrics needs auth; when only VK store, open.
         open_paths = {"/health", "/ready", "/v1/messages/health"}
-        if not master_key:
+        if not master_keys:
             open_paths.add("/metrics")
 
         @app.middleware("http")
@@ -158,11 +167,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # local single-user installs aren't suddenly locked out.
             store: VirtualKeyStore | None = getattr(request.app.state, "virtual_key_store", None)
             has_virtual = bool(store and store.enabled and store.list())
-            if not master_key and not has_virtual:
+            if not master_keys and not has_virtual:
                 return await call_next(request)
 
             supplied = extract_api_key(request.headers)
-            claims = resolve_auth(supplied, master_key=master_key, store=store)
+            claims = resolve_auth(supplied, master_key=master_keys, store=store)
             if claims is None and resolved.enterprise.sso.enabled and supplied:
                 # Allow verified OIDC/HMAC SSO bearers through; endpoints still
                 # enforce role via _require_admin_role (issue #136).
@@ -391,7 +400,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             store = getattr(request.app.state, "virtual_key_store", None)
             claims = resolve_auth(
                 extract_api_key(request.headers),
-                master_key=master_key,
+                master_key=master_keys,
                 store=store,
             )
         virtual = getattr(claims, "virtual_key", None) if claims is not None else None

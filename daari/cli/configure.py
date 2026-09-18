@@ -48,7 +48,7 @@ def resolve_configure_api_key(
     Uses ``server.api_key`` when gateway auth is configured; otherwise the
     open-local placeholder ``daari-local``.
     """
-    master = cfg.server.api_key.strip()
+    master = cfg.server.primary_master_key()
     if master:
         return master, None
     return "daari-local", None

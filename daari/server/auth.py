@@ -37,6 +37,38 @@ def extract_api_key(headers: Any) -> str:
     return supplied
 
 
+def normalize_master_keys(master_key: str | list[str] | None) -> list[str]:
+    """Accepted master secrets. A string stays one key; a list is an overlap set."""
+    if master_key is None:
+        return []
+    items = [master_key] if isinstance(master_key, str) else list(master_key)
+    keys: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text:
+            keys.append(text)
+    return keys
+
+
+def _constant_time_equals(supplied: str, candidate: str) -> bool:
+    left = supplied.encode("utf-8")
+    right = candidate.encode("utf-8")
+    if len(left) != len(right):
+        hmac.compare_digest(left, left)
+        return False
+    return hmac.compare_digest(left, right)
+
+
+def master_key_matches(supplied: str, master_key: str | list[str] | None) -> bool:
+    """True if `supplied` equals any configured master key. Checks every key."""
+    if not supplied:
+        return False
+    matched = False
+    for key in normalize_master_keys(master_key):
+        matched = _constant_time_equals(supplied, key) or matched
+    return matched
+
+
 def apply_auth_claims_to_meta(
     meta: Any,
     claims: AuthClaims | None,
@@ -69,11 +101,11 @@ def apply_auth_claims_to_meta(
 def resolve_auth(
     supplied: str,
     *,
-    master_key: str,
+    master_key: str | list[str] | None,
     store: VirtualKeyStore | None,
 ) -> AuthClaims | None:
     """Return claims when the key is valid, else None."""
-    if master_key and hmac.compare_digest(supplied, master_key):
+    if master_key_matches(supplied, master_key):
         return AuthClaims(kind="master")
     if store is not None and store.enabled and supplied:
         key = store.resolve(supplied)
@@ -111,7 +143,7 @@ def resolve_auth(
                 team_model_groups=team_groups,
             )
     # Auth required but nothing matched.
-    if master_key or (store is not None and store.enabled and store.list()):
+    if normalize_master_keys(master_key) or (store is not None and store.enabled and store.list()):
         return None
     # No master key and no virtual keys configured → open.
     return AuthClaims(kind="master")
@@ -120,14 +152,14 @@ def resolve_auth(
 def introspect_token(
     token: str,
     *,
-    master_key: str,
+    master_key: str | list[str] | None,
     store: VirtualKeyStore | None,
 ) -> dict[str, Any]:
     """RFC 7662 introspection payload for a token (#618). Never returns secrets."""
     supplied = (token or "").strip()
     if not supplied:
         return {"active": False}
-    if master_key and hmac.compare_digest(supplied, master_key):
+    if master_key_matches(supplied, master_key):
         return {
             "active": True,
             "username": "master",
