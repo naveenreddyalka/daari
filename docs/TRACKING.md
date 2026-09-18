@@ -3224,6 +3224,15 @@ messages, Ollama facade) return 403 `model_not_allowed` and an
 list. Unset keeps the previous unrestricted behavior. Covered by
 `tests/unit/test_model_allowlists.py`.
 
+### Config validate and strict nested keys ([#710](https://github.com/naveenreddyalka/daari/issues/710))
+
+<!-- tracking:#710 -->
+**Status:** Done (2026-09-18). `daari config validate` reports unknown keys
+(top-level and nested), type errors, and out-of-range values. `Settings.load`
+warns on unknown nested keys via `daari.config` and fails when
+`DAARI_STRICT_CONFIG=1` or `daari serve --strict`. `daari doctor` mentions
+them on `config_keys`. Covered by `tests/unit/test_config_validate.py`.
+
 ### Per-request spend rows and chargeback export ([#709](https://github.com/naveenreddyalka/daari/issues/709))
 
 <!-- tracking:#709 -->

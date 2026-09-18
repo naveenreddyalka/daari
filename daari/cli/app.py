@@ -84,6 +84,7 @@ project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
 spend_app = typer.Typer(help="Per-request spend rows for finance chargeback.")
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
+config_app = typer.Typer(help="Validate daari.yaml before restart.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
 route_app = typer.Typer(help="Inspect routing without sending a generation.")
@@ -96,6 +97,7 @@ app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
 app.add_typer(audit_app, name="audit")
+app.add_typer(config_app, name="config")
 app.add_typer(spend_app, name="spend")
 app.add_typer(route_app, name="route")
 
@@ -979,9 +981,16 @@ def serve(
     port: int | None = typer.Option(None, help="Bind port"),
     no_frontier: bool = typer.Option(False, "--no-frontier", help="Disable L6 escalation."),
     org: str | None = typer.Option(None, "--org", help="Enable enterprise org mode with org ID."),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Fail startup when nested config keys are unknown (also DAARI_STRICT_CONFIG=1).",
+    ),
 ) -> None:
     """Start the daari HTTP daemon."""
-    settings = Settings.load().model_copy(deep=True)
+    settings = (
+        Settings.load(strict=True) if strict else Settings.load()
+    ).model_copy(deep=True)
     if no_frontier:
         settings.frontier.enabled = False
     resolved_org = org or os.environ.get("DAARI_ORG_ID")
@@ -1546,6 +1555,33 @@ def profile(
             f"load {entry['load_ms']:.0f} ms, {tps if tps is not None else '-'} tok/s"
         )
     typer.echo(f"Saved to {store.path}")
+
+
+@config_app.command("validate")
+def config_validate(
+    path: Path | None = typer.Argument(None, help="Config file (default ~/.daari/config.yaml)."),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Also honored by daari serve. Validate always reports unknown keys.",
+    ),
+) -> None:
+    """Report unknown keys, type errors, and out-of-range values. Exit 1 on findings."""
+    from daari.config.settings import Settings, assemble_config
+    from daari.config.validate import config_findings
+
+    del strict  # validate always reports; flag exists so the help matches serve
+    if path is not None and not path.is_file():
+        typer.echo(f"config file not found: {path}", err=True)
+        raise typer.Exit(code=1)
+    user, merged = assemble_config(path)
+    findings = config_findings(user, merged, Settings)
+    if not findings:
+        typer.echo("config ok")
+        return
+    for finding in findings:
+        typer.echo(finding, err=True)
+    raise typer.Exit(code=1)
 
 
 @app.command()

@@ -44,6 +44,7 @@ def run_doctor(
 
     results.append(_check_python())
     results.append(_check_config(cfg))
+    results.append(_check_config_keys())
     results.append(_check_master_key_overlap(cfg))
     results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
@@ -95,6 +96,24 @@ def _check_config(settings: Settings) -> CheckResult:
         return CheckResult(name="config", ok=True, detail=detail)
     except Exception as exc:
         return CheckResult(name="config", ok=False, detail=str(exc))
+
+
+def _check_config_keys() -> CheckResult:
+    """Mention typos in nested config so a silent policy hole is visible (#710)."""
+    from daari.config.settings import Settings, load_user_config
+    from daari.config.validate import unknown_config_keys
+
+    keys = unknown_config_keys(load_user_config(None), Settings)
+    if not keys:
+        return CheckResult(name="config_keys", ok=True, detail="no unknown keys")
+    shown = ", ".join(keys[:8])
+    extra = f" (+{len(keys) - 8} more)" if len(keys) > 8 else ""
+    return CheckResult(
+        name="config_keys",
+        ok=False,
+        optional=True,
+        detail=f"unknown keys: {shown}{extra} — run: daari config validate",
+    )
 
 
 def _check_master_key_overlap(settings: Settings) -> CheckResult:
