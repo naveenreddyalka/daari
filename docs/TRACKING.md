@@ -3181,6 +3181,14 @@ by stage** on `daari_boundary_decisions_total`. Covered by
 `daari_tier_shadow_samples_total{agreed}` with routing-tiers link; contract
 test asserts presence. Covered by `tests/unit/test_metrics_prometheus_docs.py`.
 
+### Assert prune --help documents retention stores ([#692](https://github.com/naveenreddyalka/daari/issues/692))
+
+<!-- tracking:#692 -->
+**Status:** Done (2026-09-18). `daari prune --help` contract test asserts
+traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
+`tests/unit/test_prune_cli_help.py`.
+
+
 
 ## How to update
 
