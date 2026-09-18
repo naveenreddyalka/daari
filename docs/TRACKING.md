@@ -3145,6 +3145,13 @@ prose below the contiguous Series table in `metrics-prometheus.md`. Covered by
 **Status:** Done (2026-09-18). Committed `http-api.md` includes
 `| POST | /introspect |`; `test_gen_reference` asserts generator + on-disk.
 
+### Note soft_warnings/rejects cliff maps in traces-stats ([#682](https://github.com/naveenreddyalka/daari/issues/682))
+
+<!-- tracking:#682 -->
+**Status:** Done (2026-09-18). `traces-stats.md` documents `soft_warnings` /
+`rejects` on `GET /v1/daari/stats` with a metrics-prometheus cross-link.
+Covered by `tests/unit/test_traces_stats_docs.py`.
+
 ---
 
 ## How to update
