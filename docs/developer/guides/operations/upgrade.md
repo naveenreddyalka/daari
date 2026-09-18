@@ -95,7 +95,7 @@ tests in `tests/unit/test_settings.py`:
 | Situation | Behaviour | Why |
 |-----------|-----------|-----|
 | Unknown **top-level** section (`typo_section: {}`) | Startup fails with `ValidationError: Extra inputs are not permitted` naming the key | `Settings` is a pydantic-settings `BaseSettings`, whose default is `extra="forbid"` (`test_unknown_top_level_key_fails_load`) |
-| Unknown **nested** key (`server.future_option`) | Ignored silently; the rest of the section applies | Nested models are plain `BaseModel`s with the default `extra="ignore"` (`test_unknown_nested_key_is_ignored`) |
+| Unknown **nested** key (`server.future_option`, `cache.l0.future_knob`) | Logged as a warning (`daari.config`); the rest of the section still applies. `DAARI_STRICT_CONFIG=1` or `daari serve --strict` turns the warning into a startup error | Nested models ignore extras so an upgrade stays downgrade-safe, but a typo is no longer silent (`test_unknown_nested_key_is_ignored`, `tests/unit/test_config_validate.py`) |
 | Wrong type (`server.port: eleven`) | Startup fails with a `ValidationError` | Field types are enforced at load (`test_wrong_type_in_config_file_fails_load`) |
 | Runtime setattr out of range | Rejected (`validate_assignment=True` on runtime models) | `test_setattr_rejects_*` |
 | Legacy `org:` block | Merged into `enterprise:` and dropped | Shim in `Settings.load()`; `test_org_alias_block_maps_to_enterprise` |
@@ -108,16 +108,16 @@ What this means for an upgrade:
 - **Removed or renamed keys** are announced in `CHANGELOG.md`. Renamed keys
   keep a shim for at least one minor release (today: `org` → `enterprise`,
   `tenant_id` alias in `daari/enterprise/config.py`).
-- **Validate before you restart.** There is no `daari config validate`
-  subcommand and `daari doctor` only checks that the file exists and the
-  port parses (`daari/setup/doctor.py`). Load the file explicitly:
+- **Validate before you restart.** `daari config validate` (optional path; default `~/.daari/config.yaml`) reports every unknown key — top-level and nested, with its dotted path — plus type errors and out-of-range values. Exit 0 is clean; exit 1 prints one finding per line. `daari doctor` mentions unknown keys on the `config_keys` check.
 
 ```bash
-python -c 'from daari.config.settings import Settings; Settings.load(); print("config ok")'
+daari config validate
+daari config validate ~/.daari/config.yaml
+DAARI_STRICT_CONFIG=1 daari serve    # unknown nested keys fail startup
+daari serve --strict
 ```
 
-  A non-zero exit with `Extra inputs are not permitted` or a type error is the
-  same failure the daemon would hit on start — fix it, then restart.
+  A non-zero `config validate` with `unknown key:` or a type / range message is the same class of failure the daemon would hit on start — fix it, then restart.
 
 - **Fleet-pushed config** (`daari enterprise bootstrap`) merges the org block
   and any `routing` / `cache` / `frontier` / `guardrails` dicts into

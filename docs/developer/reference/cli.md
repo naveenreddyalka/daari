@@ -20,6 +20,7 @@ Entry point: `daari` (Typer).
 | `route` | Routing helpers (`preview`) |
 | `audit` | Enterprise audit log (`list` / `export` / `verify`) |
 | `configure` | Interactive config helpers |
+| `config` | Validate `config.yaml` (`validate`) |
 | `prune` | Retention prune (traces / usage / feedback) |
 
 ## `setup`

@@ -1099,23 +1099,13 @@ class Settings(BaseSettings):
     )
 
     @classmethod
-    def load(cls, config_path: Path | None = None) -> Settings:
-        defaults = _load_defaults_yaml()
-        file_data: dict[str, Any] = {}
-        path = config_path or Path.home() / ".daari" / "config.yaml"
-        if path.is_file():
-            with path.open(encoding="utf-8") as f:
-                loaded = yaml.safe_load(f) or {}
-                if isinstance(loaded, dict):
-                    file_data = loaded
-        profile_data = _load_profile_overrides()
-        env_data = _load_env_overrides()
-        merged = _deep_merge(_deep_merge(_deep_merge(defaults, file_data), profile_data), env_data)
-        if isinstance(merged.get("org"), dict):
-            merged["enterprise"] = _deep_merge(merged.get("enterprise", {}), merged["org"])
-            merged.pop("org", None)
-        merged["skills_system_prefix"] = _load_skills_system_prefix()
-        return cls.model_validate(merged)
+    def load(cls, config_path: Path | None = None, *, strict: bool | None = None) -> Settings:
+        user, merged = assemble_config(config_path)
+        settings = cls.model_validate(merged)
+        from daari.config.validate import apply_unknown_key_policy, unknown_config_keys
+
+        apply_unknown_key_policy(unknown_config_keys(user, cls), strict=strict)
+        return settings
 
     @property
     def l0_cache_path(self) -> Path:
@@ -1181,6 +1171,30 @@ class Settings(BaseSettings):
             or os.environ.get("OPENROUTER_API_KEY")
             or os.environ.get("OPENAI_API_KEY")
         )
+
+
+def load_user_config(config_path: Path | None = None) -> dict[str, Any]:
+    """File + profile + env layers, after the legacy `org` shim. Not defaults."""
+    file_data: dict[str, Any] = {}
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if path.is_file():
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                file_data = loaded
+    user = _deep_merge(_deep_merge(file_data, _load_profile_overrides()), _load_env_overrides())
+    if isinstance(user.get("org"), dict):
+        user["enterprise"] = _deep_merge(user.get("enterprise", {}), user["org"])
+        user.pop("org", None)
+    return user
+
+
+def assemble_config(config_path: Path | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return (user layers, defaults-merged tree) ready for validation."""
+    user = load_user_config(config_path)
+    merged = _deep_merge(_load_defaults_yaml(), user)
+    merged["skills_system_prefix"] = _load_skills_system_prefix()
+    return user, merged
 
 
 def _load_defaults_yaml() -> dict[str, Any]:
