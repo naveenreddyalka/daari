@@ -3112,6 +3112,13 @@ includes `soft_warnings` / `rejects` and `backend_summary`.
 **Status:** Done (2026-09-18). `savings-report.md` links to traces-stats
 `backend_summary` for local pool pressure beside spend.
 
+### Emphasize open_circuit count on web-ui when > 0 ([#667](https://github.com/naveenreddyalka/daari/issues/667))
+
+<!-- tracking:#667 -->
+**Status:** Done (2026-09-18). Dashboard open-circuit metric uses `metric-warn`
+when `backend_summary.open_circuit > 0`. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
 ---
 
 ## How to update
