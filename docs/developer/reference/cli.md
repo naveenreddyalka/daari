@@ -40,7 +40,7 @@ Entry point: `daari` (Typer).
 
 | Command | Purpose |
 |---------|---------|
-| `route preview` | Show which tier a prompt would take (`--json`) |
+| `route preview` | Show which tier a prompt would take (`--model`, `--latency-budget-ms`) |
 
 ## Other groups
 
