@@ -3125,6 +3125,13 @@ when `backend_summary.open_circuit > 0`. Covered by
 **Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` `metrics.py` package row
 mentions `soft_warnings` / `rejects` and `backend_summary` on stats.
 
+### Assert daari stats CLI help mentions backend_summary ([#675](https://github.com/naveenreddyalka/daari/issues/675))
+
+<!-- tracking:#675 -->
+**Status:** Done (2026-09-18). `daari stats --help` contract test asserts
+`backend_summary` appears in Typer help. Covered by
+`tests/unit/test_stats_cli_help.py`.
+
 ---
 
 ## How to update
