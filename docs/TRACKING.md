@@ -3251,6 +3251,17 @@ per entry. An `auth.master_key_overlap` audit row stores the count, never the
 secrets. `daari doctor` warns when more than two keys are active. Covered by
 `tests/unit/test_master_key_overlap.py`.
 
+### Responses cancel and delete ([#713](https://github.com/naveenreddyalka/daari/issues/713))
+
+<!-- tracking:#713 -->
+**Status:** Done (2026-09-18). `POST /v1/responses/{id}/cancel` is idempotent
+(in-flight background jobs stay `cancelled`; terminal objects return 200).
+`DELETE /v1/responses/{id}` removes the row so later GET is 404. Tenancy
+matches GET (cross-key 404 + audit, master can act on any row). SQLite and
+Postgres stores both implement `delete`. Covered by
+`tests/unit/test_responses_tenancy.py`, `tests/unit/test_response_store.py`,
+and `tests/unit/test_postgres_responses.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

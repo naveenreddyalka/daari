@@ -77,6 +77,15 @@ class TestPostgresResponseStoreMemory:
         assert got["_owner_key_id"] == "owner-a"
         assert got["_conversation"][0]["content"] == "done"
 
+    def test_delete_removes_row_across_replicas(self):
+        dsn = _dsn()
+        writer = PostgresResponseStore(dsn)
+        reader = PostgresResponseStore(dsn)
+        writer.put("resp_del", {"id": "resp_del", "status": "completed"}, owner_key_id="k1")
+        assert reader.delete("resp_del") is True
+        assert writer.get("resp_del") is None
+        assert reader.delete("resp_del") is False
+
     def test_previous_response_id_chain_visible_on_peer(self):
         dsn = _dsn()
         writer = PostgresResponseStore(dsn)

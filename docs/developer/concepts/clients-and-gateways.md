@@ -7,7 +7,7 @@
 | Surface | Paths | Typical client |
 |---------|-------|----------------|
 | OpenAI Chat | `POST /v1/chat/completions` | Cursor BYOK, VS Code, SDKs |
-| OpenAI Responses | `POST /v1/responses`, `POST /v1/responses/input_tokens`, `GET /v1/responses/{id}` | Newer OpenAI SDKs |
+| OpenAI Responses | `POST /v1/responses`, `POST /v1/responses/input_tokens`, `GET /v1/responses/{id}`, `POST /v1/responses/{id}/cancel`, `DELETE /v1/responses/{id}` | Newer OpenAI SDKs |
 | Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code, Claude Desktop (gateway mode) |
 | Ollama facade | `/api/chat`, `/api/generate`, `/api/embed`, `/api/tags`, … | JetBrains AI Assistant, ChatGPT Desktop |
 | MCP | `POST /mcp` (JSON-RPC 2.0), `POST /v1/mcp/query` (deprecated) | Cursor, Claude Desktop |
@@ -62,7 +62,12 @@ the same Bearer / `x-api-key` middleware as the rest of the daemon.
 
 The Responses surface round-trips `function_call` / `function_call_output` items,
 chains turns with `previous_response_id`, honors `store: false`, and returns
-`queued` for `background: true` (poll `GET /v1/responses/{id}`). `include` is
+`queued` for `background: true` (poll `GET /v1/responses/{id}`).
+`POST /v1/responses/{id}/cancel` is idempotent: an in-flight background job
+stops writing tokens and the stored status becomes `cancelled`; an already
+terminal object returns 200 with its current body. `DELETE /v1/responses/{id}`
+removes the row so a later GET is 404. Tenancy matches GET (other virtual keys
+see 404, not 403; the master key can cancel or delete any row). `include` is
 rejected with 400 rather than ignored; `metadata` is echoed.
 `POST /v1/responses/input_tokens` is a local estimate (`estimate_tokens` on
 instructions + input messages + tools), matching Anthropic

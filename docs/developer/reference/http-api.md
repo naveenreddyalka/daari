@@ -54,3 +54,5 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/responses` | Responses |
 | `POST` | `/v1/responses/input_tokens` | Input Tokens |
 | `GET` | `/v1/responses/{response_id}` | Get Response |
+| `POST` | `/v1/responses/{response_id}/cancel` | Cancel Response |
+| `DELETE` | `/v1/responses/{response_id}` | Delete Response |
