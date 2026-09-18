@@ -82,6 +82,7 @@ nav:
       - Observability:
           - Traces and stats: developer/guides/observability/traces-stats.md
           - Savings report: developer/guides/observability/savings-report.md
+          - Chargeback export: developer/guides/observability/chargeback.md
           - Prometheus: developer/guides/observability/metrics-prometheus.md
           - OTel GenAI traces: developer/guides/observability/otel-genai.md
           - Live benchmark: developer/guides/observability/live-benchmark.md

@@ -25,7 +25,7 @@ latency histogram (absent when that tier has no samples).
 
 ## Retention
 
-Traces, the usage ledger, the audit log, shadow-check tables, and MCP task
+Traces, the usage ledger, per-request spend rows, the audit log, shadow-check tables, and MCP task
 handles grow without bound unless you set a window. Defaults are **0 days
 (keep forever)** so an upgrade never deletes data.
 
@@ -34,6 +34,7 @@ observability:
   retention:
     traces_days: 30
     ledger_days: 90
+    spend_days: 90
     audit_days: 365
     shadow_days: 30
     tasks_days: 7

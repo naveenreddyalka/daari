@@ -82,6 +82,7 @@ org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.
 web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
+spend_app = typer.Typer(help="Per-request spend rows for finance chargeback.")
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
@@ -95,6 +96,7 @@ app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
 app.add_typer(audit_app, name="audit")
+app.add_typer(spend_app, name="spend")
 app.add_typer(route_app, name="route")
 
 
@@ -1226,13 +1228,59 @@ def trace(
         typer.echo(f"  +{step['elapsed_ms']:>5}ms  {step['step']:<14} {detail_text}")
 
 
+@spend_app.command("export")
+def spend_export(
+    since: str = typer.Option(
+        ..., "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
+    ),
+    output_format: str = typer.Option("csv", "--format", help="csv or jsonl."),
+    key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
+    team: str | None = typer.Option(None, "--team", help="Exact team id."),
+) -> None:
+    """Stream per-request spend rows for chargeback (#709)."""
+    import csv
+    import io
+
+    from daari.enterprise.audit import parse_since
+    from daari.observability.spend import EXPORT_FIELDS, export_dict, spend_ledger_from_settings
+
+    fmt = (output_format or "csv").strip().lower()
+    if fmt not in {"csv", "jsonl"}:
+        typer.echo("Only --format csv or jsonl is supported.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        cutoff = parse_since(since)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    settings = get_settings()
+    ledger = spend_ledger_from_settings(settings)
+    if not ledger.enabled:
+        typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
+        raise typer.Exit(code=1)
+    rows = ledger.iter_rows(since=cutoff, key_id=key, team_id=team)
+    if fmt == "jsonl":
+        for row in rows:
+            typer.echo(json.dumps(export_dict(row), separators=(",", ":"), sort_keys=True))
+        return
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=EXPORT_FIELDS, lineterminator="\n")
+    writer.writeheader()
+    typer.echo(buffer.getvalue().rstrip("\n"))
+    for row in rows:
+        buffer.seek(0)
+        buffer.truncate()
+        writer.writerow(export_dict(row))
+        typer.echo(buffer.getvalue().rstrip("\n"))
+
+
 @app.command()
 def prune(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print per-store counts that would be deleted; change nothing."
     ),
 ) -> None:
-    """Apply observability.retention windows to traces, ledger, audit, shadow checks, tasks."""
+    """Apply observability.retention windows to traces, ledger, spend, audit, shadow checks, tasks."""
     from daari.observability.retention import run_sweep
 
     settings = get_settings()
