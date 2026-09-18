@@ -3113,6 +3113,12 @@ includes `soft_warnings` / `rejects` and `backend_summary`.
 when `backend_summary.open_circuit > 0`. Covered by
 `packages/web-ui/test/dashboard.test.js`.
 
+### Note soft_warnings/rejects on architecture metrics row ([#674](https://github.com/naveenreddyalka/daari/issues/674))
+
+<!-- tracking:#674 -->
+**Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` `metrics.py` package row
+mentions `soft_warnings` / `rejects` and `backend_summary` on stats.
+
 ---
 
 ## How to update
