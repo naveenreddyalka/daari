@@ -3049,6 +3049,13 @@ band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontie
 [web-ui README](../packages/web-ui/README.md). Covered by
 `tests/unit/test_local_pool.py`.
 
+### Assert backend_summary on empty stats cliff maps ([#647](https://github.com/naveenreddyalka/daari/issues/647))
+
+<!-- tracking:#647 -->
+**Status:** Done (2026-09-18). `test_stats_includes_empty_cliff_maps` asserts
+`backend_summary == {total:0, healthy:0, unhealthy:0, open_circuit:0}` so the
+shared stats contract cannot drop the field on non-pool installs.
+
 ### Prune shipped ENTERPRISE.md gap rows after soft-budget drain ([#649](https://github.com/naveenreddyalka/daari/issues/649))
 
 <!-- tracking:#649 -->
