@@ -11,22 +11,23 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-17)
+## Where daari stands (verified in-tree, 2026-09-18)
 
-Night drain closed the evening refill: soft_warnings/rejects on stats + web-ui
-and the optional metrics scrape port both merged. Three evening P3s (Helm NOTES,
-doctor metrics-auth, hermetic 402 burst) remain open on `main`.
+Soft-budget / observability drain closed: Anthropic SSE L0, Grafana alert + MCP
+panels, Helm `metrics_port` + NOTES, MCP Prometheus counters, `agent_turn` on
+`daari_meta` (+ OTel), hermetic hard 402, soft USD warn path (header, metrics,
+Grafana, doctor, budgets guide), team budget/rate-limit gauges, RFC 7662
+introspect, stats `backend_summary` + tier p50/p95, and web-ui pool backends
+all shipped. Night-of-17 gap rows 1–8 are gone from the table below.
 
-**Positioning:** LiteLLM v1.101.0 still the outward bar (heuristic auto-router,
-semantic MCP tool search, separate Prometheus metrics process, MCP tool-call
-counters, per-key/team rate-limit gauges). Portkey / Kong / OpenRouter quiet on
-net-new self-host gateway surfaces; Ollama at v0.34.2-rc2 (llama.cpp-only).
-Competitive delta stays inward: Anthropic stream L0 parity, Grafana panels for
-already-emitted alert series, Helm wiring for `metrics_port`, MCP Prometheus
-surface, and ADR-0004 `agent_turn` on `daari_meta`.
+**Positioning:** LiteLLM still the outward bar (heuristic auto-router, semantic
+MCP tool search, Prometheus multiproc / per-key gauges). Portkey / Kong /
+OpenRouter quiet on net-new self-host gateway surfaces. Competitive delta moves
+to access-group budgets, multiproc metrics process parity, and enterprise
+non-goals (WIF / A2A / SOC 2 / admin UI) until local demand appears.
 
-**Inward theme:** Claude Code stream $0 cache, dashboard lag vs Prometheus,
-chart scrape-port wiring, MCP scrape visibility, agent-turn meta honesty.
+**Inward theme:** Keep the living PRD honest after the soft-budget drain; next
+milestones are larger enterprise surfaces, not another panel/doc pass.
 
 ---
 
@@ -34,34 +35,34 @@ chart scrape-port wiring, MCP scrape visibility, agent-turn meta honesty.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Anthropic SSE L0 parity** — OpenAI stream hits L0; Anthropic path skips | 4 | 3 | OpenAI path in-tree | Claude Code identical turns stay $0 | **File** (P2) |
-| 2 | **Grafana alert-series panels** — retries / false-hits-avoided / budget alerts emit, no panels | 3 | 1 | LiteLLM dashboard | Laptop Grafana sees cliffs without cloud APM | **File** (P2) |
-| 3 | **Helm `metrics_port` Service** — app shipped; chart still API-port only | 3 | 2 | LiteLLM metrics port | Private scrapes via chart without Bearer | **File** (P2) |
-| 4 | **MCP Prometheus counters** — `/mcp` has policy, no `daari_mcp_*` series | 3 | 2 | LiteLLM MCP tool metrics | Agent tool deny/latency on local scrapes | **File** (P2) |
-| 5 | **`agent_turn` on daari_meta** — ADR-0004 checklist still open | 2 | 1 | — | Clients see why L1 skipped without log dive | **File** (P2) |
-| 6 | **Helm NOTES bearer + orgPool** | 2 | 1 | Helm ecosystem | Install-time hints | Open (prior) |
-| 7 | **Doctor metrics auth advisory** | 2 | 1 | Portkey health | Warn before scrapes go 401 | Open (prior) |
-| 8 | **Hermetic hard 402 budget/quota burst** | 2 | 1 | LiteLLM | Catch 402 reject-path regressions | Open (prior) |
-| 9 | **Access-group budgets / MCP introspect / multiproc / team remaining gauges** | 3 | 3–4 | LiteLLM | Watch until local demand | Watch |
-| 10 | **WIF / A2A / SOC 2 / admin UI** | 2–3 | 3–5 | Kong / cloud | No new client demand | Watch / non-goal |
+| 1 | **Access-group budgets / MCP introspect polish / multiproc / team remaining gauges** | 3 | 3–4 | LiteLLM | Watch until local demand; team gauges + introspect already landed | Watch |
+| 2 | **WIF / A2A / SOC 2 / admin UI** | 2–3 | 3–5 | Kong / cloud | No new client demand | Watch / non-goal |
 
-Pruned this run: stats+web-ui soft/hard rejects, optional metrics scrape port
-(app-side) — both shipped evening→night.
+Pruned this run: Anthropic SSE L0, Grafana alert-series panels, Helm
+`metrics_port` Service, MCP Prometheus counters, `agent_turn` on `daari_meta`,
+Helm NOTES bearer + orgPool, doctor metrics-auth advisory, hermetic hard 402
+burst, plus soft USD warn / team gauge / introspect / stats summary follow-ons
+from the soft-budget drain.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Anthropic stream L0** — Claude Code / Anthropic SSE shares OpenAI-stream cache hits.
-2. **Grafana alert panels** — upstream retries, false-hits avoided, budget alerts visible.
-3. **Helm scrape-port wiring** — chart exposes `observability.metrics_port` Service/port.
-4. **MCP scrape surface** — `daari_mcp_*` counters for ingress tool calls.
-5. **agent_turn meta** — ADR-0004 honesty on every response.
+1. **Access-group / org budget surfaces** — group-scoped cliffs when local demand appears.
+2. **Prometheus multiproc process parity** — LiteLLM-style separate metrics process if scrapes need isolation.
+3. **MCP introspect + policy depth** — expand RFC 7662 / tool policy beyond the landed baseline.
+4. **Fleet / HA story** — multi-replica readiness without cloud control plane.
+5. **Compliance non-goals stay deferred** — WIF / A2A / SOC 2 / admin UI until a paying ask.
 
 ---
 
 ## Changelog
 
+- **2026-09-18** — Soft-budget / observability drain: pruned shipped gap rows
+  1–8 from the 2026-09-17 night table (Anthropic L0 through hermetic 402) and
+  soft-USD / team-gauge / introspect / stats-summary follow-ons. Outward bar
+  unchanged (LiteLLM). Watch rows only remain; milestones retargeted to larger
+  enterprise surfaces.
 - **2026-09-17 (night)** — Evening refill drained (stats/web-ui rejects + metrics
   port). Outward: LiteLLM v1.101.0 still the bar (MCP tool metrics, rate-limit
   gauges); Ollama v0.34.2-rc2 llama.cpp-only; Portkey/Kong flat. Inward Anthropic

@@ -3056,6 +3056,13 @@ band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontie
 `backend_summary == {total:0, healthy:0, unhealthy:0, open_circuit:0}` so the
 shared stats contract cannot drop the field on non-pool installs.
 
+### Prune shipped ENTERPRISE.md gap rows after soft-budget drain ([#649](https://github.com/naveenreddyalka/daari/issues/649))
+
+<!-- tracking:#649 -->
+**Status:** Done (2026-09-18). `docs/prd/ENTERPRISE.md` drops shipped night-of-17
+rows (Anthropic L0 → hermetic 402) plus soft-budget follow-ons; changelog
+bullet; watch rows only. Docs-only.
+
 ---
 
 ## How to update
