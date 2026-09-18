@@ -3165,6 +3165,13 @@ Covered by `tests/unit/test_traces_stats_docs.py`.
 agree/disagree** on `daari_tier_shadow_samples_total`; metrics-prometheus
 intro mentions the panel. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Grafana boundary decisions panel ([#690](https://github.com/naveenreddyalka/daari/issues/690))
+
+<!-- tracking:#690 -->
+**Status:** Done (2026-09-18). Overview dashboard adds **Boundary decisions
+by stage** on `daari_boundary_decisions_total`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
 ---
 
 ### Assert prune --help documents retention stores ([#692](https://github.com/naveenreddyalka/daari/issues/692))
