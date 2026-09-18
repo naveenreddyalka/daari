@@ -11,23 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-18)
+## Where daari stands (verified in-tree, 2026-09-18 late)
 
-Soft-budget / observability drain closed: Anthropic SSE L0, Grafana alert + MCP
-panels, Helm `metrics_port` + NOTES, MCP Prometheus counters, `agent_turn` on
-`daari_meta` (+ OTel), hermetic hard 402, soft USD warn path (header, metrics,
-Grafana, doctor, budgets guide), team budget/rate-limit gauges, RFC 7662
-introspect, stats `backend_summary` + tier p50/p95, and web-ui pool backends
-all shipped. Night-of-17 gap rows 1–8 are gone from the table below.
+Soft-budget / observability drain is already closed (Anthropic SSE L0, Grafana,
+Helm metrics port, MCP Prometheus, `agent_turn`, hermetic 402, team gauges,
+RFC 7662 introspect, stats `backend_summary`). Model allowlists, chargeback
+rows, config validate, key-rotation overlap, and per-provider retry policy are
+already on the backlog — not restated here.
 
-**Positioning:** LiteLLM still the outward bar (heuristic auto-router, semantic
-MCP tool search, Prometheus multiproc / per-key gauges). Portkey / Kong /
-OpenRouter quiet on net-new self-host gateway surfaces. Competitive delta moves
-to access-group budgets, multiproc metrics process parity, and enterprise
-non-goals (WIF / A2A / SOC 2 / admin UI) until local demand appears.
+**Outward (this run):** LiteLLM **v1.101.0** (15 Sep) is still the stable bar
+(heuristic auto-router, semantic MCP tool search, off-peak pricing, separate
+metrics port). **v1.102.0-rc.1 / rc.2** is not stable: auto-router controls,
+native OCR, request/token autoscaling, and stricter Responses-ID auth for
+retrieve / cancel / delete. Portkey enterprise gateway **v2.20.0** unified
+AI+MCP on one port (daari already does this). Kong AI Gateway **2.0.3**
+(31 Aug) is MCP/WIF fixes only. Ollama **v0.34.2** (15 Sep) is first-run
+setup + llama.cpp; tool search and response compaction from v0.34.0 are
+already in the Ollama facade. vLLM **0.29** (9 Sep) exposes
+`/v1/audio/transcriptions`. OpenRouter's hosted shell/Files API is a cloud
+sandbox — non-goal.
 
-**Inward theme:** Keep the living PRD honest after the soft-budget drain; next
-milestones are larger enterprise surfaces, not another panel/doc pass.
+**Inward theme:** gateway lifecycle and spend safety, not another panel. Stored
+Responses can be fetched but not cancelled or deleted. No `Idempotency-Key`.
+No audio transcription route. Helm HPA scales on CPU only. Rate limits are a
+60-second rpm/tpm window.
 
 ---
 
@@ -35,58 +42,42 @@ milestones are larger enterprise surfaces, not another panel/doc pass.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Access-group budgets / MCP introspect polish / multiproc / team remaining gauges** | 3 | 3–4 | LiteLLM | Watch until local demand; team gauges + introspect already landed | Watch |
-| 2 | **WIF / A2A / SOC 2 / admin UI** | 2–3 | 3–5 | Kong / cloud | No new client demand | Watch / non-goal |
+| 1 | **Responses cancel + delete** — `GET /v1/responses/{id}` and background jobs exist; no cancel or delete on SQLite or Postgres | 4 | 2 | LiteLLM 1.102 RC (ID auth on cancel/delete) | The store is on the operator's disk; cancel stops a runaway local-or-frontier job without a cloud control plane | File |
+| 2 | **`Idempotency-Key` on chat + Responses** — retries re-route and can double-charge L6 | 4 | 2 | OpenAI / Portkey | Replay the stored result (often a local tier) instead of paying frontier twice | File |
+| 3 | **`POST /v1/audio/transcriptions`** — no `/v1/audio` route; vLLM 0.29 and LiteLLM expose it | 4 | 3 | vLLM, LiteLLM | Audio stays on the box when a local ASR backend is configured; 501 rather than a silent cloud upload | File |
+| 4 | **Request-rate autoscaling** — Helm HPA is CPU-only; `daari_requests_total` is already exported | 3 | 2 | LiteLLM 1.102 RC | Cache-heavy router traffic is not CPU-bound; scale on the counter daari already owns | File |
+| 5 | **Daily request cap (rpd)** beside rpm/tpm — `WINDOW_SECONDS` is hard-coded to 60 | 3 | 2 | Portkey (rpd / weekly windows) | A local gateway can enforce a calendar-day cap without a cloud quota service | File |
+| 6 | **Access-group budgets / multiproc metrics / WIF / A2A / SOC 2 / admin UI** | 2–3 | 3–5 | LiteLLM / Kong / cloud | Watch until local demand; allowlists and team budgets already exist or are queued | Watch |
 
-Pruned this run: Anthropic SSE L0, Grafana alert-series panels, Helm
-`metrics_port` Service, MCP Prometheus counters, `agent_turn` on `daari_meta`,
-Helm NOTES bearer + orgPool, doctor metrics-auth advisory, hermetic hard 402
-burst, plus soft USD warn / team gauge / introspect / stats summary follow-ons
-from the soft-budget drain.
+Pruned this run: the two watch-only rows from the morning table (they stay as
+row 6). OCR, realtime voice, and hosted shell/Files stay non-goals (new
+runtime deps or a cloud sandbox).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Access-group / org budget surfaces** — group-scoped cliffs when local demand appears.
-2. **Prometheus multiproc process parity** — LiteLLM-style separate metrics process if scrapes need isolation.
-3. **MCP introspect + policy depth** — expand RFC 7662 / tool policy beyond the landed baseline.
-4. **Fleet / HA story** — multi-replica readiness without cloud control plane.
-5. **Compliance non-goals stay deferred** — WIF / A2A / SOC 2 / admin UI until a paying ask.
+1. **Responses lifecycle** — cancel in-flight background jobs and delete stored objects under the same tenancy as GET.
+2. **Idempotent writes** — one `Idempotency-Key` replays chat and Responses without a second route.
+3. **Local-first audio** — OpenAI transcriptions shape, local ASR first, no new runtime dependency.
+4. **Scale on requests, not CPU** — optional chart autoscaling from `daari_requests_total` (off by default).
+5. **Day-scoped abuse caps** — rpd next to rpm/tpm so a key cannot run the minute window all day.
+
+Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying ask.
 
 ---
 
 ## Changelog
 
-- **2026-09-18** — Soft-budget / observability drain: pruned shipped gap rows
-  1–8 from the 2026-09-17 night table (Anthropic L0 through hermetic 402) and
-  soft-USD / team-gauge / introspect / stats-summary follow-ons. Outward bar
-  unchanged (LiteLLM). Watch rows only remain; milestones retargeted to larger
-  enterprise surfaces.
-- **2026-09-17 (night)** — Evening refill drained (stats/web-ui rejects + metrics
-  port). Outward: LiteLLM v1.101.0 still the bar (MCP tool metrics, rate-limit
-  gauges); Ollama v0.34.2-rc2 llama.cpp-only; Portkey/Kong flat. Inward Anthropic
-  stream L0, Grafana alert panels, Helm metrics_port, MCP Prometheus, agent_turn
-  meta; filing five issues. Prior P3s (NOTES, doctor metrics-auth, 402 hermetic)
-  stay open.
-- **2026-09-17 (evening)** — Afternoon refill drained. Outward: LiteLLM v1.101.0
-  (heuristic auto-router, semantic MCP search, metrics port) still the bar; no
-  net-new Kong/Portkey gateway surfaces. Inward stats/web-ui, scrape port, NOTES,
-  doctor metrics-auth, and hermetic 402 burst; filing five issues.
-- **2026-09-17 (afternoon)** — Morning refill drained (ServiceMonitor → TTFT
-  hermetic). Outward: LiteLLM Prometheus multiproc / metrics-port still the
-  bar; no net-new Kong/Portkey gateway surfaces. Inward chart/doctor/dashboard
-  audit; filing five issues (orgPool wiring, ServiceMonitor auth, Grafana
-  pool/concurrency, doctor Redis+/ready, hard-reject hermetic).
-- **2026-09-17 (morning)** — Drain shipped night ops/RBAC + facade/bench rows.
-  Backlog empty; refilled five issues (ServiceMonitor, Grafana TTFT preference,
-  analyst config GET, ChatGPT Desktop caps docs, TTFT preference hermetic).
-  Outward: LiteLLM v1.100.1 still stable bar; facade capabilities matched
-  Ollama 0.34 reporting in-tree.
-- **2026-09-16 (night)** — Delta scan: LiteLLM v1.103.0-dev.1 still fixes-only;
-  Ollama v0.34.2-rc0 llama.cpp-only; Portkey/Kong/vLLM/OpenRouter flat. Inward
-  ops/RBAC audit after dry-run ship; filed five issues (hard-reject metrics,
-  version exposure, rate-limit degraded gauge, Helm securityContext+PDB, SSO
-  RBAC leftovers). Pruned shipped route dry-run row.
+- **2026-09-18 (late)** — Outward: LiteLLM v1.101.0 stable; v1.102.0 still RC
+  (Responses cancel/delete auth, request-rate autoscale, MCP grant strictness).
+  Portkey v2.20.0 unified mode (already true here). Kong 2.0.3 flat. Ollama
+  v0.34.2 setup/llama.cpp only. vLLM 0.29 transcriptions is the new native
+  surface. Inward: Responses lifecycle, idempotency, audio route, request-rate
+  HPA, rpd. Filing five issues. Watch row retained.
+- **2026-09-18** — Soft-budget / observability drain pruned. Watch rows only
+  that morning; milestones were larger enterprise surfaces.
+- **2026-09-17** — Condensed day: stats/web-ui, metrics port, Helm/doctor,
+  ServiceMonitor, ops/RBAC, facade/bench. LiteLLM v1.100–v1.101 the bar.
 - **2026-09-16 (late→08-28)** — Condensed prior drains (fleet auth, soft-warn,
   TTFT, Redis, tenancy, batches, Kong parity, Apache 2.0, this PRD).
