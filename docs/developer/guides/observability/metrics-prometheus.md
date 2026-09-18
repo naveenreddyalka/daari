@@ -50,6 +50,7 @@ Two counters worth alerting on:
 | `daari_mcp_tool_calls_total{tool,outcome}` | MCP ingress `tools/call` (and legacy `/v1/mcp/query`) by tool name and `outcome` (`ok`, `deny`, `error`, `guardrail`). No-op when `observability.prometheus=false`. Rising `deny` vs `ok` is policy pressure on agent traffic. |
 | `daari_team_budget_remaining_usd{team,window}` / `daari_team_budget_limit_usd{team,window}` / `daari_team_budget_remaining_hours{team,window}` | Per-team USD budget windows from the virtual-key team store (scrape-time snapshot). Flat when no teams have `max_usd` windows. Alert when remaining approaches zero before hard 402s. Overview Grafana charts remaining vs limit under **Team budget remaining (USD)**. |
 | `daari_team_rate_limit_remaining{team,kind,scope}` / `daari_team_rate_limit_limit{team,kind,scope}` | Per-team RPM/TPM remaining and ceilings (`scope="team"`, `kind="rpm"|"tpm"`). Flat when no teams have rpm/tpm set. Overview Grafana charts remaining vs limit under **Team rate-limit remaining**. |
+| `daari_tier_shadow_samples_total{agreed}` | Local-tier answers replayed at a comparison tier (`agreed="true\|false"`). Rising `false` vs `true` means routing drift under `routing.shadow_sample_rate`. See [routing-tiers.md](../../concepts/routing-tiers.md) shadow section. Overview Grafana charts agree/disagree under **Tier shadow agree/disagree**. |
 
 The same `soft_warnings` / `rejects` maps are also on `GET /v1/daari/stats` (and the
 local web-ui) so operators can see cliff pressure without scraping Prometheus.

@@ -3182,6 +3182,13 @@ by stage** on `daari_boundary_decisions_total`. Covered by
 
 ---
 
+### Cross-link tier_shadow series in metrics-prometheus ([#693](https://github.com/naveenreddyalka/daari/issues/693))
+
+<!-- tracking:#693 -->
+**Status:** Done (2026-09-18). Series table row for
+`daari_tier_shadow_samples_total{agreed}` with routing-tiers link; contract
+test asserts presence. Covered by `tests/unit/test_metrics_prometheus_docs.py`.
+
 ### Assert prune --help documents retention stores ([#692](https://github.com/naveenreddyalka/daari/issues/692))
 
 <!-- tracking:#692 -->
@@ -3190,6 +3197,7 @@ traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 `tests/unit/test_prune_cli_help.py`.
 
 
+<<<<<<< HEAD
 ### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
 
 <!-- tracking:#699 -->
@@ -3197,6 +3205,8 @@ traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 `--latency-budget-ms` for `route preview` (not `--json`). Covered by
 `tests/unit/test_cli_reference_catalog.py`.
 
+=======
+>>>>>>> origin/main
 
 ## How to update
 
