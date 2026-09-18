@@ -8,6 +8,10 @@ const tiersChartNode = document.getElementById("tiers-chart");
 const softWarningsNode = document.getElementById("soft-warnings-table");
 const rejectsNode = document.getElementById("rejects-table");
 const backendsNode = document.getElementById("backends-table");
+const backendSummaryTotalNode = document.getElementById("backend-summary-total");
+const backendSummaryHealthyNode = document.getElementById("backend-summary-healthy");
+const backendSummaryUnhealthyNode = document.getElementById("backend-summary-unhealthy");
+const backendSummaryOpenCircuitNode = document.getElementById("backend-summary-open-circuit");
 const orgNode = document.getElementById("org-learning");
 const orgSummaryNode = document.getElementById("org-summary");
 const statusNode = document.getElementById("status");
@@ -134,6 +138,21 @@ function renderKindCounts(tbody, counts, emptyLabel) {
     row.innerHTML = `<td>${kind}</td><td>${formatNumber(typeof count === "number" ? count : 0)}</td>`;
     tbody.appendChild(row);
   }
+}
+
+function renderBackendSummary(summary) {
+  const counts = summary && typeof summary === "object" ? summary : {};
+  const set = (node, key) => {
+    if (!node) {
+      return;
+    }
+    const value = counts[key];
+    node.textContent = formatNumber(typeof value === "number" ? value : 0);
+  };
+  set(backendSummaryTotalNode, "total");
+  set(backendSummaryHealthyNode, "healthy");
+  set(backendSummaryUnhealthyNode, "unhealthy");
+  set(backendSummaryOpenCircuitNode, "open_circuit");
 }
 
 function renderBackends(backends) {
@@ -295,6 +314,7 @@ async function loadStats() {
     renderTiers(stats.tiers || {});
     renderKindCounts(softWarningsNode, stats.soft_warnings, "No soft warnings yet.");
     renderKindCounts(rejectsNode, stats.rejects, "No hard rejects yet.");
+    renderBackendSummary(stats.backend_summary);
     renderBackends(stats.backends);
 
     try {
