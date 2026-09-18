@@ -22,7 +22,9 @@ the full HTTP JSON (including `totals`, `frontier`, and `request_quotas`) for
 FinOps scrapers without curling the daemon (#527). `daari keys list` marks soft
 windows as `req used/cap soft`. `daari usage` is an alias of `daari report`.
 
-Includes cache-trust panels when shadow samples exist.
+Includes cache-trust panels when shadow samples exist. For local pool pressure
+alongside spend, see `backend_summary` on
+[traces and stats](traces-stats.md) (`GET /v1/daari/stats`).
 
 ## Where the numbers come from
 
