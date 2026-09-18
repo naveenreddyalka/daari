@@ -3094,6 +3094,12 @@ Covered by `packages/web-ui/test/dashboard.test.js`.
 **Status:** Done (2026-09-18). `daari stats` CLI docstring notes the payload
 includes `soft_warnings` / `rejects` and `backend_summary`.
 
+### Document POST /introspect in architecture API table ([#657](https://github.com/naveenreddyalka/daari/issues/657))
+
+<!-- tracking:#657 -->
+**Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` HTTP API table lists
+`POST /introspect` (RFC 7662 virtual-key introspection).
+
 ### Mention backend_summary in metrics-prometheus.md ([#663](https://github.com/naveenreddyalka/daari/issues/663))
 
 <!-- tracking:#663 -->
