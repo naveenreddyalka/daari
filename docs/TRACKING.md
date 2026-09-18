@@ -3196,7 +3196,7 @@ test asserts presence. Covered by `tests/unit/test_metrics_prometheus_docs.py`.
 traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 `tests/unit/test_prune_cli_help.py`.
 
-
+### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
 
 ### Assert context clear --help documents L0/L1/CCS ([#700](https://github.com/naveenreddyalka/daari/issues/700))
 

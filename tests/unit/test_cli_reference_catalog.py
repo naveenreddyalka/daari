@@ -28,3 +28,10 @@ def test_cli_reference_learn_matches_typer_and_route_preview() -> None:
         assert stale not in text, f"stale learn command still documented: {stale}"
     assert "`preview`" in text
     assert "`route`" in text
+    preview_lines = [
+        line for line in text.splitlines() if "route preview" in line or "`preview`" in line
+    ]
+    preview_blob = "\n".join(preview_lines)
+    assert "--json" not in preview_blob, "stale --json on route preview (#699)"
+    assert "--latency-budget-ms" in text
+    assert "--model" in text
