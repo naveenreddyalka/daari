@@ -7,6 +7,7 @@ silently.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -14,7 +15,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -34,6 +35,7 @@ from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
+_BACKGROUND_JOBS: dict[str, asyncio.Task[None]] = {}
 
 
 class ResponsesRequest(BaseModel):
@@ -245,6 +247,32 @@ def _public_body(stored: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in stored.items() if not key.startswith("_")}
 
 
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
+
+def _visible_stored_response(
+    ctx: AppContext, response_id: str, request: Request
+) -> tuple[Any, dict[str, Any]]:
+    from daari.enterprise.audit import maybe_audit_tenancy_denied
+    from daari.gateway.response_store import response_visible_to_caller
+
+    store = _store_for(ctx)
+    stored = store.get(response_id)
+    claims = getattr(request.state, "auth_claims", None)
+    visible = stored is not None and response_visible_to_caller(stored, claims)
+    maybe_audit_tenancy_denied(
+        ctx.settings,
+        claims=claims,
+        kind="response",
+        artifact_id=response_id,
+        stored=stored,
+        visible=visible,
+    )
+    if stored is None or not visible:
+        raise HTTPException(status_code=404, detail="response not found")
+    return store, stored
+
+
 def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
@@ -294,24 +322,41 @@ class ResponsesGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/responses/{response_id}")
         async def get_response(response_id: str, request: Request) -> dict[str, Any]:
-            from daari.enterprise.audit import maybe_audit_tenancy_denied
-            from daari.gateway.response_store import response_visible_to_caller
-
             ctx: AppContext = request.app.state.ctx
-            stored = _store_for(ctx).get(response_id)
-            claims = getattr(request.state, "auth_claims", None)
-            visible = stored is not None and response_visible_to_caller(stored, claims)
-            maybe_audit_tenancy_denied(
-                ctx.settings,
-                claims=claims,
-                kind="response",
-                artifact_id=response_id,
-                stored=stored,
-                visible=visible,
-            )
-            if stored is None or not visible:
-                raise HTTPException(status_code=404, detail="response not found")
+            _store, stored = _visible_stored_response(ctx, response_id, request)
             return _public_body(stored)
+
+        @router.post("/v1/responses/{response_id}/cancel")
+        async def cancel_response(response_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store, stored = _visible_stored_response(ctx, response_id, request)
+            if stored.get("status") in _TERMINAL_STATUSES:
+                return _public_body(stored)
+            cancelled = {
+                **_public_body(stored),
+                "status": "cancelled",
+                "output": stored.get("output") or [],
+            }
+            store.put(
+                response_id,
+                cancelled,
+                conversation=list(stored.get("_conversation") or []),
+                stored=True,
+            )
+            job = _BACKGROUND_JOBS.pop(response_id, None)
+            if job is not None and not job.done():
+                job.cancel()
+            return cancelled
+
+        @router.delete("/v1/responses/{response_id}")
+        async def delete_response(response_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store, stored = _visible_stored_response(ctx, response_id, request)
+            job = _BACKGROUND_JOBS.pop(response_id, None)
+            if job is not None and not job.done():
+                job.cancel()
+            store.delete(response_id)
+            return {"id": stored.get("id") or response_id, "object": "response", "deleted": True}
 
         @router.post("/v1/responses/input_tokens")
         async def input_tokens(body: ResponsesRequest) -> dict[str, int]:
@@ -333,7 +378,6 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         async def responses(
             body: ResponsesRequest,
             request: Request,
-            background_tasks: BackgroundTasks,
             x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
@@ -466,18 +510,21 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     stored=True,
                     owner_key_id=owner_key_id,
                 )
-                background_tasks.add_task(
-                    self._run_background,
-                    ctx,
-                    internal,
-                    response_id,
-                    input_chars,
-                    include_daari_meta,
-                    body.metadata,
-                    messages,
-                    store,
-                    owner_key_id,
+                task = asyncio.create_task(
+                    self._run_background(
+                        ctx,
+                        internal,
+                        response_id,
+                        input_chars,
+                        include_daari_meta,
+                        body.metadata,
+                        messages,
+                        store,
+                        owner_key_id,
+                    )
                 )
+                _BACKGROUND_JOBS[response_id] = task
+                task.add_done_callback(lambda _t, rid=response_id: _BACKGROUND_JOBS.pop(rid, None))
                 return queued
 
             try:
@@ -535,7 +582,13 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         owner_key_id: str | None = None,
     ) -> None:
         try:
+            current = store.get(response_id)
+            if current is None or current.get("status") == "cancelled":
+                return
             result = await ctx.router.route(internal)
+            current = store.get(response_id)
+            if current is None or current.get("status") == "cancelled":
+                return
             payload = _response_body(
                 response_id,
                 result,
@@ -551,6 +604,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 owner_key_id=owner_key_id,
             )
         except Exception as exc:  # noqa: BLE001 — persist failure for GET polling
+            current = store.get(response_id)
+            if current is None or current.get("status") == "cancelled":
+                return
             store.put(
                 response_id,
                 {

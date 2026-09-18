@@ -124,6 +124,14 @@ class ResponseStore:
         body["_owner_key_id"] = row[2]
         return body
 
+    def delete(self, response_id: str) -> bool:
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM responses WHERE response_id = ?",
+                (response_id,),
+            )
+            return cursor.rowcount > 0
+
     def prune_older_than(self, cutoff_epoch: float, *, dry_run: bool = False) -> int:
         """Delete (or count) responses with created_at <= cutoff (#497)."""
         cutoff = int(cutoff_epoch)
