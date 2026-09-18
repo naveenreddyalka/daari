@@ -3198,6 +3198,14 @@ traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 
 
 
+### Assert report --help documents format and breakdown flags ([#701](https://github.com/naveenreddyalka/daari/issues/701))
+
+<!-- tracking:#701 -->
+**Status:** Done (2026-09-18). `daari report --help` contract test asserts
+format, by-client, by-team, and by-user. Covered by
+`tests/unit/test_report_cli_help.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
