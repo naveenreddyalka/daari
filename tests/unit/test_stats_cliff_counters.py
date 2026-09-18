@@ -14,12 +14,20 @@ from daari.server.app import create_app
 async def test_stats_includes_empty_cliff_maps(settings):
     app = create_app(settings)
     app.state.ctx = AppContext.from_settings(settings)
+    app.state.ctx.local_pool = None
+    app.state.ctx.router.local_pool = None
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/v1/daari/stats")
     assert response.status_code == 200
     body = response.json()
     assert body["soft_warnings"] == {}
     assert body["rejects"] == {}
+    assert body["backend_summary"] == {
+        "total": 0,
+        "healthy": 0,
+        "unhealthy": 0,
+        "open_circuit": 0,
+    }
     assert "total_requests" in body
     assert "tiers" in body
 
