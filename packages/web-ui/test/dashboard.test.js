@@ -13,6 +13,7 @@ const STATS = {
     { id: "gpu-a", healthy: true, circuit: "closed", outstanding: 1 },
     { id: "gpu-b", healthy: false, circuit: "open", outstanding: 0 },
   ],
+  backend_summary: { total: 2, healthy: 1, unhealthy: 1, open_circuit: 1 },
 };
 
 const REPORT = {
@@ -145,6 +146,40 @@ test("local pool backends table renders id/healthy/circuit/outstanding", async (
   assert.match(text, /open/);
   assert.match(text, /yes/);
   assert.match(text, /no/);
+});
+
+test("backend_summary counts render near pool backends", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  assert.equal(doc.getElementById("backend-summary-total").textContent, "2");
+  assert.equal(doc.getElementById("backend-summary-healthy").textContent, "1");
+  assert.equal(doc.getElementById("backend-summary-unhealthy").textContent, "1");
+  assert.equal(doc.getElementById("backend-summary-open-circuit").textContent, "1");
+});
+
+test("backend_summary zeros when pool empty", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/stats": {
+        ...STATS,
+        backends: [],
+        backend_summary: { total: 0, healthy: 0, unhealthy: 0, open_circuit: 0 },
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  assert.equal(doc.getElementById("backend-summary-total").textContent, "0");
+  assert.equal(doc.getElementById("backend-summary-healthy").textContent, "0");
+  assert.equal(doc.getElementById("backend-summary-unhealthy").textContent, "0");
+  assert.equal(doc.getElementById("backend-summary-open-circuit").textContent, "0");
 });
 
 test("empty backends shows clear empty state", async (t) => {

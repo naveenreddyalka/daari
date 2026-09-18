@@ -3075,6 +3075,13 @@ bullet; watch rows only. Docs-only.
 **Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` package map notes
 `DaariMeta.agent_turn` (ADR-0004) on agent tool-history turns.
 
+### Web-ui backend_summary counts ([#654](https://github.com/naveenreddyalka/daari/issues/654))
+
+<!-- tracking:#654 -->
+**Status:** Done (2026-09-18). Dashboard renders `backend_summary` (total /
+healthy / unhealthy / open_circuit) above the local pool backends table.
+Covered by `packages/web-ui/test/dashboard.test.js`.
+
 ---
 
 ## How to update
