@@ -1016,7 +1016,11 @@ def stats(
     host: str | None = typer.Option(None, help="Daemon host"),
     port: int | None = typer.Option(None, help="Daemon port"),
 ) -> None:
-    """Show tier counters from the running daemon."""
+    """Show tier counters from the running daemon.
+
+    Prints the full ``GET /v1/daari/stats`` JSON, including ``soft_warnings`` /
+    ``rejects`` cliff maps and ``backend_summary`` pool counts.
+    """
     settings = get_settings()
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
