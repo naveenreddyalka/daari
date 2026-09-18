@@ -129,6 +129,12 @@ class RetryPolicy:
             jitter=getattr(retry_settings, "jitter", 0.5),
         )
 
+    def snapshot(self) -> dict[str, float | int]:
+        return {
+            "retry_attempts": self.attempts,
+            "retry_backoff_s": self.base_delay,
+        }
+
     def delay_for(self, retry_index: int) -> float:
         """Backoff before retry `retry_index` (0-based), jittered."""
         capped = min(self.base_delay * (2**retry_index), self.max_delay)
@@ -137,6 +143,44 @@ class RetryPolicy:
         # Equal jitter: half fixed, half random, so delay stays in [d/2, d].
         floor = capped * (1.0 - self.jitter)
         return floor + self._random.random() * (capped - floor)
+
+
+def resolve_upstream_policy(
+    retry_settings: Any,
+    *,
+    default_timeout: float,
+    timeout_s: float | None = None,
+    retry_attempts: int | None = None,
+    retry_backoff_s: float | None = None,
+) -> tuple[float, RetryPolicy]:
+    """Resolve a timeout + retry policy, applying optional per-entry overrides."""
+    timeout = float(default_timeout if timeout_s is None else timeout_s)
+    if retry_settings is None:
+        policy = RetryPolicy(
+            attempts=3 if retry_attempts is None else retry_attempts,
+            base_delay=0.2 if retry_backoff_s is None else retry_backoff_s,
+        )
+    else:
+        policy = RetryPolicy(
+            attempts=(
+                getattr(retry_settings, "attempts", 3)
+                if retry_attempts is None
+                else retry_attempts
+            ),
+            base_delay=(
+                getattr(retry_settings, "base_delay_ms", 200) / 1000
+                if retry_backoff_s is None
+                else float(retry_backoff_s)
+            ),
+            max_delay=getattr(retry_settings, "max_delay_ms", 5000) / 1000,
+            jitter=getattr(retry_settings, "jitter", 0.5),
+        )
+    return timeout, policy
+
+
+def policy_snapshot(timeout: float, retry: RetryPolicy | None) -> dict[str, float | int]:
+    policy = retry or RetryPolicy()
+    return {"timeout_s": float(timeout), **policy.snapshot()}
 
 
 async def run_upstream(

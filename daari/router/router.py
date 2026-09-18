@@ -3507,6 +3507,58 @@ class Router:
             prefix_hash=prefix,
         )
 
+    def effective_failover_policy(self) -> list[dict[str, Any]]:
+        """Resolved timeout/retry for each local tier and frontier slot (#712)."""
+        from daari.router.retry import policy_snapshot
+
+        entries: list[dict[str, Any]] = []
+        for tier, executor in (
+            ("L3", self.ollama_l3),
+            ("L4", self.ollama_l4),
+            ("L5", self.ollama_l5),
+        ):
+            entries.append({"id": tier, **policy_snapshot(executor.timeout, executor.retry)})
+        org = self.org_pool
+        if org is not None:
+            entries.append(
+                {
+                    "id": getattr(org, "tier", None) or "L5-org",
+                    **policy_snapshot(org.timeout, org.retry),
+                }
+            )
+        frontier = self.frontier
+        slots = getattr(frontier, "slots", None)
+        if slots:
+            for slot in slots:
+                executor = slot.executor
+                entries.append(
+                    {"id": slot.id, **policy_snapshot(executor.timeout, executor.retry)}
+                )
+        elif frontier is not None:
+            entries.append(
+                {
+                    "id": getattr(frontier, "provider", None) or "L6",
+                    **policy_snapshot(
+                        getattr(frontier, "timeout", 90.0),
+                        getattr(frontier, "retry", None),
+                    ),
+                }
+            )
+        return entries
+
+    def _attach_preview_policy(self, payload: dict[str, Any]) -> dict[str, Any]:
+        chain = self.effective_failover_policy()
+        payload["chain"] = chain
+        chosen = payload.get("tier")
+        match = next((entry for entry in chain if entry["id"] == chosen), None)
+        if match is not None:
+            payload["policy"] = {
+                "timeout_s": match["timeout_s"],
+                "retry_attempts": match["retry_attempts"],
+                "retry_backoff_s": match["retry_backoff_s"],
+            }
+        return payload
+
     def preview_initial_tier(self, request: InternalRequest) -> dict[str, Any]:
         """Would-be initial local tier without calling Ollama or frontier."""
         profile = self._build_prompt_profile(request)
@@ -3523,18 +3575,18 @@ class Router:
             capable = self._filter_capable_tiers(["L3", "L4", "L5"], request)
             chosen = capable[0] if capable else "L3"
             reasons["heuristic"] = chosen
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
         if alias == "nitro":
             chosen = self._nitro_tier(request)
             reasons["heuristic"] = chosen
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
 
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             capable = self._filter_capable_tiers([override, "L5", "L4", "L3"], request)
             chosen = capable[0] if capable else override
             reasons["heuristic"] = chosen
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
         pinned = self._session_pin_tier(request)
         if pinned is not None:
             capable = self._filter_capable_tiers([pinned, "L5", "L4", "L3"], request)
@@ -3542,7 +3594,7 @@ class Router:
             chosen = self._apply_context_window_escalation(request, profile, chosen)
             chosen = self._cap_tier(chosen, self._effective_tier_cap(request))
             reasons["heuristic"] = pinned
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
 
         heuristic = self._choose_uncapped_tier(request, profile)
         reasons["heuristic"] = heuristic
@@ -3561,7 +3613,7 @@ class Router:
         chosen = self._apply_stall_escalation(request, chosen)
         chosen = self._apply_context_window_escalation(request, profile, chosen)
         chosen = self._cap_tier(chosen, self._effective_tier_cap(request))
-        return {"tier": chosen, "reasons": reasons}
+        return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
 
     def _choose_initial_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
@@ -4674,20 +4726,21 @@ class AppContext:
         def tier_executor(tier: str, ollama_model: str) -> OllamaExecutor | MLXExecutor:
             # MLX backend (issue #97): tiers mapped in mlx.models are served by
             # mlx_lm.server; the rest stay on Ollama.
+            timeout = settings.models.timeout_for(tier, local_timeout)
             mlx_model = settings.mlx.models.get(tier) if settings.mlx.enabled else None
             if mlx_model:
                 return MLXExecutor(
                     base_url=settings.mlx.base_url.rstrip("/"),
                     default_model=mlx_model,
                     tier=tier,
-                    timeout=local_timeout,
+                    timeout=timeout,
                     retry=local_retry,
                 )
             return OllamaExecutor(
                 base_url=settings.ollama.base_url.rstrip("/"),
                 default_model=ollama_model,
                 tier=tier,
-                timeout=local_timeout,
+                timeout=timeout,
                 retry=local_retry,
             )
 
@@ -4697,11 +4750,12 @@ class AppContext:
         org_pool_executor: OllamaExecutor | MLXExecutor | None = None
         org_pool_cfg = settings.routing.org_pool
         if org_pool_cfg.enabled and org_pool_cfg.base_url.strip():
+            org_tier = org_pool_cfg.tier or "L5-org"
             org_pool_executor = OllamaExecutor(
                 base_url=org_pool_cfg.base_url.rstrip("/"),
                 default_model=org_pool_cfg.model or settings.models.l5,
-                tier=org_pool_cfg.tier or "L5-org",
-                timeout=local_timeout,
+                tier=org_tier,
+                timeout=settings.models.timeout_for(org_tier, local_timeout),
                 retry=local_retry,
             )
         from daari.router.frontier_pool import build_frontier_pool
