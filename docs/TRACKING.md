@@ -3049,6 +3049,12 @@ band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontie
 [web-ui README](../packages/web-ui/README.md). Covered by
 `tests/unit/test_local_pool.py`.
 
+### Note backend_summary on architecture stats surface ([#648](https://github.com/naveenreddyalka/daari/issues/648))
+
+<!-- tracking:#648 -->
+**Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` API table notes
+`soft_warnings` / `rejects` and `backend_summary` on `GET /v1/daari/stats`.
+
 ---
 
 ## How to update
