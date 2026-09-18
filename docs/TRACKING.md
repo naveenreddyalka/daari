@@ -3139,6 +3139,12 @@ mentions `soft_warnings` / `rejects` and `backend_summary` on stats.
 prose below the contiguous Series table in `metrics-prometheus.md`. Covered by
 `tests/unit/test_metrics_prometheus_docs.py`.
 
+### Sync CLI reference with Typer catalog ([#681](https://github.com/naveenreddyalka/daari/issues/681))
+
+<!-- tracking:#681 -->
+**Status:** Done (2026-09-18). `cli.md` lists all top-level Typer commands;
+learn stale names removed; `route preview` documented. Covered by
+`tests/unit/test_cli_reference_catalog.py`.
 ### Regenerate http-api.md to include POST /introspect ([#680](https://github.com/naveenreddyalka/daari/issues/680))
 
 <!-- tracking:#680 -->
