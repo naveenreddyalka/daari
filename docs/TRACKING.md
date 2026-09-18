@@ -3056,6 +3056,12 @@ band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontie
 `backend_summary == {total:0, healthy:0, unhealthy:0, open_circuit:0}` so the
 shared stats contract cannot drop the field on non-pool installs.
 
+### Note agent_turn on daari_meta in architecture ([#653](https://github.com/naveenreddyalka/daari/issues/653))
+
+<!-- tracking:#653 -->
+**Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` package map notes
+`DaariMeta.agent_turn` (ADR-0004) on agent tool-history turns.
+
 ---
 
 ## How to update
