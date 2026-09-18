@@ -270,7 +270,7 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | `POST` | `/mcp` | MCP JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) over streamable HTTP |
 | `POST` | `/v1/mcp/query` | Deprecated MCP alias (`Deprecation` + `Link` to `/mcp`) |
 | `POST` | `/v1/daari/reload-caches` | Reload in-memory L0/L1/CCS handles from current settings |
-| `GET` | `/v1/daari/stats` | Tier metrics snapshot |
+| `GET` | `/v1/daari/stats` | Tier metrics snapshot (`soft_warnings` / `rejects` maps, `backend_summary` counts) |
 | `GET` | `/v1/daari/report` | Usage/savings/budget/cache-trust report |
 | `GET` | `/v1/daari/traces`, `/v1/daari/traces/{id}` | Request trace list/detail |
 | `POST` | `/v1/daari/feedback` | Explicit accept/reject by trace_id |
