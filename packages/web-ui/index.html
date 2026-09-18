@@ -93,7 +93,25 @@
 
       <section class="card">
         <h2>Local pool backends</h2>
-        <p class="subtle">Health, circuit state, and outstanding from <code>stats.backends</code>.</p>
+        <p class="subtle">Health, circuit state, and outstanding from <code>stats.backends</code>; counts from <code>stats.backend_summary</code>.</p>
+        <section class="row" id="backend-summary" aria-label="Backend summary counts">
+          <article class="card inner">
+            <h3>Total</h3>
+            <p id="backend-summary-total" class="metric">-</p>
+          </article>
+          <article class="card inner">
+            <h3>Healthy</h3>
+            <p id="backend-summary-healthy" class="metric">-</p>
+          </article>
+          <article class="card inner">
+            <h3>Unhealthy</h3>
+            <p id="backend-summary-unhealthy" class="metric">-</p>
+          </article>
+          <article class="card inner">
+            <h3>Open circuit</h3>
+            <p id="backend-summary-open-circuit" class="metric">-</p>
+          </article>
+        </section>
         <table>
           <thead>
             <tr>

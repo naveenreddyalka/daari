@@ -23,7 +23,7 @@ When the daemon has `server.api_key` (or virtual keys / SSO JWT), paste the Bear
 
 - `GET /v1/daari/stats` summary (`total_requests`, `errors`, `soft_warnings`, `rejects`, `backend_summary`)
 - Soft warnings and hard rejects by kind (pre-cliff / cliff counters)
-- Local pool backends table (`id`, healthy, circuit, outstanding from `stats.backends`)
+- Local pool backends table (`id`, healthy, circuit, outstanding from `stats.backends`) plus `backend_summary` counts (total / healthy / unhealthy / open_circuit)
 - Tier breakdown table (`count`, `p50_ms`, `p95_ms` from latency histograms on `/v1/daari/stats`)
 - Tier count bar chart for quick visual distribution
 - Auto-refresh controls (on/off + refresh interval)

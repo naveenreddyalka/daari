@@ -3069,6 +3069,13 @@ shared stats contract cannot drop the field on non-pool installs.
 rows (Anthropic L0 → hermetic 402) plus soft-budget follow-ons; changelog
 bullet; watch rows only. Docs-only.
 
+### Web-ui backend_summary counts ([#654](https://github.com/naveenreddyalka/daari/issues/654))
+
+<!-- tracking:#654 -->
+**Status:** Done (2026-09-18). Dashboard renders `backend_summary` (total /
+healthy / unhealthy / open_circuit) above the local pool backends table.
+Covered by `packages/web-ui/test/dashboard.test.js`.
+
 ---
 
 ## How to update
