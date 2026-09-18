@@ -3132,6 +3132,13 @@ mentions `soft_warnings` / `rejects` and `backend_summary` on stats.
 `backend_summary` appears in Typer help. Covered by
 `tests/unit/test_stats_cli_help.py`.
 
+### Repair metrics-prometheus series table after prose insert ([#679](https://github.com/naveenreddyalka/daari/issues/679))
+
+<!-- tracking:#679 -->
+**Status:** Done (2026-09-18). Moved mid-table `soft_warnings` / `backend_summary`
+prose below the contiguous Series table in `metrics-prometheus.md`. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
+
 ### Regenerate http-api.md to include POST /introspect ([#680](https://github.com/naveenreddyalka/daari/issues/680))
 
 <!-- tracking:#680 -->
