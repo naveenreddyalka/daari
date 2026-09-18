@@ -3190,6 +3190,14 @@ traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 `tests/unit/test_prune_cli_help.py`.
 
 
+### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
+
+<!-- tracking:#699 -->
+**Status:** Done (2026-09-18). `cli.md` documents `--model` /
+`--latency-budget-ms` for `route preview` (not `--json`). Covered by
+`tests/unit/test_cli_reference_catalog.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
