@@ -3233,6 +3233,15 @@ warns on unknown nested keys via `daari.config` and fails when
 `DAARI_STRICT_CONFIG=1` or `daari serve --strict`. `daari doctor` mentions
 them on `config_keys`. Covered by `tests/unit/test_config_validate.py`.
 
+### Per-request spend rows and chargeback export ([#709](https://github.com/naveenreddyalka/daari/issues/709))
+
+<!-- tracking:#709 -->
+**Status:** Done (2026-09-18). Opt-in `usage.spend` writes one row per completed
+request (SQLite by default, Postgres when `observability.backend` is postgres).
+`daari spend export --since --format csv|jsonl` streams rows; `spend_days`
+prunes them. Off by default, the day ledger is unchanged. Covered by
+`tests/unit/test_spend_export.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

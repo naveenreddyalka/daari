@@ -866,6 +866,26 @@ class Router:
         ttl = getattr(policy, "ttl_seconds", None)
         return float(ttl) if isinstance(ttl, (int, float)) else None
 
+    def _open_spend_context(self, request: InternalRequest, request_id: str) -> None:
+        ledger = getattr(self, "spend_ledger", None)
+        if ledger is None or not getattr(ledger, "enabled", False):
+            return
+        from daari.observability.spend import SpendContext, bind_spend_context
+
+        meta = request.meta
+        bind_spend_context(
+            SpendContext(
+                key_id=getattr(meta, "key_id", None) or "",
+                team_id=getattr(meta, "team_id", None) or "",
+                client_id=meta.client_id or "",
+                request_id=request_id or "",
+                requested_model=request.model or "",
+                service_tier=getattr(request.sampling, "service_tier", None),
+                pricing=self.pricing,
+                fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
+            )
+        )
+
     def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
         if self.usage_ledger is None:
             return
@@ -874,6 +894,10 @@ class Router:
         else:
             prompt_chars = sum(len(message.content or "") for message in request.messages)
         input_tokens, output_tokens, _ = response_token_usage(response, prompt_chars)
+        self._open_spend_context(
+            request,
+            response.daari_meta.trace_id or uuid.uuid4().hex[:16],
+        )
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -885,6 +909,8 @@ class Router:
             provider=response.daari_meta.provider_id,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cached_tokens=response.daari_meta.cached_tokens,
+            reported_cost=response.daari_meta.cost_usd,
         )
 
     def _example_record(
@@ -1628,6 +1654,9 @@ class Router:
         client_model = request.model or self.ollama_l3.default_model
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
+        self._open_spend_context(
+            request, trace.trace_id if trace is not None else chunk_id
+        )
         if reused:
             add_step(
                 "classify_user_turn",
@@ -2422,6 +2451,7 @@ class Router:
         from daari.gateway.request_log import log_gateway_event
 
         message_id = f"msg_{int(time.time() * 1000)}"
+        self._open_spend_context(request, message_id)
         await self._refresh_warm_models()
         # Parity with the OpenAI stream path (issue #101): category policies,
         # learned routing, and latency step-down all key off the profile.
@@ -4909,6 +4939,11 @@ class AppContext:
             context_window_buffer=settings.routing.context_window_escalation_buffer,
             context_windows=dict(settings.routing.context_windows or {}),
         )
+        from daari.observability.spend import install_spend_hook, spend_ledger_from_settings
+
+        spend_ledger = spend_ledger_from_settings(settings)
+        router.spend_ledger = spend_ledger
+        install_spend_hook(usage_ledger, spend_ledger)
         if settings.observability.otel:
             from daari.observability.otel import configure_providers
 

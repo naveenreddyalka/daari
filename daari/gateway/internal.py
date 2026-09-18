@@ -78,6 +78,9 @@ class RequestMeta(BaseModel):
     # Expanded model allowlist (#708). None = that side does not restrict.
     key_model_patterns: list[str] | None = None
     team_model_patterns: list[str] | None = None
+    # Chargeback attribution (#709). Not part of the cache key.
+    key_id: str | None = None
+    team_id: str | None = None
     # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
     anthropic_beta: str | None = None
     anthropic_version: str | None = None

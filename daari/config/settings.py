@@ -637,6 +637,25 @@ class PricingSettings(BaseModel):
     )
 
 
+class SpendLogSettings(BaseModel):
+    """Per-request chargeback rows (#709). Off by default — no extra writes."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Write one spend row per completed request (timestamp, key, team, "
+            "tokens, cost, cost avoided). Off keeps the day ledger's write volume."
+        ),
+    )
+    path: str = Field(
+        default="~/.daari/usage/spend.sqlite3",
+        description=(
+            "SQLite path for per-request spend rows. Ignored when "
+            "observability.backend is postgres."
+        ),
+    )
+
+
 class UsageSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/usage/ledger.sqlite3"
@@ -648,6 +667,7 @@ class UsageSettings(BaseModel):
             "`pricing.models`, and ignores input/output direction."
         ),
     )
+    spend: SpendLogSettings = Field(default_factory=SpendLogSettings)
 
 
 class FilesSettings(BaseModel):
@@ -754,6 +774,14 @@ class RetentionSettings(BaseModel):
     audit_days: int = Field(default=0, ge=0)
     shadow_days: int = Field(default=0, ge=0)
     tasks_days: int = Field(default=0, ge=0)
+    spend_days: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Delete per-request spend rows older than this many days (#709). "
+            "0 keeps them forever."
+        ),
+    )
 
     @property
     def enabled(self) -> bool:
@@ -764,6 +792,7 @@ class RetentionSettings(BaseModel):
                 self.audit_days,
                 self.shadow_days,
                 self.tasks_days,
+                self.spend_days,
             )
         )
 

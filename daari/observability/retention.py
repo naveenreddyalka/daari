@@ -89,6 +89,20 @@ def prune_all(
     else:
         results.append(PruneResult("ledger", 0, True))
 
+    spend_days = int(getattr(retention, "spend_days", 0) or 0)
+    if spend_days:
+        from daari.observability.spend import spend_ledger_from_settings
+
+        cutoff = _cutoff_iso(spend_days, current)
+        spend = spend_ledger_from_settings(settings)
+        if spend.enabled:
+            deleted = spend.prune_before(cutoff, dry_run=dry_run)
+            results.append(PruneResult("spend", deleted, False, cutoff))
+        else:
+            results.append(PruneResult("spend", 0, True))
+    else:
+        results.append(PruneResult("spend", 0, True))
+
     if retention.shadow_days:
         from daari.learning.feedback import FeedbackStore
 

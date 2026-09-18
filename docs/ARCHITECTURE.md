@@ -125,6 +125,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/router/compress.py` | Frontier context compression (relevance pruning) | ✅ |
 | `daari/cache/normalize.py` | Input normalization before L1 embedding | ✅ |
 | `daari/observability/usage.py` | SQLite usage ledger — savings, budgets, client attribution | ✅ |
+| `daari/observability/spend.py` | Opt-in per-request spend rows + `daari spend export` | ✅ |
 | `daari/observability/trace.py` | Per-request trace store (`daari trace`) | ✅ |
 | `daari/learning/feedback.py` | Outcome store + explicit accept/reject + shadow-sampling stats | ✅ |
 | `daari/learning/tuner.py` | Per-category confidence threshold tuner (opt-in) | ✅ |
