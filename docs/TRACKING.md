@@ -3094,6 +3094,12 @@ Covered by `packages/web-ui/test/dashboard.test.js`.
 **Status:** Done (2026-09-18). `docs/ARCHITECTURE.md` HTTP API table lists
 `POST /introspect` (RFC 7662 virtual-key introspection).
 
+### Mention backend_summary in metrics-prometheus.md ([#663](https://github.com/naveenreddyalka/daari/issues/663))
+
+<!-- tracking:#663 -->
+**Status:** Done (2026-09-18). `metrics-prometheus.md` notes
+`backend_summary` on `GET /v1/daari/stats` (link to traces-stats).
+
 ---
 
 ## How to update
