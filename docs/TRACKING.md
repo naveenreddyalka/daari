@@ -3139,6 +3139,12 @@ mentions `soft_warnings` / `rejects` and `backend_summary` on stats.
 prose below the contiguous Series table in `metrics-prometheus.md`. Covered by
 `tests/unit/test_metrics_prometheus_docs.py`.
 
+### Regenerate http-api.md to include POST /introspect ([#680](https://github.com/naveenreddyalka/daari/issues/680))
+
+<!-- tracking:#680 -->
+**Status:** Done (2026-09-18). Committed `http-api.md` includes
+`| POST | /introspect |`; `test_gen_reference` asserts generator + on-disk.
+
 ---
 
 ## How to update
