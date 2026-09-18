@@ -45,6 +45,7 @@ def run_doctor(
     results.append(_check_python())
     results.append(_check_config(cfg))
     results.append(_check_config_keys())
+    results.append(_check_master_key_overlap(cfg))
     results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_mlx(cfg, httpx_client))
@@ -112,6 +113,27 @@ def _check_config_keys() -> CheckResult:
         ok=False,
         optional=True,
         detail=f"unknown keys: {shown}{extra} — run: daari config validate",
+    )
+
+
+def _check_master_key_overlap(settings: Settings) -> CheckResult:
+    """Warn when a rotation overlap has more than two master keys (#711)."""
+    count = len(settings.server.master_keys())
+    if count <= 2:
+        return CheckResult(
+            name="master_keys",
+            ok=True,
+            detail=f"{count} active",
+            optional=True,
+        )
+    return CheckResult(
+        name="master_keys",
+        ok=False,
+        detail=(
+            f"{count} master keys active — overlap should be temporary; "
+            "remove the retired key after clients roll"
+        ),
+        optional=True,
     )
 
 
@@ -495,7 +517,7 @@ def _check_metrics_auth(
             detail="disabled (observability.prometheus=false)",
             optional=True,
         )
-    api_key = str(getattr(settings.server, "api_key", "") or "").strip()
+    api_key = settings.server.primary_master_key()
     if not api_key:
         return CheckResult(
             name="metrics_auth",

@@ -72,7 +72,8 @@ class ServerSettings(BaseModel):
     # When set, all endpoints except health checks require this key via
     # Authorization: Bearer or x-api-key (issue #86 — tunnel exposure).
     # Virtual keys (issue #111) are accepted alongside this master key.
-    api_key: str = ""
+    # A list is an overlap set for rotation (#711): any entry is accepted.
+    api_key: str | list[str] = ""
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
     sse_keepalive_seconds: float = Field(
         default=10.0,
@@ -84,6 +85,15 @@ class ServerSettings(BaseModel):
             "timeouts from dropping slow-to-first-token streams. 0 disables."
         ),
     )
+
+    def master_keys(self) -> list[str]:
+        from daari.server.auth import normalize_master_keys
+
+        return normalize_master_keys(self.api_key)
+
+    def primary_master_key(self) -> str:
+        keys = self.master_keys()
+        return keys[0] if keys else ""
 
 
 class ModelsSettings(BaseModel):

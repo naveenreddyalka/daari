@@ -88,6 +88,7 @@ nav:
           - Live benchmark: developer/guides/observability/live-benchmark.md
       - Operations:
           - Doctor and health: developer/guides/operations/doctor-health.md
+          - Master key rotation: developer/guides/operations/master-key-rotation.md
           - Docker Compose: developer/guides/operations/docker-compose.md
           - Capacity and Helm: developer/guides/operations/capacity-helm.md
           - Upgrade and config migration: developer/guides/operations/upgrade.md

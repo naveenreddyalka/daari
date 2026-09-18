@@ -3242,6 +3242,15 @@ request (SQLite by default, Postgres when `observability.backend` is postgres).
 prunes them. Off by default, the day ledger is unchanged. Covered by
 `tests/unit/test_spend_export.py`.
 
+### Master key overlap rotation ([#711](https://github.com/naveenreddyalka/daari/issues/711))
+
+<!-- tracking:#711 -->
+**Status:** Done (2026-09-18). `server.api_key` accepts a string or a list.
+Every entry is checked with a constant-time compare. `secret://` refs resolve
+per entry. An `auth.master_key_overlap` audit row stores the count, never the
+secrets. `daari doctor` warns when more than two keys are active. Covered by
+`tests/unit/test_master_key_overlap.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
