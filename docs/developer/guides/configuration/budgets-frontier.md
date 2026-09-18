@@ -301,7 +301,7 @@ TTL or `5m` keeps today's rate (write tokens at `input_per_1m`).
 
 ## Providers / fallback
 
-Configure `frontier.providers` (ordered list) for OpenAI-compatible bases, Anthropic, OpenRouter, etc. Circuit breakers and key rotation ship with the L6 pool. A provider whose `provider` is `anthropic`/`claude`, or whose `base_url` contains `anthropic.com`, is sent native Messages API payloads (`POST …/messages`, `x-api-key`) rather than an OpenAI `/chat/completions` body.
+Configure `frontier.providers` (ordered list) for OpenAI-compatible bases, Anthropic, OpenRouter, etc. Circuit breakers and key rotation ship with the L6 pool. Each entry may set `timeout_s`, `retry_attempts`, and `retry_backoff_s`; unset fields inherit `upstream.frontier_timeout_seconds` / `upstream.retry`. A provider's exhausted retries advance the chain, and one slot's timeout does not consume the next slot's budget. `POST /v1/daari/route/preview` and `daari route preview` show the resolved policy on `policy` / `chain`. A provider whose `provider` is `anthropic`/`claude`, or whose `base_url` contains `anthropic.com`, is sent native Messages API payloads (`POST …/messages`, `x-api-key`) rather than an OpenAI `/chat/completions` body.
 
 Clients may send OpenRouter's `provider` object (`zdr`, `sort`, `order`, `max_price`, …). daari stores it on the request, passes it through when the L6 slot is OpenRouter, and **fails closed** (HTTP 400) if `zdr: true` and no configured slot declares `zdr: true`. Chosen provider, `usage.cost`, and cached tokens land in `daari_meta`.
 
@@ -318,6 +318,9 @@ frontier:
       model: openrouter/auto   # or anthropic/claude-sonnet-4.5, etc.
       api_key_env: OPENROUTER_API_KEY
       zdr: false               # set true if the key is ZDR-only
+      # timeout_s: 30          # optional; else upstream.frontier_timeout_seconds
+      # retry_attempts: 2      # optional; else upstream.retry.attempts
+      # retry_backoff_s: 0.5   # optional; else upstream.retry.base_delay_ms / 1000
 ```
 
 `OPENROUTER_API_KEY` (or `DAARI_FRONTIER_API_KEY`) is BYOK — never committed. Outbound calls send `HTTP-Referer` and `X-Title: daari` for app attribution. L6 `daari_meta` records `cost_usd` (upstream) and `daari_cost_usd: 0`.

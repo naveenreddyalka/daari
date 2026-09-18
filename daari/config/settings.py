@@ -104,6 +104,20 @@ class ModelsSettings(BaseModel):
     # Per-model capability tags (tools/json/vision/long_context). Empty →
     # stock defaults in CapabilityCatalog (issue #113).
     capabilities: dict[str, list[str]] = Field(default_factory=dict)
+    timeout_s: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Optional per-tier request timeout in seconds (keys L3/L4/L5). "
+            "Unset tiers use `upstream.local_timeout_seconds`."
+        ),
+    )
+
+    def timeout_for(self, tier: str, default: float) -> float:
+        for key in (tier, tier.upper(), tier.lower()):
+            value = self.timeout_s.get(key)
+            if value is not None:
+                return float(value)
+        return float(default)
 
 
 class OllamaSettings(BaseModel):
@@ -193,6 +207,32 @@ class FrontierProviderConfig(BaseModel):
     # Free-form residency label (e.g. us, eu). Matched against virtual-key /
     # team region_pin when selecting L6 slots (#466).
     region: str = ""
+    # Per-provider upstream policy (#712). Unset fields inherit
+    # `upstream.frontier_timeout_seconds` / `upstream.retry`.
+    timeout_s: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Request timeout in seconds for this provider. Unset uses "
+            "`upstream.frontier_timeout_seconds`."
+        ),
+    )
+    retry_attempts: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Total attempts for this provider, counting the first. Unset uses "
+            "`upstream.retry.attempts`. `0` or `1` disables retries."
+        ),
+    )
+    retry_backoff_s: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "First backoff in seconds for this provider. Unset uses "
+            "`upstream.retry.base_delay_ms` / 1000."
+        ),
+    )
 
 
 class FrontierSettings(RuntimeSettings):
@@ -203,7 +243,15 @@ class FrontierSettings(RuntimeSettings):
     base_url: str = "https://api.openai.com/v1"
     # Ordered failover list (issue #109). Empty → use the scalar
     # provider/base_url/model + resolve_frontier_api_key() shorthand.
-    providers: list[FrontierProviderConfig] = Field(default_factory=list)
+    # Each entry may set timeout_s / retry_attempts / retry_backoff_s (#712).
+    providers: list[FrontierProviderConfig] = Field(
+        default_factory=list,
+        description=(
+            "Ordered L6 failover chain. Optional per-entry `timeout_s`, "
+            "`retry_attempts`, and `retry_backoff_s` fall back to "
+            "`upstream.frontier_timeout_seconds` / `upstream.retry` when unset."
+        ),
+    )
     # 0 = unlimited. When today's estimated spend reaches the cap, daari stops
     # escalating to L6 and serves the best local answer instead.
     daily_budget_usd: float = Field(default=0.0, ge=0.0)

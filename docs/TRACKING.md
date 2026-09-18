@@ -3251,6 +3251,17 @@ per entry. An `auth.master_key_overlap` audit row stores the count, never the
 secrets. `daari doctor` warns when more than two keys are active. Covered by
 `tests/unit/test_master_key_overlap.py`.
 
+### Per-provider and per-tier retry/timeout ([#712](https://github.com/naveenreddyalka/daari/issues/712))
+
+<!-- tracking:#712 -->
+**Status:** Done (2026-09-18). Each `frontier.providers` entry accepts optional
+`timeout_s`, `retry_attempts`, and `retry_backoff_s`; unset fields inherit
+`upstream.frontier_timeout_seconds` / `upstream.retry`. `models.timeout_s`
+overrides the local timeout per L3/L4/L5. Failover spends one hop's budget
+then advances; one timeout does not shrink the next slot. Route preview
+returns `policy` and `chain`. Covered by
+`tests/unit/test_provider_retry_timeout.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
