@@ -214,3 +214,15 @@ def test_grafana_dashboard_includes_tier_shadow_panel():
     assert any("daari_tier_shadow_samples_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
 
+def test_grafana_dashboard_includes_boundary_decisions_panel():
+    """Product-boundary decision counter should be visible on the overview (#690)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Boundary decisions" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a boundary-decisions panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_boundary_decisions_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+

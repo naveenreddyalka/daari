@@ -3172,6 +3172,14 @@ intro mentions the panel. Covered by `tests/unit/test_grafana_dashboard.py`.
 `daari_boundary_decisions_total{stage,label}` in `render_prometheus()`. Covered
 by `tests/unit/test_prometheus.py`.
 
+### Grafana boundary decisions panel ([#690](https://github.com/naveenreddyalka/daari/issues/690))
+
+<!-- tracking:#690 -->
+**Status:** Done (2026-09-18). Overview dashboard adds **Boundary decisions
+by stage** on `daari_boundary_decisions_total`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+
 ---
 
 ## How to update
