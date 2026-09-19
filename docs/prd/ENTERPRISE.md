@@ -11,29 +11,24 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-18 late)
+## Where daari stands (verified in-tree, 2026-09-19)
 
-Fleet/HA, tenancy, and the soft-budget / observability drain are closed.
-The evening governance set (model allowlists, chargeback rows, config
-validate, master-key overlap, per-provider retry) is already on the backlog
-and is not restated below.
+Fleet/HA, tenancy, governance, Responses cancel/delete, local ASR,
+request-rate KEDA, and UTC-day `rpd` are shipped. Idempotency-Key remains
+open with an agent already on it and is not restated below.
 
-**Outward (this run):** LiteLLM **v1.101.0** (15 Sep) is still the stable bar
-(heuristic auto-router, semantic MCP tool search, off-peak pricing, separate
-metrics port). **v1.102.0-rc.1 / rc.2** is not stable: auto-router controls,
-native OCR, request/token autoscaling, and stricter Responses-ID auth for
-retrieve / cancel / delete. Portkey **v2.23.0** (18 Sep) adds ElevenLabs
-speech endpoints and a streaming-usage default — provider breadth, not a new
-gateway core (daari already honors `include_usage`). Kong AI Gateway **2.0.3**
-(31 Aug) is quiet. Ollama **v0.34.2** (15 Sep) is first-run setup + llama.cpp;
-tool search and response compaction from v0.34.0 are already in the facade.
-vLLM **0.29** (9 Sep) exposes `/v1/audio/transcriptions`. OpenRouter's hosted
-shell/Files API is a cloud sandbox — non-goal.
+**Outward (this run):** LiteLLM stable is still **v1.101.0** (15 Sep).
+**v1.102.0** is not stable (rc.1, 13 Sep): auto-router controls, native OCR,
+and request/token autoscaling. Portkey **v2.23.0** (18 Sep) is unchanged
+(ElevenLabs speech is cloud-only). Kong AI Gateway **2.0.3** (31 Aug) is
+quiet. Ollama **v0.34.2** (15 Sep) is llama.cpp only; no v0.35. vLLM **0.29**
+transcriptions are already the local ASR path. OpenRouter hosted shell/Files
+stays a non-goal.
 
-**Inward theme:** gateway lifecycle and spend safety. Stored Responses can be
-fetched but not cancelled or deleted. No `Idempotency-Key`. No audio
-transcription route (do not add an ElevenLabs dependency; local ASR or 501).
-Helm HPA scales on CPU only. Rate limits are a 60-second rpm/tpm window.
+**Inward theme:** the day cap and the new audio route are not finished as
+operator surfaces. A daily-cap 429 still advertises `Retry-After: 1`.
+Transcriptions skip the model allowlist. Doctor never probes ASR. Stats and
+per-key scrapes do not show `rpd` remaining (team gauges do).
 
 ---
 
@@ -41,27 +36,26 @@ Helm HPA scales on CPU only. Rate limits are a 60-second rpm/tpm window.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Responses cancel + delete** — `GET /v1/responses/{id}` and background jobs exist; no cancel or delete on SQLite or Postgres | 4 | 2 | LiteLLM 1.102 RC (ID auth on cancel/delete) | The store is on the operator's disk; cancel stops a runaway local-or-frontier job without a cloud control plane | File |
-| 2 | **`Idempotency-Key` on chat + Responses** — retries re-route and can double-charge L6 | 4 | 2 | OpenAI / Portkey | Replay the stored result (often a local tier) instead of paying frontier twice | File |
-| 3 | **`POST /v1/audio/transcriptions`** — no `/v1/audio` route; vLLM 0.29 and LiteLLM expose it. Portkey v2.23's ElevenLabs path is cloud-only | 4 | 3 | vLLM, LiteLLM | Audio stays on the box when a local ASR backend is configured; 501 rather than a silent cloud upload | File |
-| 4 | **Request-rate autoscaling** — Helm HPA is CPU-only; `daari_requests_total` is already exported | 3 | 2 | LiteLLM 1.102 RC | Cache-heavy router traffic is not CPU-bound; scale on the counter daari already owns | File |
-| 5 | **Daily request cap (rpd)** beside rpm/tpm — `WINDOW_SECONDS` is hard-coded to 60 | 3 | 2 | Portkey (rpd / weekly windows) | A local gateway can enforce a calendar-day cap without a cloud quota service | File |
-| 6 | **Access-group budgets / multiproc metrics / WIF / A2A / SOC 2 / admin UI** | 2–3 | 3–5 | LiteLLM / Kong / cloud | Watch until local demand; allowlists and team budgets already exist or are queued | Watch |
+| 1 | **Daily-cap `Retry-After`** — rpd 429 sets `retry_after` to 1s while `reset_epoch` is the next UTC day | 4 | 1 | Portkey (window reset on daily limits) | The day counter is already local; a true wait stops a retry storm on the on-box pool | File |
+| 2 | **Allowlist on transcriptions** — chat/embeddings/Responses 403; `POST /v1/audio/transcriptions` does not | 4 | 2 | LiteLLM (model access on every inference route) | Block a non-allowlisted or frontier ASR upload before the file leaves the machine | File |
+| 3 | **Doctor ASR probe** — no check for `asr.base_url` or a fallback with no frontier key | 3 | 2 | vLLM / whisper.cpp health | Catch a dead local ASR process at `daari doctor` instead of the first upload | File |
+| 4 | **Team rpd on stats + dashboard** — gauges exist for Prometheus only | 3 | 2 | LiteLLM dashboard | Remaining day cap is already counted locally; the dashboard should show it | File |
+| 5 | **Per-key rpd scrape** — team series only; key name, never the secret | 3 | 2 | LiteLLM per-key gauges | Alert on one laptop key without shipping key material to a cloud vendor | File |
+| 6 | **Idempotency-Key / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | LiteLLM / cloud | Idempotency is already in progress; the rest stay deferred. No ElevenLabs SDK | Watch |
 
-Pruned this run: evening rows 1–5 (already queued) and the evening audio watch
-row (promoted to row 3 as local-first transcription, not a new speech vendor).
-OCR, realtime voice, and hosted shell/Files stay non-goals (new runtime deps
-or a cloud sandbox).
+Pruned this run: Responses cancel/delete, local transcriptions, KEDA
+request-rate autoscaling, and the rpd cap itself (all shipped). OCR, realtime
+voice, and hosted shell/Files stay non-goals.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Responses lifecycle** — cancel in-flight background jobs and delete stored objects under the same tenancy as GET.
-2. **Idempotent writes** — one `Idempotency-Key` replays chat and Responses without a second route.
-3. **Local-first audio** — OpenAI transcriptions shape, local ASR first, no new runtime dependency.
-4. **Scale on requests, not CPU** — optional chart autoscaling from `daari_requests_total` (off by default).
-5. **Day-scoped abuse caps** — rpd next to rpm/tpm so a key cannot run the minute window all day.
+1. **Honest daily-cap retry** — `Retry-After` on an rpd 429 waits until the UTC day resets.
+2. **Allowlists cover audio** — the same 403 as chat, before any ASR upstream call.
+3. **Doctor knows ASR** — warn on an unreachable local base URL or a fallback with no key.
+4. **Day cap on the dashboard** — team rpd remaining on `/v1/daari/stats` and the web UI.
+5. **Per-key rpd series** — scrape remaining for keys that opted into a day cap.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying ask.
 
@@ -69,6 +63,11 @@ Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying as
 
 ## Changelog
 
+- **2026-09-19** — Prior lifecycle/audio/KEDA/rpd rows shipped. Outward flat:
+  LiteLLM v1.101.0 stable (v1.102.0 still RC), Portkey v2.23.0, Kong 2.0.3,
+  Ollama v0.34.2, no v0.35. Inward: day-cap retry, transcription allowlists,
+  doctor ASR, stats/dashboard rpd, per-key rpd scrape. Idempotency left in
+  progress, not refiled.
 - **2026-09-18 (late)** — Evening governance/chargeback set already queued, so
   this run moved on. Outward: LiteLLM v1.101.0 stable; v1.102.0 still RC
   (Responses cancel/delete auth, request-rate autoscale). Portkey v2.23.0
