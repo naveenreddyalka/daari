@@ -25,6 +25,7 @@ from daari.gateway.embeddings_api import (
 )
 from daari.gateway.internal import ContentImage, InternalRequest, Message, RequestMeta
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.disconnect import note_request_cancelled
 from daari.gateway.streaming import NDJSON_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable
@@ -284,6 +285,9 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                         ctx.router.stream_openai_chunks(internal),
                         interval_seconds=ctx.settings.server.sse_keepalive_seconds,
                         frame=NDJSON_KEEPALIVE_FRAME,
+                        on_cancel=lambda: note_request_cancelled(
+                            ctx.metrics, "stream", model=client_model
+                        ),
                     ):
                         if sse_chunk == NDJSON_KEEPALIVE_FRAME:
                             yield sse_chunk

@@ -46,6 +46,11 @@ from daari.gateway.embeddings_api import (
     openai_embeddings_payload,
     resolve_embedding_model,
 )
+from daari.gateway.disconnect import (
+    ClientDisconnected,
+    await_unless_disconnected,
+    note_request_cancelled,
+)
 from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.request_log import log_gateway_event
 from daari.observability.tokens import estimate_tokens, response_token_usage
@@ -735,6 +740,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         async for chunk in stream_with_keepalive(
                             ctx.router.stream_openai_chunks(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                            on_cancel=lambda: note_request_cancelled(
+                                ctx.metrics, "stream", model=body.model
+                            ),
                         ):
                             if '"delta": {"content":' in chunk or '"delta":{"content":' in chunk:
                                 content_chars += 1
@@ -760,7 +768,23 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 )
 
             try:
-                result = await ctx.router.route(internal)
+                result = await await_unless_disconnected(
+                    request,
+                    ctx.router.route(internal),
+                    metrics=ctx.metrics,
+                    phase="chat",
+                    model=body.model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             except ZdrUnavailable as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except RegionUnavailable as exc:

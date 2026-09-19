@@ -28,6 +28,11 @@ from daari.gateway.internal import InternalRequest, InternalResponse, Message, R
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.response_store import ResponseStore
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.disconnect import (
+    ClientDisconnected,
+    await_unless_disconnected,
+    note_request_cancelled,
+)
 from daari.gateway.streaming import SSE_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
@@ -528,7 +533,23 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 return queued
 
             try:
-                result = await ctx.router.route(internal)
+                result = await await_unless_disconnected(
+                    request,
+                    ctx.router.route(internal),
+                    metrics=ctx.metrics,
+                    phase="responses",
+                    model=internal.model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
@@ -663,6 +684,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 ctx.router.stream_openai_chunks(internal),
                 interval_seconds=ctx.settings.server.sse_keepalive_seconds,
                 frame=SSE_KEEPALIVE_FRAME,
+                on_cancel=lambda: note_request_cancelled(
+                    ctx.metrics, "stream", model=internal.model
+                ),
             ):
                 if chunk == SSE_KEEPALIVE_FRAME:
                     yield chunk

@@ -3423,6 +3423,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#765 -->
 **Status:** Done (2026-09-19). Multipart `POST /v1/audio/transcriptions` charges TPM from `len(file_bytes) // 4` instead of 1. JSON chat and embeddings still use the character estimate. A TPM denial is still 429 with `Retry-After`. Covered by `tests/unit/test_rate_limit.py`.
 
+### Client disconnect cancels upstream ([#769](https://github.com/naveenreddyalka/daari/issues/769))
+
+<!-- tracking:#769 -->
+**Status:** Done (2026-09-19). Non-streaming chat, Anthropic, and Responses calls cancel the router task when the client disconnects, so the executor sees `CancelledError`. Closing a stream stops the upstream generator and records `daari_cancelled_requests_total{phase}` plus a `request_cancelled` gateway event. Cancelled requests do not add a second ledger row. Covered by `tests/unit/test_client_disconnect.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -327,4 +327,15 @@ def render_prometheus(
                 f"daari_mcp_tool_calls_total{_labels(tool=tool, outcome=outcome)} {int(count)}"
             )
 
+    cancelled = snap.get("cancelled") or {}
+    if cancelled:
+        lines.append(
+            "# HELP daari_cancelled_requests_total Client-abandoned requests, by phase."
+        )
+        lines.append("# TYPE daari_cancelled_requests_total counter")
+        for phase, count in sorted(cancelled.items()):
+            lines.append(
+                f"daari_cancelled_requests_total{_labels(phase=phase)} {int(count)}"
+            )
+
     return "\n".join(lines) + "\n"

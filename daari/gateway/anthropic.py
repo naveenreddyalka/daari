@@ -15,6 +15,11 @@ from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images, extract_thinking_blocks
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.disconnect import (
+    ClientDisconnected,
+    await_unless_disconnected,
+    note_request_cancelled,
+)
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.cost_headers import (
     DeferredHeadersStreamingResponse,
@@ -366,6 +371,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         async for event in stream_with_keepalive(
                             ctx.router.stream_anthropic_events(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                            on_cancel=lambda: note_request_cancelled(
+                                ctx.metrics, "stream", model=body.model
+                            ),
                         ):
                             yield event
                     except Exception as exc:
@@ -418,7 +426,23 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 )
 
             try:
-                result = await ctx.router.route(internal)
+                result = await await_unless_disconnected(
+                    request,
+                    ctx.router.route(internal),
+                    metrics=ctx.metrics,
+                    phase="anthropic",
+                    model=body.model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             except ZdrUnavailable as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
