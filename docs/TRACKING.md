@@ -3413,6 +3413,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#763 -->
 **Status:** Done (2026-09-19). `ollama.baseUrl` sets `DAARI_OLLAMA__BASE_URL` for the embedder and L1. Empty leaves the image default. Distinct from `orgPool`. Covered by `tests/unit/test_helm_chart.py`.
 
+### Doctor embed probe ([#764](https://github.com/naveenreddyalka/daari/issues/764))
+
+<!-- tracking:#764 -->
+**Status:** Done (2026-09-19). When L1 is on, `daari doctor` posts one embed request and fails the check if the endpoint errors or returns no vector. L1 off skips the probe. Covered by `tests/unit/test_doctor_embeddings.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
