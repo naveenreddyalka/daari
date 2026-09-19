@@ -519,6 +519,24 @@ def _openai_completion_body(
     return payload.model_dump(exclude_none=True)
 
 
+def _stats_team_rate_limits(request: Request) -> list[dict[str, Any]]:
+    """Team rpm/tpm/rpd remaining for the dashboard. Empty when none are configured."""
+    limiter = getattr(request.app.state, "rate_limiter", None)
+    if limiter is None or not hasattr(limiter, "team_rate_gauges"):
+        return []
+    ctx = getattr(request.app.state, "ctx", None)
+    store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+        ctx, "virtual_key_store", None
+    )
+    list_teams = getattr(store, "list_teams", None)
+    if not callable(list_teams):
+        return []
+    try:
+        return list(limiter.team_rate_gauges(list_teams()) or [])
+    except Exception:
+        return []
+
+
 class OpenAIGatewayAdapter(GatewayAdapter):
     id = "openai"
 
@@ -999,6 +1017,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "backend_summary": backend_summary,
                 "soft_warnings": full.get("soft_warnings") or {},
                 "rejects": full.get("rejects") or {},
+                "team_rate_limits": _stats_team_rate_limits(request),
             }
 
         @router.get("/v1/daari/traces")
