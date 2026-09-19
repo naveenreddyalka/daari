@@ -134,6 +134,11 @@ orgPool:
 ollama:
   baseUrl: ""
 
+# Local OpenAI-compatible speech-to-text (vLLM, whisper.cpp). Empty leaves
+# POST /v1/audio/transcriptions unconfigured (501) instead of a cloud ASR API.
+asr:
+  baseUrl: ""
+
 env:
   DAARI_SERVER__HOST: "0.0.0.0"
   DAARI_OBSERVABILITY__PROMETHEUS: "true"

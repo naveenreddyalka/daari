@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (request deadline across hops — [#771](https://github.com/naveenreddyalka/daari/issues/771))
+> Last updated: 2026-09-19 (Helm local ASR base URL — [#757](https://github.com/naveenreddyalka/daari/issues/757))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3437,6 +3437,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#771 -->
 **Status:** Done (2026-09-19). Optional `X-Daari-Deadline-Ms` (wins) and `upstream.request_deadline_seconds` bound the escalation chain. Each upstream call uses `min(tier timeout, remaining)`; a spent budget returns 504 naming the deadline, records `daari_request_deadline_exceeded_total`, and does not call frontier. Streaming applies the budget to time-to-first-token only. Covered by `tests/unit/test_request_deadline.py`.
+
+### Helm local ASR base URL ([#757](https://github.com/naveenreddyalka/daari/issues/757))
+
+<!-- tracking:#757 -->
+**Status:** Done (2026-09-19). `asr.baseUrl` (empty by default) sets `DAARI_ASR__BASE_URL` on the Deployment when non-empty, so a cluster can point transcriptions at an on-box whisper/vLLM server. Covered by `tests/unit/test_helm_chart.py`.
 
 ## How to update
 

@@ -377,6 +377,24 @@ class TestHelmOllamaBaseUrl:
         )
 
 
+class TestHelmAsrBaseUrl:
+    def test_asr_base_url_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ASR__BASE_URL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["asr"]["baseUrl"] == ""
+
+    def test_asr_base_url_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "asr.baseUrl=http://whisper.internal:8000/v1",
+        )
+        assert re.search(
+            r'name: DAARI_ASR__BASE_URL\s+value: "http://whisper.internal:8000/v1"',
+            rendered,
+        )
+
+
 class TestHelmNotesServiceMonitorAndOrgPool:
     def test_notes_omit_servicemonitor_and_org_pool_by_default(
         self, helm_available: None
