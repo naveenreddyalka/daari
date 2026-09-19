@@ -3403,6 +3403,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#768 -->
 **Status:** Done (2026-09-19). Virtual keys and teams take an optional `cache_scope` (`global` default, `team`, `key`). Team and key scopes fold `team_id` or `key_id` into L0, Redis L0, and L1; `global` keeps today's cache hashes. Covered by `tests/unit/test_cache_scope.py`.
 
+### Embed and ASR latency ([#762](https://github.com/naveenreddyalka/daari/issues/762))
+
+<!-- tracking:#762 -->
+**Status:** Done (2026-09-19). Embedding cache misses and local or frontier transcriptions record a positive `latency_ms` on the `embed`, `asr`, and `L6` histograms. Covered by `tests/unit/test_embeddings.py` and `tests/unit/test_audio_transcriptions.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
