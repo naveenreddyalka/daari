@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (daily-cap Retry-After — [#738](https://github.com/naveenreddyalka/daari/issues/738))  
+> Last updated: 2026-09-19 (doctor ASR probe — [#740](https://github.com/naveenreddyalka/daari/issues/740))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3352,6 +3352,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#738 -->
 **Status:** Done (2026-09-19). An `rpd` 429 sets `Retry-After` to the seconds until the UTC day boundary. rpm/tpm still use `rate_limit.retry_after_seconds`.
+
+### Doctor ASR probe ([#740](https://github.com/naveenreddyalka/daari/issues/740))
+
+<!-- tracking:#740 -->
+**Status:** Done (2026-09-19). `daari doctor` warns when `asr.base_url` is unreachable and when `asr.frontier_fallback` is set without frontier or a resolvable key. Unconfigured ASR stays quiet. Covered by `tests/unit/test_doctor_asr.py`.
 
 ## How to update
 

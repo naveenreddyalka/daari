@@ -49,6 +49,7 @@ def run_doctor(
     results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_mlx(cfg, httpx_client))
+    results.append(_check_asr(cfg, httpx_client))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
@@ -981,6 +982,71 @@ def _check_mlx(settings: Settings, client: httpx.Client | None) -> CheckResult:
     finally:
         if own_client:
             http.close()
+
+
+def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
+    """Local ASR reachability. Optional; unconfigured transcriptions stay 501."""
+    asr = settings.asr
+    base = str(asr.base_url or "").strip().rstrip("/")
+    if base:
+        own_client = client is None
+        http = client or httpx.Client(timeout=3.0)
+        url = f"{base}/models"
+        try:
+            response = http.get(url)
+        except Exception as exc:
+            return CheckResult(
+                name="asr",
+                ok=False,
+                detail=f"unreachable at {base}: {exc}",
+                optional=True,
+            )
+        finally:
+            if own_client:
+                http.close()
+        if response.status_code == 200:
+            return CheckResult(
+                name="asr",
+                ok=True,
+                detail=f"reachable at {base}",
+                optional=True,
+            )
+        return CheckResult(
+            name="asr",
+            ok=False,
+            detail=f"unreachable at {base} (HTTP {response.status_code})",
+            optional=True,
+        )
+    if asr.frontier_fallback:
+        if not settings.frontier.enabled:
+            return CheckResult(
+                name="asr",
+                ok=False,
+                detail="asr.frontier_fallback is true but frontier.enabled is false",
+                optional=True,
+            )
+        from daari.gateway.transcriptions import resolve_asr_target
+
+        target = resolve_asr_target(settings)
+        if target is None or not target.api_key:
+            return CheckResult(
+                name="asr",
+                ok=False,
+                detail="asr.frontier_fallback is true but no frontier API key resolves",
+                optional=True,
+            )
+        return CheckResult(
+            name="asr",
+            ok=True,
+            detail="frontier fallback configured",
+            optional=True,
+        )
+    return CheckResult(
+        name="asr",
+        ok=True,
+        detail="not configured (POST /v1/audio/transcriptions returns 501)",
+        optional=True,
+    )
 
 
 def _check_org_cache(

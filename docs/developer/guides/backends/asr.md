@@ -13,7 +13,7 @@ asr:
   frontier_fallback: false   # default — never upload audio implicitly
 ```
 
-Leave `base_url` empty and the route returns **501**. `frontier_fallback` stays off so existing installs do not start sending meetings to a hosted API. Set it to `true` only when `frontier.enabled` is true and a frontier key is configured; daari then forwards one request to that frontier base (the first provider in `frontier.providers`, otherwise `frontier.base_url`).
+Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet in that case. It warns when `asr.base_url` is set but `GET {base}/models` is unreachable, and when `frontier_fallback` is true while frontier is disabled or no API key resolves. `frontier_fallback` stays off so existing installs do not start sending meetings to a hosted API. Set it to `true` only when `frontier.enabled` is true and a frontier key is configured; daari then forwards one request to that frontier base (the first provider in `frontier.providers`, otherwise `frontier.base_url`).
 
 ## Request
 
