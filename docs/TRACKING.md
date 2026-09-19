@@ -3308,6 +3308,14 @@ round-trips it. A deny is 429 naming `rpd`. Covered by
 `daari_boundary_decisions_total` and `metrics-prometheus.md`. Covered by
 `tests/unit/test_boundaries_docs.py`.
 
+### Document escalations and errors series ([#703](https://github.com/naveenreddyalka/daari/issues/703))
+
+<!-- tracking:#703 -->
+**Status:** Done (2026-09-19). metrics-prometheus intro names the Grafana
+**Escalations & errors** panel, and the series table rows
+`daari_escalations_total` with companion `daari_errors_total`. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
