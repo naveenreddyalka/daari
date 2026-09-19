@@ -537,6 +537,24 @@ def _stats_team_rate_limits(request: Request) -> list[dict[str, Any]]:
         return []
 
 
+def _stats_key_rate_limits(request: Request) -> list[dict[str, Any]]:
+    """Per-key rpd remaining. Empty when no key opted into a day cap."""
+    limiter = getattr(request.app.state, "rate_limiter", None)
+    if limiter is None or not hasattr(limiter, "key_rate_gauges"):
+        return []
+    ctx = getattr(request.app.state, "ctx", None)
+    store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+        ctx, "virtual_key_store", None
+    )
+    list_keys = getattr(store, "list", None)
+    if not callable(list_keys):
+        return []
+    try:
+        return list(limiter.key_rate_gauges(list_keys()) or [])
+    except Exception:
+        return []
+
+
 class OpenAIGatewayAdapter(GatewayAdapter):
     id = "openai"
 
@@ -819,9 +837,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             from daari.gateway.model_access import reject_disallowed_model
 
-            denied = reject_disallowed_model(
-                request, body.model or "daari", ctx.settings
-            )
+            denied = reject_disallowed_model(request, body.model or "daari", ctx.settings)
             if denied is not None:
                 return denied
             model = resolve_embedding_model(ctx, body.model)
@@ -1018,6 +1034,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "soft_warnings": full.get("soft_warnings") or {},
                 "rejects": full.get("rejects") or {},
                 "team_rate_limits": _stats_team_rate_limits(request),
+                "key_rate_limits": _stats_key_rate_limits(request),
             }
 
         @router.get("/v1/daari/traces")

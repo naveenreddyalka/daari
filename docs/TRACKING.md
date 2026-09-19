@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (per-key rpd scrape — [#742](https://github.com/naveenreddyalka/daari/issues/742))
+> Last updated: 2026-09-19 (per-key rpd on stats — [#749](https://github.com/naveenreddyalka/daari/issues/749))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3372,6 +3372,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#742 -->
 **Status:** Done (2026-09-19). Prometheus emits `daari_key_rate_limit_remaining` / `_limit` for keys with `rpd > 0`, labeled by key name. A scrape does not consume the cap. Covered by `tests/unit/test_prometheus.py`.
+
+### Per-key rpd on stats and dashboard ([#749](https://github.com/naveenreddyalka/daari/issues/749))
+
+<!-- tracking:#749 -->
+**Status:** Done (2026-09-19). `GET /v1/daari/stats` includes `key_rate_limits` for keys with `rpd > 0`. A stats read does not consume the cap. The dashboard renders one row per entry. Covered by `tests/unit/test_stats_key_rate_limits.py`.
 
 ## How to update
 

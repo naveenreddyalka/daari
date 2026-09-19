@@ -8,6 +8,7 @@ const tiersChartNode = document.getElementById("tiers-chart");
 const softWarningsNode = document.getElementById("soft-warnings-table");
 const rejectsNode = document.getElementById("rejects-table");
 const teamRateLimitsNode = document.getElementById("team-rate-limits-table");
+const keyRateLimitsNode = document.getElementById("key-rate-limits-table");
 const backendsNode = document.getElementById("backends-table");
 const backendSummaryTotalNode = document.getElementById("backend-summary-total");
 const backendSummaryHealthyNode = document.getElementById("backend-summary-healthy");
@@ -208,6 +209,27 @@ function renderTeamRateLimits(rows) {
   }
 }
 
+function renderKeyRateLimits(rows) {
+  if (!keyRateLimitsNode) {
+    return;
+  }
+  keyRateLimitsNode.innerHTML = "";
+  const items = Array.isArray(rows) ? rows : [];
+  if (items.length === 0) {
+    keyRateLimitsNode.innerHTML = '<tr><td colspan="4">No key rate limits.</td></tr>';
+    return;
+  }
+  for (const row of items) {
+    const tr = document.createElement("tr");
+    const key = row?.key != null ? String(row.key) : "-";
+    const kind = row?.kind != null ? String(row.kind) : "-";
+    const limit = row?.limit != null ? String(row.limit) : "-";
+    const remaining = row?.remaining != null ? String(row.remaining) : "-";
+    tr.innerHTML = `<td>${key}</td><td>${kind}</td><td>${limit}</td><td>${remaining}</td>`;
+    keyRateLimitsNode.appendChild(tr);
+  }
+}
+
 async function fetchJson(url, init = {}) {
   const headers = authHeaders(init.headers || {});
   const response = await fetch(url, { ...init, headers });
@@ -344,6 +366,7 @@ async function loadStats() {
     renderKindCounts(softWarningsNode, stats.soft_warnings, "No soft warnings yet.");
     renderKindCounts(rejectsNode, stats.rejects, "No hard rejects yet.");
     renderTeamRateLimits(stats.team_rate_limits);
+    renderKeyRateLimits(stats.key_rate_limits);
     renderBackendSummary(stats.backend_summary);
     renderBackends(stats.backends);
 
@@ -376,6 +399,7 @@ async function loadStats() {
     renderKindCounts(softWarningsNode, {}, "No soft warnings yet.");
     renderKindCounts(rejectsNode, {}, "No hard rejects yet.");
     renderTeamRateLimits([]);
+    renderKeyRateLimits([]);
     renderBackends([]);
     orgSummaryNode.textContent = "Not available";
     orgNode.textContent = "Not available";
