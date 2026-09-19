@@ -48,6 +48,7 @@ def run_doctor(
     results.append(_check_master_key_overlap(cfg))
     results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
+    results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_frontier(cfg))
@@ -293,6 +294,64 @@ def _check_ollama(
                 optional=True,
             ),
         ]
+    finally:
+        if own_client:
+            http.close()
+
+
+def _embedding_vector(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    embedding = payload.get("embedding")
+    return isinstance(embedding, list) and bool(embedding)
+
+
+def _check_embedding_endpoint(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult:
+    """Live embed call. Skipped when L1 is off; required when L1 is on (#764)."""
+    if not settings.cache.l1.enabled:
+        return CheckResult(
+            name="embedding_endpoint",
+            ok=True,
+            detail="skipped (cache.l1.enabled is false)",
+            optional=True,
+        )
+    base = settings.ollama.base_url.rstrip("/")
+    url = f"{base}/api/embeddings"
+    model = settings.cache.l1.embedding_model
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        response = http.post(url, json={"model": model, "prompt": "ok"})
+        if response.status_code != 200:
+            return CheckResult(
+                name="embedding_endpoint",
+                ok=False,
+                detail=f"embed probe failed at {url} (HTTP {response.status_code})",
+            )
+        try:
+            body = response.json()
+        except Exception:
+            body = None
+        if not _embedding_vector(body):
+            return CheckResult(
+                name="embedding_endpoint",
+                ok=False,
+                detail=f"embed probe at {url} returned no vector",
+            )
+        return CheckResult(
+            name="embedding_endpoint",
+            ok=True,
+            detail=f"embed probe ok at {url}",
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="embedding_endpoint",
+            ok=False,
+            detail=f"embed probe failed at {url}: {exc}",
+        )
     finally:
         if own_client:
             http.close()

@@ -3408,6 +3408,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#762 -->
 **Status:** Done (2026-09-19). Embedding cache misses and local or frontier transcriptions record a positive `latency_ms` on the `embed`, `asr`, and `L6` histograms. Covered by `tests/unit/test_embeddings.py` and `tests/unit/test_audio_transcriptions.py`.
 
+### Doctor embed probe ([#764](https://github.com/naveenreddyalka/daari/issues/764))
+
+<!-- tracking:#764 -->
+**Status:** Done (2026-09-19). When L1 is on, `daari doctor` posts one embed request and fails the check if the endpoint errors or returns no vector. L1 off skips the probe. Covered by `tests/unit/test_doctor_embeddings.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
