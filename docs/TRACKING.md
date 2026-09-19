@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (transcription allowlists — [#739](https://github.com/naveenreddyalka/daari/issues/739))  
+> Last updated: 2026-09-19 (transcription allowlists — [#739](https://github.com/naveenreddyalka/daari/issues/739))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3352,6 +3352,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#739 -->
 **Status:** Done (2026-09-19). `POST /v1/audio/transcriptions` returns 403 `model_not_allowed` when the resolved model (`asr.model`, else the form model) is outside the key or team allowlist, and does not call the ASR upstream. Unset allowlists stay unrestricted.
+
+### Daily-cap Retry-After ([#738](https://github.com/naveenreddyalka/daari/issues/738))
+
+<!-- tracking:#738 -->
+**Status:** Done (2026-09-19). An `rpd` 429 sets `Retry-After` to the seconds until the UTC day boundary. rpm/tpm still use `rate_limit.retry_after_seconds`.
 
 ## How to update
 
