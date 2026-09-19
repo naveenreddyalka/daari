@@ -3291,6 +3291,13 @@ a KEDA ScaledObject on `sum(rate(daari_requests_total[1m]))` with a configurable
 threshold. CPU HPA is unchanged. `minReplicaCount` above 1 is refused while
 `postgres.enabled` is false. Covered by `tests/unit/test_helm_chart.py`.
 
+### Cross-link boundary decisions in the boundaries guide ([#702](https://github.com/naveenreddyalka/daari/issues/702))
+
+<!-- tracking:#702 -->
+**Status:** Done (2026-09-19). The boundaries guide Observe subsection links
+`daari_boundary_decisions_total` and `metrics-prometheus.md`. Covered by
+`tests/unit/test_boundaries_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
