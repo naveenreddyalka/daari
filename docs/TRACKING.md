@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (request log retention — [#772](https://github.com/naveenreddyalka/daari/issues/772))
+> Last updated: 2026-09-19 (audio translations — [#758](https://github.com/naveenreddyalka/daari/issues/758))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3442,6 +3442,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#771 -->
 **Status:** Done (2026-09-19). Optional `X-Daari-Deadline-Ms` (wins) and `upstream.request_deadline_seconds` bound the escalation chain. Each upstream call uses `min(tier timeout, remaining)`; a spent budget returns 504 naming the deadline, records `daari_request_deadline_exceeded_total`, and does not call frontier. Streaming applies the budget to time-to-first-token only. Covered by `tests/unit/test_request_deadline.py`.
+
+### Audio translations ([#758](https://github.com/naveenreddyalka/daari/issues/758))
+
+<!-- tracking:#758 -->
+**Status:** Done (2026-09-19). `POST /v1/audio/translations` forwards multipart audio to `{asr.base_url}/audio/translations` and returns JSON `text`. Unconfigured ASR is 501 with no upload; `response_format` other than `json` is 400. Covered by `tests/unit/test_audio_translations.py`.
 
 ## How to update
 

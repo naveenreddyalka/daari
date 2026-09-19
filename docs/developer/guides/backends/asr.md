@@ -1,10 +1,10 @@
 # Local speech-to-text
 
-**Outcome:** `POST /v1/audio/transcriptions` stays on the machine. A cloud upload happens only when you opt in.
+**Outcome:** `POST /v1/audio/transcriptions` and `POST /v1/audio/translations` stay on the machine. A cloud upload happens only when you opt in.
 
 ## Config
 
-`asr.base_url` is an OpenAI-compatible API root (it includes `/v1`), the same shape as `frontier.base_url`. Point it at vLLM, whisper.cpp's OpenAI server, or any pool member that already serves `POST /v1/audio/transcriptions`. No Whisper or ffmpeg package is installed with daari.
+`asr.base_url` is an OpenAI-compatible API root (it includes `/v1`), the same shape as `frontier.base_url`. Point it at vLLM, whisper.cpp's OpenAI server, or any pool member that already serves `POST /v1/audio/transcriptions` and `POST /v1/audio/translations`. No Whisper or ffmpeg package is installed with daari.
 
 ```yaml
 asr:
@@ -17,7 +17,7 @@ Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet
 
 ## Request
 
-OpenAI multipart form: `file`, `model` (required unless `asr.model` is set), optional `language`, `prompt`, and `response_format=json`. The JSON body includes `text`.
+OpenAI multipart form: `file`, `model` (required unless `asr.model` is set), optional `language` (transcriptions only), `prompt`, and `response_format=json`. Translations omit `language` and forward to `{base}/audio/translations`. The JSON body includes `text`. Leave `base_url` empty and either route returns **501** without uploading. `response_format` other than `json` is **400**.
 
 Auth, virtual-key request budgets, and rate limits apply the same way as chat completions. A key or team model allowlist is checked against the resolved model (`asr.model` when set, otherwise the form `model`) and returns 403 `model_not_allowed` before any upstream call. Unset allowlists stay unrestricted. A successful transcription counts as one request.
 
