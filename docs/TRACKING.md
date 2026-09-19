@@ -3301,6 +3301,13 @@ create/update --rpd` and `team-create/update --rpd` persist it, and export/impor
 round-trips it. A deny is 429 naming `rpd`. Covered by
 `tests/unit/test_daily_request_caps.py`.
 
+### Cross-link boundary decisions in the boundaries guide ([#702](https://github.com/naveenreddyalka/daari/issues/702))
+
+<!-- tracking:#702 -->
+**Status:** Done (2026-09-19). The boundaries guide Observe subsection links
+`daari_boundary_decisions_total` and `metrics-prometheus.md`. Covered by
+`tests/unit/test_boundaries_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -41,6 +41,13 @@ python scripts/smoke_boundaries.py
 | Too many refuses | Lower thresholds or use `mode: warn`; expand `allow_topics` / `examples_in` |
 | Never refuses | Confirm `enabled: true` and restart / PATCH rebuilds engine |
 
+## Observe
+
+Boundary decisions increment `daari_boundary_decisions_total` (labels `stage`
+and `label`). The overview Grafana dashboard charts them under **Boundary
+decisions by stage**. Series definition and scrape setup:
+[metrics-prometheus.md](../observability/metrics-prometheus.md).
+
 ## Next
 
 → [Concept](../../concepts/boundaries-and-guardrails.md) · [ADR-0015](../../../adr/0015-product-boundaries.md)
