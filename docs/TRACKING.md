@@ -3418,6 +3418,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#764 -->
 **Status:** Done (2026-09-19). When L1 is on, `daari doctor` posts one embed request and fails the check if the endpoint errors or returns no vector. L1 off skips the probe. Covered by `tests/unit/test_doctor_embeddings.py`.
 
+### Audio upload TPM ([#765](https://github.com/naveenreddyalka/daari/issues/765))
+
+<!-- tracking:#765 -->
+**Status:** Done (2026-09-19). Multipart `POST /v1/audio/transcriptions` charges TPM from `len(file_bytes) // 4` instead of 1. JSON chat and embeddings still use the character estimate. A TPM denial is still 429 with `Retry-After`. Covered by `tests/unit/test_rate_limit.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

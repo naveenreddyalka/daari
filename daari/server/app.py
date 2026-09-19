@@ -10,6 +10,7 @@ from daari.auth.rate_limit import (
     RATELIMIT_WARNING_HEADER,
     RateLimiter,
     build_rate_limiter,
+    estimate_audio_upload_tokens,
     estimate_request_tokens,
     request_model,
 )
@@ -385,6 +386,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 payload = {}
         model = request_model(payload)
         tokens = estimate_request_tokens(payload)
+        if request.url.path == "/v1/audio/transcriptions":
+            audio_tokens = estimate_audio_upload_tokens(
+                raw, request.headers.get("content-type", "")
+            )
+            if audio_tokens is not None:
+                tokens = audio_tokens
         claims = getattr(request.state, "auth_claims", None)
         if claims is None:
             store = getattr(request.app.state, "virtual_key_store", None)

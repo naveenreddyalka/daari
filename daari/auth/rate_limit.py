@@ -578,6 +578,47 @@ def estimate_request_tokens(payload: dict[str, Any] | None) -> int:
     return max(1, chars // 4)
 
 
+def estimate_audio_upload_tokens(body: bytes, content_type: str) -> int | None:
+    """TPM for multipart ASR: ``len(file_bytes) // 4``. None when there is no file part.
+
+    JSON chat and embeddings stay on :func:`estimate_request_tokens`. A failed
+    parse returns None so the caller keeps the one-token fallback instead of 500.
+    """
+    if not body or "multipart/form-data" not in (content_type or "").lower():
+        return None
+    from io import BytesIO
+
+    from python_multipart.exceptions import FormParserError
+    from python_multipart.multipart import parse_form
+
+    sizes: list[int] = []
+    opened: list[Any] = []
+
+    def _on_file(uploaded: Any) -> None:
+        opened.append(uploaded)
+        name = getattr(uploaded, "field_name", None)
+        if name in (b"file", "file"):
+            sizes.append(int(getattr(uploaded, "size", 0) or 0))
+
+    try:
+        parse_form(
+            {"Content-Type": content_type.encode("latin-1", errors="replace")},
+            BytesIO(body),
+            None,
+            _on_file,
+        )
+    except (FormParserError, ValueError):
+        return None
+    finally:
+        for uploaded in opened:
+            close = getattr(uploaded, "close", None)
+            if close is not None:
+                close()
+    if not sizes:
+        return None
+    return max(1, sum(sizes) // 4)
+
+
 def request_model(payload: dict[str, Any] | None) -> str:
     if payload and isinstance(payload.get("model"), str) and payload["model"].strip():
         return payload["model"].strip()
