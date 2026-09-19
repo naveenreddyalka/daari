@@ -29,6 +29,8 @@ Each row has: timestamp, request id, key id, team id, client id, model, tier, in
 
 `cost_avoided_usd` uses `pricing.models` for the model the client asked for. Models missing from that table use `usage.frontier_price_per_1k_tokens`. Frontier (`L6`) rows keep the real cost and record $0 avoided.
 
+A successful transcription exports with `tier` `asr` when local ASR served it, or `tier` `L6` on frontier fallback. An allowlist 403 and an unconfigured 501 do not write a row.
+
 `daari prune` applies `observability.retention.spend_days` the same way it prunes traces and the day ledger. Postgres replicas share the table when `observability.backend` is `postgres`.
 
 ## Verify
