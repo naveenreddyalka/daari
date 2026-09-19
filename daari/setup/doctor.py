@@ -56,6 +56,7 @@ def run_doctor(
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
     results.append(_check_soft_budget_ratio(cfg))
+    results.append(_check_unbounded_rpd(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
@@ -269,7 +270,9 @@ def _check_ollama(
     except Exception as exc:
         return [
             CheckResult(name="ollama", ok=False, detail=f"unreachable at {base}: {exc}"),
-            CheckResult(name="model", ok=False, detail=f"{l3_model} not checked (Ollama unreachable)"),
+            CheckResult(
+                name="model", ok=False, detail=f"{l3_model} not checked (Ollama unreachable)"
+            ),
             CheckResult(
                 name="model_l4",
                 ok=False,
@@ -670,13 +673,10 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
 
     problems: list[str] = []
     if cache_backend != "redis":
-        problems.append(
-            f"cache.backend={cache_backend} (L0 + singleflight are per-pod)"
-        )
+        problems.append(f"cache.backend={cache_backend} (L0 + singleflight are per-pod)")
     if affinity and cache_backend != "redis":
         problems.append(
-            "routing.session_affinity=true without cache.backend=redis "
-            "(pins stay per-process)"
+            "routing.session_affinity=true without cache.backend=redis (pins stay per-process)"
         )
     if problems:
         return CheckResult(
@@ -724,6 +724,50 @@ def _has_request_quota_windows(settings: Settings) -> bool:
     except Exception:
         pass
     return False
+
+
+def _unbounded_rpd_names(settings: Settings) -> list[str]:
+    """Keys and teams that can hold rpm all day because rpd is unset (#732)."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return []
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception:
+        return []
+    names: list[str] = []
+    for key in store.list():
+        if int(getattr(key, "rpm", 0) or 0) > 0 and int(getattr(key, "rpd", 0) or 0) == 0:
+            names.append(f"key {key.name}")
+    try:
+        teams = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        teams = []
+    for team in teams:
+        if int(getattr(team, "rpm", 0) or 0) > 0 and int(getattr(team, "rpd", 0) or 0) == 0:
+            names.append(f"team {team.name}")
+    return names
+
+
+def _check_unbounded_rpd(settings: Settings) -> CheckResult:
+    """Warn when rpm is set and the UTC-day request cap is unlimited."""
+    names = _unbounded_rpd_names(settings)
+    if not names:
+        return CheckResult(
+            name="rpd",
+            ok=True,
+            detail="no key or team has rpm with rpd unlimited",
+            optional=True,
+        )
+    shown = ", ".join(names[:8])
+    extra = f" (+{len(names) - 8} more)" if len(names) > 8 else ""
+    return CheckResult(
+        name="rpd",
+        ok=False,
+        detail=f"rpm set and rpd unlimited (0) on {shown}{extra}",
+        optional=True,
+    )
 
 
 def _has_usd_budget_windows(settings: Settings) -> bool:

@@ -3324,6 +3324,14 @@ day cap is set, and `daari keys list` prints an `rpd` column. Zero stays
 omitted, matching rpm. Covered by `tests/unit/test_introspect.py` and
 `tests/unit/test_virtual_keys.py`.
 
+### Doctor warns when rpm has no daily cap ([#732](https://github.com/naveenreddyalka/daari/issues/732))
+
+<!-- tracking:#732 -->
+**Status:** Done (2026-09-19). `daari doctor` warns when a key or team has
+`rpm > 0` and `rpd == 0`, naming both `rpd` and the key or team. A set day
+cap, or no rpm, stays quiet. Covered by
+`tests/unit/test_doctor_soft_budget_ratio.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
