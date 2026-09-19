@@ -14,21 +14,27 @@
 ## Where daari stands (verified in-tree, 2026-09-19)
 
 Fleet/HA, tenancy, governance, Responses cancel/delete, local ASR,
-request-rate KEDA, UTC-day `rpd` (stats, scrape, Grafana, Retry-After),
-transcription allowlists, doctor ASR, and transcription chargeback rows
-are shipped. Idempotency-Key remains open with an agent already on it and
-is not restated below.
+request-rate KEDA, UTC-day `rpd`, transcription allowlists, doctor ASR,
+transcription chargeback, embedding chargeback (key and team on the row),
+and the chargeback guide's audio tiers are shipped. Idempotency-Key,
+Helm `asr.baseUrl`, and `POST /v1/audio/translations` are already queued
+and are not restated below.
 
 **Outward (this run):** LiteLLM stable is still **v1.101.0** (15 Sep).
-**v1.102.0** is not stable (rc.1, 13 Sep): auto-router controls, native OCR,
-and request/token autoscaling. Portkey **v2.23.0** and Kong **2.0.3** are
-unchanged. Ollama **v0.34.2** has no v0.35. OCR, realtime voice, and hosted
-shell/Files stay non-goals. No ElevenLabs SDK.
+**v1.102.0-rc.2** (16 Sep) only backports Responses request-param leak
+fixes. **v1.103.0-dev.2** (18 Sep) is not stable; native OCR and hosted
+speech stay non-goals. Portkey enterprise and Kong **2.0.3** (31 Aug)
+are unchanged. Ollama **v0.34.2** (15 Sep) has no v0.35. Its documented
+batch surface is `POST /api/embed` with an `input` array
+([docs](https://docs.ollama.com/api/embed)). No ElevenLabs SDK.
 
-**Inward theme:** chargeback still drops embedding traffic (no key/team on
-the row), the Helm chart cannot point a fleet at local ASR, the chargeback
-guide never names transcription tiers, and `POST /v1/audio/translations`
-is missing while transcriptions exist.
+**Inward theme:** embedding and transcription requests record `latency_ms=0`,
+so Grafana's latency histogram for those tiers is empty. The Helm chart
+can point chat at `orgPool` but the embedder still uses
+`ollama.base_url` (`127.0.0.1:11434` inside the pod). Doctor checks that
+the embedding model name is in `/api/tags` and never POSTs an embed.
+Multipart transcriptions fail JSON parse, so TPM sees 1 token. List
+embedding inputs are one HTTP call each.
 
 ---
 
@@ -36,32 +42,39 @@ is missing while transcriptions exist.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Embedding chargeback** — `POST /v1/embeddings` records `tier=embed` without key or team, so `--key` export drops it | 3 | 2 | LiteLLM (embeddings billed on the same key) | The embedder already runs locally; stamp the key already on the request | File |
-| 2 | **Helm ASR URL** — chart sets Redis/Postgres/Prometheus but not `asr.base_url` | 3 | 2 | vLLM / whisper.cpp Helm | One values key keeps audio on the cluster instead of a cloud speech API | File |
-| 3 | **Chargeback guide omits audio tiers** — spend CSV has `asr` / `L6` but the guide never says so | 2 | 1 | LiteLLM audio route in spend logs | The row is already on disk; the guide operators follow should name it | File |
-| 4 | **Audio translations** — transcriptions exist; `POST /v1/audio/translations` 404s | 3 | 3 | LiteLLM (both audio routes) | Same local ASR process; forward translations, frontier only when enabled | File |
-| 5 | **Idempotency-Key / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | LiteLLM / cloud | Idempotency is already in progress; the rest stay deferred | Watch |
+| 1 | **Embed/ASR latency is zero** — `compute_embeddings` and transcriptions call `metrics.record` with `latency_ms=0`, so `daari_request_latency_ms` for `embed` / `asr` never fills | 3 | 1 | LiteLLM (per-route latency) | Local embed and ASR only win if operators can see they are fast | File |
+| 2 | **Helm Ollama URL** — chart sets `orgPool` for chat routing but never `DAARI_OLLAMA__BASE_URL`; embeddings and L3 stay on localhost | 4 | 2 | vLLM / Ollama Helm (`OLLAMA_HOST`) | One values key keeps the embedder on the same GPU pool as chat | File |
+| 3 | **Doctor embedding probe** — L1 check stops at model name in `/api/tags`; a 500 from `/api/embed` is invisible until a request | 3 | 2 | Ollama health + LiteLLM model health | Fail at `daari doctor`, not on the first RAG call | File |
+| 4 | **Audio TPM** — multipart `POST /v1/audio/transcriptions` is not JSON, so `estimate_request_tokens` returns 1 | 3 | 2 | LiteLLM (audio counts toward limits) | Local ASR still burns GPU; TPM should see bytes, not a chat-shaped body | File |
+| 5 | **Serial embedding HTTP** — list inputs miss cache one `POST /api/embeddings` at a time; Ollama `/api/embed` accepts an array | 3 | 3 | Ollama batch embed; LiteLLM batch embeddings | One local call per batch, no hosted embedding API | File |
+| 6 | **Idempotency / translations / Helm ASR / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | LiteLLM / cloud | First three are already queued; the rest stay deferred | Watch |
 
-Pruned this run: day-cap Retry-After, transcription allowlists, doctor ASR,
-team and per-key rpd (stats, scrape, Grafana), and transcription chargeback
-rows (all shipped).
+Pruned this run: embedding chargeback rows and the chargeback guide's
+audio-tier sentence (both shipped).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Embedding rows on the key** — spend export attributes local embeddings to the virtual key and team.
-2. **Helm can point at local ASR** — `asr.baseUrl` becomes `DAARI_ASR__BASE_URL` when set.
-3. **Chargeback guide names audio** — `asr` vs `L6`, and denials write no row.
-4. **Translations beside transcriptions** — local-first `POST /v1/audio/translations`.
-5. **Idempotency** — still in progress; do not refile.
+1. **Time embed and ASR** — stats and Prometheus latency histograms show wall time, not zero.
+2. **Helm can point the embedder at the pool** — `ollama.baseUrl` becomes `DAARI_OLLAMA__BASE_URL` when set.
+3. **Doctor probes embeddings** — L1 on and the model listed, but `/api/embed` down, fails the check.
+4. **Transcription bytes count toward TPM** — a multi-kilobyte upload is not 1 token.
+5. **Batch list embeds** — cache misses in one `POST /v1/embeddings` share one Ollama call.
 
-Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying ask.
+Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR) stay deferred until a paying ask.
 
 ---
 
 ## Changelog
 
+- **2026-09-19 (embed drain)** — Embedding chargeback and the chargeback
+  guide's audio sentence shipped. Outward: LiteLLM stable still v1.101.0;
+  v1.102.0-rc.2 is a Responses leak backport; v1.103.0-dev.2 is not stable.
+  Portkey and Kong 2.0.3 flat. Ollama v0.34.2, no v0.35; `/api/embed` batch
+  is the local surface. Filing embed/ASR latency, Helm Ollama URL, doctor
+  embed probe, audio TPM, and batched embeds. Idempotency, Helm ASR, and
+  audio translations left queued.
 - **2026-09-19 (refill)** — Day-cap surfaces, transcription allowlists, doctor
   ASR, and transcription chargeback shipped. Outward still flat: LiteLLM
   v1.101.0 stable, v1.102.0 rc.1, Portkey v2.23.0, Kong 2.0.3, Ollama
