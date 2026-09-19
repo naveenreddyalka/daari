@@ -3336,3 +3336,21 @@ async def test_responses_scoped_to_creating_key(settings, tmp_path):
         )
         assert chained.status_code == 200
 
+
+@pytest.mark.asyncio
+async def test_deadline_header_is_504_before_upstream(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "deadline integration"}],
+            },
+            headers={"X-Daari-Deadline-Ms": "0", "X-Daari-No-Cache": "true"},
+        )
+    assert response.status_code == 504
+    error = response.json()["error"]
+    assert error["type"] == "request_deadline_exceeded"
+    assert "deadline" in error["message"]
+

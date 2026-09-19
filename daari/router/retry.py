@@ -218,6 +218,31 @@ async def run_upstream(
     )
 
 
+def absolute_deadline(started: float, timeout: float | None) -> float | None:
+    """Monotonic instant when `timeout` seconds elapse, or None if unbounded.
+
+    A missing or non-positive timeout is unbounded. Callers that must treat an
+    explicit zero as already expired handle that before calling this.
+    """
+    if not timeout:
+        return None
+    return started + timeout
+
+
+def exceeds_deadline(deadline: float | None, now: float, *, extra: float = 0.0) -> bool:
+    """True when `now + extra` is at or past `deadline`."""
+    if deadline is None:
+        return False
+    return now + extra >= deadline
+
+
+def remaining_seconds(deadline: float | None, now: float) -> float | None:
+    """Seconds left until `deadline`, or None when there is no deadline."""
+    if deadline is None:
+        return None
+    return deadline - now
+
+
 async def with_retries(
     operation: Callable[[], Awaitable[T]],
     *,
@@ -233,7 +258,7 @@ async def with_retries(
     """
     policy = policy or RetryPolicy()
     started = monotonic()
-    deadline = started + timeout if timeout else None
+    deadline = absolute_deadline(started, timeout)
     last: BaseException | None = None
 
     for attempt in range(1, policy.attempts + 1):
@@ -245,7 +270,7 @@ async def with_retries(
             delay = retry_after_seconds(exc)
             if delay is None:
                 delay = policy.delay_for(attempt - 1)
-            if deadline is not None and monotonic() + delay >= deadline:
+            if exceeds_deadline(deadline, monotonic(), extra=delay):
                 # Sleeping would push the retry past the caller's timeout, so the
                 # honest outcome is the failure we already have.
                 raise

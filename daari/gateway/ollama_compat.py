@@ -15,7 +15,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.embeddings_api import (
@@ -321,6 +321,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     },
                 )
             except Exception as exc:
+                from daari.router.deadline import RequestDeadlineExceeded
+
+                if isinstance(exc, RequestDeadlineExceeded):
+                    return request_deadline_response(exc)
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 

@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
-from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images, extract_thinking_blocks
@@ -263,6 +263,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
@@ -311,10 +312,13 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             if body.tools and tools_mode != "strip":
                 internal_tools = anthropic_tools_to_openai(body.tools) or None
 
+            from daari.router.deadline import RequestDeadlineExceeded, parse_deadline_ms
+
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
                 tier_cap=x_daari_tier_cap,
+                deadline_ms=parse_deadline_ms(x_daari_deadline_ms),
                 no_frontier=x_daari_no_frontier == "true",
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
@@ -458,6 +462,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc

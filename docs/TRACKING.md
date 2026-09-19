@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (chargeback transcription tiers — [#756](https://github.com/naveenreddyalka/daari/issues/756))
+> Last updated: 2026-09-19 (request deadline across hops — [#771](https://github.com/naveenreddyalka/daari/issues/771))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3432,6 +3432,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#770 -->
 **Status:** Done (2026-09-19). `ExactCache` and `RedisExactCache` delete by served model or entry hash (Redis `DELETE`, not a no-op). L1 filters on `context_key` / `answer_hash`. `POST /v1/daari/cache/invalidate` and `daari cache invalidate` return removed counts and log `cache_invalidate`. Redis `daari cache prune` says expiry is TTL and does not scan. Covered by `tests/unit/test_cache_invalidate.py`.
+
+### Request deadline across hops ([#771](https://github.com/naveenreddyalka/daari/issues/771))
+
+<!-- tracking:#771 -->
+**Status:** Done (2026-09-19). Optional `X-Daari-Deadline-Ms` (wins) and `upstream.request_deadline_seconds` bound the escalation chain. Each upstream call uses `min(tier timeout, remaining)`; a spent budget returns 504 naming the deadline, records `daari_request_deadline_exceeded_total`, and does not call frontier. Streaming applies the budget to time-to-first-token only. Covered by `tests/unit/test_request_deadline.py`.
 
 ## How to update
 

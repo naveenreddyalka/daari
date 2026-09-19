@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
-from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import extract_images
@@ -388,6 +388,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
             x_daari_latency_budget: str | None = Header(default=None, alias="X-Daari-Latency-Budget"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
@@ -405,6 +406,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
             except ValueError:
                 latency_budget_ms = None
+            from daari.router.deadline import RequestDeadlineExceeded, parse_deadline_ms
+
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
 
             store = _store_for(ctx)
             owner_key_id = _owner_key_id_from_request(request)
@@ -439,6 +443,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 tier_override=x_daari_tier_override,
                 tier_cap=x_daari_tier_cap,
                 latency_budget_ms=latency_budget_ms,
+                deadline_ms=deadline_ms,
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
             )
@@ -563,6 +568,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
