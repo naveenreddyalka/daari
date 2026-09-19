@@ -842,7 +842,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
-            vectors = await compute_embeddings(ctx, texts, model=model)
+            vectors = await compute_embeddings(ctx, texts, model=model, request=request)
             return openai_embeddings_payload(model, vectors, texts)
 
         @router.get("/v1/models")

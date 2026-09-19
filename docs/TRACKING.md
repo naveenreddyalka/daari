@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (transcription chargeback rows — [#751](https://github.com/naveenreddyalka/daari/issues/751))
+> Last updated: 2026-09-19 (embedding chargeback rows — [#755](https://github.com/naveenreddyalka/daari/issues/755))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3387,6 +3387,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#751 -->
 **Status:** Done (2026-09-19). A successful transcription writes a spend row with tier `asr` or `L6` and the caller's key and team, so chargeback export can tell local ASR from frontier fallback. Allowlist 403 and unconfigured 501 do not write a row. Covered by `tests/unit/test_audio_transcriptions.py`.
+
+### Embedding chargeback rows ([#755](https://github.com/naveenreddyalka/daari/issues/755))
+
+<!-- tracking:#755 -->
+**Status:** Done (2026-09-19). `POST /v1/embeddings` writes a spend row with tier `embed` and the caller's key and team. An unknown model returns 400 and writes no row. Covered by `tests/unit/test_embeddings.py`.
 
 ## How to update
 
