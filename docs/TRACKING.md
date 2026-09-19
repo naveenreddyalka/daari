@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (team rpd on stats — [#741](https://github.com/naveenreddyalka/daari/issues/741))
+> Last updated: 2026-09-19 (per-key rpd scrape — [#742](https://github.com/naveenreddyalka/daari/issues/742))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3367,6 +3367,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#740 -->
 **Status:** Done (2026-09-19). `daari doctor` warns when `asr.base_url` is unreachable and when `asr.frontier_fallback` is set without frontier or a resolvable key. Unconfigured ASR stays quiet. Covered by `tests/unit/test_doctor_asr.py`.
+
+### Per-key rpd scrape ([#742](https://github.com/naveenreddyalka/daari/issues/742))
+
+<!-- tracking:#742 -->
+**Status:** Done (2026-09-19). Prometheus emits `daari_key_rate_limit_remaining` / `_limit` for keys with `rpd > 0`, labeled by key name. A scrape does not consume the cap. Covered by `tests/unit/test_prometheus.py`.
 
 ## How to update
 

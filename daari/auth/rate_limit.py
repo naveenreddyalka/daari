@@ -522,6 +522,30 @@ class RateLimiter:
                 )
         return rows
 
+    def key_rate_gauges(self, keys: list[Any]) -> list[dict[str, Any]]:
+        """Scrape-time RPD remaining for keys that opted into a day cap.
+
+        Zero-increment read so a scrape does not consume the cap. The label is
+        the key name, never the secret.
+        """
+        rows: list[dict[str, Any]] = []
+        for key in keys:
+            rpd = int(getattr(key, "rpd", 0) or 0)
+            key_id = str(getattr(key, "key_id", "") or "")
+            if rpd <= 0 or not key_id:
+                continue
+            name = str(getattr(key, "name", "") or "").strip() or key_id
+            used = int(self._increment(f"rpd:{key_id}", 0, window_seconds=DAY_SECONDS))
+            rows.append(
+                {
+                    "key": name,
+                    "kind": "rpd",
+                    "limit": rpd,
+                    "remaining": max(0, rpd - used),
+                }
+            )
+        return rows
+
     def snapshot(self) -> dict[str, Any]:
         with self._state_lock:
             degraded = self._degraded

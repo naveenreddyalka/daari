@@ -194,3 +194,24 @@ def test_team_rate_limit_gauges_in_render():
     assert 'daari_team_rate_limit_limit{team="eng",kind="rpm",scope="team"} 10' in text
     assert 'daari_team_rate_limit_remaining{team="eng",kind="rpd",scope="team"} 40' in text
     assert 'daari_team_rate_limit_limit{team="eng",kind="rpd",scope="team"} 100' in text
+    assert "RPM/TPM/RPD" in text
+
+
+def test_key_rpd_gauge_omits_unlimited_and_does_not_consume(tmp_path):
+    from daari.auth.rate_limit import MemoryCounterBackend, RateLimiter
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    store = VirtualKeyStore(tmp_path / "vk.sqlite3")
+    capped = store.create("alice", rpd=5)
+    store.create("idle", rpd=0)
+    limiter = RateLimiter(MemoryCounterBackend())
+    assert limiter.check(key_id=capped.key.key_id, model="m", tokens=1, rpd=5).allowed
+    rows = limiter.key_rate_gauges(store.list())
+    assert rows == [{"key": "alice", "kind": "rpd", "limit": 5, "remaining": 4}]
+    again = limiter.key_rate_gauges(store.list())
+    assert again[0]["remaining"] == 4
+    text = render_prometheus(Metrics(), key_rate_limits=rows)
+    assert 'daari_key_rate_limit_remaining{key="alice",kind="rpd"} 4' in text
+    assert 'daari_key_rate_limit_limit{key="alice",kind="rpd"} 5' in text
+    assert "idle" not in text
+    assert capped.plaintext not in text
