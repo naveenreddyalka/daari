@@ -160,6 +160,19 @@ orgPool:
   baseUrl: http://gpu-pool.internal:11434
 ```
 
+### Embedder base URL
+
+`ollama.baseUrl` defaults to empty, so the image keeps its localhost Ollama
+default and the chart does not set `DAARI_OLLAMA__BASE_URL`. Set it when the
+embedder should leave the pod — `POST /v1/embeddings` and L1 both use
+`settings.ollama.base_url`. This is separate from `orgPool`, which only sets
+`DAARI_ROUTING__ORG_POOL__BASE_URL` for chat routing.
+
+```yaml
+ollama:
+  baseUrl: http://ollama.internal:11434
+```
+
 ## Next
 
 → [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md) · [Batches](../features/batches.md)

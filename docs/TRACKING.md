@@ -3408,6 +3408,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#762 -->
 **Status:** Done (2026-09-19). Embedding cache misses and local or frontier transcriptions record a positive `latency_ms` on the `embed`, `asr`, and `L6` histograms. Covered by `tests/unit/test_embeddings.py` and `tests/unit/test_audio_transcriptions.py`.
 
+### Helm Ollama base URL ([#763](https://github.com/naveenreddyalka/daari/issues/763))
+
+<!-- tracking:#763 -->
+**Status:** Done (2026-09-19). `ollama.baseUrl` sets `DAARI_OLLAMA__BASE_URL` for the embedder and L1. Empty leaves the image default. Distinct from `orgPool`. Covered by `tests/unit/test_helm_chart.py`.
+
 ### Doctor embed probe ([#764](https://github.com/naveenreddyalka/daari/issues/764))
 
 <!-- tracking:#764 -->
