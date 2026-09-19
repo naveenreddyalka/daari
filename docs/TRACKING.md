@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (per-key rpd Grafana panel — [#750](https://github.com/naveenreddyalka/daari/issues/750))
+> Last updated: 2026-09-19 (transcription chargeback rows — [#751](https://github.com/naveenreddyalka/daari/issues/751))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3382,6 +3382,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#750 -->
 **Status:** Done (2026-09-19). Overview Grafana charts `daari_key_rate_limit_remaining` vs `_limit` under **Key rate-limit remaining**, legend by key name and kind. Covered by `tests/unit/test_grafana_dashboard.py`.
+
+### Transcription chargeback rows ([#751](https://github.com/naveenreddyalka/daari/issues/751))
+
+<!-- tracking:#751 -->
+**Status:** Done (2026-09-19). A successful transcription writes a spend row with tier `asr` or `L6` and the caller's key and team, so chargeback export can tell local ASR from frontier fallback. Allowlist 403 and unconfigured 501 do not write a row. Covered by `tests/unit/test_audio_transcriptions.py`.
 
 ## How to update
 

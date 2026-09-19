@@ -402,3 +402,101 @@ async def test_transcription_honors_model_allowlist(settings, tmp_path, monkeypa
     assert "whisper-1" in overridden.json()["error"]["message"]
     assert len(seen) == before
     assert team.allowed_models == ("ggml-base",)
+
+
+def _spend_rows(app):
+    ledger = app.state.ctx.router.spend_ledger
+    return list(ledger.iter_rows(since="2000-01-01T00:00:00+00:00"))
+
+
+def _enable_spend(settings, tmp_path):
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+
+
+@pytest.mark.asyncio
+async def test_transcription_spend_rows_distinguish_local_and_frontier(
+    settings, tmp_path, monkeypatch
+):
+    """Chargeback export tags local ASR vs frontier fallback (#751)."""
+    seen: list[httpx.Request] = []
+    _patch_upstream(monkeypatch, _ok_handler(seen))
+    _enable_spend(settings, tmp_path)
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = "ggml-base"
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("bot", client_id="client-bot", team="eng")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    headers = {"Authorization": f"Bearer {key.plaintext}"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        local = await _post(client, headers=headers)
+    assert local.status_code == 200, local.text
+    local_rows = _spend_rows(app)
+    assert len(local_rows) == 1
+    assert local_rows[0]["tier"] == "asr"
+    assert local_rows[0]["key_id"] == key.key.key_id
+    assert local_rows[0]["team_id"] == key.key.team_id
+    assert local_rows[0]["model"] == "ggml-base"
+
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.frontier.enabled = True
+    settings.frontier.base_url = "https://frontier.example/v1"
+    monkeypatch.setenv("DAARI_FRONTIER_API_KEY", "sk-frontier-test")
+    frontier_app = _app(settings)
+    frontier_app.state.virtual_key_store = store
+    frontier_app.state.ctx.virtual_key_store = store
+    async with AsyncClient(
+        transport=ASGITransport(app=frontier_app), base_url="http://test"
+    ) as client:
+        frontier = await _post(client, headers=headers)
+    assert frontier.status_code == 200, frontier.text
+    frontier_rows = [row for row in _spend_rows(frontier_app) if row["tier"] == "L6"]
+    assert len(frontier_rows) == 1
+    assert frontier_rows[0]["key_id"] == key.key.key_id
+    assert frontier_rows[0]["team_id"] == key.key.team_id
+    assert {local_rows[0]["tier"], frontier_rows[0]["tier"]} == {"asr", "L6"}
+
+
+@pytest.mark.asyncio
+async def test_transcription_denials_do_not_write_spend_rows(settings, tmp_path, monkeypatch):
+    """403 allowlist and 501 unconfigured responses are not chargeback rows (#751)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not upload audio")
+
+    _patch_upstream(monkeypatch, handler)
+    _enable_spend(settings, tmp_path)
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    locked = store.create("locked", allowed_models=["ggml-base"])
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        missing = await _post(client, headers={"Authorization": f"Bearer {locked.plaintext}"})
+    assert missing.status_code == 501
+    assert _spend_rows(app) == []
+
+    settings.asr.base_url = "http://asr.local/v1"
+    denied_app = _app(settings)
+    denied_app.state.virtual_key_store = store
+    denied_app.state.ctx.virtual_key_store = store
+    async with AsyncClient(
+        transport=ASGITransport(app=denied_app), base_url="http://test"
+    ) as client:
+        denied = await _post(
+            client,
+            headers={"Authorization": f"Bearer {locked.plaintext}"},
+            data=_form("whisper-1"),
+        )
+    assert denied.status_code == 403
+    assert denied.json()["error"]["type"] == "model_not_allowed"
+    assert _spend_rows(denied_app) == []
