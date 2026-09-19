@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (daily-cap Retry-After — [#738](https://github.com/naveenreddyalka/daari/issues/738))  
+> Last updated: 2026-09-19 (transcription allowlists — [#739](https://github.com/naveenreddyalka/daari/issues/739))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3347,6 +3347,11 @@ cap, or no rpm, stays quiet. Covered by
 unlimited) and the config reference notes the day cap is per key/team, not a
 `rate_limit` field, with a link to the auth guide. Covered by
 `tests/unit/test_rpd_docs.py`.
+
+### Transcription model allowlists ([#739](https://github.com/naveenreddyalka/daari/issues/739))
+
+<!-- tracking:#739 -->
+**Status:** Done (2026-09-19). `POST /v1/audio/transcriptions` returns 403 `model_not_allowed` when the resolved model (`asr.model`, else the form model) is outside the key or team allowlist, and does not call the ASR upstream. Unset allowlists stay unrestricted.
 
 ### Daily-cap Retry-After ([#738](https://github.com/naveenreddyalka/daari/issues/738))
 
