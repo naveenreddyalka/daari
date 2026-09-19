@@ -5,13 +5,15 @@
 ## Steps
 
 ```bash
-daari keys team-create eng --daily-budget 5 --rpm 120 --tpm 80000
-daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --team eng --window 7d=10
+daari keys team-create eng --daily-budget 5 --rpm 120 --tpm 80000 --rpd 5000
+daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --rpd 2000 --team eng --window 7d=10
 daari keys create shared-agent --user-daily-cap 2
 daari keys list
 daari report --by-team
 daari usage --by-user
 ```
+
+`--rpd` is requests per UTC day on the key or team. `0`, or omitting the flag, means unlimited.
 
 Enable in config:
 
