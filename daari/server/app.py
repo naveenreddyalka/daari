@@ -362,7 +362,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             return response
 
-    open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics"}
+    open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics", "/v1/daari/stats"}
     # Batch/files admin traffic must not look like interactive load (#444).
     non_interactive_prefixes = ("/v1/batches", "/v1/files")
 

@@ -22,6 +22,7 @@ pressure before and after the soft band) — the Prometheus counterparts are
 documented in [metrics-prometheus.md](metrics-prometheus.md).
 `team_rate_limits` lists each team's `rpm`, `tpm`, and `rpd` remaining
 (`team`, `kind`, `limit`, `remaining`); it is `[]` when no team has a ceiling.
+`key_rate_limits` is the same shape for virtual keys with `rpd > 0` (`key` is the name, never the secret) and is `[]` otherwise.
 Each `tiers.*` entry may include optional `p50_ms` / `p95_ms` from the
 latency histogram (absent when that tier has no samples).
 

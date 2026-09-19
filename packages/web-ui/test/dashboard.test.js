@@ -18,6 +18,7 @@ const STATS = {
     { team: "eng", kind: "rpd", limit: 100, remaining: 40 },
     { team: "eng", kind: "rpm", limit: 10, remaining: 7 },
   ],
+  key_rate_limits: [{ key: "alice", kind: "rpd", limit: 5, remaining: 4 }],
 };
 
 const REPORT = {
@@ -132,6 +133,22 @@ test("team rate limits table includes rpd remaining", async (t) => {
   assert.match(text, /rpd/);
   assert.match(text, /100/);
   assert.match(text, /40/);
+});
+
+test("key rate limits table includes rpd remaining", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const rows = [...doc.querySelectorAll("#key-rate-limits-table tr")];
+  assert.equal(rows.length, 1);
+  const text = rows.map((r) => r.textContent).join("|");
+  assert.match(text, /alice/);
+  assert.match(text, /rpd/);
+  assert.match(text, /5/);
+  assert.match(text, /4/);
 });
 
 test("tier table renders p50/p95 from stats payload", async (t) => {
