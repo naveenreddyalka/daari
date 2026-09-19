@@ -129,6 +129,11 @@ orgPool:
   enabled: false
   baseUrl: ""
 
+# Embedder base URL for POST /v1/embeddings and L1. Empty leaves the image
+# default (localhost). Distinct from orgPool, which only sets the routing URL.
+ollama:
+  baseUrl: ""
+
 env:
   DAARI_SERVER__HOST: "0.0.0.0"
   DAARI_OBSERVABILITY__PROMETHEUS: "true"

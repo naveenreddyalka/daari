@@ -85,6 +85,10 @@ spec:
             - name: DAARI_ROUTING__ORG_POOL__BASE_URL
               value: {{ .Values.orgPool.baseUrl | quote }}
             {{- end }}
+            {{- if .Values.ollama.baseUrl }}
+            - name: DAARI_OLLAMA__BASE_URL
+              value: {{ .Values.ollama.baseUrl | quote }}
+            {{- end }}
           {{- $preStop := 5 }}
           {{- if and .Values.lifecycle (hasKey .Values.lifecycle "preStopSleepSeconds") }}
           {{- $preStop = int .Values.lifecycle.preStopSleepSeconds }}

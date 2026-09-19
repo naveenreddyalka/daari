@@ -359,6 +359,24 @@ class TestHelmOrgPool:
         )
 
 
+class TestHelmOllamaBaseUrl:
+    def test_ollama_base_url_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_OLLAMA__BASE_URL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["ollama"]["baseUrl"] == ""
+
+    def test_ollama_base_url_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "ollama.baseUrl=http://ollama.internal:11434",
+        )
+        assert re.search(
+            r'name: DAARI_OLLAMA__BASE_URL\s+value: "http://ollama.internal:11434"',
+            rendered,
+        )
+
+
 class TestHelmNotesServiceMonitorAndOrgPool:
     def test_notes_omit_servicemonitor_and_org_pool_by_default(
         self, helm_available: None

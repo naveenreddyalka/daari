@@ -3403,6 +3403,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#768 -->
 **Status:** Done (2026-09-19). Virtual keys and teams take an optional `cache_scope` (`global` default, `team`, `key`). Team and key scopes fold `team_id` or `key_id` into L0, Redis L0, and L1; `global` keeps today's cache hashes. Covered by `tests/unit/test_cache_scope.py`.
 
+### Helm Ollama base URL ([#763](https://github.com/naveenreddyalka/daari/issues/763))
+
+<!-- tracking:#763 -->
+**Status:** Done (2026-09-19). `ollama.baseUrl` sets `DAARI_OLLAMA__BASE_URL` for the embedder and L1. Empty leaves the image default. Distinct from `orgPool`. Covered by `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
