@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (doctor ASR probe — [#740](https://github.com/naveenreddyalka/daari/issues/740))
+> Last updated: 2026-09-19 (team rpd on stats — [#741](https://github.com/naveenreddyalka/daari/issues/741))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3357,6 +3357,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#738 -->
 **Status:** Done (2026-09-19). An `rpd` 429 sets `Retry-After` to the seconds until the UTC day boundary. rpm/tpm still use `rate_limit.retry_after_seconds`.
+
+### Team rpd on stats and dashboard ([#741](https://github.com/naveenreddyalka/daari/issues/741))
+
+<!-- tracking:#741 -->
+**Status:** Done (2026-09-19). `GET /v1/daari/stats` includes `team_rate_limits` (`team`, `kind`, `limit`, `remaining`), including `rpd`. The web dashboard renders one row per entry. Covered by `tests/unit/test_stats_team_rate_limits.py` and `packages/web-ui/test/dashboard.test.js`.
 
 ### Doctor ASR probe ([#740](https://github.com/naveenreddyalka/daari/issues/740))
 
