@@ -3316,6 +3316,14 @@ round-trips it. A deny is 429 naming `rpd`. Covered by
 `daari_escalations_total` with companion `daari_errors_total`. Covered by
 `tests/unit/test_metrics_prometheus_docs.py`.
 
+### Scrape team rpd remaining ([#731](https://github.com/naveenreddyalka/daari/issues/731))
+
+<!-- tracking:#731 -->
+**Status:** Done (2026-09-19). `team_rate_gauges` emits `kind="rpd"` on the
+86400-second window for teams with a day cap. Prometheus renders it next to
+rpm/tpm. Covered by `tests/unit/test_rate_limit.py` and
+`tests/unit/test_prometheus.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
