@@ -45,7 +45,9 @@ async def _post(app, body):
 @pytest.mark.asyncio
 async def test_a_string_input_returns_one_openai_shaped_item(settings):
     embedder = RecordingEmbedder()
-    response = await _post(_app(settings, embedder), {"model": "nomic-embed-text", "input": "hello"})
+    response = await _post(
+        _app(settings, embedder), {"model": "nomic-embed-text", "input": "hello"}
+    )
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -117,6 +119,25 @@ async def test_metrics_record_an_embed_tier(settings):
 
     snapshot = app.state.ctx.metrics.snapshot()
     assert snapshot["embed"]["count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_embed_cache_miss_records_positive_latency(settings):
+    import asyncio
+
+    class SlowEmbedder(RecordingEmbedder):
+        async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+            await asyncio.sleep(0.02)
+            return await super().embed(text, model=model)
+
+    app = _app(settings, SlowEmbedder())
+    response = await _post(app, {"model": "nomic-embed-text", "input": "hello"})
+    assert response.status_code == 200, response.text
+    snapshot = app.state.ctx.metrics.snapshot(include_histograms=True)
+    embed = snapshot["tiers"]["embed"]
+    assert embed["count"] >= 1
+    assert embed["total_latency_ms"] > 0
+    assert sum(embed["latency_buckets"].values()) > 0
 
 
 def _spend_rows(app):

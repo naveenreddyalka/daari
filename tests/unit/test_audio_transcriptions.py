@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -392,7 +394,9 @@ async def test_transcription_honors_model_allowlist(settings, tmp_path, monkeypa
     override_app.state.virtual_key_store = store
     override_app.state.ctx.virtual_key_store = store
     before = len(seen)
-    async with AsyncClient(transport=ASGITransport(app=override_app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=override_app), base_url="http://test"
+    ) as client:
         overridden = await _post(
             client,
             headers={"Authorization": f"Bearer {locked.plaintext}"},
@@ -500,3 +504,42 @@ async def test_transcription_denials_do_not_write_spend_rows(settings, tmp_path,
     assert denied.status_code == 403
     assert denied.json()["error"]["type"] == "model_not_allowed"
     assert _spend_rows(denied_app) == []
+
+
+def _sleeping_handler(seen: list[httpx.Request]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        time.sleep(0.02)
+        return httpx.Response(200, json={"text": "hello from asr"})
+
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_local_and_frontier_transcriptions_record_latency(settings, monkeypatch):
+    seen: list[httpx.Request] = []
+    _patch_upstream(monkeypatch, _sleeping_handler(seen))
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = "ggml-base"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(client)
+    assert response.status_code == 200, response.text
+    local = app.state.ctx.metrics.snapshot(include_histograms=True)["tiers"]["asr"]
+    assert local["total_latency_ms"] > 0
+    assert sum(local["latency_buckets"].values()) > 0
+
+    monkeypatch.setenv("DAARI_FRONTIER_API_KEY", "sk-frontier-test")
+    settings.frontier.enabled = True
+    settings.frontier.base_url = "https://frontier.example/v1"
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    frontier_app = _app(settings)
+    async with AsyncClient(
+        transport=ASGITransport(app=frontier_app), base_url="http://test"
+    ) as client:
+        response = await _post(client)
+    assert response.status_code == 200, response.text
+    frontier = frontier_app.state.ctx.metrics.snapshot(include_histograms=True)["tiers"]["L6"]
+    assert frontier["total_latency_ms"] > 0
+    assert sum(frontier["latency_buckets"].values()) > 0

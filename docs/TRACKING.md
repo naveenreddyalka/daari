@@ -3398,6 +3398,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#755 -->
 **Status:** Done (2026-09-19). `POST /v1/embeddings` writes a spend row with tier `embed` and the caller's key and team. An unknown model returns 400 and writes no row. Covered by `tests/unit/test_embeddings.py`.
 
+### Embed and ASR latency ([#762](https://github.com/naveenreddyalka/daari/issues/762))
+
+<!-- tracking:#762 -->
+**Status:** Done (2026-09-19). Embedding cache misses and local or frontier transcriptions record a positive `latency_ms` on the `embed`, `asr`, and `L6` histograms. Covered by `tests/unit/test_embeddings.py` and `tests/unit/test_audio_transcriptions.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

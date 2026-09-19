@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
 from fastapi import HTTPException
@@ -81,6 +82,15 @@ def _bind_spend_context(
     )
 
 
+def _elapsed_ms(started: float) -> int:
+    """Wall time in ms. Sub-millisecond work still counts as 1 so a miss is never 0."""
+    elapsed = time.perf_counter() - started
+    millis = int(elapsed * 1000)
+    if millis <= 0 and elapsed > 0:
+        return 1
+    return max(0, millis)
+
+
 async def compute_embeddings(
     ctx: AppContext,
     texts: list[str],
@@ -92,13 +102,16 @@ async def compute_embeddings(
     embedder = ctx.router.semantic_cache.embedder
     vectors: list[list[float]] = []
     cache_hits = 0
+    latency_ms = 0
     for text in texts:
         cached = ctx.router.cache.get(embedding_cache_request(model, text))
         if cached is not None:
             vectors.append(json.loads(cached.content))
             cache_hits += 1
             continue
+        started = time.perf_counter()
         embedding = await embedder.embed(text, model=model)
+        latency_ms += _elapsed_ms(started)
         if embedding is None:
             raise HTTPException(
                 status_code=502, detail=f"embedding model {model} returned no vector"
@@ -122,7 +135,7 @@ async def compute_embeddings(
     ctx.metrics.record(
         "embed",
         cache_hit=bool(texts) and cache_hits == len(texts),
-        latency_ms=0,
+        latency_ms=latency_ms,
     )
     client_id = _caller_client_id(request)
     if request is not None:
@@ -141,7 +154,9 @@ async def compute_embeddings(
     return vectors
 
 
-def openai_embeddings_payload(model: str, vectors: list[list[float]], texts: list[str]) -> dict[str, Any]:
+def openai_embeddings_payload(
+    model: str, vectors: list[list[float]], texts: list[str]
+) -> dict[str, Any]:
     prompt_chars = sum(len(text) for text in texts)
     return {
         "object": "list",

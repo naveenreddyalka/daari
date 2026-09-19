@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -149,12 +150,28 @@ def _bind_spend_context(
     )
 
 
-def _record_request(ctx: Any, *, client_id: str | None, model: str, via: str, text: str) -> None:
+def _elapsed_ms(started: float) -> int:
+    elapsed = time.perf_counter() - started
+    millis = int(elapsed * 1000)
+    if millis <= 0 and elapsed > 0:
+        return 1
+    return max(0, millis)
+
+
+def _record_request(
+    ctx: Any,
+    *,
+    client_id: str | None,
+    model: str,
+    via: str,
+    text: str,
+    latency_ms: int,
+) -> None:
     tier = "L6" if via == "frontier" else "asr"
     provider = "frontier" if via == "frontier" else "asr"
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None and hasattr(metrics, "record"):
-        metrics.record(tier, cache_hit=False)
+        metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
         return
@@ -217,6 +234,7 @@ async def handle_transcription(
         headers["Authorization"] = f"Bearer {target.api_key}"
 
     url = f"{target.base_url}/audio/transcriptions"
+    started = time.perf_counter()
     try:
         upstream = await post_transcription(
             url,
@@ -229,6 +247,7 @@ async def handle_transcription(
         )
     except httpx.HTTPError as exc:
         return _error(502, "asr_upstream_error", summarize_upstream_failure(exc))
+    latency_ms = _elapsed_ms(started)
 
     if upstream.status_code < 200 or upstream.status_code >= 300:
         return _error(
@@ -263,5 +282,6 @@ async def handle_transcription(
         model=model_name,
         via=target.via,
         text=payload["text"],
+        latency_ms=latency_ms,
     )
     return payload
