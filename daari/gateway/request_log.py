@@ -75,3 +75,94 @@ def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
                 handle.write(line)
     except OSError:
         pass
+
+
+def _rotated_logs(path: Path) -> list[Path]:
+    """Numbered size-rotation backups next to the active log (`name.1`, `name.2`)."""
+    parent = path.parent
+    if not parent.is_dir():
+        return []
+    prefix = path.name + "."
+    found: list[tuple[int, Path]] = []
+    for child in parent.iterdir():
+        if not child.name.startswith(prefix):
+            continue
+        suffix = child.name[len(prefix) :]
+        if suffix.isdigit() and child.is_file():
+            found.append((int(suffix), child))
+    return [item for _, item in sorted(found)]
+
+
+def _line_timestamp(line: str) -> datetime | None:
+    text = line.strip()
+    if not text:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    raw = payload.get("ts") if isinstance(payload, dict) else None
+    if not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _split_old_lines(text: str, cutoff: datetime) -> tuple[str, int]:
+    """Keep lines at or after cutoff. Unparseable lines stay (they are not dated)."""
+    kept: list[str] = []
+    removed = 0
+    for line in text.splitlines():
+        stamped = _line_timestamp(line)
+        if stamped is not None and stamped < cutoff:
+            removed += 1
+            continue
+        if line.strip():
+            kept.append(line)
+    body = ("\n".join(kept) + "\n") if kept else ""
+    return body, removed
+
+
+def prune_request_log(path: Path | str, *, cutoff: datetime, dry_run: bool = False) -> int:
+    """Drop request-log lines older than `cutoff`.
+
+    Rotated backups that contain only old lines are deleted. The active file
+    is rewritten (or truncated) so newer lines stay. Returns the number of
+    lines removed. `cutoff` must be timezone-aware.
+    """
+    target = Path(path)
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=UTC)
+    cutoff = cutoff.astimezone(UTC)
+    removed = 0
+    with _lock:
+        for backup in _rotated_logs(target):
+            removed += _prune_one(backup, cutoff, dry_run=dry_run, delete_when_empty=True)
+        if target.exists():
+            removed += _prune_one(target, cutoff, dry_run=dry_run, delete_when_empty=False)
+    return removed
+
+
+def _prune_one(path: Path, cutoff: datetime, *, dry_run: bool, delete_when_empty: bool) -> int:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    body, removed = _split_old_lines(text, cutoff)
+    if removed == 0:
+        return 0
+    if dry_run:
+        return removed
+    try:
+        if delete_when_empty and not body:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(body, encoding="utf-8")
+    except OSError:
+        return 0
+    return removed

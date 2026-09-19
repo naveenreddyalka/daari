@@ -158,6 +158,7 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `observability.retention.audit_days` | int | `0` |  |
 | `observability.retention.shadow_days` | int | `0` |  |
 | `observability.retention.tasks_days` | int | `0` |  |
+| `observability.retention.request_log_days` | int | `0` | Delete gateway request-log lines and rotated backups older than this many days. 0 keeps size-only rotation (#772). |
 | `learning.enabled` | bool | `True` |  |
 | `learning.path` | str | `'~/.daari/feedback/feedback.sqlite3'` |  |
 | `learning.max_rows` | int | `20000` |  |
