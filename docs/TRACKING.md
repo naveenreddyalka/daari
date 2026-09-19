@@ -3438,6 +3438,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#772 -->
 **Status:** Done (2026-09-19). `observability.retention.request_log_days` (default 0) folds `cursor-requests.log` into `prune_all`. Rotated backups that are entirely old are deleted; the active file keeps newer lines. `daari prune` prints a `request_log` line. Covered by `tests/unit/test_retention.py`.
 
+### Request deadline across hops ([#771](https://github.com/naveenreddyalka/daari/issues/771))
+
+<!-- tracking:#771 -->
+**Status:** Done (2026-09-19). Optional `X-Daari-Deadline-Ms` (wins) and `upstream.request_deadline_seconds` bound the escalation chain. Each upstream call uses `min(tier timeout, remaining)`; a spent budget returns 504 naming the deadline, records `daari_request_deadline_exceeded_total`, and does not call frontier. Streaming applies the budget to time-to-first-token only. Covered by `tests/unit/test_request_deadline.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

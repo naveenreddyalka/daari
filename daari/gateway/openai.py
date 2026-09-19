@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import (
     backend_unavailable_message,
+    request_deadline_response,
     routing_failure_detail,
     safe_detail,
 )
@@ -53,6 +54,7 @@ from daari.gateway.disconnect import (
 )
 from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.request_log import log_gateway_event
+from daari.router.deadline import RequestDeadlineExceeded
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
 from daari.router.capabilities import UnsupportedCapability
@@ -275,6 +277,7 @@ async def _execute_batch_chat_body(
     meta = RequestMeta(
         tier_cap=gov.tier_cap if gov else None,
         latency_budget_ms=gov.latency_budget_ms if gov else None,
+        deadline_ms=gov.deadline_ms if gov else None,
         client_id=gov.client_id if gov else None,
         user_agent=gov.user_agent if gov else None,
         user=body_user or (gov.user if gov else None),
@@ -391,9 +394,13 @@ def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -
         latency_budget_ms = int(latency_raw) if latency_raw else None
     except ValueError:
         latency_budget_ms = None
+    from daari.router.deadline import parse_deadline_ms
+
+    deadline_ms = parse_deadline_ms(headers.get("x-daari-deadline-ms"))
     meta = RequestMeta(
         tier_cap=headers.get("x-daari-tier-cap"),
         latency_budget_ms=latency_budget_ms,
+        deadline_ms=deadline_ms,
         client_id=client_id,
         user_agent=user_agent[:200] or None,
         user=None,
@@ -416,6 +423,7 @@ def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -
         boundary_profile=meta.boundary_profile,
         kind=kind,
         latency_budget_ms=meta.latency_budget_ms,
+        deadline_ms=meta.deadline_ms,
         session_id=meta.session_id,
         user_agent=meta.user_agent,
     )
@@ -610,6 +618,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_latency_budget: str | None = Header(
                 default=None, alias="X-Daari-Latency-Budget"
             ),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_session: str | None = Header(default=None, alias="X-Daari-Session"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
@@ -628,6 +637,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
             except ValueError:
                 latency_budget_ms = None
+            from daari.router.deadline import parse_deadline_ms
+
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
             include_daari_meta = (x_daari_meta or "").strip().lower() in {"1", "true", "yes"}
             include_usage = bool(body.stream_options and body.stream_options.get("include_usage"))
             client_host = request.client.host if request.client else "unknown"
@@ -659,6 +671,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tier_override=x_daari_tier_override,
                 tier_cap=x_daari_tier_cap,
                 latency_budget_ms=latency_budget_ms,
+                deadline_ms=deadline_ms,
                 client_id=client_id,
                 user_agent=user_agent[:200] or None,
                 user=(body.user or "").strip() or None,
@@ -802,6 +815,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc

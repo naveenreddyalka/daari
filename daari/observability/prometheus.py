@@ -63,6 +63,14 @@ def render_prometheus(
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
+    lines.append(
+        "# HELP daari_request_deadline_exceeded_total "
+        "Requests that hit the wall-clock deadline before a tier succeeded."
+    )
+    lines.append("# TYPE daari_request_deadline_exceeded_total counter")
+    lines.append(
+        f"daari_request_deadline_exceeded_total {snap.get('deadline_exhausted', 0)}"
+    )
 
     lines.append(
         "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "

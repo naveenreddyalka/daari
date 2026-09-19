@@ -87,12 +87,15 @@ class MLXExecutor:
         model = request.model or self.default_model
         started = time.perf_counter()
         payload = self._payload(request, model, stream=False)
+        from daari.router.deadline import nonstream_timeout
+
+        timeout = nonstream_timeout(self.timeout, self.tier)
 
         async def attempt() -> dict[str, Any]:
             from daari.observability.otel import inject_trace_headers
 
             async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout
+                base_url=self.base_url, timeout=timeout
             ) as client:
                 response = await client.post(
                     "/v1/chat/completions",
@@ -109,7 +112,7 @@ class MLXExecutor:
             attempt,
             upstream=f"mlx:{self.tier}",
             policy=self.retry,
-            timeout=self.timeout,
+            timeout=timeout,
             metrics=self.metrics,
         )
         choice = (data.get("choices") or [{}])[0]
@@ -130,9 +133,16 @@ class MLXExecutor:
         model = request.model or self.default_model
         payload = self._payload(request, model, stream=True)
         from daari.observability.otel import inject_trace_headers
+        from daari.router.deadline import (
+            aiter_with_ttft_deadline,
+            deadline_bounded_stream,
+            guard_upstream,
+        )
 
+        guard_upstream(self.tier)
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            async with client.stream(
+            async with deadline_bounded_stream(
+                client,
                 "POST",
                 "/v1/chat/completions",
                 json=payload,
@@ -141,7 +151,7 @@ class MLXExecutor:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode("utf-8", errors="replace")
                     raise MLXRequestError(response.status_code, str(response.request.url), body)
-                async for line in response.aiter_lines():
+                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                     if not line.startswith("data:"):
                         continue
                     data = line[len("data:") :].strip()

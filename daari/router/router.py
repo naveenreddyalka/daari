@@ -251,12 +251,15 @@ class OllamaExecutor:
         model = request.model or self.default_model
         started = time.perf_counter()
         payload = self._payload(request, model, stream=False)
+        from daari.router.deadline import nonstream_timeout
+
+        timeout = nonstream_timeout(self.timeout, self.tier)
 
         async def attempt() -> dict[str, Any]:
             from daari.observability.otel import inject_trace_headers
 
             async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout
+                base_url=self.base_url, timeout=timeout
             ) as client:
                 response = await client.post(
                     "/api/chat", json=payload, headers=inject_trace_headers()
@@ -271,7 +274,7 @@ class OllamaExecutor:
             attempt,
             upstream=f"ollama:{self.tier}",
             policy=self.retry,
-            timeout=self.timeout,
+            timeout=timeout,
             metrics=self.metrics,
         )
         message = data.get("message") or {}
@@ -301,17 +304,27 @@ class OllamaExecutor:
         model = request.model or self.default_model
         payload = self._payload(request, model, stream=True)
         from daari.observability.otel import inject_trace_headers
+        from daari.router.deadline import (
+            aiter_with_ttft_deadline,
+            deadline_bounded_stream,
+            guard_upstream,
+        )
 
+        guard_upstream(self.tier)
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            async with client.stream(
-                "POST", "/api/chat", json=payload, headers=inject_trace_headers()
+            async with deadline_bounded_stream(
+                client,
+                "POST",
+                "/api/chat",
+                json=payload,
+                headers=inject_trace_headers(),
             ) as response:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode("utf-8", errors="replace")
                     raise OllamaRequestError(
                         response.status_code, str(response.request.url), body
                     )
-                async for line in response.aiter_lines():
+                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                     if not line:
                         continue
                     yield json.loads(line)
@@ -378,6 +391,7 @@ class Router:
         tier_shadow_compare_tier: str = "",
         tier_shadow_daily_usd: float = 0.0,
         latency_budget_ms: int = 0,
+        request_deadline_seconds: float | None = None,
         ttft_aware: bool = False,
         ttft_percentile: float = 0.95,
         ttft_min_samples: int = 20,
@@ -467,6 +481,7 @@ class Router:
         self.warm_tracker = warm_tracker
         self.learned_router = learned_router
         self.latency_budget_ms = latency_budget_ms
+        self.request_deadline_seconds = request_deadline_seconds
         self.ttft_aware = bool(ttft_aware)
         self.ttft_percentile = float(ttft_percentile)
         self.ttft_min_samples = max(1, int(ttft_min_samples))
@@ -734,6 +749,20 @@ class Router:
         return response
 
     async def route(self, request: InternalRequest) -> InternalResponse:
+        from daari.router.deadline import (
+            bind_request_deadline,
+            deadline_active,
+            resolve_deadline_seconds,
+        )
+
+        if not deadline_active():
+            seconds = resolve_deadline_seconds(
+                getattr(request.meta, "deadline_ms", None),
+                getattr(self, "request_deadline_seconds", None),
+            )
+            if seconds is not None:
+                with bind_request_deadline(seconds, metrics=self.metrics):
+                    return await self.route(request)
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         if reused:
@@ -1519,6 +1548,9 @@ class Router:
         try:
             response = await self._run_model_tier(initial_tier, gen_request)
         except Exception as exc:
+            from daari.router.deadline import reraise_deadline
+
+            reraise_deadline(exc)
             if initial_tier == "L3":
                 from daari.router.failover import is_context_length_error
 
@@ -1533,7 +1565,10 @@ class Router:
                 try:
                     response = await self._run_model_tier("L4", gen_request)
                     response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
-                except Exception:
+                except Exception as nested:
+                    from daari.router.deadline import reraise_deadline
+
+                    reraise_deadline(nested)
                     response = await self._run_model_tier("L3", gen_request)
                     response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
             else:
@@ -1645,8 +1680,23 @@ class Router:
         """
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
+        from daari.router.deadline import (
+            bind_request_deadline,
+            deadline_active,
+            resolve_deadline_seconds,
+        )
 
         outcome = outcome if outcome is not None else StreamOutcome()
+        if not deadline_active():
+            seconds = resolve_deadline_seconds(
+                getattr(request.meta, "deadline_ms", None),
+                getattr(self, "request_deadline_seconds", None),
+            )
+            if seconds is not None:
+                with bind_request_deadline(seconds, metrics=self.metrics):
+                    async for chunk in self.stream_openai_chunks(request, outcome=outcome):
+                        yield chunk
+                return
         draft_used = False
         started = time.perf_counter()
         created = int(time.time())
@@ -2031,6 +2081,9 @@ class Router:
                 last_delta_at: float | None = None
                 delta_count = 0
                 try:
+                    from daari.router.deadline import guard_upstream
+
+                    guard_upstream(tier)
                     async for event in stream_executor.stream(stream_request):
                         if event.get("prompt_eval_count") is not None:
                             # Ollama reports real counts on the terminal event (#156).
@@ -2069,6 +2122,9 @@ class Router:
                         if event.get("done"):
                             break
                 except Exception as exc:
+                    from daari.router.deadline import reraise_deadline
+
+                    reraise_deadline(exc)
                     last_error = exc
                     log_gateway_event(
                         "stream_attempt_failed",
@@ -2139,6 +2195,9 @@ class Router:
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
                     try:
+                        from daari.router.deadline import guard_upstream
+
+                        guard_upstream("L6")
                         l6_request = await self._frontier_request(stream_request)
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                         async for delta in self.frontier.stream(
@@ -2447,6 +2506,22 @@ class Router:
         the served tier before the first event (#278).
         """
         outcome = outcome if outcome is not None else StreamOutcome()
+        from daari.router.deadline import (
+            bind_request_deadline,
+            deadline_active,
+            resolve_deadline_seconds,
+        )
+
+        if not deadline_active():
+            seconds = resolve_deadline_seconds(
+                getattr(request.meta, "deadline_ms", None),
+                getattr(self, "request_deadline_seconds", None),
+            )
+            if seconds is not None:
+                with bind_request_deadline(seconds, metrics=self.metrics):
+                    async for chunk in self.stream_anthropic_events(request, outcome=outcome):
+                        yield chunk
+                return
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
 
@@ -2703,6 +2778,9 @@ class Router:
             tier_text_parts: list[str] = []
             reported_usage: tuple[int, int] | None = None
             try:
+                from daari.router.deadline import guard_upstream
+
+                guard_upstream(tier)
                 async for event in stream_executor.stream(stream_request):
                     if event.get("prompt_eval_count") is not None:
                         # Last report wins: cumulative-usage providers would
@@ -2782,6 +2860,9 @@ class Router:
                     if event.get("done"):
                         break
             except Exception as exc:
+                from daari.router.deadline import reraise_deadline
+
+                reraise_deadline(exc)
                 last_error = exc
                 log_gateway_event(
                     "anthropic_stream_attempt_failed",
@@ -3207,7 +3288,10 @@ class Router:
         for tier in ("L4", "L5"):
             try:
                 response = await self._run_model_tier(tier, request)
-            except Exception:
+            except Exception as hop_exc:
+                from daari.router.deadline import reraise_deadline
+
+                reraise_deadline(hop_exc)
                 continue
             add_step(
                 "context_length_failover",
@@ -3231,6 +3315,9 @@ class Router:
         return response
 
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
+        from daari.router.deadline import guard_upstream
+
+        guard_upstream(tier)
         add_step("tier_attempt", tier=tier)
         request = await self._compact_context(request)
         request = self._optimize_context(request)
@@ -4006,6 +4093,8 @@ class Router:
         non-streamed would only duplicate work. Org pool and L6 still apply,
         which is what streaming used to miss entirely (#155).
         """
+        from daari.router.deadline import RequestDeadlineExceeded, guard_upstream
+
         threshold = self._confidence_threshold_for(request, profile)
         confidence = score_l3_confidence(response.content)
         response.daari_meta.confidence = confidence
@@ -4031,6 +4120,9 @@ class Router:
                         return next_response
                     response = next_response
                     confidence = next_confidence
+                except RequestDeadlineExceeded:
+                    response.daari_meta.warning = "request_deadline_exceeded"
+                    return response
                 except Exception:
                     response.daari_meta.warning = "below_confidence_threshold"
                     return response
@@ -4039,6 +4131,7 @@ class Router:
         if self.org_pool is not None:
             try:
                 add_step("escalate", to="L5-org", local_confidence=confidence)
+                guard_upstream("L5-org")
                 pool_request = request.model_copy(deep=True)
                 pool_request.model = self.org_pool.default_model
                 pool_response = await self.org_pool.execute(pool_request)
@@ -4050,6 +4143,9 @@ class Router:
                     return pool_response
                 response = pool_response
                 confidence = pool_confidence
+            except RequestDeadlineExceeded:
+                response.daari_meta.warning = "request_deadline_exceeded"
+                return response
             except Exception:
                 add_step("org_pool_failed")
 
@@ -4067,6 +4163,7 @@ class Router:
 
         add_step("escalate", to="L6", local_confidence=confidence)
         try:
+            guard_upstream("L6")
             l6_request = await self._frontier_request(request)
             l6_response = await self.frontier.execute(
                 l6_request,
@@ -4080,6 +4177,9 @@ class Router:
                 l6_response.daari_meta.warning = "frontier_budget_warning"
             self.metrics.record_escalation()
             return l6_response
+        except RequestDeadlineExceeded:
+            response.daari_meta.warning = "request_deadline_exceeded"
+            return response
         except ZdrUnavailable:
             raise
         except RegionUnavailable:
@@ -4938,6 +5038,7 @@ class AppContext:
             warm_tracker=warm_tracker,
             learned_router=learned_router,
             latency_budget_ms=settings.routing.latency_budget_ms,
+            request_deadline_seconds=settings.upstream.request_deadline_seconds,
             ttft_aware=settings.routing.ttft_aware,
             ttft_percentile=settings.routing.ttft_percentile,
             ttft_min_samples=settings.routing.ttft_min_samples,

@@ -632,6 +632,15 @@ class UpstreamSettings(BaseModel):
             "a hosted API that has not answered in 90s is usually not going to."
         ),
     )
+    request_deadline_seconds: float | None = Field(
+        default=None,
+        description=(
+            "Optional wall-clock budget for one request across cache, local, and "
+            "frontier hops. Each upstream call uses min(tier timeout, remaining). "
+            "Unset or 0 keeps per-tier timeouts only. The X-Daari-Deadline-Ms "
+            "header overrides this."
+        ),
+    )
     retry: UpstreamRetrySettings = Field(default_factory=UpstreamRetrySettings)
 
 
