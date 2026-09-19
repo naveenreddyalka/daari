@@ -187,6 +187,28 @@ def test_grafana_dashboard_includes_team_rate_limit_remaining_panel():
     assert any("daari_team_rate_limit_limit" in expr for expr in exprs)
 
 
+def test_grafana_dashboard_includes_key_rate_limit_remaining_panel():
+    """Per-key RPD remaining gauges should be visible on the overview (#750)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "Key rate-limit remaining" in p.get("title", "")
+        ),
+        None,
+    )
+    assert panel is not None, (
+        "expected a key rate-limit remaining panel in daari-dashboard.json"
+    )
+    targets = panel.get("targets", [])
+    exprs = [t.get("expr", "") for t in targets]
+    legends = [t.get("legendFormat", "") for t in targets]
+    assert any("daari_key_rate_limit_remaining" in expr for expr in exprs)
+    assert any("daari_key_rate_limit_limit" in expr for expr in exprs)
+    assert any("{{key}}" in legend and "{{kind}}" in legend for legend in legends)
+
+
 def test_grafana_dashboard_includes_soft_usd_budget_warnings_panel():
     """Dedicated soft USD budget warn series from #626 should be visible (#636)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))

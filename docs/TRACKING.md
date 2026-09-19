@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (per-key rpd on stats — [#749](https://github.com/naveenreddyalka/daari/issues/749))
+> Last updated: 2026-09-19 (per-key rpd Grafana panel — [#750](https://github.com/naveenreddyalka/daari/issues/750))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3377,6 +3377,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#749 -->
 **Status:** Done (2026-09-19). `GET /v1/daari/stats` includes `key_rate_limits` for keys with `rpd > 0`. A stats read does not consume the cap. The dashboard renders one row per entry. Covered by `tests/unit/test_stats_key_rate_limits.py`.
+
+### Per-key rpd Grafana panel ([#750](https://github.com/naveenreddyalka/daari/issues/750))
+
+<!-- tracking:#750 -->
+**Status:** Done (2026-09-19). Overview Grafana charts `daari_key_rate_limit_remaining` vs `_limit` under **Key rate-limit remaining**, legend by key name and kind. Covered by `tests/unit/test_grafana_dashboard.py`.
 
 ## How to update
 
