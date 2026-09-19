@@ -25,6 +25,41 @@ _UNSET = object()
 _RELATIVE_EXPIRY = re.compile(r"^(\d+)([mhd])$")
 _NEVER_EXPIRES = {"", "never", "none", "0"}
 
+CACHE_SCOPES = ("global", "team", "key")
+_CACHE_SCOPE_RANK = {"global": 0, "team": 1, "key": 2}
+
+
+def coerce_cache_scope(value: str | None) -> str:
+    """Read path: unknown or empty values stay ``global`` so old rows keep working."""
+    text = (value or "global").strip().lower()
+    if text in _CACHE_SCOPE_RANK:
+        return text
+    return "global"
+
+
+def normalize_cache_scope(value: str | None) -> str:
+    """Write path: reject anything other than global, team, or key."""
+    text = (value or "global").strip().lower() or "global"
+    if text not in _CACHE_SCOPE_RANK:
+        raise ValueError(
+            f"cache_scope must be one of {', '.join(CACHE_SCOPES)} (got {value!r})"
+        )
+    return text
+
+
+def effective_cache_scope(*scopes: str | None) -> str:
+    """Most isolated scope wins: key > team > global.
+
+    A confidential team stays isolated even when a member key leaves the
+    default. A key can tighten further to per-key isolation.
+    """
+    best = "global"
+    for scope in scopes:
+        current = coerce_cache_scope(scope)
+        if _CACHE_SCOPE_RANK[current] > _CACHE_SCOPE_RANK[best]:
+            best = current
+    return best
+
 
 def expiry_from(raw: str | None, *, now: datetime | None = None) -> str | None:
     """Turn `30d` / `12h` / `45m` / ISO-8601 into a UTC ISO timestamp (#331).
@@ -106,7 +141,8 @@ CREATE TABLE IF NOT EXISTS teams (
     tpm INTEGER NOT NULL DEFAULT 0,
     rpd INTEGER NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
-    model_groups_json TEXT
+    model_groups_json TEXT,
+    cache_scope TEXT NOT NULL DEFAULT 'global'
 );
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
@@ -128,7 +164,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     metadata_json TEXT NOT NULL DEFAULT '{}',
     user_daily_usd_cap REAL NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
-    model_groups_json TEXT
+    model_groups_json TEXT,
+    cache_scope TEXT NOT NULL DEFAULT 'global'
 );
 CREATE TABLE IF NOT EXISTS key_hits (
     key_id TEXT NOT NULL,
@@ -177,6 +214,8 @@ class Team:
     # Model allowlist (#708). None = unrestricted; empty = deny all.
     allowed_models: tuple[str, ...] | None = None
     model_groups: tuple[str, ...] | None = None
+    # Cache isolation (#768). global shares the org cache; team / key narrow it.
+    cache_scope: str = "global"
 
 
 @dataclass(frozen=True)
@@ -208,6 +247,8 @@ class VirtualKey:
     # Model allowlist (#708). None = unrestricted; empty = deny all.
     allowed_models: tuple[str, ...] | None = None
     model_groups: tuple[str, ...] | None = None
+    # Cache isolation (#768). global shares the org cache; team / key narrow it.
+    cache_scope: str = "global"
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
@@ -336,6 +377,14 @@ class VirtualKeyStore:
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN model_groups_json TEXT")
         if "rpd" not in cols:
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN rpd INTEGER NOT NULL DEFAULT 0")
+        if "cache_scope" not in cols:
+            conn.execute(
+                "ALTER TABLE virtual_keys ADD COLUMN cache_scope TEXT NOT NULL DEFAULT 'global'"
+            )
+        if "cache_scope" not in team_cols:
+            conn.execute(
+                "ALTER TABLE teams ADD COLUMN cache_scope TEXT NOT NULL DEFAULT 'global'"
+            )
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -371,6 +420,7 @@ class VirtualKeyStore:
         rpd: int = 0,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
+        cache_scope: str = "global",
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -386,12 +436,13 @@ class VirtualKeyStore:
         team_rpd = max(0, int(rpd))
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
+        scope = normalize_cache_scope(cache_scope)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             existing = conn.execute(
                 "SELECT team_id, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd"
+                " allowed_models_json, model_groups_json, rpd, cache_scope"
                 " FROM teams WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -406,11 +457,13 @@ class VirtualKeyStore:
                     allowed_models=decode_names(existing[5]) if len(existing) > 5 else None,
                     model_groups=decode_names(existing[6]) if len(existing) > 6 else None,
                     rpd=int(existing[7] or 0) if len(existing) > 7 else 0,
+                    cache_scope=coerce_cache_scope(existing[8]) if len(existing) > 8 else "global",
                 )
             conn.execute(
                 "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
-                " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
+                " cache_scope)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     team_id,
                     name,
@@ -422,6 +475,7 @@ class VirtualKeyStore:
                     encode_names(models),
                     encode_names(groups),
                     team_rpd,
+                    scope,
                 ),
             )
         return Team(
@@ -434,6 +488,7 @@ class VirtualKeyStore:
             allowed_models=models,
             model_groups=groups,
             rpd=team_rpd,
+            cache_scope=scope,
         )
 
     def update_team(
@@ -518,14 +573,14 @@ class VirtualKeyStore:
             if team_id:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope"
                     " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
             else:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope"
                     " FROM teams WHERE name = ?",
                     (name,),
                 ).fetchone()
@@ -541,6 +596,7 @@ class VirtualKeyStore:
             allowed_models=decode_names(row[6]) if len(row) > 6 else None,
             model_groups=decode_names(row[7]) if len(row) > 7 else None,
             rpd=int(row[8] or 0) if len(row) > 8 else 0,
+            cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
         )
 
     def list_teams(self) -> list[Team]:
@@ -550,7 +606,7 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd"
+                " allowed_models_json, model_groups_json, rpd, cache_scope"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
         return [
@@ -564,6 +620,7 @@ class VirtualKeyStore:
                 allowed_models=decode_names(row[6]) if len(row) > 6 else None,
                 model_groups=decode_names(row[7]) if len(row) > 7 else None,
                 rpd=int(row[8] or 0) if len(row) > 8 else 0,
+                cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             )
             for row in rows
         ]
@@ -598,6 +655,7 @@ class VirtualKeyStore:
         region_pin: str | None = None,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
+        cache_scope: str = "global",
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -622,13 +680,14 @@ class VirtualKeyStore:
             meta["region_pin"] = pin
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
+        scope = normalize_cache_scope(cache_scope)
         with self._lock, self._connect() as conn:
             conn.execute(
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                 " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
-                " region_pin, allowed_models_json, model_groups_json, rpd)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " region_pin, allowed_models_json, model_groups_json, rpd, cache_scope)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -650,6 +709,7 @@ class VirtualKeyStore:
                     encode_names(models),
                     encode_names(groups),
                     max(0, int(rpd)),
+                    scope,
                 ),
             )
         return CreatedKey(
@@ -673,6 +733,7 @@ class VirtualKeyStore:
                 region_pin=pin,
                 allowed_models=models,
                 model_groups=groups,
+                cache_scope=scope,
             ),
             plaintext=plaintext,
         )
@@ -885,6 +946,7 @@ class VirtualKeyStore:
         allowed_models: tuple[str, ...] | None = None,
         model_groups: tuple[str, ...] | None = None,
         rpd: int = 0,
+        cache_scope: str = "global",
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -922,6 +984,7 @@ class VirtualKeyStore:
             region_pin=pin,
             allowed_models=allowed_models,
             model_groups=model_groups,
+            cache_scope=coerce_cache_scope(cache_scope),
         )
 
     def list(self) -> list[VirtualKey]:
@@ -933,7 +996,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -949,6 +1012,7 @@ class VirtualKeyStore:
                 allowed_models=decode_names(r[17]) if len(r) > 17 else None,
                 model_groups=decode_names(r[18]) if len(r) > 18 else None,
                 rpd=int(r[19] or 0) if len(r) > 19 else 0,
+                cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
             )
             for r in rows
         ]
@@ -963,7 +1027,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
@@ -988,6 +1052,7 @@ class VirtualKeyStore:
             allowed_models=decode_names(row[19]) if len(row) > 19 else None,
             model_groups=decode_names(row[20]) if len(row) > 20 else None,
             rpd=int(row[21] or 0) if len(row) > 21 else 0,
+            cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:
@@ -1030,6 +1095,7 @@ class VirtualKeyStore:
             "previous_expires_at": key.previous_expires_at,
             "user_daily_usd_cap": key.user_daily_usd_cap,
             "status": key.status(),
+            "cache_scope": key.cache_scope,
         }
 
     def report_by_team(self, clients: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -9,7 +9,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from daari.cache.exact import tools_schema_hash
+from daari.cache.exact import cache_scope_segment, tools_schema_hash
 from daari.cache.normalize import normalize_for_embedding
 from daari.cache.singleflight import SingleFlight
 from daari.gateway.internal import InternalRequest, InternalResponse
@@ -51,14 +51,16 @@ def agent_suffix_hash(request: InternalRequest) -> str:
 
 
 def semantic_context_key(request: InternalRequest) -> str:
-    return "|".join(
-        [
-            request.model,
-            str(request.temperature),
-            tools_schema_hash(request.tools),
-            request.meta.tier_override or "",
-        ]
-    )
+    parts = [
+        request.model,
+        str(request.temperature),
+        tools_schema_hash(request.tools),
+        request.meta.tier_override or "",
+    ]
+    segment = cache_scope_segment(request)
+    if segment:
+        parts.append(segment)
+    return "|".join(parts)
 
 
 def l1_flight_key(

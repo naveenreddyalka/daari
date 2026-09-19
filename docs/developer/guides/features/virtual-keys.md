@@ -53,6 +53,34 @@ A request whose model is outside the allowlist is HTTP 403
 `auth.model_denied` audit row. Router fallback will not send that key to a
 frontier model outside the allowlist.
 
+## Cache scope
+
+The org-shared cache is the default: identical prompts (L0) and similar prompts
+(L1) are reused across every key. That is the hit-rate win. A team handling
+confidential material can opt into a boundary instead.
+
+`cache_scope` is `global` (default), `team`, or `key`, on both a virtual key
+and a team. The stricter setting wins (`key` over `team` over `global`), so a
+team set to `team` isolates every member key even when the key itself stays
+`global`. `team` folds `team_id` into the L0 exact key, the Redis L0 key, and
+the L1 context key. `key` folds `key_id` the same way. `global` leaves those
+hashes unchanged, so entries written before the flag stay reachable.
+
+Two keys on the same team with `cache_scope: team` share entries. A key on
+another team does not, including an L1 hit on a merely similar prompt.
+Requests with no auth (master key off, no virtual keys) stay `global`.
+`X-Daari-No-Cache` still skips the cache entirely.
+
+```bash
+daari keys team-create legal --cache-scope team
+daari keys create counsel --team legal
+daari keys create solo --cache-scope key
+daari keys list
+```
+
+`daari keys list` prints the effective scope. `POST /introspect` includes
+`cache_scope` for the token (never the secret).
+
 ## Verify
 
 Call `/v1/chat/completions` with the key; exceed budget and confirm rejection.
