@@ -372,6 +372,24 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 25,
+      "title": "Key rate-limit remaining",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 88 },
+      "targets": [
+        {
+          "expr": "daari_key_rate_limit_remaining",
+          "legendFormat": "remaining {{key}} {{kind}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_key_rate_limit_limit",
+          "legendFormat": "limit {{key}} {{kind}}",
+          "refId": "B"
+        }
+      ]
     }
   ],
   "refresh": "30s",
