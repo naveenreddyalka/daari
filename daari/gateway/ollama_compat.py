@@ -424,7 +424,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
-            vectors = await compute_embeddings(ctx, texts, model=model)
+            vectors = await compute_embeddings(ctx, texts, model=model, request=request)
             return {"model": model, "embeddings": vectors}
 
         @router.post("/api/embeddings")
@@ -438,7 +438,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.prompt)
-            vectors = await compute_embeddings(ctx, texts, model=model)
+            vectors = await compute_embeddings(ctx, texts, model=model, request=request)
             return {"embedding": vectors[0] if vectors else []}
 
         @router.get("/api/ps")

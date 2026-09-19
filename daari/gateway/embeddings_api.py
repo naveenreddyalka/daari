@@ -33,11 +33,60 @@ def resolve_embedding_model(ctx: AppContext, requested: str) -> str:
     return configured
 
 
+def _caller_client_id(request: Any | None) -> str | None:
+    if request is None:
+        return None
+    claims = getattr(request.state, "auth_claims", None)
+    if claims is None or getattr(claims, "kind", None) != "virtual":
+        return None
+    client_id = getattr(claims, "client_id", None) or getattr(claims, "key_id", None)
+    text = str(client_id or "").strip()
+    return text or None
+
+
+def _bind_spend_context(
+    request: Any,
+    ctx: AppContext,
+    *,
+    model: str,
+    client_id: str | None,
+) -> None:
+    """Copy virtual-key identity onto the chargeback row before the usage hook fires."""
+    router = ctx.router
+    ledger = getattr(router, "spend_ledger", None)
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return
+    from daari.observability.spend import SpendContext, bind_spend_context
+
+    claims = getattr(request.state, "auth_claims", None)
+    key_id = ""
+    team_id = ""
+    if claims is not None and getattr(claims, "kind", None) == "virtual":
+        key_id = str(getattr(claims, "key_id", None) or "")
+        virtual_key = getattr(claims, "virtual_key", None)
+        if virtual_key is not None:
+            team_id = str(getattr(virtual_key, "team_id", None) or "")
+    usage = getattr(ctx.settings, "usage", None)
+    fallback = float(getattr(usage, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+    pricing = getattr(router, "pricing", None) or getattr(ctx.settings, "pricing", None)
+    bind_spend_context(
+        SpendContext(
+            key_id=key_id,
+            team_id=team_id,
+            client_id=client_id or "",
+            requested_model=model,
+            pricing=pricing,
+            fallback_per_1k=fallback,
+        )
+    )
+
+
 async def compute_embeddings(
     ctx: AppContext,
     texts: list[str],
     *,
     model: str,
+    request: Any | None = None,
 ) -> list[list[float]]:
     """Embed texts via L0 + semantic embedder; records metrics and ledger."""
     embedder = ctx.router.semantic_cache.embedder
@@ -75,11 +124,15 @@ async def compute_embeddings(
         cache_hit=bool(texts) and cache_hits == len(texts),
         latency_ms=0,
     )
+    client_id = _caller_client_id(request)
+    if request is not None:
+        _bind_spend_context(request, ctx, model=model, client_id=client_id)
     if ctx.router.usage_ledger is not None:
         ctx.router.usage_ledger.record(
             tier="embed",
             cache_hit=bool(texts) and cache_hits == len(texts),
             prompt_chars=prompt_chars,
+            client_id=client_id,
             model=model,
             provider="ollama",
             input_tokens=estimate_tokens(prompt_chars),

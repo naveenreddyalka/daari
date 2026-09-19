@@ -27,9 +27,7 @@ daari spend export --since 7d --format csv --key key_abc123
 
 Each row has: timestamp, request id, key id, team id, client id, model, tier, input / output / cached tokens, `cost_usd` (what this request cost; $0 on local tiers), `cost_avoided_usd` (the frontier price those tokens would have paid), and a cache-hit flag.
 
-`cost_avoided_usd` uses `pricing.models` for the model the client asked for. Models missing from that table use `usage.frontier_price_per_1k_tokens`. Frontier (`L6`) rows keep the real cost and record $0 avoided.
-
-A successful transcription exports with `tier` `asr` when local ASR served it, or `tier` `L6` on frontier fallback. An allowlist 403 and an unconfigured 501 do not write a row.
+`cost_avoided_usd` uses `pricing.models` for the model the client asked for. Models missing from that table use `usage.frontier_price_per_1k_tokens`. Frontier (`L6`) rows keep the real cost and record $0 avoided. A successful transcription exports as `tier` `asr` (local) or `L6` (frontier fallback). Embedding calls export as `tier` `embed` with the caller's key and team. An unknown embedding model returns 400 and writes no row. Allowlist 403 and unconfigured transcription 501 write no row.
 
 `daari prune` applies `observability.retention.spend_days` the same way it prunes traces and the day ledger. Postgres replicas share the table when `observability.backend` is `postgres`.
 

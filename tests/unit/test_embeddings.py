@@ -117,3 +117,51 @@ async def test_metrics_record_an_embed_tier(settings):
 
     snapshot = app.state.ctx.metrics.snapshot()
     assert snapshot["embed"]["count"] >= 1
+
+
+def _spend_rows(app):
+    ledger = app.state.ctx.router.spend_ledger
+    return list(ledger.iter_rows(since="2000-01-01T00:00:00+00:00"))
+
+
+@pytest.mark.asyncio
+async def test_embeddings_spend_row_keeps_key_and_team(settings, tmp_path):
+    """Chargeback export attributes embedding calls to the virtual key (#755)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("bot", client_id="client-bot", team="eng")
+    embedder = RecordingEmbedder()
+    app = _app(settings, embedder)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/embeddings",
+            json={"model": "nomic-embed-text", "input": "hello"},
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert response.status_code == 200, response.text
+    rows = _spend_rows(app)
+    assert len(rows) == 1
+    assert rows[0]["tier"] == "embed"
+    assert rows[0]["key_id"] == key.key.key_id
+    assert rows[0]["team_id"] == key.key.team_id
+    assert rows[0]["model"] == "nomic-embed-text"
+
+
+@pytest.mark.asyncio
+async def test_unknown_embedding_model_does_not_write_spend(settings, tmp_path):
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    embedder = RecordingEmbedder()
+    app = _app(settings, embedder)
+    response = await _post(app, {"model": "totally-unknown", "input": "hello"})
+    assert response.status_code == 400
+    assert _spend_rows(app) == []
