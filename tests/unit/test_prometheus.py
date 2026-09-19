@@ -59,8 +59,8 @@ class TestRenderPrometheus:
             budget_state={"daily_spend_usd": 0.42, "daily_budget_usd": 1.0, "state": "ok"},
             false_hit_rate=0.05,
         )
-        assert "daari_frontier_spend_usd{window=\"daily\"} 0.42" in text
-        assert "daari_frontier_budget_usd{window=\"daily\"} 1.0" in text
+        assert 'daari_frontier_spend_usd{window="daily"} 0.42' in text
+        assert 'daari_frontier_budget_usd{window="daily"} 1.0' in text
         assert 'daari_frontier_budget_state{state="ok"} 1' in text
         assert "daari_cache_false_hit_rate 0.05" in text
 
@@ -187,9 +187,10 @@ def test_team_rate_limit_gauges_in_render():
         Metrics(),
         team_rate_limits=[
             {"team": "eng", "kind": "rpm", "limit": 10, "remaining": 7},
+            {"team": "eng", "kind": "rpd", "limit": 100, "remaining": 40},
         ],
     )
-    assert (
-        'daari_team_rate_limit_remaining{team="eng",kind="rpm",scope="team"} 7' in text
-    )
+    assert 'daari_team_rate_limit_remaining{team="eng",kind="rpm",scope="team"} 7' in text
     assert 'daari_team_rate_limit_limit{team="eng",kind="rpm",scope="team"} 10' in text
+    assert 'daari_team_rate_limit_remaining{team="eng",kind="rpd",scope="team"} 40' in text
+    assert 'daari_team_rate_limit_limit{team="eng",kind="rpd",scope="team"} 100' in text
