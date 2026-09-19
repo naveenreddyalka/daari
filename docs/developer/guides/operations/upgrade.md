@@ -148,7 +148,7 @@ same open.
 | Audit log | `~/.daari/audit/audit.sqlite3` | Append-only, durable (`daari/enterprise/audit.py`). Back up for compliance. `observability.retention.audit_days` defaults to **0 (keep forever)** so an upgrade never silently deletes audit history; set it only when you want a stated retention period. |
 | Feedback / training examples | `~/.daari/feedback/`, `~/.daari/training/` | Durable, create-if-missing only. |
 | Postgres (`observability.backend=postgres`) | `usage`, `client_usage`, `traces` | Create-if-missing on connect; on failure the store disables itself (`daari/observability/postgres_usage.py`). No destructive migrations are ever run against Postgres. |
-| Request log | `~/.daari/cursor-requests.log` | Rotated per `observability.request_log_*`; disposable. |
+| Request log | `~/.daari/cursor-requests.log` | Rotated per `observability.request_log_*`; disposable. `observability.retention.request_log_days` (default 0) drops lines and old rotations past that window on `daari prune`. |
 
 Rule of thumb: **caches and counters are disposable, `.sqlite3` files are
 not.** A backup of `~/.daari/config.yaml`, `auth/`, `usage/`, `audit/` and

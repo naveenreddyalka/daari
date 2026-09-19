@@ -3433,6 +3433,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#770 -->
 **Status:** Done (2026-09-19). `ExactCache` and `RedisExactCache` delete by served model or entry hash (Redis `DELETE`, not a no-op). L1 filters on `context_key` / `answer_hash`. `POST /v1/daari/cache/invalidate` and `daari cache invalidate` return removed counts and log `cache_invalidate`. Redis `daari cache prune` says expiry is TTL and does not scan. Covered by `tests/unit/test_cache_invalidate.py`.
 
+### Request log retention ([#772](https://github.com/naveenreddyalka/daari/issues/772))
+
+<!-- tracking:#772 -->
+**Status:** Done (2026-09-19). `observability.retention.request_log_days` (default 0) folds `cursor-requests.log` into `prune_all`. Rotated backups that are entirely old are deleted; the active file keeps newer lines. `daari prune` prints a `request_log` line. Covered by `tests/unit/test_retention.py`.
+
 ### Request deadline across hops ([#771](https://github.com/naveenreddyalka/daari/issues/771))
 
 <!-- tracking:#771 -->

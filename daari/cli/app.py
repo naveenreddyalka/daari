@@ -1335,7 +1335,10 @@ def prune(
         False, "--dry-run", help="Print per-store counts that would be deleted; change nothing."
     ),
 ) -> None:
-    """Apply observability.retention windows to traces, ledger, spend, audit, shadow checks, tasks."""
+    """Apply observability.retention windows.
+
+    Covers traces, ledger, spend, audit, shadow checks, tasks, and the request log.
+    """
     from daari.observability.retention import run_sweep
 
     settings = get_settings()
