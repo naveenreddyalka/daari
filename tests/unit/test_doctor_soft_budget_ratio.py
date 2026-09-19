@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from daari.auth.virtual_keys import BudgetWindow, VirtualKeyStore
-from daari.setup.doctor import _check_soft_budget_ratio, run_doctor
+from daari.setup.doctor import _check_soft_budget_ratio, _check_unbounded_rpd, run_doctor
 
 
 class TestSoftBudgetRatioDoctor:
@@ -80,3 +80,35 @@ class TestSoftBudgetRatioDoctor:
         by_name = {r.name: r for r in results}
         assert "soft_budget_ratio" in by_name
         assert by_name["soft_budget_ratio"].ok is False
+
+
+class TestUnboundedRpdDoctor:
+    def test_warns_when_key_rpm_has_no_rpd(self, settings, tmp_path):
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        settings.server.virtual_keys.enabled = True
+        VirtualKeyStore(settings.virtual_keys_path).create("burst", rpm=60, rpd=0)
+        result = _check_unbounded_rpd(settings)
+        assert result.ok is False
+        assert result.optional is True
+        assert "rpd" in result.detail
+        assert "burst" in result.detail
+
+    def test_warns_when_team_rpm_has_no_rpd(self, settings, tmp_path):
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        settings.server.virtual_keys.enabled = True
+        VirtualKeyStore(settings.virtual_keys_path).create_team("eng", rpm=30, rpd=0)
+        result = _check_unbounded_rpd(settings)
+        assert result.ok is False
+        assert "rpd" in result.detail
+        assert "eng" in result.detail
+
+    def test_quiet_when_rpd_set_or_rpm_absent(self, settings, tmp_path):
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        settings.server.virtual_keys.enabled = True
+        store = VirtualKeyStore(settings.virtual_keys_path)
+        store.create("capped", rpm=60, rpd=500)
+        store.create("idle", rpm=0, rpd=0)
+        store.create_team("ops", rpm=10, rpd=100)
+        result = _check_unbounded_rpd(settings)
+        assert result.ok is True
+        assert "rpd" in result.detail
