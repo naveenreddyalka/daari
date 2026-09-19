@@ -195,6 +195,8 @@ async def handle_transcription(
     language: str | None,
     prompt: str | None,
     response_format: str,
+    upstream_path: str = "audio/transcriptions",
+    event: str = "audio_transcription",
 ) -> JSONResponse | dict[str, Any]:
     fmt = (response_format or "json").strip().lower() or "json"
     if fmt != "json":
@@ -233,7 +235,7 @@ async def handle_transcription(
     if target.api_key:
         headers["Authorization"] = f"Bearer {target.api_key}"
 
-    url = f"{target.base_url}/audio/transcriptions"
+    url = f"{target.base_url}/{upstream_path.lstrip('/')}"
     started = time.perf_counter()
     try:
         upstream = await post_transcription(
@@ -267,7 +269,7 @@ async def handle_transcription(
         )
 
     log_gateway_event(
-        "audio_transcription",
+        event,
         {
             "model": model_name,
             "bytes": len(content),
@@ -285,3 +287,24 @@ async def handle_transcription(
         latency_ms=latency_ms,
     )
     return payload
+
+
+async def handle_translation(
+    request: Request,
+    *,
+    file: UploadFile,
+    model: str,
+    prompt: str | None,
+    response_format: str,
+) -> JSONResponse | dict[str, Any]:
+    """POST /v1/audio/translations — same local ASR target, translations path (#758)."""
+    return await handle_transcription(
+        request,
+        file=file,
+        model=model,
+        language=None,
+        prompt=prompt,
+        response_format=response_format,
+        upstream_path="audio/translations",
+        event="audio_translation",
+    )

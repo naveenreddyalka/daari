@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (Helm local ASR base URL — [#757](https://github.com/naveenreddyalka/daari/issues/757))
+> Last updated: 2026-09-19 (audio translations — [#758](https://github.com/naveenreddyalka/daari/issues/758))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3447,6 +3447,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#757 -->
 **Status:** Done (2026-09-19). `asr.baseUrl` (empty by default) sets `DAARI_ASR__BASE_URL` on the Deployment when non-empty, so a cluster can point transcriptions at an on-box whisper/vLLM server. Covered by `tests/unit/test_helm_chart.py`.
+
+### Audio translations ([#758](https://github.com/naveenreddyalka/daari/issues/758))
+
+<!-- tracking:#758 -->
+**Status:** Done (2026-09-19). `POST /v1/audio/translations` forwards multipart audio to `{asr.base_url}/audio/translations` and returns JSON `text`. Unconfigured ASR is 501 with no upload; `response_format` other than `json` is 400. Covered by `tests/unit/test_audio_translations.py`.
 
 ## How to update
 
