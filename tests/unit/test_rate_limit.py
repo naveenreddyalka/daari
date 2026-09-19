@@ -559,3 +559,22 @@ async def test_gateway_survives_redis_timeout(settings, tmp_path, monkeypatch):
         response = await client.post("/v1/chat/completions", json=CHAT)
     assert response.status_code == 200
     assert response.headers.get("x-ratelimit-backend") == "sqlite"
+
+
+def test_team_rpd_gauge_decreases_and_rpm_stays_independent(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("daari.auth.rate_limit.time.time", lambda: 1_700_000_030.0)
+    limiter = RateLimiter(MemoryCounterBackend())
+    team = SimpleNamespace(team_id="t1", name="eng", rpm=4, tpm=0, rpd=3)
+    before = {row["kind"]: row for row in limiter.team_rate_gauges([team])}
+    assert before["rpm"]["remaining"] == 4
+    assert before["rpd"]["remaining"] == 3
+    assert before["rpd"]["limit"] == 3
+    assert "tpm" not in before
+    limiter.check(key_id="a", model="m", tokens=1, team_id="t1", team_rpm=4, team_rpd=3)
+    after = {row["kind"]: row for row in limiter.team_rate_gauges([team])}
+    assert after["rpm"]["remaining"] == 3
+    assert after["rpd"]["remaining"] == 2
+    unlimited = SimpleNamespace(team_id="t2", name="ops", rpm=0, tpm=0, rpd=0)
+    assert limiter.team_rate_gauges([unlimited]) == []

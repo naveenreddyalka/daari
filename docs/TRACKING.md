@@ -3324,6 +3324,14 @@ day cap is set, and `daari keys list` prints an `rpd` column. Zero stays
 omitted, matching rpm. Covered by `tests/unit/test_introspect.py` and
 `tests/unit/test_virtual_keys.py`.
 
+### Scrape team rpd remaining ([#731](https://github.com/naveenreddyalka/daari/issues/731))
+
+<!-- tracking:#731 -->
+**Status:** Done (2026-09-19). `team_rate_gauges` emits `kind="rpd"` on the
+86400-second window for teams with a day cap. Prometheus renders it next to
+rpm/tpm. Covered by `tests/unit/test_rate_limit.py` and
+`tests/unit/test_prometheus.py`.
+
 ### Doctor warns when rpm has no daily cap ([#732](https://github.com/naveenreddyalka/daari/issues/732))
 
 <!-- tracking:#732 -->

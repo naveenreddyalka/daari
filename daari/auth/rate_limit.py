@@ -501,6 +501,17 @@ class RateLimiter:
                         "remaining": max(0, tpm - used),
                     }
                 )
+            rpd = int(getattr(team, "rpd", 0) or 0)
+            if rpd > 0:
+                used = int(self._increment(f"rpd:team:{team_id}", 0, window_seconds=DAY_SECONDS))
+                rows.append(
+                    {
+                        "team": name,
+                        "kind": "rpd",
+                        "limit": rpd,
+                        "remaining": max(0, rpd - used),
+                    }
+                )
         return rows
 
     def snapshot(self) -> dict[str, Any]:
