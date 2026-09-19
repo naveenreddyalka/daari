@@ -3363,6 +3363,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#741 -->
 **Status:** Done (2026-09-19). `GET /v1/daari/stats` includes `team_rate_limits` (`team`, `kind`, `limit`, `remaining`), including `rpd`. The web dashboard renders one row per entry. Covered by `tests/unit/test_stats_team_rate_limits.py` and `packages/web-ui/test/dashboard.test.js`.
 
+### Doctor ASR probe ([#740](https://github.com/naveenreddyalka/daari/issues/740))
+
+<!-- tracking:#740 -->
+**Status:** Done (2026-09-19). `daari doctor` warns when `asr.base_url` is unreachable and when `asr.frontier_fallback` is set without frontier or a resolvable key. Unconfigured ASR stays quiet. Covered by `tests/unit/test_doctor_asr.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
