@@ -873,6 +873,14 @@ class RetentionSettings(BaseModel):
             "0 keeps them forever."
         ),
     )
+    request_log_days: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Delete gateway request-log lines and rotated backups older than "
+            "this many days (#772). 0 keeps size-only rotation."
+        ),
+    )
 
     @property
     def enabled(self) -> bool:
@@ -884,6 +892,7 @@ class RetentionSettings(BaseModel):
                 self.shadow_days,
                 self.tasks_days,
                 self.spend_days,
+                self.request_log_days,
             )
         )
 

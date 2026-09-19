@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (chargeback transcription tiers — [#756](https://github.com/naveenreddyalka/daari/issues/756))
+> Last updated: 2026-09-19 (request log retention — [#772](https://github.com/naveenreddyalka/daari/issues/772))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3432,6 +3432,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#770 -->
 **Status:** Done (2026-09-19). `ExactCache` and `RedisExactCache` delete by served model or entry hash (Redis `DELETE`, not a no-op). L1 filters on `context_key` / `answer_hash`. `POST /v1/daari/cache/invalidate` and `daari cache invalidate` return removed counts and log `cache_invalidate`. Redis `daari cache prune` says expiry is TTL and does not scan. Covered by `tests/unit/test_cache_invalidate.py`.
+
+### Request log retention ([#772](https://github.com/naveenreddyalka/daari/issues/772))
+
+<!-- tracking:#772 -->
+**Status:** Done (2026-09-19). `observability.retention.request_log_days` (default 0) folds `cursor-requests.log` into `prune_all`. Rotated backups that are entirely old are deleted; the active file keeps newer lines. `daari prune` prints a `request_log` line. Covered by `tests/unit/test_retention.py`.
 
 ## How to update
 

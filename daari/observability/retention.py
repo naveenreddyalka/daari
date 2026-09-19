@@ -196,6 +196,16 @@ def prune_all(
     else:
         results.append(PruneResult("responses", 0, True))
 
+    request_log_days = int(getattr(retention, "request_log_days", 0) or 0)
+    if request_log_days:
+        from daari.gateway.request_log import LOG_PATH, prune_request_log
+
+        cutoff_dt = current - timedelta(days=request_log_days)
+        deleted = prune_request_log(LOG_PATH, cutoff=cutoff_dt, dry_run=dry_run)
+        results.append(PruneResult("request_log", deleted, False, cutoff_dt.isoformat()))
+    else:
+        results.append(PruneResult("request_log", 0, True))
+
     from daari.enterprise.postgres_audit import audit_log_from_settings
 
     audit = audit_log_from_settings(settings)
