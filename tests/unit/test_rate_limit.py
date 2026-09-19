@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -15,6 +16,8 @@ from daari.auth.rate_limit import (
     RedisCounterBackend,
     SqliteCounterBackend,
     build_rate_limiter,
+    estimate_audio_upload_tokens,
+    estimate_request_tokens,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.router.router import AppContext
@@ -559,6 +562,81 @@ async def test_gateway_survives_redis_timeout(settings, tmp_path, monkeypatch):
         response = await client.post("/v1/chat/completions", json=CHAT)
     assert response.status_code == 200
     assert response.headers.get("x-ratelimit-backend") == "sqlite"
+
+
+class _TokenSpy(RateLimiter):
+    def __init__(self, **kwargs):
+        super().__init__(MemoryCounterBackend(), **kwargs)
+        self.tokens: list[int] = []
+
+    def check(self, **kwargs):
+        self.tokens.append(int(kwargs["tokens"]))
+        return super().check(**kwargs)
+
+
+def test_audio_upload_tokens_use_file_bytes_not_one():
+    audio = b"x" * 4000
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["ct"] = request.headers["content-type"]
+        captured["body"] = request.content
+        return httpx.Response(200)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        client.post(
+            "http://test/v1/audio/transcriptions",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    tokens = estimate_audio_upload_tokens(captured["body"], captured["ct"])
+    assert tokens == len(audio) // 4
+    assert tokens >= 1000
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "a" * 16}]}
+    assert estimate_request_tokens(chat) == 16 // 4
+    embed = {"model": "daari", "input": "b" * 20}
+    assert estimate_request_tokens(embed) == 20 // 4
+
+
+@pytest.mark.asyncio
+async def test_transcription_tpm_counts_file_bytes_chat_stays_chars(settings):
+    """Multipart ASR charges len(file)//4; JSON chat and embeddings stay chars//4 (#765)."""
+    spy = _TokenSpy(default_tpm=1_000_000)
+    app = _app(settings, limiter=spy)
+    audio = b"y" * 4000
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "a" * 16}]}
+    embed = {"model": "daari", "input": "b" * 20}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        chat_response = await client.post("/v1/chat/completions", json=chat)
+        embed_response = await client.post("/v1/embeddings", json=embed)
+        audio_response = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert chat_response.status_code == 200
+    assert embed_response.status_code != 429
+    assert audio_response.status_code != 429
+    assert spy.tokens[0] == 16 // 4
+    assert spy.tokens[1] == 20 // 4
+    assert spy.tokens[2] >= 1000
+    assert spy.tokens[2] == len(audio) // 4
+
+
+@pytest.mark.asyncio
+async def test_transcription_tpm_denial_is_429_with_retry_after(settings):
+    spy = _TokenSpy(default_tpm=10, retry_after_seconds=7)
+    app = _app(settings, limiter=spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", b"z" * 4000, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert denied.status_code == 429
+    assert denied.json()["error"]["type"] == "rate_limit_error"
+    assert denied.headers["retry-after"] == "7"
+    assert spy.tokens[0] >= 1000
 
 
 def test_team_rpd_gauge_decreases_and_rpm_stays_independent(monkeypatch):
