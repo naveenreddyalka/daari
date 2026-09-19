@@ -91,6 +91,24 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+def _semantic_entry_matches(
+    entry: dict[str, Any],
+    *,
+    model: str | None,
+    entry_hash: str | None,
+) -> bool:
+    """True when the row should be dropped. Unset filters match everything."""
+    if model is None and entry_hash is None:
+        return True
+    if model is not None:
+        ctx = str(entry.get("context_key") or "")
+        if ctx != model and not ctx.startswith(f"{model}|"):
+            return False
+    if entry_hash is not None and entry.get("answer_hash") != entry_hash:
+        return False
+    return True
+
+
 class Embedder(Protocol):
     async def embed(self, text: str, *, model: str | None = None) -> list[float] | None: ...
 
@@ -398,6 +416,22 @@ class SemanticCache:
         entries = self._load_entries()
         kept = [entry for entry in entries if not self._entry_expired(entry)]
         removed = len(entries) - len(kept)
+        if removed:
+            self._save_entries(kept)
+        return removed
+
+    def invalidate(self, *, model: str | None = None, entry_hash: str | None = None) -> int:
+        """Drop L1 rows by context_key model prefix, answer hash, or all."""
+        if not self.enabled:
+            return 0
+        entries = self._load_entries()
+        kept: list[dict[str, Any]] = []
+        removed = 0
+        for entry in entries:
+            if _semantic_entry_matches(entry, model=model, entry_hash=entry_hash):
+                removed += 1
+            else:
+                kept.append(entry)
         if removed:
             self._save_entries(kept)
         return removed

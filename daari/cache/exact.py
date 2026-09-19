@@ -158,3 +158,30 @@ class ExactCache:
                 store.delete(key)
                 removed += 1
         return removed
+
+    def invalidate(self, *, model: str | None = None, entry_hash: str | None = None) -> int:
+        """Drop entries by served model, cache key, or everything when both are unset."""
+        if not self.enabled:
+            return 0
+        store = self._store()
+        removed = 0
+        for key in list(store.iterkeys()):
+            key_s = key.decode() if isinstance(key, bytes) else str(key)
+            if entry_hash is not None and key_s != entry_hash:
+                continue
+            if model is not None and self._entry_model(store.get(key)) != model:
+                continue
+            store.delete(key)
+            removed += 1
+        return removed
+
+    def _entry_model(self, entry: Any) -> str | None:
+        raw = self._entry_value(entry)
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        model = data.get("model") if isinstance(data, dict) else None
+        return model if isinstance(model, str) else None

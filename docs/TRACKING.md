@@ -3428,6 +3428,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#769 -->
 **Status:** Done (2026-09-19). Non-streaming chat, Anthropic, and Responses calls cancel the router task when the client disconnects, so the executor sees `CancelledError`. Closing a stream stops the upstream generator and records `daari_cancelled_requests_total{phase}` plus a `request_cancelled` gateway event. Cancelled requests do not add a second ledger row. Covered by `tests/unit/test_client_disconnect.py`.
 
+### Selective cache invalidation ([#770](https://github.com/naveenreddyalka/daari/issues/770))
+
+<!-- tracking:#770 -->
+**Status:** Done (2026-09-19). `ExactCache` and `RedisExactCache` delete by served model or entry hash (Redis `DELETE`, not a no-op). L1 filters on `context_key` / `answer_hash`. `POST /v1/daari/cache/invalidate` and `daari cache invalidate` return removed counts and log `cache_invalidate`. Redis `daari cache prune` says expiry is TTL and does not scan. Covered by `tests/unit/test_cache_invalidate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

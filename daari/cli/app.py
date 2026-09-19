@@ -2196,6 +2196,11 @@ def cache_prune() -> None:
     from daari.cache.semantic import OllamaEmbedder, SemanticCache
 
     settings = get_settings()
+    if getattr(settings.cache, "backend", "disk") == "redis":
+        note = " (Redis relies on TTL; prune does not scan)"
+        typer.echo(f"L0: removed 0 expired entries{note}")
+        typer.echo(f"L1: removed 0 expired entries{note}")
+        return
     l0 = ExactCache(
         str(settings.l0_cache_path),
         enabled=settings.cache.l0.enabled,
@@ -2213,6 +2218,66 @@ def cache_prune() -> None:
     l1_note = "" if settings.cache.l1.ttl_seconds > 0 else " (ttl disabled — nothing expires)"
     typer.echo(f"L0: removed {l0_removed} expired entries{l0_note}")
     typer.echo(f"L1: removed {l1_removed} expired entries{l1_note}")
+
+
+def _daemon_invalidate_caches(
+    settings: Settings, *, model: str | None, entry_hash: str | None
+) -> tuple[bool, str]:
+    url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/cache/invalidate"
+    body: dict[str, str] = {}
+    if model:
+        body["model"] = model
+    if entry_hash:
+        body["hash"] = entry_hash
+    try:
+        response = httpx.post(url, json=body, timeout=5.0)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return False, "daemon returned unexpected response payload"
+        removed = int(payload.get("removed") or 0)
+        return True, (
+            f"Invalidated {removed} entries "
+            f"(L0 {payload.get('l0_removed', 0)}, L1 {payload.get('l1_removed', 0)})."
+        )
+    except Exception as exc:
+        return False, str(exc)
+
+
+@cache_app.command("invalidate")
+def cache_invalidate(
+    model: str | None = typer.Option(None, "--model", help="Served model (L0) or context_key prefix (L1)."),
+    entry_hash: str | None = typer.Option(
+        None, "--hash", help="L0 cache key or L1 answer_hash. Omit both flags to drop every entry."
+    ),
+) -> None:
+    """Drop L0/L1 entries by model or hash. Empty selection clears both caches."""
+    from daari.cache.exact import ExactCache
+    from daari.cache.semantic import OllamaEmbedder, SemanticCache
+
+    settings = get_settings()
+    if _daemon_is_running(settings):
+        ok, detail = _daemon_invalidate_caches(settings, model=model, entry_hash=entry_hash)
+        if not ok:
+            typer.echo(f"Daemon invalidate failed: {detail}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(detail)
+        return
+    l0 = ExactCache(
+        str(settings.l0_cache_path),
+        enabled=settings.cache.l0.enabled,
+        ttl_seconds=settings.cache.l0.ttl_seconds,
+    )
+    l1 = SemanticCache(
+        str(settings.l1_cache_path),
+        OllamaEmbedder(settings.ollama.base_url, settings.cache.l1.embedding_model),
+        enabled=settings.cache.l1.enabled,
+        ttl_seconds=settings.cache.l1.ttl_seconds,
+    )
+    l0_removed = l0.invalidate(model=model, entry_hash=entry_hash)
+    l1_removed = l1.invalidate(model=model, entry_hash=entry_hash)
+    typer.echo(f"L0: removed {l0_removed}")
+    typer.echo(f"L1: removed {l1_removed}")
 
 
 learn_app = typer.Typer(help="Personal learning loop: outcome stats and recommendations.")
