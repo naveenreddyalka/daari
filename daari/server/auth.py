@@ -196,4 +196,6 @@ def introspect_token(
         payload["rpm"] = int(key.rpm)
     if int(key.tpm or 0) > 0:
         payload["tpm"] = int(key.tpm)
+    if int(key.rpd or 0) > 0:
+        payload["rpd"] = int(key.rpd)
     return payload
