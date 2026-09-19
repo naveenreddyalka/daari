@@ -11,30 +11,37 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-19)
+## Where daari stands (verified in-tree, 2026-09-19 evening)
 
 Fleet/HA, tenancy, governance, Responses cancel/delete, local ASR,
 request-rate KEDA, UTC-day `rpd`, transcription allowlists, doctor ASR,
-transcription chargeback, embedding chargeback (key and team on the row),
-and the chargeback guide's audio tiers are shipped. Idempotency-Key,
-Helm `asr.baseUrl`, and `POST /v1/audio/translations` are already queued
-and are not restated below.
+and transcription/embedding chargeback are shipped. Already queued and
+not restated below: Idempotency-Key, Helm `asr.baseUrl`, audio
+translations, embed/ASR latency, Helm Ollama URL, doctor embed probe,
+audio TPM, and batched list embeds.
 
-**Outward (this run):** LiteLLM stable is still **v1.101.0** (15 Sep).
-**v1.102.0-rc.2** (16 Sep) only backports Responses request-param leak
-fixes. **v1.103.0-dev.2** (18 Sep) is not stable; native OCR and hosted
-speech stay non-goals. Portkey enterprise and Kong **2.0.3** (31 Aug)
-are unchanged. Ollama **v0.34.2** (15 Sep) has no v0.35. Its documented
-batch surface is `POST /api/embed` with an `input` array
-([docs](https://docs.ollama.com/api/embed)). No ElevenLabs SDK.
+**Outward (this run, delta on the 16:55 scan):** LiteLLM stable is still
+**v1.101.0**; v1.103.0-dev.2 (18 Sep) is not stable. Portkey enterprise
+and Kong **2.0.3** unchanged. **Ollama v0.34.3-rc1** (19 Sep) adds a
+`thinking` controls object (`values` + `default`) to `GET /api/show` —
+facade parity becomes a fileable row when it goes stable (same pattern
+as the 0.34.1 `capabilities` field). llama.cpp nightlies only; vLLM
+0.29.0 flat.
 
-**Inward theme:** embedding and transcription requests record `latency_ms=0`,
-so Grafana's latency histogram for those tiers is empty. The Helm chart
-can point chat at `orgPool` but the embedder still uses
-`ollama.base_url` (`127.0.0.1:11434` inside the pod). Doctor checks that
-the embedding model name is in `/api/tags` and never POSTs an embed.
-Multipart transcriptions fail JSON parse, so TPM sees 1 token. List
-embedding inputs are one HTTP call each.
+**Inward theme: cache tenancy and request lifecycle.** `cache_key()`
+(`daari/cache/exact.py`) hashes messages, model, sampling — never
+`key_id`/`team_id` (`RequestMeta` carries both, comment says "Not part
+of the cache key"). The Redis L0 prefix is the global `daari:l0:`, and
+the L1 nearest scan matches on model|temperature|tools only, so a
+semantic hit can serve one team's stored completion to another team.
+No `request.is_disconnected()` anywhere: an abandoned non-streaming
+request keeps the local GPU or frontier call running to completion.
+Cache ops are blunt: `daari context clear` is rmtree-everything, Redis
+L0 `prune()` is a no-op, and there is no invalidate-by-model/key/entry.
+Timeouts are fixed per tier (`local_timeout_seconds` 120 + 90 per
+frontier leg on escalation) with no request-scoped deadline. The
+request log stores metadata only (no prompt bodies — verified) but is
+absent from `RetentionSettings.prune_all`, so it only rotates by size.
 
 ---
 
@@ -42,31 +49,39 @@ embedding inputs are one HTTP call each.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Embed/ASR latency is zero** — `compute_embeddings` and transcriptions call `metrics.record` with `latency_ms=0`, so `daari_request_latency_ms` for `embed` / `asr` never fills | 3 | 1 | LiteLLM (per-route latency) | Local embed and ASR only win if operators can see they are fast | File |
-| 2 | **Helm Ollama URL** — chart sets `orgPool` for chat routing but never `DAARI_OLLAMA__BASE_URL`; embeddings and L3 stay on localhost | 4 | 2 | vLLM / Ollama Helm (`OLLAMA_HOST`) | One values key keeps the embedder on the same GPU pool as chat | File |
-| 3 | **Doctor embedding probe** — L1 check stops at model name in `/api/tags`; a 500 from `/api/embed` is invisible until a request | 3 | 2 | Ollama health + LiteLLM model health | Fail at `daari doctor`, not on the first RAG call | File |
-| 4 | **Audio TPM** — multipart `POST /v1/audio/transcriptions` is not JSON, so `estimate_request_tokens` returns 1 | 3 | 2 | LiteLLM (audio counts toward limits) | Local ASR still burns GPU; TPM should see bytes, not a chat-shaped body | File |
-| 5 | **Serial embedding HTTP** — list inputs miss cache one `POST /api/embeddings` at a time; Ollama `/api/embed` accepts an array | 3 | 3 | Ollama batch embed; LiteLLM batch embeddings | One local call per batch, no hosted embedding API | File |
-| 6 | **Idempotency / translations / Helm ASR / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | LiteLLM / cloud | First three are already queued; the rest stay deferred | Watch |
+| 1 | **Cache is tenant-blind** — L0/L1 keys have no `key_id`/`team_id` dimension; semantic hits cross team boundaries; no per-key/team cache scope flag | 5 | 2 | Portkey (workspace-scoped cache); LiteLLM cache-key metadata | Shared org cache stays the default win; a `cache_scope` of team/key makes it safe for confidential teams without a hosted cache | File |
+| 2 | **Abandoned requests burn GPU** — no disconnect detection; non-stream upstream calls run to completion after the client hangs up; no cancelled-request metric | 4 | 3 | Kong/Envoy (proxy abort propagates upstream) | Cancelled local inference frees the GPU for the next request — the scarce resource IS local | File |
+| 3 | **No selective cache invalidation** — only rmtree-all `context clear` + TTL prune (Redis prune is a no-op); nothing by model, key, team, or entry hash | 3 | 2 | LiteLLM (cache delete/flush admin endpoints); GPTCache | A bad cached answer is purged in one admin call instead of nuking the whole org cache | File |
+| 4 | **No end-to-end deadline** — each tier restarts a full fixed timeout on escalation (120s local + 90s per frontier leg worst-case); `latency_budget_ms` only picks the first tier | 4 | 3 | LiteLLM (`request_timeout`); Kong route timeouts | Escalation chains are daari's core mechanic; a wall-clock budget makes p99 provable to SRE | File |
+| 5 | **Request log outside retention** — `cursor-requests.log` rotates by size only; not in `RetentionSettings`/`prune_all`; no time-based purge for compliance | 2 | 1 | Cloud gateways (retention policies) | One retention sweep already prunes traces/ledger/audit — logs should follow | File |
+| 6 | **Ollama 0.34.3 `/api/show` thinking controls / idempotency / translations / Helm ASR / embed-ASR set / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | Ollama / LiteLLM / cloud | First is rc-gated; next eight are queued; the rest stay deferred | Watch |
 
-Pruned this run: embedding chargeback rows and the chargeback guide's
-audio-tier sentence (both shipped).
+Pruned this run: the embed/ASR measurement rows (all five filed as issues
+by the 16:55 sibling run and now queued).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Time embed and ASR** — stats and Prometheus latency histograms show wall time, not zero.
-2. **Helm can point the embedder at the pool** — `ollama.baseUrl` becomes `DAARI_OLLAMA__BASE_URL` when set.
-3. **Doctor probes embeddings** — L1 on and the model listed, but `/api/embed` down, fails the check.
-4. **Transcription bytes count toward TPM** — a multi-kilobyte upload is not 1 token.
-5. **Batch list embeds** — cache misses in one `POST /v1/embeddings` share one Ollama call.
+1. **Tenant-scoped caching** — optional `cache_scope: team|key` on virtual keys/teams folds `key_id`/`team_id` into L0/L1 keys and the Redis prefix.
+2. **Cancel on disconnect** — `is_disconnected()` polling + upstream task cancel; a `daari_cancelled_requests` counter proves freed GPU time.
+3. **Cache invalidation surface** — admin route + CLI to purge by model, key/team, or entry hash, Redis-aware.
+4. **Request deadline** — `X-Daari-Deadline-Ms` propagates remaining wall-clock into every tier's httpx timeout and stops escalation when spent.
+5. **Log retention parity** — the gateway request log joins the retention sweep.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR) stay deferred until a paying ask.
 
 ---
 
 ## Changelog
+
+- **2026-09-19 (cache tenancy)** — Delta run an hour after the 16:55
+  sibling (embed/ASR set queued). Outward delta: Ollama v0.34.3-rc1 adds
+  `/api/show` thinking controls (watch until stable); LiteLLM/Portkey/
+  Kong/vLLM flat. Inward theme verified in-tree: tenant-blind L0/L1
+  cache keys, no disconnect cancellation, no selective cache
+  invalidation, no request-scoped deadline, request log outside the
+  retention sweep. Filing all five.
 
 - **2026-09-19 (embed drain)** — Embedding chargeback and the chargeback
   guide's audio sentence shipped. Outward: LiteLLM stable still v1.101.0;
