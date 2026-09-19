@@ -58,6 +58,9 @@ class RequestMeta(BaseModel):
     tier_cap: str | None = None
     # Max acceptable local-model latency in ms (X-Daari-Latency-Budget).
     latency_budget_ms: int | None = None
+    # Wall-clock budget for the whole escalation chain (X-Daari-Deadline-Ms).
+    # None means the request has no header deadline; the setting may still apply.
+    deadline_ms: int | None = None
     client_id: str | None = None
     # Raw User-Agent (gateway sniff). Used for classify_user_turn agent shortcut.
     user_agent: str | None = None

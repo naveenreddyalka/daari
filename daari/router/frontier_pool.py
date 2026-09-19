@@ -153,6 +153,9 @@ class FrontierPool:
                 key_fingerprint=key[-4:] if len(key) >= 4 else "****",
             )
             try:
+                from daari.router.deadline import RequestDeadlineExceeded, guard_upstream
+
+                guard_upstream("L6")
                 response = await slot.executor.execute(
                     request,
                     escalated_from=escalated_from,
@@ -165,6 +168,8 @@ class FrontierPool:
                 if slot.region:
                     response.daari_meta.region = slot.region
                 return response
+            except RequestDeadlineExceeded:
+                raise
             except Exception as exc:  # noqa: BLE001 — try next provider
                 # The executor has already spent its retry budget on transient
                 # failures, so reaching here means this provider is genuinely

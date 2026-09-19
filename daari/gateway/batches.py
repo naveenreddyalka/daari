@@ -68,6 +68,7 @@ class BatchGovernance:
     boundary_profile: str | None = None
     kind: str = "master"  # master | virtual
     latency_budget_ms: int | None = None
+    deadline_ms: int | None = None
     session_id: str | None = None
     user_agent: str | None = None
 
