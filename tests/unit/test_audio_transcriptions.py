@@ -333,3 +333,72 @@ async def test_upstream_failure_is_502(settings, monkeypatch):
     assert response.status_code == 502
     assert response.json()["error"]["type"] == "asr_upstream_error"
     assert "boom" not in response.json()["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_transcription_honors_model_allowlist(settings, tmp_path, monkeypatch):
+    seen: list[httpx.Request] = []
+    _patch_upstream(monkeypatch, _ok_handler(seen))
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = ""
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    locked = store.create("locked", allowed_models=["ggml-base"])
+    open_key = store.create("open")
+    team = store.create_team("eng", allowed_models=["ggml-base"])
+    member = store.create("member", team="eng")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await _post(
+            client,
+            headers={"Authorization": f"Bearer {locked.plaintext}"},
+            data=_form("whisper-1"),
+        )
+        assert denied.status_code == 403
+        assert denied.json()["error"]["type"] == "model_not_allowed"
+        assert "whisper-1" in denied.json()["error"]["message"]
+        assert seen == []
+
+        allowed = await _post(
+            client,
+            headers={"Authorization": f"Bearer {locked.plaintext}"},
+            data=_form("ggml-base"),
+        )
+        assert allowed.status_code == 200, allowed.text
+        assert len(seen) == 1
+
+        team_denied = await _post(
+            client,
+            headers={"Authorization": f"Bearer {member.plaintext}"},
+            data=_form("whisper-1"),
+        )
+        assert team_denied.status_code == 403
+        assert len(seen) == 1
+
+        unrestricted = await _post(
+            client,
+            headers={"Authorization": f"Bearer {open_key.plaintext}"},
+            data=_form("whisper-1"),
+        )
+        assert unrestricted.status_code == 200, unrestricted.text
+        assert len(seen) == 2
+
+    settings.asr.model = "whisper-1"
+    override_app = _app(settings)
+    override_app.state.virtual_key_store = store
+    override_app.state.ctx.virtual_key_store = store
+    before = len(seen)
+    async with AsyncClient(transport=ASGITransport(app=override_app), base_url="http://test") as client:
+        overridden = await _post(
+            client,
+            headers={"Authorization": f"Bearer {locked.plaintext}"},
+            data=_form("ggml-base"),
+        )
+    assert overridden.status_code == 403
+    assert "whisper-1" in overridden.json()["error"]["message"]
+    assert len(seen) == before
+    assert team.allowed_models == ("ggml-base",)
