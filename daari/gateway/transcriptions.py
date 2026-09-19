@@ -109,6 +109,46 @@ def _caller_client_id(request: Request) -> str | None:
     return text or None
 
 
+def _bind_spend_context(
+    request: Request,
+    ctx: Any,
+    *,
+    model: str,
+    client_id: str | None,
+) -> None:
+    """Copy virtual-key identity onto the chargeback row before the usage hook fires."""
+    router = getattr(ctx, "router", None)
+    ledger = getattr(router, "spend_ledger", None)
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return
+    from daari.observability.spend import SpendContext, bind_spend_context
+
+    claims = getattr(request.state, "auth_claims", None)
+    key_id = ""
+    team_id = ""
+    if claims is not None and getattr(claims, "kind", None) == "virtual":
+        key_id = str(getattr(claims, "key_id", None) or "")
+        virtual_key = getattr(claims, "virtual_key", None)
+        if virtual_key is not None:
+            team_id = str(getattr(virtual_key, "team_id", None) or "")
+    settings = getattr(ctx, "settings", None)
+    usage = getattr(settings, "usage", None)
+    fallback = float(getattr(usage, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+    pricing = getattr(router, "pricing", None)
+    if pricing is None and settings is not None:
+        pricing = getattr(settings, "pricing", None)
+    bind_spend_context(
+        SpendContext(
+            key_id=key_id,
+            team_id=team_id,
+            client_id=client_id or "",
+            requested_model=model,
+            pricing=pricing,
+            fallback_per_1k=fallback,
+        )
+    )
+
+
 def _record_request(ctx: Any, *, client_id: str | None, model: str, via: str, text: str) -> None:
     tier = "L6" if via == "frontier" else "asr"
     provider = "frontier" if via == "frontier" else "asr"
@@ -215,9 +255,11 @@ async def handle_transcription(
             "via": target.via,
         },
     )
+    caller = _caller_client_id(request)
+    _bind_spend_context(request, ctx, model=model_name, client_id=caller)
     _record_request(
         ctx,
-        client_id=_caller_client_id(request),
+        client_id=caller,
         model=model_name,
         via=target.via,
         text=payload["text"],
