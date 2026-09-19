@@ -3332,6 +3332,14 @@ omitted, matching rpm. Covered by `tests/unit/test_introspect.py` and
 rpm/tpm. Covered by `tests/unit/test_rate_limit.py` and
 `tests/unit/test_prometheus.py`.
 
+### Document rpd on keys guides ([#733](https://github.com/naveenreddyalka/daari/issues/733))
+
+<!-- tracking:#733 -->
+**Status:** Done (2026-09-19). Virtual-keys examples include `--rpd` (`0` =
+unlimited) and the config reference notes the day cap is per key/team, not a
+`rate_limit` field, with a link to the auth guide. Covered by
+`tests/unit/test_rpd_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
