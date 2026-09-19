@@ -397,12 +397,20 @@ class RateLimiter:
             count = self._increment(counter_key, amount, window_seconds=window_seconds)
             window_reset = (int(now // window_seconds) + 1) * window_seconds
             remaining = max(0, limit - count)
+            denied = count > limit
+            # Day caps must not advertise the 1s rpm delay (#738).
+            if not denied:
+                retry_after = None
+            elif scope == "rpd":
+                retry_after = max(1, int(window_reset - now))
+            else:
+                retry_after = self.retry_after_seconds
             decision = RateLimitDecision(
-                allowed=count <= limit,
+                allowed=not denied,
                 limit=limit,
                 remaining=remaining,
                 reset_epoch=window_reset,
-                retry_after=None if count <= limit else self.retry_after_seconds,
+                retry_after=retry_after,
                 scope=scope,
                 backend=self.backend.name,
                 bucket=bucket,

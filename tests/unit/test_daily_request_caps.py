@@ -60,7 +60,10 @@ class TestRpdLimiter:
         headers = third.headers()
         assert headers["X-RateLimit-Limit"] == "2"
         assert headers["X-RateLimit-Remaining"] == "0"
-        assert int(headers["X-RateLimit-Reset"]) == (int(FROZEN // 86400) + 1) * 86400
+        reset = (int(FROZEN // 86400) + 1) * 86400
+        assert int(headers["X-RateLimit-Reset"]) == reset
+        assert headers["Retry-After"] == str(max(1, reset - int(FROZEN)))
+        assert third.retry_after == max(1, reset - int(FROZEN))
 
     def test_window_rollover_allowed(self, monkeypatch):
         clock = {"now": FROZEN}
@@ -79,6 +82,7 @@ class TestRpdLimiter:
         rpm_deny = limiter.check(key_id="rpm-key", model="daari", tokens=1, rpm=1, rpd=10)
         assert not rpm_deny.allowed
         assert rpm_deny.scope == "rpm"
+        assert rpm_deny.retry_after == limiter.retry_after_seconds
         assert limiter.check(key_id="rpd-key", model="daari", tokens=1, rpm=10, rpd=1).allowed
         rpd_deny = limiter.check(key_id="rpd-key", model="daari", tokens=1, rpm=10, rpd=1)
         assert not rpd_deny.allowed
@@ -218,7 +222,9 @@ async def test_gateway_rpd_429_names_rpd(settings, tmp_path, monkeypatch):
     assert "rpd" in body["message"]
     assert denied.headers["x-ratelimit-limit"] == "1"
     assert "x-ratelimit-remaining" in denied.headers
-    assert "x-ratelimit-reset" in denied.headers
+    reset = int(denied.headers["x-ratelimit-reset"])
+    assert reset == (int(FROZEN // 86400) + 1) * 86400
+    assert denied.headers["retry-after"] == str(max(1, reset - int(FROZEN)))
 
 
 @pytest.mark.asyncio
