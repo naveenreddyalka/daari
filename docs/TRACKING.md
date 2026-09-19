@@ -3398,6 +3398,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#755 -->
 **Status:** Done (2026-09-19). `POST /v1/embeddings` writes a spend row with tier `embed` and the caller's key and team. An unknown model returns 400 and writes no row. Covered by `tests/unit/test_embeddings.py`.
 
+### Tenant cache scope ([#768](https://github.com/naveenreddyalka/daari/issues/768))
+
+<!-- tracking:#768 -->
+**Status:** Done (2026-09-19). Virtual keys and teams take an optional `cache_scope` (`global` default, `team`, `key`). Team and key scopes fold `team_id` or `key_id` into L0, Redis L0, and L1; `global` keeps today's cache hashes. Covered by `tests/unit/test_cache_scope.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

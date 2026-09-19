@@ -27,8 +27,10 @@ from daari.auth.virtual_keys import (
     VirtualKeyStore,
     _UNSET,
     _parse_metadata,
+    coerce_cache_scope,
     expiry_from,
     grace_from,
+    normalize_cache_scope,
 )
 from daari.auth.model_access import coerce_names, decode_names, encode_names
 
@@ -43,7 +45,8 @@ CREATE TABLE IF NOT EXISTS teams (
     tpm INTEGER NOT NULL DEFAULT 0,
     rpd INTEGER NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
-    model_groups_json TEXT
+    model_groups_json TEXT,
+    cache_scope TEXT NOT NULL DEFAULT 'global'
 );
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
@@ -69,7 +72,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     previous_expires_at TEXT,
     region_pin TEXT,
     allowed_models_json TEXT,
-    model_groups_json TEXT
+    model_groups_json TEXT,
+    cache_scope TEXT NOT NULL DEFAULT 'global'
 );
 """
 
@@ -79,11 +83,13 @@ _PG_TEAM_MIGRATIONS = (
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS rpd INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS allowed_models_json TEXT",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS model_groups_json TEXT",
+    "ALTER TABLE teams ADD COLUMN IF NOT EXISTS cache_scope TEXT NOT NULL DEFAULT 'global'",
 )
 _PG_KEY_MIGRATIONS = (
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS allowed_models_json TEXT",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS model_groups_json TEXT",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS rpd INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS cache_scope TEXT NOT NULL DEFAULT 'global'",
 )
 
 _MEMORY_PATHS: dict[str, Path] = {}
@@ -161,6 +167,7 @@ class PostgresVirtualKeyStore:
         rpd: int = 0,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
+        cache_scope: str = "global",
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -174,6 +181,7 @@ class PostgresVirtualKeyStore:
                 rpd=rpd,
                 allowed_models=allowed_models,
                 model_groups=model_groups,
+                cache_scope=cache_scope,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -189,13 +197,14 @@ class PostgresVirtualKeyStore:
         team_rpd = max(0, int(rpd))
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
+        scope = normalize_cache_scope(cache_scope)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT team_id, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope"
                     " FROM teams WHERE name = %s",
                     (name,),
                 )
@@ -211,11 +220,13 @@ class PostgresVirtualKeyStore:
                         allowed_models=decode_names(existing[5]) if len(existing) > 5 else None,
                         model_groups=decode_names(existing[6]) if len(existing) > 6 else None,
                         rpd=int(existing[7] or 0) if len(existing) > 7 else 0,
+                        cache_scope=coerce_cache_scope(existing[8]) if len(existing) > 8 else "global",
                     )
                 cur.execute(
                     "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
-                    " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
+                    " cache_scope)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         team_id,
                         name,
@@ -227,6 +238,7 @@ class PostgresVirtualKeyStore:
                         encode_names(models),
                         encode_names(groups),
                         team_rpd,
+                        scope,
                     ),
                 )
             conn.commit()
@@ -240,6 +252,7 @@ class PostgresVirtualKeyStore:
             allowed_models=models,
             model_groups=groups,
             rpd=team_rpd,
+            cache_scope=scope,
         )
 
     def update_team(
@@ -341,13 +354,13 @@ class PostgresVirtualKeyStore:
             with conn.cursor() as cur:
                 if team_id:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd, cache_scope"
                         " FROM teams WHERE team_id = %s",
                         (team_id,),
                     )
                 else:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd, cache_scope"
                         " FROM teams WHERE name = %s",
                         (name,),
                     )
@@ -364,6 +377,7 @@ class PostgresVirtualKeyStore:
             allowed_models=decode_names(row[6]) if len(row) > 6 else None,
             model_groups=decode_names(row[7]) if len(row) > 7 else None,
             rpd=int(row[8] or 0) if len(row) > 8 else 0,
+            cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
         )
 
     def list_teams(self) -> list[Team]:
@@ -374,7 +388,7 @@ class PostgresVirtualKeyStore:
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd"
+                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd, cache_scope"
                     " FROM teams ORDER BY created_at ASC, team_id ASC"
                 )
                 rows = cur.fetchall()
@@ -389,6 +403,7 @@ class PostgresVirtualKeyStore:
                 allowed_models=decode_names(row[6]) if len(row) > 6 else None,
                 model_groups=decode_names(row[7]) if len(row) > 7 else None,
                 rpd=int(row[8] or 0) if len(row) > 8 else 0,
+                cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             )
             for row in rows
         ]
@@ -427,6 +442,7 @@ class PostgresVirtualKeyStore:
         region_pin: str | None = None,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
+        cache_scope: str = "global",
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -446,6 +462,7 @@ class PostgresVirtualKeyStore:
                 region_pin=region_pin,
                 allowed_models=allowed_models,
                 model_groups=model_groups,
+                cache_scope=cache_scope,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -467,14 +484,15 @@ class PostgresVirtualKeyStore:
             meta["region_pin"] = pin
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
+        scope = normalize_cache_scope(cache_scope)
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                     " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                     " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
-                    " region_pin, allowed_models_json, model_groups_json, rpd)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    " region_pin, allowed_models_json, model_groups_json, rpd, cache_scope)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         self._hash(plaintext),
                         key_id,
@@ -496,6 +514,7 @@ class PostgresVirtualKeyStore:
                         encode_names(models),
                         encode_names(groups),
                         max(0, int(rpd)),
+                        scope,
                     ),
                 )
             conn.commit()
@@ -520,6 +539,7 @@ class PostgresVirtualKeyStore:
                 region_pin=pin,
                 allowed_models=models,
                 model_groups=groups,
+                cache_scope=scope,
             ),
             plaintext=plaintext,
         )
@@ -772,6 +792,7 @@ class PostgresVirtualKeyStore:
         allowed_models: tuple[str, ...] | None = None,
         model_groups: tuple[str, ...] | None = None,
         rpd: int = 0,
+        cache_scope: str = "global",
     ) -> VirtualKey:
         return VirtualKeyStore._key_from_row(
             self,  # type: ignore[arg-type]
@@ -784,6 +805,7 @@ class PostgresVirtualKeyStore:
             allowed_models=allowed_models,
             model_groups=model_groups,
             rpd=rpd,
+            cache_scope=cache_scope,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -798,7 +820,7 @@ class PostgresVirtualKeyStore:
                     " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                     " v.previous_expires_at, v.user_daily_usd_cap,"
-                    " v.allowed_models_json, v.model_groups_json, v.rpd"
+                    " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " ORDER BY v.created_at DESC"
@@ -815,6 +837,7 @@ class PostgresVirtualKeyStore:
                 allowed_models=decode_names(r[17]) if len(r) > 17 else None,
                 model_groups=decode_names(r[18]) if len(r) > 18 else None,
                 rpd=int(r[19] or 0) if len(r) > 19 else 0,
+                cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
             )
             for r in rows
         ]
@@ -832,7 +855,7 @@ class PostgresVirtualKeyStore:
                     " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                     " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
-                    " v.allowed_models_json, v.model_groups_json, v.rpd"
+                    " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " WHERE v.key_hash = %s OR v.previous_key_hash = %s",
@@ -856,6 +879,7 @@ class PostgresVirtualKeyStore:
             allowed_models=decode_names(row[19]) if len(row) > 19 else None,
             model_groups=decode_names(row[20]) if len(row) > 20 else None,
             rpd=int(row[21] or 0) if len(row) > 21 else 0,
+            cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:

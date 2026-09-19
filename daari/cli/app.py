@@ -160,11 +160,16 @@ def keys_create(
         "--model-group",
         help="Named model group from settings.model_groups. Repeatable.",
     ),
+    cache_scope: str = typer.Option(
+        "global",
+        "--cache-scope",
+        help="Cache isolation: global (org-shared), team, or key.",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
-    from daari.auth.virtual_keys import expiry_from
+    from daari.auth.virtual_keys import expiry_from, normalize_cache_scope
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -181,6 +186,7 @@ def keys_create(
         metadata = {"mcp": {"allow": list(mcp_allow), "deny": list(mcp_deny)}}
     try:
         expires_at = expiry_from(expires)
+        scope = normalize_cache_scope(cache_scope)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -201,6 +207,7 @@ def keys_create(
         region_pin=region_pin,
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
+        cache_scope=scope,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -212,6 +219,7 @@ def keys_create(
         typer.echo(f"models:  {', '.join(created.key.allowed_models)}")
     if created.key.model_groups:
         typer.echo(f"groups:  {', '.join(created.key.model_groups)}")
+    typer.echo(f"cache_scope: {created.key.cache_scope}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -301,6 +309,7 @@ def keys_list() -> None:
     """List virtual keys (prefixes only — never plaintext)."""
     from daari.auth.budgets import budget_status
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import effective_cache_scope
     from daari.observability.usage import UsageLedger
 
     settings = get_settings()
@@ -312,16 +321,19 @@ def keys_list() -> None:
     ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
     typer.echo(
         f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'rpd':>5} "
-        f"{'tier':<4} {'expires':<25} {'grace_until':<25} status"
+        f"{'tier':<4} {'scope':<6} {'expires':<25} {'grace_until':<25} status"
     )
     for key in keys:
+        team = store.get_team(key.team_id) if key.team_id else None
+        scope = effective_cache_scope(
+            key.cache_scope, team.cache_scope if team is not None else None
+        )
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
-            f"{key.tpm:>7} {key.rpd:>5} {(key.tier_cap or '-'):<4} "
+            f"{key.tpm:>7} {key.rpd:>5} {(key.tier_cap or '-'):<4} {scope:<6} "
             f"{(key.expires_at or 'never'):<25} "
             f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
-        team = store.get_team(key.team_id) if key.team_id else None
         client_id = key.client_id or key.key_id
         team_ids = store.team_client_ids(team.team_id) if team is not None else []
         if not ledger.enabled:
@@ -448,12 +460,18 @@ def keys_team_create(
         "--model-group",
         help="Named model group from settings.model_groups. Repeatable.",
     ),
+    cache_scope: str = typer.Option(
+        "global",
+        "--cache-scope",
+        help="Cache isolation for every key on this team: global, team, or key.",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import normalize_cache_scope
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -462,6 +480,11 @@ def keys_team_create(
             [parse_window_flag(item) for item in window]
             + [parse_window_requests_flag(item) for item in window_requests]
         )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    try:
+        scope = normalize_cache_scope(cache_scope)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -477,6 +500,7 @@ def keys_team_create(
         rpd=rpd,
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
+        cache_scope=scope,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
@@ -491,6 +515,7 @@ def keys_team_create(
         typer.echo(f"tpm:     {team.tpm}")
     if team.rpd:
         typer.echo(f"rpd:     {team.rpd}")
+    typer.echo(f"cache_scope: {team.cache_scope}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:

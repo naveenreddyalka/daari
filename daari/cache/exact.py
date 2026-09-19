@@ -47,20 +47,38 @@ def _messages_for_cache(request: InternalRequest) -> list[dict[str, Any]]:
     return dumped
 
 
+def cache_scope_segment(request: InternalRequest) -> str:
+    """Tenant fragment for L0 and L1 keys (#768).
+
+    Empty for ``global`` (and for unauthenticated requests) so keys written
+    before scope existed stay reachable — same idea as an empty sampling
+    fingerprint (#161).
+    """
+    scope = (getattr(request.meta, "cache_scope", None) or "global").strip().lower()
+    if scope == "team":
+        return f"team:{getattr(request.meta, 'team_id', None) or ''}"
+    if scope == "key":
+        return f"key:{getattr(request.meta, 'key_id', None) or ''}"
+    return ""
+
+
 def cache_key(request: InternalRequest) -> str:
-    payload = "|".join(
-        [
-            normalize_messages(_messages_for_cache(request)),
-            request.model,
-            str(request.temperature),
-            tools_schema_hash(request.tools),
-            request.meta.tier_override or "",
-            # Two requests asking for different max_tokens or seed are different
-            # questions and must not share an entry (#161). Empty when the client
-            # asked for nothing, so pre-#161 entries stay reachable.
-            request.sampling.cache_fingerprint(),
-        ]
-    )
+    parts = [
+        normalize_messages(_messages_for_cache(request)),
+        request.model,
+        str(request.temperature),
+        tools_schema_hash(request.tools),
+        request.meta.tier_override or "",
+        # Two requests asking for different max_tokens or seed are different
+        # questions and must not share an entry (#161). Empty when the client
+        # asked for nothing, so pre-#161 entries stay reachable.
+        request.sampling.cache_fingerprint(),
+    ]
+    # Append only when scoped, so a trailing pipe does not move global hashes.
+    segment = cache_scope_segment(request)
+    if segment:
+        parts.append(segment)
+    payload = "|".join(parts)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
