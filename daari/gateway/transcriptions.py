@@ -155,6 +155,12 @@ async def handle_transcription(
     if not model_name:
         return _error(400, "invalid_request_error", "model is required")
 
+    from daari.gateway.model_access import reject_disallowed_model
+
+    denied = reject_disallowed_model(request, model_name, ctx.settings)
+    if denied is not None:
+        return denied
+
     content = await file.read()
     if not content:
         return _error(400, "invalid_request_error", "file is empty")

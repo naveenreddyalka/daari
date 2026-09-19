@@ -19,7 +19,7 @@ Leave `base_url` empty and the route returns **501**. `frontier_fallback` stays 
 
 OpenAI multipart form: `file`, `model` (required unless `asr.model` is set), optional `language`, `prompt`, and `response_format=json`. The JSON body includes `text`.
 
-Auth, virtual-key request budgets, and rate limits apply the same way as chat completions. A successful transcription counts as one request.
+Auth, virtual-key request budgets, and rate limits apply the same way as chat completions. A key or team model allowlist is checked against the resolved model (`asr.model` when set, otherwise the form `model`) and returns 403 `model_not_allowed` before any upstream call. Unset allowlists stay unrestricted. A successful transcription counts as one request.
 
 ## Verify
 
