@@ -46,6 +46,8 @@ daari keys create --name ci --rpm 60 --tpm 40000
 
 Defaults apply to every key (including the master key). A virtual key's `--rpm` / `--tpm` override the global defaults for that key. `0` means unlimited. Teams can also set aggregate ceilings with `daari keys team-create --rpm/--tpm` (or `team-update`); those counters use `rpm:team:{team_id}` / `tpm:team:{team_id}` and are checked after per-key limits so N keys on one team share one budget (#546).
 
+`--rpd` on `daari keys create` / `keys update` and `daari keys team-create` / `team-update` sets a calendar-day request cap (UTC, 86400-second window, `0` or omitted = unlimited). It is independent of rpm: a key can exhaust its day cap while the minute window is still open, and the reverse. Key and team caps both apply; the tighter remaining counter wins. Team rpd sums member traffic on `rpd:team:{team_id}`, the same way team rpm sums `rpm:team:{team_id}`. A hard deny is `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` (epoch when the UTC day rolls) and a body that names `rpd`. Export/import round-trips the field.
+
 ```yaml
 rate_limit:
   rpm: 60

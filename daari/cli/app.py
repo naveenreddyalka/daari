@@ -111,6 +111,7 @@ def keys_create(
     ),
     rpm: int = typer.Option(0, "--rpm", help="Requests per minute (0=unlimited)"),
     tpm: int = typer.Option(0, "--tpm", help="Tokens per minute (0=unlimited)"),
+    rpd: int = typer.Option(0, "--rpd", help="Requests per UTC day (0=unlimited)"),
     tier_cap: str | None = typer.Option(None, "--tier-cap", help="L3|L4|L5"),
     client_id: str | None = typer.Option(None, "--client-id", help="Ledger attribution id"),
     team: str | None = typer.Option(None, "--team", help="Team that inherits and tightens caps"),
@@ -189,6 +190,7 @@ def keys_create(
         monthly_budget_usd=monthly_budget,
         rpm=rpm,
         tpm=tpm,
+        rpd=rpd,
         tier_cap=tier_cap,
         client_id=client_id,
         team=team,
@@ -247,28 +249,37 @@ def keys_update(
         "--model-group",
         help="Replace named model groups on the key. Repeatable.",
     ),
+    rpd: int | None = typer.Option(
+        None, "--rpd", help="Requests per UTC day (0=unlimited). Omit to leave unchanged."
+    ),
 ) -> None:
-    """Update a virtual key's model allowlist (#708). Omitted flags are unchanged."""
+    """Update a virtual key's model allowlist (#708) or daily request cap (#717)."""
     import os
 
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
     from daari.auth.virtual_keys import _UNSET
 
-    if not allowed_model and not model_group:
-        typer.echo("pass --allowed-model and/or --model-group", err=True)
+    if rpd is None and not allowed_model and not model_group:
+        typer.echo("pass --rpd, --allowed-model, and/or --model-group", err=True)
         raise typer.Exit(code=1)
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
-    updated = store.update_model_access(
-        key_id,
-        allowed_models=allowed_model if allowed_model else _UNSET,
-        model_groups=model_group if model_group else _UNSET,
-    )
-    if not updated:
+    if rpd is not None and not store.update_rpd(key_id, rpd):
         typer.echo(f"No active key {key_id}", err=True)
         raise typer.Exit(code=1)
+    if allowed_model or model_group:
+        updated = store.update_model_access(
+            key_id,
+            allowed_models=allowed_model if allowed_model else _UNSET,
+            model_groups=model_group if model_group else _UNSET,
+        )
+        if not updated:
+            typer.echo(f"No active key {key_id}", err=True)
+            raise typer.Exit(code=1)
     key = next((item for item in store.list() if item.key_id == key_id), None)
     typer.echo(f"key_id: {key_id}")
+    if key is not None and rpd is not None:
+        typer.echo(f"rpd:    {key.rpd}")
     if key is not None and key.allowed_models is not None:
         typer.echo(f"models: {', '.join(key.allowed_models)}")
     if key is not None and key.model_groups is not None:
@@ -426,6 +437,7 @@ def keys_team_create(
     ),
     rpm: int = typer.Option(0, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
     tpm: int = typer.Option(0, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
+    rpd: int = typer.Option(0, "--rpd", help="Team aggregate requests/UTC day (0=unlimited)"),
     allowed_model: list[str] = typer.Option(
         [],
         "--allowed-model",
@@ -462,6 +474,7 @@ def keys_team_create(
         region_pin=region_pin,
         rpm=rpm,
         tpm=tpm,
+        rpd=rpd,
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
     )
@@ -476,6 +489,8 @@ def keys_team_create(
     if team.rpm or team.tpm:
         typer.echo(f"rpm:     {team.rpm}")
         typer.echo(f"tpm:     {team.tpm}")
+    if team.rpd:
+        typer.echo(f"rpd:     {team.rpd}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
@@ -497,6 +512,7 @@ def keys_team_create(
                 "region_pin": team.region_pin,
                 "rpm": team.rpm,
                 "tpm": team.tpm,
+                "rpd": team.rpd,
             },
         )
 
@@ -519,6 +535,9 @@ def keys_team_update(
     ),
     rpm: int | None = typer.Option(None, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
     tpm: int | None = typer.Option(None, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
+    rpd: int | None = typer.Option(
+        None, "--rpd", help="Team aggregate requests/UTC day (0=unlimited)"
+    ),
     allowed_model: list[str] = typer.Option(
         [],
         "--allowed-model",
@@ -556,6 +575,7 @@ def keys_team_update(
             region_pin=region_pin,
             rpm=rpm,
             tpm=tpm,
+            rpd=rpd,
             allowed_models=allowed_model if allowed_model else _UNSET,
             model_groups=model_group if model_group else _UNSET,
         )
@@ -567,6 +587,8 @@ def keys_team_update(
     if team.rpm or team.tpm:
         typer.echo(f"rpm:     {team.rpm}")
         typer.echo(f"tpm:     {team.tpm}")
+    if team.rpd:
+        typer.echo(f"rpd:     {team.rpd}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
@@ -584,6 +606,7 @@ def keys_team_update(
             "windows": [w.as_dict() for w in team.budget_windows],
             "rpm": team.rpm,
             "tpm": team.tpm,
+            "rpd": team.rpd,
         },
     )
 
@@ -988,9 +1011,7 @@ def serve(
     ),
 ) -> None:
     """Start the daari HTTP daemon."""
-    settings = (
-        Settings.load(strict=True) if strict else Settings.load()
-    ).model_copy(deep=True)
+    settings = (Settings.load(strict=True) if strict else Settings.load()).model_copy(deep=True)
     if no_frontier:
         settings.frontier.enabled = False
     resolved_org = org or os.environ.get("DAARI_ORG_ID")
