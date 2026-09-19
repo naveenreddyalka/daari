@@ -20,6 +20,8 @@ Web UI: `daari web-ui serve` → `http://127.0.0.1:11437`.
 The same payload includes `soft_warnings` and `rejects` kind maps (cliff
 pressure before and after the soft band) — the Prometheus counterparts are
 documented in [metrics-prometheus.md](metrics-prometheus.md).
+`team_rate_limits` lists each team's `rpm`, `tpm`, and `rpd` remaining
+(`team`, `kind`, `limit`, `remaining`); it is `[]` when no team has a ceiling.
 Each `tiers.*` entry may include optional `p50_ms` / `p95_ms` from the
 latency histogram (absent when that tier has no samples).
 
