@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (embedding chargeback rows — [#755](https://github.com/naveenreddyalka/daari/issues/755))
+> Last updated: 2026-09-19 (chargeback transcription tiers — [#756](https://github.com/naveenreddyalka/daari/issues/756))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3387,6 +3387,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 
 <!-- tracking:#751 -->
 **Status:** Done (2026-09-19). A successful transcription writes a spend row with tier `asr` or `L6` and the caller's key and team, so chargeback export can tell local ASR from frontier fallback. Allowlist 403 and unconfigured 501 do not write a row. Covered by `tests/unit/test_audio_transcriptions.py`.
+
+### Chargeback guide names transcription tiers ([#756](https://github.com/naveenreddyalka/daari/issues/756))
+
+<!-- tracking:#756 -->
+**Status:** Done (2026-09-19). The chargeback guide states that a successful transcription exports as `asr` or `L6`, and that allowlist 403 / unconfigured 501 write no row. Covered by `tests/unit/test_chargeback_docs.py`.
 
 ### Embedding chargeback rows ([#755](https://github.com/naveenreddyalka/daari/issues/755))
 
