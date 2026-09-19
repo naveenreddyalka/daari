@@ -14,21 +14,21 @@
 ## Where daari stands (verified in-tree, 2026-09-19)
 
 Fleet/HA, tenancy, governance, Responses cancel/delete, local ASR,
-request-rate KEDA, and UTC-day `rpd` are shipped. Idempotency-Key remains
-open with an agent already on it and is not restated below.
+request-rate KEDA, UTC-day `rpd` (stats, scrape, Grafana, Retry-After),
+transcription allowlists, doctor ASR, and transcription chargeback rows
+are shipped. Idempotency-Key remains open with an agent already on it and
+is not restated below.
 
 **Outward (this run):** LiteLLM stable is still **v1.101.0** (15 Sep).
 **v1.102.0** is not stable (rc.1, 13 Sep): auto-router controls, native OCR,
-and request/token autoscaling. Portkey **v2.23.0** (18 Sep) is unchanged
-(ElevenLabs speech is cloud-only). Kong AI Gateway **2.0.3** (31 Aug) is
-quiet. Ollama **v0.34.2** (15 Sep) is llama.cpp only; no v0.35. vLLM **0.29**
-transcriptions are already the local ASR path. OpenRouter hosted shell/Files
-stays a non-goal.
+and request/token autoscaling. Portkey **v2.23.0** and Kong **2.0.3** are
+unchanged. Ollama **v0.34.2** has no v0.35. OCR, realtime voice, and hosted
+shell/Files stay non-goals. No ElevenLabs SDK.
 
-**Inward theme:** the day cap and the new audio route are not finished as
-operator surfaces. A daily-cap 429 still advertises `Retry-After: 1`.
-Transcriptions skip the model allowlist. Doctor never probes ASR. Stats and
-per-key scrapes do not show `rpd` remaining (team gauges do).
+**Inward theme:** chargeback still drops embedding traffic (no key/team on
+the row), the Helm chart cannot point a fleet at local ASR, the chargeback
+guide never names transcription tiers, and `POST /v1/audio/translations`
+is missing while transcriptions exist.
 
 ---
 
@@ -36,26 +36,25 @@ per-key scrapes do not show `rpd` remaining (team gauges do).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Daily-cap `Retry-After`** — rpd 429 sets `retry_after` to 1s while `reset_epoch` is the next UTC day | 4 | 1 | Portkey (window reset on daily limits) | The day counter is already local; a true wait stops a retry storm on the on-box pool | File |
-| 2 | **Allowlist on transcriptions** — chat/embeddings/Responses 403; `POST /v1/audio/transcriptions` does not | 4 | 2 | LiteLLM (model access on every inference route) | Block a non-allowlisted or frontier ASR upload before the file leaves the machine | File |
-| 3 | **Doctor ASR probe** — no check for `asr.base_url` or a fallback with no frontier key | 3 | 2 | vLLM / whisper.cpp health | Catch a dead local ASR process at `daari doctor` instead of the first upload | File |
-| 4 | **Team rpd on stats + dashboard** — gauges exist for Prometheus only | 3 | 2 | LiteLLM dashboard | Remaining day cap is already counted locally; the dashboard should show it | File |
-| 5 | **Per-key rpd scrape** — team series only; key name, never the secret | 3 | 2 | LiteLLM per-key gauges | Alert on one laptop key without shipping key material to a cloud vendor | File |
-| 6 | **Idempotency-Key / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | LiteLLM / cloud | Idempotency is already in progress; the rest stay deferred. No ElevenLabs SDK | Watch |
+| 1 | **Embedding chargeback** — `POST /v1/embeddings` records `tier=embed` without key or team, so `--key` export drops it | 3 | 2 | LiteLLM (embeddings billed on the same key) | The embedder already runs locally; stamp the key already on the request | File |
+| 2 | **Helm ASR URL** — chart sets Redis/Postgres/Prometheus but not `asr.base_url` | 3 | 2 | vLLM / whisper.cpp Helm | One values key keeps audio on the cluster instead of a cloud speech API | File |
+| 3 | **Chargeback guide omits audio tiers** — spend CSV has `asr` / `L6` but the guide never says so | 2 | 1 | LiteLLM audio route in spend logs | The row is already on disk; the guide operators follow should name it | File |
+| 4 | **Audio translations** — transcriptions exist; `POST /v1/audio/translations` 404s | 3 | 3 | LiteLLM (both audio routes) | Same local ASR process; forward translations, frontier only when enabled | File |
+| 5 | **Idempotency-Key / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | LiteLLM / cloud | Idempotency is already in progress; the rest stay deferred | Watch |
 
-Pruned this run: Responses cancel/delete, local transcriptions, KEDA
-request-rate autoscaling, and the rpd cap itself (all shipped). OCR, realtime
-voice, and hosted shell/Files stay non-goals.
+Pruned this run: day-cap Retry-After, transcription allowlists, doctor ASR,
+team and per-key rpd (stats, scrape, Grafana), and transcription chargeback
+rows (all shipped).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Honest daily-cap retry** — `Retry-After` on an rpd 429 waits until the UTC day resets.
-2. **Allowlists cover audio** — the same 403 as chat, before any ASR upstream call.
-3. **Doctor knows ASR** — warn on an unreachable local base URL or a fallback with no key.
-4. **Day cap on the dashboard** — team rpd remaining on `/v1/daari/stats` and the web UI.
-5. **Per-key rpd series** — scrape remaining for keys that opted into a day cap.
+1. **Embedding rows on the key** — spend export attributes local embeddings to the virtual key and team.
+2. **Helm can point at local ASR** — `asr.baseUrl` becomes `DAARI_ASR__BASE_URL` when set.
+3. **Chargeback guide names audio** — `asr` vs `L6`, and denials write no row.
+4. **Translations beside transcriptions** — local-first `POST /v1/audio/translations`.
+5. **Idempotency** — still in progress; do not refile.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying ask.
 
@@ -63,6 +62,11 @@ Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying as
 
 ## Changelog
 
+- **2026-09-19 (refill)** — Day-cap surfaces, transcription allowlists, doctor
+  ASR, and transcription chargeback shipped. Outward still flat: LiteLLM
+  v1.101.0 stable, v1.102.0 rc.1, Portkey v2.23.0, Kong 2.0.3, Ollama
+  v0.34.2. Filing embedding chargeback, Helm ASR URL, chargeback docs, and
+  audio translations. Idempotency left in progress.
 - **2026-09-19** — Prior lifecycle/audio/KEDA/rpd rows shipped. Outward flat:
   LiteLLM v1.101.0 stable (v1.102.0 still RC), Portkey v2.23.0, Kong 2.0.3,
   Ollama v0.34.2, no v0.35. Inward: day-cap retry, transcription allowlists,
