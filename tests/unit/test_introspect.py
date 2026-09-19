@@ -53,9 +53,7 @@ def test_introspect_token_virtual_key(tmp_path):
         tpm=500,
         expires_at="2099-01-01T00:00:00+00:00",
     )
-    payload = introspect_token(
-        created.plaintext, master_key="master-secret", store=store
-    )
+    payload = introspect_token(created.plaintext, master_key="master-secret", store=store)
     assert payload["active"] is True
     assert payload["client_id"] == "cid-a"
     assert payload["username"] == "alice"
@@ -64,18 +62,26 @@ def test_introspect_token_virtual_key(tmp_path):
     assert payload["tier_cap"] == "L3"
     assert payload["rpm"] == 5
     assert payload["tpm"] == 500
+    assert "rpd" not in payload
     assert "exp" in payload
     assert "plaintext" not in payload
     assert created.plaintext not in str(payload)
+
+
+def test_introspect_includes_rpd_when_set(tmp_path):
+    store = VirtualKeyStore(tmp_path / "vk.sqlite3")
+    created = store.create("alice", rpm=5, rpd=9)
+    payload = introspect_token(created.plaintext, master_key="master-secret", store=store)
+    assert payload["active"] is True
+    assert payload["rpm"] == 5
+    assert payload["rpd"] == 9
 
 
 def test_introspect_token_revoked_inactive(tmp_path):
     store = VirtualKeyStore(tmp_path / "vk.sqlite3")
     created = store.create("bob", client_id="cid-b")
     store.revoke(created.key.key_id)
-    payload = introspect_token(
-        created.plaintext, master_key="master-secret", store=store
-    )
+    payload = introspect_token(created.plaintext, master_key="master-secret", store=store)
     assert payload == {"active": False}
 
 

@@ -3316,6 +3316,14 @@ round-trips it. A deny is 429 naming `rpd`. Covered by
 `daari_escalations_total` with companion `daari_errors_total`. Covered by
 `tests/unit/test_metrics_prometheus_docs.py`.
 
+### Surface rpd on introspect and keys list ([#730](https://github.com/naveenreddyalka/daari/issues/730))
+
+<!-- tracking:#730 -->
+**Status:** Done (2026-09-19). `POST /introspect` includes `rpd` when the key's
+day cap is set, and `daari keys list` prints an `rpd` column. Zero stays
+omitted, matching rpm. Covered by `tests/unit/test_introspect.py` and
+`tests/unit/test_virtual_keys.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

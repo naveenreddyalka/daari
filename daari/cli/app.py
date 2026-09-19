@@ -311,13 +311,13 @@ def keys_list() -> None:
         return
     ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
     typer.echo(
-        f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} "
+        f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'rpd':>5} "
         f"{'tier':<4} {'expires':<25} {'grace_until':<25} status"
     )
     for key in keys:
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
-            f"{key.tpm:>7} {(key.tier_cap or '-'):<4} "
+            f"{key.tpm:>7} {key.rpd:>5} {(key.tier_cap or '-'):<4} "
             f"{(key.expires_at or 'never'):<25} "
             f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
