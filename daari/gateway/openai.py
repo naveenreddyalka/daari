@@ -1225,6 +1225,55 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload = ctx.reload_cache_handles()
             return {"status": "ok", **payload}
 
+        @router.post("/v1/daari/cache/invalidate")
+        async def daari_cache_invalidate(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
+            raw = await request.body()
+            payload: dict[str, Any] = {}
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise HTTPException(status_code=400, detail="invalid json") from exc
+                if not isinstance(parsed, dict):
+                    raise HTTPException(status_code=422, detail="JSON object required")
+                payload = parsed
+            model = payload.get("model")
+            entry_hash = payload.get("hash")
+            if model is not None and not isinstance(model, str):
+                raise HTTPException(status_code=422, detail="model must be a string")
+            if entry_hash is not None and not isinstance(entry_hash, str):
+                raise HTTPException(status_code=422, detail="hash must be a string")
+            model_s = model.strip() if isinstance(model, str) and model.strip() else None
+            hash_s = entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
+            l0 = getattr(ctx.router, "cache", None)
+            l1 = getattr(ctx.router, "semantic_cache", None)
+            l0_removed = (
+                int(l0.invalidate(model=model_s, entry_hash=hash_s))
+                if l0 is not None and hasattr(l0, "invalidate")
+                else 0
+            )
+            l1_removed = (
+                int(l1.invalidate(model=model_s, entry_hash=hash_s))
+                if l1 is not None and hasattr(l1, "invalidate")
+                else 0
+            )
+            log_gateway_event(
+                "cache_invalidate",
+                {
+                    "model": model_s or "",
+                    "hash": hash_s or "",
+                    "l0_removed": l0_removed,
+                    "l1_removed": l1_removed,
+                },
+            )
+            return {
+                "l0_removed": l0_removed,
+                "l1_removed": l1_removed,
+                "removed": l0_removed + l1_removed,
+            }
+
         def _require_config_editor(ctx: AppContext) -> None:
             if not ctx.settings.observability.config_editor:
                 raise HTTPException(status_code=404, detail="config editor disabled")

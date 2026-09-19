@@ -78,3 +78,43 @@ class RedisExactCache(ExactCache):
     def prune(self) -> int:
         # Redis TTLs handle expiry when ttl_seconds > 0; otherwise no-op.
         return 0
+
+    def invalidate(self, *, model: str | None = None, entry_hash: str | None = None) -> int:
+        if not self.enabled:
+            return 0
+        client = self._store()
+        removed = 0
+        for key in self._prefixed_keys(client):
+            bare = key[len(self.prefix) :] if key.startswith(self.prefix) else key
+            if entry_hash is not None and bare != entry_hash and key != entry_hash:
+                continue
+            if model is not None and self._redis_entry_model(client.get(key)) != model:
+                continue
+            deleted = client.delete(key)
+            if deleted is None or deleted:
+                removed += 1
+        return removed
+
+    def _prefixed_keys(self, client: Any) -> list[str]:
+        scan = getattr(client, "scan_iter", None)
+        if scan is not None:
+            return [str(key) for key in scan(match=f"{self.prefix}*")]
+        keys = getattr(client, "keys", None)
+        if keys is not None:
+            found = keys(f"{self.prefix}*")
+            return [str(key) for key in (found or [])]
+        data = getattr(client, "data", None)
+        if isinstance(data, dict):
+            return [str(key) for key in data if str(key).startswith(self.prefix)]
+        return []
+
+    def _redis_entry_model(self, raw: Any) -> str | None:
+        if raw is None:
+            return None
+        import json
+
+        try:
+            entry = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        return self._entry_model(entry)

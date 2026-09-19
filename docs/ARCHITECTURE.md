@@ -252,7 +252,8 @@ flowchart LR
 | `daari learn stats/recommend/examples/export-dataset/train-router/finetune/deploy/export-stats` | Phase D learning loop |
 | `daari profile [--models ...]` | Benchmark local models (tokens/sec, load) for latency-aware routing |
 | `daari project init/show` | Per-repo `.daari.yaml` profile management |
-| `daari cache prune` | Remove expired L0/L1 entries |
+| `daari cache prune` | Remove expired L0/L1 entries. On Redis, prints that expiry is TTL and prune does not scan. |
+| `daari cache invalidate [--model M] [--hash H]` | Drop L0/L1 entries by served model or entry hash. No flags clears both. Uses the daemon when it is up. |
 | `daari web-ui serve` | Local dashboard (stats, savings, traces, cache trust) |
 | `daari setup cursor --tunnel` | Cursor BYOK via cloudflared + auto-generated gateway API key |
 
