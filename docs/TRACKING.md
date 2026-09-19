@@ -3291,6 +3291,16 @@ a KEDA ScaledObject on `sum(rate(daari_requests_total[1m]))` with a configurable
 threshold. CPU HPA is unchanged. `minReplicaCount` above 1 is refused while
 `postgres.enabled` is false. Covered by `tests/unit/test_helm_chart.py`.
 
+### Daily request caps beside rpm ([#717](https://github.com/naveenreddyalka/daari/issues/717))
+
+<!-- tracking:#717 -->
+**Status:** Done (2026-09-19). `VirtualKey.rpd` and `Team.rpd` (0 = unlimited) use the
+existing rate-limit backends on a 86400-second UTC day window, separate from rpm.
+Key and team caps both apply; the tighter remaining counter wins. `daari keys
+create/update --rpd` and `team-create/update --rpd` persist it, and export/import
+round-trips it. A deny is 429 naming `rpd`. Covered by
+`tests/unit/test_daily_request_caps.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

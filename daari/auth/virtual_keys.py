@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS teams (
     region_pin TEXT,
     rpm INTEGER NOT NULL DEFAULT 0,
     tpm INTEGER NOT NULL DEFAULT 0,
+    rpd INTEGER NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
     model_groups_json TEXT
 );
@@ -119,6 +120,7 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     monthly_budget_usd REAL NOT NULL DEFAULT 0,
     rpm INTEGER NOT NULL DEFAULT 0,
     tpm INTEGER NOT NULL DEFAULT 0,
+    rpd INTEGER NOT NULL DEFAULT 0,
     tier_cap TEXT,
     client_id TEXT,
     team_id TEXT,
@@ -170,6 +172,8 @@ class Team:
     # Aggregate ceilings across every key on the team (0 = unlimited) (#546).
     rpm: int = 0
     tpm: int = 0
+    # Requests per UTC calendar day across member keys (0 = unlimited) (#717).
+    rpd: int = 0
     # Model allowlist (#708). None = unrestricted; empty = deny all.
     allowed_models: tuple[str, ...] | None = None
     model_groups: tuple[str, ...] | None = None
@@ -184,6 +188,8 @@ class VirtualKey:
     monthly_budget_usd: float = 0.0
     rpm: int = 0
     tpm: int = 0
+    # Requests per UTC calendar day (0 = unlimited) (#717).
+    rpd: int = 0
     tier_cap: str | None = None
     client_id: str | None = None
     revoked: bool = False
@@ -318,6 +324,8 @@ class VirtualKeyStore:
             conn.execute("ALTER TABLE teams ADD COLUMN rpm INTEGER NOT NULL DEFAULT 0")
         if "tpm" not in team_cols:
             conn.execute("ALTER TABLE teams ADD COLUMN tpm INTEGER NOT NULL DEFAULT 0")
+        if "rpd" not in team_cols:
+            conn.execute("ALTER TABLE teams ADD COLUMN rpd INTEGER NOT NULL DEFAULT 0")
         if "allowed_models_json" not in team_cols:
             conn.execute("ALTER TABLE teams ADD COLUMN allowed_models_json TEXT")
         if "model_groups_json" not in team_cols:
@@ -326,6 +334,8 @@ class VirtualKeyStore:
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN allowed_models_json TEXT")
         if "model_groups_json" not in cols:
             conn.execute("ALTER TABLE virtual_keys ADD COLUMN model_groups_json TEXT")
+        if "rpd" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN rpd INTEGER NOT NULL DEFAULT 0")
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -358,6 +368,7 @@ class VirtualKeyStore:
         region_pin: str | None = None,
         rpm: int = 0,
         tpm: int = 0,
+        rpd: int = 0,
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
     ) -> Team:
@@ -372,6 +383,7 @@ class VirtualKeyStore:
         pin = (region_pin or "").strip() or None
         team_rpm = max(0, int(rpm))
         team_tpm = max(0, int(tpm))
+        team_rpd = max(0, int(rpd))
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         team_id = secrets.token_hex(8)
@@ -379,7 +391,7 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             existing = conn.execute(
                 "SELECT team_id, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json"
+                " allowed_models_json, model_groups_json, rpd"
                 " FROM teams WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -393,11 +405,12 @@ class VirtualKeyStore:
                     tpm=int(existing[4] or 0) if len(existing) > 4 else 0,
                     allowed_models=decode_names(existing[5]) if len(existing) > 5 else None,
                     model_groups=decode_names(existing[6]) if len(existing) > 6 else None,
+                    rpd=int(existing[7] or 0) if len(existing) > 7 else 0,
                 )
             conn.execute(
                 "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
-                " region_pin, rpm, tpm, allowed_models_json, model_groups_json)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     team_id,
                     name,
@@ -408,6 +421,7 @@ class VirtualKeyStore:
                     team_tpm,
                     encode_names(models),
                     encode_names(groups),
+                    team_rpd,
                 ),
             )
         return Team(
@@ -419,6 +433,7 @@ class VirtualKeyStore:
             tpm=team_tpm,
             allowed_models=models,
             model_groups=groups,
+            rpd=team_rpd,
         )
 
     def update_team(
@@ -431,6 +446,7 @@ class VirtualKeyStore:
         region_pin: str | None = None,
         rpm: int | None = None,
         tpm: int | None = None,
+        rpd: int | None = None,
         allowed_models: list[str] | tuple[str, ...] | None | object = _UNSET,
         model_groups: list[str] | tuple[str, ...] | None | object = _UNSET,
     ) -> Team:
@@ -450,7 +466,7 @@ class VirtualKeyStore:
         pin = (region_pin or "").strip() or None
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT name, region_pin, rpm, tpm, allowed_models_json, model_groups_json"
+                "SELECT name, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd"
                 " FROM teams WHERE team_id = ?",
                 (team_id,),
             ).fetchone()
@@ -460,6 +476,9 @@ class VirtualKeyStore:
                 pin = row[1]
             team_rpm = max(0, int(rpm)) if rpm is not None else int(row[2] or 0)
             team_tpm = max(0, int(tpm)) if tpm is not None else int(row[3] or 0)
+            team_rpd = (
+                max(0, int(rpd)) if rpd is not None else int(row[6] or 0) if len(row) > 6 else 0
+            )
             models = (
                 decode_names(row[4]) if allowed_models is _UNSET else coerce_names(allowed_models)  # type: ignore[arg-type]
             )
@@ -468,7 +487,7 @@ class VirtualKeyStore:
             )
             conn.execute(
                 "UPDATE teams SET budget_windows_json = ?, region_pin = ?, rpm = ?, tpm = ?,"
-                " allowed_models_json = ?, model_groups_json = ? WHERE team_id = ?",
+                " allowed_models_json = ?, model_groups_json = ?, rpd = ? WHERE team_id = ?",
                 (
                     self._windows_json(windows),
                     pin,
@@ -476,6 +495,7 @@ class VirtualKeyStore:
                     team_tpm,
                     encode_names(models),
                     encode_names(groups),
+                    team_rpd,
                     team_id,
                 ),
             )
@@ -488,6 +508,7 @@ class VirtualKeyStore:
             tpm=team_tpm,
             allowed_models=models,
             model_groups=groups,
+            rpd=team_rpd,
         )
 
     def get_team(self, team_id: str | None = None, *, name: str | None = None) -> Team | None:
@@ -497,14 +518,14 @@ class VirtualKeyStore:
             if team_id:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json"
+                    " allowed_models_json, model_groups_json, rpd"
                     " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
             else:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json"
+                    " allowed_models_json, model_groups_json, rpd"
                     " FROM teams WHERE name = ?",
                     (name,),
                 ).fetchone()
@@ -519,6 +540,7 @@ class VirtualKeyStore:
             tpm=int(row[5] or 0) if len(row) > 5 else 0,
             allowed_models=decode_names(row[6]) if len(row) > 6 else None,
             model_groups=decode_names(row[7]) if len(row) > 7 else None,
+            rpd=int(row[8] or 0) if len(row) > 8 else 0,
         )
 
     def list_teams(self) -> list[Team]:
@@ -528,7 +550,7 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json"
+                " allowed_models_json, model_groups_json, rpd"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
         return [
@@ -541,6 +563,7 @@ class VirtualKeyStore:
                 tpm=int(row[5] or 0) if len(row) > 5 else 0,
                 allowed_models=decode_names(row[6]) if len(row) > 6 else None,
                 model_groups=decode_names(row[7]) if len(row) > 7 else None,
+                rpd=int(row[8] or 0) if len(row) > 8 else 0,
             )
             for row in rows
         ]
@@ -564,6 +587,7 @@ class VirtualKeyStore:
         monthly_budget_usd: float = 0.0,
         rpm: int = 0,
         tpm: int = 0,
+        rpd: int = 0,
         tier_cap: str | None = None,
         client_id: str | None = None,
         team: str | None = None,
@@ -603,8 +627,8 @@ class VirtualKeyStore:
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                 " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
-                " region_pin, allowed_models_json, model_groups_json)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " region_pin, allowed_models_json, model_groups_json, rpd)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -625,6 +649,7 @@ class VirtualKeyStore:
                     pin,
                     encode_names(models),
                     encode_names(groups),
+                    max(0, int(rpd)),
                 ),
             )
         return CreatedKey(
@@ -636,6 +661,7 @@ class VirtualKeyStore:
                 monthly_budget_usd=monthly_budget_usd,
                 rpm=rpm,
                 tpm=tpm,
+                rpd=max(0, int(rpd)),
                 tier_cap=tier_cap,
                 client_id=client_id,
                 team_id=team_row.team_id if team_row else None,
@@ -713,6 +739,17 @@ class VirtualKeyStore:
                 )
             return cur.rowcount > 0
 
+    def update_rpd(self, key_id: str, rpd: int) -> bool:
+        """Set a key's calendar-day request cap. ``0`` means unlimited (#717)."""
+        if not self.enabled:
+            return False
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE virtual_keys SET rpd = ? WHERE key_id = ? AND revoked_at IS NULL",
+                (max(0, int(rpd)), key_id),
+            )
+            return cur.rowcount > 0
+
     def update_model_access(
         self,
         key_id: str,
@@ -731,7 +768,9 @@ class VirtualKeyStore:
             ).fetchone()
             if row is None:
                 return False
-            models = decode_names(row[0]) if allowed_models is _UNSET else coerce_names(allowed_models)  # type: ignore[arg-type]
+            models = (
+                decode_names(row[0]) if allowed_models is _UNSET else coerce_names(allowed_models)
+            )  # type: ignore[arg-type]
             groups = decode_names(row[1]) if model_groups is _UNSET else coerce_names(model_groups)  # type: ignore[arg-type]
             cur = conn.execute(
                 "UPDATE virtual_keys SET allowed_models_json = ?, model_groups_json = ?"
@@ -769,7 +808,7 @@ class VirtualKeyStore:
             row = conn.execute(
                 "SELECT key_hash, prefix, name, daily_budget_usd, monthly_budget_usd,"
                 " rpm, tpm, tier_cap, client_id, team_id, budget_windows_json,"
-                " metadata_json, expires_at, user_daily_usd_cap"
+                " metadata_json, expires_at, user_daily_usd_cap, rpd"
                 " FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
                 (key_id,),
             ).fetchone()
@@ -790,7 +829,8 @@ class VirtualKeyStore:
                 metadata_json,
                 expires_at,
                 user_daily_usd_cap,
-            ) = row
+            ) = row[:14]
+            rpd = int(row[14] or 0) if len(row) > 14 else 0
             conn.execute(
                 "UPDATE virtual_keys SET key_hash = ?, prefix = ?,"
                 " previous_key_hash = ?, previous_prefix = ?, previous_expires_at = ?"
@@ -819,6 +859,7 @@ class VirtualKeyStore:
                 monthly_budget_usd=float(monthly or 0),
                 rpm=int(rpm or 0),
                 tpm=int(tpm or 0),
+                rpd=rpd,
                 tier_cap=tier_cap,
                 client_id=client_id,
                 team_id=team_id,
@@ -843,6 +884,7 @@ class VirtualKeyStore:
         user_daily_usd_cap: float = 0.0,
         allowed_models: tuple[str, ...] | None = None,
         model_groups: tuple[str, ...] | None = None,
+        rpd: int = 0,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -866,6 +908,7 @@ class VirtualKeyStore:
             monthly_budget_usd=row[4],
             rpm=row[5],
             tpm=row[6],
+            rpd=int(rpd or 0),
             tier_cap=row[7],
             client_id=row[8],
             revoked=row[9] is not None,
@@ -890,7 +933,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap,"
-                " v.allowed_models_json, v.model_groups_json"
+                " v.allowed_models_json, v.model_groups_json, v.rpd"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -905,6 +948,7 @@ class VirtualKeyStore:
                 user_daily_usd_cap=float(r[16] or 0),
                 allowed_models=decode_names(r[17]) if len(r) > 17 else None,
                 model_groups=decode_names(r[18]) if len(r) > 18 else None,
+                rpd=int(r[19] or 0) if len(r) > 19 else 0,
             )
             for r in rows
         ]
@@ -919,7 +963,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
-                " v.allowed_models_json, v.model_groups_json"
+                " v.allowed_models_json, v.model_groups_json, v.rpd"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
@@ -943,6 +987,7 @@ class VirtualKeyStore:
             user_daily_usd_cap=float(row[16] or 0),
             allowed_models=decode_names(row[19]) if len(row) > 19 else None,
             model_groups=decode_names(row[20]) if len(row) > 20 else None,
+            rpd=int(row[21] or 0) if len(row) > 21 else 0,
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:
@@ -971,6 +1016,7 @@ class VirtualKeyStore:
             "monthly_budget_usd": key.monthly_budget_usd,
             "rpm": key.rpm,
             "tpm": key.tpm,
+            "rpd": key.rpd,
             "tier_cap": key.tier_cap,
             "client_id": key.client_id,
             "revoked": key.revoked,
@@ -1039,7 +1085,7 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             team_rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json"
+                " allowed_models_json, model_groups_json, rpd"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
             key_rows = conn.execute(
@@ -1047,7 +1093,7 @@ class VirtualKeyStore:
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                 " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
                 " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
-                " allowed_models_json, model_groups_json"
+                " allowed_models_json, model_groups_json, rpd"
                 " FROM virtual_keys ORDER BY created_at ASC, key_id ASC"
             ).fetchall()
         teams = [
@@ -1065,6 +1111,7 @@ class VirtualKeyStore:
                 "model_groups": list(decode_names(row[8]) or ())
                 if len(row) > 8 and row[8] is not None
                 else None,
+                "rpd": int(row[9] or 0) if len(row) > 9 else 0,
             }
             for row in team_rows
         ]
@@ -1099,6 +1146,7 @@ class VirtualKeyStore:
                     "model_groups": list(decode_names(row[22]) or ())
                     if len(row) > 22 and row[22] is not None
                     else None,
+                    "rpd": int(row[23] or 0) if len(row) > 23 else 0,
                 }
             )
         return {
@@ -1153,12 +1201,13 @@ class VirtualKeyStore:
                     pin = pin.strip() or None
                 rpm = max(0, int(team.get("rpm") or 0))
                 tpm = max(0, int(team.get("tpm") or 0))
+                rpd = max(0, int(team.get("rpd") or 0))
                 team_models = decode_names(team.get("allowed_models"))
                 team_groups = decode_names(team.get("model_groups"))
                 created_at = team.get("created_at") or datetime.now(timezone.utc).isoformat()
                 existing = conn.execute(
                     "SELECT name, budget_windows_json, region_pin, rpm, tpm, created_at,"
-                    " allowed_models_json, model_groups_json"
+                    " allowed_models_json, model_groups_json, rpd"
                     " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
@@ -1170,6 +1219,7 @@ class VirtualKeyStore:
                     tpm,
                     encode_names(team_models),
                     encode_names(team_groups),
+                    rpd,
                 )
                 if existing is None:
                     summary["teams"]["created"] += 1
@@ -1177,7 +1227,7 @@ class VirtualKeyStore:
                         conn.execute(
                             "INSERT INTO teams (team_id, name, budget_windows_json,"
                             " created_at, region_pin, rpm, tpm, allowed_models_json,"
-                            " model_groups_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            " model_groups_json, rpd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (team_id, *desired[:2], created_at, *desired[2:]),
                         )
                 else:
@@ -1197,6 +1247,7 @@ class VirtualKeyStore:
                         current[4],
                         decode_names(existing[6]) if len(existing) > 6 else None,
                         decode_names(existing[7]) if len(existing) > 7 else None,
+                        int(existing[8] or 0) if len(existing) > 8 else 0,
                     )
                     desired_norm = (
                         desired[0],
@@ -1206,6 +1257,7 @@ class VirtualKeyStore:
                         desired[4],
                         team_models,
                         team_groups,
+                        rpd,
                     )
                     if current_norm == desired_norm:
                         summary["teams"]["skipped"] += 1
@@ -1215,7 +1267,7 @@ class VirtualKeyStore:
                             conn.execute(
                                 "UPDATE teams SET name = ?, budget_windows_json = ?,"
                                 " region_pin = ?, rpm = ?, tpm = ?,"
-                                " allowed_models_json = ?, model_groups_json = ?"
+                                " allowed_models_json = ?, model_groups_json = ?, rpd = ?"
                                 " WHERE team_id = ?",
                                 (*desired, team_id),
                             )
@@ -1257,13 +1309,14 @@ class VirtualKeyStore:
                     region_pin,
                     encode_names(key_models),
                     encode_names(key_groups),
+                    max(0, int(key.get("rpd") or 0)),
                 )
                 existing = conn.execute(
                     "SELECT key_hash, name, prefix, created_at, revoked_at, expires_at,"
                     " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                     " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
                     " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
-                    " allowed_models_json, model_groups_json"
+                    " allowed_models_json, model_groups_json, rpd"
                     " FROM virtual_keys WHERE key_id = ?",
                     (key_id,),
                 ).fetchone()
@@ -1276,9 +1329,9 @@ class VirtualKeyStore:
                             " monthly_budget_usd, rpm, tpm, tier_cap, client_id, team_id,"
                             " budget_windows_json, metadata_json, user_daily_usd_cap,"
                             " previous_key_hash, previous_prefix, previous_expires_at,"
-                            " region_pin, allowed_models_json, model_groups_json)"
+                            " region_pin, allowed_models_json, model_groups_json, rpd)"
                             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                            " ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 values[0],
                                 key_id,
@@ -1303,6 +1356,7 @@ class VirtualKeyStore:
                                 values[19],
                                 values[20],
                                 values[21],
+                                values[22],
                             ),
                         )
                 else:
@@ -1328,6 +1382,7 @@ class VirtualKeyStore:
                         existing[19],
                         decode_names(existing[20]) if len(existing) > 20 else None,
                         decode_names(existing[21]) if len(existing) > 21 else None,
+                        int(existing[22] or 0) if len(existing) > 22 else 0,
                     )
                     desired_cmp = (
                         values[0],
@@ -1351,6 +1406,7 @@ class VirtualKeyStore:
                         values[19],
                         key_models,
                         key_groups,
+                        values[22],
                     )
                     if current == desired_cmp:
                         summary["keys"]["skipped"] += 1
@@ -1374,7 +1430,7 @@ class VirtualKeyStore:
                                 " metadata_json = ?, user_daily_usd_cap = ?,"
                                 " previous_key_hash = ?, previous_prefix = ?,"
                                 " previous_expires_at = ?, region_pin = ?,"
-                                " allowed_models_json = ?, model_groups_json = ?"
+                                " allowed_models_json = ?, model_groups_json = ?, rpd = ?"
                                 " WHERE key_id = ?",
                                 (
                                     values[0],
@@ -1398,6 +1454,7 @@ class VirtualKeyStore:
                                     values[19],
                                     values[20],
                                     values[21],
+                                    values[22],
                                     key_id,
                                 ),
                             )

@@ -85,9 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
                     job = batch_store.get(job_id)
                     gov = job.governance if job is not None else None
-                    return await _execute_batch_chat_body(
-                        app.state.ctx, item_body, governance=gov
-                    )
+                    return await _execute_batch_chat_body(app.state.ctx, item_body, governance=gov)
 
                 return execute_one
 
@@ -285,24 +283,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             err_kwargs["quota"] = "requests"
                             err_kwargs["spend_requests"] = int(exceeded.spend)
                             err_kwargs["limit_requests"] = int(exceeded.limit)
-                        metrics = getattr(
-                            getattr(request.app.state, "ctx", None), "metrics", None
-                        )
+                        metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
                         if metrics is not None and hasattr(metrics, "record_reject"):
-                            kind = (
-                                "request_quota"
-                                if exceeded.quota == "requests"
-                                else "budget"
-                            )
+                            kind = "request_quota" if exceeded.quota == "requests" else "budget"
                             metrics.record_reject(kind)
                         return JSONResponse(
                             status_code=402,
                             content={"error": budget_error(**err_kwargs)},
                             headers=headers,
                         )
-                    soft_ratio = float(
-                        getattr(resolved.frontier, "soft_budget_ratio", 0.8) or 0.0
-                    )
+                    soft_ratio = float(getattr(resolved.frontier, "soft_budget_ratio", 0.8) or 0.0)
                     tightest = tightest_window(statuses)
                     if tightest is not None:
                         usd_soft = tightest.in_soft_band(soft_ratio)
@@ -409,15 +399,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         rpm = int(getattr(virtual, "rpm", 0) or 0) or None
         tpm = int(getattr(virtual, "tpm", 0) or 0) or None
+        rpd = int(getattr(virtual, "rpd", 0) or 0) or None
         team_id = getattr(virtual, "team_id", None) if virtual is not None else None
         team_rpm = None
         team_tpm = None
+        team_rpd = None
         if team_id:
             store = getattr(request.app.state, "virtual_key_store", None)
-            team = store.get_team(team_id) if store is not None and hasattr(store, "get_team") else None
+            team = (
+                store.get_team(team_id)
+                if store is not None and hasattr(store, "get_team")
+                else None
+            )
             if team is not None:
                 team_rpm = int(getattr(team, "rpm", 0) or 0) or None
                 team_tpm = int(getattr(team, "tpm", 0) or 0) or None
+                team_rpd = int(getattr(team, "rpd", 0) or 0) or None
         decision = limiter.check(
             key_id=key_id,
             model=model,
@@ -427,6 +424,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             team_id=team_id,
             team_rpm=team_rpm,
             team_tpm=team_tpm,
+            rpd=rpd,
+            team_rpd=team_rpd,
         )
         if not decision.allowed:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
