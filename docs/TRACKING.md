@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (budget-remaining headers — [#319](https://github.com/naveenreddyalka/daari/issues/319))  
+> Last updated: 2026-09-19 (daily-cap Retry-After — [#738](https://github.com/naveenreddyalka/daari/issues/738))  
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -3347,6 +3347,11 @@ cap, or no rpm, stays quiet. Covered by
 unlimited) and the config reference notes the day cap is per key/team, not a
 `rate_limit` field, with a link to the auth guide. Covered by
 `tests/unit/test_rpd_docs.py`.
+
+### Daily-cap Retry-After ([#738](https://github.com/naveenreddyalka/daari/issues/738))
+
+<!-- tracking:#738 -->
+**Status:** Done (2026-09-19). An `rpd` 429 sets `Retry-After` to the seconds until the UTC day boundary. rpm/tpm still use `rate_limit.retry_after_seconds`.
 
 ## How to update
 
