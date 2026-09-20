@@ -80,6 +80,35 @@ def test_build_l1_cache_selects_redis(tmp_path):
     assert cache.prefix == "daari:l1:test:"
 
 
+def test_redis_unbounded_prune_drops_aged_keeps_fresh():
+    """ttl_seconds==0: prune reclaims entries older than 7d (#806)."""
+    from daari.cache.redis_exact import REDIS_UNBOUNDED_PRUNE_MAX_AGE_SECONDS
+
+    client = FakeRedis()
+    clock = {"t": 1_000_000.0}
+    cache = RedisExactCache(
+        "redis://test", client=client, enabled=True, ttl_seconds=0, clock=lambda: clock["t"]
+    )
+    cache.put(_req("old"), _resp("stale"))
+    clock["t"] += REDIS_UNBOUNDED_PRUNE_MAX_AGE_SECONDS + 1
+    cache.put(_req("new"), _resp("fresh"))
+    assert cache.prune() == 1
+    assert cache.get(_req("old")) is None
+    assert cache.get(_req("new")) is not None
+
+
+def test_redis_prune_is_noop_when_ttl_enabled():
+    client = FakeRedis()
+    clock = {"t": 1000.0}
+    cache = RedisExactCache(
+        "redis://test", client=client, enabled=True, ttl_seconds=10, clock=lambda: clock["t"]
+    )
+    cache.put(_req(), _resp())
+    clock["t"] = 2000.0
+    assert cache.prune() == 0
+    assert client.data  # Redis EX is the reclaim path; prune does not scan
+
+
 def test_missing_redis_package_message(monkeypatch):
     cache = RedisExactCache("redis://test", enabled=True)
 

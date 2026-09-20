@@ -359,6 +359,70 @@ class TestHelmOrgPool:
         )
 
 
+class TestHelmOllamaBaseUrl:
+    def test_ollama_base_url_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_OLLAMA__BASE_URL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["ollama"]["baseUrl"] == ""
+
+    def test_ollama_base_url_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "ollama.baseUrl=http://ollama.internal:11434",
+        )
+        assert re.search(
+            r'name: DAARI_OLLAMA__BASE_URL\s+value: "http://ollama.internal:11434"',
+            rendered,
+        )
+
+
+class TestHelmAsrBaseUrl:
+    def test_asr_base_url_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ASR__BASE_URL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["asr"]["baseUrl"] == ""
+
+    def test_asr_base_url_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "asr.baseUrl=http://whisper.internal:8000/v1",
+        )
+        assert re.search(
+            r'name: DAARI_ASR__BASE_URL\s+value: "http://whisper.internal:8000/v1"',
+            rendered,
+        )
+
+
+class TestHelmRequestDeadlineAndRetention:
+    def test_deadline_and_request_log_absent_by_default(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template()
+        assert "DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS" not in rendered
+        assert "DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["upstream"]["requestDeadlineSeconds"] in ("", None)
+        assert values["observability"]["retention"]["requestLogDays"] in ("", None)
+
+    def test_deadline_and_request_log_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "upstream.requestDeadlineSeconds=120",
+            "--set",
+            "observability.retention.requestLogDays=30",
+        )
+        assert re.search(
+            r'name: DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS\s+value: "120"',
+            rendered,
+        )
+        assert re.search(
+            r'name: DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS\s+value: "30"',
+            rendered,
+        )
+
+
 class TestHelmNotesServiceMonitorAndOrgPool:
     def test_notes_omit_servicemonitor_and_org_pool_by_default(
         self, helm_available: None
@@ -386,3 +450,141 @@ class TestHelmNotesServiceMonitorAndOrgPool:
         assert "Org pool enabled" in notes
         assert "DAARI_ROUTING__ORG_POOL__ENABLED" in notes
         assert "http://gpu-pool:11434" in notes
+
+
+class TestHelmKedaRequestRate:
+    def test_scaledobject_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "kind: ScaledObject" not in rendered
+        assert "keda.sh" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["autoscaling"]["keda"]["enabled"] is False
+        assert "kind: HorizontalPodAutoscaler" in rendered
+
+    def test_enabled_render_has_query_threshold_and_cpu_hpa(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template("--set", "autoscaling.keda.enabled=true")
+        assert "kind: ScaledObject" in rendered
+        assert "apiVersion: keda.sh/v1alpha1" in rendered
+        assert "sum(rate(daari_requests_total[1m]))" in rendered
+        assert 'threshold: "50"' in rendered
+        assert "kind: HorizontalPodAutoscaler" in rendered
+        assert "averageUtilization: 70" in rendered
+        assert "minReplicaCount: 1" in rendered
+
+    def test_keda_min_above_one_without_postgres_is_refused(
+        self, helm_available: None
+    ) -> None:
+        with pytest.raises(subprocess.CalledProcessError) as exc:
+            _helm_template(
+                "--set",
+                "autoscaling.keda.enabled=true",
+                "--set",
+                "autoscaling.keda.minReplicaCount=2",
+                "--set",
+                "postgres.enabled=false",
+            )
+        assert "postgres.enabled" in exc.value.stderr
+        assert "minReplicaCount" in exc.value.stderr
+
+    def test_keda_min_above_one_allowed_with_postgres(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "autoscaling.keda.enabled=true",
+            "--set",
+            "autoscaling.keda.minReplicaCount=2",
+            "--set",
+            "postgres.enabled=true",
+        )
+        assert "minReplicaCount: 2" in rendered
+        assert "kind: HorizontalPodAutoscaler" in rendered
+
+
+
+class TestHelmAuthRateLimitFrontier:
+    def test_defaults_omit_auth_rate_frontier_env(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SERVER__API_KEY" not in rendered
+        assert "DAARI_RATE_LIMIT__RPM" not in rendered
+        assert "DAARI_FRONTIER__ENABLED" not in rendered
+        assert "DAARI_FRONTIER_API_KEY" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["server"]["apiKeySecret"] == {}
+        assert values["rateLimit"]["enabled"] is False
+        assert values["frontier"]["enabled"] is False
+
+    def test_secrets_and_rate_limit_env_render(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "server.apiKeySecret.name=daari-master",
+            "--set",
+            "server.apiKeySecret.key=api-key",
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.rpm=120",
+            "--set",
+            "rateLimit.tpm=50000",
+            "--set",
+            "rateLimit.redisUrl=redis://rl:6379/1",
+            "--set",
+            "frontier.enabled=true",
+            "--set",
+            "frontier.apiKeySecret.name=daari-frontier",
+            "--set",
+            "frontier.apiKeySecret.key=token",
+        )
+        assert "DAARI_SERVER__API_KEY" in rendered
+        assert 'name: "daari-master"' in rendered
+        assert 'key: "api-key"' in rendered
+        assert re.search(r"name: DAARI_RATE_LIMIT__RPM\s+value: \"120\"", rendered)
+        assert re.search(r"name: DAARI_RATE_LIMIT__TPM\s+value: \"50000\"", rendered)
+        assert re.search(r"name: DAARI_CACHE__BACKEND\s+value: redis", rendered)
+        assert "redis://rl:6379/1" in rendered
+        assert re.search(r"name: DAARI_FRONTIER__ENABLED\s+value: \"true\"", rendered)
+        assert "DAARI_FRONTIER_API_KEY" in rendered
+        assert 'name: "daari-frontier"' in rendered
+        assert 'key: "token"' in rendered
+
+    def test_rate_limit_reuses_cache_redis_without_duplicate_url(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "redis.enabled=true",
+            "--set",
+            "redis.url=redis://shared:6379/0",
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.rpm=60",
+            "--set",
+            "rateLimit.redisUrl=redis://should-not-appear:6379/9",
+        )
+        assert rendered.count("DAARI_CACHE__REDIS_URL") == 1
+        assert "redis://shared:6379/0" in rendered
+        assert "redis://should-not-appear" not in rendered
+
+    def test_notes_document_auth_rate_frontier(self, helm_available: None) -> None:
+        text = NOTES.read_text(encoding="utf-8")
+        assert "server.apiKeySecret" in text or "DAARI_SERVER__API_KEY" in text
+        assert "rateLimit" in text
+        assert "frontier" in text
+        notes = _helm_notes(
+            "--set",
+            "server.apiKeySecret.name=daari-master",
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.rpm=10",
+            "--set",
+            "frontier.enabled=true",
+            "--set",
+            "frontier.apiKeySecret.name=daari-frontier",
+        )
+        assert "Master API key" in notes
+        assert "Rate limits enabled" in notes
+        assert "per-pod SQLite" in notes
+        assert "Frontier enabled" in notes
+        assert "DAARI_FRONTIER_API_KEY" in notes

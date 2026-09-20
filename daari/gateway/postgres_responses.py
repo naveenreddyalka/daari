@@ -172,6 +172,24 @@ class PostgresResponseStore:
         body["_owner_key_id"] = row[2]
         return body
 
+    def delete(self, response_id: str) -> bool:
+        if not self.enabled:
+            return False
+        if self._memory:
+            bucket, lock = _memory_bucket(self.dsn)
+            with lock:
+                return bucket.pop(response_id, None) is not None
+        with self._lock:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM daari_responses WHERE response_id = %s",
+                        (response_id,),
+                    )
+                    deleted = cur.rowcount > 0
+                conn.commit()
+                return deleted
+
     def prune_older_than(self, cutoff_epoch: float, *, dry_run: bool = False) -> int:
         """Delete (or count) responses with created_at <= cutoff (#497)."""
         if not self.enabled:

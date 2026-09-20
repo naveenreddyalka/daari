@@ -120,14 +120,21 @@ class FrontierExecutor:
             headers = self._openai_headers()
             path = "/chat/completions"
 
+        from daari.router.deadline import (
+            aiter_with_ttft_deadline,
+            deadline_bounded_stream,
+            guard_upstream,
+        )
+
+        guard_upstream("L6")
         async with httpx.AsyncClient(
             base_url=self.base_url, timeout=self.timeout, transport=self.transport
         ) as client:
-            async with client.stream(
-                "POST", path, json=payload, headers=headers
+            async with deadline_bounded_stream(
+                client, "POST", path, json=payload, headers=headers
             ) as response:
                 response.raise_for_status()
-                async for line in response.aiter_lines():
+                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                     if self._is_anthropic():
                         if not line.startswith("data:"):
                             continue
@@ -181,9 +188,13 @@ class FrontierExecutor:
             headers = self._openai_headers()
             path = "/chat/completions"
 
+        from daari.router.deadline import nonstream_timeout
+
+        timeout = nonstream_timeout(self.timeout, "L6")
+
         async def attempt() -> dict[str, Any]:
             async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout, transport=self.transport
+                base_url=self.base_url, timeout=timeout, transport=self.transport
             ) as client:
                 response = await client.post(path, json=payload, headers=headers)
                 response.raise_for_status()
@@ -193,7 +204,7 @@ class FrontierExecutor:
             attempt,
             upstream=f"frontier:{self.provider}",
             policy=self.retry,
-            timeout=self.timeout,
+            timeout=timeout,
             metrics=self.metrics,
         )
         if anthropic:

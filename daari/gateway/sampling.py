@@ -48,6 +48,20 @@ def model_supports_thinking(model: str) -> bool:
     return any(marker in lowered for marker in _THINKING_MODEL_MARKERS)
 
 
+def ollama_thinking_controls() -> dict[str, Any]:
+    """Ollama ``/api/show`` thinking controls object (#789).
+
+    Values are the non-None levels ``ollama_think`` maps from
+    ``reasoning_effort`` (``low`` / ``medium`` / ``high``). ``max`` is omitted
+    because it is not in ``_REASONING_EFFORT_TO_THINK``. Default is ``medium``.
+    """
+    values: list[str] = []
+    for level in _REASONING_EFFORT_TO_THINK.values():
+        if isinstance(level, str) and level not in values:
+            values.append(level)
+    return {"values": values, "default": "medium"}
+
+
 def _json_schema_from_response_format(response_format: Any) -> dict[str, Any] | None:
     """Return the JSON Schema object from an OpenAI `response_format`, or None."""
     if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":

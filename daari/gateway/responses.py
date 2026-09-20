@@ -7,6 +7,7 @@ silently.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -14,12 +15,12 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
-from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import extract_images
@@ -27,6 +28,11 @@ from daari.gateway.internal import InternalRequest, InternalResponse, Message, R
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.response_store import ResponseStore
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.disconnect import (
+    ClientDisconnected,
+    await_unless_disconnected,
+    note_request_cancelled,
+)
 from daari.gateway.streaming import SSE_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
@@ -34,6 +40,7 @@ from daari.router.local_pool import BackendUnavailable
 from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
+_BACKGROUND_JOBS: dict[str, asyncio.Task[None]] = {}
 
 
 class ResponsesRequest(BaseModel):
@@ -245,6 +252,32 @@ def _public_body(stored: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in stored.items() if not key.startswith("_")}
 
 
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
+
+def _visible_stored_response(
+    ctx: AppContext, response_id: str, request: Request
+) -> tuple[Any, dict[str, Any]]:
+    from daari.enterprise.audit import maybe_audit_tenancy_denied
+    from daari.gateway.response_store import response_visible_to_caller
+
+    store = _store_for(ctx)
+    stored = store.get(response_id)
+    claims = getattr(request.state, "auth_claims", None)
+    visible = stored is not None and response_visible_to_caller(stored, claims)
+    maybe_audit_tenancy_denied(
+        ctx.settings,
+        claims=claims,
+        kind="response",
+        artifact_id=response_id,
+        stored=stored,
+        visible=visible,
+    )
+    if stored is None or not visible:
+        raise HTTPException(status_code=404, detail="response not found")
+    return store, stored
+
+
 def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
@@ -294,24 +327,41 @@ class ResponsesGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/responses/{response_id}")
         async def get_response(response_id: str, request: Request) -> dict[str, Any]:
-            from daari.enterprise.audit import maybe_audit_tenancy_denied
-            from daari.gateway.response_store import response_visible_to_caller
-
             ctx: AppContext = request.app.state.ctx
-            stored = _store_for(ctx).get(response_id)
-            claims = getattr(request.state, "auth_claims", None)
-            visible = stored is not None and response_visible_to_caller(stored, claims)
-            maybe_audit_tenancy_denied(
-                ctx.settings,
-                claims=claims,
-                kind="response",
-                artifact_id=response_id,
-                stored=stored,
-                visible=visible,
-            )
-            if stored is None or not visible:
-                raise HTTPException(status_code=404, detail="response not found")
+            _store, stored = _visible_stored_response(ctx, response_id, request)
             return _public_body(stored)
+
+        @router.post("/v1/responses/{response_id}/cancel")
+        async def cancel_response(response_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store, stored = _visible_stored_response(ctx, response_id, request)
+            if stored.get("status") in _TERMINAL_STATUSES:
+                return _public_body(stored)
+            cancelled = {
+                **_public_body(stored),
+                "status": "cancelled",
+                "output": stored.get("output") or [],
+            }
+            store.put(
+                response_id,
+                cancelled,
+                conversation=list(stored.get("_conversation") or []),
+                stored=True,
+            )
+            job = _BACKGROUND_JOBS.pop(response_id, None)
+            if job is not None and not job.done():
+                job.cancel()
+            return cancelled
+
+        @router.delete("/v1/responses/{response_id}")
+        async def delete_response(response_id: str, request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            store, stored = _visible_stored_response(ctx, response_id, request)
+            job = _BACKGROUND_JOBS.pop(response_id, None)
+            if job is not None and not job.done():
+                job.cancel()
+            store.delete(response_id)
+            return {"id": stored.get("id") or response_id, "object": "response", "deleted": True}
 
         @router.post("/v1/responses/input_tokens")
         async def input_tokens(body: ResponsesRequest) -> dict[str, int]:
@@ -333,12 +383,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         async def responses(
             body: ResponsesRequest,
             request: Request,
-            background_tasks: BackgroundTasks,
             x_daari_no_cache: str | None = Header(default=None, alias="X-Daari-No-Cache"),
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
             x_daari_latency_budget: str | None = Header(default=None, alias="X-Daari-Latency-Budget"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
             x_daari_project: str | None = Header(default=None, alias="X-Daari-Project"),
@@ -356,6 +406,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
             except ValueError:
                 latency_budget_ms = None
+            from daari.router.deadline import RequestDeadlineExceeded, parse_deadline_ms
+
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
 
             store = _store_for(ctx)
             owner_key_id = _owner_key_id_from_request(request)
@@ -390,13 +443,25 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 tier_override=x_daari_tier_override,
                 tier_cap=x_daari_tier_cap,
                 latency_budget_ms=latency_budget_ms,
+                deadline_ms=deadline_ms,
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
             )
             apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
 
-            apply_auth_claims_to_meta(meta, claims)
+            apply_auth_claims_to_meta(
+                meta,
+                claims,
+                model_groups=getattr(ctx.settings, "model_groups", None),
+            )
+            from daari.gateway.model_access import reject_disallowed_model
+
+            denied = reject_disallowed_model(
+                request, body.model or ctx.settings.models.l3, ctx.settings, meta
+            )
+            if denied is not None:
+                return denied
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
                 messages=messages,
@@ -455,22 +520,41 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     stored=True,
                     owner_key_id=owner_key_id,
                 )
-                background_tasks.add_task(
-                    self._run_background,
-                    ctx,
-                    internal,
-                    response_id,
-                    input_chars,
-                    include_daari_meta,
-                    body.metadata,
-                    messages,
-                    store,
-                    owner_key_id,
+                task = asyncio.create_task(
+                    self._run_background(
+                        ctx,
+                        internal,
+                        response_id,
+                        input_chars,
+                        include_daari_meta,
+                        body.metadata,
+                        messages,
+                        store,
+                        owner_key_id,
+                    )
                 )
+                _BACKGROUND_JOBS[response_id] = task
+                task.add_done_callback(lambda _t, rid=response_id: _BACKGROUND_JOBS.pop(rid, None))
                 return queued
 
             try:
-                result = await ctx.router.route(internal)
+                result = await await_unless_disconnected(
+                    request,
+                    ctx.router.route(internal),
+                    metrics=ctx.metrics,
+                    phase="responses",
+                    model=internal.model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
@@ -484,6 +568,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
@@ -524,7 +610,13 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         owner_key_id: str | None = None,
     ) -> None:
         try:
+            current = store.get(response_id)
+            if current is None or current.get("status") == "cancelled":
+                return
             result = await ctx.router.route(internal)
+            current = store.get(response_id)
+            if current is None or current.get("status") == "cancelled":
+                return
             payload = _response_body(
                 response_id,
                 result,
@@ -540,6 +632,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 owner_key_id=owner_key_id,
             )
         except Exception as exc:  # noqa: BLE001 — persist failure for GET polling
+            current = store.get(response_id)
+            if current is None or current.get("status") == "cancelled":
+                return
             store.put(
                 response_id,
                 {
@@ -596,6 +691,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 ctx.router.stream_openai_chunks(internal),
                 interval_seconds=ctx.settings.server.sse_keepalive_seconds,
                 frame=SSE_KEEPALIVE_FRAME,
+                on_cancel=lambda: note_request_cancelled(
+                    ctx.metrics, "stream", model=internal.model
+                ),
             ):
                 if chunk == SSE_KEEPALIVE_FRAME:
                     yield chunk

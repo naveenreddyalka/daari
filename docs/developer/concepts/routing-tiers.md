@@ -163,9 +163,12 @@ delta, from, to).
 
 Dry-run the initial local pick without calling Ollama or frontier:
 `POST /v1/daari/route/preview` (body `messages` or `prompt`) or
-`daari route preview "sample prompt"`. The response is `{tier, reasons}`
-where `reasons` has `heuristic`, `phase`, `latency_budget`, and
-`ttft_preference` (a later field is set only when that step changed the pick).
+`daari route preview "sample prompt"`. The response is
+`{tier, reasons, policy, chain}` where `reasons` has `heuristic`, `phase`,
+`latency_budget`, and `ttft_preference` (a later field is set only when that
+step changed the pick). `policy` is the resolved timeout/retry for the
+chosen local tier; `chain` lists every local tier and frontier slot with
+its effective `timeout_s`, `retry_attempts`, and `retry_backoff_s`.
 
 `routing.ttft_aware` (default off) uses recent stream `daari_ttft_ms` samples
 to prefer a **faster** local tier (never escalate) when that tier has at least
@@ -187,6 +190,37 @@ tier cards from `GET /v1/models` (#400); unknown windows are omitted.
 Frontier/L6 cards are never overwritten from this table. Capability
 `long_context` is no longer inferred from a 24k-char threshold (#401) —
 this escalation path is the single length hop.
+
+## Per-entry retry and timeout
+
+`upstream.retry` and `upstream.local_timeout_seconds` /
+`upstream.frontier_timeout_seconds` remain the defaults. A single global
+budget is wrong for a chain that mixes slow local models with hosted APIs,
+so each hop can override:
+
+```yaml
+models:
+  l3: llama3.2:3b
+  l4: llama3.1:8b
+  timeout_s:
+    L3: 45
+    L5: 180          # L4 keeps upstream.local_timeout_seconds
+
+frontier:
+  enabled: true
+  providers:
+    - id: openai
+      timeout_s: 30
+      retry_attempts: 2
+      retry_backoff_s: 0.5
+    - id: anthropic
+      timeout_s: 60
+      retry_attempts: 0   # one attempt, then fail over
+```
+
+Retries live inside the hop. Exhausting a provider's attempts advances the
+failover chain; that hop's timeout does not shrink the next slot's budget.
+Unset fields inherit today's globals, so existing configs are unchanged.
 
 ## Knobs
 
