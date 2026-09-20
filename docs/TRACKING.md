@@ -3506,6 +3506,14 @@ return 499 on disconnect. Background MCP tasks stay unwrapped. Covered by
 TPM from `len(file_bytes) // 4` like transcriptions; chat/embeddings stay on
 the character estimate. Covered by `tests/unit/test_rate_limit.py`.
 
+### Document cache invalidate --team/--key and refresh http-api ([#800](https://github.com/naveenreddyalka/daari/issues/800))
+
+<!-- tracking:#800 -->
+**Status:** Done (2026-09-20). `org-cache.md` documents `--team` / `--key` and
+admin `team_id` / `key_id`. Regenerated `http-api.md` lists
+`POST /v1/audio/translations` and `POST /v1/daari/cache/invalidate`. Covered by
+`tests/unit/test_gen_reference.py`.
+
 ### Document request deadline header and config ([#799](https://github.com/naveenreddyalka/daari/issues/799))
 
 <!-- tracking:#799 -->
