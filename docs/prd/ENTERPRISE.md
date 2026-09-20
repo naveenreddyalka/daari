@@ -11,37 +11,29 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-19 evening)
+## Where daari stands (verified in-tree, 2026-09-20)
 
-Fleet/HA, tenancy, governance, Responses cancel/delete, local ASR,
-request-rate KEDA, UTC-day `rpd`, transcription allowlists, doctor ASR,
-and transcription/embedding chargeback are shipped. Already queued and
-not restated below: Idempotency-Key, Helm `asr.baseUrl`, audio
-translations, embed/ASR latency, Helm Ollama URL, doctor embed probe,
-audio TPM, and batched list embeds.
+Cache tenancy (`cache_scope`), selective invalidate, request deadline (chat /
+audio / embed / MCP / facade), disconnect cancel (OpenAI chat, MCP, embed/ASR),
+request-log retention, Redis L0 age prune, thinking controls on `/api/show`,
+spend `--tier`, and ASR frontier validate are shipped. Still open and not
+restated below: Idempotency-Key, facade non-stream disconnect, and a thin
+P3 docs/test tail.
 
-**Outward (this run, delta on the 16:55 scan):** LiteLLM stable is still
-**v1.101.0**; v1.103.0-dev.2 (18 Sep) is not stable. Portkey enterprise
-and Kong **2.0.3** unchanged. **Ollama v0.34.3-rc1** (19 Sep) adds a
-`thinking` controls object (`values` + `default`) to `GET /api/show` —
-facade parity becomes a fileable row when it goes stable (same pattern
-as the 0.34.1 `capabilities` field). llama.cpp nightlies only; vLLM
-0.29.0 flat.
+**Outward (this run):** LiteLLM **v1.102.0** is on PyPI (auto-router controls,
+native OCR, gateway reliability); GitHub's latest non-prerelease tag still
+reads v1.101.0 — treat docs/PyPI as the bar. **v1.103.0-rc.1** adds config-file
+ownership and Fuse/capability routing (watch). Kong **2.0.3** and Portkey
+enterprise unchanged. Ollama stable **v0.34.2**; **v0.34.3-rc1** thinking
+controls already mirrored in-tree. vLLM **0.29.0** flat. OpenRouter US/EU
+in-region routing is cloud-only; daari already has `region_pin`.
 
-**Inward theme: cache tenancy and request lifecycle.** `cache_key()`
-(`daari/cache/exact.py`) hashes messages, model, sampling — never
-`key_id`/`team_id` (`RequestMeta` carries both, comment says "Not part
-of the cache key"). The Redis L0 prefix is the global `daari:l0:`, and
-the L1 nearest scan matches on model|temperature|tools only, so a
-semantic hit can serve one team's stored completion to another team.
-No `request.is_disconnected()` anywhere: an abandoned non-streaming
-request keeps the local GPU or frontier call running to completion.
-Cache ops are blunt: `daari context clear` is rmtree-everything, Redis
-L0 `prune()` is a no-op, and there is no invalidate-by-model/key/entry.
-Timeouts are fixed per tier (`local_timeout_seconds` 120 + 90 per
-frontier leg on escalation) with no request-scoped deadline. The
-request log stores metadata only (no prompt bodies — verified) but is
-absent from `RetentionSettings.prune_all`, so it only rotates by size.
+**Inward theme: governance holes on secondary ingress.** Chat/Responses/
+Anthropic got virtual-key meta, allowlists, and tenant cache; MCP `route` and
+batch item drain did not. Embed L0 is still global-scoped. Helm wires redis /
+postgres / deadline / ASR but not master API key, rate-limit Redis, or
+frontier. Doctor never warns when deadline is unset or scoped cache meets
+disk+multi-replica. Cold TTFT still has no proactive `models warm`.
 
 ---
 
@@ -49,31 +41,39 @@ absent from `RetentionSettings.prune_all`, so it only rotates by size.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Cache is tenant-blind** — L0/L1 keys have no `key_id`/`team_id` dimension; semantic hits cross team boundaries; no per-key/team cache scope flag | 5 | 2 | Portkey (workspace-scoped cache); LiteLLM cache-key metadata | Shared org cache stays the default win; a `cache_scope` of team/key makes it safe for confidential teams without a hosted cache | File |
-| 2 | **Abandoned requests burn GPU** — no disconnect detection; non-stream upstream calls run to completion after the client hangs up; no cancelled-request metric | 4 | 3 | Kong/Envoy (proxy abort propagates upstream) | Cancelled local inference frees the GPU for the next request — the scarce resource IS local | File |
-| 3 | **No selective cache invalidation** — only rmtree-all `context clear` + TTL prune (Redis prune is a no-op); nothing by model, key, team, or entry hash | 3 | 2 | LiteLLM (cache delete/flush admin endpoints); GPTCache | A bad cached answer is purged in one admin call instead of nuking the whole org cache | File |
-| 4 | **No end-to-end deadline** — each tier restarts a full fixed timeout on escalation (120s local + 90s per frontier leg worst-case); `latency_budget_ms` only picks the first tier | 4 | 3 | LiteLLM (`request_timeout`); Kong route timeouts | Escalation chains are daari's core mechanic; a wall-clock budget makes p99 provable to SRE | File |
-| 5 | **Request log outside retention** — `cursor-requests.log` rotates by size only; not in `RetentionSettings`/`prune_all`; no time-based purge for compliance | 2 | 1 | Cloud gateways (retention policies) | One retention sweep already prunes traces/ledger/audit — logs should follow | File |
-| 6 | **Ollama 0.34.3 `/api/show` thinking controls / idempotency / translations / Helm ASR / embed-ASR set / WIF / A2A / SOC 2 / admin UI / OCR** | 2–4 | 2–5 | Ollama / LiteLLM / cloud | First is rc-gated; next eight are queued; the rest stay deferred | Watch |
+| 1 | **MCP `route` skips virtual-key governance** — `_run_tool` builds bare `RequestMeta(deadline_ms=…)`; no `apply_auth_claims_to_meta`, model allowlist, spend attribution, or tenant cache | 5 | 3 | LiteLLM MCP gateway (team toolsets); Kong agentic policies | Shared on-prem MCP front door needs the same key/team fences as chat before agents hit local GPUs | File |
+| 2 | **Batch drain bypasses RPM/TPM/RPD + incomplete meta** — worker calls `router.route` without the limiter; item meta omits `key_id`/`team_id`/`cache_scope` even though `BatchGovernance` stores `key_id` | 5 | 3 | LiteLLM batch + budgets; OpenAI Batch quotas | Overnight local eval must not be a quota-evasion lane vs interactive chat | File |
+| 3 | **Embed L0 is tenant-blind** — `embedding_cache_request()` never sets `RequestMeta`; scoped keys still share vectors across teams | 4 | 2 | Portkey workspace cache; LiteLLM cache metadata | Embeddings feed L1 and tool-search; cross-tenant hits leak without frontier egress | File |
+| 4 | **Helm missing auth / rate-limit / frontier knobs** — chart has redis, postgres, deadline, ASR; no `apiKeySecret`, `rateLimit.*`, or `frontier.enabled` + secret | 4 | 2 | Kong Konnect / LiteLLM Helm | K8s operators should wire fleet auth and caps without hand-patched Deployments | File |
+| 5 | **No proactive model warm** — warm preference is reactive via `/api/ps`; cold Ollama TTFT stays the worst first-request UX | 3 | 2 | Ollama `keep_alive` / vLLM preload | Local-first product owns cold start; one CLI/onboard step beats a cloud warm pool | File |
+| 6 | **Doctor silent on new ops knobs / OCR / Fuse routing / WIF / A2A / SOC 2 / admin UI** | 2–4 | 2–5 | LiteLLM / cloud | Doctor warn is next-tranche; OCR+Fuse stay watch; compliance deferred | Watch |
 
-Pruned this run: the embed/ASR measurement rows (all five filed as issues
-by the 16:55 sibling run and now queued).
+Pruned this run: tenant cache, selective invalidate, request deadline,
+disconnect cancel (non-facade), request-log retention, thinking `/api/show`
+(shipped). Facade disconnect and Idempotency-Key stay open elsewhere.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Tenant-scoped caching** — optional `cache_scope: team|key` on virtual keys/teams folds `key_id`/`team_id` into L0/L1 keys and the Redis prefix.
-2. **Cancel on disconnect** — `is_disconnected()` polling + upstream task cancel; a `daari_cancelled_requests` counter proves freed GPU time.
-3. **Cache invalidation surface** — admin route + CLI to purge by model, key/team, or entry hash, Redis-aware.
-4. **Request deadline** — `X-Daari-Deadline-Ms` propagates remaining wall-clock into every tier's httpx timeout and stops escalation when spent.
-5. **Log retention parity** — the gateway request log joins the retention sweep.
+1. **MCP governance parity** — virtual-key claims, allowlists, spend, and `cache_scope` on MCP `tools/call` / `route`.
+2. **Batch quota + meta replay** — drain path charges RPM/TPM/RPD and copies tenant fields onto every item.
+3. **Scoped embed cache** — L0 embed keys honor `cache_scope` like chat.
+4. **Helm fleet auth surface** — Secret-backed master key, rate-limit Redis, frontier enable/key.
+5. **`daari models warm`** — preload configured L3–L5 (+ embed) before serve/onboard.
 
-Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR) stay deferred until a paying ask.
+Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay deferred.
 
 ---
 
 ## Changelog
+
+- **2026-09-20 (governance secondary ingress)** — Prior cache/deadline/cancel/
+  retention set confirmed shipped. Outward: LiteLLM v1.102.0 on PyPI (OCR +
+  auto-router); v1.103.0-rc.1 config ownership / Fuse watch; Kong 2.0.3 and
+  Ollama 0.34.2 stable (0.34.3-rc1 already mirrored). Inward: MCP route bare
+  meta, batch limiter bypass + incomplete item meta, embed L0 global-only,
+  Helm auth/rate/frontier gap, no proactive model warm. Filing five.
 
 - **2026-09-19 (cache tenancy)** — Delta run an hour after the 16:55
   sibling (embed/ASR set queued). Outward delta: Ollama v0.34.3-rc1 adds
