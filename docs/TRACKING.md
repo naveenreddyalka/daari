@@ -3751,6 +3751,14 @@ deadlines are not chat-only (audio, embeddings, MCP `tools/call`); panel still
 scrapes `daari_request_deadline_exceeded_total`. Covered by
 `tests/unit/test_grafana_dashboard.py`.
 
+### Skip resolved stall issues in autodev --pick ([#857](https://github.com/naveenreddyalka/daari/issues/857))
+
+<!-- tracking:#857 -->
+**Status:** Done (2026-09-20). Stall tickets whose referenced PR is no longer
+open (merged/closed) are skipped by `autodev_backlog.py --pick` so they cannot
+block the backlog after conflict repair. Covered by
+`tests/unit/test_autodev_backlog.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
