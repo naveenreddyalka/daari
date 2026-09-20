@@ -3514,6 +3514,13 @@ admin `team_id` / `key_id`. Regenerated `http-api.md` lists
 `POST /v1/audio/translations` and `POST /v1/daari/cache/invalidate`. Covered by
 `tests/unit/test_gen_reference.py`.
 
+### Document request deadline header and config ([#799](https://github.com/naveenreddyalka/daari/issues/799))
+
+<!-- tracking:#799 -->
+**Status:** Done (2026-09-20). `headers.md` documents `X-Daari-Deadline-Ms`
+(504 / `request_deadline_exceeded`; stream = TTFT-only). `config.md` lists
+`upstream.request_deadline_seconds`. Covered by `tests/unit/test_deadline_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
