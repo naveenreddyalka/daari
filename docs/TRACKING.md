@@ -3577,6 +3577,13 @@ Covered by `tests/unit/test_cache_invalidate.py`.
 resolves (empty `asr.base_url` — fallback-only path). Covered by
 `tests/unit/test_config_validate.py`.
 
+### Request deadline on MCP tools/call ([#827](https://github.com/naveenreddyalka/daari/issues/827))
+
+<!-- tracking:#827 -->
+**Status:** Done (2026-09-20). MCP `tools/call` (JSON-RPC `/mcp` and legacy
+query) binds `X-Daari-Deadline-Ms` before tool execution; exhaustion returns
+504 `request_deadline_exceeded`. Covered by `tests/unit/test_mcp_server.py`.
+
 ### Spend export --tier filter ([#818](https://github.com/naveenreddyalka/daari/issues/818))
 
 <!-- tracking:#818 -->
