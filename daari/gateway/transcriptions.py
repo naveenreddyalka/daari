@@ -10,9 +10,17 @@ import httpx
 from fastapi import Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from daari.gateway.client_errors import summarize_upstream_failure
+from daari.gateway.client_errors import request_deadline_response, summarize_upstream_failure
 from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected
 from daari.gateway.request_log import log_gateway_event
+from daari.router.deadline import (
+    RequestDeadlineExceeded,
+    bind_request_deadline,
+    deadline_active,
+    nonstream_timeout,
+    parse_deadline_ms,
+    resolve_deadline_seconds,
+)
 
 _UNAVAILABLE = (
     "No local speech-to-text backend is configured. Set asr.base_url to an "
@@ -189,6 +197,13 @@ def _record_request(
     )
 
 
+def _audio_deadline_seconds(request: Request, settings: Any) -> float | None:
+    header_ms = parse_deadline_ms(request.headers.get("x-daari-deadline-ms"))
+    upstream = getattr(settings, "upstream", None)
+    setting = getattr(upstream, "request_deadline_seconds", None) if upstream else None
+    return resolve_deadline_seconds(header_ms, setting)
+
+
 async def handle_transcription(
     request: Request,
     *,
@@ -208,6 +223,23 @@ async def handle_transcription(
             "response_format must be json",
         )
     ctx = request.app.state.ctx
+    seconds = _audio_deadline_seconds(request, ctx.settings)
+    if seconds is not None and not deadline_active():
+        try:
+            with bind_request_deadline(seconds, metrics=ctx.metrics):
+                return await handle_transcription(
+                    request,
+                    file=file,
+                    model=model,
+                    language=language,
+                    prompt=prompt,
+                    response_format=response_format,
+                    upstream_path=upstream_path,
+                    event=event,
+                )
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
+
     target = resolve_asr_target(ctx.settings)
     if target is None:
         return _error(501, "asr_unavailable", _UNAVAILABLE)
@@ -241,6 +273,7 @@ async def handle_transcription(
     started = time.perf_counter()
     phase = "translation" if upstream_path.rstrip("/").endswith("translations") else "asr"
     try:
+        timeout = nonstream_timeout(target.timeout, phase)
         upstream = await await_unless_disconnected(
             request,
             post_transcription(
@@ -250,12 +283,14 @@ async def handle_transcription(
                 content=content,
                 content_type=file.content_type or "application/octet-stream",
                 form=form,
-                timeout=target.timeout,
+                timeout=timeout,
             ),
             metrics=ctx.metrics,
             phase=phase,
             model=model_name,
         )
+    except RequestDeadlineExceeded as exc:
+        return request_deadline_response(exc)
     except ClientDisconnected:
         return JSONResponse(
             status_code=499,

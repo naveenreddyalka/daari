@@ -890,34 +890,63 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
 
         @router.post("/v1/embeddings")
-        async def embeddings(body: EmbeddingsRequest, request: Request) -> Any:
+        async def embeddings(
+            body: EmbeddingsRequest,
+            request: Request,
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
+        ) -> Any:
             ctx: AppContext = request.app.state.ctx
             from daari.gateway.model_access import reject_disallowed_model
+            from daari.router.deadline import (
+                RequestDeadlineExceeded,
+                bind_request_deadline,
+                deadline_active,
+                guard_upstream,
+                parse_deadline_ms,
+                resolve_deadline_seconds,
+            )
 
             denied = reject_disallowed_model(request, body.model or "daari", ctx.settings)
             if denied is not None:
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
+            seconds = resolve_deadline_seconds(
+                deadline_ms,
+                getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+            )
+
+            async def _run() -> Any:
+                if deadline_active():
+                    guard_upstream("embed")
+                try:
+                    vectors = await await_unless_disconnected(
+                        request,
+                        compute_embeddings(ctx, texts, model=model, request=request),
+                        metrics=ctx.metrics,
+                        phase="embed",
+                        model=model,
+                    )
+                except ClientDisconnected:
+                    return JSONResponse(
+                        status_code=499,
+                        content={
+                            "error": {
+                                "type": "client_disconnected",
+                                "message": "client disconnected.",
+                            }
+                        },
+                    )
+                return openai_embeddings_payload(model, vectors, texts)
+
             try:
-                vectors = await await_unless_disconnected(
-                    request,
-                    compute_embeddings(ctx, texts, model=model, request=request),
-                    metrics=ctx.metrics,
-                    phase="embed",
-                    model=model,
-                )
-            except ClientDisconnected:
-                return JSONResponse(
-                    status_code=499,
-                    content={
-                        "error": {
-                            "type": "client_disconnected",
-                            "message": "client disconnected.",
-                        }
-                    },
-                )
-            return openai_embeddings_payload(model, vectors, texts)
+                if seconds is not None and not deadline_active():
+                    with bind_request_deadline(seconds, metrics=ctx.metrics):
+                        return await _run()
+                return await _run()
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
