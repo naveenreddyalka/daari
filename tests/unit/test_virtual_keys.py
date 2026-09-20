@@ -76,9 +76,7 @@ class TestResolveAuth:
         )
         assert meta.client_id == "c1" and meta.tier_cap == "L4"
         meta2 = RequestMeta(client_id="header", tier_cap="L5")
-        apply_auth_claims_to_meta(
-            meta2, AuthClaims(kind="virtual", client_id="c1", tier_cap="L4")
-        )
+        apply_auth_claims_to_meta(meta2, AuthClaims(kind="virtual", client_id="c1", tier_cap="L4"))
         assert meta2.client_id == "header" and meta2.tier_cap == "L5"
 
 
@@ -157,6 +155,21 @@ class TestCLI:
         revoked = runner.invoke(cli_app, ["keys", "revoke", key_id])
         assert revoked.exit_code == 0
 
+    def test_list_shows_rpd(self, tmp_path, monkeypatch):
+        from daari.config.settings import Settings
+
+        settings = Settings()
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        runner = CliRunner()
+        created = runner.invoke(cli_app, ["keys", "create", "capped", "--rpd", "12"])
+        assert created.exit_code == 0, created.output
+        listed = runner.invoke(cli_app, ["keys", "list"])
+        assert listed.exit_code == 0, listed.output
+        header = listed.output.splitlines()[0]
+        assert "rpd" in header.split()
+        assert "12" in listed.output
+
     def test_create_with_team_and_window(self, tmp_path, monkeypatch):
         from daari.config.settings import Settings
 
@@ -164,9 +177,7 @@ class TestCLI:
         settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
         monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
         runner = CliRunner()
-        team = runner.invoke(
-            cli_app, ["keys", "team-create", "eng", "--daily-budget", "1"]
-        )
+        team = runner.invoke(cli_app, ["keys", "team-create", "eng", "--daily-budget", "1"])
         assert team.exit_code == 0
         created = runner.invoke(
             cli_app,

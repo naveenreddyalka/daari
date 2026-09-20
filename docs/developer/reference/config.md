@@ -23,15 +23,21 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `rate_limit.queue_size` | int | `32` | Waiters allowed when in-flight is full; overflow is 503 + Retry-After. |
 | `rate_limit.retry_after_seconds` | int | `1` | Retry-After value on 429/503. |
 | `rate_limit.fail_open` | bool | `False` | When Redis counters are unreachable, allow requests without counting instead of degrading to the per-replica SQLite backend. Default false (prefer SQLite fallback so limits still apply locally). |
+
+Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rate_limit.*` setting. Set it on the key or team (`daari keys create/update --rpd`, `daari keys team-create/update --rpd`). See [auth and keys](../guides/configuration/auth-and-keys.md).
 | `models.l3` | str | `'llama3.2:3b'` |  |
 | `models.l4` | str | `'llama3.1:8b'` |  |
 | `models.l5` | str | `'llama3.1:70b'` |  |
 | `models.weights` | dict | `{}` |  |
 | `models.capabilities` | dict | `{}` |  |
+| `models.timeout_s` | dict | `{}` | Optional per-tier request timeout in seconds (keys L3/L4/L5). Unset tiers use `upstream.local_timeout_seconds`. |
 | `ollama.base_url` | str | `'http://127.0.0.1:11434'` |  |
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
 | `mlx.models` | dict | `{}` |  |
+| `asr.base_url` | str | `''` | OpenAI-compatible ASR base URL, including /v1 (vLLM, whisper.cpp server, or another local pool member). Empty leaves POST /v1/audio/transcriptions unconfigured. |
+| `asr.model` | str | `''` | Optional model name sent to the ASR server. When set, it replaces the client model so a local server always sees its own id. |
+| `asr.frontier_fallback` | bool | `False` | When true and asr.base_url is empty, forward one transcription to the configured frontier base if frontier.enabled and a key is present. Default false so audio is never uploaded to a cloud endpoint implicitly. |
 | `cache.l0.enabled` | bool | `True` |  |
 | `cache.l0.path` | str | `'~/.daari/cache/l0'` |  |
 | `cache.l0.ttl_seconds` | float | `0.0` |  |
@@ -93,7 +99,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `frontier.model` | str | `'gpt-4o-mini'` |  |
 | `frontier.confidence_threshold` | float | `0.7` |  |
 | `frontier.base_url` | str | `'https://api.openai.com/v1'` |  |
-| `frontier.providers` | list | `[]` |  |
+| `frontier.providers` | list | `[]` | Ordered L6 failover chain. Optional per-entry `timeout_s`, `retry_attempts`, and `retry_backoff_s` fall back to `upstream.frontier_timeout_seconds` / `upstream.retry` when unset. |
 | `frontier.daily_budget_usd` | float | `0.0` |  |
 | `frontier.monthly_budget_usd` | float | `0.0` |  |
 | `frontier.soft_budget_ratio` | float | `0.8` |  |
@@ -130,6 +136,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
 | `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |
+| `upstream.request_deadline_seconds` | float \| None | `None` | Optional wall-clock budget for one request across cache, local, and frontier hops. Each upstream call uses min(tier timeout, remaining). Unset or 0 keeps per-tier timeouts only. The X-Daari-Deadline-Ms header overrides this. |
 | `upstream.retry.attempts` | int | `3` | Total attempts per upstream call, counting the first. `1` disables retries. Only transient failures are retried (408, 429, 5xx, connect and read timeouts); a 401 or malformed body fails immediately. |
 | `upstream.retry.base_delay_ms` | int | `200` | First backoff, doubled per retry up to `max_delay_ms`. |
 | `upstream.retry.max_delay_ms` | int | `5000` | Ceiling for a single backoff interval. |
@@ -152,6 +159,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.retention.audit_days` | int | `0` |  |
 | `observability.retention.shadow_days` | int | `0` |  |
 | `observability.retention.tasks_days` | int | `0` |  |
+| `observability.retention.request_log_days` | int | `0` | Delete gateway request-log lines and rotated backups older than this many days. 0 keeps size-only rotation (#772). |
 | `learning.enabled` | bool | `True` |  |
 | `learning.path` | str | `'~/.daari/feedback/feedback.sqlite3'` |  |
 | `learning.max_rows` | int | `20000` |  |

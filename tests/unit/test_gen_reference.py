@@ -80,8 +80,40 @@ def test_api_reference_lists_gateway_routes(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))  # keep Settings() away from real config
     module = _load_module()
     text = module.render_api_reference()
-    for route in ("/v1/chat/completions", "/v1/messages", "/api/chat", "/health", "/ready"):
+    for route in (
+        "/v1/chat/completions",
+        "/v1/messages",
+        "/api/chat",
+        "/health",
+        "/ready",
+        "/introspect",
+        "/v1/audio/transcriptions",
+        "/v1/audio/translations",
+        "/v1/daari/cache/invalidate",
+    ):
         assert f"`{route}`" in text, f"missing route {route}"
+    assert "| `POST` | `/introspect` |" in text
+
+
+def test_committed_http_api_md_includes_introspect():
+    """On-disk reference must not drift from the generator (#680)."""
+    committed = (REPO_ROOT / "docs/developer/reference/http-api.md").read_text(
+        encoding="utf-8"
+    )
+    assert "| `POST` | `/introspect` |" in committed
+    assert "| `POST` | `/v1/audio/transcriptions` |" in committed
+    assert "| `POST` | `/v1/audio/translations` |" in committed
+    assert "| `POST` | `/v1/daari/cache/invalidate` |" in committed
+
+
+def test_org_cache_docs_mention_team_key_invalidate():
+    text = (REPO_ROOT / "docs/developer/guides/features/org-cache.md").read_text(
+        encoding="utf-8"
+    )
+    assert "--team" in text
+    assert "--key" in text
+    assert "team_id" in text
+    assert "key_id" in text
 
 
 def test_main_writes_both_pages(tmp_path, monkeypatch):

@@ -1,0 +1,27 @@
+{{- $keda := .Values.autoscaling.keda | default dict }}
+{{- if $keda.enabled }}
+{{- $min := int ($keda.minReplicaCount | default 1) }}
+{{- if and (not .Values.postgres.enabled) (gt $min 1) }}
+{{- fail "autoscaling.keda.minReplicaCount must stay 1 while postgres.enabled is false (per-pod SQLite). Enable postgres or keep the floor at 1. See NOTES.txt." }}
+{{- end }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "daari.fullname" . }}
+  labels:
+    app.kubernetes.io/name: daari
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "daari.fullname" . }}
+  minReplicaCount: {{ $min }}
+  maxReplicaCount: {{ int ($keda.maxReplicaCount | default 10) }}
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: {{ $keda.serverAddress | quote }}
+        metricName: daari_requests_total
+        query: {{ $keda.query | quote }}
+        threshold: {{ $keda.threshold | quote }}
+{{- end }}

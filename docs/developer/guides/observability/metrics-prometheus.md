@@ -27,9 +27,11 @@ panel on `daari_backend_up` / `daari_backend_outstanding` (and request rate),
 a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
 `_in_flight_max` / `_queued`, alert-series panels for
 `daari_upstream_retries_total`, `daari_cache_false_hits_avoided_total`, and
-`daari_budget_alerts_total`, and an **MCP tool ingress by outcome** panel on
-`daari_mcp_tool_calls_total` so operators see flake / false-hit / budget /
-MCP deny pressure without raw PromQL).
+`daari_budget_alerts_total`, an **MCP tool ingress by outcome** panel on
+`daari_mcp_tool_calls_total`, a **Tier shadow agree/disagree** panel on
+`daari_tier_shadow_samples_total`, and an **Escalations & errors** panel on
+`daari_escalations_total` / `daari_errors_total` so operators see flake / false-hit / budget /
+MCP deny / routing-shadow pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
@@ -44,17 +46,22 @@ Two counters worth alerting on:
 | `daari_cache_false_hits_avoided_total` | L1 hits vetoed by verification. Steady growth is the cache working; a spike suggests the similarity threshold is too loose. |
 | `daari_soft_warnings_total{kind}` | Soft-band pressure before hard rejects: `kind="budget"` (`x-daari-budget-warning`), `kind="request_quota"` (`x-daari-quota-requests-warning`), or `kind="rate_limit"` (`x-daari-ratelimit-warning`). Rising here while 402/429 stay flat means agents are hovering in the soft band — scale Ollama or widen caps before hard rejects start. Hard 402/429 do not increment this counter. Overview Grafana charts all kinds under **Soft warnings by kind** and isolates USD soft pressure under **Soft USD budget warnings**. |
 | `daari_rejects_total{kind}` | Hard denials only: `kind="budget"` (USD 402), `kind="request_quota"` (request-cap 402), or `kind="rate_limit"` (429). Soft warning headers never increment this. Rising rejects after soft warnings means caps are undersized relative to demand. |
+| `daari_ttft_preference_total{from,to}` | When `routing.ttft_aware` rewrites the heuristic local tier (e.g. L4→L3). Flat while TTFT bias is idle; rising means the preference path is active. Off / no-op picks do not increment. |
+| `daari_rate_limit_degraded{mode}` | `1` while Redis rate-limit counting is degraded (`mode="sqlite_fallback"` or `mode="fail_open"`); clears to `0` when Redis answers again. Page when any pod stays at `1` — fleet RPM/TPM is no longer shared. |
+| `daari_mcp_tool_calls_total{tool,outcome}` | MCP ingress `tools/call` (and legacy `/v1/mcp/query`) by tool name and `outcome` (`ok`, `deny`, `error`, `guardrail`). No-op when `observability.prometheus=false`. Rising `deny` vs `ok` is policy pressure on agent traffic. |
+| `daari_team_budget_remaining_usd{team,window}` / `daari_team_budget_limit_usd{team,window}` / `daari_team_budget_remaining_hours{team,window}` | Per-team USD budget windows from the virtual-key team store (scrape-time snapshot). Flat when no teams have `max_usd` windows. Alert when remaining approaches zero before hard 402s. Overview Grafana charts remaining vs limit under **Team budget remaining (USD)**. |
+| `daari_team_rate_limit_remaining{team,kind,scope}` / `daari_team_rate_limit_limit{team,kind,scope}` | Per-team RPM/TPM/RPD remaining and ceilings (`scope="team"`, `kind="rpm"|"tpm"|"rpd"`). Flat when no teams have rpm/tpm/rpd set. Overview Grafana charts remaining vs limit under **Team rate-limit remaining**. |
+| `daari_key_rate_limit_remaining{key,kind}` / `daari_key_rate_limit_limit{key,kind}` | Per-key RPD remaining for keys with `rpd > 0`. The `key` label is the key name (or key id if the name is empty), never the secret. A scrape does not consume the cap. Overview Grafana charts remaining vs limit under **Key rate-limit remaining**. |
+| `daari_tier_shadow_samples_total{agreed}` | Local-tier answers replayed at a comparison tier (`agreed="true\|false"`). Rising `false` vs `true` means routing drift under `routing.shadow_sample_rate`. See [routing-tiers.md](../../concepts/routing-tiers.md) shadow section. Overview Grafana charts agree/disagree under **Tier shadow agree/disagree**. |
+| `daari_cancelled_requests_total{phase}` | Client hung up (`phase` is `chat`, `anthropic`, `responses`, `stream`, `embed`, `asr`, or `translation`) and the upstream call was cancelled. Normal completions do not increment. Overview Grafana charts by phase under **Cancelled requests by phase**. |
+| `daari_request_deadline_exceeded_total` | Wall-clock request budget spent (`upstream.request_deadline_seconds` or `X-Daari-Deadline-Ms`). Escalation stops without a frontier call. Overview Grafana charts under **Request deadline exceeded**. |
+| `daari_escalations_total` / `daari_errors_total` | Local→frontier (L6) escalations and gateway/router errors. Overview Grafana charts both under **Escalations & errors**. |
 
 The same `soft_warnings` / `rejects` maps are also on `GET /v1/daari/stats` (and the
 local web-ui) so operators can see cliff pressure without scraping Prometheus.
 That stats payload also includes `backend_summary`
 (`total` / `healthy` / `unhealthy` / `open_circuit`) next to the per-backend
 rows — see [traces-stats.md](traces-stats.md).
-| `daari_ttft_preference_total{from,to}` | When `routing.ttft_aware` rewrites the heuristic local tier (e.g. L4→L3). Flat while TTFT bias is idle; rising means the preference path is active. Off / no-op picks do not increment. |
-| `daari_rate_limit_degraded{mode}` | `1` while Redis rate-limit counting is degraded (`mode="sqlite_fallback"` or `mode="fail_open"`); clears to `0` when Redis answers again. Page when any pod stays at `1` — fleet RPM/TPM is no longer shared. |
-| `daari_mcp_tool_calls_total{tool,outcome}` | MCP ingress `tools/call` (and legacy `/v1/mcp/query`) by tool name and `outcome` (`ok`, `deny`, `error`, `guardrail`). No-op when `observability.prometheus=false`. Rising `deny` vs `ok` is policy pressure on agent traffic. |
-| `daari_team_budget_remaining_usd{team,window}` / `daari_team_budget_limit_usd{team,window}` / `daari_team_budget_remaining_hours{team,window}` | Per-team USD budget windows from the virtual-key team store (scrape-time snapshot). Flat when no teams have `max_usd` windows. Alert when remaining approaches zero before hard 402s. Overview Grafana charts remaining vs limit under **Team budget remaining (USD)**. |
-| `daari_team_rate_limit_remaining{team,kind,scope}` / `daari_team_rate_limit_limit{team,kind,scope}` | Per-team RPM/TPM remaining and ceilings (`scope="team"`, `kind="rpm"|"tpm"`). Flat when no teams have rpm/tpm set. Overview Grafana charts remaining vs limit under **Team rate-limit remaining**. |
 
 Retries also appear per-request as `upstream_retry` trace steps with the status and
 delay, so a slow request explains its own latency. See

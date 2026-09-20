@@ -17,6 +17,8 @@ from typing import Any, Protocol
 from daari.cache.redis_client import DEFAULT_REDIS_TIMEOUT_SECONDS, connect_redis
 
 WINDOW_SECONDS = 60
+# Unix epoch is UTC midnight, so a 86400s bucket is a calendar day (#717).
+DAY_SECONDS = 86400
 DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
 RATELIMIT_WARNING_HEADER = "x-daari-ratelimit-warning"
 
@@ -119,7 +121,11 @@ class SqliteCounterBackend:
         with self._lock:
             self._ensure()
             with self._connect() as conn:
-                conn.execute("DELETE FROM counters WHERE window < ?", (window,))
+                # Scope cleanup to this key so a 60s window cannot wipe an 86400s rpd row.
+                conn.execute(
+                    "DELETE FROM counters WHERE key = ? AND window < ?",
+                    (key, window),
+                )
                 conn.execute(
                     "INSERT INTO counters (key, window, count) VALUES (?, ?, ?)"
                     " ON CONFLICT(key, window) DO UPDATE SET count = count + ?",
@@ -289,7 +295,7 @@ class RateLimiter:
             self._degrade_mode = None
         log_gateway_event("rate_limit.recovered", {"backend": "redis"})
 
-    def _increment(self, key: str, amount: int) -> int:
+    def _increment(self, key: str, amount: int, *, window_seconds: int = WINDOW_SECONDS) -> int:
         with self._state_lock:
             degraded = self._degraded
         if degraded:
@@ -299,7 +305,7 @@ class RateLimiter:
 
         if not degraded:
             try:
-                return self._primary.increment(key, amount)
+                return self._primary.increment(key, amount, window_seconds=window_seconds)
             except Exception as exc:
                 self._enter_degraded(exc)
 
@@ -311,7 +317,7 @@ class RateLimiter:
         if fallback is not None:
             with self._state_lock:
                 self.backend = fallback
-            return fallback.increment(key, amount)
+            return fallback.increment(key, amount, window_seconds=window_seconds)
         # No fallback configured — still must not 500.
         return 0
 
@@ -328,6 +334,8 @@ class RateLimiter:
         team_id: str | None = None,
         team_rpm: int | None = None,
         team_tpm: int | None = None,
+        rpd: int | None = None,
+        team_rpd: int | None = None,
     ) -> RateLimitDecision:
         key_rpm = self.default_rpm if rpm is None else rpm
         key_tpm = self.default_tpm if tpm is None else tpm
@@ -339,8 +347,12 @@ class RateLimiter:
             per_model_tpm = key_tpm
         agg_team_rpm = 0 if team_rpm is None else int(team_rpm)
         agg_team_tpm = 0 if team_tpm is None else int(team_tpm)
+        # 0 / unset = unlimited. Separate from rpm so a minute window can stay open (#717).
+        key_rpd = 0 if rpd is None else int(rpd)
+        agg_team_rpd = 0 if team_rpd is None else int(team_rpd)
 
-        reset = (int(time.time() // WINDOW_SECONDS) + 1) * WINDOW_SECONDS
+        now = time.time()
+        reset = (int(now // WINDOW_SECONDS) + 1) * WINDOW_SECONDS
         tightest = RateLimitDecision(
             allowed=True,
             limit=0,
@@ -348,34 +360,57 @@ class RateLimiter:
             reset_epoch=reset,
             backend=self.backend.name,
         )
-        checks: list[tuple[str, str, str, int, int]] = []
+        # counter key, scope, bucket, amount, limit, window seconds
+        checks: list[tuple[str, str, str, int, int, int]] = []
         if key_rpm > 0:
-            checks.append((f"rpm:{key_id}", "rpm", "key", 1, key_rpm))
+            checks.append((f"rpm:{key_id}", "rpm", "key", 1, key_rpm, WINDOW_SECONDS))
         if per_model_rpm > 0:
-            checks.append((f"rpm:{key_id}:{model}", "rpm", "model", 1, per_model_rpm))
+            checks.append(
+                (f"rpm:{key_id}:{model}", "rpm", "model", 1, per_model_rpm, WINDOW_SECONDS)
+            )
         if key_tpm > 0:
-            checks.append((f"tpm:{key_id}", "tpm", "key", max(1, tokens), key_tpm))
+            checks.append((f"tpm:{key_id}", "tpm", "key", max(1, tokens), key_tpm, WINDOW_SECONDS))
         if per_model_tpm > 0:
             checks.append(
-                (f"tpm:{key_id}:{model}", "tpm", "model", max(1, tokens), per_model_tpm)
+                (
+                    f"tpm:{key_id}:{model}",
+                    "tpm",
+                    "model",
+                    max(1, tokens),
+                    per_model_tpm,
+                    WINDOW_SECONDS,
+                )
             )
         # Team aggregate ceilings share the same counter backend (#546).
         if team_id and agg_team_rpm > 0:
-            checks.append((f"rpm:team:{team_id}", "rpm", "team", 1, agg_team_rpm))
+            checks.append((f"rpm:team:{team_id}", "rpm", "team", 1, agg_team_rpm, WINDOW_SECONDS))
         if team_id and agg_team_tpm > 0:
             checks.append(
-                (f"tpm:team:{team_id}", "tpm", "team", max(1, tokens), agg_team_tpm)
+                (f"tpm:team:{team_id}", "tpm", "team", max(1, tokens), agg_team_tpm, WINDOW_SECONDS)
             )
+        if key_rpd > 0:
+            checks.append((f"rpd:{key_id}", "rpd", "key", 1, key_rpd, DAY_SECONDS))
+        if team_id and agg_team_rpd > 0:
+            checks.append((f"rpd:team:{team_id}", "rpd", "team", 1, agg_team_rpd, DAY_SECONDS))
 
-        for counter_key, scope, bucket, amount, limit in checks:
-            count = self._increment(counter_key, amount)
+        for counter_key, scope, bucket, amount, limit, window_seconds in checks:
+            count = self._increment(counter_key, amount, window_seconds=window_seconds)
+            window_reset = (int(now // window_seconds) + 1) * window_seconds
             remaining = max(0, limit - count)
+            denied = count > limit
+            # Day caps must not advertise the 1s rpm delay (#738).
+            if not denied:
+                retry_after = None
+            elif scope == "rpd":
+                retry_after = max(1, int(window_reset - now))
+            else:
+                retry_after = self.retry_after_seconds
             decision = RateLimitDecision(
-                allowed=count <= limit,
+                allowed=not denied,
                 limit=limit,
                 remaining=remaining,
-                reset_epoch=reset,
-                retry_after=None if count <= limit else self.retry_after_seconds,
+                reset_epoch=window_reset,
+                retry_after=retry_after,
                 scope=scope,
                 backend=self.backend.name,
                 bucket=bucket,
@@ -474,6 +509,41 @@ class RateLimiter:
                         "remaining": max(0, tpm - used),
                     }
                 )
+            rpd = int(getattr(team, "rpd", 0) or 0)
+            if rpd > 0:
+                used = int(self._increment(f"rpd:team:{team_id}", 0, window_seconds=DAY_SECONDS))
+                rows.append(
+                    {
+                        "team": name,
+                        "kind": "rpd",
+                        "limit": rpd,
+                        "remaining": max(0, rpd - used),
+                    }
+                )
+        return rows
+
+    def key_rate_gauges(self, keys: list[Any]) -> list[dict[str, Any]]:
+        """Scrape-time RPD remaining for keys that opted into a day cap.
+
+        Zero-increment read so a scrape does not consume the cap. The label is
+        the key name, never the secret.
+        """
+        rows: list[dict[str, Any]] = []
+        for key in keys:
+            rpd = int(getattr(key, "rpd", 0) or 0)
+            key_id = str(getattr(key, "key_id", "") or "")
+            if rpd <= 0 or not key_id:
+                continue
+            name = str(getattr(key, "name", "") or "").strip() or key_id
+            used = int(self._increment(f"rpd:{key_id}", 0, window_seconds=DAY_SECONDS))
+            rows.append(
+                {
+                    "key": name,
+                    "kind": "rpd",
+                    "limit": rpd,
+                    "remaining": max(0, rpd - used),
+                }
+            )
         return rows
 
     def snapshot(self) -> dict[str, Any]:
@@ -506,6 +576,47 @@ def estimate_request_tokens(payload: dict[str, Any] | None) -> int:
         if isinstance(message, dict):
             chars += len(str(message.get("content") or ""))
     return max(1, chars // 4)
+
+
+def estimate_audio_upload_tokens(body: bytes, content_type: str) -> int | None:
+    """TPM for multipart ASR: ``len(file_bytes) // 4``. None when there is no file part.
+
+    JSON chat and embeddings stay on :func:`estimate_request_tokens`. A failed
+    parse returns None so the caller keeps the one-token fallback instead of 500.
+    """
+    if not body or "multipart/form-data" not in (content_type or "").lower():
+        return None
+    from io import BytesIO
+
+    from python_multipart.exceptions import FormParserError
+    from python_multipart.multipart import parse_form
+
+    sizes: list[int] = []
+    opened: list[Any] = []
+
+    def _on_file(uploaded: Any) -> None:
+        opened.append(uploaded)
+        name = getattr(uploaded, "field_name", None)
+        if name in (b"file", "file"):
+            sizes.append(int(getattr(uploaded, "size", 0) or 0))
+
+    try:
+        parse_form(
+            {"Content-Type": content_type.encode("latin-1", errors="replace")},
+            BytesIO(body),
+            None,
+            _on_file,
+        )
+    except (FormParserError, ValueError):
+        return None
+    finally:
+        for uploaded in opened:
+            close = getattr(uploaded, "close", None)
+            if close is not None:
+                close()
+    if not sizes:
+        return None
+    return max(1, sum(sizes) // 4)
 
 
 def request_model(payload: dict[str, Any] | None) -> str:

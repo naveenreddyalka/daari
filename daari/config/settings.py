@@ -72,7 +72,8 @@ class ServerSettings(BaseModel):
     # When set, all endpoints except health checks require this key via
     # Authorization: Bearer or x-api-key (issue #86 — tunnel exposure).
     # Virtual keys (issue #111) are accepted alongside this master key.
-    api_key: str = ""
+    # A list is an overlap set for rotation (#711): any entry is accepted.
+    api_key: str | list[str] = ""
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
     sse_keepalive_seconds: float = Field(
         default=10.0,
@@ -85,6 +86,15 @@ class ServerSettings(BaseModel):
         ),
     )
 
+    def master_keys(self) -> list[str]:
+        from daari.server.auth import normalize_master_keys
+
+        return normalize_master_keys(self.api_key)
+
+    def primary_master_key(self) -> str:
+        keys = self.master_keys()
+        return keys[0] if keys else ""
+
 
 class ModelsSettings(BaseModel):
     l3: str = "llama3.2:3b"
@@ -94,6 +104,20 @@ class ModelsSettings(BaseModel):
     # Per-model capability tags (tools/json/vision/long_context). Empty →
     # stock defaults in CapabilityCatalog (issue #113).
     capabilities: dict[str, list[str]] = Field(default_factory=dict)
+    timeout_s: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Optional per-tier request timeout in seconds (keys L3/L4/L5). "
+            "Unset tiers use `upstream.local_timeout_seconds`."
+        ),
+    )
+
+    def timeout_for(self, tier: str, default: float) -> float:
+        for key in (tier, tier.upper(), tier.lower()):
+            value = self.timeout_s.get(key)
+            if value is not None:
+                return float(value)
+        return float(default)
 
 
 class OllamaSettings(BaseModel):
@@ -108,6 +132,39 @@ class MLXSettings(BaseModel):
     # Tier -> model name, e.g. {"L3": "mlx-community/Llama-3.2-3B-Instruct-4bit"}.
     # Tiers not listed here stay on Ollama.
     models: dict[str, str] = Field(default_factory=dict)
+
+
+class AsrSettings(BaseModel):
+    """Local OpenAI-compatible speech-to-text (#715).
+
+    ``base_url`` is the API root (includes ``/v1``), same shape as
+    ``frontier.base_url``. Empty means transcriptions are not configured.
+    """
+
+    base_url: str = Field(
+        default="",
+        description=(
+            "OpenAI-compatible ASR base URL, including /v1 "
+            "(vLLM, whisper.cpp server, or another local pool member). "
+            "Empty leaves POST /v1/audio/transcriptions unconfigured."
+        ),
+    )
+    model: str = Field(
+        default="",
+        description=(
+            "Optional model name sent to the ASR server. When set, it replaces "
+            "the client model so a local server always sees its own id."
+        ),
+    )
+    frontier_fallback: bool = Field(
+        default=False,
+        description=(
+            "When true and asr.base_url is empty, forward one transcription to "
+            "the configured frontier base if frontier.enabled and a key is "
+            "present. Default false so audio is never uploaded to a cloud "
+            "endpoint implicitly."
+        ),
+    )
 
 
 class L0CacheSettings(RuntimeSettings):
@@ -183,6 +240,32 @@ class FrontierProviderConfig(BaseModel):
     # Free-form residency label (e.g. us, eu). Matched against virtual-key /
     # team region_pin when selecting L6 slots (#466).
     region: str = ""
+    # Per-provider upstream policy (#712). Unset fields inherit
+    # `upstream.frontier_timeout_seconds` / `upstream.retry`.
+    timeout_s: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Request timeout in seconds for this provider. Unset uses "
+            "`upstream.frontier_timeout_seconds`."
+        ),
+    )
+    retry_attempts: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Total attempts for this provider, counting the first. Unset uses "
+            "`upstream.retry.attempts`. `0` or `1` disables retries."
+        ),
+    )
+    retry_backoff_s: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "First backoff in seconds for this provider. Unset uses "
+            "`upstream.retry.base_delay_ms` / 1000."
+        ),
+    )
 
 
 class FrontierSettings(RuntimeSettings):
@@ -193,7 +276,15 @@ class FrontierSettings(RuntimeSettings):
     base_url: str = "https://api.openai.com/v1"
     # Ordered failover list (issue #109). Empty → use the scalar
     # provider/base_url/model + resolve_frontier_api_key() shorthand.
-    providers: list[FrontierProviderConfig] = Field(default_factory=list)
+    # Each entry may set timeout_s / retry_attempts / retry_backoff_s (#712).
+    providers: list[FrontierProviderConfig] = Field(
+        default_factory=list,
+        description=(
+            "Ordered L6 failover chain. Optional per-entry `timeout_s`, "
+            "`retry_attempts`, and `retry_backoff_s` fall back to "
+            "`upstream.frontier_timeout_seconds` / `upstream.retry` when unset."
+        ),
+    )
     # 0 = unlimited. When today's estimated spend reaches the cap, daari stops
     # escalating to L6 and serves the best local answer instead.
     daily_budget_usd: float = Field(default=0.0, ge=0.0)
@@ -541,6 +632,15 @@ class UpstreamSettings(BaseModel):
             "a hosted API that has not answered in 90s is usually not going to."
         ),
     )
+    request_deadline_seconds: float | None = Field(
+        default=None,
+        description=(
+            "Optional wall-clock budget for one request across cache, local, and "
+            "frontier hops. Each upstream call uses min(tier timeout, remaining). "
+            "Unset or 0 keeps per-tier timeouts only. The X-Daari-Deadline-Ms "
+            "header overrides this."
+        ),
+    )
     retry: UpstreamRetrySettings = Field(default_factory=UpstreamRetrySettings)
 
 
@@ -637,6 +737,25 @@ class PricingSettings(BaseModel):
     )
 
 
+class SpendLogSettings(BaseModel):
+    """Per-request chargeback rows (#709). Off by default — no extra writes."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Write one spend row per completed request (timestamp, key, team, "
+            "tokens, cost, cost avoided). Off keeps the day ledger's write volume."
+        ),
+    )
+    path: str = Field(
+        default="~/.daari/usage/spend.sqlite3",
+        description=(
+            "SQLite path for per-request spend rows. Ignored when "
+            "observability.backend is postgres."
+        ),
+    )
+
+
 class UsageSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/usage/ledger.sqlite3"
@@ -648,6 +767,7 @@ class UsageSettings(BaseModel):
             "`pricing.models`, and ignores input/output direction."
         ),
     )
+    spend: SpendLogSettings = Field(default_factory=SpendLogSettings)
 
 
 class FilesSettings(BaseModel):
@@ -754,6 +874,22 @@ class RetentionSettings(BaseModel):
     audit_days: int = Field(default=0, ge=0)
     shadow_days: int = Field(default=0, ge=0)
     tasks_days: int = Field(default=0, ge=0)
+    spend_days: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Delete per-request spend rows older than this many days (#709). "
+            "0 keeps them forever."
+        ),
+    )
+    request_log_days: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Delete gateway request-log lines and rotated backups older than "
+            "this many days (#772). 0 keeps size-only rotation."
+        ),
+    )
 
     @property
     def enabled(self) -> bool:
@@ -764,6 +900,8 @@ class RetentionSettings(BaseModel):
                 self.audit_days,
                 self.shadow_days,
                 self.tasks_days,
+                self.spend_days,
+                self.request_log_days,
             )
         )
 
@@ -1037,6 +1175,7 @@ class Settings(BaseSettings):
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
+    asr: AsrSettings = Field(default_factory=AsrSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)
@@ -1058,25 +1197,25 @@ class Settings(BaseSettings):
     enterprise: OrgSettings = Field(default_factory=OrgSettings)
     alerts: AlertSettings = Field(default_factory=AlertSettings)
     skills_system_prefix: str = ""
+    # Named model access groups referenced by virtual keys and teams (#708).
+    model_groups: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Named model groups (exact names or globs such as claude-*). "
+            "Keys and teams reference them by name; enforcement is the union "
+            "of allowed_models and the referenced groups, intersected across "
+            "team and key."
+        ),
+    )
 
     @classmethod
-    def load(cls, config_path: Path | None = None) -> Settings:
-        defaults = _load_defaults_yaml()
-        file_data: dict[str, Any] = {}
-        path = config_path or Path.home() / ".daari" / "config.yaml"
-        if path.is_file():
-            with path.open(encoding="utf-8") as f:
-                loaded = yaml.safe_load(f) or {}
-                if isinstance(loaded, dict):
-                    file_data = loaded
-        profile_data = _load_profile_overrides()
-        env_data = _load_env_overrides()
-        merged = _deep_merge(_deep_merge(_deep_merge(defaults, file_data), profile_data), env_data)
-        if isinstance(merged.get("org"), dict):
-            merged["enterprise"] = _deep_merge(merged.get("enterprise", {}), merged["org"])
-            merged.pop("org", None)
-        merged["skills_system_prefix"] = _load_skills_system_prefix()
-        return cls.model_validate(merged)
+    def load(cls, config_path: Path | None = None, *, strict: bool | None = None) -> Settings:
+        user, merged = assemble_config(config_path)
+        settings = cls.model_validate(merged)
+        from daari.config.validate import apply_unknown_key_policy, unknown_config_keys
+
+        apply_unknown_key_policy(unknown_config_keys(user, cls), strict=strict)
+        return settings
 
     @property
     def l0_cache_path(self) -> Path:
@@ -1142,6 +1281,30 @@ class Settings(BaseSettings):
             or os.environ.get("OPENROUTER_API_KEY")
             or os.environ.get("OPENAI_API_KEY")
         )
+
+
+def load_user_config(config_path: Path | None = None) -> dict[str, Any]:
+    """File + profile + env layers, after the legacy `org` shim. Not defaults."""
+    file_data: dict[str, Any] = {}
+    path = config_path or Path.home() / ".daari" / "config.yaml"
+    if path.is_file():
+        with path.open(encoding="utf-8") as handle:
+            loaded = yaml.safe_load(handle) or {}
+            if isinstance(loaded, dict):
+                file_data = loaded
+    user = _deep_merge(_deep_merge(file_data, _load_profile_overrides()), _load_env_overrides())
+    if isinstance(user.get("org"), dict):
+        user["enterprise"] = _deep_merge(user.get("enterprise", {}), user["org"])
+        user.pop("org", None)
+    return user
+
+
+def assemble_config(config_path: Path | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return (user layers, defaults-merged tree) ready for validation."""
+    user = load_user_config(config_path)
+    merged = _deep_merge(_load_defaults_yaml(), user)
+    merged["skills_system_prefix"] = _load_skills_system_prefix()
+    return user, merged
 
 
 def _load_defaults_yaml() -> dict[str, Any]:

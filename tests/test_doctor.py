@@ -8,7 +8,22 @@ import pytest
 from daari.clients.cursor.recipe import CursorSetupRecipe
 from daari.clients.registry import default_registry
 from daari.config.settings import Settings
-from daari.setup.doctor import doctor_exit_code, run_doctor
+from daari.setup.doctor import CheckResult, doctor_exit_code, run_doctor
+
+
+@pytest.fixture(autouse=True)
+def _stub_embedding_probe(monkeypatch):
+    """L1 defaults on in this file. The live probe is covered in test_doctor_embeddings."""
+
+    def _ok(settings, client):
+        return CheckResult(
+            name="embedding_endpoint",
+            ok=True,
+            detail="stubbed",
+            optional=True,
+        )
+
+    monkeypatch.setattr("daari.setup.doctor._check_embedding_endpoint", _ok)
 
 
 @pytest.fixture

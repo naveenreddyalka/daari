@@ -220,3 +220,44 @@ async def test_streamable_http_can_return_sse(settings):
     payload = json.loads(data_line[len("data:") :].strip())
     assert payload["id"] == 7
     assert payload["result"]["tools"]
+
+
+@pytest.mark.asyncio
+async def test_tools_call_deadline_header_is_504(settings):
+    """X-Daari-Deadline-Ms: 0 on MCP tools/call must not run the tool (#827)."""
+    from daari.config.settings import Settings
+
+    cfg = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {"l0": {"enabled": False}},
+            "upstream": {"request_deadline_seconds": 30},
+        }
+    )
+    app = _app(cfg)
+    called = {"n": 0}
+
+    async def explode(request: InternalRequest) -> InternalResponse:
+        called["n"] += 1
+        raise AssertionError("upstream should not run")
+
+    for name in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        setattr(getattr(app.state.ctx.router, name), "execute", explode)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "tools/call",
+                "params": {"name": "route", "arguments": {"prompt": "bound"}},
+            },
+            headers={**META_HEADERS, "X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert called["n"] == 0
+    assert app.state.ctx.metrics.deadline_exhausted == 1

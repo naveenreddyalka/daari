@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 import time
 import uuid
@@ -16,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import (
     backend_unavailable_message,
+    request_deadline_response,
     routing_failure_detail,
     safe_detail,
 )
@@ -47,8 +47,14 @@ from daari.gateway.embeddings_api import (
     openai_embeddings_payload,
     resolve_embedding_model,
 )
+from daari.gateway.disconnect import (
+    ClientDisconnected,
+    await_unless_disconnected,
+    note_request_cancelled,
+)
 from daari.gateway.streaming import stream_with_keepalive
 from daari.gateway.request_log import log_gateway_event
+from daari.router.deadline import RequestDeadlineExceeded
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
 from daari.router.capabilities import UnsupportedCapability
@@ -271,14 +277,20 @@ async def _execute_batch_chat_body(
     meta = RequestMeta(
         tier_cap=gov.tier_cap if gov else None,
         latency_budget_ms=gov.latency_budget_ms if gov else None,
+        deadline_ms=gov.deadline_ms if gov else None,
         client_id=gov.client_id if gov else None,
         user_agent=gov.user_agent if gov else None,
         user=body_user or (gov.user if gov else None),
         session_id=gov.session_id if gov else None,
         no_frontier=bool(gov.no_frontier) if gov else False,
         boundary_profile=gov.boundary_profile if gov else None,
+        key_id=gov.key_id if gov else None,
+        team_id=gov.team_id if gov else None,
+        cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
     )
     apply_cost_tier(body, meta)
+    _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
+    _enforce_batch_item_rate_limits(ctx, body_dict, governance=gov)
     _enforce_batch_item_budgets(ctx, meta, governance=gov)
     internal = _prepare_internal_request(
         body,
@@ -292,6 +304,109 @@ async def _execute_batch_chat_body(
         prompt_chars=prompt_chars,
         include_daari_meta=False,
         client_model=body.model or None,
+    )
+
+
+def _batch_lookup_virtual_key(ctx: AppContext, governance: Any) -> Any | None:
+    store = getattr(ctx, "virtual_key_store", None)
+    if store is None or not getattr(governance, "key_id", None):
+        return None
+    for candidate in store.list() or []:
+        if candidate.key_id == governance.key_id:
+            return candidate
+    return None
+
+
+def _enforce_batch_item_model_access(
+    ctx: AppContext,
+    body: ChatCompletionRequest,
+    meta: RequestMeta,
+    *,
+    governance: Any | None,
+) -> None:
+    """Reject items whose model is outside the creating key's allowlist (#840)."""
+    from daari.auth.model_access import (
+        denial_body,
+        effective_patterns,
+        model_permitted,
+        record_model_denial,
+    )
+    from daari.gateway.batches import BatchGovernance, BatchItemRejected
+
+    if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
+        return
+    key = _batch_lookup_virtual_key(ctx, governance)
+    if key is None:
+        return
+    store = getattr(ctx, "virtual_key_store", None)
+    team = store.get_team(key.team_id) if store is not None and key.team_id else None
+    catalog = getattr(ctx.settings, "model_groups", None) or {}
+    key_patterns = effective_patterns(key.allowed_models, key.model_groups, catalog)
+    team_patterns = (
+        effective_patterns(team.allowed_models, team.model_groups, catalog)
+        if team is not None
+        else None
+    )
+    meta.key_model_patterns = key_patterns
+    meta.team_model_patterns = team_patterns
+    model = (body.model or ctx.settings.models.l3 or "").strip()
+    if model_permitted(model, key_patterns=key_patterns, team_patterns=team_patterns):
+        return
+    record_model_denial(
+        ctx.settings,
+        model=model,
+        key_id=governance.key_id,
+        client_id=governance.client_id,
+        path="/v1/batches",
+    )
+    raise BatchItemRejected(denial_body(model)["error"])
+
+
+def _enforce_batch_item_rate_limits(
+    ctx: AppContext,
+    body_dict: dict[str, Any],
+    *,
+    governance: Any | None,
+) -> None:
+    """Charge RPM/TPM/RPD (and team caps) for virtual-key batch items (#840)."""
+    from daari.auth.rate_limit import estimate_request_tokens, request_model
+    from daari.gateway.batches import BatchGovernance, BatchItemRejected
+
+    if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
+        return
+    limiter = getattr(ctx, "rate_limiter", None)
+    if limiter is None:
+        return
+    key = _batch_lookup_virtual_key(ctx, governance)
+    if key is None:
+        return
+    store = getattr(ctx, "virtual_key_store", None)
+    team = store.get_team(key.team_id) if store is not None and key.team_id else None
+    rpm = int(getattr(key, "rpm", 0) or 0) or None
+    tpm = int(getattr(key, "tpm", 0) or 0) or None
+    rpd = int(getattr(key, "rpd", 0) or 0) or None
+    team_rpm = int(getattr(team, "rpm", 0) or 0) or None if team is not None else None
+    team_tpm = int(getattr(team, "tpm", 0) or 0) or None if team is not None else None
+    team_rpd = int(getattr(team, "rpd", 0) or 0) or None if team is not None else None
+    decision = limiter.check(
+        key_id=governance.key_id or key.key_id,
+        model=request_model(body_dict),
+        tokens=estimate_request_tokens(body_dict),
+        rpm=rpm,
+        tpm=tpm,
+        team_id=getattr(key, "team_id", None) or governance.team_id,
+        team_rpm=team_rpm,
+        team_tpm=team_tpm,
+        rpd=rpd,
+        team_rpd=team_rpd,
+    )
+    if decision.allowed:
+        return
+    raise BatchItemRejected(
+        {
+            "type": "rate_limit_error",
+            "message": f"{decision.scope or 'rate'} limit exceeded.",
+        }
     )
 
 
@@ -387,9 +502,13 @@ def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -
         latency_budget_ms = int(latency_raw) if latency_raw else None
     except ValueError:
         latency_budget_ms = None
+    from daari.router.deadline import parse_deadline_ms
+
+    deadline_ms = parse_deadline_ms(headers.get("x-daari-deadline-ms"))
     meta = RequestMeta(
         tier_cap=headers.get("x-daari-tier-cap"),
         latency_budget_ms=latency_budget_ms,
+        deadline_ms=deadline_ms,
         client_id=client_id,
         user_agent=user_agent[:200] or None,
         user=None,
@@ -412,8 +531,11 @@ def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -
         boundary_profile=meta.boundary_profile,
         kind=kind,
         latency_budget_ms=meta.latency_budget_ms,
+        deadline_ms=meta.deadline_ms,
         session_id=meta.session_id,
         user_agent=meta.user_agent,
+        team_id=getattr(meta, "team_id", None),
+        cache_scope=getattr(meta, "cache_scope", None) or "global",
     )
 
 
@@ -520,6 +642,42 @@ def _openai_completion_body(
     return payload.model_dump(exclude_none=True)
 
 
+def _stats_team_rate_limits(request: Request) -> list[dict[str, Any]]:
+    """Team rpm/tpm/rpd remaining for the dashboard. Empty when none are configured."""
+    limiter = getattr(request.app.state, "rate_limiter", None)
+    if limiter is None or not hasattr(limiter, "team_rate_gauges"):
+        return []
+    ctx = getattr(request.app.state, "ctx", None)
+    store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+        ctx, "virtual_key_store", None
+    )
+    list_teams = getattr(store, "list_teams", None)
+    if not callable(list_teams):
+        return []
+    try:
+        return list(limiter.team_rate_gauges(list_teams()) or [])
+    except Exception:
+        return []
+
+
+def _stats_key_rate_limits(request: Request) -> list[dict[str, Any]]:
+    """Per-key rpd remaining. Empty when no key opted into a day cap."""
+    limiter = getattr(request.app.state, "rate_limiter", None)
+    if limiter is None or not hasattr(limiter, "key_rate_gauges"):
+        return []
+    ctx = getattr(request.app.state, "ctx", None)
+    store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+        ctx, "virtual_key_store", None
+    )
+    list_keys = getattr(store, "list", None)
+    if not callable(list_keys):
+        return []
+    try:
+        return list(limiter.key_rate_gauges(list_keys()) or [])
+    except Exception:
+        return []
+
+
 class OpenAIGatewayAdapter(GatewayAdapter):
     id = "openai"
 
@@ -532,7 +690,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             from daari.server.auth import extract_api_key, introspect_token, resolve_auth
 
             ctx: AppContext = request.app.state.ctx
-            master = (ctx.settings.server.api_key or "").strip()
+            master = ctx.settings.server.api_key
             store = getattr(request.app.state, "virtual_key_store", None) or getattr(
                 ctx, "virtual_key_store", None
             )
@@ -570,6 +728,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_latency_budget: str | None = Header(
                 default=None, alias="X-Daari-Latency-Budget"
             ),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_session: str | None = Header(default=None, alias="X-Daari-Session"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
@@ -588,6 +747,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
             except ValueError:
                 latency_budget_ms = None
+            from daari.router.deadline import parse_deadline_ms
+
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
             include_daari_meta = (x_daari_meta or "").strip().lower() in {"1", "true", "yes"}
             include_usage = bool(body.stream_options and body.stream_options.get("include_usage"))
             client_host = request.client.host if request.client else "unknown"
@@ -619,6 +781,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tier_override=x_daari_tier_override,
                 tier_cap=x_daari_tier_cap,
                 latency_budget_ms=latency_budget_ms,
+                deadline_ms=deadline_ms,
                 client_id=client_id,
                 user_agent=user_agent[:200] or None,
                 user=(body.user or "").strip() or None,
@@ -633,7 +796,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             # Virtual-key defaults (issue #111); headers keep precedence.
             from daari.server.auth import apply_auth_claims_to_meta
 
-            apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
+            apply_auth_claims_to_meta(
+                meta,
+                getattr(request.state, "auth_claims", None),
+                model_groups=getattr(ctx.settings, "model_groups", None),
+            )
+            from daari.gateway.model_access import reject_disallowed_model
+
+            denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
+            if denied is not None:
+                return denied
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             # Per-end-user daily cap on shared virtual keys (#410). Checked here
@@ -691,6 +863,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         async for chunk in stream_with_keepalive(
                             ctx.router.stream_openai_chunks(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                            on_cancel=lambda: note_request_cancelled(
+                                ctx.metrics, "stream", model=body.model
+                            ),
                         ):
                             if '"delta": {"content":' in chunk or '"delta":{"content":' in chunk:
                                 content_chars += 1
@@ -716,7 +891,23 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 )
 
             try:
-                result = await ctx.router.route(internal)
+                result = await await_unless_disconnected(
+                    request,
+                    ctx.router.route(internal),
+                    metrics=ctx.metrics,
+                    phase="chat",
+                    model=body.model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             except ZdrUnavailable as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except RegionUnavailable as exc:
@@ -734,6 +925,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
@@ -768,13 +961,102 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
             )
 
+        @router.post("/v1/audio/transcriptions", response_model=None)
+        async def audio_transcriptions(
+            request: Request,
+            file: UploadFile = File(...),
+            model: str = Form(default=""),
+            language: str | None = Form(default=None),
+            prompt: str | None = Form(default=None),
+            response_format: str = Form(default="json"),
+        ) -> Any:
+            from daari.gateway.transcriptions import handle_transcription
+
+            return await handle_transcription(
+                request,
+                file=file,
+                model=model,
+                language=language,
+                prompt=prompt,
+                response_format=response_format,
+            )
+
+        @router.post("/v1/audio/translations", response_model=None)
+        async def audio_translations(
+            request: Request,
+            file: UploadFile = File(...),
+            model: str = Form(default=""),
+            prompt: str | None = Form(default=None),
+            response_format: str = Form(default="json"),
+        ) -> Any:
+            from daari.gateway.transcriptions import handle_translation
+
+            return await handle_translation(
+                request,
+                file=file,
+                model=model,
+                prompt=prompt,
+                response_format=response_format,
+            )
+
         @router.post("/v1/embeddings")
-        async def embeddings(body: EmbeddingsRequest, request: Request) -> dict[str, Any]:
+        async def embeddings(
+            body: EmbeddingsRequest,
+            request: Request,
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
+        ) -> Any:
             ctx: AppContext = request.app.state.ctx
+            from daari.gateway.model_access import reject_disallowed_model
+            from daari.router.deadline import (
+                RequestDeadlineExceeded,
+                bind_request_deadline,
+                deadline_active,
+                guard_upstream,
+                parse_deadline_ms,
+                resolve_deadline_seconds,
+            )
+
+            denied = reject_disallowed_model(request, body.model or "daari", ctx.settings)
+            if denied is not None:
+                return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
-            vectors = await compute_embeddings(ctx, texts, model=model)
-            return openai_embeddings_payload(model, vectors, texts)
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
+            seconds = resolve_deadline_seconds(
+                deadline_ms,
+                getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+            )
+
+            async def _run() -> Any:
+                if deadline_active():
+                    guard_upstream("embed")
+                try:
+                    vectors = await await_unless_disconnected(
+                        request,
+                        compute_embeddings(ctx, texts, model=model, request=request),
+                        metrics=ctx.metrics,
+                        phase="embed",
+                        model=model,
+                    )
+                except ClientDisconnected:
+                    return JSONResponse(
+                        status_code=499,
+                        content={
+                            "error": {
+                                "type": "client_disconnected",
+                                "message": "client disconnected.",
+                            }
+                        },
+                    )
+                return openai_embeddings_payload(model, vectors, texts)
+
+            try:
+                if seconds is not None and not deadline_active():
+                    with bind_request_deadline(seconds, metrics=ctx.metrics):
+                        return await _run()
+                return await _run()
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
@@ -964,6 +1246,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "backend_summary": backend_summary,
                 "soft_warnings": full.get("soft_warnings") or {},
                 "rejects": full.get("rejects") or {},
+                "team_rate_limits": _stats_team_rate_limits(request),
+                "key_rate_limits": _stats_key_rate_limits(request),
             }
 
         @router.get("/v1/daari/traces")
@@ -1130,6 +1414,73 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload = ctx.reload_cache_handles()
             return {"status": "ok", **payload}
 
+        @router.post("/v1/daari/cache/invalidate")
+        async def daari_cache_invalidate(request: Request) -> dict[str, Any]:
+            ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
+            raw = await request.body()
+            payload: dict[str, Any] = {}
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                except json.JSONDecodeError as exc:
+                    raise HTTPException(status_code=400, detail="invalid json") from exc
+                if not isinstance(parsed, dict):
+                    raise HTTPException(status_code=422, detail="JSON object required")
+                payload = parsed
+            model = payload.get("model")
+            entry_hash = payload.get("hash")
+            team_id = payload.get("team_id")
+            key_id = payload.get("key_id")
+            if model is not None and not isinstance(model, str):
+                raise HTTPException(status_code=422, detail="model must be a string")
+            if entry_hash is not None and not isinstance(entry_hash, str):
+                raise HTTPException(status_code=422, detail="hash must be a string")
+            if team_id is not None and not isinstance(team_id, str):
+                raise HTTPException(status_code=422, detail="team_id must be a string")
+            if key_id is not None and not isinstance(key_id, str):
+                raise HTTPException(status_code=422, detail="key_id must be a string")
+            model_s = model.strip() if isinstance(model, str) and model.strip() else None
+            hash_s = entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
+            team_s = team_id.strip() if isinstance(team_id, str) and team_id.strip() else None
+            key_s = key_id.strip() if isinstance(key_id, str) and key_id.strip() else None
+            l0 = getattr(ctx.router, "cache", None)
+            l1 = getattr(ctx.router, "semantic_cache", None)
+            l0_removed = (
+                int(
+                    l0.invalidate(
+                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                    )
+                )
+                if l0 is not None and hasattr(l0, "invalidate")
+                else 0
+            )
+            l1_removed = (
+                int(
+                    l1.invalidate(
+                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                    )
+                )
+                if l1 is not None and hasattr(l1, "invalidate")
+                else 0
+            )
+            log_gateway_event(
+                "cache_invalidate",
+                {
+                    "model": model_s or "",
+                    "hash": hash_s or "",
+                    "team_id": team_s or "",
+                    "key_id": key_s or "",
+                    "l0_removed": l0_removed,
+                    "l1_removed": l1_removed,
+                },
+            )
+            return {
+                "l0_removed": l0_removed,
+                "l1_removed": l1_removed,
+                "removed": l0_removed + l1_removed,
+            }
+
         def _require_config_editor(ctx: AppContext) -> None:
             if not ctx.settings.observability.config_editor:
                 raise HTTPException(status_code=404, detail="config editor disabled")
@@ -1154,8 +1505,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if not token:
                 raise HTTPException(status_code=401, detail="SSO token required")
             # Master API key still counts as admin when it matches.
-            master = ctx.settings.server.api_key.strip()
-            if master and hmac.compare_digest(token, master):
+            from daari.server.auth import master_key_matches
+
+            master_keys = ctx.settings.server.master_keys()
+            if master_key_matches(token, master_keys):
                 return "admin"
             try:
                 claims = verify_access_token(token, sso)

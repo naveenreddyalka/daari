@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 SSE_KEEPALIVE_FRAME = ": keepalive\n\n"
 NDJSON_KEEPALIVE_FRAME = "\n"
@@ -15,11 +15,34 @@ async def stream_with_keepalive(
     *,
     interval_seconds: float,
     frame: str = SSE_KEEPALIVE_FRAME,
+    on_cancel: Callable[[], None] | None = None,
 ) -> AsyncIterator[str]:
-    """Emit *frame* until the first chunk from *source*, then pass through."""
+    """Emit *frame* until the first chunk from *source*, then pass through.
+
+    Closing this generator (client disconnect) cancels *source* and, when the
+    caller passed *on_cancel*, records the abandon. A source error is not a cancel.
+    """
     if interval_seconds <= 0:
-        async for chunk in source:
-            yield chunk
+        finished = False
+        failed = False
+        aiter = source.__aiter__()
+        try:
+            while True:
+                try:
+                    chunk = await aiter.__anext__()
+                except StopAsyncIteration:
+                    finished = True
+                    break
+                yield chunk
+        except Exception:
+            failed = True
+            raise
+        finally:
+            if not finished and not failed and on_cancel is not None:
+                on_cancel()
+            aclose = getattr(aiter, "aclose", None)
+            if aclose is not None:
+                await aclose()
         return
 
     queue: asyncio.Queue[object] = asyncio.Queue()
@@ -35,6 +58,8 @@ async def stream_with_keepalive(
 
     pump_task = asyncio.create_task(pump())
     awaiting_first = True
+    finished = False
+    failed = False
     try:
         while True:
             try:
@@ -47,8 +72,10 @@ async def stream_with_keepalive(
                 continue
 
             if item is _SENTINEL:
+                finished = True
                 return
             if isinstance(item, Exception):
+                failed = True
                 raise item
             yield item  # type: ignore[misc]
             awaiting_first = False
@@ -59,3 +86,5 @@ async def stream_with_keepalive(
                 await pump_task
             except asyncio.CancelledError:
                 pass
+        if not finished and not failed and on_cancel is not None:
+            on_cancel()

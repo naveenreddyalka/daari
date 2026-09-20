@@ -346,6 +346,76 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 23,
+      "title": "Tier shadow agree/disagree",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 80 },
+      "targets": [
+        {
+          "expr": "sum by (agreed) (rate(daari_tier_shadow_samples_total[5m]))",
+          "legendFormat": "agreed={{agreed}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "Boundary decisions by stage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 88 },
+      "targets": [
+        {
+          "expr": "sum by (stage, label) (rate(daari_boundary_decisions_total[5m]))",
+          "legendFormat": "{{stage}}/{{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Key rate-limit remaining",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 88 },
+      "targets": [
+        {
+          "expr": "daari_key_rate_limit_remaining",
+          "legendFormat": "remaining {{key}} {{kind}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_key_rate_limit_limit",
+          "legendFormat": "limit {{key}} {{kind}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Cancelled requests by phase",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 96 },
+      "targets": [
+        {
+          "expr": "sum by (phase) (rate(daari_cancelled_requests_total[5m]))",
+          "legendFormat": "{{phase}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "title": "Request deadline exceeded",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 96 },
+      "targets": [
+        {
+          "expr": "rate(daari_request_deadline_exceeded_total[5m])",
+          "legendFormat": "deadline exceeded",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -15,6 +16,8 @@ from daari.auth.rate_limit import (
     RedisCounterBackend,
     SqliteCounterBackend,
     build_rate_limiter,
+    estimate_audio_upload_tokens,
+    estimate_request_tokens,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.router.router import AppContext
@@ -559,3 +562,129 @@ async def test_gateway_survives_redis_timeout(settings, tmp_path, monkeypatch):
         response = await client.post("/v1/chat/completions", json=CHAT)
     assert response.status_code == 200
     assert response.headers.get("x-ratelimit-backend") == "sqlite"
+
+
+class _TokenSpy(RateLimiter):
+    def __init__(self, **kwargs):
+        super().__init__(MemoryCounterBackend(), **kwargs)
+        self.tokens: list[int] = []
+
+    def check(self, **kwargs):
+        self.tokens.append(int(kwargs["tokens"]))
+        return super().check(**kwargs)
+
+
+def test_audio_upload_tokens_use_file_bytes_not_one():
+    audio = b"x" * 4000
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["ct"] = request.headers["content-type"]
+        captured["body"] = request.content
+        return httpx.Response(200)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        client.post(
+            "http://test/v1/audio/transcriptions",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    tokens = estimate_audio_upload_tokens(captured["body"], captured["ct"])
+    assert tokens == len(audio) // 4
+    assert tokens >= 1000
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "a" * 16}]}
+    assert estimate_request_tokens(chat) == 16 // 4
+    embed = {"model": "daari", "input": "b" * 20}
+    assert estimate_request_tokens(embed) == 20 // 4
+
+
+@pytest.mark.asyncio
+async def test_transcription_tpm_counts_file_bytes_chat_stays_chars(settings):
+    """Multipart ASR charges len(file)//4; JSON chat and embeddings stay chars//4 (#765)."""
+    spy = _TokenSpy(default_tpm=1_000_000)
+    app = _app(settings, limiter=spy)
+    audio = b"y" * 4000
+    chat = {"model": "daari", "messages": [{"role": "user", "content": "a" * 16}]}
+    embed = {"model": "daari", "input": "b" * 20}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        chat_response = await client.post("/v1/chat/completions", json=chat)
+        embed_response = await client.post("/v1/embeddings", json=embed)
+        audio_response = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert chat_response.status_code == 200
+    assert embed_response.status_code != 429
+    assert audio_response.status_code != 429
+    assert spy.tokens[0] == 16 // 4
+    assert spy.tokens[1] == 20 // 4
+    assert spy.tokens[2] >= 1000
+    assert spy.tokens[2] == len(audio) // 4
+
+
+@pytest.mark.asyncio
+async def test_transcription_tpm_denial_is_429_with_retry_after(settings):
+    spy = _TokenSpy(default_tpm=10, retry_after_seconds=7)
+    app = _app(settings, limiter=spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", b"z" * 4000, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert denied.status_code == 429
+    assert denied.json()["error"]["type"] == "rate_limit_error"
+    assert denied.headers["retry-after"] == "7"
+    assert spy.tokens[0] >= 1000
+
+
+@pytest.mark.asyncio
+async def test_translation_tpm_counts_file_bytes_like_transcription(settings):
+    """Multipart translations charge len(file)//4 the same as transcriptions (#796)."""
+    spy = _TokenSpy(default_tpm=1_000_000)
+    app = _app(settings, limiter=spy)
+    audio = b"y" * 4000
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/translations",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert response.status_code != 429
+    assert spy.tokens[0] == len(audio) // 4
+
+
+@pytest.mark.asyncio
+async def test_translation_tpm_denial_is_429_with_retry_after(settings):
+    spy = _TokenSpy(default_tpm=10, retry_after_seconds=9)
+    app = _app(settings, limiter=spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/audio/translations",
+            files={"file": ("note.wav", b"z" * 4000, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert denied.status_code == 429
+    assert denied.json()["error"]["type"] == "rate_limit_error"
+    assert denied.headers["retry-after"] == "9"
+    assert spy.tokens[0] >= 1000
+
+
+def test_team_rpd_gauge_decreases_and_rpm_stays_independent(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("daari.auth.rate_limit.time.time", lambda: 1_700_000_030.0)
+    limiter = RateLimiter(MemoryCounterBackend())
+    team = SimpleNamespace(team_id="t1", name="eng", rpm=4, tpm=0, rpd=3)
+    before = {row["kind"]: row for row in limiter.team_rate_gauges([team])}
+    assert before["rpm"]["remaining"] == 4
+    assert before["rpd"]["remaining"] == 3
+    assert before["rpd"]["limit"] == 3
+    assert "tpm" not in before
+    limiter.check(key_id="a", model="m", tokens=1, team_id="t1", team_rpm=4, team_rpd=3)
+    after = {row["kind"]: row for row in limiter.team_rate_gauges([team])}
+    assert after["rpm"]["remaining"] == 3
+    assert after["rpd"]["remaining"] == 2
+    unlimited = SimpleNamespace(team_id="t2", name="ops", rpm=0, tpm=0, rpd=0)
+    assert limiter.team_rate_gauges([unlimited]) == []

@@ -84,6 +84,14 @@ def test_prune_older_than_dry_run_and_delete(tmp_path):
     assert store.get("resp_new") is not None
 
 
+def test_delete_removes_row(tmp_path):
+    store = ResponseStore(tmp_path / "r.sqlite3")
+    store.put("resp_gone", {"id": "resp_gone", "status": "completed", "output": []})
+    assert store.delete("resp_gone") is True
+    assert store.get("resp_gone") is None
+    assert store.delete("resp_gone") is False
+
+
 def test_default_retention_days_is_forever():
     from daari.config.settings import Settings
 

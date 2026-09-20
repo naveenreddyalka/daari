@@ -40,5 +40,21 @@ def routing_failure_detail(exc: BaseException) -> str:
     return safe_detail(summarize_upstream_failure(exc), prefix="Routing failed: ")
 
 
+def request_deadline_response(exc: BaseException):
+    """504 JSON body that names the request deadline."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=504,
+        content={
+            "error": {
+                "type": "request_deadline_exceeded",
+                "message": str(exc),
+                "deadline_seconds": getattr(exc, "deadline_seconds", None),
+            }
+        },
+    )
+
+
 def backend_unavailable_message(exc: BaseException) -> str:
     return safe_detail(exc)

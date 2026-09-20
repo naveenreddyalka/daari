@@ -20,7 +20,7 @@ def ensure_server_api_key(
     Used by tunnel setup (issue #86): a public HTTPS endpoint must not expose
     an unauthenticated gateway.
     """
-    key = cfg.server.api_key.strip()
+    key = cfg.server.primary_master_key()
     if key:
         return key, False
 
@@ -80,7 +80,7 @@ def apply_setup_recipe(
         raise typer.Exit(code=1)
 
     resolved_base_url = base_url or f"http://{cfg.server.host}:{cfg.server.port}/v1"
-    resolved_api_key = cfg.server.api_key.strip() or "daari-local"
+    resolved_api_key = cfg.server.primary_master_key() or "daari-local"
     plan = recipe.dry_run(base_url=resolved_base_url, api_key=resolved_api_key, model_name="daari")
     if not dry_run:
         plan.notes = [note for note in plan.notes if "Dry-run only" not in note]
