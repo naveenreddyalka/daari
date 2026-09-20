@@ -3528,6 +3528,14 @@ admin `team_id` / `key_id`. Regenerated `http-api.md` lists
 rows use tier `translation` (frontier stays `L6`); transcriptions stay `asr`.
 Chargeback guide updated. Covered by `tests/unit/test_audio_translations.py`.
 
+### Redis L0 age prune when TTL is off ([#806](https://github.com/naveenreddyalka/daari/issues/806))
+
+<!-- tracking:#806 -->
+**Status:** Done (2026-09-20). When `cache.l0.ttl_seconds == 0`, Redis L0
+`prune` deletes keys whose stored `t` is older than 7 days; when TTL is on,
+prune stays no-scan. CLI reports the count. Covered by
+`tests/unit/test_redis_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -32,7 +32,7 @@ Three different operations:
 | `daari cache invalidate --key <id>` | L0 rows stored with `scope: key:<id>` and L1 rows whose `context_key` contains that segment. Admin JSON: `{"key_id": "<id>"}`. |
 | `daari cache invalidate` (no flags) | Drops every L0 and L1 entry. Hits the running daemon (`POST /v1/daari/cache/invalidate`) when `daari serve` is up; otherwise edits the on-disk caches. Selectors can be combined; the daemon accepts `model`, `hash`, `team_id`, and `key_id` in the JSON body. |
 | `daari context clear` | Deletes the L0, L1, and command-context directories entirely, then asks the daemon to reopen handles. |
-| `daari cache prune` | Removes only TTL-expired disk entries. When `cache.backend` is Redis, prune does not scan — Redis expiry is the key TTL, and the command says so. |
+| `daari cache prune` | Removes only TTL-expired disk entries. When `cache.backend` is Redis and `cache.l0.ttl_seconds > 0`, prune does not scan — Redis key expiry is the reclaim path. When Redis L0 TTL is `0` (unbounded), prune deletes keys whose stored `t` is older than **7 days**. |
 
 ## Next
 
