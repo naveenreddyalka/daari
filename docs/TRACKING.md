@@ -3605,6 +3605,13 @@ audio transcriptions/translations and embeddings among
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
 
+### Spend export --tier filter ([#818](https://github.com/naveenreddyalka/daari/issues/818))
+
+<!-- tracking:#818 -->
+**Status:** Done (2026-09-20). `daari spend export --tier` filters chargeback
+rows by the ledger `tier` column (combinable with `--key` / `--team`). Covered
+by `tests/unit/test_spend_export.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
