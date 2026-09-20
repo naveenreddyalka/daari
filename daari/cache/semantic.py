@@ -96,15 +96,22 @@ def _semantic_entry_matches(
     *,
     model: str | None,
     entry_hash: str | None,
+    team_id: str | None = None,
+    key_id: str | None = None,
 ) -> bool:
     """True when the row should be dropped. Unset filters match everything."""
-    if model is None and entry_hash is None:
+    if model is None and entry_hash is None and team_id is None and key_id is None:
         return True
+    ctx = str(entry.get("context_key") or "")
+    segments = ctx.split("|")
     if model is not None:
-        ctx = str(entry.get("context_key") or "")
         if ctx != model and not ctx.startswith(f"{model}|"):
             return False
     if entry_hash is not None and entry.get("answer_hash") != entry_hash:
+        return False
+    if team_id is not None and f"team:{team_id}" not in segments:
+        return False
+    if key_id is not None and f"key:{key_id}" not in segments:
         return False
     return True
 
@@ -483,15 +490,28 @@ class SemanticCache:
             self._save_entries(kept)
         return removed
 
-    def invalidate(self, *, model: str | None = None, entry_hash: str | None = None) -> int:
-        """Drop L1 rows by context_key model prefix, answer hash, or all."""
+    def invalidate(
+        self,
+        *,
+        model: str | None = None,
+        entry_hash: str | None = None,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> int:
+        """Drop L1 rows by context_key model prefix, answer hash, tenant, or all."""
         if not self.enabled:
             return 0
         entries = self._load_entries()
         kept: list[dict[str, Any]] = []
         removed = 0
         for entry in entries:
-            if _semantic_entry_matches(entry, model=model, entry_hash=entry_hash):
+            if _semantic_entry_matches(
+                entry,
+                model=model,
+                entry_hash=entry_hash,
+                team_id=team_id,
+                key_id=key_id,
+            ):
                 removed += 1
             else:
                 kept.append(entry)

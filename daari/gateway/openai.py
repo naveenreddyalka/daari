@@ -1291,21 +1291,37 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 payload = parsed
             model = payload.get("model")
             entry_hash = payload.get("hash")
+            team_id = payload.get("team_id")
+            key_id = payload.get("key_id")
             if model is not None and not isinstance(model, str):
                 raise HTTPException(status_code=422, detail="model must be a string")
             if entry_hash is not None and not isinstance(entry_hash, str):
                 raise HTTPException(status_code=422, detail="hash must be a string")
+            if team_id is not None and not isinstance(team_id, str):
+                raise HTTPException(status_code=422, detail="team_id must be a string")
+            if key_id is not None and not isinstance(key_id, str):
+                raise HTTPException(status_code=422, detail="key_id must be a string")
             model_s = model.strip() if isinstance(model, str) and model.strip() else None
             hash_s = entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
+            team_s = team_id.strip() if isinstance(team_id, str) and team_id.strip() else None
+            key_s = key_id.strip() if isinstance(key_id, str) and key_id.strip() else None
             l0 = getattr(ctx.router, "cache", None)
             l1 = getattr(ctx.router, "semantic_cache", None)
             l0_removed = (
-                int(l0.invalidate(model=model_s, entry_hash=hash_s))
+                int(
+                    l0.invalidate(
+                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                    )
+                )
                 if l0 is not None and hasattr(l0, "invalidate")
                 else 0
             )
             l1_removed = (
-                int(l1.invalidate(model=model_s, entry_hash=hash_s))
+                int(
+                    l1.invalidate(
+                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                    )
+                )
                 if l1 is not None and hasattr(l1, "invalidate")
                 else 0
             )
@@ -1314,6 +1330,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 {
                     "model": model_s or "",
                     "hash": hash_s or "",
+                    "team_id": team_s or "",
+                    "key_id": key_s or "",
                     "l0_removed": l0_removed,
                     "l1_removed": l1_removed,
                 },

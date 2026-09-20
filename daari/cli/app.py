@@ -2224,7 +2224,12 @@ def cache_prune() -> None:
 
 
 def _daemon_invalidate_caches(
-    settings: Settings, *, model: str | None, entry_hash: str | None
+    settings: Settings,
+    *,
+    model: str | None,
+    entry_hash: str | None,
+    team_id: str | None = None,
+    key_id: str | None = None,
 ) -> tuple[bool, str]:
     url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/cache/invalidate"
     body: dict[str, str] = {}
@@ -2232,6 +2237,10 @@ def _daemon_invalidate_caches(
         body["model"] = model
     if entry_hash:
         body["hash"] = entry_hash
+    if team_id:
+        body["team_id"] = team_id
+    if key_id:
+        body["key_id"] = key_id
     try:
         response = httpx.post(url, json=body, timeout=5.0)
         response.raise_for_status()
@@ -2251,16 +2260,24 @@ def _daemon_invalidate_caches(
 def cache_invalidate(
     model: str | None = typer.Option(None, "--model", help="Served model (L0) or context_key prefix (L1)."),
     entry_hash: str | None = typer.Option(
-        None, "--hash", help="L0 cache key or L1 answer_hash. Omit both flags to drop every entry."
+        None, "--hash", help="L0 cache key or L1 answer_hash."
+    ),
+    team: str | None = typer.Option(
+        None, "--team", help="Drop L0 rows scoped to team:<id> and L1 context_keys with that segment."
+    ),
+    key: str | None = typer.Option(
+        None, "--key", help="Drop L0 rows scoped to key:<id> and L1 context_keys with that segment."
     ),
 ) -> None:
-    """Drop L0/L1 entries by model or hash. Empty selection clears both caches."""
+    """Drop L0/L1 entries by model, hash, team, or key. Empty selection clears both caches."""
     from daari.cache.exact import ExactCache
     from daari.cache.semantic import OllamaEmbedder, SemanticCache
 
     settings = get_settings()
     if _daemon_is_running(settings):
-        ok, detail = _daemon_invalidate_caches(settings, model=model, entry_hash=entry_hash)
+        ok, detail = _daemon_invalidate_caches(
+            settings, model=model, entry_hash=entry_hash, team_id=team, key_id=key
+        )
         if not ok:
             typer.echo(f"Daemon invalidate failed: {detail}", err=True)
             raise typer.Exit(code=1)
@@ -2277,8 +2294,8 @@ def cache_invalidate(
         enabled=settings.cache.l1.enabled,
         ttl_seconds=settings.cache.l1.ttl_seconds,
     )
-    l0_removed = l0.invalidate(model=model, entry_hash=entry_hash)
-    l1_removed = l1.invalidate(model=model, entry_hash=entry_hash)
+    l0_removed = l0.invalidate(model=model, entry_hash=entry_hash, team_id=team, key_id=key)
+    l1_removed = l1.invalidate(model=model, entry_hash=entry_hash, team_id=team, key_id=key)
     typer.echo(f"L0: removed {l0_removed}")
     typer.echo(f"L1: removed {l1_removed}")
 

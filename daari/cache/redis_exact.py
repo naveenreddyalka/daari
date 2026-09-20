@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from daari.cache.exact import ExactCache, cache_key
+from daari.cache.exact import ExactCache, cache_key, cache_scope_segment
 from daari.gateway.internal import InternalRequest, InternalResponse
 
 
@@ -66,7 +66,10 @@ class RedisExactCache(ExactCache):
             return
         import json
 
-        entry = {"v": response.model_dump_json(), "t": self._clock()}
+        entry: dict[str, Any] = {"v": response.model_dump_json(), "t": self._clock()}
+        segment = cache_scope_segment(request)
+        if segment:
+            entry["scope"] = segment
         key = self._key(request)
         payload = json.dumps(entry)
         client = self._store()
@@ -79,7 +82,14 @@ class RedisExactCache(ExactCache):
         # Redis TTLs handle expiry when ttl_seconds > 0; otherwise no-op.
         return 0
 
-    def invalidate(self, *, model: str | None = None, entry_hash: str | None = None) -> int:
+    def invalidate(
+        self,
+        *,
+        model: str | None = None,
+        entry_hash: str | None = None,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> int:
         if not self.enabled:
             return 0
         client = self._store()
@@ -88,7 +98,11 @@ class RedisExactCache(ExactCache):
             bare = key[len(self.prefix) :] if key.startswith(self.prefix) else key
             if entry_hash is not None and bare != entry_hash and key != entry_hash:
                 continue
-            if model is not None and self._redis_entry_model(client.get(key)) != model:
+            raw = client.get(key)
+            if model is not None and self._redis_entry_model(raw) != model:
+                continue
+            entry = self._redis_entry_dict(raw)
+            if not self._entry_matches_scope(entry, team_id=team_id, key_id=key_id):
                 continue
             deleted = client.delete(key)
             if deleted is None or deleted:
@@ -108,13 +122,15 @@ class RedisExactCache(ExactCache):
             return [str(key) for key in data if str(key).startswith(self.prefix)]
         return []
 
-    def _redis_entry_model(self, raw: Any) -> str | None:
+    def _redis_entry_dict(self, raw: Any) -> Any:
         if raw is None:
             return None
         import json
 
         try:
-            entry = json.loads(raw)
+            return json.loads(raw)
         except json.JSONDecodeError:
             return None
-        return self._entry_model(entry)
+
+    def _redis_entry_model(self, raw: Any) -> str | None:
+        return self._entry_model(self._redis_entry_dict(raw))
