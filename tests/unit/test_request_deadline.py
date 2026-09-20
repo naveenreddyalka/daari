@@ -280,6 +280,9 @@ async def test_gateway_deadline_header_is_504(tmp_path):
 
 
 @pytest.mark.asyncio
+
+
+@pytest.mark.asyncio
 async def test_audio_transcriptions_deadline_header_is_504(tmp_path, monkeypatch):
     """X-Daari-Deadline-Ms: 0 on ASR must not call upstream (#814)."""
     import httpx
@@ -373,3 +376,78 @@ async def test_embeddings_deadline_header_is_504(tmp_path):
     assert body["deadline_seconds"] == 0
     assert called["n"] == 0
     assert ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_ollama_facade_deadline_header_is_504(tmp_path):
+    """X-Daari-Deadline-Ms: 0 on /api/chat must not call upstream (#815)."""
+    settings = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {"l0": {"enabled": False, "path": str(tmp_path / "l0")}},
+            "upstream": {"request_deadline_seconds": 30},
+        }
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    called = {"n": 0}
+
+    async def explode(request: InternalRequest) -> InternalResponse:
+        called["n"] += 1
+        raise AssertionError("upstream should not run")
+
+    for name in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        setattr(getattr(app.state.ctx.router, name), "execute", explode)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/chat",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "bound"}],
+                "stream": False,
+            },
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert called["n"] == 0
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_ollama_generate_deadline_header_is_504(tmp_path):
+    """X-Daari-Deadline-Ms: 0 on /api/generate must not call upstream (#815)."""
+    settings = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {"l0": {"enabled": False, "path": str(tmp_path / "l0")}},
+            "upstream": {"request_deadline_seconds": 30},
+        }
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    called = {"n": 0}
+
+    async def explode(request: InternalRequest) -> InternalResponse:
+        called["n"] += 1
+        raise AssertionError("upstream should not run")
+
+    for name in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        setattr(getattr(app.state.ctx.router, name), "execute", explode)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/generate",
+            json={"model": "daari", "prompt": "bound", "stream": False},
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert called["n"] == 0
+    assert app.state.ctx.metrics.deadline_exhausted == 1
