@@ -197,11 +197,35 @@ def apply_unknown_key_policy(keys: list[str], *, strict: bool | None = None) -> 
     logger.warning("unknown config keys: %s", ", ".join(keys))
 
 
+def asr_frontier_fallback_findings(settings: Any) -> list[str]:
+    """Cross-check ``asr.frontier_fallback`` against frontier wiring (#817)."""
+    asr = getattr(settings, "asr", None)
+    if asr is None or not bool(getattr(asr, "frontier_fallback", False)):
+        return []
+    frontier = getattr(settings, "frontier", None)
+    if frontier is None or not bool(getattr(frontier, "enabled", False)):
+        return ["asr.frontier_fallback is true but frontier.enabled is false"]
+    base = str(getattr(asr, "base_url", "") or "").strip()
+    if base:
+        return []
+    # Empty base_url: fallback is the only ASR path — mirror doctor.
+    try:
+        from daari.gateway.transcriptions import resolve_asr_target
+
+        target = resolve_asr_target(settings)
+    except Exception:  # noqa: BLE001 — validate must stay side-effect light
+        target = None
+    if target is None or not getattr(target, "api_key", None):
+        return ["asr.frontier_fallback is true but no frontier API key resolves"]
+    return []
+
+
 def config_findings(user: dict[str, Any], merged: dict[str, Any], model: type[BaseModel]) -> list[str]:
     """Unknown keys plus type / range errors. Used by `daari config validate`."""
     findings = [f"unknown key: {key}" for key in unknown_config_keys(user, model)]
+    settings: BaseModel | None = None
     try:
-        model.model_validate(merged)
+        settings = model.model_validate(merged)
     except ValidationError as exc:
         known = {item.removeprefix("unknown key: ") for item in findings}
         for err in exc.errors():
@@ -213,4 +237,6 @@ def config_findings(user: dict[str, Any], merged: dict[str, Any], model: type[Ba
                 continue
             where = loc or "<root>"
             findings.append(f"{where}: {err.get('msg', 'invalid')}")
+    if settings is not None:
+        findings.extend(asr_frontier_fallback_findings(settings))
     return findings
