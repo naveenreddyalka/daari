@@ -87,7 +87,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
                     job = batch_store.get(job_id)
                     gov = job.governance if job is not None else None
-                    return await _execute_batch_chat_body(app.state.ctx, item_body, governance=gov)
+                    return await _execute_batch_chat_body(
+                        app.state.ctx,
+                        item_body,
+                        governance=gov,
+                        rate_limiter=limiter,
+                    )
 
                 return execute_one
 
@@ -412,6 +417,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         team_rpm = None
         team_tpm = None
         team_rpd = None
+        team = None
         if team_id:
             store = getattr(request.app.state, "virtual_key_store", None)
             team = (
@@ -461,7 +467,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if rate_soft:
             request.state.rate_limit_soft = True
 
-        slot = await limiter.acquire()
+        from daari.auth.virtual_keys import admission_priority_for
+
+        slot = await limiter.acquire(priority=admission_priority_for(virtual, team))
         if not slot.allowed:
             headers = slot.headers()
             headers.setdefault("Retry-After", str(limiter.retry_after_seconds))

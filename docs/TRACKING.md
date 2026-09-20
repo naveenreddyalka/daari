@@ -3701,6 +3701,14 @@ Event `local_pool_frontier_fallback`. Covered by
 cancel apply; spend ledger uses tier `tts`. Covered by
 `tests/unit/test_speech.py`.
 
+### Per-key priority classes on the admission gate ([#848](https://github.com/naveenreddyalka/daari/issues/848))
+
+<!-- tracking:#848 -->
+**Status:** Done (2026-09-20). Virtual keys/teams accept `priority`
+(`high`|`normal`|`low`); the global in-flight gate admits by priority then
+FIFO. Batch drain acquires at `low`. Covered by
+`tests/unit/test_rate_limit.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -47,6 +47,13 @@ def normalize_cache_scope(value: str | None) -> str:
     return text
 
 
+def coerce_priority(value: str | None) -> str:
+    """Read path for admission priority (#848)."""
+    from daari.auth.rate_limit import normalize_priority
+
+    return normalize_priority(value)
+
+
 def effective_cache_scope(*scopes: str | None) -> str:
     """Most isolated scope wins: key > team > global.
 
@@ -142,7 +149,8 @@ CREATE TABLE IF NOT EXISTS teams (
     rpd INTEGER NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
     model_groups_json TEXT,
-    cache_scope TEXT NOT NULL DEFAULT 'global'
+    cache_scope TEXT NOT NULL DEFAULT 'global',
+    priority TEXT NOT NULL DEFAULT 'normal'
 );
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
@@ -165,7 +173,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     user_daily_usd_cap REAL NOT NULL DEFAULT 0,
     allowed_models_json TEXT,
     model_groups_json TEXT,
-    cache_scope TEXT NOT NULL DEFAULT 'global'
+    cache_scope TEXT NOT NULL DEFAULT 'global',
+    priority TEXT NOT NULL DEFAULT 'normal'
 );
 CREATE TABLE IF NOT EXISTS key_hits (
     key_id TEXT NOT NULL,
@@ -216,6 +225,8 @@ class Team:
     model_groups: tuple[str, ...] | None = None
     # Cache isolation (#768). global shares the org cache; team / key narrow it.
     cache_scope: str = "global"
+    # In-flight admission class (#848). high | normal | low.
+    priority: str = "normal"
 
 
 @dataclass(frozen=True)
@@ -249,6 +260,8 @@ class VirtualKey:
     model_groups: tuple[str, ...] | None = None
     # Cache isolation (#768). global shares the org cache; team / key narrow it.
     cache_scope: str = "global"
+    # In-flight admission class (#848). Prefer metadata["priority"]; column mirrors it.
+    priority: str = "normal"
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
@@ -260,6 +273,22 @@ class VirtualKey:
         if self.is_expired(now):
             return "expired"
         return "active"
+
+
+def admission_priority_for(
+    key: VirtualKey | None = None, team: Team | None = None
+) -> str:
+    """Key priority wins over team; default normal (#848)."""
+    if key is not None:
+        meta = getattr(key, "metadata", None) or {}
+        raw = getattr(key, "priority", None) or meta.get("priority")
+        if raw:
+            return coerce_priority(str(raw))
+    if team is not None:
+        raw = getattr(team, "priority", None)
+        if raw:
+            return coerce_priority(str(raw))
+    return "normal"
 
 
 @dataclass(frozen=True)
@@ -385,6 +414,14 @@ class VirtualKeyStore:
             conn.execute(
                 "ALTER TABLE teams ADD COLUMN cache_scope TEXT NOT NULL DEFAULT 'global'"
             )
+        if "priority" not in cols:
+            conn.execute(
+                "ALTER TABLE virtual_keys ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'"
+            )
+        if "priority" not in team_cols:
+            conn.execute(
+                "ALTER TABLE teams ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'"
+            )
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -421,6 +458,7 @@ class VirtualKeyStore:
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
+        priority: str = "normal",
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -437,12 +475,13 @@ class VirtualKeyStore:
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
+        prio = coerce_priority(priority)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             existing = conn.execute(
                 "SELECT team_id, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd, cache_scope"
+                " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
                 " FROM teams WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -458,12 +497,13 @@ class VirtualKeyStore:
                     model_groups=decode_names(existing[6]) if len(existing) > 6 else None,
                     rpd=int(existing[7] or 0) if len(existing) > 7 else 0,
                     cache_scope=coerce_cache_scope(existing[8]) if len(existing) > 8 else "global",
+                    priority=coerce_priority(existing[9]) if len(existing) > 9 else "normal",
                 )
             conn.execute(
                 "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
                 " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
-                " cache_scope)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " cache_scope, priority)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     team_id,
                     name,
@@ -476,6 +516,7 @@ class VirtualKeyStore:
                     encode_names(groups),
                     team_rpd,
                     scope,
+                    prio,
                 ),
             )
         return Team(
@@ -489,6 +530,7 @@ class VirtualKeyStore:
             model_groups=groups,
             rpd=team_rpd,
             cache_scope=scope,
+            priority=prio,
         )
 
     def update_team(
@@ -656,6 +698,7 @@ class VirtualKeyStore:
         allowed_models: list[str] | tuple[str, ...] | None = None,
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
+        priority: str = "normal",
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -678,6 +721,8 @@ class VirtualKeyStore:
         pin = (region_pin or "").strip() or None
         if pin:
             meta["region_pin"] = pin
+        prio = coerce_priority(priority)
+        meta.setdefault("priority", prio)
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
@@ -686,8 +731,9 @@ class VirtualKeyStore:
                 "INSERT INTO virtual_keys (key_hash, key_id, name, prefix, created_at,"
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                 " team_id, budget_windows_json, metadata_json, expires_at, user_daily_usd_cap,"
-                " region_pin, allowed_models_json, model_groups_json, rpd, cache_scope)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " region_pin, allowed_models_json, model_groups_json, rpd, cache_scope,"
+                " priority)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     self._hash(plaintext),
                     key_id,
@@ -710,6 +756,7 @@ class VirtualKeyStore:
                     encode_names(groups),
                     max(0, int(rpd)),
                     scope,
+                    prio,
                 ),
             )
         return CreatedKey(
@@ -734,6 +781,7 @@ class VirtualKeyStore:
                 allowed_models=models,
                 model_groups=groups,
                 cache_scope=scope,
+                priority=prio,
             ),
             plaintext=plaintext,
         )
@@ -985,6 +1033,9 @@ class VirtualKeyStore:
             allowed_models=allowed_models,
             model_groups=model_groups,
             cache_scope=coerce_cache_scope(cache_scope),
+            priority=coerce_priority(
+                (parsed.get("priority") if isinstance(parsed, dict) else None)
+            ),
         )
 
     def list(self) -> list[VirtualKey]:
