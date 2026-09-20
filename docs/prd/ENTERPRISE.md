@@ -35,38 +35,61 @@ postgres / deadline / ASR but not master API key, rate-limit Redis, or
 frontier. Doctor never warns when deadline is unset or scoped cache meets
 disk+multi-replica. Cold TTFT still has no proactive `models warm`.
 
+**Delta run (17:26), theme: resilience and modality seams.** The L1 semantic
+cache never records its embedding model — `semantic_context_key` omits
+`cache.l1.embedding_model`, so swapping the embedder leaves stale vectors
+matching garbage (upgrade.md documents the hazard instead of fixing it).
+All-local-hosts-down is a hard 503 `backend_unavailable` with no opt-in
+frontier failover (ASR already has `asr.frontier_fallback`; chat does not).
+No `/v1/audio/speech` despite shipped ASR. The global in-flight gate is
+FIFO-only (no per-key priority; batch drain bypasses it, only idle-yields).
+OTel exports traces + metrics but not logs — gateway events reach
+Datadog/Splunk only via file tail or stdout sidecar. Verified fine, not
+filed: local pool multi-host LB/health/breakers shipped; upgrade docs +
+additive `_migrate()` solid (no `daari migrate` demand yet); L1 has
+`max_entries` FIFO trim + TTL prune.
+
 ---
 
 ## Scored gap table
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **MCP `route` skips virtual-key governance** — `_run_tool` builds bare `RequestMeta(deadline_ms=…)`; no `apply_auth_claims_to_meta`, model allowlist, spend attribution, or tenant cache | 5 | 3 | LiteLLM MCP gateway (team toolsets); Kong agentic policies | Shared on-prem MCP front door needs the same key/team fences as chat before agents hit local GPUs | File |
-| 2 | **Batch drain bypasses RPM/TPM/RPD + incomplete meta** — worker calls `router.route` without the limiter; item meta omits `key_id`/`team_id`/`cache_scope` even though `BatchGovernance` stores `key_id` | 5 | 3 | LiteLLM batch + budgets; OpenAI Batch quotas | Overnight local eval must not be a quota-evasion lane vs interactive chat | File |
-| 3 | **Embed L0 is tenant-blind** — `embedding_cache_request()` never sets `RequestMeta`; scoped keys still share vectors across teams | 4 | 2 | Portkey workspace cache; LiteLLM cache metadata | Embeddings feed L1 and tool-search; cross-tenant hits leak without frontier egress | File |
-| 4 | **Helm missing auth / rate-limit / frontier knobs** — chart has redis, postgres, deadline, ASR; no `apiKeySecret`, `rateLimit.*`, or `frontier.enabled` + secret | 4 | 2 | Kong Konnect / LiteLLM Helm | K8s operators should wire fleet auth and caps without hand-patched Deployments | File |
-| 5 | **No proactive model warm** — warm preference is reactive via `/api/ps`; cold Ollama TTFT stays the worst first-request UX | 3 | 2 | Ollama `keep_alive` / vLLM preload | Local-first product owns cold start; one CLI/onboard step beats a cloud warm pool | File |
-| 6 | **Doctor silent on new ops knobs / OCR / Fuse routing / WIF / A2A / SOC 2 / admin UI** | 2–4 | 2–5 | LiteLLM / cloud | Doctor warn is next-tranche; OCR+Fuse stay watch; compliance deferred | Watch |
+| 1 | **L1 semantic cache unversioned by embedder** — `semantic_context_key` and stored entries omit `cache.l1.embedding_model`; swapping the embed model keeps stale vectors live (wrong hits / dimension mismatch) | 4 | 2 | GPTCache (index per embedder); hosted semantic caches | Local embed models get swapped often; correctness across swaps keeps the shared org cache trustworthy | File ([#845](https://github.com/naveenreddyalka/daari/issues/845)) |
+| 2 | **All local hosts down = hard 503** — pool exhaustion raises `BackendUnavailable`; no opt-in frontier failover for chat (ASR already has `asr.frontier_fallback`) | 4 | 2 | LiteLLM fallback chains; Kong upstream failover | HA without a second GPU box: outage degrades to governed frontier (scrub/budgets/allowlists intact) | File ([#846](https://github.com/naveenreddyalka/daari/issues/846)) |
+| 3 | **No `/v1/audio/speech`** — ASR shipped both directions, TTS absent; openedai-speech/Kokoro serve the exact OpenAI shape locally | 4 | 3 | Portkey (ElevenLabs native); OpenRouter `/audio/speech` | Voice loop (STT→chat→TTS) through one governed box; $0/char, same keys and chargeback | File ([#847](https://github.com/naveenreddyalka/daari/issues/847)) |
+| 4 | **Admission gate is FIFO-only** — single `asyncio.Condition`, no per-key/team priority; batch drain bypasses the in-flight cap (idle-yield only) | 4 | 3 | vLLM priority scheduling; Kong route priority | One GPU serves IDE + overnight eval; interactive turns must preempt at the gate | File ([#848](https://github.com/naveenreddyalka/daari/issues/848)) |
+| 5 | **No OTLP logs signal** — request events are file JSONL + optional stdout; OTel exports traces/metrics only | 3 | 2 | LiteLLM log callbacks; cloud gateways | Same collector already deployed for daari traces — third signal completes the story, no sidecars | File ([#849](https://github.com/naveenreddyalka/daari/issues/849)) |
+| 6 | **Doctor ops warns / moderations + rerank endpoints / `daari migrate` + skew guard / ASR pool HA / OCR / Fuse routing / WIF / A2A / SOC 2 / admin UI** | 2–4 | 2–5 | LiteLLM / Cohere / cloud | Moderations-vs-guardrails and migrate tooling wait for buyer demand; rest deferred | Watch |
 
-Pruned this run: tenant cache, selective invalidate, request deadline,
-disconnect cancel (non-facade), request-log retention, thinking `/api/show`
-(shipped). Facade disconnect and Idempotency-Key stay open elsewhere.
+Pruned this run: the governance secondary-ingress rows (MCP route, batch
+quota+meta, embed L0 scope, Helm knobs, model warm) — all five filed as
+issues by the 17:14 sibling run and now queued.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **MCP governance parity** — virtual-key claims, allowlists, spend, and `cache_scope` on MCP `tools/call` / `route`.
-2. **Batch quota + meta replay** — drain path charges RPM/TPM/RPD and copies tenant fields onto every item.
-3. **Scoped embed cache** — L0 embed keys honor `cache_scope` like chat.
-4. **Helm fleet auth surface** — Secret-backed master key, rate-limit Redis, frontier enable/key.
-5. **`daari models warm`** — preload configured L3–L5 (+ embed) before serve/onboard.
+1. **Governance secondary-ingress set** (queued) — MCP route claims, batch quota+meta, scoped embed L0, Helm auth knobs, model warm.
+2. **Cache correctness across embedder swaps** — L1 entries namespaced by embedding model.
+3. **Local-outage failover** — opt-in frontier escalation when every local host is down, fences intact.
+4. **QoS at the gate** — per-key priority classes on the in-flight cap; batch charged at low priority.
+5. **Voice + logs completeness** — `/v1/audio/speech` local TTS and OTLP logs alongside traces/metrics.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay deferred.
 
 ---
 
 ## Changelog
+
+- **2026-09-20 (resilience + modality delta)** — Delta run 12 min after the
+  17:14 sibling merged its refresh. Outward re-verified flat: LiteLLM newest
+  tag v1.103.0-rc.1 (fixes/UI only, bar unchanged), Portkey v2.23.0, Kong
+  2.0.3, Ollama 0.34.3 still rc, OpenRouter last moved 08-19. Inward
+  (code-verified): L1 cache unversioned by embedding model, all-local-down
+  hard 503 with no frontier failover, no `/v1/audio/speech`, FIFO-only
+  admission gate, no OTLP logs. Verified fine: local pool LB/health/breakers,
+  upgrade docs + additive migrations, L1 trim/TTL. Filing five.
 
 - **2026-09-20 (governance secondary ingress)** — Prior cache/deadline/cancel/
   retention set confirmed shipped. Outward: LiteLLM v1.102.0 on PyPI (OCR +
