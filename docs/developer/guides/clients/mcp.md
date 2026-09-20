@@ -62,6 +62,15 @@ This is the *tools* path. To route Claude Desktop's chat itself through daari
 | `sourcegraph` / `ghe` / `gitlab` | Registered integration providers |
 | `mcp_*` | Each `integrations.mcp_servers` entry |
 
+## Request deadlines on `tools/call`
+
+`tools/call` (JSON-RPC `POST /mcp` and the legacy `/v1/mcp/query` path) honors
+the same wall-clock budget as chat: send `X-Daari-Deadline-Ms` (or set
+`upstream.request_deadline_seconds` in config). When the budget is spent before
+the tool finishes, the gateway returns **504** with
+`request_deadline_exceeded` and does not keep running the call. See
+[Request headers](../../reference/headers.md).
+
 ## Tool governance
 
 Any authenticated caller can reach every tool unless you say otherwise. Policies
