@@ -3640,7 +3640,6 @@ by `tests/unit/test_spend_export.py`.
 `asr_frontier_fallback_findings`. Covered by
 `tests/unit/test_config_validate.py`.
 
-<<<<<<< HEAD
 ### Batch RPM/TPM/RPD + tenant meta on drain ([#840](https://github.com/naveenreddyalka/daari/issues/840))
 
 <!-- tracking:#840 -->
@@ -3649,7 +3648,7 @@ by `tests/unit/test_spend_export.py`.
 `RequestMeta`, and records structured 429 / 403 item failures for rate
 limit and model allowlist denials. Master / no-auth batches stay open.
 Covered by `tests/unit/test_batches.py`.
-=======
+
 ### MCP virtual-key governance on tools/call ([#839](https://github.com/naveenreddyalka/daari/issues/839))
 
 <!-- tracking:#839 -->
@@ -3658,7 +3657,6 @@ applies `apply_auth_claims_to_meta` so virtual keys carry `tier_cap`,
 `cache_scope`, `key_id`, and `team_id`; disallowed models return the same
 403 `model_not_allowed` shape and audit rows as chat; spend and L0 cache
 scope follow the key. Covered by `tests/unit/test_mcp_vk_governance.py`.
->>>>>>> origin/main
 
 ## How to update
 
