@@ -2194,15 +2194,26 @@ app.add_typer(cache_app, name="cache")
 
 @cache_app.command("prune")
 def cache_prune() -> None:
-    """Remove expired L0/L1 entries (requires cache.*.ttl_seconds > 0)."""
+    """Remove expired L0/L1 entries (disk TTL, or Redis unbounded age reclaim)."""
+    from pathlib import Path
+
     from daari.cache.exact import ExactCache
     from daari.cache.semantic import OllamaEmbedder, SemanticCache
+    from daari.router.router import _build_l0_cache
 
     settings = get_settings()
     if getattr(settings.cache, "backend", "disk") == "redis":
-        note = " (Redis relies on TTL; prune does not scan)"
-        typer.echo(f"L0: removed 0 expired entries{note}")
-        typer.echo(f"L1: removed 0 expired entries{note}")
+        l0 = _build_l0_cache(settings, Path(settings.l0_cache_path))
+        l0_removed = int(l0.prune())
+        if settings.cache.l0.ttl_seconds > 0:
+            note = " (Redis relies on TTL; prune does not scan when ttl_seconds > 0)"
+            typer.echo(f"L0: removed {l0_removed} expired entries{note}")
+        else:
+            typer.echo(
+                f"L0: removed {l0_removed} expired entries "
+                "(unbounded Redis keys older than 7d)"
+            )
+        typer.echo("L1: removed 0 expired entries (Redis L1 uses its own TTL path)")
         return
     l0 = ExactCache(
         str(settings.l0_cache_path),

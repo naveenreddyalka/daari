@@ -28,7 +28,7 @@ Three different operations:
 |---------|----------------|
 | `daari cache invalidate --model <served>` | L0 rows whose cached response model matches, and L1 rows whose `context_key` starts with that model. `--hash` drops one L0 key or one L1 `answer_hash`. No flags drops every L0 and L1 entry. Hits the running daemon (`POST /v1/daari/cache/invalidate`) when `daari serve` is up; otherwise edits the on-disk caches. |
 | `daari context clear` | Deletes the L0, L1, and command-context directories entirely, then asks the daemon to reopen handles. |
-| `daari cache prune` | Removes only TTL-expired disk entries. When `cache.backend` is Redis, prune does not scan — Redis expiry is the key TTL, and the command says so. |
+| `daari cache prune` | Removes only TTL-expired disk entries. When `cache.backend` is Redis and `cache.l0.ttl_seconds > 0`, prune does not scan — Redis key expiry is the reclaim path. When Redis L0 TTL is `0` (unbounded), prune deletes keys whose stored `t` is older than **7 days**. |
 
 ## Next
 

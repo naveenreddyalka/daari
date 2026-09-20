@@ -11,6 +11,10 @@ from typing import Any, Callable
 from daari.cache.exact import ExactCache, cache_key, cache_scope_segment
 from daari.gateway.internal import InternalRequest, InternalResponse
 
+# When L0 Redis TTL is off (ttl_seconds == 0), prune still reclaims entries
+# older than this wall-clock age so unbounded fleets can shrink (#806).
+REDIS_UNBOUNDED_PRUNE_MAX_AGE_SECONDS = 7 * 24 * 3600.0
+
 
 class RedisExactCache(ExactCache):
     def __init__(
@@ -79,8 +83,21 @@ class RedisExactCache(ExactCache):
             client.set(key, payload)
 
     def prune(self) -> int:
-        # Redis TTLs handle expiry when ttl_seconds > 0; otherwise no-op.
-        return 0
+        """Drop aged L0 rows when Redis TTL is off; TTL fleets stay no-scan (#806)."""
+        if not self.enabled:
+            return 0
+        if self.ttl_seconds > 0:
+            # Keys were written with Redis EX; native TTL is the reclaim path.
+            return 0
+        client = self._store()
+        removed = 0
+        for key in self._prefixed_keys(client):
+            entry = self._redis_entry_dict(client.get(key))
+            if self._entry_expired(entry, REDIS_UNBOUNDED_PRUNE_MAX_AGE_SECONDS):
+                deleted = client.delete(key)
+                if deleted is None or deleted:
+                    removed += 1
+        return removed
 
     def invalidate(
         self,
