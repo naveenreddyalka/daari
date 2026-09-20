@@ -10,10 +10,10 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 |-----|------|---------|-------------|
 | `server.host` | str | `'127.0.0.1'` |  |
 | `server.port` | int | `11435` |  |
-| `server.api_key` | str | `''` |  |
+| `server.api_key` | str | list[str] | `''` |  |
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
-| `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (`observability.postgres_url`) so keys/teams resolve across replicas (#544). Env: `DAARI_SERVER__VIRTUAL_KEYS__BACKEND`. |
+| `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
 | `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds before a streaming response emits a keepalive frame (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow-to-first-token streams. 0 disables. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
@@ -38,6 +38,9 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `asr.base_url` | str | `''` | OpenAI-compatible ASR base URL, including /v1 (vLLM, whisper.cpp server, or another local pool member). Empty leaves POST /v1/audio/transcriptions unconfigured. |
 | `asr.model` | str | `''` | Optional model name sent to the ASR server. When set, it replaces the client model so a local server always sees its own id. |
 | `asr.frontier_fallback` | bool | `False` | When true and asr.base_url is empty, forward one transcription to the configured frontier base if frontier.enabled and a key is present. Default false so audio is never uploaded to a cloud endpoint implicitly. |
+| `tts.base_url` | str | `''` | OpenAI-compatible TTS base URL, including /v1 (openedai-speech, Kokoro-FastAPI, or similar). Empty leaves POST /v1/audio/speech unconfigured. |
+| `tts.model` | str | `''` | Optional model name sent to the TTS server. When set, it replaces the client model so a local server always sees its own id. |
+| `tts.voice` | str | `''` | Optional default voice when the request omits voice (OpenAI alloy/echo/… or the local server's voice id). |
 | `cache.l0.enabled` | bool | `True` |  |
 | `cache.l0.path` | str | `'~/.daari/cache/l0'` |  |
 | `cache.l0.ttl_seconds` | float | `0.0` |  |
@@ -63,9 +66,9 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `routing.max_tier_for_chat` | Optional | `None` |  |
 | `routing.latency_budget_ms` | int | `0` |  |
 | `routing.warm_model_preference` | bool | `True` |  |
-| `routing.ttft_aware` | bool | `False` | Prefer a faster local tier with better recent stream TTFT percentile when enough samples exist (#529) |
-| `routing.ttft_percentile` | float | `0.95` | Percentile used when `ttft_aware` is on (`0.5`–`0.99`) |
-| `routing.ttft_min_samples` | int | `20` | Minimum TTFT samples per tier before preference may apply |
+| `routing.ttft_aware` | bool | `False` | When true, after the heuristic pick, prefer a faster local tier (L3..heuristic) with enough recent TTFT samples and a lower configured percentile. Default off. |
+| `routing.ttft_percentile` | float | `0.95` | TTFT histogram percentile used when ttft_aware is true. |
+| `routing.ttft_min_samples` | int | `20` | Minimum TTFT samples per tier before ttft_aware may prefer it. |
 | `routing.learned_router` | bool | `False` |  |
 | `routing.reasoning_effort_escalation` | bool | `False` |  |
 | `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |
@@ -77,10 +80,10 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `routing.phase_routing.implement` | int | str | `0` | Tier adjustment for implement-phase turns. Default 0. |
 | `routing.phase_routing.verify` | int | str | `0` | Tier adjustment for verify-phase turns. Default 0. |
 | `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
-| `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin, profile pin, and session cost-avoided rollup are reused. With `cache.backend: redis`, also the Redis key TTL for fleet-shared pins/totals. 0 keeps the pin until process restart (in-process) or without Redis EX. Ignored unless session_affinity is true. |
+| `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin (and the session cost-avoided rollup) is reused. 0 keeps the pin until process restart (in-process) or without a Redis TTL when cache.backend=redis. Ignored unless session_affinity is true. |
 | `routing.classify_user_turn` | bool | `False` | When true, a tool-result continuation (no new user text) reuses the previous profile's category/complexity. Phase routing and stall escalation still inspect tool history. A new user message re-profiles. Default off. |
 | `routing.classify_user_turn_agents` | bool | `True` | When classify_user_turn is false, still reuse profiles on tool-result continuations for agent User-Agents (cursor, claude-code, claude code, codex). Set false to disable the shortcut. Ignored when classify_user_turn is true (applies to every client). Default on. |
-| `routing.harness_aware_profile` | bool | `True` | When true, complexity/category ignore system catalogs and recognized Codex/Claude Code harness blocks (`system-reminder`, `environment_context`, `recommended_plugins`, `user_instructions`, `environments_instructions`, agents.md envelope). prompt_tokens_est still counts the full request (#418, #541). Default on (no-op without those markers). |
+| `routing.harness_aware_profile` | bool | `True` | When true, complexity/category ignore system catalogs and recognized Codex/Claude Code harness blocks (system-reminder, environment_context, recommended_plugins, user_instructions, environments_instructions, agents.md envelope). prompt_tokens_est still counts the full request (#418, #541). Default on (no-op without those markers). |
 | `routing.context_window_escalation` | bool | `True` | When true, pick a higher local tier before the first hop if the prompt estimate exceeds that tier's known context window (#385). |
 | `routing.context_window_escalation_buffer` | float | `0.95` | Escalate when estimated tokens exceed window * buffer. |
 | `routing.context_windows` | dict | `{'L3': 8192, 'L4': 32768, 'L5': 131072}` | Known context windows (tokens) per local tier. Missing = unknown, left alone. |
@@ -93,7 +96,7 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `routing.org_pool.tier` | str | `'L5-org'` |  |
 | `routing.local_pool.strategy` | str | `'least_outstanding'` | Host pick: least_outstanding or round_robin. Warm models still win ties. |
 | `routing.local_pool.health_interval_seconds` | float | `15.0` | Background health-check interval. Requests use the last snapshot. |
-| `routing.local_pool.frontier_fallback` | bool | `False` | When true and every local backend for the chosen tier is down or circuit-open, escalate to L6 instead of a hard 503. Respects `no_frontier`, allowlists, budgets, and PII scrub. Default false (#846). |
+| `routing.local_pool.frontier_fallback` | bool | `False` | When true and every local backend for the chosen tier is down or circuit-open, escalate to L6 instead of raising BackendUnavailable. Respects no_frontier, allowlists, budgets, and PII scrub. Default false so outages stay a hard 503 unless opted in (#846). |
 | `routing.local_pool.backends` | list | `[]` |  |
 | `frontier.enabled` | bool | `False` |  |
 | `frontier.provider` | str | `'openai'` |  |
@@ -120,6 +123,8 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `usage.enabled` | bool | `True` |  |
 | `usage.path` | str | `'~/.daari/usage/ledger.sqlite3'` |  |
 | `usage.frontier_price_per_1k_tokens` | float | `0.002` | Flat fallback rate used to estimate what locally-served tokens would have cost on a frontier model. Applies only to models absent from `pricing.models`, and ignores input/output direction. |
+| `usage.spend.enabled` | bool | `False` | Write one spend row per completed request (timestamp, key, team, tokens, cost, cost avoided). Off keeps the day ledger's write volume. |
+| `usage.spend.path` | str | `'~/.daari/usage/spend.sqlite3'` | SQLite path for per-request spend rows. Ignored when observability.backend is postgres. |
 | `files.enabled` | bool | `True` |  |
 | `files.path` | str | `'~/.daari/files'` |  |
 | `files.backend` | Literal | `'sqlite'` | sqlite (disk index + .bin files, default) or postgres (metadata + BYTEA content via observability.postgres_url) for multi-replica fleets (#465). |
@@ -132,12 +137,12 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `batches.claim_ttl_seconds` | int | `90` | How long a replica's drain claim stays exclusive before another replica may reclaim a crashed worker (#465). Ignored for sqlite. |
 | `batches.yield_to_interactive` | bool | `True` | When true, the batch worker waits while interactive HTTP requests are in flight before dispatching the next item (#444). |
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
-| `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) for multi-replica fleets (#481). |
-| `responses.retention_days` | int | `0` | Delete stored Responses older than this many days (#497). 0 keeps them forever. |
+| `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) so store:true / previous_response_id / background polling work across replicas (#481). |
+| `responses.retention_days` | int | `0` | Delete stored responses older than this many days (#497). 0 keeps them forever. |
 | `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
 | `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |
-| `upstream.request_deadline_seconds` | float \| None | `None` | Optional wall-clock budget for one request across cache, local, and frontier hops. Each upstream call uses min(tier timeout, remaining). Unset or 0 keeps per-tier timeouts only. The X-Daari-Deadline-Ms header overrides this. |
+| `upstream.request_deadline_seconds` | float | None | `None` | Optional wall-clock budget for one request across cache, local, and frontier hops. Each upstream call uses min(tier timeout, remaining). Unset or 0 keeps per-tier timeouts only. The X-Daari-Deadline-Ms header overrides this. |
 | `upstream.retry.attempts` | int | `3` | Total attempts per upstream call, counting the first. `1` disables retries. Only transient failures are retried (408, 429, 5xx, connect and read timeouts); a 401 or malformed body fails immediately. |
 | `upstream.retry.base_delay_ms` | int | `200` | First backoff, doubled per retry up to `max_delay_ms`. |
 | `upstream.retry.max_delay_ms` | int | `5000` | Ceiling for a single backoff interval. |
@@ -148,7 +153,7 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `observability.request_log_max_bytes` | int | `5242880` |  |
 | `observability.request_log_backups` | int | `3` |  |
 | `observability.prometheus` | bool | `True` |  |
-| `observability.metrics_port` | int | `0` | Optional scrape-only listen port on `127.0.0.1` (`0` = off). Serves the same Prometheus body as `GET /metrics` **without** requiring `server.api_key`. Keep off public ingress; main-port `/metrics` auth is unchanged (#594). Env: `DAARI_OBSERVABILITY__METRICS_PORT`. |
+| `observability.metrics_port` | int | `0` |  |
 | `observability.otel` | bool | `False` |  |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |
@@ -160,7 +165,8 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `observability.retention.audit_days` | int | `0` |  |
 | `observability.retention.shadow_days` | int | `0` |  |
 | `observability.retention.tasks_days` | int | `0` |  |
-| `observability.retention.request_log_days` | int | `0` | Delete gateway request-log lines and rotated backups older than this many days. 0 keeps size-only rotation (#772). |
+| `observability.retention.spend_days` | int | `0` | Delete per-request spend rows older than this many days (#709). 0 keeps them forever. |
+| `observability.retention.request_log_days` | int | `0` | Delete gateway request-log lines and rotated backups older than this many days (#772). 0 keeps size-only rotation. |
 | `learning.enabled` | bool | `True` |  |
 | `learning.path` | str | `'~/.daari/feedback/feedback.sqlite3'` |  |
 | `learning.max_rows` | int | `20000` |  |
@@ -271,15 +277,16 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `enterprise.sso.discovery_url` | str | `''` |  |
 | `enterprise.sso.audience` | str | `''` |  |
 | `enterprise.sso.role_claim` | str | `'role'` |  |
-| `enterprise.sso.admin_min_role` | str | `'admin'` | Minimum role for mutating admin surfaces + config GET |
+| `enterprise.sso.admin_min_role` | str | `'admin'` |  |
 | `enterprise.sso.mint_virtual_key_on_login` | bool | `False` |  |
 | `enterprise.sso.mapping_claim` | str | `'groups'` |  |
 | `enterprise.sso.key_mappings` | dict | `{}` |  |
 | `enterprise.sso.default_policy` | daari.enterprise.config.SsoKeyPolicy | None | `None` |  |
 | `enterprise.sso.deny_unmapped` | bool | `False` |  |
-| `enterprise.audit_path` | str | `'~/.daari/audit/audit.sqlite3'` | SQLite path when `audit_backend=sqlite`. |
-| `enterprise.audit_backend` | str | `'sqlite'` | `sqlite` (default) or `postgres` (reuses `observability.postgres_url`) for a single fleet-wide hash chain (#483). |
+| `enterprise.audit_path` | str | `'~/.daari/audit/audit.sqlite3'` |  |
+| `enterprise.audit_backend` | Literal | `'sqlite'` | sqlite (default, per-node file) or postgres (observability.postgres_url) for a single fleet-wide hash chain (#483). |
 | `alerts.budget_webhook_url` | str | `''` |  |
-| `alerts.budget_webhook_secret` | str | `''` | Optional HMAC secret (`secret://` ok). When set, POSTs carry `X-Daari-Timestamp` + `X-Daari-Signature` over `timestamp + "." + body` (#484). |
+| `alerts.budget_webhook_secret` | str | `''` |  |
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
 | `skills_system_prefix` | str | `''` |  |
+| `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |

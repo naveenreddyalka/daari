@@ -167,6 +167,37 @@ class AsrSettings(BaseModel):
     )
 
 
+class TtsSettings(BaseModel):
+    """Local OpenAI-compatible text-to-speech (#847).
+
+    ``base_url`` is the API root (includes ``/v1``), same shape as ``asr.base_url``.
+    Empty means POST /v1/audio/speech is not configured (501).
+    """
+
+    base_url: str = Field(
+        default="",
+        description=(
+            "OpenAI-compatible TTS base URL, including /v1 "
+            "(openedai-speech, Kokoro-FastAPI, or similar). "
+            "Empty leaves POST /v1/audio/speech unconfigured."
+        ),
+    )
+    model: str = Field(
+        default="",
+        description=(
+            "Optional model name sent to the TTS server. When set, it replaces "
+            "the client model so a local server always sees its own id."
+        ),
+    )
+    voice: str = Field(
+        default="",
+        description=(
+            "Optional default voice when the request omits voice "
+            "(OpenAI alloy/echo/… or the local server's voice id)."
+        ),
+    )
+
+
 class L0CacheSettings(RuntimeSettings):
     enabled: bool = True
     path: str = "~/.daari/cache/l0"
@@ -1185,6 +1216,7 @@ class Settings(BaseSettings):
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
     asr: AsrSettings = Field(default_factory=AsrSettings)
+    tts: TtsSettings = Field(default_factory=TtsSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)

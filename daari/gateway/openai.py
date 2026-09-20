@@ -999,6 +999,41 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 response_format=response_format,
             )
 
+        @router.post("/v1/audio/speech", response_model=None)
+        async def audio_speech(request: Request) -> Any:
+            """OpenAI-compatible local TTS proxy (#847)."""
+            from daari.gateway.speech import handle_speech
+
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "request body must be JSON",
+                        }
+                    },
+                )
+            if not isinstance(body, dict):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "request body must be a JSON object",
+                        }
+                    },
+                )
+            return await handle_speech(
+                request,
+                model=str(body.get("model") or ""),
+                input_text=str(body.get("input") or ""),
+                voice=(str(body["voice"]) if body.get("voice") is not None else None),
+                response_format=str(body.get("response_format") or "mp3"),
+            )
+
         @router.post("/v1/embeddings")
         async def embeddings(
             body: EmbeddingsRequest,
