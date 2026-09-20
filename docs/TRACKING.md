@@ -1864,6 +1864,13 @@ Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
+
 ### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
 
 <!-- tracking:#834 -->
@@ -3641,6 +3648,12 @@ by `tests/unit/test_spend_export.py`.
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
 ### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
 
 <!-- tracking:#834 -->
@@ -3758,6 +3771,12 @@ scrapes `daari_request_deadline_exceeded_total`. Covered by
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
 ### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
 
 <!-- tracking:#834 -->
