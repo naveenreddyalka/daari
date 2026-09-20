@@ -5266,10 +5266,13 @@ class AppContext:
         spend_ledger = spend_ledger_from_settings(settings)
         router.spend_ledger = spend_ledger
         install_spend_hook(usage_ledger, spend_ledger)
-        if settings.observability.otel:
+        if settings.observability.otel or settings.observability.otlp_logs:
             from daari.observability.otel import configure_providers
 
-            configure_providers()
+            configure_providers(
+                otlp_logs=bool(settings.observability.otlp_logs),
+                traces=bool(settings.observability.otel),
+            )
         from daari.gateway.batches import BatchStore
         from daari.gateway.files import FileStore
         from daari.gateway.mcp_tasks import McpTaskStore
