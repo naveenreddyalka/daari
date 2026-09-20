@@ -253,13 +253,14 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
         @router.post("/api/show")
         async def show(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+            from daari.gateway.sampling import ollama_thinking_controls
             from daari.router.capabilities import ollama_facade_capabilities_for_name
 
             ctx: AppContext = request.app.state.ctx
             name = str(body.get("model") or body.get("name") or "daari")
             caps = ollama_facade_capabilities_for_name(name, ctx.settings)
             entry = _model_entry(name, capabilities=caps)
-            return {
+            payload: dict[str, Any] = {
                 "modelfile": f"# daari virtual model: {name}",
                 "parameters": "",
                 "template": "",
@@ -267,6 +268,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 "model_info": {"general.architecture": "daari-router"},
                 "capabilities": caps,
             }
+            # Ollama ≥0.34.3 advertises think levels only on show (#789).
+            if "thinking" in caps:
+                payload["thinking"] = ollama_thinking_controls()
+            return payload
 
         async def _stream_ndjson(
             ctx: AppContext,
