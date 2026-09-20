@@ -123,11 +123,34 @@ async def test_admin_invalidate_returns_counts_and_logs(settings, monkeypatch):
 
 def test_cache_prune_notes_redis_ttl(monkeypatch, settings):
     settings.cache.backend = "redis"
+    settings.cache.l0.ttl_seconds = 120
     monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+
+    class _NoScan:
+        def prune(self) -> int:
+            return 0
+
+    monkeypatch.setattr("daari.router.router._build_l0_cache", lambda *_a, **_k: _NoScan())
     result = CliRunner().invoke(cli_app, ["cache", "prune"])
     assert result.exit_code == 0
     assert "Redis relies on TTL" in result.stdout
     assert "does not scan" in result.stdout
+
+
+def test_cache_prune_redis_unbounded_reports_count(monkeypatch, settings):
+    settings.cache.backend = "redis"
+    settings.cache.l0.ttl_seconds = 0
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+
+    class _Pruned:
+        def prune(self) -> int:
+            return 3
+
+    monkeypatch.setattr("daari.router.router._build_l0_cache", lambda *_a, **_k: _Pruned())
+    result = CliRunner().invoke(cli_app, ["cache", "prune"])
+    assert result.exit_code == 0, result.stdout
+    assert "L0: removed 3" in result.stdout
+    assert "older than 7d" in result.stdout
 
 
 def test_cache_invalidate_cli_on_disk(monkeypatch, settings, tmp_path):
