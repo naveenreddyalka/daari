@@ -3543,6 +3543,16 @@ prune stays no-scan. CLI reports the count. Covered by
 executor returns 200 and does not increment `daari_cancelled_requests_total`
 for phase `chat`. Covered by `tests/unit/test_client_disconnect.py`.
 
+### Request deadline on audio and embeddings ([#814](https://github.com/naveenreddyalka/daari/issues/814))
+
+<!-- tracking:#814 -->
+**Status:** Done (2026-09-20). `X-Daari-Deadline-Ms` (and
+`upstream.request_deadline_seconds`) binds on `/v1/audio/transcriptions`,
+`/v1/audio/translations`, and `/v1/embeddings`; upstream httpx timeouts use
+`nonstream_timeout` / remaining budget. Exhaustion returns 504
+`request_deadline_exceeded` and increments `daari_request_deadline_exceeded_total`.
+Covered by `tests/unit/test_request_deadline.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

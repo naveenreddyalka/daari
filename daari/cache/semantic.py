@@ -195,9 +195,12 @@ class OllamaEmbedder:
         self, texts: list[str], *, model: str
     ) -> list[list[float] | None] | None:
         """POST /api/embed with input[]. None means the server needs the legacy path."""
+        from daari.router.deadline import nonstream_timeout
+
         try:
+            timeout = nonstream_timeout(self.timeout, "embed")
             async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+                base_url=self.base_url, timeout=timeout, transport=self._transport
             ) as client:
                 response = await client.post(
                     "/api/embed",
@@ -221,9 +224,12 @@ class OllamaEmbedder:
             return [None] * len(texts)
 
     async def _embed_http(self, text: str, *, model: str) -> list[float] | None:
+        from daari.router.deadline import nonstream_timeout
+
         try:
+            timeout = nonstream_timeout(self.timeout, "embed")
             async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+                base_url=self.base_url, timeout=timeout, transport=self._transport
             ) as client:
                 response = await client.post(
                     "/api/embeddings",
