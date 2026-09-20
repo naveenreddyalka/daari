@@ -3529,6 +3529,13 @@ admin `team_id` / `key_id`. Regenerated `http-api.md` lists
 prune stays no-scan. CLI reports the count. Covered by
 `tests/unit/test_redis_cache.py`.
 
+### Hermetic happy-path chat leaves cancel counter at zero ([#808](https://github.com/naveenreddyalka/daari/issues/808))
+
+<!-- tracking:#808 -->
+**Status:** Done (2026-09-20). Non-stream `/v1/chat/completions` with a fast
+executor returns 200 and does not increment `daari_cancelled_requests_total`
+for phase `chat`. Covered by `tests/unit/test_client_disconnect.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
