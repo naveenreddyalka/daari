@@ -155,6 +155,7 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `observability.prometheus` | bool | `True` |  |
 | `observability.metrics_port` | int | `0` |  |
 | `observability.otel` | bool | `False` |  |
+| `observability.otlp_logs` | bool | `False` | Opt-in OTLP logs export of gateway events (#849). Requires `OTEL_EXPORTER_OTLP_ENDPOINT` and `daari[otel]`. |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |
 | `observability.postgres_url` | str | `''` |  |

@@ -967,6 +967,9 @@ class ObservabilitySettings(RuntimeSettings):
     postgres_url: str = ""
     # Emit gateway request logs as single-line JSON to stdout (containers).
     structured_json_logs: bool = False
+    # Opt-in OTLP logs export of gateway events (issue #849). Requires
+    # OTEL_EXPORTER_OTLP_ENDPOINT and the optional OTel extra; fail-open.
+    otlp_logs: bool = False
     # Hint that redis+postgres backends are in use (no local request state).
     stateless: bool = False
     # #332: per-store retention. 0 days keeps rows forever.

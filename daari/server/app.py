@@ -38,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_bytes=resolved.observability.request_log_max_bytes,
         backups=resolved.observability.request_log_backups,
         structured_json_logs=resolved.observability.structured_json_logs,
+        otlp_logs=resolved.observability.otlp_logs,
     )
     vk_store: VirtualKeyStore | None = None
     if resolved.server.virtual_keys.enabled:

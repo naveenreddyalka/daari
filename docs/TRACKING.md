@@ -3709,6 +3709,14 @@ cancel apply; spend ledger uses tier `tts`. Covered by
 FIFO. Batch drain acquires at `low`. Covered by
 `tests/unit/test_rate_limit.py`.
 
+### Export gateway events as OTLP logs ([#849](https://github.com/naveenreddyalka/daari/issues/849))
+
+<!-- tracking:#849 -->
+**Status:** Done (2026-09-20). Opt-in `observability.otlp_logs` emits each
+`log_gateway_event` as an OTel LogRecord (event name + attributes) on the
+same OTLP endpoint as traces/metrics, correlated with the active span when
+present; fail-open. Covered by `tests/unit/test_otel_logs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
