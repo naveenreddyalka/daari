@@ -75,6 +75,18 @@ async def _fast_execute(request: InternalRequest) -> InternalResponse:
             "anthropic",
         ),
         ("/v1/responses", {"model": "daari", "input": "disconnect probe please"}, NO_CACHE, "responses"),
+        (
+            "/api/chat",
+            {"model": "daari", "stream": False, "messages": CHAT["messages"]},
+            NO_CACHE,
+            "chat",
+        ),
+        (
+            "/api/generate",
+            {"model": "daari", "stream": False, "prompt": "disconnect probe please"},
+            NO_CACHE,
+            "chat",
+        ),
     ],
 )
 async def test_nonstream_disconnect_cancels_executor(

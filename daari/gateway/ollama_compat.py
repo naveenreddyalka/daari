@@ -309,9 +309,27 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
             return StreamingResponse(ndjson_stream(), media_type="application/x-ndjson")
 
-        async def _route_non_stream(ctx: AppContext, internal: InternalRequest) -> Any:
+        async def _route_non_stream(
+            ctx: AppContext, internal: InternalRequest, request: Request
+        ) -> Any:
             try:
-                return await ctx.router.route(internal)
+                return await await_unless_disconnected(
+                    request,
+                    ctx.router.route(internal),
+                    metrics=ctx.metrics,
+                    phase="chat",
+                    model=internal.model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
@@ -372,7 +390,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             if body.stream:
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_chat_line)
 
-            result = await _route_non_stream(ctx, internal)
+            result = await _route_non_stream(ctx, internal, request)
             if isinstance(result, JSONResponse):
                 return result
             payload = json.loads(_chat_line(client_model, result.content, done=True))
@@ -419,7 +437,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             if body.stream:
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_generate_line)
 
-            result = await _route_non_stream(ctx, internal)
+            result = await _route_non_stream(ctx, internal, request)
             if isinstance(result, JSONResponse):
                 return result
             payload = json.loads(_generate_line(client_model, result.content, done=True))
