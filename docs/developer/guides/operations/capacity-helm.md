@@ -173,6 +173,22 @@ ollama:
   baseUrl: http://ollama.internal:11434
 ```
 
+### Request deadline and request-log retention
+
+`upstream.requestDeadlineSeconds` and `observability.retention.requestLogDays`
+default to empty so the chart does not set env. Set them to emit
+`DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS` (wall-clock budget across
+escalation hops) and `DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS`
+(days to keep gateway request-log lines; `0` keeps size-only rotation).
+
+```yaml
+upstream:
+  requestDeadlineSeconds: 120
+observability:
+  retention:
+    requestLogDays: 30
+```
+
 ## Next
 
 → [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md) · [Batches](../features/batches.md)

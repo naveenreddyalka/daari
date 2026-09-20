@@ -395,6 +395,34 @@ class TestHelmAsrBaseUrl:
         )
 
 
+class TestHelmRequestDeadlineAndRetention:
+    def test_deadline_and_request_log_absent_by_default(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template()
+        assert "DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS" not in rendered
+        assert "DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["upstream"]["requestDeadlineSeconds"] in ("", None)
+        assert values["observability"]["retention"]["requestLogDays"] in ("", None)
+
+    def test_deadline_and_request_log_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "upstream.requestDeadlineSeconds=120",
+            "--set",
+            "observability.retention.requestLogDays=30",
+        )
+        assert re.search(
+            r'name: DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS\s+value: "120"',
+            rendered,
+        )
+        assert re.search(
+            r'name: DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS\s+value: "30"',
+            rendered,
+        )
+
+
 class TestHelmNotesServiceMonitorAndOrgPool:
     def test_notes_omit_servicemonitor_and_org_pool_by_default(
         self, helm_available: None

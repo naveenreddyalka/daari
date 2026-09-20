@@ -3458,6 +3458,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#766 -->
 **Status:** Done (2026-09-20). Cache-miss list inputs go out as one `POST /api/embed` with `input` string[]; L0 hits stay off the wire. Single-string embed is a batch of one. A 404 on `/api/embed` falls back to per-string `/api/embeddings`. Covered by `tests/unit/test_embed_batch.py`.
 
+### Helm request deadline and log retention ([#786](https://github.com/naveenreddyalka/daari/issues/786))
+
+<!-- tracking:#786 -->
+**Status:** Done (2026-09-20). `upstream.requestDeadlineSeconds` and `observability.retention.requestLogDays` set `DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS` and `DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS` when non-empty. Defaults omit both. Covered by `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -93,6 +93,14 @@ spec:
             - name: DAARI_ASR__BASE_URL
               value: {{ .Values.asr.baseUrl | quote }}
             {{- end }}
+            {{- if .Values.upstream.requestDeadlineSeconds }}
+            - name: DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS
+              value: {{ .Values.upstream.requestDeadlineSeconds | quote }}
+            {{- end }}
+            {{- if and .Values.observability.retention (ne (toString .Values.observability.retention.requestLogDays) "") }}
+            - name: DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS
+              value: {{ .Values.observability.retention.requestLogDays | quote }}
+            {{- end }}
           {{- $preStop := 5 }}
           {{- if and .Values.lifecycle (hasKey .Values.lifecycle "preStopSleepSeconds") }}
           {{- $preStop = int .Values.lifecycle.preStopSleepSeconds }}
