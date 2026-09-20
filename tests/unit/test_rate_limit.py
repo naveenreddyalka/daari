@@ -639,6 +639,38 @@ async def test_transcription_tpm_denial_is_429_with_retry_after(settings):
     assert spy.tokens[0] >= 1000
 
 
+@pytest.mark.asyncio
+async def test_translation_tpm_counts_file_bytes_like_transcription(settings):
+    """Multipart translations charge len(file)//4 the same as transcriptions (#796)."""
+    spy = _TokenSpy(default_tpm=1_000_000)
+    app = _app(settings, limiter=spy)
+    audio = b"y" * 4000
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/translations",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert response.status_code != 429
+    assert spy.tokens[0] == len(audio) // 4
+
+
+@pytest.mark.asyncio
+async def test_translation_tpm_denial_is_429_with_retry_after(settings):
+    spy = _TokenSpy(default_tpm=10, retry_after_seconds=9)
+    app = _app(settings, limiter=spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/audio/translations",
+            files={"file": ("note.wav", b"z" * 4000, "audio/wav")},
+            data={"model": "whisper-1"},
+        )
+    assert denied.status_code == 429
+    assert denied.json()["error"]["type"] == "rate_limit_error"
+    assert denied.headers["retry-after"] == "9"
+    assert spy.tokens[0] >= 1000
+
+
 def test_team_rpd_gauge_decreases_and_rpm_stays_independent(monkeypatch):
     from types import SimpleNamespace
 
