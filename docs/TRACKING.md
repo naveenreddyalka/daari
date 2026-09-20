@@ -3649,6 +3649,15 @@ by `tests/unit/test_spend_export.py`.
 limit and model allowlist denials. Master / no-auth batches stay open.
 Covered by `tests/unit/test_batches.py`.
 
+### Helm master key, rate limits, frontier ([#842](https://github.com/naveenreddyalka/daari/issues/842))
+
+<!-- tracking:#842 -->
+**Status:** Done (2026-09-20). Chart values `server.apiKeySecret`,
+`rateLimit.*`, and `frontier.*` wire `DAARI_SERVER__API_KEY`,
+`DAARI_RATE_LIMIT__*`, and frontier enable/secret env; NOTES and
+capacity-helm document multi-replica combos. Covered by
+`tests/unit/test_helm_chart.py`.
+
 ### MCP virtual-key governance on tools/call ([#839](https://github.com/naveenreddyalka/daari/issues/839))
 
 <!-- tracking:#839 -->
