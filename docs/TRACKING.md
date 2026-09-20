@@ -3569,6 +3569,14 @@ NDJSON streaming starts. Covered by `tests/unit/test_request_deadline.py`.
 active; missing credentials yield a clear "SSO token required" error.
 Covered by `tests/unit/test_cache_invalidate.py`.
 
+### Config validate ASR frontier_fallback ([#817](https://github.com/naveenreddyalka/daari/issues/817))
+
+<!-- tracking:#817 -->
+**Status:** Done (2026-09-20). `daari config validate` reports when
+`asr.frontier_fallback` is true but frontier is disabled or no API key
+resolves (empty `asr.base_url` — fallback-only path). Covered by
+`tests/unit/test_config_validate.py`.
+
 ### Spend export --tier filter ([#818](https://github.com/naveenreddyalka/daari/issues/818))
 
 <!-- tracking:#818 -->
