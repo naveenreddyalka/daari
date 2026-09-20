@@ -407,6 +407,7 @@
     {
       "id": 27,
       "title": "Request deadline exceeded",
+      "description": "Wall-clock budget spent (`X-Daari-Deadline-Ms` / `upstream.request_deadline_seconds`) across chat, audio, embeddings, and MCP tools/call — not chat-only.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 96 },
       "targets": [
