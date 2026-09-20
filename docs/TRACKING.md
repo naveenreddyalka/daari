@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-02 (budget-remaining headers — [#319](https://github.com/naveenreddyalka/daari/issues/319))  
+> Last updated: 2026-09-19 (audio translations — [#758](https://github.com/naveenreddyalka/daari/issues/758))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -1850,7 +1850,28 @@ and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
 Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 `tests/unit/test_sampling_params.py`.
 
-<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
+<!-- tracking-append: add the next ### section above ### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+<!-- tracking-append: add the next ### section above ### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
+## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
 
@@ -3165,7 +3186,501 @@ learn stale names removed; `route preview` documented. Covered by
 `rejects` on `GET /v1/daari/stats` with a metrics-prometheus cross-link.
 Covered by `tests/unit/test_traces_stats_docs.py`.
 
+### Grafana tier-shadow samples panel ([#689](https://github.com/naveenreddyalka/daari/issues/689))
+
+<!-- tracking:#689 -->
+**Status:** Done (2026-09-18). Overview dashboard adds **Tier shadow
+agree/disagree** on `daari_tier_shadow_samples_total`; metrics-prometheus
+intro mentions the panel. Covered by `tests/unit/test_grafana_dashboard.py`.
+
+### Contract-test boundary_decisions_total Prometheus export ([#691](https://github.com/naveenreddyalka/daari/issues/691))
+
+<!-- tracking:#691 -->
+**Status:** Done (2026-09-18). `test_boundary_decisions_counter` asserts
+`daari_boundary_decisions_total{stage,label}` in `render_prometheus()`. Covered
+by `tests/unit/test_prometheus.py`.
+
+### Grafana boundary decisions panel ([#690](https://github.com/naveenreddyalka/daari/issues/690))
+
+<!-- tracking:#690 -->
+**Status:** Done (2026-09-18). Overview dashboard adds **Boundary decisions
+by stage** on `daari_boundary_decisions_total`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+
 ---
+
+### Cross-link tier_shadow series in metrics-prometheus ([#693](https://github.com/naveenreddyalka/daari/issues/693))
+
+<!-- tracking:#693 -->
+**Status:** Done (2026-09-18). Series table row for
+`daari_tier_shadow_samples_total{agreed}` with routing-tiers link; contract
+test asserts presence. Covered by `tests/unit/test_metrics_prometheus_docs.py`.
+
+### Assert prune --help documents retention stores ([#692](https://github.com/naveenreddyalka/daari/issues/692))
+
+<!-- tracking:#692 -->
+**Status:** Done (2026-09-18). `daari prune --help` contract test asserts
+traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
+`tests/unit/test_prune_cli_help.py`.
+
+### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
+
+### Assert context clear --help documents L0/L1/CCS ([#700](https://github.com/naveenreddyalka/daari/issues/700))
+
+<!-- tracking:#700 -->
+**Status:** Done (2026-09-18). `daari context clear --help` contract test
+asserts l0, l1, and ccs appear in Typer help. Covered by
+`tests/unit/test_context_clear_cli_help.py`.
+
+
+### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
+
+<!-- tracking:#699 -->
+**Status:** Done (2026-09-18). `cli.md` documents `--model` /
+`--latency-budget-ms` for `route preview` (not `--json`). Covered by
+`tests/unit/test_cli_reference_catalog.py`.
+
+### Per-key and per-team model allowlists ([#708](https://github.com/naveenreddyalka/daari/issues/708))
+
+<!-- tracking:#708 -->
+**Status:** Done (2026-09-18). `VirtualKey` and `Team` take optional
+`allowed_models` globs plus named `model_groups` from settings. Team and key
+lists intersect. Denied gateway calls (chat, responses, embeddings, Anthropic
+messages, Ollama facade) return 403 `model_not_allowed` and an
+`auth.model_denied` audit row. Frontier fallback skips models outside the
+list. Unset keeps the previous unrestricted behavior. Covered by
+`tests/unit/test_model_allowlists.py`.
+
+### Config validate and strict nested keys ([#710](https://github.com/naveenreddyalka/daari/issues/710))
+
+<!-- tracking:#710 -->
+**Status:** Done (2026-09-18). `daari config validate` reports unknown keys
+(top-level and nested), type errors, and out-of-range values. `Settings.load`
+warns on unknown nested keys via `daari.config` and fails when
+`DAARI_STRICT_CONFIG=1` or `daari serve --strict`. `daari doctor` mentions
+them on `config_keys`. Covered by `tests/unit/test_config_validate.py`.
+
+### Per-request spend rows and chargeback export ([#709](https://github.com/naveenreddyalka/daari/issues/709))
+
+<!-- tracking:#709 -->
+**Status:** Done (2026-09-18). Opt-in `usage.spend` writes one row per completed
+request (SQLite by default, Postgres when `observability.backend` is postgres).
+`daari spend export --since --format csv|jsonl` streams rows; `spend_days`
+prunes them. Off by default, the day ledger is unchanged. Covered by
+`tests/unit/test_spend_export.py`.
+
+### Master key overlap rotation ([#711](https://github.com/naveenreddyalka/daari/issues/711))
+
+<!-- tracking:#711 -->
+**Status:** Done (2026-09-18). `server.api_key` accepts a string or a list.
+Every entry is checked with a constant-time compare. `secret://` refs resolve
+per entry. An `auth.master_key_overlap` audit row stores the count, never the
+secrets. `daari doctor` warns when more than two keys are active. Covered by
+`tests/unit/test_master_key_overlap.py`.
+
+### Responses cancel and delete ([#713](https://github.com/naveenreddyalka/daari/issues/713))
+
+<!-- tracking:#713 -->
+**Status:** Done (2026-09-18). `POST /v1/responses/{id}/cancel` is idempotent
+(in-flight background jobs stay `cancelled`; terminal objects return 200).
+`DELETE /v1/responses/{id}` removes the row so later GET is 404. Tenancy
+matches GET (cross-key 404 + audit, master can act on any row). SQLite and
+Postgres stores both implement `delete`. Covered by
+`tests/unit/test_responses_tenancy.py`, `tests/unit/test_response_store.py`,
+and `tests/unit/test_postgres_responses.py`.
+
+### Per-provider and per-tier retry/timeout ([#712](https://github.com/naveenreddyalka/daari/issues/712))
+
+<!-- tracking:#712 -->
+**Status:** Done (2026-09-18). Each `frontier.providers` entry accepts optional
+`timeout_s`, `retry_attempts`, and `retry_backoff_s`; unset fields inherit
+`upstream.frontier_timeout_seconds` / `upstream.retry`. `models.timeout_s`
+overrides the local timeout per L3/L4/L5. Failover spends one hop's budget
+then advances; one timeout does not shrink the next slot. Route preview
+returns `policy` and `chain`. Covered by
+`tests/unit/test_provider_retry_timeout.py`.
+
+### Local-first audio transcriptions ([#715](https://github.com/naveenreddyalka/daari/issues/715))
+
+<!-- tracking:#715 -->
+**Status:** Done (2026-09-18). `POST /v1/audio/transcriptions` forwards the
+OpenAI multipart form to `asr.base_url` when set. With no local ASR the route
+returns 501 unless `asr.frontier_fallback` is true, frontier is enabled, and a
+key is present. Auth, request quotas, and rate limits apply; a successful
+transcription counts as one request. Covered by
+`tests/unit/test_audio_transcriptions.py`.
+
+### Optional KEDA request-rate autoscaling ([#716](https://github.com/naveenreddyalka/daari/issues/716))
+
+<!-- tracking:#716 -->
+**Status:** Done (2026-09-18). `autoscaling.keda.enabled` (default false) renders
+a KEDA ScaledObject on `sum(rate(daari_requests_total[1m]))` with a configurable
+threshold. CPU HPA is unchanged. `minReplicaCount` above 1 is refused while
+`postgres.enabled` is false. Covered by `tests/unit/test_helm_chart.py`.
+
+### Daily request caps beside rpm ([#717](https://github.com/naveenreddyalka/daari/issues/717))
+
+<!-- tracking:#717 -->
+**Status:** Done (2026-09-19). `VirtualKey.rpd` and `Team.rpd` (0 = unlimited) use the
+existing rate-limit backends on a 86400-second UTC day window, separate from rpm.
+Key and team caps both apply; the tighter remaining counter wins. `daari keys
+create/update --rpd` and `team-create/update --rpd` persist it, and export/import
+round-trips it. A deny is 429 naming `rpd`. Covered by
+`tests/unit/test_daily_request_caps.py`.
+
+### Cross-link boundary decisions in the boundaries guide ([#702](https://github.com/naveenreddyalka/daari/issues/702))
+
+<!-- tracking:#702 -->
+**Status:** Done (2026-09-19). The boundaries guide Observe subsection links
+`daari_boundary_decisions_total` and `metrics-prometheus.md`. Covered by
+`tests/unit/test_boundaries_docs.py`.
+
+### Document escalations and errors series ([#703](https://github.com/naveenreddyalka/daari/issues/703))
+
+<!-- tracking:#703 -->
+**Status:** Done (2026-09-19). metrics-prometheus intro names the Grafana
+**Escalations & errors** panel, and the series table rows
+`daari_escalations_total` with companion `daari_errors_total`. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
+
+### Surface rpd on introspect and keys list ([#730](https://github.com/naveenreddyalka/daari/issues/730))
+
+<!-- tracking:#730 -->
+**Status:** Done (2026-09-19). `POST /introspect` includes `rpd` when the key's
+day cap is set, and `daari keys list` prints an `rpd` column. Zero stays
+omitted, matching rpm. Covered by `tests/unit/test_introspect.py` and
+`tests/unit/test_virtual_keys.py`.
+
+### Scrape team rpd remaining ([#731](https://github.com/naveenreddyalka/daari/issues/731))
+
+<!-- tracking:#731 -->
+**Status:** Done (2026-09-19). `team_rate_gauges` emits `kind="rpd"` on the
+86400-second window for teams with a day cap. Prometheus renders it next to
+rpm/tpm. Covered by `tests/unit/test_rate_limit.py` and
+`tests/unit/test_prometheus.py`.
+
+### Doctor warns when rpm has no daily cap ([#732](https://github.com/naveenreddyalka/daari/issues/732))
+
+<!-- tracking:#732 -->
+**Status:** Done (2026-09-19). `daari doctor` warns when a key or team has
+`rpm > 0` and `rpd == 0`, naming both `rpd` and the key or team. A set day
+cap, or no rpm, stays quiet. Covered by
+`tests/unit/test_doctor_soft_budget_ratio.py`.
+
+### Document rpd on keys guides ([#733](https://github.com/naveenreddyalka/daari/issues/733))
+
+<!-- tracking:#733 -->
+**Status:** Done (2026-09-19). Virtual-keys examples include `--rpd` (`0` =
+unlimited) and the config reference notes the day cap is per key/team, not a
+`rate_limit` field, with a link to the auth guide. Covered by
+`tests/unit/test_rpd_docs.py`.
+
+### Transcription model allowlists ([#739](https://github.com/naveenreddyalka/daari/issues/739))
+
+<!-- tracking:#739 -->
+**Status:** Done (2026-09-19). `POST /v1/audio/transcriptions` returns 403 `model_not_allowed` when the resolved model (`asr.model`, else the form model) is outside the key or team allowlist, and does not call the ASR upstream. Unset allowlists stay unrestricted.
+
+### Daily-cap Retry-After ([#738](https://github.com/naveenreddyalka/daari/issues/738))
+
+<!-- tracking:#738 -->
+**Status:** Done (2026-09-19). An `rpd` 429 sets `Retry-After` to the seconds until the UTC day boundary. rpm/tpm still use `rate_limit.retry_after_seconds`.
+
+### Team rpd on stats and dashboard ([#741](https://github.com/naveenreddyalka/daari/issues/741))
+
+<!-- tracking:#741 -->
+**Status:** Done (2026-09-19). `GET /v1/daari/stats` includes `team_rate_limits` (`team`, `kind`, `limit`, `remaining`), including `rpd`. The web dashboard renders one row per entry. Covered by `tests/unit/test_stats_team_rate_limits.py` and `packages/web-ui/test/dashboard.test.js`.
+
+### Doctor ASR probe ([#740](https://github.com/naveenreddyalka/daari/issues/740))
+
+<!-- tracking:#740 -->
+**Status:** Done (2026-09-19). `daari doctor` warns when `asr.base_url` is unreachable and when `asr.frontier_fallback` is set without frontier or a resolvable key. Unconfigured ASR stays quiet. Covered by `tests/unit/test_doctor_asr.py`.
+
+### Per-key rpd scrape ([#742](https://github.com/naveenreddyalka/daari/issues/742))
+
+<!-- tracking:#742 -->
+**Status:** Done (2026-09-19). Prometheus emits `daari_key_rate_limit_remaining` / `_limit` for keys with `rpd > 0`, labeled by key name. A scrape does not consume the cap. Covered by `tests/unit/test_prometheus.py`.
+
+### Per-key rpd on stats and dashboard ([#749](https://github.com/naveenreddyalka/daari/issues/749))
+
+<!-- tracking:#749 -->
+**Status:** Done (2026-09-19). `GET /v1/daari/stats` includes `key_rate_limits` for keys with `rpd > 0`. A stats read does not consume the cap. The dashboard renders one row per entry. Covered by `tests/unit/test_stats_key_rate_limits.py`.
+
+### Per-key rpd Grafana panel ([#750](https://github.com/naveenreddyalka/daari/issues/750))
+
+<!-- tracking:#750 -->
+**Status:** Done (2026-09-19). Overview Grafana charts `daari_key_rate_limit_remaining` vs `_limit` under **Key rate-limit remaining**, legend by key name and kind. Covered by `tests/unit/test_grafana_dashboard.py`.
+
+### Transcription chargeback rows ([#751](https://github.com/naveenreddyalka/daari/issues/751))
+
+<!-- tracking:#751 -->
+**Status:** Done (2026-09-19). A successful transcription writes a spend row with tier `asr` or `L6` and the caller's key and team, so chargeback export can tell local ASR from frontier fallback. Allowlist 403 and unconfigured 501 do not write a row. Covered by `tests/unit/test_audio_transcriptions.py`.
+
+### Chargeback guide names transcription tiers ([#756](https://github.com/naveenreddyalka/daari/issues/756))
+
+<!-- tracking:#756 -->
+**Status:** Done (2026-09-19). The chargeback guide states that a successful transcription exports as `asr` or `L6`, and that allowlist 403 / unconfigured 501 write no row. Covered by `tests/unit/test_chargeback_docs.py`.
+
+### Embedding chargeback rows ([#755](https://github.com/naveenreddyalka/daari/issues/755))
+
+<!-- tracking:#755 -->
+**Status:** Done (2026-09-19). `POST /v1/embeddings` writes a spend row with tier `embed` and the caller's key and team. An unknown model returns 400 and writes no row. Covered by `tests/unit/test_embeddings.py`.
+
+### Tenant cache scope ([#768](https://github.com/naveenreddyalka/daari/issues/768))
+
+<!-- tracking:#768 -->
+**Status:** Done (2026-09-19). Virtual keys and teams take an optional `cache_scope` (`global` default, `team`, `key`). Team and key scopes fold `team_id` or `key_id` into L0, Redis L0, and L1; `global` keeps today's cache hashes. Covered by `tests/unit/test_cache_scope.py`.
+
+### Embed and ASR latency ([#762](https://github.com/naveenreddyalka/daari/issues/762))
+
+<!-- tracking:#762 -->
+**Status:** Done (2026-09-19). Embedding cache misses and local or frontier transcriptions record a positive `latency_ms` on the `embed`, `asr`, and `L6` histograms. Covered by `tests/unit/test_embeddings.py` and `tests/unit/test_audio_transcriptions.py`.
+
+### Helm Ollama base URL ([#763](https://github.com/naveenreddyalka/daari/issues/763))
+
+<!-- tracking:#763 -->
+**Status:** Done (2026-09-19). `ollama.baseUrl` sets `DAARI_OLLAMA__BASE_URL` for the embedder and L1. Empty leaves the image default. Distinct from `orgPool`. Covered by `tests/unit/test_helm_chart.py`.
+
+### Doctor embed probe ([#764](https://github.com/naveenreddyalka/daari/issues/764))
+
+<!-- tracking:#764 -->
+**Status:** Done (2026-09-19). When L1 is on, `daari doctor` posts one embed request and fails the check if the endpoint errors or returns no vector. L1 off skips the probe. Covered by `tests/unit/test_doctor_embeddings.py`.
+
+### Audio upload TPM ([#765](https://github.com/naveenreddyalka/daari/issues/765))
+
+<!-- tracking:#765 -->
+**Status:** Done (2026-09-19). Multipart `POST /v1/audio/transcriptions` charges TPM from `len(file_bytes) // 4` instead of 1. JSON chat and embeddings still use the character estimate. A TPM denial is still 429 with `Retry-After`. Covered by `tests/unit/test_rate_limit.py`.
+
+### Client disconnect cancels upstream ([#769](https://github.com/naveenreddyalka/daari/issues/769))
+
+<!-- tracking:#769 -->
+**Status:** Done (2026-09-19). Non-streaming chat, Anthropic, and Responses calls cancel the router task when the client disconnects, so the executor sees `CancelledError`. Closing a stream stops the upstream generator and records `daari_cancelled_requests_total{phase}` plus a `request_cancelled` gateway event. Cancelled requests do not add a second ledger row. Covered by `tests/unit/test_client_disconnect.py`.
+
+### Selective cache invalidation ([#770](https://github.com/naveenreddyalka/daari/issues/770))
+
+<!-- tracking:#770 -->
+**Status:** Done (2026-09-19). `ExactCache` and `RedisExactCache` delete by served model or entry hash (Redis `DELETE`, not a no-op). L1 filters on `context_key` / `answer_hash`. `POST /v1/daari/cache/invalidate` and `daari cache invalidate` return removed counts and log `cache_invalidate`. Redis `daari cache prune` says expiry is TTL and does not scan. Covered by `tests/unit/test_cache_invalidate.py`.
+
+### Request log retention ([#772](https://github.com/naveenreddyalka/daari/issues/772))
+
+<!-- tracking:#772 -->
+**Status:** Done (2026-09-19). `observability.retention.request_log_days` (default 0) folds `cursor-requests.log` into `prune_all`. Rotated backups that are entirely old are deleted; the active file keeps newer lines. `daari prune` prints a `request_log` line. Covered by `tests/unit/test_retention.py`.
+
+### Request deadline across hops ([#771](https://github.com/naveenreddyalka/daari/issues/771))
+
+<!-- tracking:#771 -->
+**Status:** Done (2026-09-19). Optional `X-Daari-Deadline-Ms` (wins) and `upstream.request_deadline_seconds` bound the escalation chain. Each upstream call uses `min(tier timeout, remaining)`; a spent budget returns 504 naming the deadline, records `daari_request_deadline_exceeded_total`, and does not call frontier. Streaming applies the budget to time-to-first-token only. Covered by `tests/unit/test_request_deadline.py`.
+
+### Helm local ASR base URL ([#757](https://github.com/naveenreddyalka/daari/issues/757))
+
+<!-- tracking:#757 -->
+**Status:** Done (2026-09-19). `asr.baseUrl` (empty by default) sets `DAARI_ASR__BASE_URL` on the Deployment when non-empty, so a cluster can point transcriptions at an on-box whisper/vLLM server. Covered by `tests/unit/test_helm_chart.py`.
+
+### Audio translations ([#758](https://github.com/naveenreddyalka/daari/issues/758))
+
+<!-- tracking:#758 -->
+**Status:** Done (2026-09-19). `POST /v1/audio/translations` forwards multipart audio to `{asr.base_url}/audio/translations` and returns JSON `text`. Unconfigured ASR is 501 with no upload; `response_format` other than `json` is 400. Covered by `tests/unit/test_audio_translations.py`.
+
+### Batch Ollama embeddings ([#766](https://github.com/naveenreddyalka/daari/issues/766))
+
+<!-- tracking:#766 -->
+**Status:** Done (2026-09-20). Cache-miss list inputs go out as one `POST /api/embed` with `input` string[]; L0 hits stay off the wire. Single-string embed is a batch of one. A 404 on `/api/embed` falls back to per-string `/api/embeddings`. Covered by `tests/unit/test_embed_batch.py`.
+
+### Helm request deadline and log retention ([#786](https://github.com/naveenreddyalka/daari/issues/786))
+
+<!-- tracking:#786 -->
+**Status:** Done (2026-09-20). `upstream.requestDeadlineSeconds` and `observability.retention.requestLogDays` set `DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS` and `DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS` when non-empty. Defaults omit both. Covered by `tests/unit/test_helm_chart.py`.
+
+### Cancel embed and ASR on disconnect ([#787](https://github.com/naveenreddyalka/daari/issues/787))
+
+<!-- tracking:#787 -->
+**Status:** Done (2026-09-20). Embeddings and audio transcription/translation wrap upstream work in `await_unless_disconnected` and return 499 with `daari_cancelled_requests_total{phase=embed|asr|translation}`. Covered by `tests/unit/test_client_disconnect.py`.
+
+### Grafana cancelled and deadline panels ([#788](https://github.com/naveenreddyalka/daari/issues/788))
+
+<!-- tracking:#788 -->
+**Status:** Done (2026-09-20). Overview dashboard charts `daari_cancelled_requests_total` by phase and `daari_request_deadline_exceeded_total`; metrics docs list the deadline series. Covered by `tests/unit/test_grafana_dashboard.py`.
+
+### Cache invalidate by team or key scope ([#790](https://github.com/naveenreddyalka/daari/issues/790))
+
+<!-- tracking:#790 -->
+**Status:** Done (2026-09-20). L0 `put` persists optional `scope` (`team:<id>` /
+`key:<id>`); `invalidate(team_id=…)` / `invalidate(key_id=…)` drop matching L0
+rows and L1 rows whose `context_key` contains that segment. CLI
+`--team` / `--key` and admin `team_id` / `key_id` wired. Covered by
+`tests/unit/test_cache_invalidate.py`.
+
+### Ollama /api/show thinking controls ([#789](https://github.com/naveenreddyalka/daari/issues/789))
+
+<!-- tracking:#789 -->
+**Status:** Done (2026-09-20). When facade capabilities include `thinking`,
+`POST /api/show` also returns `thinking: {values, default}` with levels
+`low`/`medium`/`high` (aligned with `ollama_think`; no `max`). Plain models
+omit the object; `/api/tags` stays capability-string-only. Covered by
+`tests/unit/test_ollama_show_thinking.py`.
+
+### Cancel MCP tools/call on disconnect ([#798](https://github.com/naveenreddyalka/daari/issues/798))
+
+<!-- tracking:#798 -->
+**Status:** Done (2026-09-20). Router-backed MCP `tools/call` and legacy
+`/v1/mcp/query` wrap work in `await_unless_disconnected` (phase `mcp`) and
+return 499 on disconnect. Background MCP tasks stay unwrapped. Covered by
+`tests/unit/test_client_disconnect.py`.
+
+### Audio translation TPM uses upload bytes ([#796](https://github.com/naveenreddyalka/daari/issues/796))
+
+<!-- tracking:#796 -->
+**Status:** Done (2026-09-20). Multipart `POST /v1/audio/translations` charges
+TPM from `len(file_bytes) // 4` like transcriptions; chat/embeddings stay on
+the character estimate. Covered by `tests/unit/test_rate_limit.py`.
+
+### Document cache invalidate --team/--key and refresh http-api ([#800](https://github.com/naveenreddyalka/daari/issues/800))
+
+<!-- tracking:#800 -->
+**Status:** Done (2026-09-20). `org-cache.md` documents `--team` / `--key` and
+admin `team_id` / `key_id`. Regenerated `http-api.md` lists
+`POST /v1/audio/translations` and `POST /v1/daari/cache/invalidate`. Covered by
+`tests/unit/test_gen_reference.py`.
+
+### Document request deadline header and config ([#799](https://github.com/naveenreddyalka/daari/issues/799))
+
+<!-- tracking:#799 -->
+**Status:** Done (2026-09-20). `headers.md` documents `X-Daari-Deadline-Ms`
+(504 / `request_deadline_exceeded`; stream = TTFT-only). `config.md` lists
+`upstream.request_deadline_seconds`. Covered by `tests/unit/test_deadline_docs.py`.
+
+### Distinct chargeback tier for audio translations ([#807](https://github.com/naveenreddyalka/daari/issues/807))
+
+<!-- tracking:#807 -->
+**Status:** Done (2026-09-20). Local `/v1/audio/translations` spend/ledger
+rows use tier `translation` (frontier stays `L6`); transcriptions stay `asr`.
+Chargeback guide updated. Covered by `tests/unit/test_audio_translations.py`.
+
+### Redis L0 age prune when TTL is off ([#806](https://github.com/naveenreddyalka/daari/issues/806))
+
+<!-- tracking:#806 -->
+**Status:** Done (2026-09-20). When `cache.l0.ttl_seconds == 0`, Redis L0
+`prune` deletes keys whose stored `t` is older than 7 days; when TTL is on,
+prune stays no-scan. CLI reports the count. Covered by
+`tests/unit/test_redis_cache.py`.
+
+### Hermetic happy-path chat leaves cancel counter at zero ([#808](https://github.com/naveenreddyalka/daari/issues/808))
+
+<!-- tracking:#808 -->
+**Status:** Done (2026-09-20). Non-stream `/v1/chat/completions` with a fast
+executor returns 200 and does not increment `daari_cancelled_requests_total`
+for phase `chat`. Covered by `tests/unit/test_client_disconnect.py`.
+
+### Request deadline on audio and embeddings ([#814](https://github.com/naveenreddyalka/daari/issues/814))
+
+<!-- tracking:#814 -->
+**Status:** Done (2026-09-20). `X-Daari-Deadline-Ms` (and
+`upstream.request_deadline_seconds`) binds on `/v1/audio/transcriptions`,
+`/v1/audio/translations`, and `/v1/embeddings`; upstream httpx timeouts use
+`nonstream_timeout` / remaining budget. Exhaustion returns 504
+`request_deadline_exceeded` and increments `daari_request_deadline_exceeded_total`.
+Covered by `tests/unit/test_request_deadline.py`.
+
+### Request deadline on Ollama facade ([#815](https://github.com/naveenreddyalka/daari/issues/815))
+
+<!-- tracking:#815 -->
+**Status:** Done (2026-09-20). `/api/chat` and `/api/generate` accept
+`X-Daari-Deadline-Ms` into `RequestMeta.deadline_ms` so the router binds the
+same wall-clock budget as OpenAI chat. Already-spent budgets return 504 before
+NDJSON streaming starts. Covered by `tests/unit/test_request_deadline.py`.
+
+### Daemon cache invalidate Bearer under SSO ([#816](https://github.com/naveenreddyalka/daari/issues/816))
+
+<!-- tracking:#816 -->
+**Status:** Done (2026-09-20). `daari cache invalidate` sends
+`Authorization: Bearer` (master key or `--token`) when SSO admin gate is
+active; missing credentials yield a clear "SSO token required" error.
+Covered by `tests/unit/test_cache_invalidate.py`.
+
+### Config validate ASR frontier_fallback ([#817](https://github.com/naveenreddyalka/daari/issues/817))
+
+<!-- tracking:#817 -->
+**Status:** Done (2026-09-20). `daari config validate` reports when
+`asr.frontier_fallback` is true but frontier is disabled or no API key
+resolves (empty `asr.base_url` — fallback-only path). Covered by
+`tests/unit/test_config_validate.py`.
+
+### Request deadline on MCP tools/call ([#827](https://github.com/naveenreddyalka/daari/issues/827))
+
+<!-- tracking:#827 -->
+**Status:** Done (2026-09-20). MCP `tools/call` (JSON-RPC `/mcp` and legacy
+query) binds `X-Daari-Deadline-Ms` before tool execution; exhaustion returns
+504 `request_deadline_exceeded`. Covered by `tests/unit/test_mcp_server.py`.
+
+### Docs: deadline header on audio and embeddings ([#824](https://github.com/naveenreddyalka/daari/issues/824))
+
+<!-- tracking:#824 -->
+**Status:** Done (2026-09-20). `docs/developer/reference/headers.md` lists
+audio transcriptions/translations and embeddings among
+`X-Daari-Deadline-Ms` surfaces. Covered by `tests/unit/test_deadline_docs.py`.
+
+### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+### Spend export --tier filter ([#818](https://github.com/naveenreddyalka/daari/issues/818))
+
+<!-- tracking:#818 -->
+**Status:** Done (2026-09-20). `daari spend export --tier` filters chargeback
+rows by the ledger `tier` column (combinable with `--key` / `--team`). Covered
+by `tests/unit/test_spend_export.py`.
+
+### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
+### Batch RPM/TPM/RPD + tenant meta on drain ([#840](https://github.com/naveenreddyalka/daari/issues/840))
+
+<!-- tracking:#840 -->
+**Status:** Done (2026-09-20). Batch drain charges virtual-key RPM/TPM/RPD
+(and team caps), copies `key_id` / `team_id` / `cache_scope` onto item
+`RequestMeta`, and records structured 429 / 403 item failures for rate
+limit and model allowlist denials. Master / no-auth batches stay open.
+Covered by `tests/unit/test_batches.py`.
+
+### Helm master key, rate limits, frontier ([#842](https://github.com/naveenreddyalka/daari/issues/842))
+
+<!-- tracking:#842 -->
+**Status:** Done (2026-09-20). Chart values `server.apiKeySecret`,
+`rateLimit.*`, and `frontier.*` wire `DAARI_SERVER__API_KEY`,
+`DAARI_RATE_LIMIT__*`, and frontier enable/secret env; NOTES and
+capacity-helm document multi-replica combos. Covered by
+`tests/unit/test_helm_chart.py`.
+
+### MCP virtual-key governance on tools/call ([#839](https://github.com/naveenreddyalka/daari/issues/839))
+
+<!-- tracking:#839 -->
+**Status:** Done (2026-09-20). MCP `tools/call` (route + provider execute)
+applies `apply_auth_claims_to_meta` so virtual keys carry `tier_cap`,
+`cache_scope`, `key_id`, and `team_id`; disallowed models return the same
+403 `model_not_allowed` shape and audit rows as chat; spend and L0 cache
+scope follow the key. Covered by `tests/unit/test_mcp_vk_governance.py`.
+
+### Embedding L0 honors cache_scope ([#841](https://github.com/naveenreddyalka/daari/issues/841))
+
+<!-- tracking:#841 -->
+**Status:** Done (2026-09-20). `POST /v1/embeddings` and Ollama `/api/embed`
+apply virtual-key `cache_scope` / `key_id` / `team_id` to embed L0 keys so
+scoped tenants do not share vectors; `daari cache invalidate --key/--team`
+removes those entries. Covered by `tests/unit/test_embeddings.py`.
 
 ## How to update
 
@@ -3173,4 +3688,25 @@ Covered by `tests/unit/test_traces_stats_docs.py`.
 2. Refresh **Last updated** and pytest count after test changes.
 3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
 4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
-5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
+5. Append a new `###` section **above** `### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+5. Append a new `###` section **above** `### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
+## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.

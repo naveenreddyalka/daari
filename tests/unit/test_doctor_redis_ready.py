@@ -131,6 +131,10 @@ class TestDoctorReady:
             raise AssertionError(f"unexpected url {url}")
 
         mock.get.side_effect = get_side_effect
+        embed = MagicMock()
+        embed.status_code = 200
+        embed.json.return_value = {"embedding": [0.1, 0.2]}
+        mock.post.return_value = embed
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
         assert by_name["redis"].ok is True

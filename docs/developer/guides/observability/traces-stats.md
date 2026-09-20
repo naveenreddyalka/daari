@@ -20,12 +20,15 @@ Web UI: `daari web-ui serve` → `http://127.0.0.1:11437`.
 The same payload includes `soft_warnings` and `rejects` kind maps (cliff
 pressure before and after the soft band) — the Prometheus counterparts are
 documented in [metrics-prometheus.md](metrics-prometheus.md).
+`team_rate_limits` lists each team's `rpm`, `tpm`, and `rpd` remaining
+(`team`, `kind`, `limit`, `remaining`); it is `[]` when no team has a ceiling.
+`key_rate_limits` is the same shape for virtual keys with `rpd > 0` (`key` is the name, never the secret) and is `[]` otherwise.
 Each `tiers.*` entry may include optional `p50_ms` / `p95_ms` from the
 latency histogram (absent when that tier has no samples).
 
 ## Retention
 
-Traces, the usage ledger, the audit log, shadow-check tables, and MCP task
+Traces, the usage ledger, per-request spend rows, the audit log, shadow-check tables, and MCP task
 handles grow without bound unless you set a window. Defaults are **0 days
 (keep forever)** so an upgrade never deletes data.
 
@@ -34,6 +37,7 @@ observability:
   retention:
     traces_days: 30
     ledger_days: 90
+    spend_days: 90
     audit_days: 365
     shadow_days: 30
     tasks_days: 7

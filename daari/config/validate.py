@@ -8,7 +8,12 @@ into `ConfigValidationError` so HTTP callers stay on 400, not 500.
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+import os
+from types import UnionType
+from typing import Any, get_args, get_origin
+
+from pydantic import BaseModel, ValidationError
 
 from daari.config.settings import BoundariesSettings
 
@@ -105,3 +110,133 @@ def merged_boundaries(
         return BoundariesSettings.model_validate(merged)
     except Exception as exc:
         raise ConfigValidationError(f"invalid boundaries patch: {exc}") from exc
+
+
+logger = logging.getLogger("daari.config")
+
+_MISSING = object()
+
+
+def strict_config_enabled(flag: bool | None = None) -> bool:
+    """True when `--strict` or `DAARI_STRICT_CONFIG=1` is set."""
+    if flag:
+        return True
+    raw = os.environ.get("DAARI_STRICT_CONFIG", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _unwrap(annotation: Any) -> Any:
+    origin = get_origin(annotation)
+    if origin in (UnionType,) or str(origin) == "typing.Union":
+        args = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(args) == 1:
+            return _unwrap(args[0])
+    return annotation
+
+
+def _is_model(annotation: Any) -> bool:
+    return isinstance(annotation, type) and issubclass(annotation, BaseModel)
+
+
+def unknown_config_keys(data: Any, model: type[BaseModel], prefix: str = "") -> list[str]:
+    """Dotted paths present in `data` but absent from `model` (nested included)."""
+    if not isinstance(data, dict):
+        return []
+    found: list[str] = []
+    fields = model.model_fields
+    for key, value in data.items():
+        path = f"{prefix}{key}"
+        if key not in fields:
+            found.append(path)
+            continue
+        annotation = _unwrap(fields[key].annotation)
+        origin = get_origin(annotation)
+        if _is_model(annotation):
+            found.extend(unknown_config_keys(value, annotation, prefix=f"{path}."))
+            continue
+        if origin is dict and isinstance(value, dict):
+            args = get_args(annotation)
+            value_type = _unwrap(args[1]) if len(args) == 2 else None
+            if _is_model(value_type):
+                for subkey, subval in value.items():
+                    found.extend(
+                        unknown_config_keys(subval, value_type, prefix=f"{path}.{subkey}.")
+                    )
+            continue
+        if origin is list and isinstance(value, list):
+            args = get_args(annotation)
+            item_type = _unwrap(args[0]) if args else None
+            if _is_model(item_type):
+                for index, item in enumerate(value):
+                    found.extend(
+                        unknown_config_keys(item, item_type, prefix=f"{path}.{index}.")
+                    )
+    return found
+
+
+def strict_unknown_error(keys: list[str]) -> ValidationError:
+    return ValidationError.from_exception_data(
+        "Settings",
+        [
+            {
+                "type": "extra_forbidden",
+                "loc": tuple(key.split(".")),
+                "input": None,
+            }
+            for key in keys
+        ],
+    )
+
+
+def apply_unknown_key_policy(keys: list[str], *, strict: bool | None = None) -> None:
+    """Warn by default; raise when strict mode is on. Never prints."""
+    if not keys:
+        return
+    if strict_config_enabled(strict):
+        raise strict_unknown_error(keys)
+    logger.warning("unknown config keys: %s", ", ".join(keys))
+
+
+def asr_frontier_fallback_findings(settings: Any) -> list[str]:
+    """Cross-check ``asr.frontier_fallback`` against frontier wiring (#817)."""
+    asr = getattr(settings, "asr", None)
+    if asr is None or not bool(getattr(asr, "frontier_fallback", False)):
+        return []
+    frontier = getattr(settings, "frontier", None)
+    if frontier is None or not bool(getattr(frontier, "enabled", False)):
+        return ["asr.frontier_fallback is true but frontier.enabled is false"]
+    base = str(getattr(asr, "base_url", "") or "").strip()
+    if base:
+        return []
+    # Empty base_url: fallback is the only ASR path — mirror doctor.
+    try:
+        from daari.gateway.transcriptions import resolve_asr_target
+
+        target = resolve_asr_target(settings)
+    except Exception:  # noqa: BLE001 — validate must stay side-effect light
+        target = None
+    if target is None or not getattr(target, "api_key", None):
+        return ["asr.frontier_fallback is true but no frontier API key resolves"]
+    return []
+
+
+def config_findings(user: dict[str, Any], merged: dict[str, Any], model: type[BaseModel]) -> list[str]:
+    """Unknown keys plus type / range errors. Used by `daari config validate`."""
+    findings = [f"unknown key: {key}" for key in unknown_config_keys(user, model)]
+    settings: BaseModel | None = None
+    try:
+        settings = model.model_validate(merged)
+    except ValidationError as exc:
+        known = {item.removeprefix("unknown key: ") for item in findings}
+        for err in exc.errors():
+            loc = ".".join(str(part) for part in err.get("loc", ()))
+            if err.get("type") == "extra_forbidden":
+                label = f"unknown key: {loc}" if loc else "unknown key"
+                if loc not in known and label not in findings:
+                    findings.append(label)
+                continue
+            where = loc or "<root>"
+            findings.append(f"{where}: {err.get('msg', 'invalid')}")
+    if settings is not None:
+        findings.extend(asr_frontier_fallback_findings(settings))
+    return findings

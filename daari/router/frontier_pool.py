@@ -18,7 +18,7 @@ from daari.gateway.internal import InternalRequest, InternalResponse
 from daari.gateway.provider_prefs import filter_slots_for_region, require_region_slot, require_zdr_slot
 from daari.observability.trace import add_step
 from daari.router.circuit_breaker import CircuitBreaker
-from daari.router.retry import RetryPolicy, is_retryable, status_of
+from daari.router.retry import RetryPolicy, is_retryable, resolve_upstream_policy, status_of
 from daari.router.frontier import FrontierExecutor
 from daari.security.secret_refs import SecretRefError, current_secret
 
@@ -99,6 +99,28 @@ class FrontierPool:
         region_pin = getattr(request.meta, "region_pin", None)
         require_region_slot(region_pin, slots)
         slots = filter_slots_for_region(region_pin, slots)
+        from daari.auth.model_access import model_permitted
+
+        key_patterns = getattr(request.meta, "key_model_patterns", None)
+        team_patterns = getattr(request.meta, "team_model_patterns", None)
+        if key_patterns is not None or team_patterns is not None:
+            allowed_slots = []
+            for slot in slots:
+                model_name = getattr(getattr(slot, "executor", None), "default_model", "") or ""
+                if model_permitted(
+                    model_name,
+                    key_patterns=key_patterns,
+                    team_patterns=team_patterns,
+                ):
+                    allowed_slots.append(slot)
+                else:
+                    add_step(
+                        "frontier_skip",
+                        provider=slot.id,
+                        reason="model_allowlist",
+                        model=model_name,
+                    )
+            slots = allowed_slots
 
         errors: list[str] = []
         for slot in slots:
@@ -131,6 +153,9 @@ class FrontierPool:
                 key_fingerprint=key[-4:] if len(key) >= 4 else "****",
             )
             try:
+                from daari.router.deadline import RequestDeadlineExceeded, guard_upstream
+
+                guard_upstream("L6")
                 response = await slot.executor.execute(
                     request,
                     escalated_from=escalated_from,
@@ -143,6 +168,8 @@ class FrontierPool:
                 if slot.region:
                     response.daari_meta.region = slot.region
                 return response
+            except RequestDeadlineExceeded:
+                raise
             except Exception as exc:  # noqa: BLE001 — try next provider
                 # The executor has already spent its retry budget on transient
                 # failures, so reaching here means this provider is genuinely
@@ -166,12 +193,36 @@ class FrontierPool:
         )
 
 
-def build_frontier_pool(settings: Any) -> FrontierPool:
-    """Build a pool from FrontierSettings.providers, falling back to scalars."""
-    frontier = settings.frontier
+def _global_frontier_policy(settings: Any) -> tuple[float, RetryPolicy | None]:
     upstream = getattr(settings, "upstream", None)
     retry = RetryPolicy.from_settings(upstream.retry) if upstream else None
     timeout = getattr(upstream, "frontier_timeout_seconds", 90.0) if upstream else 90.0
+    return timeout, retry
+
+
+def _entry_frontier_policy(settings: Any, entry: Any) -> tuple[float, RetryPolicy | None]:
+    default_timeout, default_retry = _global_frontier_policy(settings)
+    upstream = getattr(settings, "upstream", None)
+    retry_settings = getattr(upstream, "retry", None) if upstream else None
+    if (
+        getattr(entry, "timeout_s", None) is None
+        and getattr(entry, "retry_attempts", None) is None
+        and getattr(entry, "retry_backoff_s", None) is None
+    ):
+        return default_timeout, default_retry
+    return resolve_upstream_policy(
+        retry_settings,
+        default_timeout=default_timeout,
+        timeout_s=getattr(entry, "timeout_s", None),
+        retry_attempts=getattr(entry, "retry_attempts", None),
+        retry_backoff_s=getattr(entry, "retry_backoff_s", None),
+    )
+
+
+def build_frontier_pool(settings: Any) -> FrontierPool:
+    """Build a pool from FrontierSettings.providers, falling back to scalars."""
+    frontier = settings.frontier
+    timeout, retry = _global_frontier_policy(settings)
     providers = list(getattr(frontier, "providers", None) or [])
     if not providers:
         # Single-provider shorthand (pre-#109 config).
@@ -199,14 +250,15 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             shared = settings.resolve_frontier_api_key()
             if shared:
                 keys = [shared]
+        entry_timeout, entry_retry = _entry_frontier_policy(settings, entry)
         executor = FrontierExecutor(
             base_url=entry.base_url.rstrip("/"),
             default_model=entry.model,
             api_key=keys[0] if keys else None,
             provider=entry.id,
             prompt_cache=frontier.prompt_cache,
-            timeout=timeout,
-            retry=retry,
+            timeout=entry_timeout,
+            retry=entry_retry,
         )
         slots.append(
             ProviderSlot(

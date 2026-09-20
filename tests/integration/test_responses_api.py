@@ -282,6 +282,25 @@ async def test_store_false_is_not_retrievable(settings):
 
 
 @pytest.mark.asyncio
+async def test_cancel_completed_is_idempotent_and_delete_404s(settings):
+    app = _app(settings)
+    _mock_route(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        created = await client.post("/v1/responses", json={"model": "daari", "input": "keep me"})
+        rid = created.json()["id"]
+        first = await client.post(f"/v1/responses/{rid}/cancel")
+        second = await client.post(f"/v1/responses/{rid}/cancel")
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["status"] == "completed"
+        assert second.json()["status"] == "completed"
+        deleted = await client.delete(f"/v1/responses/{rid}")
+        assert deleted.status_code == 200
+        assert deleted.json()["deleted"] is True
+        assert (await client.get(f"/v1/responses/{rid}")).status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_stored_response_is_retrievable(settings):
     app = _app(settings)
     _mock_route(app)

@@ -31,6 +31,7 @@ def render_prometheus(
     backend_pool: dict[str, Any] | None = None,
     team_budgets: list[dict[str, Any]] | None = None,
     team_rate_limits: list[dict[str, Any]] | None = None,
+    key_rate_limits: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -62,6 +63,14 @@ def render_prometheus(
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
+    lines.append(
+        "# HELP daari_request_deadline_exceeded_total "
+        "Requests that hit the wall-clock deadline before a tier succeeded."
+    )
+    lines.append("# TYPE daari_request_deadline_exceeded_total counter")
+    lines.append(
+        f"daari_request_deadline_exceeded_total {snap.get('deadline_exhausted', 0)}"
+    )
 
     lines.append(
         "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "
@@ -152,9 +161,7 @@ def render_prometheus(
             )
 
     if team_budgets:
-        lines.append(
-            "# HELP daari_team_budget_remaining_usd Team USD budget remaining by window."
-        )
+        lines.append("# HELP daari_team_budget_remaining_usd Team USD budget remaining by window.")
         lines.append("# TYPE daari_team_budget_remaining_usd gauge")
         lines.append("# HELP daari_team_budget_limit_usd Team USD budget limit by window.")
         lines.append("# TYPE daari_team_budget_limit_usd gauge")
@@ -167,8 +174,7 @@ def render_prometheus(
             window = str(row.get("window") or "day")
             labels = _labels(team=team, window=window)
             lines.append(
-                f"daari_team_budget_remaining_usd{labels} "
-                f"{float(row.get('remaining_usd') or 0.0)}"
+                f"daari_team_budget_remaining_usd{labels} {float(row.get('remaining_usd') or 0.0)}"
             )
             lines.append(
                 f"daari_team_budget_limit_usd{labels} {float(row.get('limit_usd') or 0.0)}"
@@ -215,12 +221,10 @@ def render_prometheus(
 
     if team_rate_limits:
         lines.append(
-            "# HELP daari_team_rate_limit_remaining Team RPM/TPM remaining in the current window."
+            "# HELP daari_team_rate_limit_remaining Team RPM/TPM/RPD remaining in the current window."
         )
         lines.append("# TYPE daari_team_rate_limit_remaining gauge")
-        lines.append(
-            "# HELP daari_team_rate_limit_limit Configured team RPM/TPM ceilings."
-        )
+        lines.append("# HELP daari_team_rate_limit_limit Configured team RPM/TPM/RPD ceilings.")
         lines.append("# TYPE daari_team_rate_limit_limit gauge")
         for row in team_rate_limits:
             team = str(row.get("team") or "unknown")
@@ -229,9 +233,21 @@ def render_prometheus(
             lines.append(
                 f"daari_team_rate_limit_remaining{labels} {int(row.get('remaining') or 0)}"
             )
-            lines.append(
-                f"daari_team_rate_limit_limit{labels} {int(row.get('limit') or 0)}"
-            )
+            lines.append(f"daari_team_rate_limit_limit{labels} {int(row.get('limit') or 0)}")
+
+    if key_rate_limits:
+        lines.append(
+            "# HELP daari_key_rate_limit_remaining Virtual-key RPD remaining in the current UTC day."
+        )
+        lines.append("# TYPE daari_key_rate_limit_remaining gauge")
+        lines.append("# HELP daari_key_rate_limit_limit Configured virtual-key RPD ceilings.")
+        lines.append("# TYPE daari_key_rate_limit_limit gauge")
+        for row in key_rate_limits:
+            key = str(row.get("key") or "unknown")
+            kind = str(row.get("kind") or "rpd")
+            labels = _labels(key=key, kind=kind)
+            lines.append(f"daari_key_rate_limit_remaining{labels} {int(row.get('remaining') or 0)}")
+            lines.append(f"daari_key_rate_limit_limit{labels} {int(row.get('limit') or 0)}")
 
     pool = backend_pool or {}
     backends = list(pool.get("backends") or [])
@@ -317,6 +333,17 @@ def render_prometheus(
             tool, _, outcome = str(key).partition(":")
             lines.append(
                 f"daari_mcp_tool_calls_total{_labels(tool=tool, outcome=outcome)} {int(count)}"
+            )
+
+    cancelled = snap.get("cancelled") or {}
+    if cancelled:
+        lines.append(
+            "# HELP daari_cancelled_requests_total Client-abandoned requests, by phase."
+        )
+        lines.append("# TYPE daari_cancelled_requests_total counter")
+        for phase, count in sorted(cancelled.items()):
+            lines.append(
+                f"daari_cancelled_requests_total{_labels(phase=phase)} {int(count)}"
             )
 
     return "\n".join(lines) + "\n"

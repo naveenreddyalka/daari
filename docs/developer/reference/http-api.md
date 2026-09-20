@@ -19,6 +19,8 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/mcp` | Mcp Jsonrpc |
 | `GET` | `/metrics` | Prometheus Metrics |
 | `GET` | `/ready` | Ready |
+| `POST` | `/v1/audio/transcriptions` | Audio Transcriptions |
+| `POST` | `/v1/audio/translations` | Audio Translations |
 | `GET` | `/v1/batches` | List Batches |
 | `POST` | `/v1/batches` | Create Batch |
 | `GET` | `/v1/batches/{batch_id}` | Retrieve Batch |
@@ -26,6 +28,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `GET` | `/v1/daari/audit` | Daari Audit List |
 | `GET` | `/v1/daari/cache/diversity` | Daari Cache Diversity |
+| `POST` | `/v1/daari/cache/invalidate` | Daari Cache Invalidate |
 | `GET` | `/v1/daari/config` | Daari Config Get |
 | `PATCH` | `/v1/daari/config` | Daari Config Patch |
 | `POST` | `/v1/daari/feedback` | Daari Feedback |
@@ -53,4 +56,6 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/org-learning/sync` | Org Learning Sync |
 | `POST` | `/v1/responses` | Responses |
 | `POST` | `/v1/responses/input_tokens` | Input Tokens |
+| `DELETE` | `/v1/responses/{response_id}` | Delete Response |
 | `GET` | `/v1/responses/{response_id}` | Get Response |
+| `POST` | `/v1/responses/{response_id}/cancel` | Cancel Response |

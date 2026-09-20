@@ -15,7 +15,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.content import content_to_text, extract_images
 from daari.gateway.embeddings_api import (
@@ -25,6 +25,7 @@ from daari.gateway.embeddings_api import (
 )
 from daari.gateway.internal import ContentImage, InternalRequest, Message, RequestMeta
 from daari.gateway.sampling import SamplingParams
+from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected, note_request_cancelled
 from daari.gateway.streaming import NDJSON_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable
@@ -197,6 +198,28 @@ def _resolve_model(client_model: str, ctx: AppContext) -> str:
     return client_model if client_model != "daari" else ctx.settings.models.l3
 
 
+def _enforce_ollama_model(request: Request, ctx: AppContext, meta: RequestMeta, *models: str):
+    """Bind virtual-key allowlists and 403 if any candidate model is outside them."""
+    from daari.gateway.model_access import reject_disallowed_model
+    from daari.server.auth import apply_auth_claims_to_meta
+
+    apply_auth_claims_to_meta(
+        meta,
+        getattr(request.state, "auth_claims", None),
+        model_groups=getattr(ctx.settings, "model_groups", None),
+    )
+    seen: set[str] = set()
+    for model in models:
+        name = (model or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        denied = reject_disallowed_model(request, name, ctx.settings, meta)
+        if denied is not None:
+            return denied
+    return None
+
+
 class OllamaCompatGatewayAdapter(GatewayAdapter):
     id = "ollama-compat"
 
@@ -230,13 +253,14 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
         @router.post("/api/show")
         async def show(request: Request, body: dict[str, Any]) -> dict[str, Any]:
+            from daari.gateway.sampling import ollama_thinking_controls
             from daari.router.capabilities import ollama_facade_capabilities_for_name
 
             ctx: AppContext = request.app.state.ctx
             name = str(body.get("model") or body.get("name") or "daari")
             caps = ollama_facade_capabilities_for_name(name, ctx.settings)
             entry = _model_entry(name, capabilities=caps)
-            return {
+            payload: dict[str, Any] = {
                 "modelfile": f"# daari virtual model: {name}",
                 "parameters": "",
                 "template": "",
@@ -244,6 +268,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 "model_info": {"general.architecture": "daari-router"},
                 "capabilities": caps,
             }
+            # Ollama ≥0.34.3 advertises think levels only on show (#789).
+            if "thinking" in caps:
+                payload["thinking"] = ollama_thinking_controls()
+            return payload
 
         async def _stream_ndjson(
             ctx: AppContext,
@@ -262,6 +290,9 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                         ctx.router.stream_openai_chunks(internal),
                         interval_seconds=ctx.settings.server.sse_keepalive_seconds,
                         frame=NDJSON_KEEPALIVE_FRAME,
+                        on_cancel=lambda: note_request_cancelled(
+                            ctx.metrics, "stream", model=client_model
+                        ),
                     ):
                         if sse_chunk == NDJSON_KEEPALIVE_FRAME:
                             yield sse_chunk
@@ -295,6 +326,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     },
                 )
             except Exception as exc:
+                from daari.router.deadline import RequestDeadlineExceeded
+
+                if isinstance(exc, RequestDeadlineExceeded):
+                    return request_deadline_response(exc)
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
@@ -303,9 +338,19 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             body: OllamaChatRequest,
             request: Request,
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
         ) -> Any:
+            from daari.router.deadline import (
+                RequestDeadlineExceeded,
+                bind_request_deadline,
+                guard_upstream,
+                parse_deadline_ms,
+                resolve_deadline_seconds,
+            )
+
             ctx: AppContext = request.app.state.ctx
             client_model = body.model or "daari"
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
             internal = InternalRequest(
                 messages=[
                     Message(
@@ -325,11 +370,29 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 model=_resolve_model(client_model, ctx),
                 temperature=_temperature_from_options(body.options),
                 stream=body.stream,
-                meta=RequestMeta(client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip()),
+                meta=RequestMeta(
+                    client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip(),
+                    deadline_ms=deadline_ms,
+                ),
                 sampling=SamplingParams.from_ollama_options(body.options),
             )
+            denied = _enforce_ollama_model(
+                request, ctx, internal.meta, client_model, internal.model
+            )
+            if denied is not None:
+                return denied
 
             if body.stream:
+                seconds = resolve_deadline_seconds(
+                    deadline_ms,
+                    getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+                )
+                if seconds is not None and seconds <= 0:
+                    try:
+                        with bind_request_deadline(seconds, metrics=ctx.metrics):
+                            guard_upstream("stream")
+                    except RequestDeadlineExceeded as exc:
+                        return request_deadline_response(exc)
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_chat_line)
 
             result = await _route_non_stream(ctx, internal)
@@ -344,9 +407,19 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             body: OllamaGenerateRequest,
             request: Request,
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
         ) -> Any:
+            from daari.router.deadline import (
+                RequestDeadlineExceeded,
+                bind_request_deadline,
+                guard_upstream,
+                parse_deadline_ms,
+                resolve_deadline_seconds,
+            )
+
             ctx: AppContext = request.app.state.ctx
             client_model = body.model or "daari"
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
             messages: list[Message] = []
             if body.system:
                 messages.append(Message(role="system", content=body.system))
@@ -367,11 +440,29 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 model=_resolve_model(client_model, ctx),
                 temperature=_temperature_from_options(body.options),
                 stream=body.stream,
-                meta=RequestMeta(client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip()),
+                meta=RequestMeta(
+                    client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip(),
+                    deadline_ms=deadline_ms,
+                ),
                 sampling=SamplingParams.from_ollama_options(options or None),
             )
+            denied = _enforce_ollama_model(
+                request, ctx, internal.meta, client_model, internal.model
+            )
+            if denied is not None:
+                return denied
 
             if body.stream:
+                seconds = resolve_deadline_seconds(
+                    deadline_ms,
+                    getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+                )
+                if seconds is not None and seconds <= 0:
+                    try:
+                        with bind_request_deadline(seconds, metrics=ctx.metrics):
+                            guard_upstream("stream")
+                    except RequestDeadlineExceeded as exc:
+                        return request_deadline_response(exc)
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_generate_line)
 
             result = await _route_non_stream(ctx, internal)
@@ -382,19 +473,65 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             return payload
 
         @router.post("/api/embed")
-        async def embed(body: OllamaEmbedRequest, request: Request) -> dict[str, Any]:
+        async def embed(body: OllamaEmbedRequest, request: Request) -> Any:
             ctx: AppContext = request.app.state.ctx
+            from daari.gateway.internal import RequestMeta
+
+            meta = RequestMeta()
+            denied = _enforce_ollama_model(request, ctx, meta, body.model or "daari")
+            if denied is not None:
+                return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
-            vectors = await compute_embeddings(ctx, texts, model=model)
+            try:
+                vectors = await await_unless_disconnected(
+                    request,
+                    compute_embeddings(ctx, texts, model=model, request=request),
+                    metrics=ctx.metrics,
+                    phase="embed",
+                    model=model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             return {"model": model, "embeddings": vectors}
 
         @router.post("/api/embeddings")
-        async def embeddings(body: OllamaEmbeddingsRequest, request: Request) -> dict[str, Any]:
+        async def embeddings(body: OllamaEmbeddingsRequest, request: Request) -> Any:
             ctx: AppContext = request.app.state.ctx
+            from daari.gateway.internal import RequestMeta
+
+            meta = RequestMeta()
+            denied = _enforce_ollama_model(request, ctx, meta, body.model or "daari")
+            if denied is not None:
+                return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.prompt)
-            vectors = await compute_embeddings(ctx, texts, model=model)
+            try:
+                vectors = await await_unless_disconnected(
+                    request,
+                    compute_embeddings(ctx, texts, model=model, request=request),
+                    metrics=ctx.metrics,
+                    phase="embed",
+                    model=model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             return {"embedding": vectors[0] if vectors else []}
 
         @router.get("/api/ps")

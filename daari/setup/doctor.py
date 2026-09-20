@@ -44,9 +44,13 @@ def run_doctor(
 
     results.append(_check_python())
     results.append(_check_config(cfg))
+    results.append(_check_config_keys())
+    results.append(_check_master_key_overlap(cfg))
     results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
+    results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
+    results.append(_check_asr(cfg, httpx_client))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
@@ -54,6 +58,7 @@ def run_doctor(
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
     results.append(_check_soft_budget_ratio(cfg))
+    results.append(_check_unbounded_rpd(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
@@ -94,6 +99,45 @@ def _check_config(settings: Settings) -> CheckResult:
         return CheckResult(name="config", ok=True, detail=detail)
     except Exception as exc:
         return CheckResult(name="config", ok=False, detail=str(exc))
+
+
+def _check_config_keys() -> CheckResult:
+    """Mention typos in nested config so a silent policy hole is visible (#710)."""
+    from daari.config.settings import Settings, load_user_config
+    from daari.config.validate import unknown_config_keys
+
+    keys = unknown_config_keys(load_user_config(None), Settings)
+    if not keys:
+        return CheckResult(name="config_keys", ok=True, detail="no unknown keys")
+    shown = ", ".join(keys[:8])
+    extra = f" (+{len(keys) - 8} more)" if len(keys) > 8 else ""
+    return CheckResult(
+        name="config_keys",
+        ok=False,
+        optional=True,
+        detail=f"unknown keys: {shown}{extra} — run: daari config validate",
+    )
+
+
+def _check_master_key_overlap(settings: Settings) -> CheckResult:
+    """Warn when a rotation overlap has more than two master keys (#711)."""
+    count = len(settings.server.master_keys())
+    if count <= 2:
+        return CheckResult(
+            name="master_keys",
+            ok=True,
+            detail=f"{count} active",
+            optional=True,
+        )
+    return CheckResult(
+        name="master_keys",
+        ok=False,
+        detail=(
+            f"{count} master keys active — overlap should be temporary; "
+            "remove the retired key after clients roll"
+        ),
+        optional=True,
+    )
 
 
 def _check_secret_refs(settings: Settings) -> CheckResult:
@@ -228,7 +272,9 @@ def _check_ollama(
     except Exception as exc:
         return [
             CheckResult(name="ollama", ok=False, detail=f"unreachable at {base}: {exc}"),
-            CheckResult(name="model", ok=False, detail=f"{l3_model} not checked (Ollama unreachable)"),
+            CheckResult(
+                name="model", ok=False, detail=f"{l3_model} not checked (Ollama unreachable)"
+            ),
             CheckResult(
                 name="model_l4",
                 ok=False,
@@ -248,6 +294,64 @@ def _check_ollama(
                 optional=True,
             ),
         ]
+    finally:
+        if own_client:
+            http.close()
+
+
+def _embedding_vector(payload: Any) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    embedding = payload.get("embedding")
+    return isinstance(embedding, list) and bool(embedding)
+
+
+def _check_embedding_endpoint(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult:
+    """Live embed call. Skipped when L1 is off; required when L1 is on (#764)."""
+    if not settings.cache.l1.enabled:
+        return CheckResult(
+            name="embedding_endpoint",
+            ok=True,
+            detail="skipped (cache.l1.enabled is false)",
+            optional=True,
+        )
+    base = settings.ollama.base_url.rstrip("/")
+    url = f"{base}/api/embeddings"
+    model = settings.cache.l1.embedding_model
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        response = http.post(url, json={"model": model, "prompt": "ok"})
+        if response.status_code != 200:
+            return CheckResult(
+                name="embedding_endpoint",
+                ok=False,
+                detail=f"embed probe failed at {url} (HTTP {response.status_code})",
+            )
+        try:
+            body = response.json()
+        except Exception:
+            body = None
+        if not _embedding_vector(body):
+            return CheckResult(
+                name="embedding_endpoint",
+                ok=False,
+                detail=f"embed probe at {url} returned no vector",
+            )
+        return CheckResult(
+            name="embedding_endpoint",
+            ok=True,
+            detail=f"embed probe ok at {url}",
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="embedding_endpoint",
+            ok=False,
+            detail=f"embed probe failed at {url}: {exc}",
+        )
     finally:
         if own_client:
             http.close()
@@ -476,7 +580,7 @@ def _check_metrics_auth(
             detail="disabled (observability.prometheus=false)",
             optional=True,
         )
-    api_key = str(getattr(settings.server, "api_key", "") or "").strip()
+    api_key = settings.server.primary_master_key()
     if not api_key:
         return CheckResult(
             name="metrics_auth",
@@ -629,13 +733,10 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
 
     problems: list[str] = []
     if cache_backend != "redis":
-        problems.append(
-            f"cache.backend={cache_backend} (L0 + singleflight are per-pod)"
-        )
+        problems.append(f"cache.backend={cache_backend} (L0 + singleflight are per-pod)")
     if affinity and cache_backend != "redis":
         problems.append(
-            "routing.session_affinity=true without cache.backend=redis "
-            "(pins stay per-process)"
+            "routing.session_affinity=true without cache.backend=redis (pins stay per-process)"
         )
     if problems:
         return CheckResult(
@@ -683,6 +784,50 @@ def _has_request_quota_windows(settings: Settings) -> bool:
     except Exception:
         pass
     return False
+
+
+def _unbounded_rpd_names(settings: Settings) -> list[str]:
+    """Keys and teams that can hold rpm all day because rpd is unset (#732)."""
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return []
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception:
+        return []
+    names: list[str] = []
+    for key in store.list():
+        if int(getattr(key, "rpm", 0) or 0) > 0 and int(getattr(key, "rpd", 0) or 0) == 0:
+            names.append(f"key {key.name}")
+    try:
+        teams = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        teams = []
+    for team in teams:
+        if int(getattr(team, "rpm", 0) or 0) > 0 and int(getattr(team, "rpd", 0) or 0) == 0:
+            names.append(f"team {team.name}")
+    return names
+
+
+def _check_unbounded_rpd(settings: Settings) -> CheckResult:
+    """Warn when rpm is set and the UTC-day request cap is unlimited."""
+    names = _unbounded_rpd_names(settings)
+    if not names:
+        return CheckResult(
+            name="rpd",
+            ok=True,
+            detail="no key or team has rpm with rpd unlimited",
+            optional=True,
+        )
+    shown = ", ".join(names[:8])
+    extra = f" (+{len(names) - 8} more)" if len(names) > 8 else ""
+    return CheckResult(
+        name="rpd",
+        ok=False,
+        detail=f"rpm set and rpd unlimited (0) on {shown}{extra}",
+        optional=True,
+    )
 
 
 def _has_usd_budget_windows(settings: Settings) -> bool:
@@ -896,6 +1041,71 @@ def _check_mlx(settings: Settings, client: httpx.Client | None) -> CheckResult:
     finally:
         if own_client:
             http.close()
+
+
+def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
+    """Local ASR reachability. Optional; unconfigured transcriptions stay 501."""
+    asr = settings.asr
+    base = str(asr.base_url or "").strip().rstrip("/")
+    if base:
+        own_client = client is None
+        http = client or httpx.Client(timeout=3.0)
+        url = f"{base}/models"
+        try:
+            response = http.get(url)
+        except Exception as exc:
+            return CheckResult(
+                name="asr",
+                ok=False,
+                detail=f"unreachable at {base}: {exc}",
+                optional=True,
+            )
+        finally:
+            if own_client:
+                http.close()
+        if response.status_code == 200:
+            return CheckResult(
+                name="asr",
+                ok=True,
+                detail=f"reachable at {base}",
+                optional=True,
+            )
+        return CheckResult(
+            name="asr",
+            ok=False,
+            detail=f"unreachable at {base} (HTTP {response.status_code})",
+            optional=True,
+        )
+    if asr.frontier_fallback:
+        if not settings.frontier.enabled:
+            return CheckResult(
+                name="asr",
+                ok=False,
+                detail="asr.frontier_fallback is true but frontier.enabled is false",
+                optional=True,
+            )
+        from daari.gateway.transcriptions import resolve_asr_target
+
+        target = resolve_asr_target(settings)
+        if target is None or not target.api_key:
+            return CheckResult(
+                name="asr",
+                ok=False,
+                detail="asr.frontier_fallback is true but no frontier API key resolves",
+                optional=True,
+            )
+        return CheckResult(
+            name="asr",
+            ok=True,
+            detail="frontier fallback configured",
+            optional=True,
+        )
+    return CheckResult(
+        name="asr",
+        ok=True,
+        detail="not configured (POST /v1/audio/transcriptions returns 501)",
+        optional=True,
+    )
 
 
 def _check_org_cache(

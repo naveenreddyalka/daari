@@ -16,6 +16,22 @@ def _embedder(calls: list[str], *, cache_size: int = 512, fail_texts: set[str] |
 
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
+        path = request.url.path
+        if path.endswith("/api/embed"):
+            texts = payload["input"]
+            if isinstance(texts, str):
+                texts = [texts]
+            calls.extend(texts)
+            if any(text in fail for text in texts):
+                return httpx.Response(500)
+            return httpx.Response(
+                200,
+                json={
+                    "embeddings": [
+                        [1.0, float(len(text))] for text in texts
+                    ]
+                },
+            )
         calls.append(payload["prompt"])
         if payload["prompt"] in fail:
             return httpx.Response(500)
