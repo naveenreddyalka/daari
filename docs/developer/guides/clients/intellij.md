@@ -17,7 +17,10 @@
 `/api/tags` and `/api/show` advertise Ollama-shaped `capabilities` derived from
 the mapped tier (`completion`, plus `tools` / `vision` / `thinking` when the
 catalog or model name supports them), so capability-aware clients keep tool
-calling and thinking UI enabled against the facade.
+calling and thinking UI enabled against the facade. When `thinking` is in
+capabilities, `/api/show` also returns a `thinking` controls object (`values`:
+`low` / `medium` / `high`, `default`: `medium`) so clients can discover allowed
+think levels.
 
 Helper (prints steps + reference JSON):
 

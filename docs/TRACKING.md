@@ -3641,6 +3641,14 @@ audio transcriptions/translations and embeddings among
 rows by the ledger `tier` column (combinable with `--key` / `--team`). Covered
 by `tests/unit/test_spend_export.py`.
 
+### Client guides document /api/show thinking controls ([#809](https://github.com/naveenreddyalka/daari/issues/809))
+
+<!-- tracking:#809 -->
+**Status:** Done (2026-09-20). ChatGPT Desktop and IntelliJ guides note that
+`/api/show` returns `thinking` controls (`low`/`medium`/`high`, default
+`medium`) when the capability is advertised. Covered by
+`tests/unit/test_thinking_controls_docs.py`.
+
 ### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
 
 <!-- tracking:#826 -->

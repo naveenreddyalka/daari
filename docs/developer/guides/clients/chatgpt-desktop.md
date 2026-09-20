@@ -21,7 +21,10 @@
 `/api/tags` and `/api/show` advertise Ollama-shaped `capabilities` derived from
 the mapped tier (`completion`, plus `tools` / `vision` / `thinking` when the
 catalog supports them), so Desktop does not disable tools/vision UI against the
-facade. Same note: [JetBrains](intellij.md).
+facade. When `thinking` is in capabilities, `/api/show` also returns a
+`thinking` controls object (`values`: `low` / `medium` / `high`, `default`:
+`medium`) so clients can discover allowed think levels. Same note:
+[JetBrains](intellij.md).
 
 Optional: send `X-Daari-Client-Id: chatgpt-desktop` when the client allows
 custom headers so `daari report` attributes traffic correctly.
