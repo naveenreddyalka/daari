@@ -141,7 +141,7 @@ class RedisSemanticCache(SemanticCache):
         except Exception:
             category = "unknown"
         new_entry = {
-            "context_key": semantic_context_key(request),
+            "context_key": self._context_key(request),
             "embedding": embedding,
             "prompt_text": text,
             "response_json": response.model_dump_json(),
@@ -156,7 +156,7 @@ class RedisSemanticCache(SemanticCache):
             entries = list(entries)
             entries.append(new_entry)
             if len(entries) > self.max_entries:
-                return entries[-self.max_entries :]
+                return self._trim_entries(entries)
             return entries
 
         self._mutate_entries(append)
