@@ -11,6 +11,7 @@ from daari import __version__
 from daari.enterprise.postgres_audit import audit_log_from_settings
 from daari.gateway.client_errors import safe_detail
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected
 from daari.gateway.internal import InternalRequest, Message
 from daari.gateway.mcp_guardrails import (
     GUARDRAIL_BLOCKED,
@@ -364,6 +365,7 @@ async def _run_tool(
     call_args: dict[str, Any],
     *,
     model: str | None,
+    request: Request | None = None,
 ) -> MCPQueryResponse:
     normalized = name.strip().lower()
     if normalized == "health":
@@ -374,6 +376,19 @@ async def _run_tool(
 
     catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
     provider_id = (catalog_by_name.get(normalized) or {}).get("provider_id")
+    resolved_model = model or ctx.settings.models.l3
+
+    async def _await_work(coro: Any) -> Any:
+        if request is None:
+            return await coro
+        return await await_unless_disconnected(
+            request,
+            coro,
+            metrics=ctx.metrics,
+            phase="mcp",
+            model=resolved_model,
+        )
+
     if provider_id:
         provider = ctx.providers.get(provider_id)
         if provider is None:
@@ -384,9 +399,9 @@ async def _run_tool(
             )
         internal = InternalRequest(
             messages=[Message(role="user", content=call_input or "")],
-            model=model or ctx.settings.models.l3,
+            model=resolved_model,
         )
-        provider_result = await provider.execute(internal)
+        provider_result = await _await_work(provider.execute(internal))
         return MCPQueryResponse(
             ok=provider_result.daari_meta.warning is None,
             tool=normalized,
@@ -404,13 +419,25 @@ async def _run_tool(
     route_input = call_input or call_args.get("prompt") or ""
     internal = InternalRequest(
         messages=[Message(role="user", content=route_input)],
-        model=model or ctx.settings.models.l3,
+        model=resolved_model,
     )
-    routed = await ctx.router.route(internal)
+    routed = await _await_work(ctx.router.route(internal))
     return MCPQueryResponse(
         tool=normalized,
         result={"content": routed.content},
         daari_meta=routed.daari_meta.model_dump(),
+    )
+
+
+def _client_disconnected_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=499,
+        content={
+            "error": {
+                "type": "client_disconnected",
+                "message": "client disconnected.",
+            }
+        },
     )
 
 
@@ -561,9 +588,19 @@ class MCPGatewayAdapter(GatewayAdapter):
                 if rule is not None:
                     _record_mcp_tool(ctx, normalized_name, "guardrail")
                     return _legacy_guardrail_blocked(normalized_name, rule)
-                tool_response = governance.guard_legacy(
-                    await _run_tool(ctx, name, arguments.get("input"), arguments, model=body.model)
-                )
+                try:
+                    tool_response = governance.guard_legacy(
+                        await _run_tool(
+                            ctx,
+                            name,
+                            arguments.get("input"),
+                            arguments,
+                            model=body.model,
+                            request=request,
+                        )
+                    )
+                except ClientDisconnected:
+                    return _client_disconnected_response()
                 _record_mcp_tool(
                     ctx, tool_response.tool or normalized_name, "ok" if tool_response.ok else "error"
                 )
@@ -588,9 +625,14 @@ class MCPGatewayAdapter(GatewayAdapter):
             if rule is not None:
                 _record_mcp_tool(ctx, tool, "guardrail")
                 return _legacy_guardrail_blocked(tool, rule)
-            response = governance.guard_legacy(
-                await _run_tool(ctx, tool, body.input, body.args, model=body.model)
-            )
+            try:
+                response = governance.guard_legacy(
+                    await _run_tool(
+                        ctx, tool, body.input, body.args, model=body.model, request=request
+                    )
+                )
+            except ClientDisconnected:
+                return _client_disconnected_response()
             _record_mcp_tool(ctx, response.tool or tool, "ok" if response.ok else "error")
             return _legacy(response.model_dump())
 
@@ -733,7 +775,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                             _jsonrpc_result(rpc_id, create_task_result(task)),
                         )
                     tool_response = await _run_tool(
-                        ctx, name, arguments.get("input"), arguments, model=None
+                        ctx, name, arguments.get("input"), arguments, model=None, request=request
                     )
                     _record_mcp_tool(
                         ctx, name, "ok" if tool_response.ok else "error"
@@ -746,6 +788,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                     request,
                     _jsonrpc_error(rpc_id, METHOD_NOT_FOUND, f"Method not found: {method}"),
                 )
+            except ClientDisconnected:
+                return _client_disconnected_response()
             except Exception as exc:  # noqa: BLE001 — JSON-RPC must not leak a 500
                 return _rpc_response(
                     request,
