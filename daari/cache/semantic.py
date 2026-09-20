@@ -135,20 +135,83 @@ class OllamaEmbedder:
     def _cache_key(self, text: str) -> tuple[str, str]:
         return (self.model, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
-    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
-        if not text.strip():
+    def _memo_key(self, text: str, model: str) -> tuple[str, str]:
+        return (model, hashlib.sha256(text.encode("utf-8")).hexdigest())
+
+    def _memo_get(self, key: tuple[str, str]) -> list[float] | None:
+        if self.cache_size <= 0 or key not in self._memo:
             return None
+        self._memo.move_to_end(key)
+        return list(self._memo[key])
+
+    def _memo_put(self, key: tuple[str, str], embedding: list[float]) -> None:
+        if self.cache_size <= 0:
+            return
+        self._memo[key] = list(embedding)
+        while len(self._memo) > self.cache_size:
+            self._memo.popitem(last=False)
+
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+        results = await self.embed_many([text], model=model)
+        return results[0] if results else None
+
+    async def embed_many(
+        self, texts: list[str], *, model: str | None = None
+    ) -> list[list[float] | None]:
         used_model = model or self.model
-        key = (used_model, hashlib.sha256(text.encode("utf-8")).hexdigest())
-        if self.cache_size > 0 and key in self._memo:
-            self._memo.move_to_end(key)
-            return list(self._memo[key])
-        embedding = await self._embed_http(text, model=used_model)
-        if embedding is not None and self.cache_size > 0:
-            self._memo[key] = list(embedding)
-            while len(self._memo) > self.cache_size:
-                self._memo.popitem(last=False)
-        return embedding
+        results: list[list[float] | None] = [None] * len(texts)
+        miss_indices: list[int] = []
+        miss_texts: list[str] = []
+        for index, text in enumerate(texts):
+            if not text.strip():
+                continue
+            cached = self._memo_get(self._memo_key(text, used_model))
+            if cached is not None:
+                results[index] = cached
+                continue
+            miss_indices.append(index)
+            miss_texts.append(text)
+        if not miss_texts:
+            return results
+        fetched = await self._embed_http_batch(miss_texts, model=used_model)
+        if fetched is None:
+            fetched = [
+                await self._embed_http(text, model=used_model) for text in miss_texts
+            ]
+        for index, embedding in zip(miss_indices, fetched, strict=True):
+            if embedding is not None:
+                self._memo_put(self._memo_key(texts[index], used_model), embedding)
+            results[index] = embedding
+        return results
+
+    async def _embed_http_batch(
+        self, texts: list[str], *, model: str
+    ) -> list[list[float] | None] | None:
+        """POST /api/embed with input[]. None means the server needs the legacy path."""
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+            ) as client:
+                response = await client.post(
+                    "/api/embed",
+                    json={"model": model, "input": texts},
+                )
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                data = response.json()
+                embeddings = data.get("embeddings")
+                if not isinstance(embeddings, list) or len(embeddings) != len(texts):
+                    return [None] * len(texts)
+                parsed: list[list[float] | None] = []
+                for embedding in embeddings:
+                    if isinstance(embedding, list) and embedding:
+                        parsed.append([float(x) for x in embedding])
+                    else:
+                        parsed.append(None)
+                return parsed
+        except (httpx.HTTPError, ValueError, TypeError):
+            return [None] * len(texts)
 
     async def _embed_http(self, text: str, *, model: str) -> list[float] | None:
         try:

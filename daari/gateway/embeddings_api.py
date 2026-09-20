@@ -100,37 +100,54 @@ async def compute_embeddings(
 ) -> list[list[float]]:
     """Embed texts via L0 + semantic embedder; records metrics and ledger."""
     embedder = ctx.router.semantic_cache.embedder
-    vectors: list[list[float]] = []
+    vectors: list[list[float] | None] = [None] * len(texts)
     cache_hits = 0
     latency_ms = 0
-    for text in texts:
+    miss_indices: list[int] = []
+    miss_texts: list[str] = []
+    for index, text in enumerate(texts):
         cached = ctx.router.cache.get(embedding_cache_request(model, text))
         if cached is not None:
-            vectors.append(json.loads(cached.content))
+            vectors[index] = json.loads(cached.content)
             cache_hits += 1
             continue
+        miss_indices.append(index)
+        miss_texts.append(text)
+    if miss_texts:
         started = time.perf_counter()
-        embedding = await embedder.embed(text, model=model)
-        latency_ms += _elapsed_ms(started)
-        if embedding is None:
+        embed_many = getattr(embedder, "embed_many", None)
+        if callable(embed_many):
+            embeddings = await embed_many(miss_texts, model=model)
+        else:
+            embeddings = [await embedder.embed(text, model=model) for text in miss_texts]
+        latency_ms = _elapsed_ms(started)
+        for index, embedding in zip(miss_indices, embeddings, strict=True):
+            if embedding is None:
+                raise HTTPException(
+                    status_code=502, detail=f"embedding model {model} returned no vector"
+                )
+            ctx.router.cache.put(
+                embedding_cache_request(model, texts[index]),
+                InternalResponse(
+                    content=json.dumps(embedding),
+                    model=model,
+                    daari_meta=DaariMeta(
+                        tier="embed",
+                        cache_hit=False,
+                        executor="ollama",
+                        provider_id="ollama",
+                        model=model,
+                    ),
+                ),
+            )
+            vectors[index] = embedding
+    filled: list[list[float]] = []
+    for vector in vectors:
+        if vector is None:
             raise HTTPException(
                 status_code=502, detail=f"embedding model {model} returned no vector"
             )
-        ctx.router.cache.put(
-            embedding_cache_request(model, text),
-            InternalResponse(
-                content=json.dumps(embedding),
-                model=model,
-                daari_meta=DaariMeta(
-                    tier="embed",
-                    cache_hit=False,
-                    executor="ollama",
-                    provider_id="ollama",
-                    model=model,
-                ),
-            ),
-        )
-        vectors.append(embedding)
+        filled.append(vector)
     prompt_chars = sum(len(text) for text in texts)
     ctx.metrics.record(
         "embed",
@@ -151,7 +168,7 @@ async def compute_embeddings(
             input_tokens=estimate_tokens(prompt_chars),
             output_tokens=0,
         )
-    return vectors
+    return filled
 
 
 def openai_embeddings_payload(

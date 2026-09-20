@@ -3453,6 +3453,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#758 -->
 **Status:** Done (2026-09-19). `POST /v1/audio/translations` forwards multipart audio to `{asr.base_url}/audio/translations` and returns JSON `text`. Unconfigured ASR is 501 with no upload; `response_format` other than `json` is 400. Covered by `tests/unit/test_audio_translations.py`.
 
+### Batch Ollama embeddings ([#766](https://github.com/naveenreddyalka/daari/issues/766))
+
+<!-- tracking:#766 -->
+**Status:** Done (2026-09-20). Cache-miss list inputs go out as one `POST /api/embed` with `input` string[]; L0 hits stay off the wire. Single-string embed is a batch of one. A 404 on `/api/embed` falls back to per-string `/api/embeddings`. Covered by `tests/unit/test_embed_batch.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
