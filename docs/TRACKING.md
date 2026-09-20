@@ -3584,6 +3584,13 @@ resolves (empty `asr.base_url` — fallback-only path). Covered by
 query) binds `X-Daari-Deadline-Ms` before tool execution; exhaustion returns
 504 `request_deadline_exceeded`. Covered by `tests/unit/test_mcp_server.py`.
 
+### Docs: deadline header on audio and embeddings ([#824](https://github.com/naveenreddyalka/daari/issues/824))
+
+<!-- tracking:#824 -->
+**Status:** Done (2026-09-20). `docs/developer/reference/headers.md` lists
+audio transcriptions/translations and embeddings among
+`X-Daari-Deadline-Ms` surfaces. Covered by `tests/unit/test_deadline_docs.py`.
+
 ### Spend export --tier filter ([#818](https://github.com/naveenreddyalka/daari/issues/818))
 
 <!-- tracking:#818 -->
