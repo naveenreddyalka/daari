@@ -280,3 +280,69 @@ async def test_admin_invalidate_by_team_id(settings, monkeypatch):
     assert response.json()["l0_removed"] == 1
     assert app.state.ctx.router.cache.get(req) is None
     assert app.state.ctx.router.cache.get(other) is not None
+
+
+@pytest.mark.asyncio
+async def test_sso_invalidate_requires_bearer_master_key(settings):
+    """SSO-on admin invalidate: 401 without Bearer, 200 with master key (#816)."""
+    settings.enterprise.sso.enabled = True
+    settings.enterprise.sso.secret = "sso-dev-secret"
+    settings.server.api_key = "master-secret"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.ctx.router.cache.put(_req("cached"), _resp("answer", "llama"))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post("/v1/daari/cache/invalidate", json={"model": "llama"})
+        assert denied.status_code == 401
+        denied_text = denied.text.lower()
+        assert "token" in denied_text or "api key" in denied_text or "sso" in denied_text
+
+        ok = await client.post(
+            "/v1/daari/cache/invalidate",
+            json={"model": "llama"},
+            headers={"Authorization": "Bearer master-secret"},
+        )
+    assert ok.status_code == 200
+    assert ok.json()["l0_removed"] == 1
+    assert app.state.ctx.router.cache.get(_req("cached")) is None
+
+
+def test_daemon_invalidate_sends_bearer_under_sso(monkeypatch, settings):
+    settings.enterprise.sso.enabled = True
+    settings.enterprise.sso.secret = "sso-dev-secret"
+    settings.server.api_key = "master-secret"
+    seen: dict[str, object] = {}
+
+    def fake_post(url, json=None, headers=None, timeout=5.0):
+        seen["url"] = url
+        seen["headers"] = headers or {}
+        seen["json"] = json
+
+        class Resp:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"removed": 2, "l0_removed": 1, "l1_removed": 1}
+
+        return Resp()
+
+    monkeypatch.setattr("daari.cli.app.httpx.post", fake_post)
+    from daari.cli.app import _daemon_invalidate_caches
+
+    ok, detail = _daemon_invalidate_caches(settings, model="llama", entry_hash=None)
+    assert ok is True
+    assert seen["headers"].get("Authorization") == "Bearer master-secret"
+    assert "Invalidated 2" in detail
+
+
+def test_daemon_invalidate_sso_without_token_is_clear(settings):
+    settings.enterprise.sso.enabled = True
+    settings.enterprise.sso.secret = "sso-dev-secret"
+    settings.server.api_key = ""
+    from daari.cli.app import _daemon_invalidate_caches
+
+    ok, detail = _daemon_invalidate_caches(settings, model="llama", entry_hash=None)
+    assert ok is False
+    assert "SSO token required" in detail
