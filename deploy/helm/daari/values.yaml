@@ -133,6 +133,29 @@ orgPool:
   enabled: false
   baseUrl: ""
 
+# Master API key from an existing Secret (multi-replica auth). Empty = unset
+# (open local install). Example: { name: daari-master, key: api-key }
+server:
+  apiKeySecret: {}
+
+# Global RPM/TPM caps (#842). When enabled with redis.enabled (or rateLimit.redisUrl),
+# fleet counters share Redis via cache.backend=redis. Without Redis, limits are
+# per-pod SQLite only — fine for replicaCount=1.
+rateLimit:
+  enabled: false
+  rpm: 0
+  tpm: 0
+  modelRpm: 0
+  modelTpm: 0
+  # Used only when redis.enabled=false; otherwise cache Redis is reused.
+  redisUrl: ""
+
+# L6 frontier fallback. apiKeySecret mounts DAARI_FRONTIER_API_KEY
+# (also accepted: OPENAI_API_KEY / OPENROUTER_API_KEY via env).
+frontier:
+  enabled: false
+  apiKeySecret: {}
+
 # Embedder base URL for POST /v1/embeddings and L1. Empty leaves the image
 # default (localhost). Distinct from orgPool, which only sets the routing URL.
 ollama:
