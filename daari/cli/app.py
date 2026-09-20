@@ -76,6 +76,7 @@ def _root(
 
 
 setup_app = typer.Typer(help="Configure client integrations.")
+models_app = typer.Typer(help="Manage configured Ollama models.")
 context_app = typer.Typer(help="Manage daari caches and context.")
 org_cache_app = typer.Typer(help="Run org shared-cache service.")
 org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.")
@@ -89,6 +90,7 @@ enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
 route_app = typer.Typer(help="Inspect routing without sending a generation.")
 app.add_typer(setup_app, name="setup")
+app.add_typer(models_app, name="models")
 app.add_typer(service_app, name="service")
 app.add_typer(context_app, name="context")
 app.add_typer(org_cache_app, name="org-cache")
@@ -1716,6 +1718,11 @@ def onboard(
     pull_l4: bool = typer.Option(False, "--pull-l4", help="Also pull optional L4 model."),
     pull_l5: bool = typer.Option(False, "--pull-l5", help="Also pull optional L5 model."),
     minimal: bool = typer.Option(False, "--minimal", help="Pull L3 only (skip embed)."),
+    warm: bool = typer.Option(
+        False,
+        "--warm/--no-warm",
+        help="After pull, load configured tier + embed models into Ollama (daari models warm).",
+    ),
     serve: bool = typer.Option(
         False,
         "--serve/--no-serve",
@@ -1731,6 +1738,7 @@ def onboard(
         pull_l4=pull_l4,
         pull_l5=pull_l5,
         minimal=minimal,
+        warm=warm,
         start_serve=serve,
     )
     _echo_onboard_report(report)
@@ -2124,6 +2132,26 @@ def setup_models(
 ) -> None:
     """Pick an Ollama model for a daari tier."""
     setup_models_interactive(get_settings(), tier=tier, model=model, list_only=list_models)
+
+
+@models_app.command("warm")
+def models_warm() -> None:
+    """Load configured L3–L5 and embed models into Ollama (preload for TTFT)."""
+    from daari.setup.models import warm_configured_models
+
+    settings = get_settings()
+    results = warm_configured_models(settings)
+    if not results:
+        typer.echo("No configured models to warm.", err=True)
+        raise typer.Exit(code=1)
+    failed = 0
+    for result in results:
+        mark = "ok" if result.ok else "FAIL"
+        typer.echo(f"{mark}: {result.model} — {result.detail}")
+        if not result.ok:
+            failed += 1
+    if failed:
+        raise typer.Exit(code=1)
 
 
 @setup_app.command("openai-compat")
