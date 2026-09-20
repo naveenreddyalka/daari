@@ -1864,6 +1864,13 @@ Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
 ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
@@ -3626,6 +3633,13 @@ by `tests/unit/test_spend_export.py`.
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
@@ -3645,5 +3659,12 @@ by `tests/unit/test_spend_export.py`.
 **Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
+
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
 
 ## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
