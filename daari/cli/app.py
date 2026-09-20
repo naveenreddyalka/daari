@@ -1291,6 +1291,11 @@ def spend_export(
     output_format: str = typer.Option("csv", "--format", help="csv or jsonl."),
     key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
     team: str | None = typer.Option(None, "--team", help="Exact team id."),
+    tier: str | None = typer.Option(
+        None,
+        "--tier",
+        help="Exact spend tier (asr, translation, embed, L3-L6, ...).",
+    ),
 ) -> None:
     """Stream per-request spend rows for chargeback (#709)."""
     import csv
@@ -1313,7 +1318,8 @@ def spend_export(
     if not ledger.enabled:
         typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
         raise typer.Exit(code=1)
-    rows = ledger.iter_rows(since=cutoff, key_id=key, team_id=team)
+    tier_filter = (tier or "").strip() or None
+    rows = ledger.iter_rows(since=cutoff, key_id=key, team_id=team, tier=tier_filter)
     if fmt == "jsonl":
         for row in rows:
             typer.echo(json.dumps(export_dict(row), separators=(",", ":"), sort_keys=True))
