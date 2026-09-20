@@ -96,6 +96,8 @@ class Metrics:
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
     mcp_tool_calls: dict[str, int] = field(default_factory=dict)
+    cancelled: dict[str, int] = field(default_factory=dict)
+    deadline_exhausted: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -186,6 +188,16 @@ class Metrics:
         with self._lock:
             self.mcp_tool_calls[key] = self.mcp_tool_calls.get(key, 0) + 1
 
+    def record_cancelled(self, phase: str) -> None:
+        """Client abandoned the request before upstream work finished (#769)."""
+        with self._lock:
+            self.cancelled[phase] = self.cancelled.get(phase, 0) + 1
+
+    def record_deadline_exhausted(self) -> None:
+        """A request-scoped deadline ran out before a tier could finish (#771)."""
+        with self._lock:
+            self.deadline_exhausted += 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -226,4 +238,6 @@ class Metrics:
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
+                "cancelled": dict(self.cancelled),
+                "deadline_exhausted": self.deadline_exhausted,
             }

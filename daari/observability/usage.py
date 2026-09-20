@@ -81,6 +81,21 @@ def _today() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
+def notify_recorded(ledger: Any, **payload: Any) -> None:
+    """Best-effort side channel for the opt-in spend log (#709).
+
+    Called even when the day ledger is disabled so chargeback rows still
+    land. Absent hook means no extra writes.
+    """
+    hook = getattr(ledger, "on_recorded", None)
+    if hook is None:
+        return
+    try:
+        hook(**payload)
+    except Exception:
+        pass
+
+
 def _empty_totals() -> dict[str, Any]:
     return {
         "requests": 0,
@@ -167,15 +182,32 @@ class UsageLedger:
         provider: str | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        cached_tokens: int | None = None,
+        reported_cost: float | None = None,
     ) -> None:
-        if not self.enabled:
-            return
         # Fall back to the chars/4 estimate only when the provider reported
         # nothing, so old call sites keep working (#156).
         tokens_in = max(0, input_tokens if input_tokens is not None else prompt_chars // 4)
         tokens_out = max(
             0, output_tokens if output_tokens is not None else completion_chars // 4
         )
+        notify_recorded(
+            self,
+            tier=tier,
+            cache_hit=cache_hit,
+            prompt_chars=max(0, prompt_chars),
+            completion_chars=max(0, completion_chars),
+            client_id=client_id,
+            user_id=user_id,
+            model=model,
+            provider=provider,
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
+            cached_tokens=max(0, int(cached_tokens or 0)),
+            reported_cost=reported_cost,
+        )
+        if not self.enabled:
+            return
         try:
             with self._lock, self._connect() as conn:
                 conn.execute(

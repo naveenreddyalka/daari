@@ -82,7 +82,9 @@ org_learning_app = typer.Typer(help="Inspect enterprise org-learning aggregates.
 web_ui_app = typer.Typer(help="Serve local daari stats dashboard.")
 project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
+spend_app = typer.Typer(help="Per-request spend rows for finance chargeback.")
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
+config_app = typer.Typer(help="Validate daari.yaml before restart.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
 route_app = typer.Typer(help="Inspect routing without sending a generation.")
@@ -95,6 +97,8 @@ app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
 app.add_typer(audit_app, name="audit")
+app.add_typer(config_app, name="config")
+app.add_typer(spend_app, name="spend")
 app.add_typer(route_app, name="route")
 
 
@@ -107,6 +111,7 @@ def keys_create(
     ),
     rpm: int = typer.Option(0, "--rpm", help="Requests per minute (0=unlimited)"),
     tpm: int = typer.Option(0, "--tpm", help="Tokens per minute (0=unlimited)"),
+    rpd: int = typer.Option(0, "--rpd", help="Requests per UTC day (0=unlimited)"),
     tier_cap: str | None = typer.Option(None, "--tier-cap", help="L3|L4|L5"),
     client_id: str | None = typer.Option(None, "--client-id", help="Ledger attribution id"),
     team: str | None = typer.Option(None, "--team", help="Team that inherits and tightens caps"),
@@ -145,11 +150,26 @@ def keys_create(
         "--region-pin",
         help="Restrict L6 to providers declaring this region (e.g. us, eu).",
     ),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Model name or glob this key may call (e.g. claude-*). Repeatable.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Named model group from settings.model_groups. Repeatable.",
+    ),
+    cache_scope: str = typer.Option(
+        "global",
+        "--cache-scope",
+        help="Cache isolation: global (org-shared), team, or key.",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
-    from daari.auth.virtual_keys import expiry_from
+    from daari.auth.virtual_keys import expiry_from, normalize_cache_scope
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -166,6 +186,7 @@ def keys_create(
         metadata = {"mcp": {"allow": list(mcp_allow), "deny": list(mcp_deny)}}
     try:
         expires_at = expiry_from(expires)
+        scope = normalize_cache_scope(cache_scope)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -175,6 +196,7 @@ def keys_create(
         monthly_budget_usd=monthly_budget,
         rpm=rpm,
         tpm=tpm,
+        rpd=rpd,
         tier_cap=tier_cap,
         client_id=client_id,
         team=team,
@@ -183,6 +205,9 @@ def keys_create(
         expires_at=expires_at,
         user_daily_usd_cap=user_daily_cap,
         region_pin=region_pin,
+        allowed_models=allowed_model or None,
+        model_groups=model_group or None,
+        cache_scope=scope,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -190,6 +215,11 @@ def keys_create(
     typer.echo(f"expires: {created.key.expires_at or 'never'}")
     if created.key.region_pin:
         typer.echo(f"region:  {created.key.region_pin}")
+    if created.key.allowed_models:
+        typer.echo(f"models:  {', '.join(created.key.allowed_models)}")
+    if created.key.model_groups:
+        typer.echo(f"groups:  {', '.join(created.key.model_groups)}")
+    typer.echo(f"cache_scope: {created.key.cache_scope}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -204,6 +234,72 @@ def keys_create(
             "name": created.key.name,
             "prefix": created.key.prefix,
             "region_pin": created.key.region_pin,
+            "allowed_models": list(created.key.allowed_models)
+            if created.key.allowed_models is not None
+            else None,
+            "model_groups": list(created.key.model_groups)
+            if created.key.model_groups is not None
+            else None,
+        },
+    )
+
+
+@keys_app.command("update")
+def keys_update(
+    key_id: str = typer.Argument(..., help="key_id from `daari keys list`"),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Replace the key allowlist with these names or globs. Repeatable.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Replace named model groups on the key. Repeatable.",
+    ),
+    rpd: int | None = typer.Option(
+        None, "--rpd", help="Requests per UTC day (0=unlimited). Omit to leave unchanged."
+    ),
+) -> None:
+    """Update a virtual key's model allowlist (#708) or daily request cap (#717)."""
+    import os
+
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import _UNSET
+
+    if rpd is None and not allowed_model and not model_group:
+        typer.echo("pass --rpd, --allowed-model, and/or --model-group", err=True)
+        raise typer.Exit(code=1)
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    if rpd is not None and not store.update_rpd(key_id, rpd):
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1)
+    if allowed_model or model_group:
+        updated = store.update_model_access(
+            key_id,
+            allowed_models=allowed_model if allowed_model else _UNSET,
+            model_groups=model_group if model_group else _UNSET,
+        )
+        if not updated:
+            typer.echo(f"No active key {key_id}", err=True)
+            raise typer.Exit(code=1)
+    key = next((item for item in store.list() if item.key_id == key_id), None)
+    typer.echo(f"key_id: {key_id}")
+    if key is not None and rpd is not None:
+        typer.echo(f"rpd:    {key.rpd}")
+    if key is not None and key.allowed_models is not None:
+        typer.echo(f"models: {', '.join(key.allowed_models)}")
+    if key is not None and key.model_groups is not None:
+        typer.echo(f"groups: {', '.join(key.model_groups)}")
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="keys.update",
+        detail={
+            "key_id": key_id,
+            "allowed_models": list(key.allowed_models) if key and key.allowed_models else None,
+            "model_groups": list(key.model_groups) if key and key.model_groups else None,
         },
     )
 
@@ -213,6 +309,7 @@ def keys_list() -> None:
     """List virtual keys (prefixes only — never plaintext)."""
     from daari.auth.budgets import budget_status
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import effective_cache_scope
     from daari.observability.usage import UsageLedger
 
     settings = get_settings()
@@ -223,17 +320,20 @@ def keys_list() -> None:
         return
     ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
     typer.echo(
-        f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} "
-        f"{'tier':<4} {'expires':<25} {'grace_until':<25} status"
+        f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'rpd':>5} "
+        f"{'tier':<4} {'scope':<6} {'expires':<25} {'grace_until':<25} status"
     )
     for key in keys:
+        team = store.get_team(key.team_id) if key.team_id else None
+        scope = effective_cache_scope(
+            key.cache_scope, team.cache_scope if team is not None else None
+        )
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
-            f"{key.tpm:>7} {(key.tier_cap or '-'):<4} "
+            f"{key.tpm:>7} {key.rpd:>5} {(key.tier_cap or '-'):<4} {scope:<6} "
             f"{(key.expires_at or 'never'):<25} "
             f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
-        team = store.get_team(key.team_id) if key.team_id else None
         client_id = key.client_id or key.key_id
         team_ids = store.team_client_ids(team.team_id) if team is not None else []
         if not ledger.enabled:
@@ -349,12 +449,29 @@ def keys_team_create(
     ),
     rpm: int = typer.Option(0, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
     tpm: int = typer.Option(0, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
+    rpd: int = typer.Option(0, "--rpd", help="Team aggregate requests/UTC day (0=unlimited)"),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Model name or glob every key on this team may call. Repeatable.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Named model group from settings.model_groups. Repeatable.",
+    ),
+    cache_scope: str = typer.Option(
+        "global",
+        "--cache-scope",
+        help="Cache isolation for every key on this team: global, team, or key.",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import normalize_cache_scope
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -363,6 +480,11 @@ def keys_team_create(
             [parse_window_flag(item) for item in window]
             + [parse_window_requests_flag(item) for item in window_requests]
         )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    try:
+        scope = normalize_cache_scope(cache_scope)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -375,14 +497,25 @@ def keys_team_create(
         region_pin=region_pin,
         rpm=rpm,
         tpm=tpm,
+        rpd=rpd,
+        allowed_models=allowed_model or None,
+        model_groups=model_group or None,
+        cache_scope=scope,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
     if team.region_pin:
         typer.echo(f"region:  {team.region_pin}")
+    if team.allowed_models:
+        typer.echo(f"models:  {', '.join(team.allowed_models)}")
+    if team.model_groups:
+        typer.echo(f"groups:  {', '.join(team.model_groups)}")
     if team.rpm or team.tpm:
         typer.echo(f"rpm:     {team.rpm}")
         typer.echo(f"tpm:     {team.tpm}")
+    if team.rpd:
+        typer.echo(f"rpd:     {team.rpd}")
+    typer.echo(f"cache_scope: {team.cache_scope}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
@@ -404,6 +537,7 @@ def keys_team_create(
                 "region_pin": team.region_pin,
                 "rpm": team.rpm,
                 "tpm": team.tpm,
+                "rpd": team.rpd,
             },
         )
 
@@ -426,12 +560,26 @@ def keys_team_update(
     ),
     rpm: int | None = typer.Option(None, "--rpm", help="Team aggregate requests/min (0=unlimited)"),
     tpm: int | None = typer.Option(None, "--tpm", help="Team aggregate tokens/min (0=unlimited)"),
+    rpd: int | None = typer.Option(
+        None, "--rpd", help="Team aggregate requests/UTC day (0=unlimited)"
+    ),
+    allowed_model: list[str] = typer.Option(
+        [],
+        "--allowed-model",
+        help="Replace the team allowlist. Repeatable. Omit to leave unchanged.",
+    ),
+    model_group: list[str] = typer.Option(
+        [],
+        "--model-group",
+        help="Replace named model groups. Repeatable. Omit to leave unchanged.",
+    ),
 ) -> None:
     """Update a team's budget windows (#464) and optional rpm/tpm (#546)."""
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.auth.virtual_keys import _UNSET
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -452,6 +600,9 @@ def keys_team_update(
             region_pin=region_pin,
             rpm=rpm,
             tpm=tpm,
+            rpd=rpd,
+            allowed_models=allowed_model if allowed_model else _UNSET,
+            model_groups=model_group if model_group else _UNSET,
         )
     except KeyError:
         typer.echo(f"No team {team_id}", err=True)
@@ -461,6 +612,8 @@ def keys_team_update(
     if team.rpm or team.tpm:
         typer.echo(f"rpm:     {team.rpm}")
         typer.echo(f"tpm:     {team.tpm}")
+    if team.rpd:
+        typer.echo(f"rpd:     {team.rpd}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
@@ -478,6 +631,7 @@ def keys_team_update(
             "windows": [w.as_dict() for w in team.budget_windows],
             "rpm": team.rpm,
             "tpm": team.tpm,
+            "rpd": team.rpd,
         },
     )
 
@@ -875,9 +1029,14 @@ def serve(
     port: int | None = typer.Option(None, help="Bind port"),
     no_frontier: bool = typer.Option(False, "--no-frontier", help="Disable L6 escalation."),
     org: str | None = typer.Option(None, "--org", help="Enable enterprise org mode with org ID."),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Fail startup when nested config keys are unknown (also DAARI_STRICT_CONFIG=1).",
+    ),
 ) -> None:
     """Start the daari HTTP daemon."""
-    settings = Settings.load().model_copy(deep=True)
+    settings = (Settings.load(strict=True) if strict else Settings.load()).model_copy(deep=True)
     if no_frontier:
         settings.frontier.enabled = False
     resolved_org = org or os.environ.get("DAARI_ORG_ID")
@@ -1124,13 +1283,68 @@ def trace(
         typer.echo(f"  +{step['elapsed_ms']:>5}ms  {step['step']:<14} {detail_text}")
 
 
+@spend_app.command("export")
+def spend_export(
+    since: str = typer.Option(
+        ..., "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
+    ),
+    output_format: str = typer.Option("csv", "--format", help="csv or jsonl."),
+    key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
+    team: str | None = typer.Option(None, "--team", help="Exact team id."),
+    tier: str | None = typer.Option(
+        None,
+        "--tier",
+        help="Exact spend tier (asr, translation, embed, L3-L6, ...).",
+    ),
+) -> None:
+    """Stream per-request spend rows for chargeback (#709)."""
+    import csv
+    import io
+
+    from daari.enterprise.audit import parse_since
+    from daari.observability.spend import EXPORT_FIELDS, export_dict, spend_ledger_from_settings
+
+    fmt = (output_format or "csv").strip().lower()
+    if fmt not in {"csv", "jsonl"}:
+        typer.echo("Only --format csv or jsonl is supported.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        cutoff = parse_since(since)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    settings = get_settings()
+    ledger = spend_ledger_from_settings(settings)
+    if not ledger.enabled:
+        typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
+        raise typer.Exit(code=1)
+    tier_filter = (tier or "").strip() or None
+    rows = ledger.iter_rows(since=cutoff, key_id=key, team_id=team, tier=tier_filter)
+    if fmt == "jsonl":
+        for row in rows:
+            typer.echo(json.dumps(export_dict(row), separators=(",", ":"), sort_keys=True))
+        return
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=EXPORT_FIELDS, lineterminator="\n")
+    writer.writeheader()
+    typer.echo(buffer.getvalue().rstrip("\n"))
+    for row in rows:
+        buffer.seek(0)
+        buffer.truncate()
+        writer.writerow(export_dict(row))
+        typer.echo(buffer.getvalue().rstrip("\n"))
+
+
 @app.command()
 def prune(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print per-store counts that would be deleted; change nothing."
     ),
 ) -> None:
-    """Apply observability.retention windows to traces, ledger, audit, shadow checks, tasks."""
+    """Apply observability.retention windows.
+
+    Covers traces, ledger, spend, audit, shadow checks, tasks, and the request log.
+    """
     from daari.observability.retention import run_sweep
 
     settings = get_settings()
@@ -1396,6 +1610,33 @@ def profile(
             f"load {entry['load_ms']:.0f} ms, {tps if tps is not None else '-'} tok/s"
         )
     typer.echo(f"Saved to {store.path}")
+
+
+@config_app.command("validate")
+def config_validate(
+    path: Path | None = typer.Argument(None, help="Config file (default ~/.daari/config.yaml)."),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Also honored by daari serve. Validate always reports unknown keys.",
+    ),
+) -> None:
+    """Report unknown keys, type errors, and out-of-range values. Exit 1 on findings."""
+    from daari.config.settings import Settings, assemble_config
+    from daari.config.validate import config_findings
+
+    del strict  # validate always reports; flag exists so the help matches serve
+    if path is not None and not path.is_file():
+        typer.echo(f"config file not found: {path}", err=True)
+        raise typer.Exit(code=1)
+    user, merged = assemble_config(path)
+    findings = config_findings(user, merged, Settings)
+    if not findings:
+        typer.echo("config ok")
+        return
+    for finding in findings:
+        typer.echo(finding, err=True)
+    raise typer.Exit(code=1)
 
 
 @app.command()
@@ -1959,11 +2200,27 @@ app.add_typer(cache_app, name="cache")
 
 @cache_app.command("prune")
 def cache_prune() -> None:
-    """Remove expired L0/L1 entries (requires cache.*.ttl_seconds > 0)."""
+    """Remove expired L0/L1 entries (disk TTL, or Redis unbounded age reclaim)."""
+    from pathlib import Path
+
     from daari.cache.exact import ExactCache
     from daari.cache.semantic import OllamaEmbedder, SemanticCache
+    from daari.router.router import _build_l0_cache
 
     settings = get_settings()
+    if getattr(settings.cache, "backend", "disk") == "redis":
+        l0 = _build_l0_cache(settings, Path(settings.l0_cache_path))
+        l0_removed = int(l0.prune())
+        if settings.cache.l0.ttl_seconds > 0:
+            note = " (Redis relies on TTL; prune does not scan when ttl_seconds > 0)"
+            typer.echo(f"L0: removed {l0_removed} expired entries{note}")
+        else:
+            typer.echo(
+                f"L0: removed {l0_removed} expired entries "
+                "(unbounded Redis keys older than 7d)"
+            )
+        typer.echo("L1: removed 0 expired entries (Redis L1 uses its own TTL path)")
+        return
     l0 = ExactCache(
         str(settings.l0_cache_path),
         enabled=settings.cache.l0.enabled,
@@ -1981,6 +2238,118 @@ def cache_prune() -> None:
     l1_note = "" if settings.cache.l1.ttl_seconds > 0 else " (ttl disabled — nothing expires)"
     typer.echo(f"L0: removed {l0_removed} expired entries{l0_note}")
     typer.echo(f"L1: removed {l1_removed} expired entries{l1_note}")
+
+
+def _sso_admin_gate_active(settings: Settings) -> bool:
+    """True when ``_require_admin_role`` will demand a Bearer token."""
+    sso = settings.enterprise.sso
+    if not sso.enabled:
+        return False
+    oidc_ready = bool(
+        (sso.jwks_url or "").strip()
+        or any(str(u or "").strip() for u in (sso.jwks_urls or []))
+        or (sso.discovery_url or "").strip()
+    )
+    return bool((sso.secret or "").strip() or oidc_ready)
+
+
+def _daemon_invalidate_caches(
+    settings: Settings,
+    *,
+    model: str | None,
+    entry_hash: str | None,
+    team_id: str | None = None,
+    key_id: str | None = None,
+    token: str | None = None,
+) -> tuple[bool, str]:
+    url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/cache/invalidate"
+    body: dict[str, str] = {}
+    if model:
+        body["model"] = model
+    if entry_hash:
+        body["hash"] = entry_hash
+    if team_id:
+        body["team_id"] = team_id
+    if key_id:
+        body["key_id"] = key_id
+    auth = (token or "").strip() or (settings.server.primary_master_key() or "").strip()
+    headers: dict[str, str] = {}
+    if _sso_admin_gate_active(settings):
+        if not auth:
+            return False, (
+                "SSO token required — pass --token or configure server.api_key "
+                "(master key) for daemon cache invalidate"
+            )
+        headers["Authorization"] = f"Bearer {auth}"
+    elif auth:
+        headers["Authorization"] = f"Bearer {auth}"
+    try:
+        response = httpx.post(url, json=body, headers=headers, timeout=5.0)
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return False, "daemon returned unexpected response payload"
+        removed = int(payload.get("removed") or 0)
+        return True, (
+            f"Invalidated {removed} entries "
+            f"(L0 {payload.get('l0_removed', 0)}, L1 {payload.get('l1_removed', 0)})."
+        )
+    except Exception as exc:
+        return False, str(exc)
+
+
+@cache_app.command("invalidate")
+def cache_invalidate(
+    model: str | None = typer.Option(None, "--model", help="Served model (L0) or context_key prefix (L1)."),
+    entry_hash: str | None = typer.Option(
+        None, "--hash", help="L0 cache key or L1 answer_hash."
+    ),
+    team: str | None = typer.Option(
+        None, "--team", help="Drop L0 rows scoped to team:<id> and L1 context_keys with that segment."
+    ),
+    key: str | None = typer.Option(
+        None, "--key", help="Drop L0 rows scoped to key:<id> and L1 context_keys with that segment."
+    ),
+    token: str | None = typer.Option(
+        None,
+        "--token",
+        help="Bearer token (SSO or master key) when calling a running daemon under SSO.",
+    ),
+) -> None:
+    """Drop L0/L1 entries by model, hash, team, or key. Empty selection clears both caches."""
+    from daari.cache.exact import ExactCache
+    from daari.cache.semantic import OllamaEmbedder, SemanticCache
+
+    settings = get_settings()
+    if _daemon_is_running(settings):
+        ok, detail = _daemon_invalidate_caches(
+            settings,
+            model=model,
+            entry_hash=entry_hash,
+            team_id=team,
+            key_id=key,
+            token=token,
+        )
+        if not ok:
+            typer.echo(f"Daemon invalidate failed: {detail}", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(detail)
+        return
+    l0 = ExactCache(
+        str(settings.l0_cache_path),
+        enabled=settings.cache.l0.enabled,
+        ttl_seconds=settings.cache.l0.ttl_seconds,
+    )
+    l1 = SemanticCache(
+        str(settings.l1_cache_path),
+        OllamaEmbedder(settings.ollama.base_url, settings.cache.l1.embedding_model),
+        enabled=settings.cache.l1.enabled,
+        ttl_seconds=settings.cache.l1.ttl_seconds,
+    )
+    l0_removed = l0.invalidate(model=model, entry_hash=entry_hash, team_id=team, key_id=key)
+    l1_removed = l1.invalidate(model=model, entry_hash=entry_hash, team_id=team, key_id=key)
+    typer.echo(f"L0: removed {l0_removed}")
+    typer.echo(f"L1: removed {l1_removed}")
 
 
 learn_app = typer.Typer(help="Personal learning loop: outcome stats and recommendations.")

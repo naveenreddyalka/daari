@@ -9,7 +9,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from daari.cache.exact import tools_schema_hash
+from daari.cache.exact import cache_scope_segment, tools_schema_hash
 from daari.cache.normalize import normalize_for_embedding
 from daari.cache.singleflight import SingleFlight
 from daari.gateway.internal import InternalRequest, InternalResponse
@@ -51,14 +51,16 @@ def agent_suffix_hash(request: InternalRequest) -> str:
 
 
 def semantic_context_key(request: InternalRequest) -> str:
-    return "|".join(
-        [
-            request.model,
-            str(request.temperature),
-            tools_schema_hash(request.tools),
-            request.meta.tier_override or "",
-        ]
-    )
+    parts = [
+        request.model,
+        str(request.temperature),
+        tools_schema_hash(request.tools),
+        request.meta.tier_override or "",
+    ]
+    segment = cache_scope_segment(request)
+    if segment:
+        parts.append(segment)
+    return "|".join(parts)
 
 
 def l1_flight_key(
@@ -89,6 +91,31 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+def _semantic_entry_matches(
+    entry: dict[str, Any],
+    *,
+    model: str | None,
+    entry_hash: str | None,
+    team_id: str | None = None,
+    key_id: str | None = None,
+) -> bool:
+    """True when the row should be dropped. Unset filters match everything."""
+    if model is None and entry_hash is None and team_id is None and key_id is None:
+        return True
+    ctx = str(entry.get("context_key") or "")
+    segments = ctx.split("|")
+    if model is not None:
+        if ctx != model and not ctx.startswith(f"{model}|"):
+            return False
+    if entry_hash is not None and entry.get("answer_hash") != entry_hash:
+        return False
+    if team_id is not None and f"team:{team_id}" not in segments:
+        return False
+    if key_id is not None and f"key:{key_id}" not in segments:
+        return False
+    return True
+
+
 class Embedder(Protocol):
     async def embed(self, text: str, *, model: str | None = None) -> list[float] | None: ...
 
@@ -115,25 +142,94 @@ class OllamaEmbedder:
     def _cache_key(self, text: str) -> tuple[str, str]:
         return (self.model, hashlib.sha256(text.encode("utf-8")).hexdigest())
 
-    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
-        if not text.strip():
+    def _memo_key(self, text: str, model: str) -> tuple[str, str]:
+        return (model, hashlib.sha256(text.encode("utf-8")).hexdigest())
+
+    def _memo_get(self, key: tuple[str, str]) -> list[float] | None:
+        if self.cache_size <= 0 or key not in self._memo:
             return None
+        self._memo.move_to_end(key)
+        return list(self._memo[key])
+
+    def _memo_put(self, key: tuple[str, str], embedding: list[float]) -> None:
+        if self.cache_size <= 0:
+            return
+        self._memo[key] = list(embedding)
+        while len(self._memo) > self.cache_size:
+            self._memo.popitem(last=False)
+
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+        results = await self.embed_many([text], model=model)
+        return results[0] if results else None
+
+    async def embed_many(
+        self, texts: list[str], *, model: str | None = None
+    ) -> list[list[float] | None]:
         used_model = model or self.model
-        key = (used_model, hashlib.sha256(text.encode("utf-8")).hexdigest())
-        if self.cache_size > 0 and key in self._memo:
-            self._memo.move_to_end(key)
-            return list(self._memo[key])
-        embedding = await self._embed_http(text, model=used_model)
-        if embedding is not None and self.cache_size > 0:
-            self._memo[key] = list(embedding)
-            while len(self._memo) > self.cache_size:
-                self._memo.popitem(last=False)
-        return embedding
+        results: list[list[float] | None] = [None] * len(texts)
+        miss_indices: list[int] = []
+        miss_texts: list[str] = []
+        for index, text in enumerate(texts):
+            if not text.strip():
+                continue
+            cached = self._memo_get(self._memo_key(text, used_model))
+            if cached is not None:
+                results[index] = cached
+                continue
+            miss_indices.append(index)
+            miss_texts.append(text)
+        if not miss_texts:
+            return results
+        fetched = await self._embed_http_batch(miss_texts, model=used_model)
+        if fetched is None:
+            fetched = [
+                await self._embed_http(text, model=used_model) for text in miss_texts
+            ]
+        for index, embedding in zip(miss_indices, fetched, strict=True):
+            if embedding is not None:
+                self._memo_put(self._memo_key(texts[index], used_model), embedding)
+            results[index] = embedding
+        return results
+
+    async def _embed_http_batch(
+        self, texts: list[str], *, model: str
+    ) -> list[list[float] | None] | None:
+        """POST /api/embed with input[]. None means the server needs the legacy path."""
+        from daari.router.deadline import nonstream_timeout
+
+        try:
+            timeout = nonstream_timeout(self.timeout, "embed")
+            async with httpx.AsyncClient(
+                base_url=self.base_url, timeout=timeout, transport=self._transport
+            ) as client:
+                response = await client.post(
+                    "/api/embed",
+                    json={"model": model, "input": texts},
+                )
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                data = response.json()
+                embeddings = data.get("embeddings")
+                if not isinstance(embeddings, list) or len(embeddings) != len(texts):
+                    return [None] * len(texts)
+                parsed: list[list[float] | None] = []
+                for embedding in embeddings:
+                    if isinstance(embedding, list) and embedding:
+                        parsed.append([float(x) for x in embedding])
+                    else:
+                        parsed.append(None)
+                return parsed
+        except (httpx.HTTPError, ValueError, TypeError):
+            return [None] * len(texts)
 
     async def _embed_http(self, text: str, *, model: str) -> list[float] | None:
+        from daari.router.deadline import nonstream_timeout
+
         try:
+            timeout = nonstream_timeout(self.timeout, "embed")
             async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout, transport=self._transport
+                base_url=self.base_url, timeout=timeout, transport=self._transport
             ) as client:
                 response = await client.post(
                     "/api/embeddings",
@@ -396,6 +492,35 @@ class SemanticCache:
         entries = self._load_entries()
         kept = [entry for entry in entries if not self._entry_expired(entry)]
         removed = len(entries) - len(kept)
+        if removed:
+            self._save_entries(kept)
+        return removed
+
+    def invalidate(
+        self,
+        *,
+        model: str | None = None,
+        entry_hash: str | None = None,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> int:
+        """Drop L1 rows by context_key model prefix, answer hash, tenant, or all."""
+        if not self.enabled:
+            return 0
+        entries = self._load_entries()
+        kept: list[dict[str, Any]] = []
+        removed = 0
+        for entry in entries:
+            if _semantic_entry_matches(
+                entry,
+                model=model,
+                entry_hash=entry_hash,
+                team_id=team_id,
+                key_id=key_id,
+            ):
+                removed += 1
+            else:
+                kept.append(entry)
         if removed:
             self._save_entries(kept)
         return removed

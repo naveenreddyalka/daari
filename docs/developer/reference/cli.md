@@ -15,10 +15,12 @@ Entry point: `daari` (Typer).
 | `trace` | Show a request trace |
 | `report` | Savings / usage ledger |
 | `usage` | Alias of `report` |
+| `spend` | Per-request chargeback export (`export`) |
 | `profile` | Local hardware profile |
 | `route` | Routing helpers (`preview`) |
 | `audit` | Enterprise audit log (`list` / `export` / `verify`) |
 | `configure` | Interactive config helpers |
+| `config` | Validate `config.yaml` (`validate`) |
 | `prune` | Retention prune (traces / usage / feedback) |
 
 ## `setup`
@@ -53,7 +55,7 @@ Entry point: `daari` (Typer).
 | `org-learning` | `stats`, `sync`, `export` |
 | `web-ui` | `serve` |
 | `project` | `init`, `show` |
-| `keys` | `create`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` |
+| `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` |
 | `enterprise` | `bootstrap`, `policy-sync` |
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 | `audit` | `list`, `export`, `verify` |

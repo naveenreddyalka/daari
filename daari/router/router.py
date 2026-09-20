@@ -251,12 +251,15 @@ class OllamaExecutor:
         model = request.model or self.default_model
         started = time.perf_counter()
         payload = self._payload(request, model, stream=False)
+        from daari.router.deadline import nonstream_timeout
+
+        timeout = nonstream_timeout(self.timeout, self.tier)
 
         async def attempt() -> dict[str, Any]:
             from daari.observability.otel import inject_trace_headers
 
             async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=self.timeout
+                base_url=self.base_url, timeout=timeout
             ) as client:
                 response = await client.post(
                     "/api/chat", json=payload, headers=inject_trace_headers()
@@ -271,7 +274,7 @@ class OllamaExecutor:
             attempt,
             upstream=f"ollama:{self.tier}",
             policy=self.retry,
-            timeout=self.timeout,
+            timeout=timeout,
             metrics=self.metrics,
         )
         message = data.get("message") or {}
@@ -301,17 +304,27 @@ class OllamaExecutor:
         model = request.model or self.default_model
         payload = self._payload(request, model, stream=True)
         from daari.observability.otel import inject_trace_headers
+        from daari.router.deadline import (
+            aiter_with_ttft_deadline,
+            deadline_bounded_stream,
+            guard_upstream,
+        )
 
+        guard_upstream(self.tier)
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            async with client.stream(
-                "POST", "/api/chat", json=payload, headers=inject_trace_headers()
+            async with deadline_bounded_stream(
+                client,
+                "POST",
+                "/api/chat",
+                json=payload,
+                headers=inject_trace_headers(),
             ) as response:
                 if response.status_code >= 400:
                     body = (await response.aread()).decode("utf-8", errors="replace")
                     raise OllamaRequestError(
                         response.status_code, str(response.request.url), body
                     )
-                async for line in response.aiter_lines():
+                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                     if not line:
                         continue
                     yield json.loads(line)
@@ -378,6 +391,7 @@ class Router:
         tier_shadow_compare_tier: str = "",
         tier_shadow_daily_usd: float = 0.0,
         latency_budget_ms: int = 0,
+        request_deadline_seconds: float | None = None,
         ttft_aware: bool = False,
         ttft_percentile: float = 0.95,
         ttft_min_samples: int = 20,
@@ -467,6 +481,7 @@ class Router:
         self.warm_tracker = warm_tracker
         self.learned_router = learned_router
         self.latency_budget_ms = latency_budget_ms
+        self.request_deadline_seconds = request_deadline_seconds
         self.ttft_aware = bool(ttft_aware)
         self.ttft_percentile = float(ttft_percentile)
         self.ttft_min_samples = max(1, int(ttft_min_samples))
@@ -734,6 +749,20 @@ class Router:
         return response
 
     async def route(self, request: InternalRequest) -> InternalResponse:
+        from daari.router.deadline import (
+            bind_request_deadline,
+            deadline_active,
+            resolve_deadline_seconds,
+        )
+
+        if not deadline_active():
+            seconds = resolve_deadline_seconds(
+                getattr(request.meta, "deadline_ms", None),
+                getattr(self, "request_deadline_seconds", None),
+            )
+            if seconds is not None:
+                with bind_request_deadline(seconds, metrics=self.metrics):
+                    return await self.route(request)
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         if reused:
@@ -866,6 +895,26 @@ class Router:
         ttl = getattr(policy, "ttl_seconds", None)
         return float(ttl) if isinstance(ttl, (int, float)) else None
 
+    def _open_spend_context(self, request: InternalRequest, request_id: str) -> None:
+        ledger = getattr(self, "spend_ledger", None)
+        if ledger is None or not getattr(ledger, "enabled", False):
+            return
+        from daari.observability.spend import SpendContext, bind_spend_context
+
+        meta = request.meta
+        bind_spend_context(
+            SpendContext(
+                key_id=getattr(meta, "key_id", None) or "",
+                team_id=getattr(meta, "team_id", None) or "",
+                client_id=meta.client_id or "",
+                request_id=request_id or "",
+                requested_model=request.model or "",
+                service_tier=getattr(request.sampling, "service_tier", None),
+                pricing=self.pricing,
+                fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
+            )
+        )
+
     def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
         if self.usage_ledger is None:
             return
@@ -874,6 +923,10 @@ class Router:
         else:
             prompt_chars = sum(len(message.content or "") for message in request.messages)
         input_tokens, output_tokens, _ = response_token_usage(response, prompt_chars)
+        self._open_spend_context(
+            request,
+            response.daari_meta.trace_id or uuid.uuid4().hex[:16],
+        )
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -885,6 +938,8 @@ class Router:
             provider=response.daari_meta.provider_id,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cached_tokens=response.daari_meta.cached_tokens,
+            reported_cost=response.daari_meta.cost_usd,
         )
 
     def _example_record(
@@ -1493,6 +1548,9 @@ class Router:
         try:
             response = await self._run_model_tier(initial_tier, gen_request)
         except Exception as exc:
+            from daari.router.deadline import reraise_deadline
+
+            reraise_deadline(exc)
             if initial_tier == "L3":
                 from daari.router.failover import is_context_length_error
 
@@ -1507,7 +1565,10 @@ class Router:
                 try:
                     response = await self._run_model_tier("L4", gen_request)
                     response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
-                except Exception:
+                except Exception as nested:
+                    from daari.router.deadline import reraise_deadline
+
+                    reraise_deadline(nested)
                     response = await self._run_model_tier("L3", gen_request)
                     response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
             else:
@@ -1619,8 +1680,23 @@ class Router:
         """
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
+        from daari.router.deadline import (
+            bind_request_deadline,
+            deadline_active,
+            resolve_deadline_seconds,
+        )
 
         outcome = outcome if outcome is not None else StreamOutcome()
+        if not deadline_active():
+            seconds = resolve_deadline_seconds(
+                getattr(request.meta, "deadline_ms", None),
+                getattr(self, "request_deadline_seconds", None),
+            )
+            if seconds is not None:
+                with bind_request_deadline(seconds, metrics=self.metrics):
+                    async for chunk in self.stream_openai_chunks(request, outcome=outcome):
+                        yield chunk
+                return
         draft_used = False
         started = time.perf_counter()
         created = int(time.time())
@@ -1628,6 +1704,9 @@ class Router:
         client_model = request.model or self.ollama_l3.default_model
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
+        self._open_spend_context(
+            request, trace.trace_id if trace is not None else chunk_id
+        )
         if reused:
             add_step(
                 "classify_user_turn",
@@ -2002,6 +2081,9 @@ class Router:
                 last_delta_at: float | None = None
                 delta_count = 0
                 try:
+                    from daari.router.deadline import guard_upstream
+
+                    guard_upstream(tier)
                     async for event in stream_executor.stream(stream_request):
                         if event.get("prompt_eval_count") is not None:
                             # Ollama reports real counts on the terminal event (#156).
@@ -2040,6 +2122,9 @@ class Router:
                         if event.get("done"):
                             break
                 except Exception as exc:
+                    from daari.router.deadline import reraise_deadline
+
+                    reraise_deadline(exc)
                     last_error = exc
                     log_gateway_event(
                         "stream_attempt_failed",
@@ -2110,6 +2195,9 @@ class Router:
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
                     try:
+                        from daari.router.deadline import guard_upstream
+
+                        guard_upstream("L6")
                         l6_request = await self._frontier_request(stream_request)
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
                         async for delta in self.frontier.stream(
@@ -2418,10 +2506,27 @@ class Router:
         the served tier before the first event (#278).
         """
         outcome = outcome if outcome is not None else StreamOutcome()
+        from daari.router.deadline import (
+            bind_request_deadline,
+            deadline_active,
+            resolve_deadline_seconds,
+        )
+
+        if not deadline_active():
+            seconds = resolve_deadline_seconds(
+                getattr(request.meta, "deadline_ms", None),
+                getattr(self, "request_deadline_seconds", None),
+            )
+            if seconds is not None:
+                with bind_request_deadline(seconds, metrics=self.metrics):
+                    async for chunk in self.stream_anthropic_events(request, outcome=outcome):
+                        yield chunk
+                return
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
 
         message_id = f"msg_{int(time.time() * 1000)}"
+        self._open_spend_context(request, message_id)
         await self._refresh_warm_models()
         # Parity with the OpenAI stream path (issue #101): category policies,
         # learned routing, and latency step-down all key off the profile.
@@ -2673,6 +2778,9 @@ class Router:
             tier_text_parts: list[str] = []
             reported_usage: tuple[int, int] | None = None
             try:
+                from daari.router.deadline import guard_upstream
+
+                guard_upstream(tier)
                 async for event in stream_executor.stream(stream_request):
                     if event.get("prompt_eval_count") is not None:
                         # Last report wins: cumulative-usage providers would
@@ -2752,6 +2860,9 @@ class Router:
                     if event.get("done"):
                         break
             except Exception as exc:
+                from daari.router.deadline import reraise_deadline
+
+                reraise_deadline(exc)
                 last_error = exc
                 log_gateway_event(
                     "anthropic_stream_attempt_failed",
@@ -3177,7 +3288,10 @@ class Router:
         for tier in ("L4", "L5"):
             try:
                 response = await self._run_model_tier(tier, request)
-            except Exception:
+            except Exception as hop_exc:
+                from daari.router.deadline import reraise_deadline
+
+                reraise_deadline(hop_exc)
                 continue
             add_step(
                 "context_length_failover",
@@ -3201,6 +3315,9 @@ class Router:
         return response
 
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
+        from daari.router.deadline import guard_upstream
+
+        guard_upstream(tier)
         add_step("tier_attempt", tier=tier)
         request = await self._compact_context(request)
         request = self._optimize_context(request)
@@ -3477,6 +3594,58 @@ class Router:
             prefix_hash=prefix,
         )
 
+    def effective_failover_policy(self) -> list[dict[str, Any]]:
+        """Resolved timeout/retry for each local tier and frontier slot (#712)."""
+        from daari.router.retry import policy_snapshot
+
+        entries: list[dict[str, Any]] = []
+        for tier, executor in (
+            ("L3", self.ollama_l3),
+            ("L4", self.ollama_l4),
+            ("L5", self.ollama_l5),
+        ):
+            entries.append({"id": tier, **policy_snapshot(executor.timeout, executor.retry)})
+        org = self.org_pool
+        if org is not None:
+            entries.append(
+                {
+                    "id": getattr(org, "tier", None) or "L5-org",
+                    **policy_snapshot(org.timeout, org.retry),
+                }
+            )
+        frontier = self.frontier
+        slots = getattr(frontier, "slots", None)
+        if slots:
+            for slot in slots:
+                executor = slot.executor
+                entries.append(
+                    {"id": slot.id, **policy_snapshot(executor.timeout, executor.retry)}
+                )
+        elif frontier is not None:
+            entries.append(
+                {
+                    "id": getattr(frontier, "provider", None) or "L6",
+                    **policy_snapshot(
+                        getattr(frontier, "timeout", 90.0),
+                        getattr(frontier, "retry", None),
+                    ),
+                }
+            )
+        return entries
+
+    def _attach_preview_policy(self, payload: dict[str, Any]) -> dict[str, Any]:
+        chain = self.effective_failover_policy()
+        payload["chain"] = chain
+        chosen = payload.get("tier")
+        match = next((entry for entry in chain if entry["id"] == chosen), None)
+        if match is not None:
+            payload["policy"] = {
+                "timeout_s": match["timeout_s"],
+                "retry_attempts": match["retry_attempts"],
+                "retry_backoff_s": match["retry_backoff_s"],
+            }
+        return payload
+
     def preview_initial_tier(self, request: InternalRequest) -> dict[str, Any]:
         """Would-be initial local tier without calling Ollama or frontier."""
         profile = self._build_prompt_profile(request)
@@ -3493,18 +3662,18 @@ class Router:
             capable = self._filter_capable_tiers(["L3", "L4", "L5"], request)
             chosen = capable[0] if capable else "L3"
             reasons["heuristic"] = chosen
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
         if alias == "nitro":
             chosen = self._nitro_tier(request)
             reasons["heuristic"] = chosen
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
 
         override = (request.meta.tier_override or "").upper()
         if override in {"L3", "L4", "L5"}:
             capable = self._filter_capable_tiers([override, "L5", "L4", "L3"], request)
             chosen = capable[0] if capable else override
             reasons["heuristic"] = chosen
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
         pinned = self._session_pin_tier(request)
         if pinned is not None:
             capable = self._filter_capable_tiers([pinned, "L5", "L4", "L3"], request)
@@ -3512,7 +3681,7 @@ class Router:
             chosen = self._apply_context_window_escalation(request, profile, chosen)
             chosen = self._cap_tier(chosen, self._effective_tier_cap(request))
             reasons["heuristic"] = pinned
-            return {"tier": chosen, "reasons": reasons}
+            return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
 
         heuristic = self._choose_uncapped_tier(request, profile)
         reasons["heuristic"] = heuristic
@@ -3531,7 +3700,7 @@ class Router:
         chosen = self._apply_stall_escalation(request, chosen)
         chosen = self._apply_context_window_escalation(request, profile, chosen)
         chosen = self._cap_tier(chosen, self._effective_tier_cap(request))
-        return {"tier": chosen, "reasons": reasons}
+        return self._attach_preview_policy({"tier": chosen, "reasons": reasons})
 
     def _choose_initial_tier(
         self, request: InternalRequest, profile: PromptProfile | None = None
@@ -3924,6 +4093,8 @@ class Router:
         non-streamed would only duplicate work. Org pool and L6 still apply,
         which is what streaming used to miss entirely (#155).
         """
+        from daari.router.deadline import RequestDeadlineExceeded, guard_upstream
+
         threshold = self._confidence_threshold_for(request, profile)
         confidence = score_l3_confidence(response.content)
         response.daari_meta.confidence = confidence
@@ -3949,6 +4120,9 @@ class Router:
                         return next_response
                     response = next_response
                     confidence = next_confidence
+                except RequestDeadlineExceeded:
+                    response.daari_meta.warning = "request_deadline_exceeded"
+                    return response
                 except Exception:
                     response.daari_meta.warning = "below_confidence_threshold"
                     return response
@@ -3957,6 +4131,7 @@ class Router:
         if self.org_pool is not None:
             try:
                 add_step("escalate", to="L5-org", local_confidence=confidence)
+                guard_upstream("L5-org")
                 pool_request = request.model_copy(deep=True)
                 pool_request.model = self.org_pool.default_model
                 pool_response = await self.org_pool.execute(pool_request)
@@ -3968,6 +4143,9 @@ class Router:
                     return pool_response
                 response = pool_response
                 confidence = pool_confidence
+            except RequestDeadlineExceeded:
+                response.daari_meta.warning = "request_deadline_exceeded"
+                return response
             except Exception:
                 add_step("org_pool_failed")
 
@@ -3985,6 +4163,7 @@ class Router:
 
         add_step("escalate", to="L6", local_confidence=confidence)
         try:
+            guard_upstream("L6")
             l6_request = await self._frontier_request(request)
             l6_response = await self.frontier.execute(
                 l6_request,
@@ -3998,6 +4177,9 @@ class Router:
                 l6_response.daari_meta.warning = "frontier_budget_warning"
             self.metrics.record_escalation()
             return l6_response
+        except RequestDeadlineExceeded:
+            response.daari_meta.warning = "request_deadline_exceeded"
+            return response
         except ZdrUnavailable:
             raise
         except RegionUnavailable:
@@ -4016,7 +4198,15 @@ class Router:
         cap = self._effective_tier_cap(request)
         if cap in self._TIER_ORDER:
             return False
-        return self.frontier is not None and bool(self.frontier.api_key)
+        if self.frontier is None or not bool(self.frontier.api_key):
+            return False
+        from daari.auth.model_access import frontier_models_permitted
+
+        return frontier_models_permitted(
+            self.frontier,
+            key_patterns=getattr(request.meta, "key_model_patterns", None),
+            team_patterns=getattr(request.meta, "team_model_patterns", None),
+        )
 
     async def _frontier_request(self, request: InternalRequest) -> InternalRequest:
         """Apply the outbound slim/compress/scrub pipeline before leaving the device."""
@@ -4636,20 +4826,21 @@ class AppContext:
         def tier_executor(tier: str, ollama_model: str) -> OllamaExecutor | MLXExecutor:
             # MLX backend (issue #97): tiers mapped in mlx.models are served by
             # mlx_lm.server; the rest stay on Ollama.
+            timeout = settings.models.timeout_for(tier, local_timeout)
             mlx_model = settings.mlx.models.get(tier) if settings.mlx.enabled else None
             if mlx_model:
                 return MLXExecutor(
                     base_url=settings.mlx.base_url.rstrip("/"),
                     default_model=mlx_model,
                     tier=tier,
-                    timeout=local_timeout,
+                    timeout=timeout,
                     retry=local_retry,
                 )
             return OllamaExecutor(
                 base_url=settings.ollama.base_url.rstrip("/"),
                 default_model=ollama_model,
                 tier=tier,
-                timeout=local_timeout,
+                timeout=timeout,
                 retry=local_retry,
             )
 
@@ -4659,11 +4850,12 @@ class AppContext:
         org_pool_executor: OllamaExecutor | MLXExecutor | None = None
         org_pool_cfg = settings.routing.org_pool
         if org_pool_cfg.enabled and org_pool_cfg.base_url.strip():
+            org_tier = org_pool_cfg.tier or "L5-org"
             org_pool_executor = OllamaExecutor(
                 base_url=org_pool_cfg.base_url.rstrip("/"),
                 default_model=org_pool_cfg.model or settings.models.l5,
-                tier=org_pool_cfg.tier or "L5-org",
-                timeout=local_timeout,
+                tier=org_tier,
+                timeout=settings.models.timeout_for(org_tier, local_timeout),
                 retry=local_retry,
             )
         from daari.router.frontier_pool import build_frontier_pool
@@ -4846,6 +5038,7 @@ class AppContext:
             warm_tracker=warm_tracker,
             learned_router=learned_router,
             latency_budget_ms=settings.routing.latency_budget_ms,
+            request_deadline_seconds=settings.upstream.request_deadline_seconds,
             ttft_aware=settings.routing.ttft_aware,
             ttft_percentile=settings.routing.ttft_percentile,
             ttft_min_samples=settings.routing.ttft_min_samples,
@@ -4901,6 +5094,11 @@ class AppContext:
             context_window_buffer=settings.routing.context_window_escalation_buffer,
             context_windows=dict(settings.routing.context_windows or {}),
         )
+        from daari.observability.spend import install_spend_hook, spend_ledger_from_settings
+
+        spend_ledger = spend_ledger_from_settings(settings)
+        router.spend_ledger = spend_ledger
+        install_spend_hook(usage_ledger, spend_ledger)
         if settings.observability.otel:
             from daari.observability.otel import configure_providers
 
