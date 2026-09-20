@@ -47,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.ctx = AppContext.from_settings(resolved)
         app.state.ctx.virtual_key_store = vk_store
+        app.state.ctx.rate_limiter = getattr(app.state, "rate_limiter", None)
         from daari.gateway.boundaries import startup_warnings
         from daari.gateway.request_log import log_gateway_event
 

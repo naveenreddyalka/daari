@@ -3640,6 +3640,15 @@ by `tests/unit/test_spend_export.py`.
 `asr_frontier_fallback_findings`. Covered by
 `tests/unit/test_config_validate.py`.
 
+### Batch RPM/TPM/RPD + tenant meta on drain ([#840](https://github.com/naveenreddyalka/daari/issues/840))
+
+<!-- tracking:#840 -->
+**Status:** Done (2026-09-20). Batch drain charges virtual-key RPM/TPM/RPD
+(and team caps), copies `key_id` / `team_id` / `cache_scope` onto item
+`RequestMeta`, and records structured 429 / 403 item failures for rate
+limit and model allowlist denials. Master / no-auth batches stay open.
+Covered by `tests/unit/test_batches.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
