@@ -23,6 +23,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `rate_limit.queue_size` | int | `32` | Waiters allowed when in-flight is full; overflow is 503 + Retry-After. |
 | `rate_limit.retry_after_seconds` | int | `1` | Retry-After value on 429/503. |
 | `rate_limit.fail_open` | bool | `False` | When Redis counters are unreachable, allow requests without counting instead of degrading to the per-replica SQLite backend. Default false (prefer SQLite fallback so limits still apply locally). |
+
+Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rate_limit.*` setting. Set it on the key or team (`daari keys create/update --rpd`, `daari keys team-create/update --rpd`). See [auth and keys](../guides/configuration/auth-and-keys.md).
 | `models.l3` | str | `'llama3.2:3b'` |  |
 | `models.l4` | str | `'llama3.1:8b'` |  |
 | `models.l5` | str | `'llama3.1:70b'` |  |
