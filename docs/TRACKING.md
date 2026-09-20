@@ -3724,6 +3724,12 @@ present; fail-open. Covered by `tests/unit/test_otel_logs.py`.
 `X-Daari-Deadline-Ms` / 504 `request_deadline_exceeded`; headers contract
 asserts the same. Covered by `tests/unit/test_deadline_docs.py`.
 
+### CLI reference mentions spend export --tier ([#836](https://github.com/naveenreddyalka/daari/issues/836))
+
+<!-- tracking:#836 -->
+**Status:** Done (2026-09-20). `cli.md` lists `spend export` with `--tier` and
+links the chargeback guide. Covered by `tests/unit/test_chargeback_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
