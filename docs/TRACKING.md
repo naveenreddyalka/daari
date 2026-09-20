@@ -3463,6 +3463,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#786 -->
 **Status:** Done (2026-09-20). `upstream.requestDeadlineSeconds` and `observability.retention.requestLogDays` set `DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS` and `DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS` when non-empty. Defaults omit both. Covered by `tests/unit/test_helm_chart.py`.
 
+### Cancel embed and ASR on disconnect ([#787](https://github.com/naveenreddyalka/daari/issues/787))
+
+<!-- tracking:#787 -->
+**Status:** Done (2026-09-20). Embeddings and audio transcription/translation wrap upstream work in `await_unless_disconnected` and return 499 with `daari_cancelled_requests_total{phase=embed|asr|translation}`. Covered by `tests/unit/test_client_disconnect.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

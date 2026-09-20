@@ -25,7 +25,7 @@ from daari.gateway.embeddings_api import (
 )
 from daari.gateway.internal import ContentImage, InternalRequest, Message, RequestMeta
 from daari.gateway.sampling import SamplingParams
-from daari.gateway.disconnect import note_request_cancelled
+from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected, note_request_cancelled
 from daari.gateway.streaming import NDJSON_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.router.capabilities import UnsupportedCapability
 from daari.router.local_pool import BackendUnavailable
@@ -432,7 +432,24 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
-            vectors = await compute_embeddings(ctx, texts, model=model, request=request)
+            try:
+                vectors = await await_unless_disconnected(
+                    request,
+                    compute_embeddings(ctx, texts, model=model, request=request),
+                    metrics=ctx.metrics,
+                    phase="embed",
+                    model=model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             return {"model": model, "embeddings": vectors}
 
         @router.post("/api/embeddings")
@@ -446,7 +463,24 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.prompt)
-            vectors = await compute_embeddings(ctx, texts, model=model, request=request)
+            try:
+                vectors = await await_unless_disconnected(
+                    request,
+                    compute_embeddings(ctx, texts, model=model, request=request),
+                    metrics=ctx.metrics,
+                    phase="embed",
+                    model=model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             return {"embedding": vectors[0] if vectors else []}
 
         @router.get("/api/ps")

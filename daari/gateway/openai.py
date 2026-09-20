@@ -899,7 +899,24 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
-            vectors = await compute_embeddings(ctx, texts, model=model, request=request)
+            try:
+                vectors = await await_unless_disconnected(
+                    request,
+                    compute_embeddings(ctx, texts, model=model, request=request),
+                    metrics=ctx.metrics,
+                    phase="embed",
+                    model=model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             return openai_embeddings_payload(model, vectors, texts)
 
         @router.get("/v1/models")
