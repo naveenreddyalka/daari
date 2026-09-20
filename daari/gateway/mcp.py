@@ -9,10 +9,10 @@ from pydantic import BaseModel, Field
 
 from daari import __version__
 from daari.enterprise.postgres_audit import audit_log_from_settings
-from daari.gateway.client_errors import safe_detail
 from daari.gateway.base import GatewayAdapter
+from daari.gateway.client_errors import request_deadline_response, safe_detail
 from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected
-from daari.gateway.internal import InternalRequest, Message
+from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.mcp_guardrails import (
     GUARDRAIL_BLOCKED,
     LEGACY_ERROR_CODE,
@@ -26,6 +26,14 @@ from daari.gateway.mcp_tasks import (
     initialize_capabilities,
     spawn_tool_task,
     tool_should_become_task,
+)
+from daari.router.deadline import (
+    RequestDeadlineExceeded,
+    bind_request_deadline,
+    deadline_active,
+    guard_upstream,
+    parse_deadline_ms,
+    resolve_deadline_seconds,
 )
 from daari.router.router import AppContext
 
@@ -377,6 +385,9 @@ async def _run_tool(
     catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
     provider_id = (catalog_by_name.get(normalized) or {}).get("provider_id")
     resolved_model = model or ctx.settings.models.l3
+    deadline_ms = None
+    if request is not None:
+        deadline_ms = parse_deadline_ms(request.headers.get("x-daari-deadline-ms"))
 
     async def _await_work(coro: Any) -> Any:
         if request is None:
@@ -400,6 +411,7 @@ async def _run_tool(
         internal = InternalRequest(
             messages=[Message(role="user", content=call_input or "")],
             model=resolved_model,
+            meta=RequestMeta(deadline_ms=deadline_ms),
         )
         provider_result = await _await_work(provider.execute(internal))
         return MCPQueryResponse(
@@ -420,6 +432,7 @@ async def _run_tool(
     internal = InternalRequest(
         messages=[Message(role="user", content=route_input)],
         model=resolved_model,
+        meta=RequestMeta(deadline_ms=deadline_ms),
     )
     routed = await _await_work(ctx.router.route(internal))
     return MCPQueryResponse(
@@ -427,6 +440,34 @@ async def _run_tool(
         result={"content": routed.content},
         daari_meta=routed.daari_meta.model_dump(),
     )
+
+
+def _deadline_seconds_for_request(request: Request, ctx: AppContext) -> float | None:
+    header_ms = parse_deadline_ms(request.headers.get("x-daari-deadline-ms"))
+    return resolve_deadline_seconds(
+        header_ms,
+        getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+    )
+
+
+async def _run_tool_with_deadline(
+    ctx: AppContext,
+    name: str,
+    call_input: str | None,
+    call_args: dict[str, Any],
+    *,
+    model: str | None,
+    request: Request,
+) -> MCPQueryResponse:
+    """Bind wall-clock budget for tools/call, then run the tool (#827)."""
+    seconds = _deadline_seconds_for_request(request, ctx)
+    if seconds is not None and not deadline_active():
+        with bind_request_deadline(seconds, metrics=ctx.metrics):
+            guard_upstream("mcp")
+            return await _run_tool(
+                ctx, name, call_input, call_args, model=model, request=request
+            )
+    return await _run_tool(ctx, name, call_input, call_args, model=model, request=request)
 
 
 def _client_disconnected_response() -> JSONResponse:
@@ -590,7 +631,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                     return _legacy_guardrail_blocked(normalized_name, rule)
                 try:
                     tool_response = governance.guard_legacy(
-                        await _run_tool(
+                        await _run_tool_with_deadline(
                             ctx,
                             name,
                             arguments.get("input"),
@@ -601,6 +642,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                     )
                 except ClientDisconnected:
                     return _client_disconnected_response()
+                except RequestDeadlineExceeded as exc:
+                    return request_deadline_response(exc)
                 _record_mcp_tool(
                     ctx, tool_response.tool or normalized_name, "ok" if tool_response.ok else "error"
                 )
@@ -627,12 +670,14 @@ class MCPGatewayAdapter(GatewayAdapter):
                 return _legacy_guardrail_blocked(tool, rule)
             try:
                 response = governance.guard_legacy(
-                    await _run_tool(
+                    await _run_tool_with_deadline(
                         ctx, tool, body.input, body.args, model=body.model, request=request
                     )
                 )
             except ClientDisconnected:
                 return _client_disconnected_response()
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             _record_mcp_tool(ctx, response.tool or tool, "ok" if response.ok else "error")
             return _legacy(response.model_dump())
 
@@ -774,7 +819,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                             request,
                             _jsonrpc_result(rpc_id, create_task_result(task)),
                         )
-                    tool_response = await _run_tool(
+                    tool_response = await _run_tool_with_deadline(
                         ctx, name, arguments.get("input"), arguments, model=None, request=request
                     )
                     _record_mcp_tool(
@@ -790,6 +835,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                 )
             except ClientDisconnected:
                 return _client_disconnected_response()
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             except Exception as exc:  # noqa: BLE001 — JSON-RPC must not leak a 500
                 return _rpc_response(
                     request,
