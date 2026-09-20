@@ -3658,6 +3658,14 @@ applies `apply_auth_claims_to_meta` so virtual keys carry `tier_cap`,
 403 `model_not_allowed` shape and audit rows as chat; spend and L0 cache
 scope follow the key. Covered by `tests/unit/test_mcp_vk_governance.py`.
 
+### Embedding L0 honors cache_scope ([#841](https://github.com/naveenreddyalka/daari/issues/841))
+
+<!-- tracking:#841 -->
+**Status:** Done (2026-09-20). `POST /v1/embeddings` and Ollama `/api/embed`
+apply virtual-key `cache_scope` / `key_id` / `team_id` to embed L0 keys so
+scoped tenants do not share vectors; `daari cache invalidate --key/--team`
+removes those entries. Covered by `tests/unit/test_embeddings.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

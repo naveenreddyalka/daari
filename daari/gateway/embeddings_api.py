@@ -8,7 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message, RequestMeta
 from daari.observability.tokens import estimate_tokens
 from daari.router.router import AppContext
 
@@ -19,10 +19,27 @@ def embedding_texts(value: str | list[str]) -> list[str]:
     return [str(item) for item in value]
 
 
-def embedding_cache_request(model: str, text: str) -> InternalRequest:
+def embedding_cache_meta(request: Any | None = None) -> RequestMeta:
+    """Tenant cache_scope / key_id / team_id for embed L0 keys (#841)."""
+    meta = RequestMeta()
+    if request is None:
+        return meta
+    from daari.server.auth import apply_auth_claims_to_meta
+
+    apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
+    return meta
+
+
+def embedding_cache_request(
+    model: str,
+    text: str,
+    *,
+    meta: RequestMeta | None = None,
+) -> InternalRequest:
     return InternalRequest(
         messages=[Message(role="user", content=text)],
         model=f"__embed__:{model}",
+        meta=meta if meta is not None else RequestMeta(),
     )
 
 
@@ -105,8 +122,9 @@ async def compute_embeddings(
     latency_ms = 0
     miss_indices: list[int] = []
     miss_texts: list[str] = []
+    cache_meta = embedding_cache_meta(request)
     for index, text in enumerate(texts):
-        cached = ctx.router.cache.get(embedding_cache_request(model, text))
+        cached = ctx.router.cache.get(embedding_cache_request(model, text, meta=cache_meta))
         if cached is not None:
             vectors[index] = json.loads(cached.content)
             cache_hits += 1
@@ -127,7 +145,7 @@ async def compute_embeddings(
                     status_code=502, detail=f"embedding model {model} returned no vector"
                 )
             ctx.router.cache.put(
-                embedding_cache_request(model, texts[index]),
+                embedding_cache_request(model, texts[index], meta=cache_meta),
                 InternalResponse(
                     content=json.dumps(embedding),
                     model=model,
