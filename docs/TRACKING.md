@@ -3577,6 +3577,13 @@ Covered by `tests/unit/test_cache_invalidate.py`.
 resolves (empty `asr.base_url` — fallback-only path). Covered by
 `tests/unit/test_config_validate.py`.
 
+### Docs: deadline header on audio and embeddings ([#824](https://github.com/naveenreddyalka/daari/issues/824))
+
+<!-- tracking:#824 -->
+**Status:** Done (2026-09-20). `docs/developer/reference/headers.md` lists
+audio transcriptions/translations and embeddings among
+`X-Daari-Deadline-Ms` surfaces. Covered by `tests/unit/test_deadline_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
