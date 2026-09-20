@@ -3717,6 +3717,13 @@ FIFO. Batch drain acquires at `low`. Covered by
 same OTLP endpoint as traces/metrics, correlated with the active span when
 present; fail-open. Covered by `tests/unit/test_otel_logs.py`.
 
+### Docs: MCP tools/call honors X-Daari-Deadline-Ms ([#835](https://github.com/naveenreddyalka/daari/issues/835))
+
+<!-- tracking:#835 -->
+**Status:** Done (2026-09-20). MCP guide documents `tools/call` +
+`X-Daari-Deadline-Ms` / 504 `request_deadline_exceeded`; headers contract
+asserts the same. Covered by `tests/unit/test_deadline_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
