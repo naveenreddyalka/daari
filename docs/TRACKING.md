@@ -1850,7 +1850,14 @@ and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
 Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 `tests/unit/test_sampling_params.py`.
 
-<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
+<!-- tracking-append: add the next ### section above ### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
 
@@ -3591,6 +3598,13 @@ query) binds `X-Daari-Deadline-Ms` before tool execution; exhaustion returns
 audio transcriptions/translations and embeddings among
 `X-Daari-Deadline-Ms` surfaces. Covered by `tests/unit/test_deadline_docs.py`.
 
+### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
 ### Spend export --tier filter ([#818](https://github.com/naveenreddyalka/daari/issues/818))
 
 <!-- tracking:#818 -->
@@ -3604,4 +3618,11 @@ by `tests/unit/test_spend_export.py`.
 2. Refresh **Last updated** and pytest count after test changes.
 3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
 4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
-5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
+5. Append a new `###` section **above** `### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
