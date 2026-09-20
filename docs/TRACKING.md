@@ -3640,6 +3640,15 @@ by `tests/unit/test_spend_export.py`.
 `asr_frontier_fallback_findings`. Covered by
 `tests/unit/test_config_validate.py`.
 
+### MCP virtual-key governance on tools/call ([#839](https://github.com/naveenreddyalka/daari/issues/839))
+
+<!-- tracking:#839 -->
+**Status:** Done (2026-09-20). MCP `tools/call` (route + provider execute)
+applies `apply_auth_claims_to_meta` so virtual keys carry `tier_cap`,
+`cache_scope`, `key_id`, and `team_id`; disallowed models return the same
+403 `model_not_allowed` shape and audit rows as chat; spend and L0 cache
+scope follow the key. Covered by `tests/unit/test_mcp_vk_governance.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
