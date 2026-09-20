@@ -184,7 +184,13 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _where(since: str, key_id: str | None, team_id: str | None, ph: str) -> tuple[str, list[Any]]:
+def _where(
+    since: str,
+    key_id: str | None,
+    team_id: str | None,
+    ph: str,
+    tier: str | None = None,
+) -> tuple[str, list[Any]]:
     clauses = [f"ts >= {ph}"]
     params: list[Any] = [since]
     if key_id:
@@ -193,6 +199,9 @@ def _where(since: str, key_id: str | None, team_id: str | None, ph: str) -> tupl
     if team_id:
         clauses.append(f"team_id = {ph}")
         params.append(team_id)
+    if tier:
+        clauses.append(f"tier = {ph}")
+        params.append(tier)
     return " AND ".join(clauses), params
 
 
@@ -317,10 +326,11 @@ class SpendLedger:
         since: str,
         key_id: str | None = None,
         team_id: str | None = None,
+        tier: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
-        where, params = _where(since, key_id, team_id, "?")
+        where, params = _where(since, key_id, team_id, "?", tier=tier)
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, model, tier,"
             " input_tokens, output_tokens, cached_tokens, cost_usd, cost_avoided_usd, cache_hit"
@@ -441,10 +451,11 @@ class PostgresSpendLedger(SpendLedger):
         since: str,
         key_id: str | None = None,
         team_id: str | None = None,
+        tier: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
-        where, params = _where(since, key_id, team_id, "%s")
+        where, params = _where(since, key_id, team_id, "%s", tier=tier)
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, model, tier,"
             " input_tokens, output_tokens, cached_tokens, cost_usd, cost_avoided_usd, cache_hit"

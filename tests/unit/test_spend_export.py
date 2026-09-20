@@ -94,6 +94,50 @@ def test_export_filters_fixed_timestamps_key_and_team(tmp_path):
     assert [row["request_id"] for row in only_team] == ["req-new"]
 
 
+def test_export_filters_by_tier(tmp_path):
+    ledger = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
+    _row(ledger, request_id="req-asr", tier="asr", key_id="key-a", team_id="team-1")
+    _row(ledger, request_id="req-embed", tier="embed", key_id="key-a", team_id="team-1")
+    _row(ledger, request_id="req-l6", tier="L6", key_id="key-b", team_id="team-2")
+    _row(
+        ledger,
+        request_id="req-translation",
+        tier="translation",
+        key_id="key-a",
+        team_id="team-1",
+    )
+
+    asr_only = list(ledger.iter_rows(since=SINCE, tier="asr"))
+    assert [row["request_id"] for row in asr_only] == ["req-asr"]
+    combined = list(ledger.iter_rows(since=SINCE, tier="embed", key_id="key-a", team_id="team-1"))
+    assert [row["request_id"] for row in combined] == ["req-embed"]
+
+
+def test_spend_export_cli_tier_help_and_filter(tmp_path, monkeypatch):
+    settings = Settings()
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    ledger = spend_ledger_from_settings(settings)
+    recent = "2026-09-19T12:00:00+00:00"
+    _row(ledger, ts=recent, request_id="req-asr", tier="asr")
+    _row(ledger, ts=recent, request_id="req-l3", tier="L3")
+
+    help_result = CliRunner().invoke(cli_app, ["spend", "export", "--help"])
+    assert help_result.exit_code == 0
+    assert "--tier" in help_result.stdout
+
+    result = CliRunner().invoke(
+        cli_app,
+        ["spend", "export", "--since", "7d", "--format", "jsonl", "--tier", "asr"],
+    )
+    assert result.exit_code == 0, result.output
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["request_id"] == "req-asr"
+    assert json.loads(lines[0])["tier"] == "asr"
+
+
 def test_prune_drops_rows_before_cutoff(tmp_path):
     ledger = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
     _row(ledger, ts=OLD, request_id="req-old")
