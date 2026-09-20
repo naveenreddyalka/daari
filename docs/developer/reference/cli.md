@@ -50,6 +50,7 @@ Entry point: `daari` (Typer).
 |-------|----------|
 | `context` | `clear` |
 | `cache` | `prune` |
+| `models` | `warm` (preload configured L3–L5 + embed into Ollama) |
 | `learn` | `stats`, `export-stats`, `propose-defaults`, `examples`, `export-dataset`, `train-router`, `finetune`, `deploy`, `recommend` |
 | `org-cache` | `serve` |
 | `org-learning` | `stats`, `sync`, `export` |
