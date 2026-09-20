@@ -170,6 +170,90 @@ async def test_stream_aclose_stops_upstream_and_records_cancel():
 
 
 @pytest.mark.asyncio
+async def test_embeddings_disconnect_cancels_embedder(settings, monkeypatch):
+    app = _app(settings)
+    settings.cache.l1.enabled = True
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class HangingEmbedder:
+        model = "nomic-embed-text"
+
+        async def embed(self, text: str, *, model: str | None = None):
+            return (await self.embed_many([text], model=model))[0]
+
+        async def embed_many(self, texts: list[str], *, model: str | None = None):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            return [[0.1] for _ in texts]
+
+    app.state.ctx.router.semantic_cache.embedder = HangingEmbedder()
+
+    async def is_disconnected(self: Request) -> bool:
+        return started.is_set()
+
+    monkeypatch.setattr(Request, "is_disconnected", is_disconnected)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/embeddings",
+            json={"model": "nomic-embed-text", "input": "hang"},
+        )
+    assert cancelled.is_set()
+    assert response.status_code == 499
+    assert 'daari_cancelled_requests_total{phase="embed"} 1' in render_prometheus(
+        app.state.ctx.metrics
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "phase"),
+    [
+        ("/v1/audio/transcriptions", "asr"),
+        ("/v1/audio/translations", "translation"),
+    ],
+)
+async def test_asr_disconnect_cancels_upstream(settings, monkeypatch, path, phase):
+    import httpx
+
+    from daari.gateway import transcriptions as transcriptions_mod
+
+    app = _app(settings)
+    settings.asr.base_url = "http://asr.local/v1"
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def hanging_post(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        return httpx.Response(200, json={"text": "should-not"})
+
+    monkeypatch.setattr(transcriptions_mod, "post_transcription", hanging_post)
+
+    async def is_disconnected(self: Request) -> bool:
+        return started.is_set()
+
+    monkeypatch.setattr(Request, "is_disconnected", is_disconnected)
+    files = {"file": ("note.wav", b"RIFF", "audio/wav")}
+    data = {"model": "whisper-1", "response_format": "json"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(path, files=files, data=data)
+    assert cancelled.is_set()
+    assert response.status_code == 499
+    assert f'daari_cancelled_requests_total{{phase="{phase}"}} 1' in render_prometheus(
+        app.state.ctx.metrics
+    )
+
+
+@pytest.mark.asyncio
 async def test_client_stream_close_stops_fake_upstream(settings, monkeypatch):
     """Closing the response stream mid-generation stops the fake upstream."""
     app = _app(settings)

@@ -11,6 +11,7 @@ from fastapi import Request, UploadFile
 from fastapi.responses import JSONResponse
 
 from daari.gateway.client_errors import summarize_upstream_failure
+from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected
 from daari.gateway.request_log import log_gateway_event
 
 _UNAVAILABLE = (
@@ -237,15 +238,32 @@ async def handle_transcription(
 
     url = f"{target.base_url}/{upstream_path.lstrip('/')}"
     started = time.perf_counter()
+    phase = "translation" if upstream_path.rstrip("/").endswith("translations") else "asr"
     try:
-        upstream = await post_transcription(
-            url,
-            headers=headers,
-            filename=file.filename or "audio",
-            content=content,
-            content_type=file.content_type or "application/octet-stream",
-            form=form,
-            timeout=target.timeout,
+        upstream = await await_unless_disconnected(
+            request,
+            post_transcription(
+                url,
+                headers=headers,
+                filename=file.filename or "audio",
+                content=content,
+                content_type=file.content_type or "application/octet-stream",
+                form=form,
+                timeout=target.timeout,
+            ),
+            metrics=ctx.metrics,
+            phase=phase,
+            model=model_name,
+        )
+    except ClientDisconnected:
+        return JSONResponse(
+            status_code=499,
+            content={
+                "error": {
+                    "type": "client_disconnected",
+                    "message": "client disconnected.",
+                }
+            },
         )
     except httpx.HTTPError as exc:
         return _error(502, "asr_upstream_error", summarize_upstream_failure(exc))
