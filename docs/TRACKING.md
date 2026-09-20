@@ -1857,6 +1857,13 @@ Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
 
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
 ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
@@ -3612,6 +3619,13 @@ audio transcriptions/translations and embeddings among
 rows by the ledger `tier` column (combinable with `--key` / `--team`). Covered
 by `tests/unit/test_spend_export.py`.
 
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
@@ -3624,5 +3638,12 @@ by `tests/unit/test_spend_export.py`.
 **Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
+
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
 
 ## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
