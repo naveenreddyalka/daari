@@ -3506,6 +3506,13 @@ return 499 on disconnect. Background MCP tasks stay unwrapped. Covered by
 TPM from `len(file_bytes) // 4` like transcriptions; chat/embeddings stay on
 the character estimate. Covered by `tests/unit/test_rate_limit.py`.
 
+### Document request deadline header and config ([#799](https://github.com/naveenreddyalka/daari/issues/799))
+
+<!-- tracking:#799 -->
+**Status:** Done (2026-09-20). `headers.md` documents `X-Daari-Deadline-Ms`
+(504 / `request_deadline_exceeded`; stream = TTFT-only). `config.md` lists
+`upstream.request_deadline_seconds`. Covered by `tests/unit/test_deadline_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
