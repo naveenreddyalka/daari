@@ -26,6 +26,11 @@ class RecordingEmbedder:
         self.calls.append((used, text))
         return list(VECTOR)
 
+    async def embed_many(
+        self, texts: list[str], *, model: str | None = None
+    ) -> list[list[float] | None]:
+        return [await self.embed(text, model=model) for text in texts]
+
 
 def _app(settings, embedder):
     settings.cache.l1.enabled = True
