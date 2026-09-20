@@ -88,3 +88,43 @@ def test_doctor_mentions_unknown_keys(tmp_path, monkeypatch):
     assert row.ok is False
     assert "cache.l0.future_knob" in row.detail
     assert row.optional is True
+
+
+def test_asr_frontier_fallback_disabled_frontier(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for key in ("DAARI_FRONTIER_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    path = _write(
+        tmp_path,
+        "asr:\n  frontier_fallback: true\nfrontier:\n  enabled: false\n",
+    )
+    result = CliRunner().invoke(cli_app, ["config", "validate", str(path)])
+    assert result.exit_code == 1
+    assert "asr.frontier_fallback is true but frontier.enabled is false" in result.stderr
+
+
+def test_asr_frontier_fallback_missing_api_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for key in ("DAARI_FRONTIER_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    path = _write(
+        tmp_path,
+        "asr:\n  frontier_fallback: true\nfrontier:\n  enabled: true\n",
+    )
+    result = CliRunner().invoke(cli_app, ["config", "validate", str(path)])
+    assert result.exit_code == 1
+    assert "asr.frontier_fallback is true but no frontier API key resolves" in result.stderr
+
+
+def test_asr_with_base_url_passes_even_if_fallback_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for key in ("DAARI_FRONTIER_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    path = _write(
+        tmp_path,
+        "asr:\n  base_url: http://asr.local/v1\n  frontier_fallback: true\n"
+        "frontier:\n  enabled: true\n",
+    )
+    result = CliRunner().invoke(cli_app, ["config", "validate", str(path)])
+    assert result.exit_code == 0, result.output
+    assert "config ok" in result.stdout

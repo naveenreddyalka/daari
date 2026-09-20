@@ -1850,7 +1850,14 @@ and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
 Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 `tests/unit/test_sampling_params.py`.
 
-<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
+<!-- tracking-append: add the next ### section above ### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
 
@@ -3536,6 +3543,75 @@ Chargeback guide updated. Covered by `tests/unit/test_audio_translations.py`.
 prune stays no-scan. CLI reports the count. Covered by
 `tests/unit/test_redis_cache.py`.
 
+### Hermetic happy-path chat leaves cancel counter at zero ([#808](https://github.com/naveenreddyalka/daari/issues/808))
+
+<!-- tracking:#808 -->
+**Status:** Done (2026-09-20). Non-stream `/v1/chat/completions` with a fast
+executor returns 200 and does not increment `daari_cancelled_requests_total`
+for phase `chat`. Covered by `tests/unit/test_client_disconnect.py`.
+
+### Request deadline on audio and embeddings ([#814](https://github.com/naveenreddyalka/daari/issues/814))
+
+<!-- tracking:#814 -->
+**Status:** Done (2026-09-20). `X-Daari-Deadline-Ms` (and
+`upstream.request_deadline_seconds`) binds on `/v1/audio/transcriptions`,
+`/v1/audio/translations`, and `/v1/embeddings`; upstream httpx timeouts use
+`nonstream_timeout` / remaining budget. Exhaustion returns 504
+`request_deadline_exceeded` and increments `daari_request_deadline_exceeded_total`.
+Covered by `tests/unit/test_request_deadline.py`.
+
+### Request deadline on Ollama facade ([#815](https://github.com/naveenreddyalka/daari/issues/815))
+
+<!-- tracking:#815 -->
+**Status:** Done (2026-09-20). `/api/chat` and `/api/generate` accept
+`X-Daari-Deadline-Ms` into `RequestMeta.deadline_ms` so the router binds the
+same wall-clock budget as OpenAI chat. Already-spent budgets return 504 before
+NDJSON streaming starts. Covered by `tests/unit/test_request_deadline.py`.
+
+### Daemon cache invalidate Bearer under SSO ([#816](https://github.com/naveenreddyalka/daari/issues/816))
+
+<!-- tracking:#816 -->
+**Status:** Done (2026-09-20). `daari cache invalidate` sends
+`Authorization: Bearer` (master key or `--token`) when SSO admin gate is
+active; missing credentials yield a clear "SSO token required" error.
+Covered by `tests/unit/test_cache_invalidate.py`.
+
+### Config validate ASR frontier_fallback ([#817](https://github.com/naveenreddyalka/daari/issues/817))
+
+<!-- tracking:#817 -->
+**Status:** Done (2026-09-20). `daari config validate` reports when
+`asr.frontier_fallback` is true but frontier is disabled or no API key
+resolves (empty `asr.base_url` — fallback-only path). Covered by
+`tests/unit/test_config_validate.py`.
+
+### Request deadline on MCP tools/call ([#827](https://github.com/naveenreddyalka/daari/issues/827))
+
+<!-- tracking:#827 -->
+**Status:** Done (2026-09-20). MCP `tools/call` (JSON-RPC `/mcp` and legacy
+query) binds `X-Daari-Deadline-Ms` before tool execution; exhaustion returns
+504 `request_deadline_exceeded`. Covered by `tests/unit/test_mcp_server.py`.
+
+### Docs: deadline header on audio and embeddings ([#824](https://github.com/naveenreddyalka/daari/issues/824))
+
+<!-- tracking:#824 -->
+**Status:** Done (2026-09-20). `docs/developer/reference/headers.md` lists
+audio transcriptions/translations and embeddings among
+`X-Daari-Deadline-Ms` surfaces. Covered by `tests/unit/test_deadline_docs.py`.
+
+### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+### Spend export --tier filter ([#818](https://github.com/naveenreddyalka/daari/issues/818))
+
+<!-- tracking:#818 -->
+**Status:** Done (2026-09-20). `daari spend export --tier` filters chargeback
+rows by the ledger `tier` column (combinable with `--key` / `--team`). Covered
+by `tests/unit/test_spend_export.py`.
+
 ### Client guides document /api/show thinking controls ([#809](https://github.com/naveenreddyalka/daari/issues/809))
 
 <!-- tracking:#809 -->
@@ -3550,4 +3626,11 @@ prune stays no-scan. CLI reports the count. Covered by
 2. Refresh **Last updated** and pytest count after test changes.
 3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
 4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
-5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
+5. Append a new `###` section **above** `### Docs: spend export --tier filter ([#825](https://github.com/naveenreddyalka/daari/issues/825))
+
+<!-- tracking:#825 -->
+**Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
+--tier` with `asr` / `embed` examples. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
+## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.

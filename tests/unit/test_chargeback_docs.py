@@ -28,3 +28,10 @@ def test_chargeback_guide_names_translation_tier() -> None:
     )
     assert "`translation`" in sentence
     assert "`L6`" in sentence
+
+
+def test_chargeback_guide_documents_tier_filter() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "--tier asr" in text
+    assert "--tier embed" in text
+    assert "`asr`" in text and "`translation`" in text and "`embed`" in text

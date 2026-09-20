@@ -139,6 +139,19 @@ async def test_normal_chat_completion_is_unchanged(settings, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_successful_nonstream_chat_leaves_cancelled_counter_at_zero(settings, monkeypatch):
+    """Happy-path chat must not bump daari_cancelled_requests_total{phase=chat} (#808)."""
+    app = _app(settings)
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, _fast_execute)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=CHAT, headers=NO_CACHE)
+    assert response.status_code == 200
+    text = render_prometheus(app.state.ctx.metrics)
+    assert 'daari_cancelled_requests_total{phase="chat"}' not in text
+    assert app.state.ctx.metrics.cancelled.get("chat", 0) == 0
+
+
+@pytest.mark.asyncio
 async def test_stream_aclose_stops_upstream_and_records_cancel():
     consumed: list[object] = []
     notes: list[str] = []
