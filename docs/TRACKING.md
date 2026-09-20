@@ -3473,7 +3473,6 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#788 -->
 **Status:** Done (2026-09-20). Overview dashboard charts `daari_cancelled_requests_total` by phase and `daari_request_deadline_exceeded_total`; metrics docs list the deadline series. Covered by `tests/unit/test_grafana_dashboard.py`.
 
-<<<<<<< HEAD
 ### Cache invalidate by team or key scope ([#790](https://github.com/naveenreddyalka/daari/issues/790))
 
 <!-- tracking:#790 -->
@@ -3482,7 +3481,7 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 rows and L1 rows whose `context_key` contains that segment. CLI
 `--team` / `--key` and admin `team_id` / `key_id` wired. Covered by
 `tests/unit/test_cache_invalidate.py`.
-=======
+
 ### Ollama /api/show thinking controls ([#789](https://github.com/naveenreddyalka/daari/issues/789))
 
 <!-- tracking:#789 -->
@@ -3491,7 +3490,6 @@ rows and L1 rows whose `context_key` contains that segment. CLI
 `low`/`medium`/`high` (aligned with `ollama_think`; no `max`). Plain models
 omit the object; `/api/tags` stays capability-string-only. Covered by
 `tests/unit/test_ollama_show_thinking.py`.
->>>>>>> origin/main
 
 ## How to update
 
