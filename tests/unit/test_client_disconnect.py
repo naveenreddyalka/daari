@@ -182,7 +182,54 @@ async def test_stream_aclose_stops_upstream_and_records_cancel():
 
 
 @pytest.mark.asyncio
-async def test_embeddings_disconnect_cancels_embedder(settings, monkeypatch):
+async def test_mcp_tools_call_disconnect_cancels_route(settings, monkeypatch):
+    """JSON-RPC tools/call route cancels on disconnect (#798)."""
+    app = _app(settings)
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, _hanging_execute(started, cancelled))
+
+    async def is_disconnected(self: Request) -> bool:
+        return started.is_set()
+
+    monkeypatch.setattr(Request, "is_disconnected", is_disconnected)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "route", "arguments": {"input": "disconnect probe"}},
+            },
+            headers=NO_CACHE,
+        )
+    assert cancelled.is_set()
+    assert response.status_code == 499
+    assert 'daari_cancelled_requests_total{phase="mcp"} 1' in render_prometheus(app.state.ctx.metrics)
+
+
+@pytest.mark.asyncio
+async def test_mcp_legacy_query_disconnect_cancels_route(settings, monkeypatch):
+    app = _app(settings)
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, _hanging_execute(started, cancelled))
+
+    async def is_disconnected(self: Request) -> bool:
+        return started.is_set()
+
+    monkeypatch.setattr(Request, "is_disconnected", is_disconnected)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/mcp/query",
+            json={"tool": "route", "input": "disconnect probe"},
+            headers=NO_CACHE,
+        )
+    assert cancelled.is_set()
+    assert response.status_code == 499
+    assert 'daari_cancelled_requests_total{phase="mcp"} 1' in render_prometheus(app.state.ctx.metrics)
+
     app = _app(settings)
     settings.cache.l1.enabled = True
     started = asyncio.Event()

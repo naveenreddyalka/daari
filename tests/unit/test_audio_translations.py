@@ -95,3 +95,44 @@ async def test_non_json_translation_format_is_400(settings, monkeypatch):
 
     assert response.status_code == 400
     assert "json" in response.json()["error"]["message"]
+
+
+def _spend_rows(app):
+    ledger = app.state.ctx.router.spend_ledger
+    return list(ledger.iter_rows(since="2000-01-01T00:00:00+00:00"))
+
+
+@pytest.mark.asyncio
+async def test_translation_spend_tier_is_translation(settings, tmp_path, monkeypatch):
+    """Local translations export as tier translation, not asr (#807)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"text": "hello"})
+
+    _patch_upstream(monkeypatch, handler)
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = "ggml-base"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(client)
+    assert response.status_code == 200, response.text
+    rows = _spend_rows(app)
+    assert len(rows) == 1
+    assert rows[0]["tier"] == "translation"
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_translation_writes_no_spend_row(settings, tmp_path, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not upload")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(client)
+    assert response.status_code == 501
+    assert _spend_rows(app) == []

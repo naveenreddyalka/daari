@@ -9,6 +9,7 @@
 | `X-Daari-Tier-Cap` | Cap local tier (e.g. `L3`). Beats body `cost_tier`. |
 | `X-Daari-No-Frontier` | Forbid L6 |
 | `X-Daari-Latency-Budget` | Max local latency (ms) |
+| `X-Daari-Deadline-Ms` | Wall-clock budget for the whole request (ms). Wins over `upstream.request_deadline_seconds`. When spent, the gateway returns **504** with `request_deadline_exceeded` and does not escalate further. On streaming responses the budget applies to time-to-first-token only. |
 | `X-Daari-Client-Id` | Ledger attribution |
 | `X-Daari-Project` | Path for `.daari.yaml` discovery |
 | `X-Daari-Boundary-Profile` | Named `boundaries.profiles` overlay for this request (browser extension site profiles) |

@@ -386,7 +386,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 payload = {}
         model = request_model(payload)
         tokens = estimate_request_tokens(payload)
-        if request.url.path == "/v1/audio/transcriptions":
+        if request.url.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
             audio_tokens = estimate_audio_upload_tokens(
                 raw, request.headers.get("content-type", "")
             )

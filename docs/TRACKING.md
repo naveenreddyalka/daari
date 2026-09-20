@@ -3499,6 +3499,51 @@ omit the object; `/api/tags` stays capability-string-only. Covered by
 disconnect. Streaming NDJSON unchanged. Covered by
 `tests/unit/test_client_disconnect.py`.
 
+### Cancel MCP tools/call on disconnect ([#798](https://github.com/naveenreddyalka/daari/issues/798))
+
+<!-- tracking:#798 -->
+**Status:** Done (2026-09-20). Router-backed MCP `tools/call` and legacy
+`/v1/mcp/query` wrap work in `await_unless_disconnected` (phase `mcp`) and
+return 499 on disconnect. Background MCP tasks stay unwrapped. Covered by
+`tests/unit/test_client_disconnect.py`.
+
+### Audio translation TPM uses upload bytes ([#796](https://github.com/naveenreddyalka/daari/issues/796))
+
+<!-- tracking:#796 -->
+**Status:** Done (2026-09-20). Multipart `POST /v1/audio/translations` charges
+TPM from `len(file_bytes) // 4` like transcriptions; chat/embeddings stay on
+the character estimate. Covered by `tests/unit/test_rate_limit.py`.
+
+### Document cache invalidate --team/--key and refresh http-api ([#800](https://github.com/naveenreddyalka/daari/issues/800))
+
+<!-- tracking:#800 -->
+**Status:** Done (2026-09-20). `org-cache.md` documents `--team` / `--key` and
+admin `team_id` / `key_id`. Regenerated `http-api.md` lists
+`POST /v1/audio/translations` and `POST /v1/daari/cache/invalidate`. Covered by
+`tests/unit/test_gen_reference.py`.
+
+### Document request deadline header and config ([#799](https://github.com/naveenreddyalka/daari/issues/799))
+
+<!-- tracking:#799 -->
+**Status:** Done (2026-09-20). `headers.md` documents `X-Daari-Deadline-Ms`
+(504 / `request_deadline_exceeded`; stream = TTFT-only). `config.md` lists
+`upstream.request_deadline_seconds`. Covered by `tests/unit/test_deadline_docs.py`.
+
+### Distinct chargeback tier for audio translations ([#807](https://github.com/naveenreddyalka/daari/issues/807))
+
+<!-- tracking:#807 -->
+**Status:** Done (2026-09-20). Local `/v1/audio/translations` spend/ledger
+rows use tier `translation` (frontier stays `L6`); transcriptions stay `asr`.
+Chargeback guide updated. Covered by `tests/unit/test_audio_translations.py`.
+
+### Redis L0 age prune when TTL is off ([#806](https://github.com/naveenreddyalka/daari/issues/806))
+
+<!-- tracking:#806 -->
+**Status:** Done (2026-09-20). When `cache.l0.ttl_seconds == 0`, Redis L0
+`prune` deletes keys whose stored `t` is older than 7 days; when TTL is on,
+prune stays no-scan. CLI reports the count. Covered by
+`tests/unit/test_redis_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
