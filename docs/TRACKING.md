@@ -3730,6 +3730,14 @@ asserts the same. Covered by `tests/unit/test_deadline_docs.py`.
 **Status:** Done (2026-09-20). `cli.md` lists `spend export` with `--tier` and
 links the chargeback guide. Covered by `tests/unit/test_chargeback_docs.py`.
 
+### Grafana deadline panel covers audio/embed/MCP ([#837](https://github.com/naveenreddyalka/daari/issues/837))
+
+<!-- tracking:#837 -->
+**Status:** Done (2026-09-20). Overview panel description and metrics docs note
+deadlines are not chat-only (audio, embeddings, MCP `tools/call`); panel still
+scrapes `daari_request_deadline_exceeded_total`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
