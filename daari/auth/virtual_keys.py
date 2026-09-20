@@ -722,7 +722,8 @@ class VirtualKeyStore:
         if pin:
             meta["region_pin"] = pin
         prio = coerce_priority(priority)
-        meta.setdefault("priority", prio)
+        if "priority" in meta or priority != "normal":
+            meta["priority"] = prio
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
