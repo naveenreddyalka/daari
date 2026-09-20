@@ -3521,6 +3521,13 @@ admin `team_id` / `key_id`. Regenerated `http-api.md` lists
 (504 / `request_deadline_exceeded`; stream = TTFT-only). `config.md` lists
 `upstream.request_deadline_seconds`. Covered by `tests/unit/test_deadline_docs.py`.
 
+### Distinct chargeback tier for audio translations ([#807](https://github.com/naveenreddyalka/daari/issues/807))
+
+<!-- tracking:#807 -->
+**Status:** Done (2026-09-20). Local `/v1/audio/translations` spend/ledger
+rows use tier `translation` (frontier stays `L6`); transcriptions stay `asr`.
+Chargeback guide updated. Covered by `tests/unit/test_audio_translations.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

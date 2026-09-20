@@ -167,9 +167,10 @@ def _record_request(
     via: str,
     text: str,
     latency_ms: int,
+    local_tier: str = "asr",
 ) -> None:
-    tier = "L6" if via == "frontier" else "asr"
-    provider = "frontier" if via == "frontier" else "asr"
+    tier = "L6" if via == "frontier" else local_tier
+    provider = "frontier" if via == "frontier" else local_tier
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None and hasattr(metrics, "record"):
         metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
@@ -303,6 +304,7 @@ async def handle_transcription(
         via=target.via,
         text=payload["text"],
         latency_ms=latency_ms,
+        local_tier=phase,
     )
     return payload
 
