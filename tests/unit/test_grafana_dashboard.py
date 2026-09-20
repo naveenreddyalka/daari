@@ -248,3 +248,29 @@ def test_grafana_dashboard_includes_boundary_decisions_panel():
     assert any("daari_boundary_decisions_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
 
+
+def test_grafana_dashboard_includes_cancelled_requests_panel():
+    """Cancelled-request phases should be visible on the overview (#788)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Cancelled requests" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a cancelled-requests panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_cancelled_requests_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_deadline_exceeded_panel():
+    """Request-deadline burns should be visible on the overview (#788)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "deadline exceeded" in p.get("title", "").lower()),
+        None,
+    )
+    assert panel is not None, "expected a deadline-exceeded panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_request_deadline_exceeded_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+

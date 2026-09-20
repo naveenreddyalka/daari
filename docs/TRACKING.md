@@ -3468,6 +3468,11 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#787 -->
 **Status:** Done (2026-09-20). Embeddings and audio transcription/translation wrap upstream work in `await_unless_disconnected` and return 499 with `daari_cancelled_requests_total{phase=embed|asr|translation}`. Covered by `tests/unit/test_client_disconnect.py`.
 
+### Grafana cancelled and deadline panels ([#788](https://github.com/naveenreddyalka/daari/issues/788))
+
+<!-- tracking:#788 -->
+**Status:** Done (2026-09-20). Overview dashboard charts `daari_cancelled_requests_total` by phase and `daari_request_deadline_exceeded_total`; metrics docs list the deadline series. Covered by `tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

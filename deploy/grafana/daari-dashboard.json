@@ -390,6 +390,32 @@
           "refId": "B"
         }
       ]
+    },
+    {
+      "id": 26,
+      "title": "Cancelled requests by phase",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 96 },
+      "targets": [
+        {
+          "expr": "sum by (phase) (rate(daari_cancelled_requests_total[5m]))",
+          "legendFormat": "{{phase}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "title": "Request deadline exceeded",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 96 },
+      "targets": [
+        {
+          "expr": "rate(daari_request_deadline_exceeded_total[5m])",
+          "legendFormat": "deadline exceeded",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
