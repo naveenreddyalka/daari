@@ -3491,6 +3491,13 @@ rows and L1 rows whose `context_key` contains that segment. CLI
 omit the object; `/api/tags` stays capability-string-only. Covered by
 `tests/unit/test_ollama_show_thinking.py`.
 
+### Audio translation TPM uses upload bytes ([#796](https://github.com/naveenreddyalka/daari/issues/796))
+
+<!-- tracking:#796 -->
+**Status:** Done (2026-09-20). Multipart `POST /v1/audio/translations` charges
+TPM from `len(file_bytes) // 4` like transcriptions; chat/embeddings stay on
+the character estimate. Covered by `tests/unit/test_rate_limit.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
