@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-DOC = (
-    Path(__file__).resolve().parents[2]
-    / "docs/developer/guides/observability/chargeback.md"
-)
+ROOT = Path(__file__).resolve().parents[2]
+DOC = ROOT / "docs/developer/guides/observability/chargeback.md"
+CLI = ROOT / "docs/developer/reference/cli.md"
 
 
 def test_chargeback_guide_names_transcription_tiers() -> None:
@@ -45,3 +44,9 @@ def test_chargeback_guide_names_tts_tier() -> None:
     )
     assert "`tts`" in sentence
     assert "501" in text
+
+
+def test_cli_reference_mentions_spend_export_tier() -> None:
+    text = CLI.read_text(encoding="utf-8")
+    spend_line = next(line for line in text.splitlines() if "`spend`" in line)
+    assert "--tier" in spend_line
