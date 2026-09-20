@@ -3473,6 +3473,15 @@ unlimited) and the config reference notes the day cap is per key/team, not a
 <!-- tracking:#788 -->
 **Status:** Done (2026-09-20). Overview dashboard charts `daari_cancelled_requests_total` by phase and `daari_request_deadline_exceeded_total`; metrics docs list the deadline series. Covered by `tests/unit/test_grafana_dashboard.py`.
 
+### Ollama /api/show thinking controls ([#789](https://github.com/naveenreddyalka/daari/issues/789))
+
+<!-- tracking:#789 -->
+**Status:** Done (2026-09-20). When facade capabilities include `thinking`,
+`POST /api/show` also returns `thinking: {values, default}` with levels
+`low`/`medium`/`high` (aligned with `ollama_think`; no `max`). Plain models
+omit the object; `/api/tags` stays capability-string-only. Covered by
+`tests/unit/test_ollama_show_thinking.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
