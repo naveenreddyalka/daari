@@ -92,6 +92,38 @@
       </section>
 
       <section class="card">
+        <h2>Team rate limits</h2>
+        <p class="subtle">Remaining rpm, tpm, and rpd from <code>stats.team_rate_limits</code>.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th>Kind</th>
+              <th>Limit</th>
+              <th>Remaining</th>
+            </tr>
+          </thead>
+          <tbody id="team-rate-limits-table"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Key rate limits</h2>
+        <p class="subtle">Remaining rpd from <code>stats.key_rate_limits</code>. The label is the key name, never the secret.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Kind</th>
+              <th>Limit</th>
+              <th>Remaining</th>
+            </tr>
+          </thead>
+          <tbody id="key-rate-limits-table"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
         <h2>Local pool backends</h2>
         <p class="subtle">Health, circuit state, and outstanding from <code>stats.backends</code>; counts from <code>stats.backend_summary</code>.</p>
         <section class="row" id="backend-summary" aria-label="Backend summary counts">

@@ -47,20 +47,38 @@ def _messages_for_cache(request: InternalRequest) -> list[dict[str, Any]]:
     return dumped
 
 
+def cache_scope_segment(request: InternalRequest) -> str:
+    """Tenant fragment for L0 and L1 keys (#768).
+
+    Empty for ``global`` (and for unauthenticated requests) so keys written
+    before scope existed stay reachable — same idea as an empty sampling
+    fingerprint (#161).
+    """
+    scope = (getattr(request.meta, "cache_scope", None) or "global").strip().lower()
+    if scope == "team":
+        return f"team:{getattr(request.meta, 'team_id', None) or ''}"
+    if scope == "key":
+        return f"key:{getattr(request.meta, 'key_id', None) or ''}"
+    return ""
+
+
 def cache_key(request: InternalRequest) -> str:
-    payload = "|".join(
-        [
-            normalize_messages(_messages_for_cache(request)),
-            request.model,
-            str(request.temperature),
-            tools_schema_hash(request.tools),
-            request.meta.tier_override or "",
-            # Two requests asking for different max_tokens or seed are different
-            # questions and must not share an entry (#161). Empty when the client
-            # asked for nothing, so pre-#161 entries stay reachable.
-            request.sampling.cache_fingerprint(),
-        ]
-    )
+    parts = [
+        normalize_messages(_messages_for_cache(request)),
+        request.model,
+        str(request.temperature),
+        tools_schema_hash(request.tools),
+        request.meta.tier_override or "",
+        # Two requests asking for different max_tokens or seed are different
+        # questions and must not share an entry (#161). Empty when the client
+        # asked for nothing, so pre-#161 entries stay reachable.
+        request.sampling.cache_fingerprint(),
+    ]
+    # Append only when scoped, so a trailing pipe does not move global hashes.
+    segment = cache_scope_segment(request)
+    if segment:
+        parts.append(segment)
+    payload = "|".join(parts)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -123,10 +141,11 @@ class ExactCache:
     def put(self, request: InternalRequest, response: InternalResponse) -> None:
         if not self.enabled:
             return
-        self._store().set(
-            cache_key(request),
-            {"v": response.model_dump_json(), "t": self._clock()},
-        )
+        entry: dict[str, Any] = {"v": response.model_dump_json(), "t": self._clock()}
+        segment = cache_scope_segment(request)
+        if segment:
+            entry["scope"] = segment
+        self._store().set(cache_key(request), entry)
 
     def prune(self) -> int:
         """Remove expired entries; returns how many were removed."""
@@ -140,3 +159,63 @@ class ExactCache:
                 store.delete(key)
                 removed += 1
         return removed
+
+    def invalidate(
+        self,
+        *,
+        model: str | None = None,
+        entry_hash: str | None = None,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> int:
+        """Drop entries by served model, cache key, tenant scope, or everything."""
+        if not self.enabled:
+            return 0
+        store = self._store()
+        removed = 0
+        for key in list(store.iterkeys()):
+            key_s = key.decode() if isinstance(key, bytes) else str(key)
+            entry = store.get(key)
+            if entry_hash is not None and key_s != entry_hash:
+                continue
+            if model is not None and self._entry_model(entry) != model:
+                continue
+            if not self._entry_matches_scope(entry, team_id=team_id, key_id=key_id):
+                continue
+            store.delete(key)
+            removed += 1
+        return removed
+
+    @staticmethod
+    def _entry_scope(entry: Any) -> str | None:
+        if isinstance(entry, dict):
+            scope = entry.get("scope")
+            return scope if isinstance(scope, str) else None
+        return None
+
+    def _entry_matches_scope(
+        self,
+        entry: Any,
+        *,
+        team_id: str | None,
+        key_id: str | None,
+    ) -> bool:
+        if team_id is None and key_id is None:
+            return True
+        scope = self._entry_scope(entry)
+        if team_id is not None and scope != f"team:{team_id}":
+            return False
+        if key_id is not None and scope != f"key:{key_id}":
+            return False
+        return True
+
+    def _entry_model(self, entry: Any) -> str | None:
+        raw = self._entry_value(entry)
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        model = data.get("model") if isinstance(data, dict) else None
+        return model if isinstance(model, str) else None

@@ -41,4 +41,4 @@ Health: `kind: openai` and `kind: mlx` probe `/v1/models`. `kind: ollama`
 
 ## Next
 
-→ [Ollama backends](../backends/ollama.md) · [Configuration overview](overview.md)
+→ [Ollama backends](../backends/ollama.md) · [Speech-to-text](../backends/asr.md) · [Configuration overview](overview.md)

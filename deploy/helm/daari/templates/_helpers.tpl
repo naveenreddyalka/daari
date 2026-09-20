@@ -2,11 +2,15 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- /* Effective replica floor: max(replicaCount, HPA min when autoscaling on). */ -}}
+{{- /* Effective replica floor: max(replicaCount, HPA min, KEDA min when those are on). */ -}}
 {{- define "daari.fleetReplicas" -}}
 {{- $replicas := int .Values.replicaCount -}}
 {{- if and .Values.autoscaling.enabled (gt (int .Values.autoscaling.minReplicas) $replicas) -}}
 {{- $replicas = int .Values.autoscaling.minReplicas -}}
+{{- end -}}
+{{- $keda := .Values.autoscaling.keda | default dict -}}
+{{- if and $keda.enabled (gt (int ($keda.minReplicaCount | default 1)) $replicas) -}}
+{{- $replicas = int $keda.minReplicaCount -}}
 {{- end -}}
 {{- $replicas -}}
 {{- end -}}

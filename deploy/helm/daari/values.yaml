@@ -22,13 +22,24 @@ resources:
     cpu: "1"
     memory: 1Gi
 
-# HPA: scale on CPU. For request-rate, wire KEDA externally.
-# Keep minReplicas at 1 unless postgres.enabled is true (shared batches/files/ledger).
+# HPA: scale on CPU. Optional KEDA ScaledObject (autoscaling.keda) scales on
+# sum(rate(daari_requests_total[1m])). Off unless the cluster already has KEDA
+# and Prometheus. Keep minReplicas / keda.minReplicaCount at 1 unless
+# postgres.enabled is true (shared batches/files/ledger).
 autoscaling:
   enabled: true
   minReplicas: 1
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
+  keda:
+    enabled: false
+    minReplicaCount: 1
+    maxReplicaCount: 10
+    # kube-prometheus default; override to the in-cluster Prometheus service.
+    serverAddress: http://prometheus-operated.monitoring.svc:9090
+    query: sum(rate(daari_requests_total[1m]))
+    # Target requests/sec for the query above (KEDA desired = metric / threshold).
+    threshold: "50"
 
 # Readiness uses /ready (checks model backend). Liveness uses /health.
 probes:
@@ -93,6 +104,10 @@ serviceMonitor:
 # Service port `metrics` and prefer ServiceMonitor → metrics (no bearer).
 observability:
   metricsPort: 0
+  # Days to keep gateway request-log lines (#786). Empty leaves the app default
+  # (0 = size-only rotation via request_log_max_bytes).
+  retention:
+    requestLogDays: ""
 
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
 redis:
@@ -117,6 +132,44 @@ postgres:
 orgPool:
   enabled: false
   baseUrl: ""
+
+# Master API key from an existing Secret (multi-replica auth). Empty = unset
+# (open local install). Example: { name: daari-master, key: api-key }
+server:
+  apiKeySecret: {}
+
+# Global RPM/TPM caps (#842). When enabled with redis.enabled (or rateLimit.redisUrl),
+# fleet counters share Redis via cache.backend=redis. Without Redis, limits are
+# per-pod SQLite only — fine for replicaCount=1.
+rateLimit:
+  enabled: false
+  rpm: 0
+  tpm: 0
+  modelRpm: 0
+  modelTpm: 0
+  # Used only when redis.enabled=false; otherwise cache Redis is reused.
+  redisUrl: ""
+
+# L6 frontier fallback. apiKeySecret mounts DAARI_FRONTIER_API_KEY
+# (also accepted: OPENAI_API_KEY / OPENROUTER_API_KEY via env).
+frontier:
+  enabled: false
+  apiKeySecret: {}
+
+# Embedder base URL for POST /v1/embeddings and L1. Empty leaves the image
+# default (localhost). Distinct from orgPool, which only sets the routing URL.
+ollama:
+  baseUrl: ""
+
+# Local OpenAI-compatible speech-to-text (vLLM, whisper.cpp). Empty leaves
+# POST /v1/audio/transcriptions unconfigured (501) instead of a cloud ASR API.
+asr:
+  baseUrl: ""
+
+# Wall-clock budget across cache/local/frontier hops (#786 / #771). Empty =
+# per-tier timeouts only; X-Daari-Deadline-Ms still overrides when set.
+upstream:
+  requestDeadlineSeconds: ""
 
 env:
   DAARI_SERVER__HOST: "0.0.0.0"

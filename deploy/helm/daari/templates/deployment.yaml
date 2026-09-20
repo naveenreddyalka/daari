@@ -85,6 +85,60 @@ spec:
             - name: DAARI_ROUTING__ORG_POOL__BASE_URL
               value: {{ .Values.orgPool.baseUrl | quote }}
             {{- end }}
+            {{- with .Values.server.apiKeySecret }}
+            {{- if .name }}
+            - name: DAARI_SERVER__API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "api-key" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.rateLimit.enabled }}
+            - name: DAARI_RATE_LIMIT__RPM
+              value: {{ .Values.rateLimit.rpm | default 0 | quote }}
+            - name: DAARI_RATE_LIMIT__TPM
+              value: {{ .Values.rateLimit.tpm | default 0 | quote }}
+            - name: DAARI_RATE_LIMIT__MODEL_RPM
+              value: {{ .Values.rateLimit.modelRpm | default 0 | quote }}
+            - name: DAARI_RATE_LIMIT__MODEL_TPM
+              value: {{ .Values.rateLimit.modelTpm | default 0 | quote }}
+            {{- if and (not .Values.redis.enabled) .Values.rateLimit.redisUrl }}
+            - name: DAARI_CACHE__BACKEND
+              value: redis
+            - name: DAARI_CACHE__REDIS_URL
+              value: {{ .Values.rateLimit.redisUrl | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.frontier.enabled }}
+            - name: DAARI_FRONTIER__ENABLED
+              value: "true"
+            {{- with .Values.frontier.apiKeySecret }}
+            {{- if .name }}
+            - name: DAARI_FRONTIER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "api-key" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.ollama.baseUrl }}
+            - name: DAARI_OLLAMA__BASE_URL
+              value: {{ .Values.ollama.baseUrl | quote }}
+            {{- end }}
+            {{- if .Values.asr.baseUrl }}
+            - name: DAARI_ASR__BASE_URL
+              value: {{ .Values.asr.baseUrl | quote }}
+            {{- end }}
+            {{- if .Values.upstream.requestDeadlineSeconds }}
+            - name: DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS
+              value: {{ .Values.upstream.requestDeadlineSeconds | quote }}
+            {{- end }}
+            {{- if and .Values.observability.retention (ne (toString .Values.observability.retention.requestLogDays) "") }}
+            - name: DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS
+              value: {{ .Values.observability.retention.requestLogDays | quote }}
+            {{- end }}
           {{- $preStop := 5 }}
           {{- if and .Values.lifecycle (hasKey .Values.lifecycle "preStopSleepSeconds") }}
           {{- $preStop = int .Values.lifecycle.preStopSleepSeconds }}

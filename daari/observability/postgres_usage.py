@@ -9,7 +9,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from daari.observability.usage import FRONTIER_TIER, _empty_totals
+from daari.observability.usage import FRONTIER_TIER, _empty_totals, notify_recorded
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage (
@@ -96,7 +96,28 @@ class PostgresUsageLedger:
         provider: str | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        cached_tokens: int | None = None,
+        reported_cost: float | None = None,
     ) -> None:
+        tokens_in = max(0, input_tokens if input_tokens is not None else prompt_chars // 4)
+        tokens_out = max(
+            0, output_tokens if output_tokens is not None else completion_chars // 4
+        )
+        notify_recorded(
+            self,
+            tier=tier,
+            cache_hit=cache_hit,
+            prompt_chars=max(0, prompt_chars),
+            completion_chars=max(0, completion_chars),
+            client_id=client_id,
+            user_id=user_id,
+            model=model,
+            provider=provider,
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
+            cached_tokens=max(0, int(cached_tokens or 0)),
+            reported_cost=reported_cost,
+        )
         if not self.enabled:
             return
         del model, provider, input_tokens, output_tokens  # SQLite ledger owns token pricing

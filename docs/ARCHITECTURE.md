@@ -81,7 +81,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/cli/app.py` | Typer CLI: `serve`, `stats`, `doctor`, `setup` | ✅ |
 | `daari/cli/setup_actions.py` | Shared setup apply helpers | ✅ |
 | `daari/server/app.py` | FastAPI factory, lifespan → `AppContext` | ✅ |
-| `daari/gateway/openai.py` | `POST /v1/chat/completions`, stats, health | ✅ |
+| `daari/gateway/openai.py` | `POST /v1/chat/completions`, audio transcriptions, stats, health | ✅ |
 | `daari/gateway/internal.py` | `InternalRequest` / `InternalResponse` / `DaariMeta` (`agent_turn` per [ADR-0004](adr/0004-agent-tool-call-compatibility.md)) | ✅ |
 | `daari/router/router.py` | Router: L0/CCS/L1/L2/Lt/L3/L4/L5/L6 + no-frontier + fallback behavior | ✅ |
 | `daari/gateway/base.py` | `GatewayAdapter` protocol | ✅ |
@@ -91,7 +91,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
 | `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/` + profile overlays + skills prefix) | ✅ |
 | `daari/config/defaults.yaml` | Package defaults (host, port, models) | ✅ |
-| `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` | ✅ |
+| `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` (`soft_warnings` / `rejects` cliff maps, `backend_summary`) | ✅ |
 | `daari/providers/base.py` | `IntegrationProvider` protocol (`execute`, `health`) | ✅ |
 | `daari/providers/registry.py` | Provider registry used by router | ✅ |
 | `daari/providers/integrations.py` | Sourcegraph GraphQL + GHE repo/issue search providers | ✅ |
@@ -125,6 +125,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/router/compress.py` | Frontier context compression (relevance pruning) | ✅ |
 | `daari/cache/normalize.py` | Input normalization before L1 embedding | ✅ |
 | `daari/observability/usage.py` | SQLite usage ledger — savings, budgets, client attribution | ✅ |
+| `daari/observability/spend.py` | Opt-in per-request spend rows + `daari spend export` | ✅ |
 | `daari/observability/trace.py` | Per-request trace store (`daari trace`) | ✅ |
 | `daari/learning/feedback.py` | Outcome store + explicit accept/reject + shadow-sampling stats | ✅ |
 | `daari/learning/tuner.py` | Per-category confidence threshold tuner (opt-in) | ✅ |
@@ -251,7 +252,8 @@ flowchart LR
 | `daari learn stats/recommend/examples/export-dataset/train-router/finetune/deploy/export-stats` | Phase D learning loop |
 | `daari profile [--models ...]` | Benchmark local models (tokens/sec, load) for latency-aware routing |
 | `daari project init/show` | Per-repo `.daari.yaml` profile management |
-| `daari cache prune` | Remove expired L0/L1 entries |
+| `daari cache prune` | Remove expired L0/L1 entries. On Redis, prints that expiry is TTL and prune does not scan. |
+| `daari cache invalidate [--model M] [--hash H]` | Drop L0/L1 entries by served model or entry hash. No flags clears both. Uses the daemon when it is up. |
 | `daari web-ui serve` | Local dashboard (stats, savings, traces, cache trust) |
 | `daari setup cursor --tunnel` | Cursor BYOK via cloudflared + auto-generated gateway API key |
 
@@ -262,8 +264,11 @@ Registered in `pyproject.toml` as `daari = "daari.cli.app:app"`.
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/v1/chat/completions` | OpenAI-compat chat with full SSE streaming (tier fallback, L0/L1, draft injection) |
+| `POST` | `/v1/audio/transcriptions` | OpenAI speech-to-text; local `asr.base_url`, optional frontier fallback (off by default) |
 | `POST` | `/v1/responses` | OpenAI Responses API (function calls, previous_response_id, background) |
 | `GET` | `/v1/responses/{id}` | Retrieve a stored Responses object |
+| `POST` | `/v1/responses/{id}/cancel` | Cancel an in-flight or return the current terminal Responses object |
+| `DELETE` | `/v1/responses/{id}` | Delete a stored Responses object |
 | `GET` | `/v1/models`, `/v1/models/{id}` | Model listing for client pickers |
 | `POST` | `/v1/messages` | Anthropic-compatible adapter with tool passthrough (non-stream + SSE) |
 | `GET`/`POST` | `/api/tags`, `/api/chat`, `/api/version`, `/api/show`, `/api/ps` | Ollama-compatible facade (JetBrains AI Assistant, any Ollama client) |

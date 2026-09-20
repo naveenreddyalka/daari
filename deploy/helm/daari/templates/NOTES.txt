@@ -12,10 +12,20 @@ WARNING: Effective replicas={{ include "daari.fleetReplicas" . }} with postgres.
   DAARI_BATCHES__BACKEND / DAARI_FILES__BACKEND / DAARI_RESPONSES__BACKEND /
   DAARI_SERVER__VIRTUAL_KEYS__BACKEND / DAARI_OBSERVABILITY__BACKEND /
   DAARI_ENTERPRISE__AUDIT_BACKEND to postgres, or keep
-  replicaCount and autoscaling.minReplicas at 1. See docs/developer/guides/features/batches.md.
+  replicaCount and autoscaling.minReplicas at 1. autoscaling.keda.minReplicaCount
+  is refused above 1 until postgres is enabled. See docs/developer/guides/features/batches.md.
 {{- else if .Values.postgres.enabled }}
 
 Postgres enabled: observability, batches, files, responses, virtual keys, and audit backends are set to postgres.
+{{- end }}
+
+{{- $keda := .Values.autoscaling.keda | default dict }}
+{{- if $keda.enabled }}
+
+KEDA ScaledObject enabled: scales the Deployment on Prometheus
+  `sum(rate(daari_requests_total[1m]))` (override autoscaling.keda.query).
+  Requires KEDA and Prometheus already installed. minReplicaCount stays 1
+  unless postgres.enabled is true.
 {{- end }}
 
 {{- if .Values.serviceMonitor.enabled }}
@@ -31,6 +41,41 @@ ServiceMonitor enabled: Prometheus scrapes Service `/metrics` (port `http`, or `
 Org pool enabled: Deployment wires DAARI_ROUTING__ORG_POOL__ENABLED and
   DAARI_ROUTING__ORG_POOL__BASE_URL={{ .Values.orgPool.baseUrl | default "(set orgPool.baseUrl)" }}.
   Local tiers can fall through to this shared Ollama/vLLM pool before frontier.
+{{- end }}
+
+{{- with .Values.server.apiKeySecret }}
+{{- if .name }}
+
+Master API key: DAARI_SERVER__API_KEY from Secret {{ .name }} (key {{ .key | default "api-key" }}).
+  Required for multi-replica fleets that share virtual keys via postgres.
+{{- end }}
+{{- end }}
+
+{{- if .Values.rateLimit.enabled }}
+
+Rate limits enabled: DAARI_RATE_LIMIT__RPM/TPM (and model_*) are set from values.rateLimit.
+{{- if .Values.redis.enabled }}
+  Counters reuse redis.url (cache.backend=redis) for fleet-wide caps.
+{{- else if .Values.rateLimit.redisUrl }}
+  Counters use rateLimit.redisUrl (cache.backend=redis) for fleet-wide caps.
+{{- else }}
+  No Redis URL: RPM/TPM counters are per-pod SQLite — use redis.enabled or
+  rateLimit.redisUrl when replicaCount > 1.
+{{- end }}
+{{- end }}
+
+{{- if .Values.frontier.enabled }}
+
+Frontier enabled: DAARI_FRONTIER__ENABLED=true.
+{{- with .Values.frontier.apiKeySecret }}
+{{- if .name }}
+  DAARI_FRONTIER_API_KEY from Secret {{ .name }} (key {{ .key | default "api-key" }}).
+{{- else }}
+  Set frontier.apiKeySecret (name + key) or inject DAARI_FRONTIER_API_KEY / OPENAI_API_KEY.
+{{- end }}
+{{- else }}
+  Set frontier.apiKeySecret (name + key) or inject DAARI_FRONTIER_API_KEY / OPENAI_API_KEY.
+{{- end }}
 {{- end }}
 
 Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}

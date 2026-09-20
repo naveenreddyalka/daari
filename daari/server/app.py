@@ -10,6 +10,7 @@ from daari.auth.rate_limit import (
     RATELIMIT_WARNING_HEADER,
     RateLimiter,
     build_rate_limiter,
+    estimate_audio_upload_tokens,
     estimate_request_tokens,
     request_model,
 )
@@ -46,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         app.state.ctx = AppContext.from_settings(resolved)
         app.state.ctx.virtual_key_store = vk_store
+        app.state.ctx.rate_limiter = getattr(app.state, "rate_limiter", None)
         from daari.gateway.boundaries import startup_warnings
         from daari.gateway.request_log import log_gateway_event
 
@@ -85,9 +87,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
                     job = batch_store.get(job_id)
                     gov = job.governance if job is not None else None
-                    return await _execute_batch_chat_body(
-                        app.state.ctx, item_body, governance=gov
-                    )
+                    return await _execute_batch_chat_body(app.state.ctx, item_body, governance=gov)
 
                 return execute_one
 
@@ -136,18 +136,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             finally:
                 reset_inbound_context(token)
 
-    master_key = resolved.server.api_key.strip()
+    master_keys = resolved.server.master_keys()
+    if len(master_keys) > 1:
+        from daari.enterprise.postgres_audit import audit_log_from_settings
+
+        audit_log_from_settings(resolved).record(
+            actor="daari",
+            role="system",
+            action="auth.master_key_overlap",
+            detail={"count": len(master_keys)},
+        )
     # Auth middleware runs when a master key is set OR virtual keys exist /
     # are enabled (so newly created keys are enforced without restart... we
     # check the store on each request).
-    auth_active = bool(master_key) or resolved.server.virtual_keys.enabled
+    auth_active = bool(master_keys) or resolved.server.virtual_keys.enabled
     if auth_active:
         # Probes stay open: orchestrators can't attach API keys (issue #105).
         # /metrics follows server.api_key (F3): open only when master unset
         # AND no virtual-key enforcement required — keep previous behavior:
         # when master_key set, /metrics needs auth; when only VK store, open.
         open_paths = {"/health", "/ready", "/v1/messages/health"}
-        if not master_key:
+        if not master_keys:
             open_paths.add("/metrics")
 
         @app.middleware("http")
@@ -158,11 +167,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # local single-user installs aren't suddenly locked out.
             store: VirtualKeyStore | None = getattr(request.app.state, "virtual_key_store", None)
             has_virtual = bool(store and store.enabled and store.list())
-            if not master_key and not has_virtual:
+            if not master_keys and not has_virtual:
                 return await call_next(request)
 
             supplied = extract_api_key(request.headers)
-            claims = resolve_auth(supplied, master_key=master_key, store=store)
+            claims = resolve_auth(supplied, master_key=master_keys, store=store)
             if claims is None and resolved.enterprise.sso.enabled and supplied:
                 # Allow verified OIDC/HMAC SSO bearers through; endpoints still
                 # enforce role via _require_admin_role (issue #136).
@@ -276,24 +285,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             err_kwargs["quota"] = "requests"
                             err_kwargs["spend_requests"] = int(exceeded.spend)
                             err_kwargs["limit_requests"] = int(exceeded.limit)
-                        metrics = getattr(
-                            getattr(request.app.state, "ctx", None), "metrics", None
-                        )
+                        metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
                         if metrics is not None and hasattr(metrics, "record_reject"):
-                            kind = (
-                                "request_quota"
-                                if exceeded.quota == "requests"
-                                else "budget"
-                            )
+                            kind = "request_quota" if exceeded.quota == "requests" else "budget"
                             metrics.record_reject(kind)
                         return JSONResponse(
                             status_code=402,
                             content={"error": budget_error(**err_kwargs)},
                             headers=headers,
                         )
-                    soft_ratio = float(
-                        getattr(resolved.frontier, "soft_budget_ratio", 0.8) or 0.0
-                    )
+                    soft_ratio = float(getattr(resolved.frontier, "soft_budget_ratio", 0.8) or 0.0)
                     tightest = tightest_window(statuses)
                     if tightest is not None:
                         usd_soft = tightest.in_soft_band(soft_ratio)
@@ -363,7 +364,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             return response
 
-    open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics"}
+    open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics", "/v1/daari/stats"}
     # Batch/files admin traffic must not look like interactive load (#444).
     non_interactive_prefixes = ("/v1/batches", "/v1/files")
 
@@ -386,12 +387,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 payload = {}
         model = request_model(payload)
         tokens = estimate_request_tokens(payload)
+        if request.url.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
+            audio_tokens = estimate_audio_upload_tokens(
+                raw, request.headers.get("content-type", "")
+            )
+            if audio_tokens is not None:
+                tokens = audio_tokens
         claims = getattr(request.state, "auth_claims", None)
         if claims is None:
             store = getattr(request.app.state, "virtual_key_store", None)
             claims = resolve_auth(
                 extract_api_key(request.headers),
-                master_key=master_key,
+                master_key=master_keys,
                 store=store,
             )
         virtual = getattr(claims, "virtual_key", None) if claims is not None else None
@@ -400,15 +407,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         rpm = int(getattr(virtual, "rpm", 0) or 0) or None
         tpm = int(getattr(virtual, "tpm", 0) or 0) or None
+        rpd = int(getattr(virtual, "rpd", 0) or 0) or None
         team_id = getattr(virtual, "team_id", None) if virtual is not None else None
         team_rpm = None
         team_tpm = None
+        team_rpd = None
         if team_id:
             store = getattr(request.app.state, "virtual_key_store", None)
-            team = store.get_team(team_id) if store is not None and hasattr(store, "get_team") else None
+            team = (
+                store.get_team(team_id)
+                if store is not None and hasattr(store, "get_team")
+                else None
+            )
             if team is not None:
                 team_rpm = int(getattr(team, "rpm", 0) or 0) or None
                 team_tpm = int(getattr(team, "tpm", 0) or 0) or None
+                team_rpd = int(getattr(team, "rpd", 0) or 0) or None
         decision = limiter.check(
             key_id=key_id,
             model=model,
@@ -418,6 +432,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             team_id=team_id,
             team_rpm=team_rpm,
             team_tpm=team_tpm,
+            rpd=rpd,
+            team_rpd=team_rpd,
         )
         if not decision.allowed:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)

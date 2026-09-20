@@ -187,6 +187,28 @@ def test_grafana_dashboard_includes_team_rate_limit_remaining_panel():
     assert any("daari_team_rate_limit_limit" in expr for expr in exprs)
 
 
+def test_grafana_dashboard_includes_key_rate_limit_remaining_panel():
+    """Per-key RPD remaining gauges should be visible on the overview (#750)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "Key rate-limit remaining" in p.get("title", "")
+        ),
+        None,
+    )
+    assert panel is not None, (
+        "expected a key rate-limit remaining panel in daari-dashboard.json"
+    )
+    targets = panel.get("targets", [])
+    exprs = [t.get("expr", "") for t in targets]
+    legends = [t.get("legendFormat", "") for t in targets]
+    assert any("daari_key_rate_limit_remaining" in expr for expr in exprs)
+    assert any("daari_key_rate_limit_limit" in expr for expr in exprs)
+    assert any("{{key}}" in legend and "{{kind}}" in legend for legend in legends)
+
+
 def test_grafana_dashboard_includes_soft_usd_budget_warnings_panel():
     """Dedicated soft USD budget warn series from #626 should be visible (#636)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
@@ -201,3 +223,54 @@ def test_grafana_dashboard_includes_soft_usd_budget_warnings_panel():
     assert any("daari_soft_warnings_total" in expr for expr in exprs)
     assert any('kind="budget"' in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+
+def test_grafana_dashboard_includes_tier_shadow_panel():
+    """Tier shadow agree/disagree counter should be visible on the overview (#689)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Tier shadow" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a tier-shadow panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_tier_shadow_samples_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+def test_grafana_dashboard_includes_boundary_decisions_panel():
+    """Product-boundary decision counter should be visible on the overview (#690)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Boundary decisions" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a boundary-decisions panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_boundary_decisions_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_cancelled_requests_panel():
+    """Cancelled-request phases should be visible on the overview (#788)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Cancelled requests" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a cancelled-requests panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_cancelled_requests_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_deadline_exceeded_panel():
+    """Request-deadline burns should be visible on the overview (#788)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "deadline exceeded" in p.get("title", "").lower()),
+        None,
+    )
+    assert panel is not None, "expected a deadline-exceeded panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_request_deadline_exceeded_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+

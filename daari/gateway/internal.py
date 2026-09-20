@@ -58,6 +58,9 @@ class RequestMeta(BaseModel):
     tier_cap: str | None = None
     # Max acceptable local-model latency in ms (X-Daari-Latency-Budget).
     latency_budget_ms: int | None = None
+    # Wall-clock budget for the whole escalation chain (X-Daari-Deadline-Ms).
+    # None means the request has no header deadline; the setting may still apply.
+    deadline_ms: int | None = None
     client_id: str | None = None
     # Raw User-Agent (gateway sniff). Used for classify_user_turn agent shortcut.
     user_agent: str | None = None
@@ -75,6 +78,16 @@ class RequestMeta(BaseModel):
     boundary_profile: str | None = None
     # L6 residency pin from virtual key / team (#466).
     region_pin: str | None = None
+    # Expanded model allowlist (#708). None = that side does not restrict.
+    key_model_patterns: list[str] | None = None
+    team_model_patterns: list[str] | None = None
+    # Chargeback attribution (#709). Folded into cache keys only when
+    # cache_scope is team or key (#768); global leaves hashes unchanged.
+    key_id: str | None = None
+    team_id: str | None = None
+    # Effective isolation: global (default) | team | key. Set from the virtual
+    # key and team; unauthenticated requests stay global.
+    cache_scope: str = "global"
     # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
     anthropic_beta: str | None = None
     anthropic_version: str | None = None

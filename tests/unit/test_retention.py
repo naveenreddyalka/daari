@@ -7,6 +7,7 @@ what a real sweep would remove; the live sweep never fails a request.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -291,3 +292,68 @@ class TestPostgresHooks:
 
         ledger = PostgresUsageLedger("postgresql://unused", enabled=False)
         assert ledger.prune_before_day("2026-01-01", dry_run=True) == 0
+
+
+class TestRequestLogRetention:
+    def test_default_is_size_only(self):
+        assert Settings().observability.retention.request_log_days == 0
+        assert Settings().observability.retention.enabled is False
+
+    def test_zero_days_leaves_the_log(self, tmp_path, monkeypatch):
+        log = tmp_path / "cursor-requests.log"
+        log.write_text(json.dumps({"ts": OLD, "event": "keep"}) + "\n")
+        monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", log)
+        results = prune_all(_settings(tmp_path), now=NOW)
+        row = next(item for item in results if item.store == "request_log")
+        assert row.skipped is True
+        assert row.deleted == 0
+        assert "keep" in log.read_text()
+
+    def test_drops_old_lines_and_rotated_files(self, tmp_path, monkeypatch):
+        log = tmp_path / "cursor-requests.log"
+        log.write_text(
+            json.dumps({"ts": OLD, "event": "stale"})
+            + "\n"
+            + json.dumps({"ts": RECENT, "event": "fresh"})
+            + "\n"
+        )
+        rotated = tmp_path / "cursor-requests.log.1"
+        rotated.write_text(json.dumps({"ts": OLD, "event": "backup"}) + "\n")
+        monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", log)
+        settings = _settings(tmp_path)
+        settings.observability.retention.request_log_days = 30
+        results = prune_all(settings, now=NOW)
+        row = next(item for item in results if item.store == "request_log")
+        assert row.skipped is False
+        assert row.deleted == 2
+        assert not rotated.exists()
+        kept = log.read_text()
+        assert "fresh" in kept
+        assert "stale" not in kept
+
+    def test_dry_run_does_not_rewrite(self, tmp_path, monkeypatch):
+        log = tmp_path / "cursor-requests.log"
+        original = json.dumps({"ts": OLD, "event": "stale"}) + "\n"
+        log.write_text(original)
+        monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", log)
+        settings = _settings(tmp_path)
+        settings.observability.retention.request_log_days = 7
+        results = prune_all(settings, now=NOW, dry_run=True)
+        row = next(item for item in results if item.store == "request_log")
+        assert row.deleted == 1
+        assert log.read_text() == original
+
+    def test_cli_prints_request_log_line(self, tmp_path, monkeypatch):
+        log = tmp_path / "cursor-requests.log"
+        log.write_text(json.dumps({"ts": OLD, "event": "stale"}) + "\n")
+        monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", log)
+        settings = _settings(tmp_path)
+        settings.observability.retention.request_log_days = 30
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        result = CliRunner().invoke(cli_app, ["prune"])
+        assert result.exit_code == 0, result.output
+        assert "request_log" in result.output
+        kept = log.read_text()
+        assert "stale" not in kept
+        assert "retention.sweep" in kept
+

@@ -68,14 +68,13 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
     backend_pool = pool.snapshot() if pool is not None else None
     team_budgets: list[dict[str, Any]] | None = None
     team_rate_limits: list[dict[str, Any]] | None = None
+    key_rate_limits: list[dict[str, Any]] | None = None
     store = getattr(app.state, "virtual_key_store", None) or getattr(ctx, "virtual_key_store", None)
     if store is not None and ledger is not None and getattr(ledger, "enabled", False):
         try:
             from daari.auth.budgets import collect_team_budget_gauges
 
-            rows = collect_team_budget_gauges(
-                store, ledger, fallback_per_1k=price
-            )
+            rows = collect_team_budget_gauges(store, ledger, fallback_per_1k=price)
             team_budgets = rows or None
         except Exception:
             team_budgets = None
@@ -87,6 +86,14 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
             team_rate_limits = rl_rows or None
         except Exception:
             team_rate_limits = None
+    if store is not None and limiter is not None and hasattr(limiter, "key_rate_gauges"):
+        try:
+            list_keys = getattr(store, "list", None)
+            keys = list_keys() if callable(list_keys) else []
+            key_rows = limiter.key_rate_gauges(keys)
+            key_rate_limits = key_rows or None
+        except Exception:
+            key_rate_limits = None
     return render_prometheus(
         ctx.metrics,
         budget_state=budget_state,
@@ -95,6 +102,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         backend_pool=backend_pool,
         team_budgets=team_budgets,
         team_rate_limits=team_rate_limits,
+        key_rate_limits=key_rate_limits,
     )
 
 

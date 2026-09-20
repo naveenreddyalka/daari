@@ -10,11 +10,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
-from daari.gateway.client_errors import backend_unavailable_message, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import content_to_text, extract_images, extract_thinking_blocks
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.disconnect import (
+    ClientDisconnected,
+    await_unless_disconnected,
+    note_request_cancelled,
+)
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.cost_headers import (
     DeferredHeadersStreamingResponse,
@@ -258,6 +263,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
             x_daari_confirm_tool: str | None = Header(default=None, alias="X-Daari-Confirm-Tool"),
             x_daari_confirm: str | None = Header(default=None, alias="X-Daari-Confirm"),
             x_daari_rerun_command: str | None = Header(default=None, alias="X-Daari-ReRun-Command"),
@@ -306,10 +312,13 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             if body.tools and tools_mode != "strip":
                 internal_tools = anthropic_tools_to_openai(body.tools) or None
 
+            from daari.router.deadline import RequestDeadlineExceeded, parse_deadline_ms
+
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
                 tier_cap=x_daari_tier_cap,
+                deadline_ms=parse_deadline_ms(x_daari_deadline_ms),
                 no_frontier=x_daari_no_frontier == "true",
                 confirm_tool=confirm_tool,
                 rerun_command=x_daari_rerun_command == "true",
@@ -323,7 +332,16 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
 
-            apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
+            apply_auth_claims_to_meta(
+                meta,
+                getattr(request.state, "auth_claims", None),
+                model_groups=getattr(ctx.settings, "model_groups", None),
+            )
+            from daari.gateway.model_access import reject_disallowed_model
+
+            denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
+            if denied is not None:
+                return denied
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
@@ -357,6 +375,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         async for event in stream_with_keepalive(
                             ctx.router.stream_anthropic_events(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                            on_cancel=lambda: note_request_cancelled(
+                                ctx.metrics, "stream", model=body.model
+                            ),
                         ):
                             yield event
                     except Exception as exc:
@@ -409,7 +430,23 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 )
 
             try:
-                result = await ctx.router.route(internal)
+                result = await await_unless_disconnected(
+                    request,
+                    ctx.router.route(internal),
+                    metrics=ctx.metrics,
+                    phase="anthropic",
+                    model=body.model,
+                )
+            except ClientDisconnected:
+                return JSONResponse(
+                    status_code=499,
+                    content={
+                        "error": {
+                            "type": "client_disconnected",
+                            "message": "client disconnected.",
+                        }
+                    },
+                )
             except ZdrUnavailable as exc:
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
@@ -425,6 +462,8 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
