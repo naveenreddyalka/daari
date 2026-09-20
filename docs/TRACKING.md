@@ -3536,6 +3536,14 @@ Chargeback guide updated. Covered by `tests/unit/test_audio_translations.py`.
 prune stays no-scan. CLI reports the count. Covered by
 `tests/unit/test_redis_cache.py`.
 
+### Client guides document /api/show thinking controls ([#809](https://github.com/naveenreddyalka/daari/issues/809))
+
+<!-- tracking:#809 -->
+**Status:** Done (2026-09-20). ChatGPT Desktop and IntelliJ guides note that
+`/api/show` returns `thinking` controls (`low`/`medium`/`high`, default
+`medium`) when the capability is advertised. Covered by
+`tests/unit/test_thinking_controls_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
