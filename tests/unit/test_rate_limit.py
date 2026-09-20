@@ -313,6 +313,72 @@ async def test_concurrency_cap_holds_under_burst():
 
 
 @pytest.mark.asyncio
+async def test_high_priority_waiter_admitted_before_earlier_normal():
+    """#848: priority class beats FIFO order at the in-flight gate."""
+    limiter = RateLimiter(
+        MemoryCounterBackend(), max_in_flight=1, queue_size=8, retry_after_seconds=1
+    )
+    order: list[str] = []
+    started = asyncio.Event()
+
+    async def hold() -> None:
+        slot = await limiter.acquire(priority="normal")
+        assert slot.allowed
+        started.set()
+        await asyncio.sleep(0.05)
+        await limiter.release()
+
+    async def wait(label: str, priority: str, delay: float) -> None:
+        await started.wait()
+        await asyncio.sleep(delay)
+        slot = await limiter.acquire(priority=priority)
+        assert slot.allowed
+        order.append(label)
+        await limiter.release()
+
+    await asyncio.gather(
+        hold(),
+        wait("normal", "normal", 0.0),
+        wait("high", "high", 0.01),
+    )
+    assert order == ["high", "normal"]
+
+
+@pytest.mark.asyncio
+async def test_batch_low_priority_yields_to_interactive():
+    """#848: batch acquire(low) loses to interactive normal when contended."""
+    limiter = RateLimiter(
+        MemoryCounterBackend(), max_in_flight=1, queue_size=8, retry_after_seconds=1
+    )
+    order: list[str] = []
+
+    # Hold the sole slot as batch would, then admit interactive before batch waiters.
+    hold = await limiter.acquire(priority="low")
+    assert hold.allowed
+
+    async def interactive() -> None:
+        await asyncio.sleep(0.01)
+        slot = await limiter.acquire(priority="normal")
+        assert slot.allowed
+        order.append("interactive")
+        await limiter.release()
+
+    async def batch_waiter() -> None:
+        await asyncio.sleep(0.0)
+        slot = await limiter.acquire(priority="low")
+        assert slot.allowed
+        order.append("batch")
+        await limiter.release()
+
+    waiter_i = asyncio.create_task(interactive())
+    waiter_b = asyncio.create_task(batch_waiter())
+    await asyncio.sleep(0.02)
+    await limiter.release()
+    await asyncio.gather(waiter_i, waiter_b)
+    assert order == ["interactive", "batch"]
+
+
+@pytest.mark.asyncio
 async def test_metrics_exposes_limits_and_utilization(settings):
     settings.rate_limit.rpm = 20
     settings.rate_limit.max_in_flight = 4

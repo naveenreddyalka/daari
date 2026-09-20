@@ -15,7 +15,7 @@ Entry point: `daari` (Typer).
 | `trace` | Show a request trace |
 | `report` | Savings / usage ledger |
 | `usage` | Alias of `report` |
-| `spend` | Per-request chargeback export (`export`) |
+| `spend` | Per-request chargeback export (`export`, `--tier`) — see [chargeback](../guides/observability/chargeback.md) |
 | `profile` | Local hardware profile |
 | `route` | Routing helpers (`preview`) |
 | `audit` | Enterprise audit log (`list` / `export` / `verify`) |
@@ -49,7 +49,7 @@ Entry point: `daari` (Typer).
 | Group | Commands |
 |-------|----------|
 | `context` | `clear` |
-| `cache` | `prune` |
+| `cache` | `prune`, `invalidate` (`--model`, `--hash`, `--team`, `--key`, `--token` for SSO/master Bearer when calling a running daemon) |
 | `learn` | `stats`, `export-stats`, `propose-defaults`, `examples`, `export-dataset`, `train-router`, `finetune`, `deploy`, `recommend` |
 | `org-cache` | `serve` |
 | `org-learning` | `stats`, `sync`, `export` |

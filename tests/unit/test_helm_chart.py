@@ -500,3 +500,91 @@ class TestHelmKedaRequestRate:
         assert "minReplicaCount: 2" in rendered
         assert "kind: HorizontalPodAutoscaler" in rendered
 
+
+
+class TestHelmAuthRateLimitFrontier:
+    def test_defaults_omit_auth_rate_frontier_env(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SERVER__API_KEY" not in rendered
+        assert "DAARI_RATE_LIMIT__RPM" not in rendered
+        assert "DAARI_FRONTIER__ENABLED" not in rendered
+        assert "DAARI_FRONTIER_API_KEY" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["server"]["apiKeySecret"] == {}
+        assert values["rateLimit"]["enabled"] is False
+        assert values["frontier"]["enabled"] is False
+
+    def test_secrets_and_rate_limit_env_render(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "server.apiKeySecret.name=daari-master",
+            "--set",
+            "server.apiKeySecret.key=api-key",
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.rpm=120",
+            "--set",
+            "rateLimit.tpm=50000",
+            "--set",
+            "rateLimit.redisUrl=redis://rl:6379/1",
+            "--set",
+            "frontier.enabled=true",
+            "--set",
+            "frontier.apiKeySecret.name=daari-frontier",
+            "--set",
+            "frontier.apiKeySecret.key=token",
+        )
+        assert "DAARI_SERVER__API_KEY" in rendered
+        assert 'name: "daari-master"' in rendered
+        assert 'key: "api-key"' in rendered
+        assert re.search(r"name: DAARI_RATE_LIMIT__RPM\s+value: \"120\"", rendered)
+        assert re.search(r"name: DAARI_RATE_LIMIT__TPM\s+value: \"50000\"", rendered)
+        assert re.search(r"name: DAARI_CACHE__BACKEND\s+value: redis", rendered)
+        assert "redis://rl:6379/1" in rendered
+        assert re.search(r"name: DAARI_FRONTIER__ENABLED\s+value: \"true\"", rendered)
+        assert "DAARI_FRONTIER_API_KEY" in rendered
+        assert 'name: "daari-frontier"' in rendered
+        assert 'key: "token"' in rendered
+
+    def test_rate_limit_reuses_cache_redis_without_duplicate_url(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "redis.enabled=true",
+            "--set",
+            "redis.url=redis://shared:6379/0",
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.rpm=60",
+            "--set",
+            "rateLimit.redisUrl=redis://should-not-appear:6379/9",
+        )
+        assert rendered.count("DAARI_CACHE__REDIS_URL") == 1
+        assert "redis://shared:6379/0" in rendered
+        assert "redis://should-not-appear" not in rendered
+
+    def test_notes_document_auth_rate_frontier(self, helm_available: None) -> None:
+        text = NOTES.read_text(encoding="utf-8")
+        assert "server.apiKeySecret" in text or "DAARI_SERVER__API_KEY" in text
+        assert "rateLimit" in text
+        assert "frontier" in text
+        notes = _helm_notes(
+            "--set",
+            "server.apiKeySecret.name=daari-master",
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.rpm=10",
+            "--set",
+            "frontier.enabled=true",
+            "--set",
+            "frontier.apiKeySecret.name=daari-frontier",
+        )
+        assert "Master API key" in notes
+        assert "Rate limits enabled" in notes
+        assert "per-pod SQLite" in notes
+        assert "Frontier enabled" in notes
+        assert "DAARI_FRONTIER_API_KEY" in notes

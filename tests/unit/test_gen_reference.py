@@ -89,6 +89,7 @@ def test_api_reference_lists_gateway_routes(tmp_path, monkeypatch):
         "/introspect",
         "/v1/audio/transcriptions",
         "/v1/audio/translations",
+        "/v1/audio/speech",
         "/v1/daari/cache/invalidate",
     ):
         assert f"`{route}`" in text, f"missing route {route}"
@@ -103,6 +104,7 @@ def test_committed_http_api_md_includes_introspect():
     assert "| `POST` | `/introspect` |" in committed
     assert "| `POST` | `/v1/audio/transcriptions` |" in committed
     assert "| `POST` | `/v1/audio/translations` |" in committed
+    assert "| `POST` | `/v1/audio/speech` |" in committed
     assert "| `POST` | `/v1/daari/cache/invalidate` |" in committed
 
 

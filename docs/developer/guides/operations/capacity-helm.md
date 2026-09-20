@@ -154,6 +154,37 @@ local tiers can fall through to a shared Ollama/vLLM pool before frontier.
 Prometheus scrapes Service `/metrics` and that `bearerTokenSecret` is needed if
 the API key protects metrics on the API port.
 
+### Master key, rate limits, and frontier
+
+For multi-replica + auth fleets, wire first-class Settings knobs from values
+instead of hand-patching the Deployment:
+
+```yaml
+server:
+  apiKeySecret:
+    name: daari-master
+    key: api-key
+rateLimit:
+  enabled: true
+  rpm: 600
+  tpm: 200000
+  # Prefer redis.enabled so L0/L1 and RPM/TPM share one Redis:
+redis:
+  enabled: true
+  url: redis://redis:6379/0
+frontier:
+  enabled: true
+  apiKeySecret:
+    name: daari-frontier
+    key: api-key
+```
+
+`server.apiKeySecret` mounts `DAARI_SERVER__API_KEY`. `rateLimit.enabled` sets
+`DAARI_RATE_LIMIT__*` (and, when `redis.enabled` is false, can set
+`cache.backend=redis` from `rateLimit.redisUrl`). `frontier.enabled` sets
+`DAARI_FRONTIER__ENABLED`; `frontier.apiKeySecret` mounts `DAARI_FRONTIER_API_KEY`.
+NOTES remind operators when Redis is missing for multi-replica rate limits.
+
 ```yaml
 orgPool:
   enabled: true

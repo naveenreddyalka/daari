@@ -419,6 +419,7 @@ class Router:
         otel_enabled: bool = False,
         org_pool: OllamaExecutor | MLXExecutor | None = None,
         local_pool: Any | None = None,
+        local_pool_frontier_fallback: bool = False,
         reasoning_effort_escalation: bool = False,
         stall_escalation: bool = False,
         stall_repeats: int = 3,
@@ -555,6 +556,7 @@ class Router:
         self.context_window_buffer = float(context_window_buffer)
         self.context_windows = dict(context_windows) if context_windows else {}
         self.local_pool = local_pool
+        self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
 
     @property
     def ollama(self) -> OllamaExecutor:
@@ -1545,35 +1547,51 @@ class Router:
         """Upstream execute + L0 write-back (singleflight leader only)."""
         await self._refresh_warm_models()
         initial_tier = self._choose_initial_tier(request, profile)
+        pool_frontier_fallback = False
         try:
             response = await self._run_model_tier(initial_tier, gen_request)
         except Exception as exc:
             from daari.router.deadline import reraise_deadline
 
             reraise_deadline(exc)
-            if initial_tier == "L3":
-                from daari.router.failover import is_context_length_error
+            try:
+                if initial_tier == "L3":
+                    from daari.router.failover import is_context_length_error
 
-                if is_context_length_error(exc):
-                    response = await self._failover_context_length(gen_request, exc)
+                    if is_context_length_error(exc):
+                        response = await self._failover_context_length(gen_request, exc)
+                    else:
+                        raise
+                elif initial_tier == "L4":
+                    response = await self._run_model_tier("L3", gen_request)
+                    response.daari_meta.warning = "l4_unavailable_fell_back_to_l3"
+                elif initial_tier == "L5":
+                    try:
+                        response = await self._run_model_tier("L4", gen_request)
+                        response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
+                    except Exception as nested:
+                        from daari.router.deadline import reraise_deadline
+
+                        reraise_deadline(nested)
+                        response = await self._run_model_tier("L3", gen_request)
+                        response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
                 else:
                     raise
-            elif initial_tier == "L4":
-                response = await self._run_model_tier("L3", gen_request)
-                response.daari_meta.warning = "l4_unavailable_fell_back_to_l3"
-            elif initial_tier == "L5":
-                try:
-                    response = await self._run_model_tier("L4", gen_request)
-                    response.daari_meta.warning = "l5_unavailable_fell_back_to_l4"
-                except Exception as nested:
-                    from daari.router.deadline import reraise_deadline
+            except Exception as final_exc:
+                from daari.router.deadline import reraise_deadline
 
-                    reraise_deadline(nested)
-                    response = await self._run_model_tier("L3", gen_request)
-                    response.daari_meta.warning = "l5_unavailable_fell_back_to_l3"
-            else:
-                raise
-        response = await self._maybe_escalate(gen_request, response, started, profile=profile)
+                reraise_deadline(final_exc)
+                fallback = await self._try_local_pool_frontier_fallback(
+                    gen_request, from_tier=initial_tier, exc=final_exc
+                )
+                if fallback is None:
+                    raise
+                response = fallback
+                pool_frontier_fallback = True
+        if not pool_frontier_fallback:
+            response = await self._maybe_escalate(
+                gen_request, response, started, profile=profile
+            )
         self._finish_session_pin(request, response)
         if (
             not request.meta.no_cache
@@ -2055,7 +2073,59 @@ class Router:
                 stream_slot = None
                 stream_executor = self._executor_for_tier(tier)
                 if self.local_pool is not None:
-                    stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
+                    try:
+                        stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
+                    except Exception as pick_exc:
+                        from daari.router.local_pool import BackendUnavailable
+
+                        if not isinstance(pick_exc, BackendUnavailable):
+                            raise
+                        last_error = pick_exc
+                        if tier_index < len(tier_chain) - 1:
+                            add_step("fallback", from_tier=tier, error="backend_unavailable")
+                            continue
+                        fallback = await self._try_local_pool_frontier_fallback(
+                            stream_request, from_tier=tier, exc=pick_exc
+                        )
+                        if fallback is None:
+                            raise
+                        # Buffered L6 answer when no local host can stream.
+                        yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                        if fallback.content:
+                            yield f"data: {json.dumps(chunk_payload(delta={'content': fallback.content}))}\n\n"
+                        yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                        prompt_chars = sum(
+                            len(m.content or "") for m in stream_request.messages
+                        )
+                        stream_in, stream_out, usage_estimated = response_token_usage(
+                            fallback, prompt_chars
+                        )
+                        yield usage_chunk(
+                            prompt_tokens=stream_in,
+                            completion_tokens=stream_out,
+                            estimated=usage_estimated,
+                        )
+                        yield "data: [DONE]\n\n"
+                        latency_ms = int((time.perf_counter() - started) * 1000)
+                        self.metrics.record(
+                            "L6",
+                            cache_hit=False,
+                            latency_ms=latency_ms,
+                            model=fallback.daari_meta.model or fallback.model,
+                        )
+                        if self.usage_ledger is not None:
+                            self.usage_ledger.record(
+                                tier="L6",
+                                cache_hit=False,
+                                prompt_chars=prompt_chars,
+                                completion_chars=len(fallback.content),
+                                client_id=request.meta.client_id,
+                                user_id=request.meta.user,
+                            )
+                        add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+                        stream_flight_result = fallback
+                        finish_trace("L6")
+                        return
                     stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
                     self.local_pool.acquire(stream_slot)
                     add_step(
@@ -2710,7 +2780,36 @@ class Router:
             stream_slot = None
             stream_executor = self._executor_for_tier(tier)
             if self.local_pool is not None:
-                stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
+                try:
+                    stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
+                except Exception as pick_exc:
+                    from daari.router.local_pool import BackendUnavailable
+
+                    if not isinstance(pick_exc, BackendUnavailable):
+                        raise
+                    last_error = pick_exc
+                    if tier_index < len(tier_chain) - 1:
+                        continue
+                    fallback = await self._try_local_pool_frontier_fallback(
+                        stream_request, from_tier=tier, exc=pick_exc
+                    )
+                    if fallback is None:
+                        raise
+                    latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                    self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
+                    if self.usage_ledger is not None:
+                        self.usage_ledger.record(
+                            tier="L6",
+                            cache_hit=False,
+                            prompt_chars=prompt_chars,
+                            completion_chars=len(fallback.content or ""),
+                            client_id=request.meta.client_id,
+                            user_id=request.meta.user,
+                        )
+                    outcome.note("L6")
+                    for event in terminal_events(fallback.content, "L6"):
+                        yield event
+                    return
                 stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
                 self.local_pool.acquire(stream_slot)
                 add_step(
@@ -4190,6 +4289,71 @@ class Router:
             response.daari_meta.warning = "below_confidence_threshold"
             return response
 
+    async def _try_local_pool_frontier_fallback(
+        self,
+        request: InternalRequest,
+        *,
+        from_tier: str,
+        exc: BaseException,
+    ) -> InternalResponse | None:
+        """Opt-in L6 when the local pool is exhausted (#846).
+
+        Returns None when the setting is off, the error is not pool exhaustion,
+        or frontier fences (no_frontier / budgets / allowlists) block L6 — the
+        caller re-raises so the gateway keeps the typed 503.
+        """
+        from daari.router.local_pool import BackendUnavailable
+
+        if not isinstance(exc, BackendUnavailable):
+            return None
+        if not self.local_pool_frontier_fallback:
+            return None
+        if not self._frontier_reachable(request):
+            return None
+        budget_state = self._frontier_budget_state()
+        if budget_state == "exceeded":
+            return None
+
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.deadline import RequestDeadlineExceeded, guard_upstream
+
+        add_step(
+            "local_pool_frontier_fallback",
+            from_tier=from_tier,
+            reason="backend_unavailable",
+            detail=str(exc)[:120],
+        )
+        log_gateway_event(
+            "local_pool_frontier_fallback",
+            {
+                "from_tier": from_tier,
+                "reason": "backend_unavailable",
+                "detail": str(exc)[:200],
+            },
+        )
+        try:
+            guard_upstream("L6")
+            l6_request = await self._frontier_request(request)
+            l6_response = await self.frontier.execute(
+                l6_request,
+                escalated_from=from_tier,
+                local_confidence=0.0,
+            )
+            l6_response.daari_meta.prompt_chars = sum(
+                len(message.content or "") for message in l6_request.messages
+            )
+            l6_response.daari_meta.warning = (
+                "frontier_budget_warning"
+                if budget_state == "soft"
+                else "local_pool_frontier_fallback"
+            )
+            self.metrics.record_escalation()
+            return l6_response
+        except RequestDeadlineExceeded:
+            raise
+        except Exception:
+            return None
+
     def _frontier_reachable(self, request: InternalRequest) -> bool:
         """Whether L6 is configured and permitted for this request."""
         if request.meta.no_frontier or not self.frontier_enabled:
@@ -5066,6 +5230,9 @@ class AppContext:
             otel_enabled=bool(settings.observability.otel),
             org_pool=org_pool_executor,
             local_pool=local_pool,
+            local_pool_frontier_fallback=bool(
+                getattr(getattr(settings.routing, "local_pool", None), "frontier_fallback", False)
+            ),
             reasoning_effort_escalation=settings.routing.reasoning_effort_escalation,
             stall_escalation=settings.routing.stall_escalation.enabled,
             stall_repeats=settings.routing.stall_escalation.repeats,
@@ -5099,10 +5266,13 @@ class AppContext:
         spend_ledger = spend_ledger_from_settings(settings)
         router.spend_ledger = spend_ledger
         install_spend_hook(usage_ledger, spend_ledger)
-        if settings.observability.otel:
+        if settings.observability.otel or settings.observability.otlp_logs:
             from daari.observability.otel import configure_providers
 
-            configure_providers()
+            configure_providers(
+                otlp_logs=bool(settings.observability.otlp_logs),
+                traces=bool(settings.observability.otel),
+            )
         from daari.gateway.batches import BatchStore
         from daari.gateway.files import FileStore
         from daari.gateway.mcp_tasks import McpTaskStore

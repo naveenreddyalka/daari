@@ -128,3 +128,37 @@ def test_asr_with_base_url_passes_even_if_fallback_on(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli_app, ["config", "validate", str(path)])
     assert result.exit_code == 0, result.output
     assert "config ok" in result.stdout
+
+
+def test_asr_frontier_fallback_findings_helper(monkeypatch):
+    """Direct findings helper (#834) — mirrors CLI validate strings."""
+    from daari.config.settings import Settings
+    from daari.config.validate import asr_frontier_fallback_findings
+
+    for key in ("DAARI_FRONTIER_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+
+    clean = Settings()
+    assert asr_frontier_fallback_findings(clean) == []
+
+    disabled = Settings.model_validate(
+        {"asr": {"frontier_fallback": True}, "frontier": {"enabled": False}}
+    )
+    assert asr_frontier_fallback_findings(disabled) == [
+        "asr.frontier_fallback is true but frontier.enabled is false"
+    ]
+
+    no_key = Settings.model_validate(
+        {"asr": {"frontier_fallback": True}, "frontier": {"enabled": True}}
+    )
+    assert asr_frontier_fallback_findings(no_key) == [
+        "asr.frontier_fallback is true but no frontier API key resolves"
+    ]
+
+    with_base = Settings.model_validate(
+        {
+            "asr": {"base_url": "http://asr.local/v1", "frontier_fallback": True},
+            "frontier": {"enabled": True},
+        }
+    )
+    assert asr_frontier_fallback_findings(with_base) == []

@@ -167,6 +167,37 @@ class AsrSettings(BaseModel):
     )
 
 
+class TtsSettings(BaseModel):
+    """Local OpenAI-compatible text-to-speech (#847).
+
+    ``base_url`` is the API root (includes ``/v1``), same shape as ``asr.base_url``.
+    Empty means POST /v1/audio/speech is not configured (501).
+    """
+
+    base_url: str = Field(
+        default="",
+        description=(
+            "OpenAI-compatible TTS base URL, including /v1 "
+            "(openedai-speech, Kokoro-FastAPI, or similar). "
+            "Empty leaves POST /v1/audio/speech unconfigured."
+        ),
+    )
+    model: str = Field(
+        default="",
+        description=(
+            "Optional model name sent to the TTS server. When set, it replaces "
+            "the client model so a local server always sees its own id."
+        ),
+    )
+    voice: str = Field(
+        default="",
+        description=(
+            "Optional default voice when the request omits voice "
+            "(OpenAI alloy/echo/… or the local server's voice id)."
+        ),
+    )
+
+
 class L0CacheSettings(RuntimeSettings):
     enabled: bool = True
     path: str = "~/.daari/cache/l0"
@@ -406,6 +437,15 @@ class LocalPoolSettings(BaseModel):
     health_interval_seconds: float = Field(
         default=15.0,
         description="Background health-check interval. Requests use the last snapshot.",
+    )
+    frontier_fallback: bool = Field(
+        default=False,
+        description=(
+            "When true and every local backend for the chosen tier is down or "
+            "circuit-open, escalate to L6 instead of raising BackendUnavailable. "
+            "Respects no_frontier, allowlists, budgets, and PII scrub. Default "
+            "false so outages stay a hard 503 unless opted in (#846)."
+        ),
     )
     backends: list[LocalBackendSettings] = Field(default_factory=list)
 
@@ -927,6 +967,9 @@ class ObservabilitySettings(RuntimeSettings):
     postgres_url: str = ""
     # Emit gateway request logs as single-line JSON to stdout (containers).
     structured_json_logs: bool = False
+    # Opt-in OTLP logs export of gateway events (issue #849). Requires
+    # OTEL_EXPORTER_OTLP_ENDPOINT and the optional OTel extra; fail-open.
+    otlp_logs: bool = False
     # Hint that redis+postgres backends are in use (no local request state).
     stateless: bool = False
     # #332: per-store retention. 0 days keeps rows forever.
@@ -1176,6 +1219,7 @@ class Settings(BaseSettings):
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
     asr: AsrSettings = Field(default_factory=AsrSettings)
+    tts: TtsSettings = Field(default_factory=TtsSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
     frontier: FrontierSettings = Field(default_factory=FrontierSettings)

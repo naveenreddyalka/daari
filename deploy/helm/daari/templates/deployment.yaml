@@ -85,6 +85,44 @@ spec:
             - name: DAARI_ROUTING__ORG_POOL__BASE_URL
               value: {{ .Values.orgPool.baseUrl | quote }}
             {{- end }}
+            {{- with .Values.server.apiKeySecret }}
+            {{- if .name }}
+            - name: DAARI_SERVER__API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "api-key" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.rateLimit.enabled }}
+            - name: DAARI_RATE_LIMIT__RPM
+              value: {{ .Values.rateLimit.rpm | default 0 | quote }}
+            - name: DAARI_RATE_LIMIT__TPM
+              value: {{ .Values.rateLimit.tpm | default 0 | quote }}
+            - name: DAARI_RATE_LIMIT__MODEL_RPM
+              value: {{ .Values.rateLimit.modelRpm | default 0 | quote }}
+            - name: DAARI_RATE_LIMIT__MODEL_TPM
+              value: {{ .Values.rateLimit.modelTpm | default 0 | quote }}
+            {{- if and (not .Values.redis.enabled) .Values.rateLimit.redisUrl }}
+            - name: DAARI_CACHE__BACKEND
+              value: redis
+            - name: DAARI_CACHE__REDIS_URL
+              value: {{ .Values.rateLimit.redisUrl | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.frontier.enabled }}
+            - name: DAARI_FRONTIER__ENABLED
+              value: "true"
+            {{- with .Values.frontier.apiKeySecret }}
+            {{- if .name }}
+            - name: DAARI_FRONTIER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "api-key" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.ollama.baseUrl }}
             - name: DAARI_OLLAMA__BASE_URL
               value: {{ .Values.ollama.baseUrl | quote }}
