@@ -1871,6 +1871,13 @@ Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 `cache invalidate --token` for SSO/master Bearer. Covered by
 `tests/unit/test_cache_invalidate_docs.py`.
 
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
 ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
@@ -3512,6 +3519,14 @@ rows and L1 rows whose `context_key` contains that segment. CLI
 omit the object; `/api/tags` stays capability-string-only. Covered by
 `tests/unit/test_ollama_show_thinking.py`.
 
+### Cancel Ollama facade non-stream on disconnect ([#797](https://github.com/naveenreddyalka/daari/issues/797))
+
+<!-- tracking:#797 -->
+**Status:** Done (2026-09-20). Non-stream `/api/chat` and `/api/generate` wrap
+`router.route` in `await_unless_disconnected` (phase `chat`) and return 499 on
+disconnect. Streaming NDJSON unchanged. Covered by
+`tests/unit/test_client_disconnect.py`.
+
 ### Cancel MCP tools/call on disconnect ([#798](https://github.com/naveenreddyalka/daari/issues/798))
 
 <!-- tracking:#798 -->
@@ -3639,6 +3654,102 @@ by `tests/unit/test_spend_export.py`.
 **Status:** Done (2026-09-20). `cli.md` and org-cache guide document
 `cache invalidate --token` for SSO/master Bearer. Covered by
 `tests/unit/test_cache_invalidate_docs.py`.
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
+
+### Batch RPM/TPM/RPD + tenant meta on drain ([#840](https://github.com/naveenreddyalka/daari/issues/840))
+
+<!-- tracking:#840 -->
+**Status:** Done (2026-09-20). Batch drain charges virtual-key RPM/TPM/RPD
+(and team caps), copies `key_id` / `team_id` / `cache_scope` onto item
+`RequestMeta`, and records structured 429 / 403 item failures for rate
+limit and model allowlist denials. Master / no-auth batches stay open.
+Covered by `tests/unit/test_batches.py`.
+
+### Helm master key, rate limits, frontier ([#842](https://github.com/naveenreddyalka/daari/issues/842))
+
+<!-- tracking:#842 -->
+**Status:** Done (2026-09-20). Chart values `server.apiKeySecret`,
+`rateLimit.*`, and `frontier.*` wire `DAARI_SERVER__API_KEY`,
+`DAARI_RATE_LIMIT__*`, and frontier enable/secret env; NOTES and
+capacity-helm document multi-replica combos. Covered by
+`tests/unit/test_helm_chart.py`.
+
+### MCP virtual-key governance on tools/call ([#839](https://github.com/naveenreddyalka/daari/issues/839))
+
+<!-- tracking:#839 -->
+**Status:** Done (2026-09-20). MCP `tools/call` (route + provider execute)
+applies `apply_auth_claims_to_meta` so virtual keys carry `tier_cap`,
+`cache_scope`, `key_id`, and `team_id`; disallowed models return the same
+403 `model_not_allowed` shape and audit rows as chat; spend and L0 cache
+scope follow the key. Covered by `tests/unit/test_mcp_vk_governance.py`.
+
+### Embedding L0 honors cache_scope ([#841](https://github.com/naveenreddyalka/daari/issues/841))
+
+<!-- tracking:#841 -->
+**Status:** Done (2026-09-20). `POST /v1/embeddings` and Ollama `/api/embed`
+apply virtual-key `cache_scope` / `key_id` / `team_id` to embed L0 keys so
+scoped tenants do not share vectors; `daari cache invalidate --key/--team`
+removes those entries. Covered by `tests/unit/test_embeddings.py`.
+
+### Opt-in frontier failover when local pool is down ([#846](https://github.com/naveenreddyalka/daari/issues/846))
+
+<!-- tracking:#846 -->
+**Status:** Done (2026-09-20). `routing.local_pool.frontier_fallback` (default
+false) escalates chat to L6 when every local backend for the chosen tier is
+unavailable, respecting `no_frontier`, allowlists, budgets, and PII scrub.
+Event `local_pool_frontier_fallback`. Covered by
+`tests/unit/test_local_pool.py`.
+
+### Local-first POST /v1/audio/speech TTS ([#847](https://github.com/naveenreddyalka/daari/issues/847))
+
+<!-- tracking:#847 -->
+**Status:** Done (2026-09-20). `tts.base_url` proxies OpenAI-shaped
+`POST /v1/audio/speech` to a local TTS server; unconfigured returns 501
+`tts_unavailable`. Virtual-key allowlists, RPM, deadlines, and disconnect
+cancel apply; spend ledger uses tier `tts`. Covered by
+`tests/unit/test_speech.py`.
+
+### Per-key priority classes on the admission gate ([#848](https://github.com/naveenreddyalka/daari/issues/848))
+
+<!-- tracking:#848 -->
+**Status:** Done (2026-09-20). Virtual keys/teams accept `priority`
+(`high`|`normal`|`low`); the global in-flight gate admits by priority then
+FIFO. Batch drain acquires at `low`. Covered by
+`tests/unit/test_rate_limit.py`.
+
+### Export gateway events as OTLP logs ([#849](https://github.com/naveenreddyalka/daari/issues/849))
+
+<!-- tracking:#849 -->
+**Status:** Done (2026-09-20). Opt-in `observability.otlp_logs` emits each
+`log_gateway_event` as an OTel LogRecord (event name + attributes) on the
+same OTLP endpoint as traces/metrics, correlated with the active span when
+present; fail-open. Covered by `tests/unit/test_otel_logs.py`.
+
+### Docs: MCP tools/call honors X-Daari-Deadline-Ms ([#835](https://github.com/naveenreddyalka/daari/issues/835))
+
+<!-- tracking:#835 -->
+**Status:** Done (2026-09-20). MCP guide documents `tools/call` +
+`X-Daari-Deadline-Ms` / 504 `request_deadline_exceeded`; headers contract
+asserts the same. Covered by `tests/unit/test_deadline_docs.py`.
+
+### CLI reference mentions spend export --tier ([#836](https://github.com/naveenreddyalka/daari/issues/836))
+
+<!-- tracking:#836 -->
+**Status:** Done (2026-09-20). `cli.md` lists `spend export` with `--tier` and
+links the chargeback guide. Covered by `tests/unit/test_chargeback_docs.py`.
+
+### Grafana deadline panel covers audio/embed/MCP ([#837](https://github.com/naveenreddyalka/daari/issues/837))
+
+<!-- tracking:#837 -->
+**Status:** Done (2026-09-20). Overview panel description and metrics docs note
+deadlines are not chat-only (audio, embeddings, MCP `tools/call`); panel still
+scrapes `daari_request_deadline_exceeded_total`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
 
 ## How to update
 
@@ -3666,5 +3777,11 @@ by `tests/unit/test_spend_export.py`.
 **Status:** Done (2026-09-20). `cli.md` and org-cache guide document
 `cache invalidate --token` for SSO/master Bearer. Covered by
 `tests/unit/test_cache_invalidate_docs.py`.
+### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
+
+<!-- tracking:#834 -->
+**Status:** Done (2026-09-20). Direct unit coverage for
+`asr_frontier_fallback_findings`. Covered by
+`tests/unit/test_config_validate.py`.
 
 ## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.

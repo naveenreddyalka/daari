@@ -23,13 +23,14 @@ models:
   l3: llama3.2:3b
 ```
 
-Add more hosts with `routing.local_pool` (issue #170). Empty `backends` keeps the single `ollama.base_url`. A dead host is skipped; `/ready` is `degraded` when some hosts are down and `not_ready` (503) when none can serve.
+Add more hosts with `routing.local_pool` (issue #170). Empty `backends` keeps the single `ollama.base_url`. A dead host is skipped; `/ready` is `degraded` when some hosts are down and `not_ready` (503) when none can serve. Chat requests return typed `backend_unavailable` (503) when the pool cannot serve the chosen tier. Set `routing.local_pool.frontier_fallback: true` (default off) to escalate those requests to L6 instead — `no_frontier`, model allowlists, budgets, and PII scrub still apply (#846).
 
 ```yaml
 routing:
   local_pool:
     strategy: least_outstanding   # or round_robin
     health_interval_seconds: 15
+    frontier_fallback: false      # true → L6 when all local hosts are down
     backends:
       - id: gpu-a
         base_url: http://127.0.0.1:11434

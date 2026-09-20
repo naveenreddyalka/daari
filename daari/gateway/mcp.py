@@ -366,6 +366,52 @@ def _negotiate_protocol(params: Any) -> str:
     return DEFAULT_PROTOCOL_VERSION
 
 
+class ModelNotAllowed(Exception):
+    """Raised when a virtual-key allowlist rejects the MCP model (#839)."""
+
+    def __init__(self, response: JSONResponse) -> None:
+        self.response = response
+        super().__init__("model_not_allowed")
+
+
+def _governed_meta(request: Request | None, ctx: AppContext, deadline_ms: int | None) -> RequestMeta:
+    """Build RequestMeta with virtual-key claims (tier_cap, cache_scope, key/team)."""
+    meta = RequestMeta(deadline_ms=deadline_ms)
+    if request is None:
+        return meta
+    from daari.server.auth import apply_auth_claims_to_meta
+
+    apply_auth_claims_to_meta(
+        meta,
+        getattr(request.state, "auth_claims", None),
+        model_groups=getattr(ctx.settings, "model_groups", None),
+    )
+    return meta
+
+
+def _resolve_tool_model(
+    ctx: AppContext,
+    model: str | None,
+    call_args: dict[str, Any],
+) -> str:
+    arg_model = call_args.get("model")
+    if isinstance(arg_model, str) and arg_model.strip():
+        return arg_model.strip()
+    if model and str(model).strip():
+        return str(model).strip()
+    return ctx.settings.models.l3
+
+
+def _enforce_mcp_model(request: Request | None, ctx: AppContext, meta: RequestMeta, model: str) -> None:
+    if request is None:
+        return
+    from daari.gateway.model_access import reject_disallowed_model
+
+    denied = reject_disallowed_model(request, model, ctx.settings, meta)
+    if denied is not None:
+        raise ModelNotAllowed(denied)
+
+
 async def _run_tool(
     ctx: AppContext,
     name: str,
@@ -384,10 +430,13 @@ async def _run_tool(
 
     catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
     provider_id = (catalog_by_name.get(normalized) or {}).get("provider_id")
-    resolved_model = model or ctx.settings.models.l3
+    resolved_model = _resolve_tool_model(ctx, model, call_args)
     deadline_ms = None
     if request is not None:
         deadline_ms = parse_deadline_ms(request.headers.get("x-daari-deadline-ms"))
+    meta = _governed_meta(request, ctx, deadline_ms)
+    if provider_id or normalized == "route":
+        _enforce_mcp_model(request, ctx, meta, resolved_model)
 
     async def _await_work(coro: Any) -> Any:
         if request is None:
@@ -411,7 +460,7 @@ async def _run_tool(
         internal = InternalRequest(
             messages=[Message(role="user", content=call_input or "")],
             model=resolved_model,
-            meta=RequestMeta(deadline_ms=deadline_ms),
+            meta=meta,
         )
         provider_result = await _await_work(provider.execute(internal))
         return MCPQueryResponse(
@@ -432,7 +481,7 @@ async def _run_tool(
     internal = InternalRequest(
         messages=[Message(role="user", content=route_input)],
         model=resolved_model,
-        meta=RequestMeta(deadline_ms=deadline_ms),
+        meta=meta,
     )
     routed = await _await_work(ctx.router.route(internal))
     return MCPQueryResponse(
@@ -640,6 +689,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                             request=request,
                         )
                     )
+                except ModelNotAllowed as exc:
+                    return exc.response
                 except ClientDisconnected:
                     return _client_disconnected_response()
                 except RequestDeadlineExceeded as exc:
@@ -674,6 +725,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                         ctx, tool, body.input, body.args, model=body.model, request=request
                     )
                 )
+            except ModelNotAllowed as exc:
+                return exc.response
             except ClientDisconnected:
                 return _client_disconnected_response()
             except RequestDeadlineExceeded as exc:
@@ -803,7 +856,12 @@ class MCPGatewayAdapter(GatewayAdapter):
 
                         async def _runner() -> dict[str, Any]:
                             tool_response = await _run_tool(
-                                ctx, name, arguments.get("input"), arguments, model=None
+                                ctx,
+                                name,
+                                arguments.get("input"),
+                                arguments,
+                                model=None,
+                                request=request,
                             )
                             _record_mcp_tool(
                                 ctx,
@@ -833,6 +891,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                     request,
                     _jsonrpc_error(rpc_id, METHOD_NOT_FOUND, f"Method not found: {method}"),
                 )
+            except ModelNotAllowed as exc:
+                return exc.response
             except ClientDisconnected:
                 return _client_disconnected_response()
             except RequestDeadlineExceeded as exc:
