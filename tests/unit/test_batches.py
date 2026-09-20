@@ -574,3 +574,148 @@ async def test_budget_rejected_item_records_402_shape_and_continues():
     failed = next(r for r in refreshed.results if r["custom_id"] == refreshed.items[1].custom_id)
     assert failed["error"]["type"] == "budget_exceeded"
     assert failed["error"]["client_id"] == "key-a"
+
+
+@pytest.mark.asyncio
+async def test_batch_item_meta_carries_tenant_scope(settings, monkeypatch, tmp_path):
+    """Drain copies key_id / team_id / cache_scope onto RequestMeta (#840)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+    from daari.gateway.openai import _execute_batch_chat_body
+    from daari.router.router import AppContext
+    from tests.conftest import mock_all_ollama_executors
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    team = store.create_team("eng", cache_scope="team")
+    created = store.create("bot", team="eng", cache_scope="key", rpm=100)
+    app_ctx = AppContext.from_settings(settings)
+    app_ctx.virtual_key_store = store
+    captured: list[InternalRequest] = []
+
+    async def fake(request: InternalRequest) -> InternalResponse:
+        captured.append(request)
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app_ctx.router, fake)
+    gov = BatchGovernance(
+        key_id=created.key.key_id,
+        client_id="bot",
+        kind="virtual",
+        team_id=team.team_id,
+        cache_scope="key",
+    )
+    result = await _execute_batch_chat_body(
+        app_ctx,
+        {"model": "llama3.2:3b", "messages": [{"role": "user", "content": "hi"}]},
+        governance=gov,
+    )
+    assert result["choices"]
+    assert captured
+    meta = captured[0].meta
+    assert meta.key_id == created.key.key_id
+    assert meta.team_id == team.team_id
+    assert meta.cache_scope == "key"
+
+
+@pytest.mark.asyncio
+async def test_batch_drain_enforces_rpm_and_model_allowlist(settings, monkeypatch, tmp_path):
+    """Over-cap and disallowed-model items fail structured; master stays open (#840)."""
+    from daari.auth.rate_limit import MemoryCounterBackend, RateLimiter
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+    from daari.gateway.openai import _execute_batch_chat_body
+    from daari.router.router import AppContext
+    from tests.conftest import mock_all_ollama_executors
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    vk = VirtualKeyStore(settings.virtual_keys_path)
+    capped = vk.create("capped", client_id="capped", rpm=1, allowed_models=["claude-*"])
+    open_key = vk.create("open", client_id="open", rpm=0)
+    app_ctx = AppContext.from_settings(settings)
+    app_ctx.virtual_key_store = vk
+    limiter = RateLimiter(MemoryCounterBackend())
+    app_ctx.rate_limiter = limiter
+
+    async def fake(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model=request.model or "llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app_ctx.router, fake)
+    body = {"model": "llama3.2:3b", "messages": [{"role": "user", "content": "hi"}]}
+    gov = BatchGovernance(key_id=capped.key.key_id, client_id="capped", kind="virtual")
+
+    with pytest.raises(BatchItemRejected) as denied_model:
+        await _execute_batch_chat_body(app_ctx, body, governance=gov)
+    assert denied_model.value.error["type"] == "model_not_allowed"
+
+    allowed_body = {"model": "claude-3-5-sonnet", "messages": [{"role": "user", "content": "hi"}]}
+    first = await _execute_batch_chat_body(app_ctx, allowed_body, governance=gov)
+    assert first["choices"]
+    with pytest.raises(BatchItemRejected) as rate_err:
+        await _execute_batch_chat_body(app_ctx, allowed_body, governance=gov)
+    assert rate_err.value.error["type"] == "rate_limit_error"
+
+    master_ok = await _execute_batch_chat_body(
+        app_ctx,
+        body,
+        governance=BatchGovernance(kind="master"),
+    )
+    assert master_ok["choices"]
+    open_ok = await _execute_batch_chat_body(
+        app_ctx,
+        body,
+        governance=BatchGovernance(key_id=open_key.key.key_id, client_id="open", kind="virtual"),
+    )
+    assert open_ok["choices"]
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_rejected_item_records_429_shape():
+    store = BatchStore()
+    job = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "a"}]}],
+    )
+    err = {"type": "rate_limit_error", "message": "rpm limit exceeded."}
+
+    async def execute_one(_body: dict) -> dict:
+        raise BatchItemRejected(err)
+
+    await store.run_job(job.id, execute_one)
+    refreshed = store.get(job.id)
+    assert refreshed is not None
+    assert refreshed.items[0].status == ITEM_FAILED
+    row = refreshed.results[0]
+    assert row["response"]["status_code"] == 429
+    assert row["error"]["type"] == "rate_limit_error"
+
+
+@pytest.mark.asyncio
+async def test_model_not_allowed_rejected_item_records_403_shape():
+    store = BatchStore()
+    job = store.create(
+        requests=[{"model": "m", "messages": [{"role": "user", "content": "a"}]}],
+    )
+    err = {
+        "type": "model_not_allowed",
+        "code": "model_not_allowed",
+        "message": "Model not allowed for this key: gpt-4o",
+    }
+
+    async def execute_one(_body: dict) -> dict:
+        raise BatchItemRejected(err)
+
+    await store.run_job(job.id, execute_one)
+    refreshed = store.get(job.id)
+    assert refreshed is not None
+    assert refreshed.results[0]["response"]["status_code"] == 403
