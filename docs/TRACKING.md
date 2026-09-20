@@ -1850,7 +1850,14 @@ and passed to Ollama as `format` (the schema object) and to OpenAI-compat as
 Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 `tests/unit/test_sampling_params.py`.
 
-<!-- tracking-append: add the next ### section above ## How to update; on conflict keep both -->
+<!-- tracking-append: add the next ### section above ### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
+## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
 
@@ -3591,10 +3598,24 @@ query) binds `X-Daari-Deadline-Ms` before tool execution; exhaustion returns
 audio transcriptions/translations and embeddings among
 `X-Daari-Deadline-Ms` surfaces. Covered by `tests/unit/test_deadline_docs.py`.
 
+### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
 2. Refresh **Last updated** and pytest count after test changes.
 3. Do not mark done without implementation — check `daari/cli/`, `tests/`, and `git log`.
 4. Keep Phase B+ as preview; detail stays in [ROADMAP](prd/ROADMAP.md) and [phase-a.md](plans/phase-a.md). Forward work: [ROADMAP-v2](prd/ROADMAP-v2.md).
-5. Append a new `###` section **above** `## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
+5. Append a new `###` section **above** `### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
+## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
