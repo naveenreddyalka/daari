@@ -23,6 +23,8 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_ttft_preference_total" in row for row in body)
     assert any("daari_team_rate_limit_remaining" in row for row in body)
     assert any("daari_tier_shadow_samples_total" in row for row in body)
+    assert any("daari_cancelled_requests_total" in row for row in body)
+    assert any("daari_request_deadline_exceeded_total" in row for row in body)
     assert any("daari_escalations_total" in row for row in body)
     assert any("daari_errors_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
