@@ -1,4 +1,4 @@
-"""Chargeback guide names transcription spend tiers (#756)."""
+"""Chargeback guide names transcription and translation spend tiers (#756/#807)."""
 
 from __future__ import annotations
 
@@ -19,3 +19,12 @@ def test_chargeback_guide_names_transcription_tiers() -> None:
     assert "`L6`" in sentence
     assert "403" in sentence
     assert "501" in sentence
+
+
+def test_chargeback_guide_names_translation_tier() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    sentence = next(
+        line for line in text.splitlines() if "translation" in line and "`translation`" in line
+    )
+    assert "`translation`" in sentence
+    assert "`L6`" in sentence
