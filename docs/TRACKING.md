@@ -3561,6 +3561,14 @@ Covered by `tests/unit/test_request_deadline.py`.
 same wall-clock budget as OpenAI chat. Already-spent budgets return 504 before
 NDJSON streaming starts. Covered by `tests/unit/test_request_deadline.py`.
 
+### Daemon cache invalidate Bearer under SSO ([#816](https://github.com/naveenreddyalka/daari/issues/816))
+
+<!-- tracking:#816 -->
+**Status:** Done (2026-09-20). `daari cache invalidate` sends
+`Authorization: Bearer` (master key or `--token`) when SSO admin gate is
+active; missing credentials yield a clear "SSO token required" error.
+Covered by `tests/unit/test_cache_invalidate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

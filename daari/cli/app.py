@@ -2234,6 +2234,19 @@ def cache_prune() -> None:
     typer.echo(f"L1: removed {l1_removed} expired entries{l1_note}")
 
 
+def _sso_admin_gate_active(settings: Settings) -> bool:
+    """True when ``_require_admin_role`` will demand a Bearer token."""
+    sso = settings.enterprise.sso
+    if not sso.enabled:
+        return False
+    oidc_ready = bool(
+        (sso.jwks_url or "").strip()
+        or any(str(u or "").strip() for u in (sso.jwks_urls or []))
+        or (sso.discovery_url or "").strip()
+    )
+    return bool((sso.secret or "").strip() or oidc_ready)
+
+
 def _daemon_invalidate_caches(
     settings: Settings,
     *,
@@ -2241,6 +2254,7 @@ def _daemon_invalidate_caches(
     entry_hash: str | None,
     team_id: str | None = None,
     key_id: str | None = None,
+    token: str | None = None,
 ) -> tuple[bool, str]:
     url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/cache/invalidate"
     body: dict[str, str] = {}
@@ -2252,8 +2266,19 @@ def _daemon_invalidate_caches(
         body["team_id"] = team_id
     if key_id:
         body["key_id"] = key_id
+    auth = (token or "").strip() or (settings.server.primary_master_key() or "").strip()
+    headers: dict[str, str] = {}
+    if _sso_admin_gate_active(settings):
+        if not auth:
+            return False, (
+                "SSO token required — pass --token or configure server.api_key "
+                "(master key) for daemon cache invalidate"
+            )
+        headers["Authorization"] = f"Bearer {auth}"
+    elif auth:
+        headers["Authorization"] = f"Bearer {auth}"
     try:
-        response = httpx.post(url, json=body, timeout=5.0)
+        response = httpx.post(url, json=body, headers=headers, timeout=5.0)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
@@ -2279,6 +2304,11 @@ def cache_invalidate(
     key: str | None = typer.Option(
         None, "--key", help="Drop L0 rows scoped to key:<id> and L1 context_keys with that segment."
     ),
+    token: str | None = typer.Option(
+        None,
+        "--token",
+        help="Bearer token (SSO or master key) when calling a running daemon under SSO.",
+    ),
 ) -> None:
     """Drop L0/L1 entries by model, hash, team, or key. Empty selection clears both caches."""
     from daari.cache.exact import ExactCache
@@ -2287,7 +2317,12 @@ def cache_invalidate(
     settings = get_settings()
     if _daemon_is_running(settings):
         ok, detail = _daemon_invalidate_caches(
-            settings, model=model, entry_hash=entry_hash, team_id=team, key_id=key
+            settings,
+            model=model,
+            entry_hash=entry_hash,
+            team_id=team,
+            key_id=key,
+            token=token,
         )
         if not ok:
             typer.echo(f"Daemon invalidate failed: {detail}", err=True)
