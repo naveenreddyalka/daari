@@ -21,9 +21,11 @@ observability:
 daari spend export --since 2026-01-01T00:00:00Z --format csv
 daari spend export --since 30d --format jsonl --team platform
 daari spend export --since 7d --format csv --key key_abc123
+daari spend export --since 7d --format csv --tier asr
+daari spend export --since 7d --format jsonl --tier embed --team platform
 ```
 
-`--since` accepts an ISO-8601 timestamp or a relative window (`7d`, `12h`). `--key` and `--team` are exact filters. CSV and JSONL both stream one row at a time.
+`--since` accepts an ISO-8601 timestamp or a relative window (`7d`, `12h`). `--key`, `--team`, and `--tier` are exact filters (`--tier` matches the ledger column: `asr`, `translation`, `embed`, `L3`–`L6`, …). CSV and JSONL both stream one row at a time.
 
 Each row has: timestamp, request id, key id, team id, client id, model, tier, input / output / cached tokens, `cost_usd` (what this request cost; $0 on local tiers), `cost_avoided_usd` (the frontier price those tokens would have paid), and a cache-hit flag.
 
