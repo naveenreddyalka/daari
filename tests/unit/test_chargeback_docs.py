@@ -33,5 +33,15 @@ def test_chargeback_guide_names_translation_tier() -> None:
 def test_chargeback_guide_documents_tier_filter() -> None:
     text = DOC.read_text(encoding="utf-8")
     assert "--tier asr" in text
+    assert "--tier tts" in text
     assert "--tier embed" in text
-    assert "`asr`" in text and "`translation`" in text and "`embed`" in text
+    assert "`asr`" in text and "`translation`" in text and "`tts`" in text and "`embed`" in text
+
+
+def test_chargeback_guide_names_tts_tier() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    sentence = next(
+        line for line in text.splitlines() if "Speech synthesis" in line and "`tts`" in line
+    )
+    assert "`tts`" in sentence
+    assert "501" in text
