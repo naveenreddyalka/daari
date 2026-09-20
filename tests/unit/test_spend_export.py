@@ -123,9 +123,14 @@ def test_spend_export_cli_tier_help_and_filter(tmp_path, monkeypatch):
     _row(ledger, ts=recent, request_id="req-asr", tier="asr")
     _row(ledger, ts=recent, request_id="req-l3", tier="L3")
 
-    help_result = CliRunner().invoke(cli_app, ["spend", "export", "--help"])
+    help_result = CliRunner().invoke(
+        cli_app,
+        ["spend", "export", "--help"],
+        env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "120"},
+    )
     assert help_result.exit_code == 0
-    assert "--tier" in help_result.stdout
+    help_text = help_result.stdout + help_result.stderr
+    assert "--tier" in help_text
 
     result = CliRunner().invoke(
         cli_app,

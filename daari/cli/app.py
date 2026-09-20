@@ -1294,7 +1294,7 @@ def spend_export(
     tier: str | None = typer.Option(
         None,
         "--tier",
-        help="Exact spend tier (asr, translation, embed, L3–L6, …).",
+        help="Exact spend tier (asr, translation, embed, L3-L6, ...).",
     ),
 ) -> None:
     """Stream per-request spend rows for chargeback (#709)."""
