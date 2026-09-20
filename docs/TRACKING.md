@@ -1857,6 +1857,13 @@ Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
 
+<!-- tracking-append: add the next ### section above ### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
 ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
@@ -3612,6 +3619,13 @@ audio transcriptions/translations and embeddings among
 rows by the ledger `tier` column (combinable with `--key` / `--team`). Covered
 by `tests/unit/test_spend_export.py`.
 
+### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
@@ -3624,5 +3638,12 @@ by `tests/unit/test_spend_export.py`.
 **Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
+
+5. Append a new `###` section **above** `### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
+
+<!-- tracking:#826 -->
+**Status:** Done (2026-09-20). CLI help contract asserts `daari cache invalidate
+--help` mentions `--token` for SSO daemon auth. Covered by
+`tests/unit/test_cache_invalidate_cli_help.py`.
 
 ## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
