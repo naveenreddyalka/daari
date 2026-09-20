@@ -3553,6 +3553,14 @@ for phase `chat`. Covered by `tests/unit/test_client_disconnect.py`.
 `request_deadline_exceeded` and increments `daari_request_deadline_exceeded_total`.
 Covered by `tests/unit/test_request_deadline.py`.
 
+### Request deadline on Ollama facade ([#815](https://github.com/naveenreddyalka/daari/issues/815))
+
+<!-- tracking:#815 -->
+**Status:** Done (2026-09-20). `/api/chat` and `/api/generate` accept
+`X-Daari-Deadline-Ms` into `RequestMeta.deadline_ms` so the router binds the
+same wall-clock budget as OpenAI chat. Already-spent budgets return 504 before
+NDJSON streaming starts. Covered by `tests/unit/test_request_deadline.py`.
+
 ### Daemon cache invalidate Bearer under SSO ([#816](https://github.com/naveenreddyalka/daari/issues/816))
 
 <!-- tracking:#816 -->
