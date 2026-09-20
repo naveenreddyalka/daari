@@ -284,8 +284,13 @@ async def _execute_batch_chat_body(
         session_id=gov.session_id if gov else None,
         no_frontier=bool(gov.no_frontier) if gov else False,
         boundary_profile=gov.boundary_profile if gov else None,
+        key_id=gov.key_id if gov else None,
+        team_id=gov.team_id if gov else None,
+        cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
     )
     apply_cost_tier(body, meta)
+    _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
+    _enforce_batch_item_rate_limits(ctx, body_dict, governance=gov)
     _enforce_batch_item_budgets(ctx, meta, governance=gov)
     internal = _prepare_internal_request(
         body,
@@ -299,6 +304,109 @@ async def _execute_batch_chat_body(
         prompt_chars=prompt_chars,
         include_daari_meta=False,
         client_model=body.model or None,
+    )
+
+
+def _batch_lookup_virtual_key(ctx: AppContext, governance: Any) -> Any | None:
+    store = getattr(ctx, "virtual_key_store", None)
+    if store is None or not getattr(governance, "key_id", None):
+        return None
+    for candidate in store.list() or []:
+        if candidate.key_id == governance.key_id:
+            return candidate
+    return None
+
+
+def _enforce_batch_item_model_access(
+    ctx: AppContext,
+    body: ChatCompletionRequest,
+    meta: RequestMeta,
+    *,
+    governance: Any | None,
+) -> None:
+    """Reject items whose model is outside the creating key's allowlist (#840)."""
+    from daari.auth.model_access import (
+        denial_body,
+        effective_patterns,
+        model_permitted,
+        record_model_denial,
+    )
+    from daari.gateway.batches import BatchGovernance, BatchItemRejected
+
+    if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
+        return
+    key = _batch_lookup_virtual_key(ctx, governance)
+    if key is None:
+        return
+    store = getattr(ctx, "virtual_key_store", None)
+    team = store.get_team(key.team_id) if store is not None and key.team_id else None
+    catalog = getattr(ctx.settings, "model_groups", None) or {}
+    key_patterns = effective_patterns(key.allowed_models, key.model_groups, catalog)
+    team_patterns = (
+        effective_patterns(team.allowed_models, team.model_groups, catalog)
+        if team is not None
+        else None
+    )
+    meta.key_model_patterns = key_patterns
+    meta.team_model_patterns = team_patterns
+    model = (body.model or ctx.settings.models.l3 or "").strip()
+    if model_permitted(model, key_patterns=key_patterns, team_patterns=team_patterns):
+        return
+    record_model_denial(
+        ctx.settings,
+        model=model,
+        key_id=governance.key_id,
+        client_id=governance.client_id,
+        path="/v1/batches",
+    )
+    raise BatchItemRejected(denial_body(model)["error"])
+
+
+def _enforce_batch_item_rate_limits(
+    ctx: AppContext,
+    body_dict: dict[str, Any],
+    *,
+    governance: Any | None,
+) -> None:
+    """Charge RPM/TPM/RPD (and team caps) for virtual-key batch items (#840)."""
+    from daari.auth.rate_limit import estimate_request_tokens, request_model
+    from daari.gateway.batches import BatchGovernance, BatchItemRejected
+
+    if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
+        return
+    limiter = getattr(ctx, "rate_limiter", None)
+    if limiter is None:
+        return
+    key = _batch_lookup_virtual_key(ctx, governance)
+    if key is None:
+        return
+    store = getattr(ctx, "virtual_key_store", None)
+    team = store.get_team(key.team_id) if store is not None and key.team_id else None
+    rpm = int(getattr(key, "rpm", 0) or 0) or None
+    tpm = int(getattr(key, "tpm", 0) or 0) or None
+    rpd = int(getattr(key, "rpd", 0) or 0) or None
+    team_rpm = int(getattr(team, "rpm", 0) or 0) or None if team is not None else None
+    team_tpm = int(getattr(team, "tpm", 0) or 0) or None if team is not None else None
+    team_rpd = int(getattr(team, "rpd", 0) or 0) or None if team is not None else None
+    decision = limiter.check(
+        key_id=governance.key_id or key.key_id,
+        model=request_model(body_dict),
+        tokens=estimate_request_tokens(body_dict),
+        rpm=rpm,
+        tpm=tpm,
+        team_id=getattr(key, "team_id", None) or governance.team_id,
+        team_rpm=team_rpm,
+        team_tpm=team_tpm,
+        rpd=rpd,
+        team_rpd=team_rpd,
+    )
+    if decision.allowed:
+        return
+    raise BatchItemRejected(
+        {
+            "type": "rate_limit_error",
+            "message": f"{decision.scope or 'rate'} limit exceeded.",
+        }
     )
 
 
@@ -426,6 +534,8 @@ def _governance_from_batch_request(request: Request, body: BatchCreateRequest) -
         deadline_ms=meta.deadline_ms,
         session_id=meta.session_id,
         user_agent=meta.user_agent,
+        team_id=getattr(meta, "team_id", None),
+        cache_scope=getattr(meta, "cache_scope", None) or "global",
     )
 
 
@@ -890,34 +1000,63 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
 
         @router.post("/v1/embeddings")
-        async def embeddings(body: EmbeddingsRequest, request: Request) -> Any:
+        async def embeddings(
+            body: EmbeddingsRequest,
+            request: Request,
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
+        ) -> Any:
             ctx: AppContext = request.app.state.ctx
             from daari.gateway.model_access import reject_disallowed_model
+            from daari.router.deadline import (
+                RequestDeadlineExceeded,
+                bind_request_deadline,
+                deadline_active,
+                guard_upstream,
+                parse_deadline_ms,
+                resolve_deadline_seconds,
+            )
 
             denied = reject_disallowed_model(request, body.model or "daari", ctx.settings)
             if denied is not None:
                 return denied
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
+            seconds = resolve_deadline_seconds(
+                deadline_ms,
+                getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+            )
+
+            async def _run() -> Any:
+                if deadline_active():
+                    guard_upstream("embed")
+                try:
+                    vectors = await await_unless_disconnected(
+                        request,
+                        compute_embeddings(ctx, texts, model=model, request=request),
+                        metrics=ctx.metrics,
+                        phase="embed",
+                        model=model,
+                    )
+                except ClientDisconnected:
+                    return JSONResponse(
+                        status_code=499,
+                        content={
+                            "error": {
+                                "type": "client_disconnected",
+                                "message": "client disconnected.",
+                            }
+                        },
+                    )
+                return openai_embeddings_payload(model, vectors, texts)
+
             try:
-                vectors = await await_unless_disconnected(
-                    request,
-                    compute_embeddings(ctx, texts, model=model, request=request),
-                    metrics=ctx.metrics,
-                    phase="embed",
-                    model=model,
-                )
-            except ClientDisconnected:
-                return JSONResponse(
-                    status_code=499,
-                    content={
-                        "error": {
-                            "type": "client_disconnected",
-                            "message": "client disconnected.",
-                        }
-                    },
-                )
-            return openai_embeddings_payload(model, vectors, texts)
+                if seconds is not None and not deadline_active():
+                    with bind_request_deadline(seconds, metrics=ctx.metrics):
+                        return await _run()
+                return await _run()
+            except RequestDeadlineExceeded as exc:
+                return request_deadline_response(exc)
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:

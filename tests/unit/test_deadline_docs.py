@@ -12,6 +12,9 @@ def test_headers_document_deadline_ms() -> None:
     assert "X-Daari-Deadline-Ms" in headers
     assert "request_deadline_exceeded" in headers
     assert "time-to-first-token" in headers
+    assert "/v1/audio/transcriptions" in headers
+    assert "/v1/audio/translations" in headers
+    assert "/v1/embeddings" in headers
 
 
 def test_config_documents_request_deadline_seconds() -> None:

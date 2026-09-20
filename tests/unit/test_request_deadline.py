@@ -277,3 +277,177 @@ async def test_gateway_deadline_header_is_504(tmp_path):
     assert body["deadline_seconds"] == 0
     assert called["n"] == 0
     assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+
+
+@pytest.mark.asyncio
+async def test_audio_transcriptions_deadline_header_is_504(tmp_path, monkeypatch):
+    """X-Daari-Deadline-Ms: 0 on ASR must not call upstream (#814)."""
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"text": "should not run"})
+
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+
+    settings = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {"l0": {"enabled": False, "path": str(tmp_path / "l0")}},
+            "asr": {"base_url": "http://asr.local/v1", "model": "whisper-1"},
+            "upstream": {"request_deadline_seconds": 30},
+        }
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", b"RIFF", "audio/wav")},
+            data={"model": "whisper-1", "response_format": "json"},
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert seen == []
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_embeddings_deadline_header_is_504(tmp_path):
+    """X-Daari-Deadline-Ms: 0 on embeddings must not call the embedder (#814)."""
+    settings = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {
+                "l0": {"enabled": False, "path": str(tmp_path / "l0")},
+                "l1": {"enabled": True, "embedding_model": "nomic-embed-text"},
+            },
+            "upstream": {"request_deadline_seconds": 30},
+        }
+    )
+    app = create_app(settings)
+    ctx = AppContext.from_settings(settings)
+    app.state.ctx = ctx
+    called = {"n": 0}
+
+    class BoomEmbedder:
+        model = "nomic-embed-text"
+
+        async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+            called["n"] += 1
+            raise AssertionError("embedder should not run")
+
+        async def embed_many(
+            self, texts: list[str], *, model: str | None = None
+        ) -> list[list[float] | None]:
+            called["n"] += 1
+            raise AssertionError("embedder should not run")
+
+    ctx.router.semantic_cache.embedder = BoomEmbedder()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/embeddings",
+            json={"model": "nomic-embed-text", "input": "hello"},
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert called["n"] == 0
+    assert ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_ollama_facade_deadline_header_is_504(tmp_path):
+    """X-Daari-Deadline-Ms: 0 on /api/chat must not call upstream (#815)."""
+    settings = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {"l0": {"enabled": False, "path": str(tmp_path / "l0")}},
+            "upstream": {"request_deadline_seconds": 30},
+        }
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    called = {"n": 0}
+
+    async def explode(request: InternalRequest) -> InternalResponse:
+        called["n"] += 1
+        raise AssertionError("upstream should not run")
+
+    for name in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        setattr(getattr(app.state.ctx.router, name), "execute", explode)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/chat",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "bound"}],
+                "stream": False,
+            },
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert body["deadline_seconds"] == 0
+    assert called["n"] == 0
+    assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_ollama_generate_deadline_header_is_504(tmp_path):
+    """X-Daari-Deadline-Ms: 0 on /api/generate must not call upstream (#815)."""
+    settings = Settings.model_validate(
+        {
+            "models": {"l3": "llama3.2:3b"},
+            "cache": {"l0": {"enabled": False, "path": str(tmp_path / "l0")}},
+            "upstream": {"request_deadline_seconds": 30},
+        }
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    called = {"n": 0}
+
+    async def explode(request: InternalRequest) -> InternalResponse:
+        called["n"] += 1
+        raise AssertionError("upstream should not run")
+
+    for name in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        setattr(getattr(app.state.ctx.router, name), "execute", explode)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/generate",
+            json={"model": "daari", "prompt": "bound", "stream": False},
+            headers={"X-Daari-Deadline-Ms": "0"},
+        )
+    assert response.status_code == 504
+    body = response.json()["error"]
+    assert body["type"] == "request_deadline_exceeded"
+    assert called["n"] == 0
+    assert app.state.ctx.metrics.deadline_exhausted == 1

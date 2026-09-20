@@ -43,4 +43,39 @@ Org pool enabled: Deployment wires DAARI_ROUTING__ORG_POOL__ENABLED and
   Local tiers can fall through to this shared Ollama/vLLM pool before frontier.
 {{- end }}
 
+{{- with .Values.server.apiKeySecret }}
+{{- if .name }}
+
+Master API key: DAARI_SERVER__API_KEY from Secret {{ .name }} (key {{ .key | default "api-key" }}).
+  Required for multi-replica fleets that share virtual keys via postgres.
+{{- end }}
+{{- end }}
+
+{{- if .Values.rateLimit.enabled }}
+
+Rate limits enabled: DAARI_RATE_LIMIT__RPM/TPM (and model_*) are set from values.rateLimit.
+{{- if .Values.redis.enabled }}
+  Counters reuse redis.url (cache.backend=redis) for fleet-wide caps.
+{{- else if .Values.rateLimit.redisUrl }}
+  Counters use rateLimit.redisUrl (cache.backend=redis) for fleet-wide caps.
+{{- else }}
+  No Redis URL: RPM/TPM counters are per-pod SQLite — use redis.enabled or
+  rateLimit.redisUrl when replicaCount > 1.
+{{- end }}
+{{- end }}
+
+{{- if .Values.frontier.enabled }}
+
+Frontier enabled: DAARI_FRONTIER__ENABLED=true.
+{{- with .Values.frontier.apiKeySecret }}
+{{- if .name }}
+  DAARI_FRONTIER_API_KEY from Secret {{ .name }} (key {{ .key | default "api-key" }}).
+{{- else }}
+  Set frontier.apiKeySecret (name + key) or inject DAARI_FRONTIER_API_KEY / OPENAI_API_KEY.
+{{- end }}
+{{- else }}
+  Set frontier.apiKeySecret (name + key) or inject DAARI_FRONTIER_API_KEY / OPENAI_API_KEY.
+{{- end }}
+{{- end }}
+
 Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}

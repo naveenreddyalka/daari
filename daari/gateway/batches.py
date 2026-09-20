@@ -71,6 +71,8 @@ class BatchGovernance:
     deadline_ms: int | None = None
     session_id: str | None = None
     user_agent: str | None = None
+    team_id: str | None = None
+    cache_scope: str = "global"
 
 
 def batch_visible_to_caller(job: BatchJob, claims: Any | None) -> bool:
@@ -600,7 +602,15 @@ class BatchStore:
                     except BatchItemRejected as exc:
                         item.status = ITEM_FAILED
                         item.error = exc.error
-                        status_code = 402 if exc.error.get("type") == "budget_exceeded" else 400
+                        error_type = str(exc.error.get("type") or exc.error.get("code") or "")
+                        if error_type == "budget_exceeded":
+                            status_code = 402
+                        elif error_type in {"rate_limit_error", "rate_limit"}:
+                            status_code = 429
+                        elif error_type == "model_not_allowed":
+                            status_code = 403
+                        else:
+                            status_code = 400
                         job.results.append(
                             {
                                 "id": f"batch_req_{uuid.uuid4().hex[:12]}",

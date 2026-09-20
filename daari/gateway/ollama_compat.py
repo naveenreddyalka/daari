@@ -356,9 +356,19 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             body: OllamaChatRequest,
             request: Request,
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
         ) -> Any:
+            from daari.router.deadline import (
+                RequestDeadlineExceeded,
+                bind_request_deadline,
+                guard_upstream,
+                parse_deadline_ms,
+                resolve_deadline_seconds,
+            )
+
             ctx: AppContext = request.app.state.ctx
             client_model = body.model or "daari"
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
             internal = InternalRequest(
                 messages=[
                     Message(
@@ -378,7 +388,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 model=_resolve_model(client_model, ctx),
                 temperature=_temperature_from_options(body.options),
                 stream=body.stream,
-                meta=RequestMeta(client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip()),
+                meta=RequestMeta(
+                    client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip(),
+                    deadline_ms=deadline_ms,
+                ),
                 sampling=SamplingParams.from_ollama_options(body.options),
             )
             denied = _enforce_ollama_model(
@@ -388,6 +401,16 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 return denied
 
             if body.stream:
+                seconds = resolve_deadline_seconds(
+                    deadline_ms,
+                    getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+                )
+                if seconds is not None and seconds <= 0:
+                    try:
+                        with bind_request_deadline(seconds, metrics=ctx.metrics):
+                            guard_upstream("stream")
+                    except RequestDeadlineExceeded as exc:
+                        return request_deadline_response(exc)
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_chat_line)
 
             result = await _route_non_stream(ctx, internal, request)
@@ -402,9 +425,19 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             body: OllamaGenerateRequest,
             request: Request,
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
+            x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
         ) -> Any:
+            from daari.router.deadline import (
+                RequestDeadlineExceeded,
+                bind_request_deadline,
+                guard_upstream,
+                parse_deadline_ms,
+                resolve_deadline_seconds,
+            )
+
             ctx: AppContext = request.app.state.ctx
             client_model = body.model or "daari"
+            deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
             messages: list[Message] = []
             if body.system:
                 messages.append(Message(role="system", content=body.system))
@@ -425,7 +458,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 model=_resolve_model(client_model, ctx),
                 temperature=_temperature_from_options(body.options),
                 stream=body.stream,
-                meta=RequestMeta(client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip()),
+                meta=RequestMeta(
+                    client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip(),
+                    deadline_ms=deadline_ms,
+                ),
                 sampling=SamplingParams.from_ollama_options(options or None),
             )
             denied = _enforce_ollama_model(
@@ -435,6 +471,16 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 return denied
 
             if body.stream:
+                seconds = resolve_deadline_seconds(
+                    deadline_ms,
+                    getattr(ctx.settings.upstream, "request_deadline_seconds", None),
+                )
+                if seconds is not None and seconds <= 0:
+                    try:
+                        with bind_request_deadline(seconds, metrics=ctx.metrics):
+                            guard_upstream("stream")
+                    except RequestDeadlineExceeded as exc:
+                        return request_deadline_response(exc)
                 return await _stream_ndjson(ctx, internal, client_model, line_fn=_generate_line)
 
             result = await _route_non_stream(ctx, internal, request)
