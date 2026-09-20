@@ -3543,6 +3543,14 @@ prune stays no-scan. CLI reports the count. Covered by
 executor returns 200 and does not increment `daari_cancelled_requests_total`
 for phase `chat`. Covered by `tests/unit/test_client_disconnect.py`.
 
+### Request deadline on Ollama facade ([#815](https://github.com/naveenreddyalka/daari/issues/815))
+
+<!-- tracking:#815 -->
+**Status:** Done (2026-09-20). `/api/chat` and `/api/generate` accept
+`X-Daari-Deadline-Ms` into `RequestMeta.deadline_ms` so the router binds the
+same wall-clock budget as OpenAI chat. Already-spent budgets return 504 before
+NDJSON streaming starts. Covered by `tests/unit/test_request_deadline.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
