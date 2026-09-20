@@ -49,7 +49,7 @@ Entry point: `daari` (Typer).
 | Group | Commands |
 |-------|----------|
 | `context` | `clear` |
-| `cache` | `prune` |
+| `cache` | `prune`, `invalidate` (`--model`, `--hash`, `--team`, `--key`, `--token` for SSO/master Bearer when calling a running daemon) |
 | `learn` | `stats`, `export-stats`, `propose-defaults`, `examples`, `export-dataset`, `train-router`, `finetune`, `deploy`, `recommend` |
 | `org-cache` | `serve` |
 | `org-learning` | `stats`, `sync`, `export` |

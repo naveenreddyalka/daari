@@ -1857,6 +1857,13 @@ Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
+
 ## How to update; on conflict keep both -->
 
 ### Budget alert fleet dedupe via Redis ([#369](https://github.com/naveenreddyalka/daari/issues/369))
@@ -3605,6 +3612,13 @@ audio transcriptions/translations and embeddings among
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
@@ -3617,5 +3631,12 @@ audio transcriptions/translations and embeddings among
 **Status:** Done (2026-09-20). Chargeback guide documents `daari spend export
 --tier` with `asr` / `embed` examples. Covered by
 `tests/unit/test_chargeback_docs.py`.
+
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
 
 ## How to update` (unique `<!-- tracking:#N -->` comment). If two PRs conflict here, keep **both** sections.
