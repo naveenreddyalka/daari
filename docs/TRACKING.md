@@ -3512,6 +3512,14 @@ rows and L1 rows whose `context_key` contains that segment. CLI
 omit the object; `/api/tags` stays capability-string-only. Covered by
 `tests/unit/test_ollama_show_thinking.py`.
 
+### Cancel Ollama facade non-stream on disconnect ([#797](https://github.com/naveenreddyalka/daari/issues/797))
+
+<!-- tracking:#797 -->
+**Status:** Done (2026-09-20). Non-stream `/api/chat` and `/api/generate` wrap
+`router.route` in `await_unless_disconnected` (phase `chat`) and return 499 on
+disconnect. Streaming NDJSON unchanged. Covered by
+`tests/unit/test_client_disconnect.py`.
+
 ### Cancel MCP tools/call on disconnect ([#798](https://github.com/naveenreddyalka/daari/issues/798))
 
 <!-- tracking:#798 -->
