@@ -93,6 +93,7 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `routing.org_pool.tier` | str | `'L5-org'` |  |
 | `routing.local_pool.strategy` | str | `'least_outstanding'` | Host pick: least_outstanding or round_robin. Warm models still win ties. |
 | `routing.local_pool.health_interval_seconds` | float | `15.0` | Background health-check interval. Requests use the last snapshot. |
+| `routing.local_pool.frontier_fallback` | bool | `False` | When true and every local backend for the chosen tier is down or circuit-open, escalate to L6 instead of a hard 503. Respects `no_frontier`, allowlists, budgets, and PII scrub. Default false (#846). |
 | `routing.local_pool.backends` | list | `[]` |  |
 | `frontier.enabled` | bool | `False` |  |
 | `frontier.provider` | str | `'openai'` |  |

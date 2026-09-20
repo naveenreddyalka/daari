@@ -3675,6 +3675,15 @@ apply virtual-key `cache_scope` / `key_id` / `team_id` to embed L0 keys so
 scoped tenants do not share vectors; `daari cache invalidate --key/--team`
 removes those entries. Covered by `tests/unit/test_embeddings.py`.
 
+### Opt-in frontier failover when local pool is down ([#846](https://github.com/naveenreddyalka/daari/issues/846))
+
+<!-- tracking:#846 -->
+**Status:** Done (2026-09-20). `routing.local_pool.frontier_fallback` (default
+false) escalates chat to L6 when every local backend for the chosen tier is
+unavailable, respecting `no_frontier`, allowlists, budgets, and PII scrub.
+Event `local_pool_frontier_fallback`. Covered by
+`tests/unit/test_local_pool.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

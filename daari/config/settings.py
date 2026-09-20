@@ -407,6 +407,15 @@ class LocalPoolSettings(BaseModel):
         default=15.0,
         description="Background health-check interval. Requests use the last snapshot.",
     )
+    frontier_fallback: bool = Field(
+        default=False,
+        description=(
+            "When true and every local backend for the chosen tier is down or "
+            "circuit-open, escalate to L6 instead of raising BackendUnavailable. "
+            "Respects no_frontier, allowlists, budgets, and PII scrub. Default "
+            "false so outages stay a hard 503 unless opted in (#846)."
+        ),
+    )
     backends: list[LocalBackendSettings] = Field(default_factory=list)
 
 
