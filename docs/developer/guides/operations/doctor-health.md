@@ -29,6 +29,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `asr` | Optional: `asr.base_url` unreachable, or `asr.frontier_fallback` with frontier disabled / no API key. Empty ASR config is quiet (the route returns 501) |
 | doctor `tts` | Optional: `tts.base_url` unreachable. Empty TTS config is quiet (POST `/v1/audio/speech` returns 501) |
 | doctor `request_deadline` | Optional: `upstream.request_deadline_seconds` unset or `<= 0` — per-tier timeouts only; set a positive budget (or send `X-Daari-Deadline-Ms`) so escalation stops with 504 |
+| doctor `local_pool_frontier_fallback` | Optional: `routing.local_pool.frontier_fallback` true while `frontier.enabled` is false |
 | doctor `fleet_artifacts` | Optional: fleet signals (`DAARI_FLEET_REPLICAS` > 1, `cache.backend=redis`, or `observability.backend=postgres`) with sqlite `batches` / `files` / `responses` / ledger / `enterprise.audit_backend` — split-brain, 404, or incomplete audit-export risk |
 | doctor `fleet_cache` | Optional: `DAARI_FLEET_REPLICAS` > 1 without `cache.backend=redis` — L0 / session pins / singleflight stay per-pod |
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |

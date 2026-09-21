@@ -53,6 +53,7 @@ def run_doctor(
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
+    results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
@@ -1043,6 +1044,34 @@ def _check_mlx(settings: Settings, client: httpx.Client | None) -> CheckResult:
     finally:
         if own_client:
             http.close()
+
+
+def _check_local_pool_frontier_fallback(settings: Settings) -> CheckResult:
+    """Surface routing.local_pool.frontier_fallback misconfig (#879)."""
+    from daari.config.validate import local_pool_frontier_fallback_findings
+
+    findings = local_pool_frontier_fallback_findings(settings)
+    if not findings:
+        enabled = bool(
+            getattr(getattr(settings.routing, "local_pool", None), "frontier_fallback", False)
+        )
+        detail = (
+            "routing.local_pool.frontier_fallback configured"
+            if enabled
+            else "routing.local_pool.frontier_fallback=false"
+        )
+        return CheckResult(
+            name="local_pool_frontier_fallback",
+            ok=True,
+            detail=detail,
+            optional=True,
+        )
+    return CheckResult(
+        name="local_pool_frontier_fallback",
+        ok=False,
+        detail="; ".join(findings),
+        optional=True,
+    )
 
 
 def _check_request_deadline(settings: Settings) -> CheckResult:
