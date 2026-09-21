@@ -3846,6 +3846,13 @@ capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
 `DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK` when true; default omits env.
 Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
 
+### Docs: local text-to-speech backend guide ([#890](https://github.com/naveenreddyalka/daari/issues/890))
+
+<!-- tracking:#890 -->
+**Status:** Done (2026-09-21). New `backends/tts.md`; overview and
+clients-and-gateways link it for `/v1/audio/speech`. Covered by
+`tests/unit/test_tts_docs.py`.
+
 ### TTS disconnect cancelled_requests phase=tts ([#889](https://github.com/naveenreddyalka/daari/issues/889))
 
 <!-- tracking:#889 -->
