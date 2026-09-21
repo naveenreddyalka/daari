@@ -3782,6 +3782,14 @@ block the backlog after conflict repair. Covered by
 value. Documented in doctor-health. Covered by
 `tests/unit/test_doctor_deadline.py`.
 
+### Doctor probes TTS reachability ([#869](https://github.com/naveenreddyalka/daari/issues/869))
+
+<!-- tracking:#869 -->
+**Status:** Done (2026-09-21). Optional doctor check `tts` probes
+`{tts.base_url}/models` when configured; unreachable fails optionally; empty
+config stays quiet (501 path). Documented in doctor-health. Covered by
+`tests/unit/test_doctor_tts.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

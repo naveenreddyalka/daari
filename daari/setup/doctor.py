@@ -51,6 +51,7 @@ def run_doctor(
     results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
+    results.append(_check_tts(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
@@ -1132,6 +1133,47 @@ def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
         name="asr",
         ok=True,
         detail="not configured (POST /v1/audio/transcriptions returns 501)",
+        optional=True,
+    )
+
+
+def _check_tts(settings: Settings, client: httpx.Client | None) -> CheckResult:
+    """Local TTS reachability. Optional; unconfigured speech stays 501 (#869)."""
+    tts = settings.tts
+    base = str(tts.base_url or "").strip().rstrip("/")
+    if not base:
+        return CheckResult(
+            name="tts",
+            ok=True,
+            detail="not configured (POST /v1/audio/speech returns 501)",
+            optional=True,
+        )
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    url = f"{base}/models"
+    try:
+        response = http.get(url)
+    except Exception as exc:
+        return CheckResult(
+            name="tts",
+            ok=False,
+            detail=f"unreachable at {base}: {exc}",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+    if response.status_code == 200:
+        return CheckResult(
+            name="tts",
+            ok=True,
+            detail=f"reachable at {base}",
+            optional=True,
+        )
+    return CheckResult(
+        name="tts",
+        ok=False,
+        detail=f"unreachable at {base} (HTTP {response.status_code})",
         optional=True,
     )
 
