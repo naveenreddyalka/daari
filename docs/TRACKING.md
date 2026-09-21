@@ -3915,6 +3915,14 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `tests/unit/test_tts_docs.py`.
 
 
+### Helm asr.frontierFallback ([#914](https://github.com/naveenreddyalka/daari/issues/914))
+
+<!-- tracking:#914 -->
+**Status:** Done (2026-09-21). Chart `asr.frontierFallback` mounts
+`DAARI_ASR__FRONTIER_FALLBACK=true` when enabled; default false omits env.
+Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

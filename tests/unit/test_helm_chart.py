@@ -422,6 +422,21 @@ class TestHelmAsrBaseUrl:
         )
 
 
+class TestHelmAsrFrontierFallback:
+    def test_asr_frontier_fallback_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ASR__FRONTIER_FALLBACK" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["asr"]["frontierFallback"] is False
+
+    def test_asr_frontier_fallback_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "asr.frontierFallback=true")
+        assert re.search(
+            r'name: DAARI_ASR__FRONTIER_FALLBACK\s+value: "true"',
+            rendered,
+        )
+
+
 class TestHelmTtsBaseUrl:
     def test_tts_base_url_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
