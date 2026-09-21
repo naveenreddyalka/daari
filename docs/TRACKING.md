@@ -3922,12 +3922,27 @@ Covered by `tests/unit/test_scoped_cache_fleet_docs.py`.
 `tests/unit/test_tts_docs.py`.
 
 
+### Helm asr.frontierFallback ([#914](https://github.com/naveenreddyalka/daari/issues/914))
+
+<!-- tracking:#914 -->
+**Status:** Done (2026-09-21). Chart `asr.frontierFallback` mounts
+`DAARI_ASR__FRONTIER_FALLBACK=true` when enabled; default false omits env.
+Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
 ### Helm asr.model ([#913](https://github.com/naveenreddyalka/daari/issues/913))
 
 <!-- tracking:#913 -->
 **Status:** Done (2026-09-21). Chart `asr.model` mounts `DAARI_ASR__MODEL`
 when set; empty default omits env. Documented in capacity-helm. Covered by
 `tests/unit/test_helm_chart.py`.
+
+
+### Docs: cancelled_requests phase includes mcp ([#915](https://github.com/naveenreddyalka/daari/issues/915))
+
+<!-- tracking:#915 -->
+**Status:** Done (2026-09-21). metrics-prometheus lists `mcp` among
+`daari_cancelled_requests_total` phases. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
 
 
 ## How to update
