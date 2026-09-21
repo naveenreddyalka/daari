@@ -422,6 +422,24 @@ class TestHelmAsrBaseUrl:
         )
 
 
+class TestHelmTtsBaseUrl:
+    def test_tts_base_url_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_TTS__BASE_URL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["tts"]["baseUrl"] == ""
+
+    def test_tts_base_url_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "tts.baseUrl=http://kokoro.internal:8880/v1",
+        )
+        assert re.search(
+            r'name: DAARI_TTS__BASE_URL\s+value: "http://kokoro.internal:8880/v1"',
+            rendered,
+        )
+
+
 class TestHelmTtsModelVoice:
     def test_tts_model_voice_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
