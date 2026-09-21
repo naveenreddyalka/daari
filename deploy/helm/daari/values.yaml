@@ -104,6 +104,10 @@ serviceMonitor:
 # Service port `metrics` and prefer ServiceMonitor → metrics (no bearer).
 observability:
   metricsPort: 0
+  # Opt-in OTLP log export (#849 / #888). Pair with otlpEndpoint (or set
+  # OTEL_EXPORTER_OTLP_ENDPOINT yourself). See otel-genai.md.
+  otlpLogs: false
+  otlpEndpoint: ""
   # Days to keep gateway request-log lines (#786). Empty leaves the app default
   # (0 = size-only rotation via request_log_max_bytes).
   retention:

@@ -3831,6 +3831,14 @@ Documented in doctor-health. Covered by `tests/unit/test_doctor_otlp_logs.py`.
 `tts.baseUrl` and `DAARI_TTS__BASE_URL`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Helm observability.otlpLogs + OTEL endpoint ([#888](https://github.com/naveenreddyalka/daari/issues/888))
+
+<!-- tracking:#888 -->
+**Status:** Done (2026-09-21). Chart `observability.otlpLogs` /
+`otlpEndpoint` mount `DAARI_OBSERVABILITY__OTLP_LOGS` and
+`OTEL_EXPORTER_OTLP_ENDPOINT`; defaults omit both. Documented in
+capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
 
 ## How to update
 

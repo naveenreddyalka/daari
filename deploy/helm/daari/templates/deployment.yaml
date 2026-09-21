@@ -139,6 +139,14 @@ spec:
             - name: DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS
               value: {{ .Values.observability.retention.requestLogDays | quote }}
             {{- end }}
+            {{- if .Values.observability.otlpLogs }}
+            - name: DAARI_OBSERVABILITY__OTLP_LOGS
+              value: "true"
+            {{- end }}
+            {{- if .Values.observability.otlpEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.otlpEndpoint | quote }}
+            {{- end }}
           {{- $preStop := 5 }}
           {{- if and .Values.lifecycle (hasKey .Values.lifecycle "preStopSleepSeconds") }}
           {{- $preStop = int .Values.lifecycle.preStopSleepSeconds }}
