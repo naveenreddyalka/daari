@@ -3966,6 +3966,16 @@ upload routes use a higher floor; `daari_rejects_total{kind="body_too_large"}`.
 Covered by `tests/unit/test_body_limit.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Native TLS and optional mTLS for daari serve ([#932](https://github.com/naveenreddyalka/daari/issues/932))
+
+<!-- tracking:#932 -->
+**Status:** Done (2026-09-21). `server.tls` + `--tls-cert/--tls-key/--tls-client-ca`
+wire uvicorn HTTPS/mTLS; `secret://` key refs materialize to temp PEM files;
+doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
+`existingSecret`; SECURITY.md documents native vs reverse-proxy TLS.
+Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
+`test_helm_chart.py`.
+
 
 ## How to update
 
