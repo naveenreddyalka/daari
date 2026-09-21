@@ -224,12 +224,16 @@ ollama:
 `asr.baseUrl` / `tts.baseUrl` default to empty (chart omits env; routes return
 501). Set them to mount `DAARI_ASR__BASE_URL` / `DAARI_TTS__BASE_URL` for a
 local OpenAI-compatible speech stack (whisper/vLLM, Kokoro/openedai-speech).
+Optional `tts.model` / `tts.voice` mount `DAARI_TTS__MODEL` /
+`DAARI_TTS__VOICE` so the pod always presents the on-box id to the TTS server.
 
 ```yaml
 asr:
   baseUrl: http://whisper.internal:8000/v1
 tts:
   baseUrl: http://kokoro.internal:8880/v1
+  model: kokoro
+  voice: af_bella
 ```
 
 ### Request deadline and request-log retention

@@ -135,6 +135,18 @@ spec:
             - name: DAARI_ASR__BASE_URL
               value: {{ .Values.asr.baseUrl | quote }}
             {{- end }}
+            {{- if .Values.tts.baseUrl }}
+            - name: DAARI_TTS__BASE_URL
+              value: {{ .Values.tts.baseUrl | quote }}
+            {{- end }}
+            {{- if .Values.tts.model }}
+            - name: DAARI_TTS__MODEL
+              value: {{ .Values.tts.model | quote }}
+            {{- end }}
+            {{- if .Values.tts.voice }}
+            - name: DAARI_TTS__VOICE
+              value: {{ .Values.tts.voice | quote }}
+            {{- end }}
             {{- if .Values.upstream.requestDeadlineSeconds }}
             - name: DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS
               value: {{ .Values.upstream.requestDeadlineSeconds | quote }}
