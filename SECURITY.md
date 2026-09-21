@@ -34,6 +34,16 @@ inbound bodies **before** middleware buffers them. Oversized requests return
 `files.max_total_bytes` can still govern stored uploads. Set `0` to disable.
 `daari_rejects_total{kind="body_too_large"}` counts denials.
 
+## Invalid API-key throttle
+
+After `auth.max_failures` (default 10) invalid API-key attempts from one client IP
+within `auth.window_seconds` (default 60), further **invalid** attempts return
+**429** with `Retry-After` and exponential backoff. Loopback is exempt by default
+(`auth.exempt_loopback`). Counters use Redis when `cache.backend=redis`, else
+in-process memory; Redis errors fail open. Trips emit `auth.throttled` audit
+events and `daari_rejects_total{kind="auth_throttled"}`. Disable with
+`auth.throttle_enabled=false` or `auth.max_failures=0`.
+
 ## TLS for the gateway
 
 Two supported modes (pick one; do not double-terminate without understanding the hop):

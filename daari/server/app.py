@@ -125,6 +125,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.state.virtual_key_store = vk_store
     app.state.rate_limiter = build_rate_limiter(resolved)
+    from daari.auth.invalid_key_throttle import build_auth_throttle
+
+    app.state.auth_throttle = build_auth_throttle(resolved)
 
     if resolved.observability.otel:
 
@@ -212,11 +215,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             if claims is None:
-                from daari.enterprise.audit import record_invalid_key
+                from daari.auth.invalid_key_throttle import client_ip_from_request
+                from daari.enterprise.audit import record_invalid_key, record_auth_throttled
                 from daari.enterprise.postgres_audit import audit_log_from_settings
 
+                throttle = getattr(request.app.state, "auth_throttle", None)
+                client_ip = client_ip_from_request(request)
+                audit = audit_log_from_settings(resolved)
+                if throttle is not None:
+                    decision = throttle.check(client_ip)
+                    if not decision.allowed:
+                        metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+                        if metrics is not None and hasattr(metrics, "record_reject"):
+                            metrics.record_reject("auth_throttled")
+                        record_auth_throttled(
+                            audit,
+                            client_ip=client_ip,
+                            failures=decision.failures,
+                            retry_after=decision.retry_after,
+                        )
+                        return JSONResponse(
+                            status_code=429,
+                            content={
+                                "error": {
+                                    "type": "rate_limit_error",
+                                    "code": "auth_throttled",
+                                    "message": (
+                                        "Too many invalid API key attempts from this "
+                                        "address. Retry later."
+                                    ),
+                                }
+                            },
+                            headers={"Retry-After": str(max(1, decision.retry_after))},
+                        )
+                    throttle.record_failure(client_ip)
                 record_invalid_key(
-                    audit_log_from_settings(resolved),
+                    audit,
                     supplied=supplied,
                     path=request.url.path,
                 )

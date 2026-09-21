@@ -1249,10 +1249,37 @@ class AlertSettings(BaseModel):
         return cleaned or [0.8, 1.0]
 
 
+class AuthSettings(BaseModel):
+    """Invalid API-key brute-force throttle (#935)."""
+
+    throttle_enabled: bool = Field(
+        default=True,
+        description="When false, invalid-key attempts are never rate-limited.",
+    )
+    max_failures: int = Field(
+        default=10,
+        ge=0,
+        description=(
+            "Invalid-key failures per client IP within window_seconds before 429. "
+            "0 disables the counter. Env: DAARI_AUTH__MAX_FAILURES."
+        ),
+    )
+    window_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description="Sliding window for auth.max_failures. Env: DAARI_AUTH__WINDOW_SECONDS.",
+    )
+    exempt_loopback: bool = Field(
+        default=True,
+        description="Skip throttling for 127.0.0.1 / ::1 / localhost.",
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAARI_", env_nested_delimiter="__")
 
     server: ServerSettings = Field(default_factory=ServerSettings)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)

@@ -3399,3 +3399,27 @@ async def test_oversized_chat_body_returns_413(settings, monkeypatch):
     assert ok.status_code == 200
     assert ok.json()["daari_meta"]["tier"] in {"L3", "L0"}
 
+
+@pytest.mark.asyncio
+async def test_invalid_key_throttle_returns_429(settings):
+    """N invalid keys from one IP → 429; valid key still works (#935)."""
+    settings.server.api_key = "master-secret"
+    settings.auth.max_failures = 3
+    settings.auth.window_seconds = 60.0
+    settings.auth.exempt_loopback = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=application, client=("198.51.100.10", 40000))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for _ in range(3):
+            assert (
+                await client.get("/v1/models", headers={"Authorization": "Bearer bad"})
+            ).status_code == 401
+        throttled = await client.get("/v1/models", headers={"Authorization": "Bearer bad"})
+        assert throttled.status_code == 429
+        assert throttled.json()["error"]["code"] == "auth_throttled"
+        ok = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer master-secret"}
+        )
+        assert ok.status_code == 200
+

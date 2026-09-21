@@ -3976,6 +3976,15 @@ doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
 Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
 `test_helm_chart.py`.
 
+### Auth throttle for invalid API keys ([#935](https://github.com/naveenreddyalka/daari/issues/935))
+
+<!-- tracking:#935 -->
+**Status:** Done (2026-09-21). Per-IP invalid-key counter (`auth.max_failures` /
+`window_seconds`) returns 429 + Retry-After; Redis when cache.backend=redis,
+in-process otherwise, fail-open; loopback exempt; `auth.throttled` audit +
+`daari_rejects_total{kind="auth_throttled"}`. Covered by
+`tests/unit/test_auth_throttle.py`.
+
 
 ## How to update
 
