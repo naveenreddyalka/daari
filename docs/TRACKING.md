@@ -3862,6 +3862,13 @@ Covered by `tests/unit/test_client_disconnect.py` and
 Also wires `tts.baseUrl` so capacity-helm matches. Covered by
 `tests/unit/test_helm_chart.py`.
 
+### Doctor scoped_cache_fleet check ([#891](https://github.com/naveenreddyalka/daari/issues/891))
+
+<!-- tracking:#891 -->
+**Status:** Done (2026-09-21). Optional doctor check fails when multi-replica
+fleets use disk cache with non-global virtual-key/team `cache_scope`. Documented
+in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
+
 
 ## How to update
 
