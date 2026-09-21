@@ -7,7 +7,7 @@
 | Surface | Paths | Typical client |
 |---------|-------|----------------|
 | OpenAI Chat | `POST /v1/chat/completions` | Cursor BYOK, VS Code, SDKs |
-| Audio | `POST /v1/audio/transcriptions` | OpenAI speech-to-text clients |
+| Audio | `POST /v1/audio/transcriptions`, `POST /v1/audio/speech` | OpenAI speech-to-text / text-to-speech clients |
 | OpenAI Responses | `POST /v1/responses`, `POST /v1/responses/input_tokens`, `GET /v1/responses/{id}`, `POST /v1/responses/{id}/cancel`, `DELETE /v1/responses/{id}` | Newer OpenAI SDKs |
 | Anthropic | `POST /v1/messages`, `POST /v1/messages/count_tokens` | Claude Code, Claude Desktop (gateway mode) |
 | Ollama facade | `/api/chat`, `/api/generate`, `/api/embed`, `/api/tags`, … | JetBrains AI Assistant, ChatGPT Desktop |
@@ -53,6 +53,10 @@ it to `asr.base_url` when that is set. With no local ASR the route returns
 **501**. `asr.frontier_fallback` defaults to false, so the file is never sent
 to a cloud endpoint unless you turn that flag on. See
 [local speech-to-text](../guides/backends/asr.md).
+
+`POST /v1/audio/speech` accepts the OpenAI JSON speech body and forwards it to
+`tts.base_url` when that is set. With no local TTS the route returns **501**.
+See [local text-to-speech](../guides/backends/tts.md).
 
 `POST /v1/messages/count_tokens` is a local estimate (`estimate_tokens` on system +
 messages + tools), not an L6 round-trip. When L6 itself is Anthropic (`provider`
