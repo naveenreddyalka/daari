@@ -28,13 +28,12 @@ unchanged at the versions already recorded. Ollama `typical_p` deprecation is
 create-time only; existing GGUF models keep it, so daari does not need a
 sampler change this run.
 
-**Inward theme: speech chart parity and cancel-phase docs.** Helm pins
-`tts.model` but not `asr.model`, even though `AsrSettings.model` already
-replaces the client model for transcriptions and translations. Helm also
-omits `asr.frontier_fallback`, so a chart deploy cannot opt into the governed
-cloud transcription path the doctor already warns about. Prometheus docs list
-cancel phases through `tts` and skip `mcp`, which the gateway already records.
-The ASR guide never names Helm `asr.baseUrl`.
+**Inward theme: ASR guide lags the chart.** Helm now has `asr.model` and
+`asr.frontierFallback` (alongside TTS). capacity-helm names those env vars.
+`backends/asr.md` still does not name the chart keys, does not link the Helm
+guide, and the capacity-helm contract tests do not lock `asr.model` or
+`asr.frontierFallback`. Prior speech-chart and cancel-phase rows are queued
+on open PRs.
 
 ---
 
@@ -42,31 +41,38 @@ The ASR guide never names Helm `asr.baseUrl`.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Helm has no `asr.model`** — `AsrSettings.model` pins the on-box whisper id; the chart only mounts `asr.baseUrl` while `tts.model` already ships | 3 | 1 | LiteLLM helm model aliases | Fleet whisper stays local with the server's own model id, declared beside `tts.model` | File ([#913](https://github.com/naveenreddyalka/daari/issues/913)) |
-| 2 | **Helm has no `asr.frontierFallback`** — settings and doctor know the opt-in; the chart cannot set `DAARI_ASR__FRONTIER_FALLBACK` | 3 | 1 | LiteLLM fallback chains | Default stays off so audio never leaves the cluster; the opt-in is a values toggle like local-pool failover | File ([#914](https://github.com/naveenreddyalka/daari/issues/914)) |
-| 3 | **Cancel-phase docs omit `mcp`** — `daari_cancelled_requests_total{phase="mcp"}` is recorded; metrics-prometheus lists every other phase | 2 | 1 | LiteLLM log callbacks | Agent disconnects on the local MCP path show up on the same scrape operators already chart | File ([#915](https://github.com/naveenreddyalka/daari/issues/915)) |
-| 4 | **ASR guide omits Helm `asr.baseUrl`** — capacity-helm and the TTS guide name chart knobs; `backends/asr.md` does not | 2 | 1 | Cloud speech vendor docs | The local whisper page should name the same chart key the values file uses | File ([#916](https://github.com/naveenreddyalka/daari/issues/916)) |
-| 5 | **Doctor `asr` row has no contract test** — the table names `frontier_fallback`, but nothing locks the wording | 1 | 1 | n/a (docs lock) | Operators rely on that row to see that audio upload is opt-in | File ([#917](https://github.com/naveenreddyalka/daari/issues/917)) |
+| 1 | **ASR guide omits Helm `asr.model`** — chart mounts `DAARI_ASR__MODEL`; the speech page only shows the YAML field | 2 | 1 | Cloud speech vendor docs | Whisper fleets read one page and see the on-box model id the chart sets | File ([#924](https://github.com/naveenreddyalka/daari/issues/924)) |
+| 2 | **ASR guide omits Helm `asr.frontierFallback`** — chart opt-in can upload audio; the guide only names the settings field | 2 | 1 | LiteLLM fallback docs | The page that says audio stays local must name the chart flag that changes that | File ([#925](https://github.com/naveenreddyalka/daari/issues/925)) |
+| 3 | **No contract for capacity-helm `asr.model`** — prose exists; `test_capacity_helm_docs.py` does not lock it | 1 | 1 | n/a (docs lock) | The whisper model id knob stays in the operator guide | File ([#926](https://github.com/naveenreddyalka/daari/issues/926)) |
+| 4 | **No contract for capacity-helm `asr.frontierFallback`** — same gap for the audio opt-in | 1 | 1 | n/a (docs lock) | Default-off cloud transcription stays documented | File ([#927](https://github.com/naveenreddyalka/daari/issues/927)) |
+| 5 | **ASR guide does not link capacity-helm** — TTS links it; ASR Next points at vLLM and Ollama only | 1 | 1 | n/a (docs link) | Local whisper deploys reach the chart page from the speech guide | File ([#928](https://github.com/naveenreddyalka/daari/issues/928)) |
 | 6 | **Idempotency-Key, admission QoS, L1 embedder namespace, model warm, WIF / A2A / SOC 2 / admin UI** | 2–4 | 2–5 | LiteLLM / cloud | First four are already queued or in progress; compliance stays deferred | Watch |
 
-Pruned this run: TTS route, local-pool frontier failover, OTLP logs, and the
-doctor probes that shipped on 2026-09-21.
+Pruned this run: Helm `asr.model` / `asr.frontierFallback`, MCP cancel-phase
+docs, ASR `baseUrl` guide note, and the doctor `asr` row contract — filed
+earlier this session and in flight.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Speech chart parity** — `asr.model` and `asr.frontierFallback` beside the TTS knobs already in the chart.
-2. **Queued cache and QoS** — L1 embedding-model namespace, virtual-key admission priority, `daari models warm` (open PRs).
-3. **Observability wording** — cancel-phase docs include MCP so agent disconnects match the scrape.
+1. **ASR operator docs** — guide names Helm `asr.model` and `asr.frontierFallback` and links capacity-helm.
+2. **Docs locks** — capacity-helm contract tests cover the new ASR chart knobs.
+3. **Queued cache and QoS** — L1 embedding-model namespace, virtual-key admission priority, `daari models warm` (open PRs).
 4. **Idempotency-Key** — still in progress on chat and Responses; do not refile.
-5. **ASR operator docs** — guide and doctor table name the same Helm and frontier flags the code uses.
+5. **Speech chart parity** — `asr.model` and `asr.frontierFallback` chart values (in flight from the prior refill).
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred.
 
 ---
 
 ## Changelog
+
+- **2026-09-21 (ASR guide follow-up)** — Chart knobs from the speech-parity
+  refill are in flight. Eligible backlog drained again. Outward unchanged
+  (LiteLLM v1.101.0, Ollama v0.34.2, vLLM v0.29.0). Inward: ASR guide still
+  omits Helm `asr.model`, `asr.frontierFallback`, and the capacity-helm link;
+  capacity-helm contract tests do not lock those two knobs. Filing five.
 
 - **2026-09-21 (speech chart parity)** — Eligible `auto-dev` backlog was empty
   (every labeled issue had an open PR). Outward: GitHub latest stable tags
