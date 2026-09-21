@@ -174,6 +174,9 @@ ollama:
 # POST /v1/audio/transcriptions unconfigured (501) instead of a cloud ASR API.
 asr:
   baseUrl: ""
+  # Optional. When set, replaces the client model so whisper/vLLM always sees
+  # its own id (DAARI_ASR__MODEL). Empty omits the env.
+  model: ""
 
 # Local OpenAI-compatible text-to-speech (Kokoro/openedai-speech). Empty
 # baseUrl leaves POST /v1/audio/speech at 501. model/voice override client
