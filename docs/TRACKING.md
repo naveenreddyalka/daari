@@ -3846,6 +3846,14 @@ capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
 `DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK` when true; default omits env.
 Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
 
+### TTS disconnect cancelled_requests phase=tts ([#889](https://github.com/naveenreddyalka/daari/issues/889))
+
+<!-- tracking:#889 -->
+**Status:** Done (2026-09-21). Unit coverage for speech disconnect 499 +
+`daari_cancelled_requests_total{phase="tts"}`; metrics-prometheus lists `tts`.
+Covered by `tests/unit/test_client_disconnect.py` and
+`tests/unit/test_metrics_prometheus_docs.py`.
+
 
 ## How to update
 

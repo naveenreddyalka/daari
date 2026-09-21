@@ -40,3 +40,5 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert "daari_escalations_total" in text
     assert "daari_errors_total" in text
     assert "Escalations & errors" in text
+    cancelled_row = next(row for row in body if "daari_cancelled_requests_total" in row)
+    assert "`tts`" in cancelled_row
