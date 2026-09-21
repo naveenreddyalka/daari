@@ -204,6 +204,19 @@ ollama:
   baseUrl: http://ollama.internal:11434
 ```
 
+### ASR and TTS base URLs
+
+`asr.baseUrl` / `tts.baseUrl` default to empty (chart omits env; routes return
+501). Set them to mount `DAARI_ASR__BASE_URL` / `DAARI_TTS__BASE_URL` for a
+local OpenAI-compatible speech stack (whisper/vLLM, Kokoro/openedai-speech).
+
+```yaml
+asr:
+  baseUrl: http://whisper.internal:8000/v1
+tts:
+  baseUrl: http://kokoro.internal:8880/v1
+```
+
 ### Request deadline and request-log retention
 
 `upstream.requestDeadlineSeconds` and `observability.retention.requestLogDays`
