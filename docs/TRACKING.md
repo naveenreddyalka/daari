@@ -3790,6 +3790,15 @@ when set; empty default omits the env. Documented in capacity-helm. Covered by
 config stays quiet (501 path). Documented in doctor-health. Covered by
 `tests/unit/test_doctor_tts.py`.
 
+
+### Docs: speech under X-Daari-Deadline-Ms ([#871](https://github.com/naveenreddyalka/daari/issues/871))
+
+<!-- tracking:#871 -->
+**Status:** Done (2026-09-21). `headers.md` lists `POST /v1/audio/speech` among
+deadline-honoring routes; `test_deadline_docs` asserts it. Covered by
+`tests/unit/test_deadline_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
