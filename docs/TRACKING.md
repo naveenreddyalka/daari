@@ -3930,6 +3930,12 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 `tests/unit/test_helm_chart.py`.
 
 
+### Docs: ASR guide names Helm asr.baseUrl ([#916](https://github.com/naveenreddyalka/daari/issues/916))
+
+<!-- tracking:#916 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.baseUrl` and
+`DAARI_ASR__BASE_URL`. Covered by `tests/unit/test_asr_docs.py`.
+
 ### Docs: cancelled_requests phase includes mcp ([#915](https://github.com/naveenreddyalka/daari/issues/915))
 
 <!-- tracking:#915 -->
@@ -3944,6 +3950,12 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 **Status:** Done (2026-09-21). Contract test asserts the doctor-health `asr`
 row names `asr.base_url` and `frontier_fallback`. Covered by
 `tests/unit/test_doctor_health_asr_docs.py`.
+
+### Docs: ASR guide names Helm asr.model ([#924](https://github.com/naveenreddyalka/daari/issues/924))
+
+<!-- tracking:#924 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.model` and
+`DAARI_ASR__MODEL`. Covered by `tests/unit/test_asr_docs.py`.
 
 
 ## How to update
