@@ -422,6 +422,26 @@ class TestHelmAsrBaseUrl:
         )
 
 
+class TestHelmTtsModelVoice:
+    def test_tts_model_voice_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_TTS__MODEL" not in rendered
+        assert "DAARI_TTS__VOICE" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["tts"]["model"] == ""
+        assert values["tts"]["voice"] == ""
+
+    def test_tts_model_voice_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "tts.model=kokoro",
+            "--set",
+            "tts.voice=af_bella",
+        )
+        assert re.search(r'name: DAARI_TTS__MODEL\s+value: "kokoro"', rendered)
+        assert re.search(r'name: DAARI_TTS__VOICE\s+value: "af_bella"', rendered)
+
+
 class TestHelmRequestDeadlineAndRetention:
     def test_deadline_and_request_log_absent_by_default(
         self, helm_available: None

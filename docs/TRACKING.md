@@ -3854,6 +3854,14 @@ Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
 Covered by `tests/unit/test_client_disconnect.py` and
 `tests/unit/test_metrics_prometheus_docs.py`.
 
+### Helm tts.model and tts.voice ([#900](https://github.com/naveenreddyalka/daari/issues/900))
+
+<!-- tracking:#900 -->
+**Status:** Done (2026-09-21). Chart `tts.model` / `tts.voice` mount
+`DAARI_TTS__MODEL` / `DAARI_TTS__VOICE` when set; empty defaults omit env.
+Also wires `tts.baseUrl` so capacity-helm matches. Covered by
+`tests/unit/test_helm_chart.py`.
+
 ### Doctor scoped_cache_fleet check ([#891](https://github.com/naveenreddyalka/daari/issues/891))
 
 <!-- tracking:#891 -->

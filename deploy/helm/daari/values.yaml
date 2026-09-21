@@ -175,6 +175,14 @@ ollama:
 asr:
   baseUrl: ""
 
+# Local OpenAI-compatible text-to-speech (Kokoro/openedai-speech). Empty
+# baseUrl leaves POST /v1/audio/speech at 501. model/voice override client
+# fields when set (#900).
+tts:
+  baseUrl: ""
+  model: ""
+  voice: ""
+
 # Wall-clock budget across cache/local/frontier hops (#786 / #771). Empty =
 # per-tier timeouts only; X-Daari-Deadline-Ms still overrides when set.
 upstream:
