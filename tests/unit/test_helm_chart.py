@@ -529,6 +529,24 @@ class TestHelmKedaRequestRate:
 
 
 
+class TestHelmLocalPoolFrontierFallback:
+    def test_frontier_fallback_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["localPool"]["frontierFallback"] is False
+
+    def test_frontier_fallback_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "localPool.frontierFallback=true",
+        )
+        assert re.search(
+            r'name: DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK\s+value: "true"',
+            rendered,
+        )
+
+
 class TestHelmAuthRateLimitFrontier:
     def test_defaults_omit_auth_rate_frontier_env(self, helm_available: None) -> None:
         rendered = _helm_template()

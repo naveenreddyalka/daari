@@ -123,6 +123,10 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
+            {{- if .Values.localPool.frontierFallback }}
+            - name: DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK
+              value: "true"
+            {{- end }}
             {{- if .Values.ollama.baseUrl }}
             - name: DAARI_OLLAMA__BASE_URL
               value: {{ .Values.ollama.baseUrl | quote }}

@@ -160,6 +160,11 @@ frontier:
   enabled: false
   apiKeySecret: {}
 
+# When every local-pool host is down, escalate chat to L6 (#846 / #887).
+# Requires frontier.enabled (+ API key). Default false omits the env var.
+localPool:
+  frontierFallback: false
+
 # Embedder base URL for POST /v1/embeddings and L1. Empty leaves the image
 # default (localhost). Distinct from orgPool, which only sets the routing URL.
 ollama:
