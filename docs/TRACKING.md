@@ -3957,6 +3957,16 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 **Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.model` and
 `DAARI_ASR__MODEL`. Covered by `tests/unit/test_asr_docs.py`.
 
+### Native TLS and optional mTLS for daari serve ([#932](https://github.com/naveenreddyalka/daari/issues/932))
+
+<!-- tracking:#932 -->
+**Status:** Done (2026-09-21). `server.tls` + `--tls-cert/--tls-key/--tls-client-ca`
+wire uvicorn HTTPS/mTLS; `secret://` key refs materialize to temp PEM files;
+doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
+`existingSecret`; SECURITY.md documents native vs reverse-proxy TLS.
+Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
+`test_helm_chart.py`.
+
 
 ## How to update
 
