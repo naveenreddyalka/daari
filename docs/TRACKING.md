@@ -3767,6 +3767,14 @@ open (merged/closed) are skipped by `autodev_backlog.py --pick` so they cannot
 block the backlog after conflict repair. Covered by
 `tests/unit/test_autodev_backlog.py`.
 
+### Doctor warns when request deadline unset ([#867](https://github.com/naveenreddyalka/daari/issues/867))
+
+<!-- tracking:#867 -->
+**Status:** Done (2026-09-21). Optional doctor check `request_deadline` fails when
+`upstream.request_deadline_seconds` is unset or `<= 0`, passes with a positive
+value. Documented in doctor-health. Covered by
+`tests/unit/test_doctor_deadline.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
