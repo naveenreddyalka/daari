@@ -177,6 +177,9 @@ asr:
   # Optional. When set, replaces the client model so whisper/vLLM always sees
   # its own id (DAARI_ASR__MODEL). Empty omits the env.
   model: ""
+  # Opt-in: when true and baseUrl is empty, one transcription may go to frontier.
+  # Default false omits DAARI_ASR__FRONTIER_FALLBACK so audio stays on-box.
+  frontierFallback: false
 
 # Local OpenAI-compatible text-to-speech (Kokoro/openedai-speech). Empty
 # baseUrl leaves POST /v1/audio/speech at 501. model/voice override client
