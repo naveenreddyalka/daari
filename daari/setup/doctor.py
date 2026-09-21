@@ -51,6 +51,7 @@ def run_doctor(
     results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
+    results.append(_check_request_deadline(cfg))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
@@ -1041,6 +1042,33 @@ def _check_mlx(settings: Settings, client: httpx.Client | None) -> CheckResult:
     finally:
         if own_client:
             http.close()
+
+
+def _check_request_deadline(settings: Settings) -> CheckResult:
+    """Warn when no wall-clock request budget is configured (#867)."""
+    raw = getattr(settings.upstream, "request_deadline_seconds", None)
+    try:
+        seconds = float(raw) if raw is not None else 0.0
+    except (TypeError, ValueError):
+        seconds = 0.0
+    if seconds > 0:
+        return CheckResult(
+            name="request_deadline",
+            ok=True,
+            detail=f"upstream.request_deadline_seconds={seconds}",
+            optional=True,
+        )
+    return CheckResult(
+        name="request_deadline",
+        ok=False,
+        detail=(
+            "upstream.request_deadline_seconds is unset or 0 — requests use "
+            "per-tier timeouts only; set a positive wall-clock budget (or send "
+            "X-Daari-Deadline-Ms) so escalation stops with 504 before runaway "
+            "local/frontier hops"
+        ),
+        optional=True,
+    )
 
 
 def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:

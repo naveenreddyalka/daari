@@ -3774,6 +3774,14 @@ block the backlog after conflict repair. Covered by
 `--priority high|normal|low`; list shows `prio`; Postgres VK schema stores
 `priority` on keys and teams. Covered by `tests/unit/test_keys_priority_cli.py`.
 
+### Doctor warns when request deadline unset ([#867](https://github.com/naveenreddyalka/daari/issues/867))
+
+<!-- tracking:#867 -->
+**Status:** Done (2026-09-21). Optional doctor check `request_deadline` fails when
+`upstream.request_deadline_seconds` is unset or `<= 0`, passes with a positive
+value. Documented in doctor-health. Covered by
+`tests/unit/test_doctor_deadline.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
