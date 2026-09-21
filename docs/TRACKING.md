@@ -3957,6 +3957,15 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 **Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.model` and
 `DAARI_ASR__MODEL`. Covered by `tests/unit/test_asr_docs.py`.
 
+### Request body size cap with early 413 ([#933](https://github.com/naveenreddyalka/daari/issues/933))
+
+<!-- tracking:#933 -->
+**Status:** Done (2026-09-21). `server.max_body_bytes` (default 10 MiB) rejects
+oversized bodies with 413 before buffering; OpenAI/Anthropic error shapes;
+upload routes use a higher floor; `daari_rejects_total{kind="body_too_large"}`.
+Covered by `tests/unit/test_body_limit.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ### Native TLS and optional mTLS for daari serve ([#932](https://github.com/naveenreddyalka/daari/issues/932))
 
 <!-- tracking:#932 -->
