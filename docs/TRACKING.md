@@ -3824,6 +3824,13 @@ Documented in doctor-health. Covered by `tests/unit/test_doctor_otlp_logs.py`.
 `otlp_logs` and `OTEL_EXPORTER_OTLP_ENDPOINT` beside traces/metrics. Covered by
 `tests/unit/test_otel_docs.py`.
 
+### Docs: capacity-helm documents tts.baseUrl ([#880](https://github.com/naveenreddyalka/daari/issues/880))
+
+<!-- tracking:#880 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`tts.baseUrl` and `DAARI_TTS__BASE_URL`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
 
 ## How to update
 
