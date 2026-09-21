@@ -185,6 +185,21 @@ frontier:
 `DAARI_FRONTIER__ENABLED`; `frontier.apiKeySecret` mounts `DAARI_FRONTIER_API_KEY`.
 NOTES remind operators when Redis is missing for multi-replica rate limits.
 
+`localPool.frontierFallback` (default `false`) mounts
+`DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK=true` when set — chat escalates to
+L6 when every local-pool host is down. Pair it with `frontier.enabled` and a
+frontier API key (doctor warns otherwise).
+
+```yaml
+localPool:
+  frontierFallback: true
+frontier:
+  enabled: true
+  apiKeySecret:
+    name: daari-frontier
+    key: api-key
+```
+
 ```yaml
 orgPool:
   enabled: true

@@ -3831,6 +3831,13 @@ Documented in doctor-health. Covered by `tests/unit/test_doctor_otlp_logs.py`.
 `tts.baseUrl` and `DAARI_TTS__BASE_URL`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Helm localPool.frontierFallback ([#887](https://github.com/naveenreddyalka/daari/issues/887))
+
+<!-- tracking:#887 -->
+**Status:** Done (2026-09-21). Chart `localPool.frontierFallback` mounts
+`DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK` when true; default omits env.
+Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
 
 ## How to update
 
