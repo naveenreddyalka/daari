@@ -3930,6 +3930,13 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 `tests/unit/test_helm_chart.py`.
 
 
+### Docs: ASR guide names Helm asr.baseUrl ([#916](https://github.com/naveenreddyalka/daari/issues/916))
+
+<!-- tracking:#916 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.baseUrl` and
+`DAARI_ASR__BASE_URL`. Covered by `tests/unit/test_asr_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
