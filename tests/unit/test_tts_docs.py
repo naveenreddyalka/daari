@@ -26,6 +26,14 @@ def test_mkdocs_nav_lists_tts_guide() -> None:
     assert asr != -1 and tts > asr
 
 
+def test_tts_guide_documents_helm_model_and_voice() -> None:
+    text = TTS_GUIDE.read_text(encoding="utf-8")
+    assert "tts.model" in text
+    assert "tts.voice" in text
+    assert "DAARI_TTS__MODEL" in text
+    assert "DAARI_TTS__VOICE" in text
+
+
 def test_overview_and_clients_link_tts_guide() -> None:
     overview = OVERVIEW.read_text(encoding="utf-8")
     clients = CLIENTS.read_text(encoding="utf-8")
