@@ -3900,6 +3900,14 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `tests/unit/test_helm_chart.py`.
 
 
+### Docs: TTS guide names Helm tts.model/voice ([#907](https://github.com/naveenreddyalka/daari/issues/907))
+
+<!-- tracking:#907 -->
+**Status:** Done (2026-09-21). `backends/tts.md` names Helm `tts.model` /
+`tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
+`tests/unit/test_tts_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
