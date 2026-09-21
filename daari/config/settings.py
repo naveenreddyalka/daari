@@ -75,6 +75,16 @@ class ServerSettings(BaseModel):
     # A list is an overlap set for rotation (#711): any entry is accepted.
     api_key: str | list[str] = ""
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
+    max_body_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=0,
+        description=(
+            "Hard cap on inbound request body size (#933). Oversized requests "
+            "return 413 before the body is buffered. 0 disables the cap. "
+            "File/audio upload routes may use a higher floor so "
+            "files.max_total_bytes still applies. Env: DAARI_SERVER__MAX_BODY_BYTES."
+        ),
+    )
     sse_keepalive_seconds: float = Field(
         default=10.0,
         ge=0.0,
