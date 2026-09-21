@@ -14,6 +14,12 @@ def test_asr_guide_names_helm_base_url() -> None:
     assert "DAARI_ASR__BASE_URL" in text
 
 
+def test_asr_guide_names_helm_frontier_fallback() -> None:
+    text = ASR_GUIDE.read_text(encoding="utf-8")
+    assert "asr.frontierFallback" in text
+    assert "DAARI_ASR__FRONTIER_FALLBACK" in text
+
+
 def test_asr_guide_names_helm_model() -> None:
     text = ASR_GUIDE.read_text(encoding="utf-8")
     assert "asr.model" in text
