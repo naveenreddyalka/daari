@@ -3791,12 +3791,28 @@ config stays quiet (501 path). Documented in doctor-health. Covered by
 `tests/unit/test_doctor_tts.py`.
 
 
+### Docs: virtual-keys --priority ([#877](https://github.com/naveenreddyalka/daari/issues/877))
+
+<!-- tracking:#877 -->
+**Status:** Done (2026-09-21). Virtual-keys guide documents admission
+`--priority high|normal|low` and the list `prio` column. Covered by
+priority docs contract tests.
+
 ### Docs: speech under X-Daari-Deadline-Ms ([#871](https://github.com/naveenreddyalka/daari/issues/871))
 
 <!-- tracking:#871 -->
 **Status:** Done (2026-09-21). `headers.md` lists `POST /v1/audio/speech` among
 deadline-honoring routes; `test_deadline_docs` asserts it. Covered by
 `tests/unit/test_deadline_docs.py`.
+
+
+
+### Doctor warns otlp_logs without OTEL endpoint ([#878](https://github.com/naveenreddyalka/daari/issues/878))
+
+<!-- tracking:#878 -->
+**Status:** Done (2026-09-21). Optional doctor check `otlp_logs` fails when
+`observability.otlp_logs` is true without `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Documented in doctor-health. Covered by `tests/unit/test_doctor_otlp_logs.py`.
 
 
 ## How to update

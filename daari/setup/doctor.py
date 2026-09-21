@@ -53,6 +53,7 @@ def run_doctor(
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
+    results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
@@ -1043,6 +1044,36 @@ def _check_mlx(settings: Settings, client: httpx.Client | None) -> CheckResult:
     finally:
         if own_client:
             http.close()
+
+
+def _check_otlp_logs(settings: Settings) -> CheckResult:
+    """Warn when otlp_logs is on but no OTLP endpoint is configured (#878)."""
+    enabled = bool(getattr(settings.observability, "otlp_logs", False))
+    if not enabled:
+        return CheckResult(
+            name="otlp_logs",
+            ok=True,
+            detail="observability.otlp_logs=false",
+            optional=True,
+        )
+    endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    if endpoint:
+        return CheckResult(
+            name="otlp_logs",
+            ok=True,
+            detail=f"otlp_logs enabled; OTEL_EXPORTER_OTLP_ENDPOINT={endpoint}",
+            optional=True,
+        )
+    return CheckResult(
+        name="otlp_logs",
+        ok=False,
+        detail=(
+            "observability.otlp_logs is true but OTEL_EXPORTER_OTLP_ENDPOINT is "
+            "unset — gateway events will not export as OTLP logs; set the "
+            "endpoint (same collector as traces/metrics) or disable otlp_logs"
+        ),
+        optional=True,
+    )
 
 
 def _check_request_deadline(settings: Settings) -> CheckResult:
