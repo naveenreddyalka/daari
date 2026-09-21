@@ -248,6 +248,20 @@ observability:
     requestLogDays: 30
 ```
 
+### OTLP logs
+
+`observability.otlpLogs` (default `false`) mounts `DAARI_OBSERVABILITY__OTLP_LOGS=true`.
+`observability.otlpEndpoint` mounts `OTEL_EXPORTER_OTLP_ENDPOINT` when non-empty
+so the same collector that scrapes traces/metrics also receives gateway events.
+See [OpenTelemetry GenAI](../observability/otel-genai.md). Doctor warns when
+logs are on without an endpoint.
+
+```yaml
+observability:
+  otlpLogs: true
+  otlpEndpoint: http://otel-collector:4318
+```
+
 ## Next
 
 → [Org cache](../features/org-cache.md) · [Upgrade and config migration](upgrade.md) · [Batches](../features/batches.md)

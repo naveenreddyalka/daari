@@ -335,6 +335,33 @@ class TestHelmMetricsPort:
         assert "targetPort: metrics" in svc
 
 
+class TestHelmOtlpLogs:
+    def test_otlp_logs_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_OBSERVABILITY__OTLP_LOGS" not in rendered
+        assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in rendered
+        values = _load_yaml(VALUES)
+        obs = values["observability"]
+        assert obs["otlpLogs"] is False
+        assert obs["otlpEndpoint"] == ""
+
+    def test_otlp_logs_and_endpoint_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "observability.otlpLogs=true",
+            "--set",
+            "observability.otlpEndpoint=http://otel-collector:4318",
+        )
+        assert re.search(
+            r'name: DAARI_OBSERVABILITY__OTLP_LOGS\s+value: "true"',
+            rendered,
+        )
+        assert re.search(
+            r'name: OTEL_EXPORTER_OTLP_ENDPOINT\s+value: "http://otel-collector:4318"',
+            rendered,
+        )
+
+
 class TestHelmOrgPool:
     def test_org_pool_env_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
