@@ -3900,6 +3900,14 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `tests/unit/test_helm_chart.py`.
 
 
+### Docs: doctor-health scoped_cache_fleet row ([#908](https://github.com/naveenreddyalka/daari/issues/908))
+
+<!-- tracking:#908 -->
+**Status:** Done (2026-09-21). Contract test asserts the doctor-health
+`scoped_cache_fleet` row names `cache.backend` / Redis and `cache_scope`.
+Covered by `tests/unit/test_scoped_cache_fleet_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
