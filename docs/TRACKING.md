@@ -3869,6 +3869,14 @@ Also wires `tts.baseUrl` so capacity-helm matches. Covered by
 fleets use disk cache with non-global virtual-key/team `cache_scope`. Documented
 in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 
+### Docs: capacity-helm observability.otlpLogs ([#898](https://github.com/naveenreddyalka/daari/issues/898))
+
+<!-- tracking:#898 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`otlpLogs`, `DAARI_OBSERVABILITY__OTLP_LOGS`, and
+`OTEL_EXPORTER_OTLP_ENDPOINT`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
 
 ## How to update
 
