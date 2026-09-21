@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OVERVIEW = ROOT / "docs/developer/guides/configuration/overview.md"
 CLIENTS = ROOT / "docs/developer/concepts/clients-and-gateways.md"
 TTS_GUIDE = ROOT / "docs/developer/guides/backends/tts.md"
+MKDOCS = ROOT / "mkdocs.yml"
 
 
 def test_tts_backend_guide_exists_and_covers_speech() -> None:
@@ -15,6 +16,14 @@ def test_tts_backend_guide_exists_and_covers_speech() -> None:
     assert "/v1/audio/speech" in text
     assert "tts.base_url" in text
     assert "daari doctor" in text
+
+
+def test_mkdocs_nav_lists_tts_guide() -> None:
+    nav = MKDOCS.read_text(encoding="utf-8")
+    assert "developer/guides/backends/tts.md" in nav
+    asr = nav.find("developer/guides/backends/asr.md")
+    tts = nav.find("developer/guides/backends/tts.md")
+    assert asr != -1 and tts > asr
 
 
 def test_tts_guide_documents_helm_model_and_voice() -> None:
