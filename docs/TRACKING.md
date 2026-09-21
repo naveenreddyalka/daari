@@ -3861,6 +3861,13 @@ clients-and-gateways link it for `/v1/audio/speech`. Covered by
 Covered by `tests/unit/test_client_disconnect.py` and
 `tests/unit/test_metrics_prometheus_docs.py`.
 
+### Doctor scoped_cache_fleet check ([#891](https://github.com/naveenreddyalka/daari/issues/891))
+
+<!-- tracking:#891 -->
+**Status:** Done (2026-09-21). Optional doctor check fails when multi-replica
+fleets use disk cache with non-global virtual-key/team `cache_scope`. Documented
+in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
+
 
 ## How to update
 
