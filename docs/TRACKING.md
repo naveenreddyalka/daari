@@ -3951,6 +3951,12 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 `asr.frontierFallback` and `DAARI_ASR__FRONTIER_FALLBACK`. Covered by
 `tests/unit/test_asr_docs.py`.
 
+### Docs: ASR guide names Helm asr.model ([#924](https://github.com/naveenreddyalka/daari/issues/924))
+
+<!-- tracking:#924 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.model` and
+`DAARI_ASR__MODEL`. Covered by `tests/unit/test_asr_docs.py`.
+
 
 ## How to update
 
