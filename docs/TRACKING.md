@@ -3799,6 +3799,15 @@ deadline-honoring routes; `test_deadline_docs` asserts it. Covered by
 `tests/unit/test_deadline_docs.py`.
 
 
+
+### Doctor warns otlp_logs without OTEL endpoint ([#878](https://github.com/naveenreddyalka/daari/issues/878))
+
+<!-- tracking:#878 -->
+**Status:** Done (2026-09-21). Optional doctor check `otlp_logs` fails when
+`observability.otlp_logs` is true without `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Documented in doctor-health. Covered by `tests/unit/test_doctor_otlp_logs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
