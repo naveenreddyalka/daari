@@ -14,6 +14,7 @@ def test_headers_document_deadline_ms() -> None:
     assert "time-to-first-token" in headers
     assert "/v1/audio/transcriptions" in headers
     assert "/v1/audio/translations" in headers
+    assert "/v1/audio/speech" in headers
     assert "/v1/embeddings" in headers
     assert "tools/call" in headers
     assert "504" in headers
