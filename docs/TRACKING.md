@@ -3783,6 +3783,15 @@ value. Documented in doctor-health. Covered by
 config stays quiet (501 path). Documented in doctor-health. Covered by
 `tests/unit/test_doctor_tts.py`.
 
+
+### Docs: virtual-keys --priority ([#877](https://github.com/naveenreddyalka/daari/issues/877))
+
+<!-- tracking:#877 -->
+**Status:** Done (2026-09-21). Virtual-keys guide documents admission
+`--priority high|normal|low` and the list `prio` column. Covered by
+priority docs contract tests.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
