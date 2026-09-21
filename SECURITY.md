@@ -25,6 +25,15 @@ daari is a **local-first** daemon; its trust boundaries are:
 
 Secrets: daari never stores frontier API keys in its config; they come from environment variables. Reports about key handling in setup recipes are welcome.
 
+## Request body size
+
+`server.max_body_bytes` (default 10 MiB, env `DAARI_SERVER__MAX_BODY_BYTES`) caps
+inbound bodies **before** middleware buffers them. Oversized requests return
+**413** (OpenAI `error.code=request_too_large`; Anthropic `type=error` /
+`invalid_request_error`). File and audio upload routes use a higher floor so
+`files.max_total_bytes` can still govern stored uploads. Set `0` to disable.
+`daari_rejects_total{kind="body_too_large"}` counts denials.
+
 ## TLS for the gateway
 
 Two supported modes (pick one; do not double-terminate without understanding the hop):
