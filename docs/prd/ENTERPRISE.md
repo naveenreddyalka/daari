@@ -11,43 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-20)
+## Where daari stands (verified in-tree, 2026-09-21)
 
-Cache tenancy (`cache_scope`), selective invalidate, request deadline (chat /
-audio / embed / MCP / facade), disconnect cancel (OpenAI chat, MCP, embed/ASR),
-request-log retention, Redis L0 age prune, thinking controls on `/api/show`,
-spend `--tier`, and ASR frontier validate are shipped. Still open and not
-restated below: Idempotency-Key, facade non-stream disconnect, and a thin
-P3 docs/test tail.
+Shipped since the 2026-09-20 resilience scan: local TTS (`POST /v1/audio/speech`)
+plus Helm `tts.baseUrl` / `tts.model` / `tts.voice`, opt-in
+`routing.local_pool.frontier_fallback`, OTLP logs (`observability.otlp_logs`),
+doctor probes for deadline, TTS, OTLP logs, local-pool failover, and
+`scoped_cache_fleet`. Still queued on open PRs (not refiled): L1 entries
+namespaced by embedding model, `daari models warm`, virtual-key `--priority`,
+and the P3 docs/test tail. Idempotency-Key remains in progress.
 
-**Outward (this run):** LiteLLM **v1.102.0** is on PyPI (auto-router controls,
-native OCR, gateway reliability); GitHub's latest non-prerelease tag still
-reads v1.101.0 — treat docs/PyPI as the bar. **v1.103.0-rc.1** adds config-file
-ownership and Fuse/capability routing (watch). Kong **2.0.3** and Portkey
-enterprise unchanged. Ollama stable **v0.34.2**; **v0.34.3-rc1** thinking
-controls already mirrored in-tree. vLLM **0.29.0** flat. OpenRouter US/EU
-in-region routing is cloud-only; daari already has `region_pin`.
+**Outward (this run):** GitHub latest non-prerelease tags — LiteLLM **v1.101.0**
+(2026-09-15), Ollama **v0.34.2** (2026-09-15), vLLM **v0.29.0** (2026-09-09).
+No newer stable bar than the prior scan. Portkey enterprise and Kong AI Gateway
+unchanged at the versions already recorded. Ollama `typical_p` deprecation is
+create-time only; existing GGUF models keep it, so daari does not need a
+sampler change this run.
 
-**Inward theme: governance holes on secondary ingress.** Chat/Responses/
-Anthropic got virtual-key meta, allowlists, and tenant cache; MCP `route` and
-batch item drain did not. Embed L0 is still global-scoped. Helm wires redis /
-postgres / deadline / ASR but not master API key, rate-limit Redis, or
-frontier. Doctor never warns when deadline is unset or scoped cache meets
-disk+multi-replica. Cold TTFT still has no proactive `models warm`.
-
-**Delta run (17:26), theme: resilience and modality seams.** The L1 semantic
-cache never records its embedding model — `semantic_context_key` omits
-`cache.l1.embedding_model`, so swapping the embedder leaves stale vectors
-matching garbage (upgrade.md documents the hazard instead of fixing it).
-All-local-hosts-down is a hard 503 `backend_unavailable` with no opt-in
-frontier failover (ASR already has `asr.frontier_fallback`; chat does not).
-No `/v1/audio/speech` despite shipped ASR. The global in-flight gate is
-FIFO-only (no per-key priority; batch drain bypasses it, only idle-yields).
-OTel exports traces + metrics but not logs — gateway events reach
-Datadog/Splunk only via file tail or stdout sidecar. Verified fine, not
-filed: local pool multi-host LB/health/breakers shipped; upgrade docs +
-additive `_migrate()` solid (no `daari migrate` demand yet); L1 has
-`max_entries` FIFO trim + TTL prune.
+**Inward theme: speech chart parity and cancel-phase docs.** Helm pins
+`tts.model` but not `asr.model`, even though `AsrSettings.model` already
+replaces the client model for transcriptions and translations. Helm also
+omits `asr.frontier_fallback`, so a chart deploy cannot opt into the governed
+cloud transcription path the doctor already warns about. Prometheus docs list
+cancel phases through `tts` and skip `mcp`, which the gateway already records.
+The ASR guide never names Helm `asr.baseUrl`.
 
 ---
 
@@ -55,32 +42,39 @@ additive `_migrate()` solid (no `daari migrate` demand yet); L1 has
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **L1 semantic cache unversioned by embedder** — `semantic_context_key` and stored entries omit `cache.l1.embedding_model`; swapping the embed model keeps stale vectors live (wrong hits / dimension mismatch) | 4 | 2 | GPTCache (index per embedder); hosted semantic caches | Local embed models get swapped often; correctness across swaps keeps the shared org cache trustworthy | File ([#845](https://github.com/naveenreddyalka/daari/issues/845)) |
-| 2 | **All local hosts down = hard 503** — pool exhaustion raises `BackendUnavailable`; no opt-in frontier failover for chat (ASR already has `asr.frontier_fallback`) | 4 | 2 | LiteLLM fallback chains; Kong upstream failover | HA without a second GPU box: outage degrades to governed frontier (scrub/budgets/allowlists intact) | File ([#846](https://github.com/naveenreddyalka/daari/issues/846)) |
-| 3 | **No `/v1/audio/speech`** — ASR shipped both directions, TTS absent; openedai-speech/Kokoro serve the exact OpenAI shape locally | 4 | 3 | Portkey (ElevenLabs native); OpenRouter `/audio/speech` | Voice loop (STT→chat→TTS) through one governed box; $0/char, same keys and chargeback | File ([#847](https://github.com/naveenreddyalka/daari/issues/847)) |
-| 4 | **Admission gate is FIFO-only** — single `asyncio.Condition`, no per-key/team priority; batch drain bypasses the in-flight cap (idle-yield only) | 4 | 3 | vLLM priority scheduling; Kong route priority | One GPU serves IDE + overnight eval; interactive turns must preempt at the gate | File ([#848](https://github.com/naveenreddyalka/daari/issues/848)) |
-| 5 | **No OTLP logs signal** — request events are file JSONL + optional stdout; OTel exports traces/metrics only | 3 | 2 | LiteLLM log callbacks; cloud gateways | Same collector already deployed for daari traces — third signal completes the story, no sidecars | File ([#849](https://github.com/naveenreddyalka/daari/issues/849)) |
-| 6 | **Doctor ops warns / moderations + rerank endpoints / `daari migrate` + skew guard / ASR pool HA / OCR / Fuse routing / WIF / A2A / SOC 2 / admin UI** | 2–4 | 2–5 | LiteLLM / Cohere / cloud | Moderations-vs-guardrails and migrate tooling wait for buyer demand; rest deferred | Watch |
+| 1 | **Helm has no `asr.model`** — `AsrSettings.model` pins the on-box whisper id; the chart only mounts `asr.baseUrl` while `tts.model` already ships | 3 | 1 | LiteLLM helm model aliases | Fleet whisper stays local with the server's own model id, declared beside `tts.model` | File ([#913](https://github.com/naveenreddyalka/daari/issues/913)) |
+| 2 | **Helm has no `asr.frontierFallback`** — settings and doctor know the opt-in; the chart cannot set `DAARI_ASR__FRONTIER_FALLBACK` | 3 | 1 | LiteLLM fallback chains | Default stays off so audio never leaves the cluster; the opt-in is a values toggle like local-pool failover | File ([#914](https://github.com/naveenreddyalka/daari/issues/914)) |
+| 3 | **Cancel-phase docs omit `mcp`** — `daari_cancelled_requests_total{phase="mcp"}` is recorded; metrics-prometheus lists every other phase | 2 | 1 | LiteLLM log callbacks | Agent disconnects on the local MCP path show up on the same scrape operators already chart | File ([#915](https://github.com/naveenreddyalka/daari/issues/915)) |
+| 4 | **ASR guide omits Helm `asr.baseUrl`** — capacity-helm and the TTS guide name chart knobs; `backends/asr.md` does not | 2 | 1 | Cloud speech vendor docs | The local whisper page should name the same chart key the values file uses | File ([#916](https://github.com/naveenreddyalka/daari/issues/916)) |
+| 5 | **Doctor `asr` row has no contract test** — the table names `frontier_fallback`, but nothing locks the wording | 1 | 1 | n/a (docs lock) | Operators rely on that row to see that audio upload is opt-in | File ([#917](https://github.com/naveenreddyalka/daari/issues/917)) |
+| 6 | **Idempotency-Key, admission QoS, L1 embedder namespace, model warm, WIF / A2A / SOC 2 / admin UI** | 2–4 | 2–5 | LiteLLM / cloud | First four are already queued or in progress; compliance stays deferred | Watch |
 
-Pruned this run: the governance secondary-ingress rows (MCP route, batch
-quota+meta, embed L0 scope, Helm knobs, model warm) — all five filed as
-issues by the 17:14 sibling run and now queued.
+Pruned this run: TTS route, local-pool frontier failover, OTLP logs, and the
+doctor probes that shipped on 2026-09-21.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Governance secondary-ingress set** (queued) — MCP route claims, batch quota+meta, scoped embed L0, Helm auth knobs, model warm.
-2. **Cache correctness across embedder swaps** — L1 entries namespaced by embedding model.
-3. **Local-outage failover** — opt-in frontier escalation when every local host is down, fences intact.
-4. **QoS at the gate** — per-key priority classes on the in-flight cap; batch charged at low priority.
-5. **Voice + logs completeness** — `/v1/audio/speech` local TTS and OTLP logs alongside traces/metrics.
+1. **Speech chart parity** — `asr.model` and `asr.frontierFallback` beside the TTS knobs already in the chart.
+2. **Queued cache and QoS** — L1 embedding-model namespace, virtual-key admission priority, `daari models warm` (open PRs).
+3. **Observability wording** — cancel-phase docs include MCP so agent disconnects match the scrape.
+4. **Idempotency-Key** — still in progress on chat and Responses; do not refile.
+5. **ASR operator docs** — guide and doctor table name the same Helm and frontier flags the code uses.
 
-Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay deferred.
+Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred.
 
 ---
 
 ## Changelog
+
+- **2026-09-21 (speech chart parity)** — Eligible `auto-dev` backlog was empty
+  (every labeled issue had an open PR). Outward: GitHub latest stable tags
+  LiteLLM v1.101.0, Ollama v0.34.2, vLLM v0.29.0; no newer bar. Inward: Helm
+  pins TTS model/voice but not `asr.model` or `asr.frontierFallback`;
+  metrics-prometheus omits cancel phase `mcp`; ASR guide omits Helm
+  `asr.baseUrl`; doctor `asr` row has no contract test. Pruned shipped TTS,
+  local-pool failover, OTLP logs, and the new doctor probes. Filing five.
 
 - **2026-09-20 (resilience + modality delta)** — Delta run 12 min after the
   17:14 sibling merged its refresh. Outward re-verified flat: LiteLLM newest
