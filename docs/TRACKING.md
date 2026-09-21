@@ -3938,6 +3938,14 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 `tests/unit/test_metrics_prometheus_docs.py`.
 
 
+### Docs: doctor-health ASR frontier_fallback row ([#917](https://github.com/naveenreddyalka/daari/issues/917))
+
+<!-- tracking:#917 -->
+**Status:** Done (2026-09-21). Contract test asserts the doctor-health `asr`
+row names `asr.base_url` and `frontier_fallback`. Covered by
+`tests/unit/test_doctor_health_asr_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
