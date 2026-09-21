@@ -3853,6 +3853,14 @@ Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
 clients-and-gateways link it for `/v1/audio/speech`. Covered by
 `tests/unit/test_tts_docs.py`.
 
+### TTS disconnect cancelled_requests phase=tts ([#889](https://github.com/naveenreddyalka/daari/issues/889))
+
+<!-- tracking:#889 -->
+**Status:** Done (2026-09-21). Unit coverage for speech disconnect 499 +
+`daari_cancelled_requests_total{phase="tts"}`; metrics-prometheus lists `tts`.
+Covered by `tests/unit/test_client_disconnect.py` and
+`tests/unit/test_metrics_prometheus_docs.py`.
+
 
 ## How to update
 
