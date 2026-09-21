@@ -3900,6 +3900,14 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `tests/unit/test_helm_chart.py`.
 
 
+### Docs: mkdocs nav lists TTS guide ([#905](https://github.com/naveenreddyalka/daari/issues/905))
+
+<!-- tracking:#905 -->
+**Status:** Done (2026-09-21). Contract test asserts `mkdocs.yml` lists
+`developer/guides/backends/tts.md` beside the ASR guide. Covered by
+`tests/unit/test_tts_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
