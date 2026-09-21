@@ -615,14 +615,14 @@ class VirtualKeyStore:
             if team_id:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd, cache_scope"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
                     " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
             else:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd, cache_scope"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
                     " FROM teams WHERE name = ?",
                     (name,),
                 ).fetchone()
@@ -639,6 +639,7 @@ class VirtualKeyStore:
             model_groups=decode_names(row[7]) if len(row) > 7 else None,
             rpd=int(row[8] or 0) if len(row) > 8 else 0,
             cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
+            priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
         )
 
     def list_teams(self) -> list[Team]:
@@ -648,7 +649,7 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd, cache_scope"
+                " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
         return [
@@ -663,6 +664,7 @@ class VirtualKeyStore:
                 model_groups=decode_names(row[7]) if len(row) > 7 else None,
                 rpd=int(row[8] or 0) if len(row) > 8 else 0,
                 cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
+                priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
             )
             for row in rows
         ]
@@ -996,6 +998,7 @@ class VirtualKeyStore:
         model_groups: tuple[str, ...] | None = None,
         rpd: int = 0,
         cache_scope: str = "global",
+        priority: str | None = None,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -1011,6 +1014,7 @@ class VirtualKeyStore:
         if pin is None and len(row) > 12:
             # Prefer explicit column when present (list/resolve SELECTs).
             pass
+        meta_prio = parsed.get("priority") if isinstance(parsed, dict) else None
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -1034,9 +1038,7 @@ class VirtualKeyStore:
             allowed_models=allowed_models,
             model_groups=model_groups,
             cache_scope=coerce_cache_scope(cache_scope),
-            priority=coerce_priority(
-                (parsed.get("priority") if isinstance(parsed, dict) else None)
-            ),
+            priority=coerce_priority(priority if priority is not None else meta_prio),
         )
 
     def list(self) -> list[VirtualKey]:
@@ -1048,7 +1050,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope, v.priority"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -1065,6 +1067,7 @@ class VirtualKeyStore:
                 model_groups=decode_names(r[18]) if len(r) > 18 else None,
                 rpd=int(r[19] or 0) if len(r) > 19 else 0,
                 cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
+                priority=coerce_priority(r[21]) if len(r) > 21 else None,
             )
             for r in rows
         ]
@@ -1079,7 +1082,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope, v.priority"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
@@ -1105,6 +1108,7 @@ class VirtualKeyStore:
             model_groups=decode_names(row[20]) if len(row) > 20 else None,
             rpd=int(row[21] or 0) if len(row) > 21 else 0,
             cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
+            priority=coerce_priority(row[23]) if len(row) > 23 else None,
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:

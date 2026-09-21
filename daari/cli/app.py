@@ -165,11 +165,16 @@ def keys_create(
         "--cache-scope",
         help="Cache isolation: global (org-shared), team, or key.",
     ),
+    priority: str = typer.Option(
+        "normal",
+        "--priority",
+        help="Admission priority at the in-flight gate: high, normal, or low.",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
-    from daari.auth.virtual_keys import expiry_from, normalize_cache_scope
+    from daari.auth.virtual_keys import coerce_priority, expiry_from, normalize_cache_scope
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -187,6 +192,7 @@ def keys_create(
     try:
         expires_at = expiry_from(expires)
         scope = normalize_cache_scope(cache_scope)
+        prio = coerce_priority(priority)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -208,6 +214,7 @@ def keys_create(
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
         cache_scope=scope,
+        priority=prio,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -220,6 +227,7 @@ def keys_create(
     if created.key.model_groups:
         typer.echo(f"groups:  {', '.join(created.key.model_groups)}")
     typer.echo(f"cache_scope: {created.key.cache_scope}")
+    typer.echo(f"priority: {created.key.priority}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -321,7 +329,7 @@ def keys_list() -> None:
     ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
     typer.echo(
         f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'rpd':>5} "
-        f"{'tier':<4} {'scope':<6} {'expires':<25} {'grace_until':<25} status"
+        f"{'tier':<4} {'scope':<6} {'prio':<6} {'expires':<25} {'grace_until':<25} status"
     )
     for key in keys:
         team = store.get_team(key.team_id) if key.team_id else None
@@ -331,7 +339,7 @@ def keys_list() -> None:
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
             f"{key.tpm:>7} {key.rpd:>5} {(key.tier_cap or '-'):<4} {scope:<6} "
-            f"{(key.expires_at or 'never'):<25} "
+            f"{key.priority:<6} {(key.expires_at or 'never'):<25} "
             f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
         client_id = key.client_id or key.key_id
@@ -465,13 +473,18 @@ def keys_team_create(
         "--cache-scope",
         help="Cache isolation for every key on this team: global, team, or key.",
     ),
+    priority: str = typer.Option(
+        "normal",
+        "--priority",
+        help="Default admission priority for keys on this team: high, normal, or low.",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import os
 
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
-    from daari.auth.virtual_keys import normalize_cache_scope
+    from daari.auth.virtual_keys import coerce_priority, normalize_cache_scope
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
@@ -485,6 +498,7 @@ def keys_team_create(
         raise typer.Exit(code=1) from exc
     try:
         scope = normalize_cache_scope(cache_scope)
+        prio = coerce_priority(priority)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -501,6 +515,7 @@ def keys_team_create(
         allowed_models=allowed_model or None,
         model_groups=model_group or None,
         cache_scope=scope,
+        priority=prio,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
@@ -516,6 +531,7 @@ def keys_team_create(
     if team.rpd:
         typer.echo(f"rpd:     {team.rpd}")
     typer.echo(f"cache_scope: {team.cache_scope}")
+    typer.echo(f"priority: {team.priority}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
