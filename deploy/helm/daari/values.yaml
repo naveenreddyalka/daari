@@ -166,6 +166,11 @@ ollama:
 asr:
   baseUrl: ""
 
+# Local OpenAI-compatible text-to-speech (openedai-speech, Kokoro). Empty leaves
+# POST /v1/audio/speech unconfigured (501).
+tts:
+  baseUrl: ""
+
 # Wall-clock budget across cache/local/frontier hops (#786 / #771). Empty =
 # per-tier timeouts only; X-Daari-Deadline-Ms still overrides when set.
 upstream:
