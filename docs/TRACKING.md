@@ -3800,6 +3800,14 @@ deadline-honoring routes; `test_deadline_docs` asserts it. Covered by
 
 
 
+### Doctor surfaces local_pool frontier failover ([#879](https://github.com/naveenreddyalka/daari/issues/879))
+
+<!-- tracking:#879 -->
+**Status:** Done (2026-09-21). Optional doctor check calls
+`local_pool_frontier_fallback_findings` and fails when failover is on without
+frontier.enabled. Documented in doctor-health. Covered by
+`tests/unit/test_doctor_local_pool_failover.py`.
+
 ### Doctor warns otlp_logs without OTEL endpoint ([#878](https://github.com/naveenreddyalka/daari/issues/878))
 
 <!-- tracking:#878 -->
