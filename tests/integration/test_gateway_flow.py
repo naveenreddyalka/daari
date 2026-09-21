@@ -3354,3 +3354,62 @@ async def test_deadline_header_is_504_before_upstream(app):
     assert error["type"] == "request_deadline_exceeded"
     assert "deadline" in error["message"]
 
+
+@pytest.mark.asyncio
+async def test_frontier_stream_tool_call_survives_escalation(settings, monkeypatch):
+    """Streamed L6 tool_calls are relayed through the OpenAI gateway (#934)."""
+    settings.frontier.enabled = True
+    settings.routing.confidence_threshold = 0.99
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    class _Frontier:
+        api_key = "sk-test"
+
+        async def stream(self, request, escalated_from=None, local_confidence=None):
+            yield {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_int",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{}"},
+                    }
+                ]
+            }
+
+        async def execute(self, *args, **kwargs):
+            raise AssertionError("must relay via stream")
+
+    async def fake_local_stream(request):
+        yield {"message": {"role": "assistant", "content": "idk"}, "done": True}
+
+    application.state.ctx.router.frontier = _Frontier()
+    monkeypatch.setattr(application.state.ctx.router.ollama, "stream", fake_local_stream)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "stream", fake_local_stream)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [{"role": "user", "content": "use a tool please"}],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {"name": "lookup", "parameters": {"type": "object"}},
+                    }
+                ],
+            },
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+    assert response.status_code == 200
+    assert "tool_calls" in response.text
+    assert "lookup" in response.text
+    assert "call_int" in response.text
+
