@@ -3922,6 +3922,13 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `DAARI_ASR__FRONTIER_FALLBACK=true` when enabled; default false omits env.
 Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
 
+### Helm asr.model ([#913](https://github.com/naveenreddyalka/daari/issues/913))
+
+<!-- tracking:#913 -->
+**Status:** Done (2026-09-21). Chart `asr.model` mounts `DAARI_ASR__MODEL`
+when set; empty default omits env. Documented in capacity-helm. Covered by
+`tests/unit/test_helm_chart.py`.
+
 
 ## How to update
 

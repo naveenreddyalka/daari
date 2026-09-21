@@ -224,15 +224,17 @@ ollama:
 `asr.baseUrl` / `tts.baseUrl` default to empty (chart omits env; routes return
 501). Set them to mount `DAARI_ASR__BASE_URL` / `DAARI_TTS__BASE_URL` for a
 local OpenAI-compatible speech stack (whisper/vLLM, Kokoro/openedai-speech).
-`asr.frontierFallback` defaults to false (chart omits env). Set it to true to
-mount `DAARI_ASR__FRONTIER_FALLBACK` so an empty `asr.baseUrl` may forward one
-transcription to the configured frontier. Optional `tts.model` / `tts.voice` mount
-`DAARI_TTS__MODEL` / `DAARI_TTS__VOICE` so the pod always presents the on-box
-id to the TTS server.
+Optional `asr.model` mounts `DAARI_ASR__MODEL` so the pod always presents the
+on-box whisper id. `asr.frontierFallback` defaults to false (chart omits env).
+Set it to true to mount `DAARI_ASR__FRONTIER_FALLBACK` so an empty `asr.baseUrl`
+may forward one transcription to the configured frontier. Optional `tts.model` /
+`tts.voice` mount `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE` so the pod always
+presents the on-box id to the TTS server.
 
 ```yaml
 asr:
   baseUrl: http://whisper.internal:8000/v1
+  model: ggml-base
   frontierFallback: false
 tts:
   baseUrl: http://kokoro.internal:8880/v1

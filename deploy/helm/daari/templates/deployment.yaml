@@ -135,6 +135,10 @@ spec:
             - name: DAARI_ASR__BASE_URL
               value: {{ .Values.asr.baseUrl | quote }}
             {{- end }}
+            {{- if .Values.asr.model }}
+            - name: DAARI_ASR__MODEL
+              value: {{ .Values.asr.model | quote }}
+            {{- end }}
             {{- if .Values.asr.frontierFallback }}
             - name: DAARI_ASR__FRONTIER_FALLBACK
               value: "true"

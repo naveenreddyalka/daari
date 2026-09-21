@@ -475,6 +475,18 @@ class TestHelmTtsModelVoice:
         assert re.search(r'name: DAARI_TTS__VOICE\s+value: "af_bella"', rendered)
 
 
+class TestHelmAsrModel:
+    def test_asr_model_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ASR__MODEL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["asr"]["model"] == ""
+
+    def test_asr_model_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "asr.model=ggml-base")
+        assert re.search(r'name: DAARI_ASR__MODEL\s+value: "ggml-base"', rendered)
+
+
 class TestHelmRequestDeadlineAndRetention:
     def test_deadline_and_request_log_absent_by_default(
         self, helm_available: None
