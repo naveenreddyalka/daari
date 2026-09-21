@@ -3877,6 +3877,14 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `OTEL_EXPORTER_OTLP_ENDPOINT`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Docs: capacity-helm localPool.frontierFallback ([#897](https://github.com/naveenreddyalka/daari/issues/897))
+
+<!-- tracking:#897 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`localPool.frontierFallback` and
+`DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
 
 ## How to update
 
