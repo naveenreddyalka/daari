@@ -3936,6 +3936,13 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 **Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.baseUrl` and
 `DAARI_ASR__BASE_URL`. Covered by `tests/unit/test_asr_docs.py`.
 
+### Docs: cancelled_requests phase includes mcp ([#915](https://github.com/naveenreddyalka/daari/issues/915))
+
+<!-- tracking:#915 -->
+**Status:** Done (2026-09-21). metrics-prometheus lists `mcp` among
+`daari_cancelled_requests_total` phases. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
+
 
 ## How to update
 
