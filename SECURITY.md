@@ -24,3 +24,34 @@ daari is a **local-first** daemon; its trust boundaries are:
 5. **Frontier escalation** — prompts can leave the machine only on L6 escalation (budget-gated, optional PII scrub). Anything causing unexpected data egress is in scope.
 
 Secrets: daari never stores frontier API keys in its config; they come from environment variables. Reports about key handling in setup recipes are welcome.
+
+## TLS for the gateway
+
+Two supported modes (pick one; do not double-terminate without understanding the hop):
+
+### 1. Native TLS / mTLS (`daari serve`)
+
+Set `server.tls.cert_file` + `server.tls.key_file` (env: `DAARI_SERVER__TLS__CERT_FILE` /
+`DAARI_SERVER__TLS__KEY_FILE`, or flags `--tls-cert` / `--tls-key`). Uvicorn then
+serves HTTPS. The key path may be a `secret://` ref that resolves to PEM material.
+Optional `server.tls.client_ca` (or `--tls-client-ca`) enables mutual TLS
+(`ssl_cert_reqs=CERT_REQUIRED`) so clients without a valid cert are rejected.
+
+Helm: `tls.enabled=true` with `tls.existingSecret` mounts the Secret at
+`/etc/daari/tls` and wires the env vars; probes use `scheme: HTTPS`.
+
+`daari doctor` warns when `server.api_key` is set, TLS is off, and `server.host`
+is non-loopback (plaintext keys on the wire).
+
+### 2. TLS terminated by reverse proxy / ingress
+
+Keep daari on HTTP behind nginx, Caddy, Traefik, cloudflared, or a Kubernetes
+Ingress/Gateway that terminates TLS. Trust only the proxy's hop:
+
+- Do not expose the daari port on a non-loopback interface without auth + TLS
+  (native or proxy).
+- If the proxy forwards client identity, treat `X-Forwarded-For` /
+  `X-Forwarded-Proto` as advisory unless you control the proxy and strip
+  spoofed headers at the edge.
+- Health checks (`/health`, `/ready`) stay reachable for the proxy; protect
+  `/v1/*` with `server.api_key` or virtual keys as usual.
