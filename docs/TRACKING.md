@@ -3923,6 +3923,14 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 `tests/unit/test_helm_chart.py`.
 
 
+### Docs: cancelled_requests phase includes mcp ([#915](https://github.com/naveenreddyalka/daari/issues/915))
+
+<!-- tracking:#915 -->
+**Status:** Done (2026-09-21). metrics-prometheus lists `mcp` among
+`daari_cancelled_requests_total` phases. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
