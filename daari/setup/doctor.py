@@ -61,6 +61,7 @@ def run_doctor(
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
+    results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_budget_webhook_secret(cfg))
@@ -758,6 +759,91 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
         name="fleet_cache",
         ok=True,
         detail=f"fleet_replicas={replicas}; cache.backend=redis",
+        optional=True,
+    )
+
+
+def _check_scoped_cache_fleet(settings: Settings) -> CheckResult:
+    """Warn when tenant cache_scope meets disk cache on a multi-replica fleet (#891)."""
+    raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=False,
+            detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
+            optional=True,
+        )
+
+    cache_backend = (settings.cache.backend or "disk").strip().lower()
+    if replicas <= 1:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas} (scoped cache fine on single node)",
+            optional=True,
+        )
+    if cache_backend == "redis":
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; cache.backend=redis",
+            optional=True,
+        )
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail="virtual keys disabled (no tenant cache_scope)",
+            optional=True,
+        )
+
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+
+    scoped: list[str] = []
+    for key in store.list():
+        scope = (getattr(key, "cache_scope", None) or "global").strip().lower()
+        if scope != "global":
+            scoped.append(f"key {key.name}={scope}")
+    try:
+        teams = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        teams = []
+    for team in teams:
+        scope = (getattr(team, "cache_scope", None) or "global").strip().lower()
+        if scope != "global":
+            scoped.append(f"team {team.name}={scope}")
+
+    if not scoped:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; all cache_scope=global",
+            optional=True,
+        )
+
+    shown = ", ".join(scoped[:6])
+    extra = f" (+{len(scoped) - 6} more)" if len(scoped) > 6 else ""
+    return CheckResult(
+        name="scoped_cache_fleet",
+        ok=False,
+        detail=(
+            f"DAARI_FLEET_REPLICAS={replicas} with cache.backend={cache_backend} "
+            f"and non-global cache_scope ({shown}{extra}) — tenant L0/L1 stays "
+            "per-pod; set cache.backend=redis so scoped keys share across replicas, "
+            "or keep a single replica"
+        ),
         optional=True,
     )
 
