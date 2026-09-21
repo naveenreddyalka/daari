@@ -3892,6 +3892,13 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Helm tts.baseUrl render contract ([#906](https://github.com/naveenreddyalka/daari/issues/906))
+
+<!-- tracking:#906 -->
+**Status:** Done (2026-09-21). Helm unit tests assert empty default omits
+`DAARI_TTS__BASE_URL` and set `tts.baseUrl` renders it. Covered by
+`tests/unit/test_helm_chart.py`.
+
 
 ## How to update
 
