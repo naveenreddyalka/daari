@@ -15,7 +15,7 @@ tts:
 
 Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet in that case. It warns when `tts.base_url` is set but `GET {base}/models` is unreachable.
 
-Helm fleets can set `tts.baseUrl` (see [Capacity and Helm](../operations/capacity-helm.md)).
+Helm fleets can set `tts.baseUrl`. Optional chart values `tts.model` / `tts.voice` mount `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE` so the pod always presents the on-box id (see [Capacity and Helm](../operations/capacity-helm.md)).
 
 ## Request
 
