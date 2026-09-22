@@ -8,7 +8,8 @@ Entry point: `daari` (Typer).
 |---------|---------|
 | `serve` | Run the gateway daemon |
 | `stats` | Tier counters (`GET /v1/daari/stats` JSON) |
-| `doctor` | Health / suggest-models |
+| `doctor` | Health / suggest-models (`--strict` treats pending migrate as required) |
+| `migrate` | Open durable stores / `--dry-run` inspect pending additive migrations |
 | `install` | Convenience installer helpers |
 | `onboard` | pip/brew first-run (Ollama + default models) |
 | `feedback` | Record accept/reject |
