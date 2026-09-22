@@ -14,7 +14,13 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-from daari.enterprise.bootstrap import apply_org_config, fetch_org_config, verify_signature
+from daari.enterprise.bootstrap import (
+    PolicySchemaError,
+    apply_org_config,
+    fetch_org_config,
+    validate_policy_schema,
+    verify_signature,
+)
 from daari.gateway.request_log import log_gateway_event
 
 
@@ -83,6 +89,7 @@ def apply_policy_to_runtime(
     config: dict[str, Any],
 ) -> dict[str, Any]:
     """Apply a safe subset of org config to live settings + router. Returns applied keys."""
+    validate_policy_schema(config)
     applied: dict[str, Any] = {}
     routing = config.get("routing") or {}
     if isinstance(routing, dict):
@@ -199,6 +206,11 @@ def sync_policy_once(
     )
     if not insecure and not verify_signature(raw, signature, secret):
         return {"ok": False, "reason": "bad_signature"}
+    try:
+        validate_policy_schema(data)
+    except PolicySchemaError as exc:
+        log_gateway_event("policy_sync_schema_rejected", {"error": str(exc)})
+        return {"ok": False, "reason": "unknown_schema", "error": str(exc)}
     applied: dict[str, Any] = {}
     if router is not None:
         applied = apply_policy_to_runtime(settings, router, data)

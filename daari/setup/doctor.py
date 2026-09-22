@@ -35,6 +35,7 @@ def run_doctor(
     httpx_client: httpx.Client | None = None,
     tunnel_url: str | None = None,
     cursor_configured: bool | None = None,
+    strict: bool = False,
 ) -> list[CheckResult]:
     """Run health checks. Returns list of results (required + optional)."""
     results: list[CheckResult] = []
@@ -68,6 +69,7 @@ def run_doctor(
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
+    results.append(_check_store_migrate(cfg, strict=strict))
     daemon = _check_daemon(cfg, httpx_client)
     results.append(daemon)
     results.append(_check_ready(cfg, httpx_client, daemon_ok=daemon.ok))
@@ -1012,6 +1014,38 @@ def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
     else:
         detail = "budget webhook disabled (empty URL)"
     return CheckResult(name="budget_webhook_secret", ok=True, detail=detail, optional=True)
+
+
+def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn when SQLite stores have pending additive migrations (#942)."""
+    from daari.setup.migrate import inspect_stores
+
+    try:
+        notes = inspect_stores(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="store_migrate",
+            ok=False,
+            detail=f"inspect failed: {exc}",
+            optional=not strict,
+        )
+    pending = [n for n in notes if n.status == "pending"]
+    if not pending:
+        return CheckResult(
+            name="store_migrate",
+            ok=True,
+            detail="no pending store migrations",
+            optional=not strict,
+        )
+    detail = "; ".join(
+        f"{n.name}: {', '.join(n.pending)}" for n in pending
+    ) + " — run: daari migrate"
+    return CheckResult(
+        name="store_migrate",
+        ok=False,
+        detail=detail,
+        optional=not strict,
+    )
 
 
 def _check_helm_image_tag() -> CheckResult:

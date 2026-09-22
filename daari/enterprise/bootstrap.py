@@ -12,6 +12,30 @@ import yaml
 
 from daari.config.persist import write_config_atomically
 
+# Integer policy-bundle schema. Major = the integer itself for now (#942).
+# Older clients ignore unknown keys (including `schema`); this client refuses
+# majors newer than POLICY_SCHEMA so a laptop fleet fails closed on skew.
+POLICY_SCHEMA = 1
+
+
+class PolicySchemaError(ValueError):
+    """Raised when a policy bundle declares an unsupported schema major."""
+
+
+def validate_policy_schema(config: dict[str, Any]) -> None:
+    """Accept missing/legacy schema or schema <= POLICY_SCHEMA; refuse unknowns."""
+    if "schema" not in config:
+        return
+    raw = config.get("schema")
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise PolicySchemaError(
+            f"policy schema must be an integer major, got {raw!r}"
+        )
+    if raw > POLICY_SCHEMA:
+        raise PolicySchemaError(
+            f"unknown policy schema major {raw}; this daari supports <= {POLICY_SCHEMA}"
+        )
+
 
 def verify_signature(payload: bytes, signature_hex: str, secret: str) -> bool:
     if not secret or not signature_hex:
@@ -47,6 +71,7 @@ def apply_org_config(
     device_id: str | None = None,
 ) -> Path:
     """Merge org block into ~/.daari/config.yaml and register device id."""
+    validate_policy_schema(config)
     path = config_path or (Path.home() / ".daari" / "config.yaml")
     path.parent.mkdir(parents=True, exist_ok=True)
     existing: dict[str, Any] = {}
