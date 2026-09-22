@@ -13,6 +13,7 @@ Scope = Literal["key", "team", "user"]
 
 _DAY_ALIASES = {"day", "daily", "24h"}
 _MONTH_ALIASES = {"month", "monthly", "30d"}
+_LIFETIME_ALIASES = {"lifetime", "total", "all", "alltime", "all-time"}
 _DURATION = re.compile(r"^(\d+)([hd])$")
 
 
@@ -22,6 +23,8 @@ def normalize_duration(raw: str) -> str:
         return "day"
     if value in _MONTH_ALIASES:
         return "month"
+    if value in _LIFETIME_ALIASES:
+        return "lifetime"
     if _DURATION.match(value):
         return value
     raise ValueError(f"unsupported budget duration: {raw!r}")
@@ -34,6 +37,8 @@ def window_label(duration: str) -> str:
         return "daily"
     if canonical == "month":
         return "monthly"
+    if canonical == "lifetime":
+        return "lifetime"
     return canonical
 
 
@@ -44,14 +49,17 @@ def window_header_label(duration: str) -> str:
         return "1d"
     if canonical == "month":
         return "1mo"
+    if canonical == "lifetime":
+        return "lifetime"
     return canonical
 
 
 def _clone_window(window: BudgetWindow, duration: str) -> BudgetWindow:
+    rollover = bool(window.rollover) and duration != "lifetime"
     return BudgetWindow(
         duration,
         float(window.max_usd),
-        rollover=bool(window.rollover),
+        rollover=rollover,
         rollover_cap_multiple=float(window.rollover_cap_multiple or 2.0),
         max_requests=int(window.max_requests or 0),
     )
@@ -72,9 +80,14 @@ def parse_window_flag(raw: str) -> BudgetWindow:
         raise ValueError(f"window must be duration=max_usd, got {raw!r}")
     duration, rest = raw.split("=", 1)
     amount_part, _, flag = rest.partition(":")
-    rollover = flag.strip().lower() in {"rollover", "roll", "true", "1"}
+    canonical = normalize_duration(duration)
+    # Lifetime caps never roll — there is no next period (#936).
+    rollover = (
+        canonical != "lifetime"
+        and flag.strip().lower() in {"rollover", "roll", "true", "1"}
+    )
     return BudgetWindow(
-        normalize_duration(duration),
+        canonical,
         float(amount_part),
         rollover=rollover,
     )
@@ -208,6 +221,8 @@ def reset_at(duration: str, *, now: datetime | None = None) -> str:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     canonical = normalize_duration(duration)
+    if canonical == "lifetime":
+        return ""
     if canonical == "day":
         nxt = (moment + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         return nxt.isoformat()
@@ -228,7 +243,10 @@ def reset_at(duration: str, *, now: datetime | None = None) -> str:
 
 def reset_epoch(duration: str, *, now: datetime | None = None) -> int:
     """`reset_at` as epoch seconds, for the `x-daari-budget-reset` header."""
-    return int(datetime.fromisoformat(reset_at(duration, now=now)).timestamp())
+    raw = reset_at(duration, now=now)
+    if not raw:
+        return 0
+    return int(datetime.fromisoformat(raw).timestamp())
 
 
 def period_id(duration: str, *, now: datetime | None = None) -> str:
@@ -237,6 +255,8 @@ def period_id(duration: str, *, now: datetime | None = None) -> str:
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     canonical = normalize_duration(duration)
+    if canonical == "lifetime":
+        return "lifetime"
     if canonical == "day":
         return moment.strftime("%Y-%m-%d")
     if canonical == "month":
@@ -308,8 +328,11 @@ def ledger_window(duration: str) -> tuple[str, int | None]:
     """Map a duration onto the day-granularity ledger.
 
     Hourly windows collapse to the current UTC day — the ledger has no hour column.
+    Lifetime sums every day row for the client (#936).
     """
     canonical = normalize_duration(duration)
+    if canonical == "lifetime":
+        return "lifetime", None
     if canonical == "day":
         return "day", None
     if canonical == "month":
@@ -334,16 +357,24 @@ def budget_error(
 ) -> dict[str, Any]:
     label = window_label(window.duration)
     reset = reset_at(window.duration)
+    lifetime = normalize_duration(window.duration) == "lifetime"
     if quota == "requests":
         limit_r = int(window.max_requests if limit_requests is None else limit_requests)
         used = int(spend if spend_requests is None else spend_requests)
-        payload: dict[str, Any] = {
-            "type": "budget_exceeded",
-            "message": (
+        if lifetime:
+            message = (
+                f"Virtual key {label} request quota "
+                f"({limit_r}) exceeded — {used} used."
+            )
+        else:
+            message = (
                 f"Virtual key {label} request quota "
                 f"({limit_r}) exceeded — {used} used. "
                 f"Resets at {reset}."
-            ),
+            )
+        payload: dict[str, Any] = {
+            "type": "budget_exceeded",
+            "message": message,
             "client_id": client_id,
             "window": label,
             "quota": "requests",
@@ -354,13 +385,20 @@ def budget_error(
         }
     else:
         limit = float(window.max_usd if limit_usd is None else limit_usd)
-        payload = {
-            "type": "budget_exceeded",
-            "message": (
+        if lifetime:
+            message = (
+                f"Virtual key {label} frontier budget "
+                f"(${limit:.4f}) exceeded — ${spend:.4f} spent."
+            )
+        else:
+            message = (
                 f"Virtual key {label} frontier budget "
                 f"(${limit:.4f}) exceeded — ${spend:.4f} spent. "
                 f"Resets at {reset}."
-            ),
+            )
+        payload = {
+            "type": "budget_exceeded",
+            "message": message,
             "client_id": client_id,
             "window": label,
             "budget_usd": round(limit, 6),
@@ -402,16 +440,42 @@ def user_daily_cap_exceeded(
     pricing: Any = None,
     fallback_per_1k: float = 0.002,
 ) -> dict[str, Any] | None:
-    """Return a 402 body when this named user is over the key's daily user cap.
+    """Return a 402 body when this named user is over the key's daily/lifetime user cap.
 
     Requests without a `user` are never capped (attributed to ``unknown`` only).
+    Lifetime user caps live in ``metadata.user_lifetime_usd_cap`` (#936).
     """
-    cap = float(getattr(key, "user_daily_usd_cap", 0.0) or 0.0)
     named = (user_id or "").strip()
-    if cap <= 0 or not named:
+    if not named:
         return None
     spend_fn = getattr(ledger, "frontier_spend_usd_for_user", None)
     if spend_fn is None:
+        return None
+
+    lifetime_cap = float((key.metadata or {}).get("user_lifetime_usd_cap") or 0.0)
+    if lifetime_cap > 0:
+        spend = float(
+            spend_fn(
+                client_id,
+                named,
+                window="lifetime",
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            or 0.0
+        )
+        if spend >= lifetime_cap:
+            return budget_error(
+                client_id=client_id,
+                window=BudgetWindow("lifetime", float(lifetime_cap)),
+                spend=spend,
+                scope="user",
+                limit_usd=float(lifetime_cap),
+                user_id=named,
+            )
+
+    cap = float(getattr(key, "user_daily_usd_cap", 0.0) or 0.0)
+    if cap <= 0:
         return None
     spend = float(
         spend_fn(
@@ -457,6 +521,17 @@ def spend_for_window(
     kind, days = ledger_window(duration)
     total = 0.0
     for client_id in client_ids:
+        if kind == "lifetime":
+            if hasattr(ledger, "frontier_spend_usd_for_client"):
+                total += float(
+                    ledger.frontier_spend_usd_for_client(
+                        client_id,
+                        window="lifetime",
+                        pricing=pricing,
+                        fallback_per_1k=fallback_per_1k,
+                    )
+                )
+            continue
         if kind == "days" and hasattr(ledger, "frontier_spend_usd_for_client_days"):
             total += float(
                 ledger.frontier_spend_usd_for_client_days(
@@ -492,6 +567,9 @@ def requests_for_window(
     kind, days = ledger_window(duration)
     total = 0
     for client_id in client_ids:
+        if kind == "lifetime" and hasattr(ledger, "request_count_for_client"):
+            total += int(ledger.request_count_for_client(client_id, window="lifetime") or 0)
+            continue
         if kind == "days" and hasattr(ledger, "request_count_for_client_days"):
             total += int(
                 ledger.request_count_for_client_days(client_id, days=days or 1) or 0
@@ -559,7 +637,7 @@ def resolve_carry_usd(
     fallback_per_1k: float = 0.002,
 ) -> float:
     """Carry unused headroom into this period; persist when the ledger supports it."""
-    if not window.rollover:
+    if not window.rollover or normalize_duration(window.duration) == "lifetime":
         return 0.0
     moment = now or datetime.now(timezone.utc)
     duration = normalize_duration(window.duration)
@@ -596,6 +674,132 @@ def resolve_carry_usd(
     return carry
 
 
+def _parse_until(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    text = str(raw).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment
+
+
+def active_budget_boosts(
+    metadata: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Return non-expired temporary budget increases (#936)."""
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    raw = (metadata or {}).get("budget_boosts") or []
+    if not isinstance(raw, list):
+        return []
+    active: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        until = _parse_until(item.get("until"))
+        if until is None or until <= moment:
+            continue
+        usd = float(item.get("usd") or 0.0)
+        requests = int(item.get("requests") or 0)
+        if usd <= 0 and requests <= 0:
+            continue
+        active.append(dict(item))
+    return active
+
+
+def expired_budget_boosts(
+    metadata: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    raw = (metadata or {}).get("budget_boosts") or []
+    if not isinstance(raw, list):
+        return []
+    expired: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        until = _parse_until(item.get("until"))
+        if until is not None and until <= moment:
+            expired.append(dict(item))
+    return expired
+
+
+def apply_boost_usd(
+    metadata: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
+) -> float:
+    return sum(float(item.get("usd") or 0.0) for item in active_budget_boosts(metadata, now=now))
+
+
+def apply_boost_requests(
+    metadata: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
+) -> int:
+    return sum(int(item.get("requests") or 0) for item in active_budget_boosts(metadata, now=now))
+
+
+def prune_expired_boosts(
+    metadata: dict[str, Any] | None,
+    *,
+    now: datetime | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Drop expired boosts from metadata; return (new_meta, expired_rows)."""
+    meta = dict(metadata or {})
+    expired = expired_budget_boosts(meta, now=now)
+    if not expired:
+        return meta, []
+    expired_ids = {str(item.get("id") or "") for item in expired}
+    kept = [
+        item
+        for item in (meta.get("budget_boosts") or [])
+        if isinstance(item, dict) and str(item.get("id") or "") not in expired_ids
+    ]
+    if kept:
+        meta["budget_boosts"] = kept
+    else:
+        meta.pop("budget_boosts", None)
+    return meta, expired
+
+
+def make_budget_boost(
+    *,
+    usd: float = 0.0,
+    requests: int = 0,
+    until: str,
+    granted_at: str | None = None,
+) -> dict[str, Any]:
+    import secrets
+
+    until_dt = _parse_until(until)
+    if until_dt is None:
+        raise ValueError(f"invalid --until timestamp: {until!r}")
+    if float(usd) <= 0 and int(requests) <= 0:
+        raise ValueError("budget boost requires --usd and/or --requests > 0")
+    granted = granted_at or datetime.now(timezone.utc).isoformat()
+    return {
+        "id": secrets.token_hex(6),
+        "usd": float(usd) if float(usd) > 0 else 0.0,
+        "requests": int(requests) if int(requests) > 0 else 0,
+        "until": until_dt.isoformat(),
+        "granted_at": granted,
+    }
+
+
 @dataclass(frozen=True)
 class WindowStatus:
     """One effective budget window measured against current spend (#319, #344, #467)."""
@@ -606,16 +810,18 @@ class WindowStatus:
     carry_usd: float = 0.0
     now: datetime | None = field(default=None, compare=False)
     quota: Literal["usd", "requests"] = "usd"
+    boost_usd: float = 0.0
+    boost_requests: int = 0
 
     @property
     def limit(self) -> float:
         if self.quota == "requests":
-            return float(int(self.window.max_requests or 0))
+            return float(int(self.window.max_requests or 0) + int(self.boost_requests or 0))
         return effective_limit(
             float(self.window.max_usd),
             carry_usd=self.carry_usd if self.window.rollover else 0.0,
             cap_multiple=float(self.window.rollover_cap_multiple or 2.0),
-        )
+        ) + max(0.0, float(self.boost_usd or 0.0))
 
     @property
     def remaining(self) -> float:
@@ -648,6 +854,25 @@ class WindowStatus:
     @property
     def reset_epoch(self) -> int:
         return reset_epoch(self.window.duration, now=self.now)
+
+
+def _boost_for_scope(
+    key: VirtualKey,
+    team: Team | None,
+    scope: Scope,
+    *,
+    now: datetime | None = None,
+) -> tuple[float, int]:
+    if scope == "team" and team is not None:
+        meta = getattr(team, "metadata", None) or {}
+        # Teams store boosts on the team row via budget_boosts in metadata when present;
+        # fall back to empty. Team dataclass has no metadata today — boosts live on
+        # store-side team metadata JSON when granted via CLI.
+        return apply_boost_usd(meta, now=now), apply_boost_requests(meta, now=now)
+    return (
+        apply_boost_usd(key.metadata, now=now),
+        apply_boost_requests(key.metadata, now=now),
+    )
 
 
 def budget_status(
@@ -686,6 +911,7 @@ def budget_status(
                 pricing=pricing,
                 fallback_per_1k=fallback_per_1k,
             )
+            boost_usd, _ = _boost_for_scope(key, team, caps.usd_scope, now=now)
             statuses.append(
                 WindowStatus(
                     window=window,
@@ -694,11 +920,13 @@ def budget_status(
                     carry_usd=carry,
                     now=now,
                     quota="usd",
+                    boost_usd=boost_usd,
                 )
             )
         if caps.request_scope is not None and int(window.max_requests or 0) > 0:
             ids = team_client_ids if caps.request_scope == "team" else [client_id]
             used = requests_for_window(ledger, ids, window.duration)
+            _, boost_req = _boost_for_scope(key, team, caps.request_scope, now=now)
             statuses.append(
                 WindowStatus(
                     window=window,
@@ -706,6 +934,7 @@ def budget_status(
                     spend=float(used),
                     now=now,
                     quota="requests",
+                    boost_requests=boost_req,
                 )
             )
     return statuses

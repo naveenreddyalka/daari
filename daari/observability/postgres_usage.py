@@ -298,7 +298,13 @@ class PostgresUsageLedger:
         if not self.enabled or not client_id or not user_id:
             return 0.0
         rate = fallback_per_1k if price_per_1k_tokens is None else price_per_1k_tokens
-        if window == "month":
+        if window in {"lifetime", "total", "all"}:
+            where, params = "client_id = %s AND user_id = %s AND tier = %s", (
+                client_id,
+                user_id,
+                FRONTIER_TIER,
+            )
+        elif window == "month":
             where, params = "client_id = %s AND user_id = %s AND day LIKE %s AND tier = %s", (
                 client_id,
                 user_id,
@@ -313,7 +319,7 @@ class PostgresUsageLedger:
                 FRONTIER_TIER,
             )
         else:
-            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
         try:
             with self._lock, self._connect() as conn:
                 with conn.cursor() as cur:
@@ -321,6 +327,82 @@ class PostgresUsageLedger:
                         "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
                         f" FROM user_usage WHERE {where}",
                         params,
+                    )
+                    row = cur.fetchone()
+        except Exception:
+            return 0.0
+        chars = row[0] if row else 0
+        return (chars / 4) / 1000 * rate
+
+    def frontier_spend_usd_for_client(
+        self,
+        client_id: str,
+        *,
+        window: str = "day",
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+        month: str | None = None,
+        price_per_1k_tokens: float | None = None,
+    ) -> float:
+        """USD one client spent on L6 — day / month / lifetime (#936)."""
+        del pricing
+        if not self.enabled or not client_id:
+            return 0.0
+        rate = fallback_per_1k if price_per_1k_tokens is None else price_per_1k_tokens
+        if window in {"lifetime", "total", "all"}:
+            where, params = "client_id = %s AND tier = %s", (client_id, FRONTIER_TIER)
+        elif window == "month":
+            where, params = "client_id = %s AND day LIKE %s AND tier = %s", (
+                client_id,
+                (month or _today()[:7]) + "-%",
+                FRONTIER_TIER,
+            )
+        elif window == "day":
+            where, params = "client_id = %s AND day = %s AND tier = %s", (
+                client_id,
+                day or _today(),
+                FRONTIER_TIER,
+            )
+        else:
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
+                        f" FROM client_usage WHERE {where}",
+                        params,
+                    )
+                    row = cur.fetchone()
+        except Exception:
+            return 0.0
+        chars = row[0] if row else 0
+        return (chars / 4) / 1000 * rate
+
+    def frontier_spend_usd_for_client_days(
+        self,
+        client_id: str,
+        *,
+        days: int,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        price_per_1k_tokens: float | None = None,
+    ) -> float:
+        del pricing
+        if not self.enabled or not client_id or days <= 0:
+            return 0.0
+        rate = fallback_per_1k if price_per_1k_tokens is None else price_per_1k_tokens
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(prompt_chars + completion_chars), 0)"
+                        " FROM client_usage WHERE client_id = %s AND day >= %s AND tier = %s",
+                        (client_id, cutoff, FRONTIER_TIER),
                     )
                     row = cur.fetchone()
         except Exception:
@@ -339,7 +421,9 @@ class PostgresUsageLedger:
         """Billable requests for one client (``requests - cache_hits``) (#467)."""
         if not self.enabled or not client_id:
             return 0
-        if window == "month":
+        if window in {"lifetime", "total", "all"}:
+            where, params = "client_id = %s", (client_id,)
+        elif window == "month":
             where, params = "client_id = %s AND day LIKE %s", (
                 client_id,
                 (month or _today()[:7]) + "-%",
@@ -347,7 +431,7 @@ class PostgresUsageLedger:
         elif window == "day":
             where, params = "client_id = %s AND day = %s", (client_id, day or _today())
         else:
-            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
         return self._request_count_for(where, params)
 
     def request_count_for_client_days(self, client_id: str, *, days: int) -> int:

@@ -312,6 +312,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     pricing = getattr(resolved, "pricing", None)
                     fallback = float(resolved.usage.frontier_price_per_1k_tokens or 0.002)
                     key = claims.virtual_key
+                    # Drop expired temporary boosts and audit once (#936).
+                    prune = getattr(store, "prune_key_budget_boosts", None)
+                    if callable(prune) and key is not None:
+                        expired = prune(key.key_id)
+                        if expired:
+                            from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                            audit_log_from_settings(resolved).record(
+                                actor="gateway",
+                                role="system",
+                                action="budget.boost.expire",
+                                detail={
+                                    "scope": "key",
+                                    "key_id": key.key_id,
+                                    "expired": expired,
+                                },
+                            )
+                            # Refresh key so budget_status sees pruned metadata.
+                            refreshed = (
+                                store.get_key(key.key_id)
+                                if hasattr(store, "get_key")
+                                else None
+                            )
+                            if refreshed is not None:
+                                key = refreshed
+                                claims.virtual_key = refreshed
                     team = store.get_team(key.team_id) if key is not None else None
                     team_ids = store.team_client_ids(team.team_id) if team is not None else []
                     statuses = budget_status(

@@ -366,6 +366,138 @@ def keys_list() -> None:
         typer.echo(f"  budget: {', '.join(parts)}")
 
 
+@keys_app.command("show")
+def keys_show(key_id: str = typer.Argument(..., help="key_id from `daari keys list`")) -> None:
+    """Show one virtual key, including active temporary budget boosts (#936)."""
+    from daari.auth.budgets import active_budget_boosts, budget_status
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+    from daari.observability.usage import UsageLedger
+
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    key = store.get_key(key_id) if hasattr(store, "get_key") else None
+    if key is None:
+        key = next((item for item in store.list() if item.key_id == key_id), None)
+    if key is None:
+        typer.echo(f"No key {key_id}", err=True)
+        raise typer.Exit(code=1)
+    team = store.get_team(key.team_id) if key.team_id else None
+    typer.echo(f"key_id:  {key.key_id}")
+    typer.echo(f"name:    {key.name}")
+    typer.echo(f"prefix:  {key.prefix}…")
+    typer.echo(f"status:  {key.status()}")
+    typer.echo(f"team:    {key.team_name or key.team_id or '-'}")
+    windows = key.budget_windows or ()
+    if windows:
+        parts = []
+        for window in windows:
+            bit = f"{window.duration}=${window.max_usd:.2f}"
+            if window.max_requests:
+                bit += f"/req={window.max_requests}"
+            parts.append(bit)
+        typer.echo(f"windows: {', '.join(parts)}")
+    boosts = active_budget_boosts(key.metadata)
+    if boosts:
+        typer.echo("boosts:")
+        for boost in boosts:
+            usd = float(boost.get("usd") or 0)
+            reqs = int(boost.get("requests") or 0)
+            typer.echo(
+                f"  - id={boost.get('id')} usd=+{usd:.2f} requests=+{reqs} until={boost.get('until')}"
+            )
+    else:
+        typer.echo("boosts:  (none)")
+    ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
+    if ledger.enabled:
+        client_id = key.client_id or key.key_id
+        team_ids = store.team_client_ids(team.team_id) if team is not None else []
+        try:
+            statuses = budget_status(
+                key, team, ledger, client_id=client_id, team_client_ids=team_ids
+            )
+        except Exception:
+            statuses = []
+        for status in statuses:
+            if status.quota == "requests":
+                typer.echo(
+                    f"  spend:  req {int(status.spend)}/{int(status.limit)} ({status.window.duration})"
+                )
+            else:
+                typer.echo(
+                    f"  spend:  ${status.spend:.2f}/${status.limit:.2f} ({status.window.duration})"
+                )
+
+
+@keys_app.command("budget-boost")
+def keys_budget_boost(
+    key_id: str = typer.Argument(..., help="key_id from `daari keys list`"),
+    usd: float = typer.Option(0.0, "--usd", help="Temporary USD increase on active windows"),
+    requests: int = typer.Option(0, "--requests", help="Temporary request-quota increase"),
+    until: str = typer.Option(..., "--until", help="ISO-8601 expiry (UTC); evaluated at check time"),
+) -> None:
+    """Grant an audited, auto-expiring temporary budget increase (#936)."""
+    import os
+
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    try:
+        boost = store.grant_budget_boost(key_id, usd=usd, requests=requests, until=until)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    if boost is None:
+        typer.echo(f"No active key {key_id}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"key_id: {key_id}")
+    typer.echo(f"boost:  id={boost['id']} usd=+{boost['usd']:.2f} until={boost['until']}")
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="budget.boost.grant",
+        detail={"scope": "key", "key_id": key_id, **boost},
+    )
+
+
+@keys_app.command("team-budget-boost")
+def keys_team_budget_boost(
+    team: str = typer.Argument(..., help="Team name or team_id"),
+    usd: float = typer.Option(0.0, "--usd", help="Temporary USD increase on team windows"),
+    requests: int = typer.Option(0, "--requests", help="Temporary request-quota increase"),
+    until: str = typer.Option(..., "--until", help="ISO-8601 expiry (UTC)"),
+) -> None:
+    """Grant a temporary team-scoped budget increase (#936)."""
+    import os
+
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+    settings = get_settings()
+    store = virtual_key_store_from_settings(settings)
+    row = store.get_team(team) or store.get_team(name=team)
+    if row is None:
+        typer.echo(f"No team {team}", err=True)
+        raise typer.Exit(code=1)
+    try:
+        boost = store.grant_team_budget_boost(
+            row.team_id, usd=usd, requests=requests, until=until
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    if boost is None:
+        typer.echo(f"No team {team}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"team:  {row.name} ({row.team_id})")
+    typer.echo(f"boost: id={boost['id']} usd=+{boost['usd']:.2f} until={boost['until']}")
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="budget.boost.grant",
+        detail={"scope": "team", "team_id": row.team_id, "team": row.name, **boost},
+    )
+
+
 @keys_app.command("revoke")
 def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys list`")) -> None:
     """Revoke a virtual key immediately."""
