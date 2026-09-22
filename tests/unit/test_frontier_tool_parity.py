@@ -160,7 +160,7 @@ async def test_openai_gateway_relays_frontier_tool_calls(tmp_path):
     from daari.cache.exact import ExactCache
     from daari.cache.semantic import SemanticCache
     from daari.observability.metrics import Metrics
-    from daari.router.router import OllamaExecutor, Router
+    from daari.router.router import OllamaExecutor
     from tests.conftest import NoopEmbedder
 
     class _LocalIdk(OllamaExecutor):

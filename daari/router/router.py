@@ -3188,7 +3188,6 @@ class Router:
                         yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
                         latency_ms = int((time.perf_counter() - stream_started) * 1000)
                         record_served(served, latency_ms)
-                        finish_trace(served.daari_meta.tier)
                         return
                 scanner = self._incremental_output_scanner()
                 if scanner is not None and served.content == streamed_text:
