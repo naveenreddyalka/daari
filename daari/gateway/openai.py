@@ -775,6 +775,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             include_usage = bool(body.stream_options and body.stream_options.get("include_usage"))
             client_host = request.client.host if request.client else "unknown"
             user_agent = request.headers.get("user-agent", "")
+            from daari.gateway.request_id import resolve_request_id
+
+            request_id = getattr(request.state, "request_id", None) or resolve_request_id(
+                request.headers
+            )
             # T5b / #421: explicit header wins; otherwise attribute agent
             # traffic by user-agent so per-client reports and classify_user_turn
             # shortcuts work with zero config.
@@ -793,6 +798,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "message_count": len(body.messages),
                     "roles": [message.role for message in body.messages],
                     "tools": len(body.tools or []),
+                    "request_id": request_id,
                 },
             )
 
@@ -812,6 +818,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 rerun_command=x_daari_rerun_command == "true",
                 stream_include_usage=include_usage,
                 boundary_profile=boundary_profile,
+                request_id=request_id,
             )
             apply_cost_tier(body, meta)
             # Virtual-key defaults (issue #111); headers keep precedence.
@@ -907,7 +914,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 return DeferredHeadersStreamingResponse(
                     event_stream(),
                     media_type="text/event-stream",
-                    headers=OPENAI_SSE_HEADERS,
+                    headers={**OPENAI_SSE_HEADERS, "X-Request-ID": request_id},
                     late_headers=outcome.headers,
                 )
 
@@ -972,14 +979,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
             return JSONResponse(
                 payload,
-                headers=response_cost_headers(
-                    result.daari_meta,
-                    ctx.settings,
-                    prompt_chars=prompt_chars,
-                    completion_chars=len(result.content or ""),
-                    session_id=internal.meta.session_id,
-                    savings=ctx.router.session_savings,
-                ),
+                headers={
+                    **response_cost_headers(
+                        result.daari_meta,
+                        ctx.settings,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(result.content or ""),
+                        session_id=internal.meta.session_id,
+                        savings=ctx.router.session_savings,
+                    ),
+                    "X-Request-ID": request_id,
+                },
             )
 
         @router.post("/v1/audio/transcriptions", response_model=None)
