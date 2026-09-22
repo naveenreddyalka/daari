@@ -3984,6 +3984,15 @@ Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
 `test_helm_chart.py`.
 
 
+### Lifetime spend caps and temporary budget boosts ([#936](https://github.com/naveenreddyalka/daari/issues/936))
+
+<!-- tracking:#936 -->
+**Status:** Done (2026-09-22). `BudgetWindow` accepts `lifetime`/`total` (all-time
+ledger sum, no rollover); `daari keys budget-boost` / `team-budget-boost` grant
+audited auto-expiring increases; `daari keys show` lists active boosts; expiry
+audited at enforcement. Covered by `tests/unit/test_lifetime_budget_boosts.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
