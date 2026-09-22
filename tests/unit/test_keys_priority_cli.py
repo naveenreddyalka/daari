@@ -48,7 +48,8 @@ def test_cli_team_create_priority(tmp_path, monkeypatch):
 
 
 def test_cli_help_documents_priority():
-    runner = CliRunner()
+    # Wide, plain output: Rich wraps option names at 80 columns on CI.
+    runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "120"})
     create_help = runner.invoke(cli_app, ["keys", "create", "--help"])
     assert create_help.exit_code == 0
     assert "--priority" in create_help.output
