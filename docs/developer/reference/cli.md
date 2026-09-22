@@ -51,6 +51,7 @@ Entry point: `daari` (Typer).
 |-------|----------|
 | `context` | `clear` |
 | `cache` | `prune`, `invalidate` (`--model`, `--hash`, `--team`, `--key`, `--token` for SSO/master Bearer when calling a running daemon) |
+| `models` | `warm` (preload configured L3–L5 + embed into Ollama) |
 | `learn` | `stats`, `export-stats`, `propose-defaults`, `examples`, `export-dataset`, `train-router`, `finetune`, `deploy`, `recommend` |
 | `org-cache` | `serve` |
 | `org-learning` | `stats`, `sync`, `export` |

@@ -3704,6 +3704,13 @@ apply virtual-key `cache_scope` / `key_id` / `team_id` to embed L0 keys so
 scoped tenants do not share vectors; `daari cache invalidate --key/--team`
 removes those entries. Covered by `tests/unit/test_embeddings.py`.
 
+### CLI models warm preload ([#843](https://github.com/naveenreddyalka/daari/issues/843))
+
+<!-- tracking:#843 -->
+**Status:** Done (2026-09-20). `daari models warm` loads configured L3–L5 and
+the embed model via Ollama generate/embeddings; `onboard --warm` runs it after
+pull; doctor optional `warm_models` hints when the daemon is up but `/api/ps`
+is cold. Covered by `tests/unit/test_models_warm.py`.
 ### Opt-in frontier failover when local pool is down ([#846](https://github.com/naveenreddyalka/daari/issues/846))
 
 <!-- tracking:#846 -->
