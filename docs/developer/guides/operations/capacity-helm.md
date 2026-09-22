@@ -10,6 +10,7 @@
 | Redis | ~200–400 MB / 100k cache entries |
 | Postgres | ~1 KB/row ledger/traces; retain 30–90 days |
 | HPA | CPU 70%; optional KEDA request-rate scaler is off until you enable it |
+| Request body | `server.max_body_bytes` (default 10 MiB) returns 413 before buffering; see [SECURITY.md](../../../../SECURITY.md). Override with `DAARI_SERVER__MAX_BODY_BYTES`. |
 
 Redis is an accelerator, not a single point of failure: set `cache.backend: redis` for shared L0/L1 and fleet-wide RPM/TPM counters, but expect a Redis outage to degrade rate limiting to per-replica SQLite (or `rate_limit.fail_open`) and mark `/ready` as `degraded` with HTTP 200 while the gateway keeps serving. Tune `cache.redis_timeout_seconds` (default 2s). Details: [Auth and keys](../configuration/auth-and-keys.md#redis-outage-semantics-fleet).
 

@@ -19,10 +19,21 @@ daari web-ui serve --api-base-url http://127.0.0.1:11535
 
 When the daemon has `server.api_key` (or virtual keys / SSO JWT), paste the Bearer token into the **API key / Bearer** field in the toolbar — it is stored in `localStorage` and sent on all dashboard and config-editor requests.
 
+Cross-origin note: the web-ui origin (`http://127.0.0.1:11437`) is separate from the gateway (`:11435`). With a Bearer key set, browsers send credentialed cross-origin requests — configure the gateway allowlist:
+
+```yaml
+server:
+  cors_origins:
+    - http://127.0.0.1:11437
+```
+
+See [SECURITY.md](../../SECURITY.md#cors-and-security-headers) for native CORS vs reverse-proxy TLS/CORS.
+
 ## What it shows
 
 - `GET /v1/daari/stats` summary (`total_requests`, `errors`, `soft_warnings`, `rejects`, `backend_summary`)
 - Soft warnings and hard rejects by kind (pre-cliff / cliff counters)
+- MCP tool outcomes (`stats.mcp_tool_calls`) and task status counts (`stats.mcp_tasks`)
 - Local pool backends table (`id`, healthy, circuit, outstanding from `stats.backends`) plus `backend_summary` counts (total / healthy / unhealthy / open_circuit)
 - Tier breakdown table (`count`, `p50_ms`, `p95_ms` from latency histograms on `/v1/daari/stats`)
 - Tier count bar chart for quick visual distribution

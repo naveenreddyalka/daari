@@ -5,6 +5,8 @@ configured integrations).
 
 daari speaks JSON-RPC 2.0 at `POST /mcp` over streamable HTTP. When `server.api_key`
 is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
+`GET /v1/daari/stats` (and `daari web-ui serve`) expose `mcp_tool_calls` outcome
+counts and an `mcp_tasks` status summary for local ops without Prometheus.
 
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with
