@@ -4007,6 +4007,12 @@ audited at enforcement. Covered by `tests/unit/test_lifetime_budget_boosts.py`.
 forwarded in `openai_payload()` / cache fingerprint; local `unsupported_locally`
 notes. Covered by `tests/unit/test_sampling_params.py`.
 
+### Skip rate-limit body buffer on safe HTTP methods ([#939](https://github.com/naveenreddyalka/daari/issues/939))
+
+<!-- tracking:#939 -->
+**Status:** Done (2026-09-22). GET/HEAD/OPTIONS skip `request.body()` (TPM=0);
+POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
+
 
 ## How to update
 
