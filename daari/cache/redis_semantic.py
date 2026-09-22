@@ -10,7 +10,7 @@ import hashlib
 import json
 from typing import Any, Callable
 
-from daari.cache.semantic import Embedder, SemanticCache, semantic_context_key
+from daari.cache.semantic import Embedder, SemanticCache
 from daari.gateway.internal import InternalRequest, InternalResponse
 
 
