@@ -4106,6 +4106,20 @@ drains open `autodev/*` PRs (update-branch → wait → `gh pr merge --squash`;
 resolve `DIRTY` conflicts) in priority order before picking new work. Covered
 by `test_apply_sweep_survives_label_edit_failure` and
 `test_workflow_drains_stuck_prs_before_picking`.
+### Reuse pooled httpx.AsyncClient across upstream hops ([#971](https://github.com/naveenreddyalka/daari/issues/971))
+
+<!-- tracking:#971 -->
+**Status:** Done (2026-09-22). Ollama, OpenAI-compat, MLX, frontier, embedder,
+TTS, and ASR reuse a long-lived `httpx.AsyncClient` with configurable
+`upstream.pool_max_connections` / `upstream.pool_keepalive_connections`;
+per-request timeouts unchanged. Covered by `tests/unit/test_http_pool.py`.
+
+### Forward X-Request-ID on all upstream hops ([#977](https://github.com/naveenreddyalka/daari/issues/977))
+
+<!-- tracking:#977 -->
+**Status:** Done (2026-09-22). Middleware binds the resolved id; `inject_trace_headers`
+forwards `X-Request-ID` on Ollama, OpenAI-compat, MLX, frontier, ASR, TTS,
+embeddings, and MCP egress. Covered by `tests/unit/test_request_id.py`.
 
 
 ## How to update

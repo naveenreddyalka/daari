@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
 import httpx
@@ -36,6 +36,24 @@ class MLXExecutor:
     timeout: float = 120.0
     retry: RetryPolicy | None = None
     metrics: Any = None
+    pool_limits: Any = None
+    _http: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None or getattr(self._http, "is_closed", False):
+            from daari.router.http_pool import PoolLimits, build_async_client
+
+            self._http = build_async_client(
+                httpx,
+                base_url=self.base_url,
+                limits=self.pool_limits or PoolLimits(),
+            )
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None and not getattr(self._http, "is_closed", True):
+            await self._http.aclose()
+        self._http = None
 
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
@@ -94,19 +112,17 @@ class MLXExecutor:
         async def attempt() -> dict[str, Any]:
             from daari.observability.otel import inject_trace_headers
 
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=timeout
-            ) as client:
-                response = await client.post(
-                    "/v1/chat/completions",
-                    json=payload,
-                    headers=inject_trace_headers(),
+            response = await self._client().post(
+                "/v1/chat/completions",
+                json=payload,
+                headers=inject_trace_headers(),
+                timeout=timeout,
+            )
+            if response.status_code >= 400:
+                raise MLXRequestError(
+                    response.status_code, str(response.request.url), response.text
                 )
-                if response.status_code >= 400:
-                    raise MLXRequestError(
-                        response.status_code, str(response.request.url), response.text
-                    )
-                return response.json()
+            return response.json()
 
         data = await run_upstream(
             attempt,
@@ -140,35 +156,35 @@ class MLXExecutor:
         )
 
         guard_upstream(self.tier)
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            async with deadline_bounded_stream(
-                client,
-                "POST",
-                "/v1/chat/completions",
-                json=payload,
-                headers=inject_trace_headers(),
-            ) as response:
-                if response.status_code >= 400:
-                    body = (await response.aread()).decode("utf-8", errors="replace")
-                    raise MLXRequestError(response.status_code, str(response.request.url), body)
-                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[len("data:") :].strip()
-                    if data == "[DONE]":
-                        yield {"message": {"role": "assistant", "content": ""}, "done": True}
-                        return
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    choice = (chunk.get("choices") or [{}])[0]
-                    delta = choice.get("delta") or {}
-                    message: dict[str, Any] = {
-                        "role": "assistant",
-                        "content": delta.get("content") or "",
-                    }
-                    if delta.get("tool_calls"):
-                        message["tool_calls"] = delta["tool_calls"]
-                    yield {"message": message, "done": False}
+        async with deadline_bounded_stream(
+            self._client(),
+            "POST",
+            "/v1/chat/completions",
+            json=payload,
+            headers=inject_trace_headers(),
+            timeout=self.timeout,
+        ) as response:
+            if response.status_code >= 400:
+                body = (await response.aread()).decode("utf-8", errors="replace")
+                raise MLXRequestError(response.status_code, str(response.request.url), body)
+            async for line in aiter_with_ttft_deadline(response.aiter_lines()):
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if data == "[DONE]":
+                    yield {"message": {"role": "assistant", "content": ""}, "done": True}
+                    return
+                try:
+                    chunk = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                choice = (chunk.get("choices") or [{}])[0]
+                delta = choice.get("delta") or {}
+                message: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": delta.get("content") or "",
+                }
+                if delta.get("tool_calls"):
+                    message["tool_calls"] = delta["tool_calls"]
+                yield {"message": message, "done": False}
         yield {"message": {"role": "assistant", "content": ""}, "done": True}
