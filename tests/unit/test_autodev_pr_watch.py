@@ -306,6 +306,31 @@ def test_apply_sweep_removes_label_once(watch):
     assert len(commented) == 1
 
 
+def test_apply_sweep_survives_label_edit_failure(watch):
+    """PAT without label permissions must not abort the whole watcher run (#983)."""
+    import subprocess
+
+    attempted: list[int] = []
+    commented: list[int] = []
+
+    def failing_remove(number: int) -> None:
+        attempted.append(number)
+        raise subprocess.CalledProcessError(1, ["gh", "issue", "edit", str(number)])
+
+    swept = watch.apply_sweep(
+        [_issue(), _issue(number=177)],
+        open_prs=[],
+        now=NOW,
+        ttl_hours=24,
+        remove_label=failing_remove,
+        comment=lambda n, _body: commented.append(n),
+        list_comments=lambda _n: [],
+    )
+    assert attempted == [176, 177]
+    assert commented == [176, 177]
+    assert swept == []
+
+
 def test_apply_alerts_once(watch):
     commented: list[tuple[int, str]] = []
     issues: list[tuple[str, str]] = []

@@ -15,6 +15,14 @@ Ready-to-create Cursor Automation. To create: open the Agents Window, run the au
 ```
 You are working in naveenreddyalka/daari. Read AGENTS.md at the repo root and follow it exactly.
 
+0. Drain first. List open PRs on autodev/* branches with auto-merge enabled and
+   handle them in issue priority order before picking anything new:
+   - BEHIND / BLOCKED with green checks: gh pr update-branch, wait for the
+     test check, then gh pr merge --squash yourself (main moves too fast for
+     auto-merge to win the up-to-date race).
+   - DIRTY (conflicting): check out, merge origin/main, resolve (keep both
+     docs/TRACKING.md ### sections), run the default suite, push, then merge.
+   - Genuinely red or unresolvable in 15 min: comment findings on the PR, move on.
 1. List open issues labeled auto-dev that do NOT have the agent:working label and no open linked PR:
    gh issue list --label auto-dev --state open --json number,title,labels
    Pick the highest priority (P1 > P2 > P3, then lowest issue number). If none,
@@ -39,6 +47,15 @@ You are working in naveenreddyalka/daari. Read AGENTS.md at the repo root and fo
 
 Hard limits from AGENTS.md apply: no tags, no releases, no force-push, no new runtime deps, no workflow-file edits.
 ```
+
+## Why drain first
+
+Branch protection requires PRs to be up to date with `main`, and during a run
+`main` moves every few minutes. A PR the agent is not actively babysitting gets
+rebased by `scripts/autodev_pr_watch.py`, finishes CI, and is already `BEHIND`
+again — auto-merge never fires. Conflicted (`DIRTY`) PRs are worse: the watcher
+only resolves `docs/TRACKING.md`. Draining at the top of each run keeps
+higher-priority work from starving behind the run's own new PRs (#983).
 
 ## Why the time box
 
