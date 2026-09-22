@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from daari.auth.invalid_key_throttle import AuthThrottle, client_ip_from_request
-from daari.config.settings import Settings
+from daari.auth.invalid_key_throttle import AuthThrottle
 from daari.server.app import create_app
 from daari.router.router import AppContext
 from httpx import ASGITransport, AsyncClient
