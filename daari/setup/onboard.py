@@ -69,6 +69,8 @@ def run_onboard(
     doctor_fn: Callable[..., list] | None = None,
     start_serve: bool = False,
     serve_fn: Callable[[], bool] | None = None,
+    warm: bool = False,
+    warm_fn: Callable[..., list] | None = None,
 ) -> OnboardReport:
     cfg = settings or Settings.load()
     report = OnboardReport()
@@ -125,6 +127,23 @@ def run_onboard(
                         detail=f"failed — run: ollama pull {model}",
                     )
                 )
+
+    if warm and available is not None:
+        from daari.setup.models import warm_configured_models
+
+        do_warm = warm_fn or (
+            lambda: warm_configured_models(cfg, client=httpx_client)
+        )
+        for result in do_warm():
+            report.steps.append(
+                OnboardStep(
+                    name=f"warm:{result.model}",
+                    ok=result.ok,
+                    detail=result.detail,
+                )
+            )
+            if not result.ok:
+                pulls_ok = False
 
     doctor_ok = True
     if run_doctor:

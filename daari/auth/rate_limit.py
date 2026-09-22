@@ -672,6 +672,14 @@ def request_model(payload: dict[str, Any] | None) -> str:
     return "daari"
 
 
+# Safe methods never carry a JSON body worth buffering for TPM (#939).
+SAFE_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def should_buffer_body_for_rate_limit(method: str) -> bool:
+    return (method or "").upper() not in SAFE_HTTP_METHODS
+
+
 def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLimiter:
     rl = getattr(settings, "rate_limit", None)
     default_rpm = int(getattr(rl, "rpm", 0) or 0)

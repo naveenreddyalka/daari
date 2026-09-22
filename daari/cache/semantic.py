@@ -137,15 +137,35 @@ class OllamaEmbedder:
         timeout: float = 30.0,
         cache_size: int = 512,
         transport: httpx.AsyncBaseTransport | None = None,
+        pool_limits: Any = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
         self.cache_size = max(0, cache_size)
         self._transport = transport
+        self.pool_limits = pool_limits
+        self._http: httpx.AsyncClient | None = None
         # LRU keyed by (model, text hash); embeddings for identical text are
         # deterministic, so memoizing skips an HTTP round-trip per L1 lookup.
         self._memo: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None or getattr(self._http, "is_closed", False):
+            from daari.router.http_pool import PoolLimits, build_async_client
+
+            self._http = build_async_client(
+                httpx,
+                base_url=self.base_url,
+                limits=self.pool_limits or PoolLimits(),
+                transport=self._transport,
+            )
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None and not getattr(self._http, "is_closed", True):
+            await self._http.aclose()
+        self._http = None
 
     def _cache_key(self, text: str) -> tuple[str, str]:
         return (self.model, hashlib.sha256(text.encode("utf-8")).hexdigest())
@@ -207,27 +227,28 @@ class OllamaEmbedder:
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=timeout, transport=self._transport
-            ) as client:
-                response = await client.post(
-                    "/api/embed",
-                    json={"model": model, "input": texts},
-                )
-                if response.status_code == 404:
-                    return None
-                response.raise_for_status()
-                data = response.json()
-                embeddings = data.get("embeddings")
-                if not isinstance(embeddings, list) or len(embeddings) != len(texts):
-                    return [None] * len(texts)
-                parsed: list[list[float] | None] = []
-                for embedding in embeddings:
-                    if isinstance(embedding, list) and embedding:
-                        parsed.append([float(x) for x in embedding])
-                    else:
-                        parsed.append(None)
-                return parsed
+            from daari.observability.otel import inject_trace_headers
+
+            response = await self._client().post(
+                "/api/embed",
+                json={"model": model, "input": texts},
+                headers=inject_trace_headers(),
+                timeout=timeout,
+            )
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            data = response.json()
+            embeddings = data.get("embeddings")
+            if not isinstance(embeddings, list) or len(embeddings) != len(texts):
+                return [None] * len(texts)
+            parsed: list[list[float] | None] = []
+            for embedding in embeddings:
+                if isinstance(embedding, list) and embedding:
+                    parsed.append([float(x) for x in embedding])
+                else:
+                    parsed.append(None)
+            return parsed
         except (httpx.HTTPError, ValueError, TypeError):
             return [None] * len(texts)
 
@@ -236,18 +257,19 @@ class OllamaEmbedder:
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=timeout, transport=self._transport
-            ) as client:
-                response = await client.post(
-                    "/api/embeddings",
-                    json={"model": model, "prompt": text},
-                )
-                response.raise_for_status()
-                data = response.json()
-                embedding = data.get("embedding")
-                if isinstance(embedding, list) and embedding:
-                    return [float(x) for x in embedding]
+            from daari.observability.otel import inject_trace_headers
+
+            response = await self._client().post(
+                "/api/embeddings",
+                json={"model": model, "prompt": text},
+                headers=inject_trace_headers(),
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            embedding = data.get("embedding")
+            if isinstance(embedding, list) and embedding:
+                return [float(x) for x in embedding]
         except (httpx.HTTPError, ValueError, TypeError):
             return None
         return None

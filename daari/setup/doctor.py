@@ -35,6 +35,7 @@ def run_doctor(
     httpx_client: httpx.Client | None = None,
     tunnel_url: str | None = None,
     cursor_configured: bool | None = None,
+    strict: bool = False,
 ) -> list[CheckResult]:
     """Run health checks. Returns list of results (required + optional)."""
     results: list[CheckResult] = []
@@ -52,6 +53,7 @@ def run_doctor(
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
+    results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -68,10 +70,12 @@ def run_doctor(
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
+    results.append(_check_store_migrate(cfg, strict=strict))
     daemon = _check_daemon(cfg, httpx_client)
     results.append(daemon)
     results.append(_check_ready(cfg, httpx_client, daemon_ok=daemon.ok))
     results.append(_check_metrics_auth(cfg, httpx_client, daemon_ok=daemon.ok))
+    results.append(_check_warm_models(cfg, httpx_client, daemon_ok=daemon.ok))
     if tunnel_url:
         results.append(_check_tunnel(tunnel_url, httpx_client))
 
@@ -459,6 +463,77 @@ def _check_daemon(
             name="daemon",
             ok=False,
             detail="not running (start with: daari serve)",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_warm_models(
+    settings: Settings,
+    client: httpx.Client | None,
+    *,
+    daemon_ok: bool,
+) -> CheckResult:
+    """Optional hint when daari is up but Ollama has no configured models loaded (#843)."""
+    if not daemon_ok:
+        return CheckResult(
+            name="warm_models",
+            ok=True,
+            detail="skipped (daemon not running)",
+            optional=True,
+        )
+    from daari.setup.models import configured_warm_models, model_present
+
+    wanted = configured_warm_models(settings)
+    if not wanted:
+        return CheckResult(
+            name="warm_models",
+            ok=True,
+            detail="no configured models",
+            optional=True,
+        )
+    url = f"{settings.ollama.base_url.rstrip('/')}/api/ps"
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    try:
+        response = http.get(url)
+        if response.status_code >= 400:
+            return CheckResult(
+                name="warm_models",
+                ok=True,
+                detail=f"/api/ps not checked (HTTP {response.status_code})",
+                optional=True,
+            )
+        models = response.json().get("models") or []
+        loaded = [
+            str(item.get("name") or item.get("model") or "")
+            for item in models
+            if isinstance(item, dict)
+        ]
+        loaded = [name for name in loaded if name]
+        if any(model_present(want, loaded) for want in wanted):
+            return CheckResult(
+                name="warm_models",
+                ok=True,
+                detail=f"loaded: {', '.join(loaded) or '(none)'}",
+                optional=True,
+            )
+        return CheckResult(
+            name="warm_models",
+            ok=False,
+            detail=(
+                "daemon up but no configured models in /api/ps — "
+                "run: daari models warm"
+            ),
+            optional=True,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="warm_models",
+            ok=True,
+            detail=f"/api/ps not checked ({exc})",
             optional=True,
         )
     finally:
@@ -1014,6 +1089,38 @@ def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
     return CheckResult(name="budget_webhook_secret", ok=True, detail=detail, optional=True)
 
 
+def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn when SQLite stores have pending additive migrations (#942)."""
+    from daari.setup.migrate import inspect_stores
+
+    try:
+        notes = inspect_stores(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="store_migrate",
+            ok=False,
+            detail=f"inspect failed: {exc}",
+            optional=not strict,
+        )
+    pending = [n for n in notes if n.status == "pending"]
+    if not pending:
+        return CheckResult(
+            name="store_migrate",
+            ok=True,
+            detail="no pending store migrations",
+            optional=not strict,
+        )
+    detail = (
+        "; ".join(f"{n.name}: {', '.join(n.pending)}" for n in pending) + " — run: daari migrate"
+    )
+    return CheckResult(
+        name="store_migrate",
+        ok=False,
+        detail=detail,
+        optional=not strict,
+    )
+
+
 def _check_helm_image_tag() -> CheckResult:
     """Optional: chart image.tag behind daari.__version__ when values.yaml is present (#478)."""
     from daari import __version__
@@ -1370,6 +1477,83 @@ def _check_tts(settings: Settings, client: httpx.Client | None) -> CheckResult:
         detail=f"unreachable at {base} (HTTP {response.status_code})",
         optional=True,
     )
+
+
+def _check_mcp_servers(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> list[CheckResult]:
+    """Probe each configured MCP egress URL (#963). Empty list → no rows."""
+    servers = list(settings.integrations.mcp_servers or [])
+    if not servers:
+        return []
+
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    rows: list[CheckResult] = []
+    try:
+        for server in servers:
+            sid = str(server.id or "").strip() or "unnamed"
+            base = str(server.url or "").strip().rstrip("/")
+            name = f"mcp:{sid}"
+            if not base:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=False,
+                        detail="url is empty",
+                        optional=True,
+                    )
+                )
+                continue
+            headers = {"Content-Type": "application/json", "Mcp-Method": "initialize"}
+            token = str(server.token or "").strip()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "daari-doctor", "version": "1"},
+                },
+            }
+            try:
+                response = http.post(base, json=payload, headers=headers)
+            except Exception as exc:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=False,
+                        detail=f"unreachable at {base}: {exc}",
+                        optional=True,
+                    )
+                )
+                continue
+            if 200 <= response.status_code < 300:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=True,
+                        detail=f"reachable at {base}",
+                        optional=True,
+                    )
+                )
+            else:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=False,
+                        detail=f"unreachable at {base} (HTTP {response.status_code})",
+                        optional=True,
+                    )
+                )
+    finally:
+        if own_client:
+            http.close()
+    return rows
 
 
 def _check_org_cache(

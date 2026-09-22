@@ -259,6 +259,7 @@ class TestExecutor:
             async for delta in executor.stream(
                 _request(), escalated_from="L3", local_confidence=0.2
             )
+            if isinstance(delta, str)
         ]
         assert "".join(deltas) == "Hello"
 
