@@ -91,6 +91,8 @@ class RequestMeta(BaseModel):
     # Client anthropic-beta / anthropic-version forwarded on the L6 Anthropic leg (#455).
     anthropic_beta: str | None = None
     anthropic_version: str | None = None
+    # Sanitized X-Request-ID (or generated) for spend/log correlation (#965).
+    request_id: str | None = None
 
 
 class InternalRequest(BaseModel):

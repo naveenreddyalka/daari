@@ -11,32 +11,31 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-21)
+## Where daari stands (verified in-tree, 2026-09-22)
 
-Morning's data-plane set (TLS/mTLS, body-size 413, frontier tool fidelity,
-401 throttle, lifetime budgets) is queued and untouched this run. Still
-queued from earlier: L1 embed-model cache versioning, `models warm`,
-Idempotency-Key (in flight), Helm TTS base URL, virtual-key admission
-priority CLI, plus a P3 docs/test tail.
+Second scan same day. Morning set (pooled httpx, whole-stream SSE keepalive,
+`stream_incomplete` + breaker, stream host failover, Postgres pool) is open in
+the `auto-dev` queue; X-Request-ID echo on chat, doctor MCP probe, and MCP
+egress client reuse already merged. Remaining older queue: admission-priority
+CLI, L1 embed versioning, Idempotency-Key, frontier tool parity / 401 throttle
+(open PRs), plus a P3 docs/test tail.
 
-**Outward (this run):** LiteLLM stable bar is **v1.102.0** (2026-09-19) —
-auto-router controls, native OCR default, PgBouncer/spend-collector
-reliability, MCP schema-discovery proxy, OTel HTTP/JSON export; **v1.103.0rc1**
-exists on PyPI (lifetime caps already filed this morning — watch for stable).
-Portkey enterprise line still **v2.23.x**-era (no fresh GA bump since last
-scan). Kong AI Gateway **2.0** GA (MCP bundling, modality cost, identity
-policies) unchanged. Ollama **v0.34.2** stable / **v0.34.3-rc1** still rc.
-vLLM **0.29.0**, OpenRouter quiet since 08-19.
+**Outward (this run):** no newer competitor cuts since the morning scan —
+**Portkey v2.24.0** (truncated-stream detection, per-attempt retry logs),
+**Kong AI Gateway 2.1.0** (MCP 2026-07-28 `ttlMs`/`cacheScope`, W3C on MCP
+tool calls, modality costs, CEL ACL), **vLLM 0.30.0** (engine internals).
+LiteLLM bar still **v1.102.0**; Ollama **v0.34.2**; OpenRouter quiet.
 
-**Inward theme: browser clients and agent SDK knobs still go dark.**
-`daari web-ui` is a separate origin hitting a key-gated API with no CORS and
-no security headers; rate-limit middleware buffers every GET body; agent SDKs
-send `parallel_tool_calls` / `logit_bias` / `top_logprobs` that
-`extra="ignore"` silently drops; MCP tool counters exist in metrics but never
-reach `/v1/daari/stats` or the web-ui; stores migrate on open with no
-operator `migrate` / schema skew guard. Verified fine, not filed: morning
-security findings remain accurate; local streams still relay tool-call
-deltas; `config validate` and secret redaction unchanged.
+**Inward theme: end-to-end correlation + modality resilience** (code-verified):
+`X-Request-ID` resolves+echoes on chat only — never forwarded on
+`inject_trace_headers()` upstream hops, and Anthropic / Responses / Ollama /
+embeddings / audio omit the response header; MCP `tools/list` negotiates
+2026-07-28 but emits no `_meta` cache hints (Kong 2.1.0 parity); ASR / TTS /
+embed HTTP skip `RetryPolicy`/`run_upstream` (chat path already has it);
+`content.py` extracts images but drops OpenAI `input_audio` blocks. Verified
+fine / already filed: pooled clients + stream fidelity (morning set); partial
+streams uncached; deadline/traceparent/OTLP; MCP 2026-07-28 negotiation;
+speech/ASR meter spend.
 
 ---
 
@@ -44,25 +43,29 @@ deltas; `config validate` and secret redaction unchanged.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **No CORS / security headers** — web-ui (11437) fetches key-gated API (11435) cross-origin; no `CORSMiddleware`, no `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` | 4 | 2 | Kong / LiteLLM (native CORS + header baselines) | Laptop dashboards talk to `127.0.0.1` with no nginx — one knob unblocks ops UI | File ([#938](https://github.com/naveenreddyalka/daari/issues/938)) |
-| 2 | **Rate-limit buffers every GET body** — middleware always `await request.body()` + JSON parse, including `/v1/models`, traces, report; distinct from any 413 size cap | 3 | 1 | Kong / nginx (header-only for safe methods) | Same box as Ollama — cheaper admission leaves RAM for local inference | File ([#939](https://github.com/naveenreddyalka/daari/issues/939)) |
-| 3 | **Agent sampling knobs silently dropped** — `parallel_tool_calls`, `logit_bias`, `top_logprobs` absent from `ChatCompletionRequest` / `openai_payload()`; `extra="ignore"` → 200 with no effect | 3 | 2 | LiteLLM (uniform passthrough) | Local warns in meta; frontier/OpenAI-compat forward so L3–L6 feel identical to SDKs | File ([#940](https://github.com/naveenreddyalka/daari/issues/940)) |
-| 4 | **MCP invisible on laptop stats** — `mcp_tool_calls` in metrics snapshot but omitted from `/v1/daari/stats`; no task list; web-ui has no MCP panel | 3 | 2 | Cloud gateways (MCP live in same console) | One `web-ui serve` shows deny/guardrail pressure without Grafana | File ([#941](https://github.com/naveenreddyalka/daari/issues/941)) |
-| 5 | **No `daari migrate` / schema skew guard** — stores migrate quietly on open; policy sync has no schema version; upgrade guide admits the gap | 3 | 3 | LiteLLM / cloud (versioned config claims) | Offline dry-run + doctor warn before a laptop-fleet skew bricks policy | File ([#942](https://github.com/naveenreddyalka/daari/issues/942)) |
-| 6 | **MCP session registry + force-close / MCP egress httpx reuse / doctor mcp_servers probe / `input_audio` chat blocks / moderations + rerank / OCR / Fuse / WIF / A2A / SOC 2 / admin UI** | 2–4 | 1–5 | LiteLLM / Kong / cloud | Session ops and chat-audio wait for a client ask; compliance deferred | Watch |
+| 1 | **`X-Request-ID` not forwarded upstream** — hops only get W3C `traceparent`; Ollama/frontier/ASR/TTS/embed/MCP never see the gateway id | 4 | 1 | Kong / Portkey (end-to-end correlation) | One box → one id through local + frontier logs without APM | File ([#977](https://github.com/naveenreddyalka/daari/issues/977)) |
+| 2 | **`X-Request-ID` echo missing on non-chat surfaces** — Anthropic, Responses, Ollama facade, embeddings, audio omit the response header | 3 | 1 | Portkey (all unified routes) | Cursor / Claude Code / JetBrains / ASR clients join spend rows to client traces | File ([#978](https://github.com/naveenreddyalka/daari/issues/978)) |
+| 3 | **MCP `tools/list` lacks `ttlMs`/`cacheScope`** — 2026-07-28 negotiated, result is bare `{"tools":…}`; Kong 2.1.0 emits cache hints | 3 | 2 | Kong AI Gateway 2.1.0 | Local catalogs change rarely — honest TTL cuts agent re-list churn | File ([#979](https://github.com/naveenreddyalka/daari/issues/979)) |
+| 4 | **ASR / TTS / embed skip gateway retry** — bare httpx; chat already uses `RetryPolicy`/`run_upstream` | 4 | 2 | LiteLLM / Portkey (uniform modality retry) | Local whisper/TTS/Ollama embed flaps should not 502 the IDE | File ([#980](https://github.com/naveenreddyalka/daari/issues/980)) |
+| 5 | **`input_audio` content blocks dropped** — `content.py` handles images only; voice-agent chat loses audio on local tiers | 3 | 2 | LiteLLM / cloud gateways | Optional local ASR inject keeps voice turns on-box | File ([#981](https://github.com/naveenreddyalka/daari/issues/981)) |
+| 6 | **Pooled httpx / whole-stream keepalive / `stream_incomplete`+breaker / stream host failover / Postgres pool** (morning set) / moderations+rerank / WIF / A2A / SOC 2 / admin UI | 2–5 | 1–5 | LiteLLM / Portkey / Kong / cloud | Data-plane set already queued; compliance waits for a paying ask | Watch / in flight |
 
-Pruned this run: morning data-plane rows stay queued as issues (not table
-rows). L1 embed versioning / models warm / Idempotency-Key remain queued.
+Pruned this run: morning data-plane rows move to watch/in-flight; 09-21 browser/ops rows stay shipped.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Encrypt + bound the data plane** — TLS/mTLS, body-size 413, 401 throttle (queued from morning).
-2. **Browser-safe ops surface** — CORS allowlist + default security headers so web-ui and IDE webviews work with keys.
-3. **Lossless agent SDK parity** — frontier tool fidelity (queued) plus sampling/tool-parallel passthrough.
-4. **MCP visible without Grafana** — stats + web-ui surface tool/task pressure; session registry later.
-5. **Upgrade without fear** — `daari migrate --dry-run` and policy schema skew guards for laptop fleets.
+1. **Correlation everywhere** — forward + echo `X-Request-ID` on every surface and
+   upstream hop so one request is one thread through logs and spend.
+2. **Pooled data plane** — shared upstream HTTP clients and Postgres pools
+   (morning backlog) make gateway overhead measurable.
+3. **Streams that never lie** — whole-stream keepalive, in-band truncation,
+   breaker feedback, pre-first-token host failover (morning backlog).
+4. **MCP catalog honesty** — `ttlMs`/`cacheScope` hints so agents cache
+   `tools/list` instead of re-listing every turn.
+5. **Modality parity** — ASR/TTS/embed retry + `input_audio` passthrough so
+   voice and embed paths match chat resilience.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay deferred.
 
@@ -70,29 +73,31 @@ Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay de
 
 ## Changelog
 
-- **2026-09-21 (browser/ops + agent SDK knobs)** — Second run today. Outward:
-  LiteLLM **v1.102.0** stable (auto-router, native OCR, gateway reliability);
-  **v1.103.0rc1** on PyPI (lifetime caps already queued). Portkey/Kong/Ollama/
-  vLLM flat vs morning. Inward (code-verified): no CORS/security headers,
-  rate-limit buffers GETs, three sampling fields silently dropped, MCP stats
-  missing from `/v1/daari/stats`+web-ui, no migrate/skew CLI. Filing five.
-  Morning data-plane five remain queued.
+- **2026-09-22b (correlation + modality resilience)** — No newer competitor
+  cuts since morning. Inward (code-verified): `X-Request-ID` chat-only echo
+  and never forwarded upstream; non-chat gateways omit response header; MCP
+  `tools/list` missing `ttlMs`/`cacheScope` despite 2026-07-28; ASR/TTS/embed
+  skip `RetryPolicy`; `input_audio` blocks dropped. Filing five. Morning
+  data-plane set remains open in the queue.
 
-- **2026-09-21 (data-plane hardening + lossless escalation)** — Yesterday's
-  five-row table drained overnight except L1 embed versioning and models
-  warm. Outward flat; only LiteLLM v1.103.0-rc.1 moved (config ownership,
-  Fuse routing, gateway hardening, lifetime caps — parity row filed; VS Code
-  provider extension noted). Inward security/client-compat audit
-  (code-verified): no TLS/mTLS, no body cap, no 401 throttle, frontier strips
-  tool-call deltas / `tool_choice` / `output_format`, no lifetime budgets.
-  Verified fine: tight open-path list, secret redaction, config validate,
-  local-stream tool deltas. Filing five.
+- **2026-09-22 (data-plane efficiency + stream truncation fidelity)** — Three
+  same-day competitor releases: **Portkey v2.24.0** (truncated-stream
+  detection, per-attempt retry logs), **Kong 2.1.0** (MCP 2026-07-28 + cache
+  hints, modality costs), **vLLM 0.30.0** (internals only). LiteLLM bar
+  v1.102.0 unchanged. Inward: per-request httpx clients, first-chunk-only SSE
+  keepalive, silent frontier stream truncation, no stream host failover,
+  Postgres connect-per-op. Filed five (pooled httpx → Postgres pool).
+
+- **2026-09-21 (two runs)** — Data-plane hardening + lossless escalation
+  (TLS/mTLS, body cap, 401 throttle, frontier tool parity, lifetime budgets),
+  then browser/ops + agent SDK knobs (CORS/security headers, safe-method
+  rate-limit skip, sampling passthrough, MCP stats, migrate/skew CLI).
+  LiteLLM v1.102.0 stable; v1.103.0-rc.1 lifetime caps queued.
 
 - **2026-09-20 (two runs)** — Governance secondary ingress (MCP route meta,
   batch limiter bypass, embed L0 scope, Helm auth knobs, model warm) then a
   resilience/modality delta (L1 embed versioning, all-local-down failover,
-  TTS, admission priority, OTLP logs). Outward: LiteLLM v1.102.0 on PyPI;
-  v1.103.0-rc.1 watch; Ollama 0.34.2 stable.
+  TTS, admission priority, OTLP logs). Ollama 0.34.2 stable.
 
 - **2026-09-19 (four runs)** — Embed/ASR measurement, cache tenancy +
   request lifecycle (tenant cache_scope, disconnect cancel, invalidation,

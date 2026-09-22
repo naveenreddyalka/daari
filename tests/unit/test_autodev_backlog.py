@@ -182,6 +182,18 @@ def test_workflow_time_boxes_loop_before_job_timeout():
     assert "exit 0" in dev_cycle.lower() or "exit cleanly" in dev_cycle.lower()
 
 
+def test_workflow_drains_stuck_prs_before_picking():
+    text = (REPO_ROOT / ".github" / "workflows" / "autodev.yml").read_text(encoding="utf-8")
+    prompt = text.split("dev-cycle:", 1)[1]
+    drain = prompt.lower().find("drain first")
+    pick = prompt.lower().find("pick the highest-priority")
+    assert drain != -1 and pick != -1 and drain < pick
+    assert "gh pr update-branch" in prompt
+    assert "gh pr merge" in prompt and "--squash" in prompt
+    assert "dirty" in prompt.lower()
+    assert "resolve" in prompt.lower()
+
+
 def test_prd_cycle_workflow_is_scheduled():
     path = REPO_ROOT / ".github" / "workflows" / "prd-cycle.yml"
     assert path.is_file()

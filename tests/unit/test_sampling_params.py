@@ -206,10 +206,15 @@ class TestParsingFromClientBody:
     def test_tool_choice_string_is_kept(self):
         assert SamplingParams.from_openai_body({"tool_choice": "none"}).tool_choice == "none"
 
-    def test_tool_choice_object_reads_as_required(self):
-        """`{"type": "function", ...}` names a specific function to force."""
+    def test_tool_choice_object_is_preserved(self):
+        """`{"type": "function", ...}` is kept so L6 can force that function (#934)."""
         body = {"tool_choice": {"type": "function", "function": {"name": "f"}}}
-        assert SamplingParams.from_openai_body(body).tool_choice == "required"
+        params = SamplingParams.from_openai_body(body)
+        assert params.tool_choice == {"type": "function", "function": {"name": "f"}}
+        assert params.openai_payload()["tool_choice"]["function"]["name"] == "f"
+
+    def test_tool_choice_required_reaches_openai_payload(self):
+        assert SamplingParams(tool_choice="required").openai_payload()["tool_choice"] == "required"
 
     def test_unknown_keys_are_ignored_without_error(self):
         assert SamplingParams.from_openai_body({"future_param": 1}) == SamplingParams()
@@ -312,3 +317,57 @@ class TestAnthropicBody:
 
     def test_top_k_splits_the_cache(self):
         assert SamplingParams(top_k=7).cache_fingerprint() != SamplingParams().cache_fingerprint()
+
+
+class TestAgentSdkSamplingKnobs:
+    """parallel_tool_calls / logit_bias / top_logprobs (#940)."""
+
+    def test_from_openai_body_parses_all_three(self):
+        params = SamplingParams.from_openai_body(
+            {
+                "parallel_tool_calls": False,
+                "logit_bias": {"42": -100, "7": 5.5},
+                "top_logprobs": 3,
+            }
+        )
+        assert params.parallel_tool_calls is False
+        assert params.logit_bias == {"42": -100.0, "7": 5.5}
+        assert params.top_logprobs == 3
+
+    def test_openai_payload_forwards_knobs(self):
+        payload = SamplingParams(
+            parallel_tool_calls=True,
+            logit_bias={"1": 2.0},
+            top_logprobs=5,
+        ).openai_payload()
+        assert payload["parallel_tool_calls"] is True
+        assert payload["logit_bias"] == {"1": 2.0}
+        assert payload["top_logprobs"] == 5
+
+    def test_unsupported_locally_notes(self):
+        notes = SamplingParams(
+            parallel_tool_calls=False,
+            logit_bias={"1": 1.0},
+            top_logprobs=2,
+        ).unsupported_locally()
+        assert any("parallel_tool_calls" in note for note in notes)
+        assert any("logit_bias" in note for note in notes)
+        assert any("top_logprobs" in note for note in notes)
+
+    def test_honored_fields_split_cache(self):
+        base = SamplingParams().cache_fingerprint()
+        assert SamplingParams(parallel_tool_calls=False).cache_fingerprint() != base
+        assert SamplingParams(logit_bias={"9": -1.0}).cache_fingerprint() != base
+        assert SamplingParams(top_logprobs=1).cache_fingerprint() != base
+
+    def test_malformed_shapes_are_dropped(self):
+        params = SamplingParams.from_openai_body(
+            {
+                "parallel_tool_calls": "yes",
+                "logit_bias": "nope",
+                "top_logprobs": True,
+            }
+        )
+        assert params.parallel_tool_calls is None
+        assert params.logit_bias is None
+        assert params.top_logprobs is None

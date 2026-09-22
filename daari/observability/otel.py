@@ -65,12 +65,18 @@ def reset_inbound_context(token: Any) -> None:
         pass
 
 
-def inject_trace_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
-    """Merge W3C ``traceparent`` / ``tracestate`` into *headers* when active.
+def inject_trace_headers(
+    headers: dict[str, str] | None = None,
+    *,
+    request_id: str | None = None,
+) -> dict[str, str]:
+    """Merge W3C ``traceparent`` / ``tracestate`` and ``X-Request-ID`` into *headers*.
 
     Uses the inbound context from :func:`extract_inbound_context` when set,
-    otherwise the currently active span. No-op when packages are missing or
-    no valid span context is available.
+    otherwise the currently active span. No-op for OTel when packages are
+    missing or no valid span context is available. ``X-Request-ID`` comes from
+    *request_id*, else the active :func:`~daari.gateway.request_id.current_request_id`
+    binding (#977).
     """
     out = dict(headers or {})
     try:
@@ -78,16 +84,27 @@ def inject_trace_headers(headers: dict[str, str] | None = None) -> dict[str, str
             TraceContextTextMapPropagator,
         )
     except ImportError:
-        return out
-    try:
-        propagator = TraceContextTextMapPropagator()
-        inbound = _inbound_context.get()
-        if inbound is not None:
-            propagator.inject(out, context=inbound)
-        else:
-            propagator.inject(out)
-    except Exception:
-        return out
+        TraceContextTextMapPropagator = None  # type: ignore[misc, assignment]
+    if TraceContextTextMapPropagator is not None:
+        try:
+            propagator = TraceContextTextMapPropagator()
+            inbound = _inbound_context.get()
+            if inbound is not None:
+                propagator.inject(out, context=inbound)
+            else:
+                propagator.inject(out)
+        except Exception:
+            pass
+    rid = request_id
+    if not rid:
+        try:
+            from daari.gateway.request_id import current_request_id
+
+            rid = current_request_id()
+        except Exception:
+            rid = None
+    if rid and not any(key.lower() == "x-request-id" for key in out):
+        out["X-Request-ID"] = rid
     return out
 
 
