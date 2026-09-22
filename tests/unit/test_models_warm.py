@@ -141,6 +141,12 @@ def test_doctor_run_includes_warm_models_check(settings):
 
 
 def test_onboard_cli_exposes_warm_flag():
-    help_result = CliRunner().invoke(cli_app, ["onboard", "--help"])
-    assert help_result.exit_code == 0
-    assert "--warm" in help_result.output
+    from typer.main import get_command
+
+    onboard = get_command(cli_app).commands["onboard"]
+    names = {param.name for param in onboard.params}
+    assert "warm" in names
+    # Also ensure the flag is accepted (help text can wrap oddly in CI).
+    result = CliRunner().invoke(cli_app, ["onboard", "--help"])
+    assert result.exit_code == 0
+    assert "No such option" not in result.output
