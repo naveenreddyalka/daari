@@ -8,7 +8,7 @@ from daari.cli.app import app as cli_app
 
 
 def test_report_help_documents_format_and_breakdown_flags() -> None:
-    result = CliRunner().invoke(cli_app, ["report", "--help"])
+    result = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "120"}).invoke(cli_app, ["report", "--help"])
     assert result.exit_code == 0
     text = result.output.lower()
     for needle in ("format", "by-client", "by-team", "by-user"):
