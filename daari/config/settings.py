@@ -66,6 +66,34 @@ class RateLimitSettings(BaseModel):
     )
 
 
+class TlsSettings(BaseModel):
+    """Native HTTPS / optional mTLS for ``daari serve`` (#932).
+
+    When ``cert_file`` and ``key_file`` are set, uvicorn serves HTTPS.
+    ``key_file`` (and the other paths) may be a filesystem path or a
+    ``secret://`` ref that resolves to PEM material. ``client_ca`` enables
+    mutual TLS (``ssl_cert_reqs=CERT_REQUIRED``).
+    """
+
+    cert_file: str = Field(
+        default="",
+        description="PEM certificate path (or secret:// ref). Env: DAARI_SERVER__TLS__CERT_FILE.",
+    )
+    key_file: str = Field(
+        default="",
+        description=(
+            "PEM private key path or secret:// ref. Env: DAARI_SERVER__TLS__KEY_FILE."
+        ),
+    )
+    client_ca: str = Field(
+        default="",
+        description=(
+            "Optional client CA path/ref; when set, require a valid client cert "
+            "(mTLS). Env: DAARI_SERVER__TLS__CLIENT_CA."
+        ),
+    )
+
+
 class ServerSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 11435
@@ -75,6 +103,17 @@ class ServerSettings(BaseModel):
     # A list is an overlap set for rotation (#711): any entry is accepted.
     api_key: str | list[str] = ""
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
+    max_body_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=0,
+        description=(
+            "Hard cap on inbound request body size (#933). Oversized requests "
+            "return 413 before the body is buffered. 0 disables the cap. "
+            "File/audio upload routes may use a higher floor so "
+            "files.max_total_bytes still applies. Env: DAARI_SERVER__MAX_BODY_BYTES."
+        ),
+    )
+    tls: TlsSettings = Field(default_factory=TlsSettings)
     sse_keepalive_seconds: float = Field(
         default=10.0,
         ge=0.0,

@@ -142,6 +142,19 @@ orgPool:
 server:
   apiKeySecret: {}
 
+# Native TLS / optional mTLS for the container (#932). When enabled, mounts
+# tls.existingSecret at /etc/daari/tls (expects tls.crt + tls.key; optional
+# ca.crt for client mTLS) and sets DAARI_SERVER__TLS__* so uvicorn serves
+# HTTPS. Probes switch to scheme HTTPS. Prefer ingress TLS termination when
+# the cluster already has a cert-manager / ingress controller.
+tls:
+  enabled: false
+  existingSecret: ""
+  certFile: /etc/daari/tls/tls.crt
+  keyFile: /etc/daari/tls/tls.key
+  # Empty omits DAARI_SERVER__TLS__CLIENT_CA (no mTLS).
+  clientCAFile: ""
+
 # Global RPM/TPM caps (#842). When enabled with redis.enabled (or rateLimit.redisUrl),
 # fleet counters share Redis via cache.backend=redis. Without Redis, limits are
 # per-pod SQLite only — fine for replicaCount=1.

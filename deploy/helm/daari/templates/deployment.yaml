@@ -34,6 +34,7 @@ spec:
         - name: daari
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- $tls := .Values.tls | default dict }}
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -92,6 +93,16 @@ spec:
                 secretKeyRef:
                   name: {{ .name | quote }}
                   key: {{ .key | default "api-key" | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $tls.enabled }}
+            - name: DAARI_SERVER__TLS__CERT_FILE
+              value: {{ $tls.certFile | default "/etc/daari/tls/tls.crt" | quote }}
+            - name: DAARI_SERVER__TLS__KEY_FILE
+              value: {{ $tls.keyFile | default "/etc/daari/tls/tls.key" | quote }}
+            {{- if $tls.clientCAFile }}
+            - name: DAARI_SERVER__TLS__CLIENT_CA
+              value: {{ $tls.clientCAFile | quote }}
             {{- end }}
             {{- end }}
             {{- if .Values.rateLimit.enabled }}
@@ -181,16 +192,22 @@ spec:
               exec:
                 command: ["/bin/sh", "-c", "sleep {{ $preStop }}"]
           {{- end }}
+          {{- $probeScheme := "HTTP" }}
+          {{- if $tls.enabled }}
+          {{- $probeScheme = "HTTPS" }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.livenessPath }}
               port: http
+              scheme: {{ $probeScheme }}
             initialDelaySeconds: 10
             periodSeconds: 20
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readinessPath }}
               port: http
+              scheme: {{ $probeScheme }}
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
@@ -200,8 +217,18 @@ spec:
               mountPath: /home/daari/.daari
             - name: tmp
               mountPath: /tmp
+            {{- if and $tls.enabled $tls.existingSecret }}
+            - name: tls
+              mountPath: /etc/daari/tls
+              readOnly: true
+            {{- end }}
       volumes:
         - name: daari-home
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        {{- if and $tls.enabled $tls.existingSecret }}
+        - name: tls
+          secret:
+            secretName: {{ $tls.existingSecret | quote }}
+        {{- end }}

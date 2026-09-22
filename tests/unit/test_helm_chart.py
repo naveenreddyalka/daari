@@ -698,3 +698,40 @@ class TestHelmAuthRateLimitFrontier:
         assert "per-pod SQLite" in notes
         assert "Frontier enabled" in notes
         assert "DAARI_FRONTIER_API_KEY" in notes
+
+
+class TestHelmTls:
+    def test_defaults_omit_tls(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SERVER__TLS__CERT_FILE" not in rendered
+        assert "DAARI_SERVER__TLS__KEY_FILE" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["tls"]["enabled"] is False
+        assert values["tls"]["existingSecret"] == ""
+
+    def test_tls_existing_secret_mounts_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "tls.enabled=true",
+            "--set",
+            "tls.existingSecret=daari-tls",
+        )
+        assert "DAARI_SERVER__TLS__CERT_FILE" in rendered
+        assert "DAARI_SERVER__TLS__KEY_FILE" in rendered
+        assert 'secretName: "daari-tls"' in rendered or "secretName: daari-tls" in rendered
+        assert "/etc/daari/tls" in rendered
+        assert "scheme: HTTPS" in rendered
+
+    def test_tls_client_ca_sets_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "tls.enabled=true",
+            "--set",
+            "tls.existingSecret=daari-tls",
+            "--set",
+            "tls.clientCAFile=/etc/daari/tls/ca.crt",
+        )
+        assert re.search(
+            r"name: DAARI_SERVER__TLS__CLIENT_CA\s+value: \"/etc/daari/tls/ca.crt\"",
+            rendered,
+        )
