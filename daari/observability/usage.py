@@ -470,11 +470,13 @@ class UsageLedger:
 
         Virtual-key budgets must be charged to the key that caused the spend;
         billing them against global spend lets one key exhaust every other key.
-        `window` is `day` or `month`.
+        `window` is `day`, `month`, or `lifetime` (#936).
         """
         if not self.enabled or not client_id:
             return 0.0
-        if window == "month":
+        if window in {"lifetime", "total", "all"}:
+            where, params = "client_id = ?", (client_id,)
+        elif window == "month":
             where, params = "client_id = ? AND day LIKE ?", (
                 client_id,
                 (month or _today()[:7]) + "-%",
@@ -482,7 +484,7 @@ class UsageLedger:
         elif window == "day":
             where, params = "client_id = ? AND day = ?", (client_id, day or _today())
         else:
-            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
         return self._spend_for(
             where,
             params,
@@ -505,7 +507,9 @@ class UsageLedger:
         """USD one end-user spent on L6 under a virtual-key client id (#410)."""
         if not self.enabled or not client_id or not user_id:
             return 0.0
-        if window == "month":
+        if window in {"lifetime", "total", "all"}:
+            where, params = "client_id = ? AND user_id = ?", (client_id, user_id)
+        elif window == "month":
             where, params = "client_id = ? AND user_id = ? AND day LIKE ?", (
                 client_id,
                 user_id,
@@ -518,7 +522,7 @@ class UsageLedger:
                 day or _today(),
             )
         else:
-            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
         return self._spend_for(
             where,
             params,
@@ -560,7 +564,9 @@ class UsageLedger:
         """Billable requests for one client (``requests - cache_hits``) (#467)."""
         if not self.enabled or not client_id:
             return 0
-        if window == "month":
+        if window in {"lifetime", "total", "all"}:
+            where, params = "client_id = ?", (client_id,)
+        elif window == "month":
             where, params = "client_id = ? AND day LIKE ?", (
                 client_id,
                 (month or _today()[:7]) + "-%",
@@ -568,7 +574,7 @@ class UsageLedger:
         elif window == "day":
             where, params = "client_id = ? AND day = ?", (client_id, day or _today())
         else:
-            raise ValueError(f"window must be 'day' or 'month', got {window!r}")
+            raise ValueError(f"window must be 'day', 'month', or 'lifetime', got {window!r}")
         return self._request_count_for(where, params)
 
     def request_count_for_client_days(self, client_id: str, *, days: int) -> int:

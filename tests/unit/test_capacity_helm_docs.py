@@ -14,6 +14,20 @@ def test_capacity_helm_documents_tts_base_url() -> None:
     assert "DAARI_TTS__BASE_URL" in text
 
 
+def test_capacity_helm_documents_tts_model_and_voice() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "tts.model" in text
+    assert "tts.voice" in text
+    assert "DAARI_TTS__MODEL" in text
+    assert "DAARI_TTS__VOICE" in text
+
+
+def test_capacity_helm_documents_asr_model() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "asr.model" in text
+    assert "DAARI_ASR__MODEL" in text
+
+
 def test_capacity_helm_documents_local_pool_frontier_fallback() -> None:
     text = DOC.read_text(encoding="utf-8")
     assert "localPool.frontierFallback" in text

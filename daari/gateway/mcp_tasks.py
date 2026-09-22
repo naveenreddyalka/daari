@@ -162,6 +162,45 @@ class McpTaskStore:
                         pass
         return len(ids)
 
+    def snapshot(self) -> dict[str, int]:
+        """Status counts for /v1/daari/stats (#941). Merges memory + disk rows."""
+        counts: dict[str, int] = {
+            STATUS_WORKING: 0,
+            STATUS_INPUT_REQUIRED: 0,
+            STATUS_COMPLETED: 0,
+            STATUS_FAILED: 0,
+            STATUS_CANCELLED: 0,
+        }
+        seen: set[str] = set()
+        for task_id, task in self._tasks.items():
+            seen.add(task_id)
+            status = task.status if task.status in counts else STATUS_WORKING
+            counts[status] = counts.get(status, 0) + 1
+        if self._disk is not None:
+            for key in list(self._disk):
+                task_id = str(key)
+                if task_id in seen:
+                    continue
+                raw = self._disk.get(key)
+                if not isinstance(raw, dict):
+                    continue
+                status = str(raw.get("status") or STATUS_WORKING)
+                if status not in counts:
+                    status = STATUS_WORKING
+                counts[status] = counts.get(status, 0) + 1
+        counts["active"] = counts[STATUS_WORKING] + counts[STATUS_INPUT_REQUIRED]
+        counts["total"] = sum(
+            counts[s]
+            for s in (
+                STATUS_WORKING,
+                STATUS_INPUT_REQUIRED,
+                STATUS_COMPLETED,
+                STATUS_FAILED,
+                STATUS_CANCELLED,
+            )
+        )
+        return counts
+
     def _persist(self, task: McpTask) -> None:
         if self._disk is None:
             return

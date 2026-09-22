@@ -57,6 +57,88 @@ def pull_ollama_model(model: str) -> bool:
         return False
 
 
+@dataclass
+class WarmResult:
+    model: str
+    ok: bool
+    detail: str
+
+
+def configured_warm_models(settings: Settings) -> list[str]:
+    """Configured L3–L5 (when set) plus the L1 embed model, de-duplicated."""
+    names: list[str] = []
+    for attr in ("l3", "l4", "l5"):
+        value = getattr(settings.models, attr, None)
+        text = str(value or "").strip()
+        if text and text not in names:
+            names.append(text)
+    embed = str(getattr(settings.cache.l1, "embedding_model", None) or "").strip()
+    if embed and embed not in names:
+        names.append(embed)
+    return names
+
+
+def warm_ollama_model(
+    base_url: str,
+    model: str,
+    *,
+    embed_model: str | None = None,
+    client: httpx.Client | None = None,
+    timeout: float = 120.0,
+) -> WarmResult:
+    """Load one model into Ollama via a short generate or embed noop (#843)."""
+    url = base_url.rstrip("/")
+    own = client is None
+    http = client or httpx.Client(timeout=timeout)
+    is_embed = bool(embed_model) and (
+        model == embed_model or model.startswith(f"{embed_model}:")
+    )
+    try:
+        if is_embed:
+            response = http.post(
+                f"{url}/api/embeddings",
+                json={"model": model, "prompt": "daari-warm"},
+            )
+        else:
+            response = http.post(
+                f"{url}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": "hi",
+                    "stream": False,
+                    "keep_alive": "10m",
+                    "options": {"num_predict": 1},
+                },
+            )
+        if response.status_code >= 400:
+            return WarmResult(model=model, ok=False, detail=f"HTTP {response.status_code}")
+        return WarmResult(model=model, ok=True, detail="loaded")
+    except Exception as exc:  # noqa: BLE001 — report per-model failure
+        return WarmResult(model=model, ok=False, detail=str(exc)[:200])
+    finally:
+        if own:
+            http.close()
+
+
+def warm_configured_models(
+    settings: Settings,
+    *,
+    client: httpx.Client | None = None,
+    warm_fn: Any | None = None,
+) -> list[WarmResult]:
+    """Warm each configured tier + embed model; return per-model results."""
+    embed = str(settings.cache.l1.embedding_model or "").strip() or None
+    do_warm = warm_fn or (
+        lambda model: warm_ollama_model(
+            settings.ollama.base_url,
+            model,
+            embed_model=embed,
+            client=client,
+        )
+    )
+    return [do_warm(model) for model in configured_warm_models(settings)]
+
+
 def write_models_config(
     model: str | None = None,
     *,
