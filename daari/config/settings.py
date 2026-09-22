@@ -738,6 +738,20 @@ class UpstreamSettings(BaseModel):
         ),
     )
     retry: UpstreamRetrySettings = Field(default_factory=UpstreamRetrySettings)
+    pool_max_connections: int = Field(
+        default=100,
+        description=(
+            "Max concurrent connections across the shared upstream httpx pool "
+            "(Ollama, OpenAI-compat, MLX, frontier, embedder, TTS, ASR)."
+        ),
+    )
+    pool_keepalive_connections: int = Field(
+        default=20,
+        description=(
+            "Max idle keepalive connections retained in the shared upstream "
+            "httpx pool. Cuts TCP/TLS handshake cost on repeated local hops."
+        ),
+    )
 
 
 class ModelPrice(BaseModel):

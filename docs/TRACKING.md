@@ -4097,6 +4097,14 @@ spend ledger `request_id`. Covered by `tests/unit/test_request_id.py`.
 `tts.model` / `tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Reuse pooled httpx.AsyncClient across upstream hops ([#971](https://github.com/naveenreddyalka/daari/issues/971))
+
+<!-- tracking:#971 -->
+**Status:** Done (2026-09-22). Ollama, OpenAI-compat, MLX, frontier, embedder,
+TTS, and ASR reuse a long-lived `httpx.AsyncClient` with configurable
+`upstream.pool_max_connections` / `upstream.pool_keepalive_connections`;
+per-request timeouts unchanged. Covered by `tests/unit/test_http_pool.py`.
+
 
 ## How to update
 
