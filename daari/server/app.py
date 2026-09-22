@@ -13,6 +13,7 @@ from daari.auth.rate_limit import (
     estimate_audio_upload_tokens,
     estimate_request_tokens,
     request_model,
+    should_buffer_body_for_rate_limit,
 )
 from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 from daari.auth.virtual_keys import VirtualKeyStore
@@ -456,23 +457,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if limiter is None:
             return await call_next(request)
 
-        raw = await request.body()
         payload: dict = {}
-        if raw:
-            try:
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    payload = parsed
-            except json.JSONDecodeError:
-                payload = {}
-        model = request_model(payload)
-        tokens = estimate_request_tokens(payload)
-        if request.url.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
-            audio_tokens = estimate_audio_upload_tokens(
-                raw, request.headers.get("content-type", "")
-            )
-            if audio_tokens is not None:
-                tokens = audio_tokens
+        raw = b""
+        if should_buffer_body_for_rate_limit(request.method):
+            raw = await request.body()
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        payload = parsed
+                except json.JSONDecodeError:
+                    payload = {}
+            model = request_model(payload)
+            tokens = estimate_request_tokens(payload)
+            if request.url.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
+                audio_tokens = estimate_audio_upload_tokens(
+                    raw, request.headers.get("content-type", "")
+                )
+                if audio_tokens is not None:
+                    tokens = audio_tokens
+        else:
+            # GET/HEAD/OPTIONS: never buffer a body for TPM (#939).
+            model = "daari"
+            tokens = 0
         claims = getattr(request.state, "auth_claims", None)
         if claims is None:
             store = getattr(request.app.state, "virtual_key_store", None)

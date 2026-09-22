@@ -4000,6 +4000,12 @@ ledger sum, no rollover); `daari keys budget-boost` / `team-budget-boost` grant
 audited auto-expiring increases; `daari keys show` lists active boosts; expiry
 audited at enforcement. Covered by `tests/unit/test_lifetime_budget_boosts.py`.
 
+### Skip rate-limit body buffer on safe HTTP methods ([#939](https://github.com/naveenreddyalka/daari/issues/939))
+
+<!-- tracking:#939 -->
+**Status:** Done (2026-09-22). GET/HEAD/OPTIONS skip `request.body()` (TPM=0);
+POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
+
 
 ## How to update
 
