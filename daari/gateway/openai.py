@@ -1294,6 +1294,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "unhealthy": len(backends) - healthy,
                 "open_circuit": open_circuit,
             }
+            mcp_tasks: dict[str, int] = {}
+            store = getattr(ctx, "mcp_task_store", None)
+            if store is not None and hasattr(store, "snapshot"):
+                try:
+                    mcp_tasks = dict(store.snapshot() or {})
+                except Exception:
+                    mcp_tasks = {}
             return {
                 "total_requests": total,
                 "errors": full["errors"],
@@ -1304,6 +1311,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "rejects": full.get("rejects") or {},
                 "team_rate_limits": _stats_team_rate_limits(request),
                 "key_rate_limits": _stats_key_rate_limits(request),
+                "mcp_tool_calls": full.get("mcp_tool_calls") or {},
+                "mcp_tasks": mcp_tasks,
             }
 
         @router.get("/v1/daari/traces")
