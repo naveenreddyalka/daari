@@ -78,4 +78,20 @@ Frontier enabled: DAARI_FRONTIER__ENABLED=true.
 {{- end }}
 {{- end }}
 
+{{- $tls := .Values.tls | default dict }}
+{{- if $tls.enabled }}
+
+TLS enabled: DAARI_SERVER__TLS__CERT_FILE / KEY_FILE
+  {{- if $tls.existingSecret }}
+ from Secret {{ $tls.existingSecret }} (mounted at /etc/daari/tls).
+  {{- else }}
+ (set tls.existingSecret to mount tls.crt/tls.key, or inject the env paths yourself).
+  {{- end }}
+  {{- if $tls.clientCAFile }}
+  mTLS: DAARI_SERVER__TLS__CLIENT_CA={{ $tls.clientCAFile }}.
+  {{- end }}
+  Probes use scheme HTTPS. Prefer ingress TLS termination when the cluster
+  already terminates at the edge — see SECURITY.md.
+{{- end }}
+
 Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}

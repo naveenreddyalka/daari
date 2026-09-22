@@ -172,7 +172,7 @@ class Metrics:
             self.soft_warnings[kind] = self.soft_warnings.get(kind, 0) + 1
 
     def record_reject(self, kind: str) -> None:
-        """Hard 402/429 deny (budget, request_quota, or rate_limit, #551)."""
+        """Hard 402/429 deny (budget, request_quota, rate_limit, or body_too_large)."""
         with self._lock:
             self.rejects[kind] = self.rejects.get(kind, 0) + 1
 

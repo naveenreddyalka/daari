@@ -220,6 +220,19 @@ def asr_frontier_fallback_findings(settings: Any) -> list[str]:
     return []
 
 
+def local_pool_frontier_fallback_findings(settings: Any) -> list[str]:
+    """Cross-check ``routing.local_pool.frontier_fallback`` (#846)."""
+    pool = getattr(getattr(settings, "routing", None), "local_pool", None)
+    if pool is None or not bool(getattr(pool, "frontier_fallback", False)):
+        return []
+    frontier = getattr(settings, "frontier", None)
+    if frontier is None or not bool(getattr(frontier, "enabled", False)):
+        return [
+            "routing.local_pool.frontier_fallback is true but frontier.enabled is false"
+        ]
+    return []
+
+
 def config_findings(user: dict[str, Any], merged: dict[str, Any], model: type[BaseModel]) -> list[str]:
     """Unknown keys plus type / range errors. Used by `daari config validate`."""
     findings = [f"unknown key: {key}" for key in unknown_config_keys(user, model)]
@@ -239,4 +252,5 @@ def config_findings(user: dict[str, Any], merged: dict[str, Any], model: type[Ba
             findings.append(f"{where}: {err.get('msg', 'invalid')}")
     if settings is not None:
         findings.extend(asr_frontier_fallback_findings(settings))
+        findings.extend(local_pool_frontier_fallback_findings(settings))
     return findings

@@ -27,8 +27,14 @@ package `version` for upgrade/rollback discovery.
 | doctor `metrics_auth` | Optional: when the daemon answers, prometheus is on, and `server.api_key` is set — unauthenticated `GET /metrics` returning 401 means scrapers need Bearer / Helm `serviceMonitor.bearerTokenSecret` (or `observability.metrics_port`) |
 | doctor mlx | Optional backend misconfigured |
 | doctor `asr` | Optional: `asr.base_url` unreachable, or `asr.frontier_fallback` with frontier disabled / no API key. Empty ASR config is quiet (the route returns 501) |
+| doctor `tts` | Optional: `tts.base_url` unreachable. Empty TTS config is quiet (POST `/v1/audio/speech` returns 501) |
+| doctor `request_deadline` | Optional: `upstream.request_deadline_seconds` unset or `<= 0` — per-tier timeouts only; set a positive budget (or send `X-Daari-Deadline-Ms`) so escalation stops with 504 |
+| doctor `local_pool_frontier_fallback` | Optional: `routing.local_pool.frontier_fallback` true while `frontier.enabled` is false |
+
+| doctor `otlp_logs` | Optional: `observability.otlp_logs` true without `OTEL_EXPORTER_OTLP_ENDPOINT` — log export is a silent no-op |
 | doctor `fleet_artifacts` | Optional: fleet signals (`DAARI_FLEET_REPLICAS` > 1, `cache.backend=redis`, or `observability.backend=postgres`) with sqlite `batches` / `files` / `responses` / ledger / `enterprise.audit_backend` — split-brain, 404, or incomplete audit-export risk |
 | doctor `fleet_cache` | Optional: `DAARI_FLEET_REPLICAS` > 1 without `cache.backend=redis` — L0 / session pins / singleflight stay per-pod |
+| doctor `scoped_cache_fleet` | Optional: `DAARI_FLEET_REPLICAS` > 1 with `cache.backend` not `redis` and any virtual key/team `cache_scope` other than `global` — tenant L0/L1 stays per-pod |
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
 | doctor `budget_webhook_secret` | Optional: `alerts.budget_webhook_url` set without `alerts.budget_webhook_secret` — spoofable pages |
 | doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
