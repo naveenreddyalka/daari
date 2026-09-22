@@ -927,7 +927,9 @@ class Router:
         input_tokens, output_tokens, _ = response_token_usage(response, prompt_chars)
         self._open_spend_context(
             request,
-            response.daari_meta.trace_id or uuid.uuid4().hex[:16],
+            getattr(request.meta, "request_id", None)
+            or response.daari_meta.trace_id
+            or uuid.uuid4().hex[:16],
         )
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
