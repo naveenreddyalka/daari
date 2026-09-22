@@ -3110,6 +3110,12 @@ bullet; watch rows only. Docs-only.
 healthy / unhealthy / open_circuit) above the local pool backends table.
 Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Expand package-map observability for stats cliff maps ([#656](https://github.com/naveenreddyalka/daari/issues/656))
+
+<!-- tracking:#656 -->
+**Status:** Done (2026-09-18). `package-map.md` `observability/` row notes
+stats `soft_warnings` / `rejects` and `backend_summary` (link to traces-stats).
+
 ### Note stats tier p50/p95 in traces-stats ([#655](https://github.com/naveenreddyalka/daari/issues/655))
 
 <!-- tracking:#655 -->
@@ -3133,6 +3139,19 @@ includes `soft_warnings` / `rejects` and `backend_summary`.
 <!-- tracking:#663 -->
 **Status:** Done (2026-09-18). `metrics-prometheus.md` notes
 `backend_summary` on `GET /v1/daari/stats` (link to traces-stats).
+
+### Assert POST /introspect in architecture API table ([#665](https://github.com/naveenreddyalka/daari/issues/665))
+
+<!-- tracking:#665 -->
+**Status:** Done (2026-09-18). `tests/unit/test_architecture_introspect.py`
+asserts `docs/ARCHITECTURE.md` lists `POST /introspect` (RFC 7662).
+
+### Note agent_turn in traces-stats meta section ([#666](https://github.com/naveenreddyalka/daari/issues/666))
+
+<!-- tracking:#666 -->
+**Status:** Done (2026-09-18). `traces-stats.md` `daari_meta` list includes
+`agent_turn`.
+
 
 ### Cross-link backend_summary from savings-report ([#673](https://github.com/naveenreddyalka/daari/issues/673))
 
@@ -3173,12 +3192,19 @@ prose below the contiguous Series table in `metrics-prometheus.md`. Covered by
 **Status:** Done (2026-09-18). `cli.md` lists all top-level Typer commands;
 learn stale names removed; `route preview` documented. Covered by
 `tests/unit/test_cli_reference_catalog.py`.
+
 ### Regenerate http-api.md to include POST /introspect ([#680](https://github.com/naveenreddyalka/daari/issues/680))
 
 <!-- tracking:#680 -->
 **Status:** Done (2026-09-18). Committed `http-api.md` includes
 `| POST | /introspect |`; `test_gen_reference` asserts generator + on-disk.
 
+### Assert daari doctor --help mentions --suggest-models ([#683](https://github.com/naveenreddyalka/daari/issues/683))
+
+<!-- tracking:#683 -->
+**Status:** Done (2026-09-18). `daari doctor --help` contract test asserts
+`--suggest-models` appears in Typer help. Covered by
+`tests/unit/test_doctor_cli_help.py`.
 ### Note soft_warnings/rejects cliff maps in traces-stats ([#682](https://github.com/naveenreddyalka/daari/issues/682))
 
 <!-- tracking:#682 -->
