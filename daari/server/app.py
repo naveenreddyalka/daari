@@ -122,6 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.ctx.stop_backend_health()
             await app.state.ctx.stop_org_learning_sync()
             await app.state.ctx.stop_retention_sweep()
+            await app.state.ctx.aclose_upstream_clients()
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.state.virtual_key_store = vk_store

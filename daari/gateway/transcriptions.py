@@ -29,6 +29,24 @@ _UNAVAILABLE = (
     "frontier API key is set."
 )
 
+_http: httpx.AsyncClient | None = None
+
+
+def _shared_client() -> httpx.AsyncClient:
+    global _http
+    if _http is None or getattr(_http, "is_closed", False):
+        from daari.router.http_pool import build_async_client
+
+        _http = build_async_client(httpx)
+    return _http
+
+
+async def aclose_http() -> None:
+    global _http
+    if _http is not None and not getattr(_http, "is_closed", True):
+        await _http.aclose()
+    _http = None
+
 
 @dataclass(frozen=True)
 class AsrTarget:
@@ -106,8 +124,9 @@ async def post_transcription(
             content_type or "application/octet-stream",
         )
     }
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        return await client.post(url, headers=headers, data=form, files=files)
+    return await _shared_client().post(
+        url, headers=headers, data=form, files=files, timeout=timeout
+    )
 
 
 def _caller_client_id(request: Request) -> str | None:

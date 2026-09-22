@@ -425,7 +425,7 @@ async def test_frontier_injects_traceparent(monkeypatch):
         async def __aexit__(self, *a):
             return None
 
-        async def post(self, path, json=None, headers=None):
+        async def post(self, path, json=None, headers=None, **kwargs):
             seen.append(dict(headers or {}))
             return _Resp()
 
