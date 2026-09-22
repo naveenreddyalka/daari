@@ -6,7 +6,6 @@ import json
 from unittest.mock import patch
 
 import httpx
-import pytest
 from typer.testing import CliRunner
 
 from daari.cli.app import app as cli_app
