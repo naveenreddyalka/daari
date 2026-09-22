@@ -3983,6 +3983,14 @@ doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
 Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
 `test_helm_chart.py`.
 
+### CORS allowlist and default security headers ([#938](https://github.com/naveenreddyalka/daari/issues/938))
+
+<!-- tracking:#938 -->
+**Status:** Done (2026-09-22). `server.cors_origins` enablelist + OPTIONS 204;
+baseline `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`
+(toggle `security_headers`); Helm `corsOrigins` / `securityHeaders.enabled`;
+SECURITY.md + web-ui README. Covered by `tests/unit/test_cors_security_headers.py`.
+
 
 ## How to update
 
