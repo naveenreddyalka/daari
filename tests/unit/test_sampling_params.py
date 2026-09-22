@@ -206,10 +206,15 @@ class TestParsingFromClientBody:
     def test_tool_choice_string_is_kept(self):
         assert SamplingParams.from_openai_body({"tool_choice": "none"}).tool_choice == "none"
 
-    def test_tool_choice_object_reads_as_required(self):
-        """`{"type": "function", ...}` names a specific function to force."""
+    def test_tool_choice_object_is_preserved(self):
+        """`{"type": "function", ...}` is kept so L6 can force that function (#934)."""
         body = {"tool_choice": {"type": "function", "function": {"name": "f"}}}
-        assert SamplingParams.from_openai_body(body).tool_choice == "required"
+        params = SamplingParams.from_openai_body(body)
+        assert params.tool_choice == {"type": "function", "function": {"name": "f"}}
+        assert params.openai_payload()["tool_choice"]["function"]["name"] == "f"
+
+    def test_tool_choice_required_reaches_openai_payload(self):
+        assert SamplingParams(tool_choice="required").openai_payload()["tool_choice"] == "required"
 
     def test_unknown_keys_are_ignored_without_error(self):
         assert SamplingParams.from_openai_body({"future_param": 1}) == SamplingParams()

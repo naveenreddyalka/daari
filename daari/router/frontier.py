@@ -17,12 +17,41 @@ from daari.observability.tokens import openai_token_usage
 from daari.router.anthropic_messages import (
     anthropic_headers_for_request,
     anthropic_messages_path,
+    anthropic_tool_event_from_sse_data,
     infer_frontier_kind,
     text_delta_from_sse_data,
     text_from_anthropic_content,
     to_anthropic_payload,
 )
 from daari.router.retry import RetryPolicy, run_upstream
+
+
+# Stream events: plain str for text, or a dict tagged for tool-call relay (#934).
+FrontierStreamEvent = str | dict[str, Any]
+
+
+def _tool_calls_from_anthropic_content(content: Any) -> list[dict[str, Any]] | None:
+    """Convert Anthropic tool_use blocks to OpenAI-shaped tool_calls."""
+    if not isinstance(content, list):
+        return None
+    calls: list[dict[str, Any]] = []
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        arguments = block.get("input")
+        if not isinstance(arguments, str):
+            arguments = json.dumps(arguments or {})
+        calls.append(
+            {
+                "id": block.get("id") or f"call_{len(calls)}",
+                "type": "function",
+                "function": {
+                    "name": block.get("name") or "",
+                    "arguments": arguments,
+                },
+            }
+        )
+    return calls or None
 
 
 @dataclass
@@ -111,12 +140,12 @@ class FrontierExecutor:
         *,
         escalated_from: str | None = None,
         local_confidence: float | None = None,
-    ) -> AsyncIterator[str]:
-        """Relay upstream SSE as text deltas.
+    ) -> AsyncIterator[FrontierStreamEvent]:
+        """Relay upstream SSE as text deltas and tool-call events (#934).
 
-        Lets an escalated stream reach the client incrementally instead of
-        waiting for the whole frontier answer to buffer (#155). Anthropic
-        upstream is parsed from native SSE, not an OpenAI body (#166).
+        Text chunks are plain ``str``. Tool-call chunks are dicts:
+        ``{"tool_calls": [...]}`` (OpenAI delta shape) or
+        ``{"anthropic_event": {...}}`` (native Anthropic tool SSE payload).
         """
         if not self.api_key:
             raise RuntimeError("frontier API key not configured")
@@ -136,6 +165,8 @@ class FrontierExecutor:
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=True)
+            if request.tools:
+                payload = {**payload, "tools": request.tools}
             headers = self._openai_headers()
             path = "/chat/completions"
 
@@ -155,12 +186,27 @@ class FrontierExecutor:
             timeout=self.timeout,
         ) as response:
             response.raise_for_status()
+            tool_block_open = False
             async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                 if self._is_anthropic():
                     if not line.startswith("data:"):
                         continue
                     data = line[len("data:") :].strip()
-                    delta = text_delta_from_sse_data(data) if data else None
+                    if not data:
+                        continue
+                    tool_event = anthropic_tool_event_from_sse_data(data)
+                    if tool_event is not None:
+                        event_type = tool_event.get("type")
+                        if event_type == "content_block_start":
+                            tool_block_open = True
+                            yield {"anthropic_event": tool_event}
+                        elif event_type == "content_block_delta":
+                            yield {"anthropic_event": tool_event}
+                        elif event_type == "content_block_stop" and tool_block_open:
+                            tool_block_open = False
+                            yield {"anthropic_event": tool_event}
+                        continue
+                    delta = text_delta_from_sse_data(data)
                     if delta:
                         yield delta
                     continue
@@ -174,9 +220,13 @@ class FrontierExecutor:
                 except ValueError:
                     continue
                 for choice in chunk.get("choices", []):
-                    delta = (choice.get("delta") or {}).get("content")
-                    if delta:
-                        yield delta
+                    delta_obj = choice.get("delta") or {}
+                    tool_calls = delta_obj.get("tool_calls")
+                    if tool_calls:
+                        yield {"tool_calls": tool_calls}
+                    text = delta_obj.get("content")
+                    if text:
+                        yield text
 
     async def execute(
         self,
@@ -229,8 +279,11 @@ class FrontierExecutor:
         )
         if anthropic:
             content = text_from_anthropic_content(data.get("content"))
+            tool_calls = _tool_calls_from_anthropic_content(data.get("content"))
         else:
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            message = data.get("choices", [{}])[0].get("message", {})
+            content = message.get("content", "") or ""
+            tool_calls = message.get("tool_calls")
         latency_ms = int((time.perf_counter() - started) * 1000)
         prompt_chars = sum(len(message.content or "") for message in request.messages)
         input_tokens, output_tokens, estimated = openai_token_usage(
@@ -241,8 +294,9 @@ class FrontierExecutor:
             as_openrouter_payload(request.provider) if request.provider is not None else None
         )
         return InternalResponse(
-            content=content,
+            content=content or "",
             model=model,
+            tool_calls=tool_calls if tool_calls else None,
             daari_meta=DaariMeta(
                 tier="L6",
                 cache_hit=False,
