@@ -28,9 +28,7 @@ def validate_policy_schema(config: dict[str, Any]) -> None:
         return
     raw = config.get("schema")
     if isinstance(raw, bool) or not isinstance(raw, int):
-        raise PolicySchemaError(
-            f"policy schema must be an integer major, got {raw!r}"
-        )
+        raise PolicySchemaError(f"policy schema must be an integer major, got {raw!r}")
     if raw > POLICY_SCHEMA:
         raise PolicySchemaError(
             f"unknown policy schema major {raw}; this daari supports <= {POLICY_SCHEMA}"

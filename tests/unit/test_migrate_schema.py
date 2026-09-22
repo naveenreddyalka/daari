@@ -18,7 +18,7 @@ from daari.enterprise.bootstrap import (
 )
 from daari.enterprise.policy_sync import apply_policy_to_runtime, sync_policy_once
 from daari.setup.doctor import CheckResult, doctor_exit_code, run_doctor
-from daari.setup.migrate import StoreNote, inspect_stores, run_migrate
+from daari.setup.migrate import inspect_stores, run_migrate
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -83,8 +83,7 @@ def test_dry_run_reports_missing_and_pending(tmp_path: Path):
     ledger.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(ledger) as conn:
         conn.execute(
-            "CREATE TABLE usage (day TEXT, tier TEXT, requests INTEGER, "
-            "PRIMARY KEY (day, tier))"
+            "CREATE TABLE usage (day TEXT, tier TEXT, requests INTEGER, PRIMARY KEY (day, tier))"
         )
     notes = inspect_stores(settings)
     by_name = {n.name: n for n in notes}
@@ -141,8 +140,7 @@ def test_doctor_warns_on_pending_migrate(tmp_path: Path, monkeypatch):
     ledger.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(ledger) as conn:
         conn.execute(
-            "CREATE TABLE usage (day TEXT, tier TEXT, requests INTEGER, "
-            "PRIMARY KEY (day, tier))"
+            "CREATE TABLE usage (day TEXT, tier TEXT, requests INTEGER, PRIMARY KEY (day, tier))"
         )
 
     def _ok_embedding(cfg, client):
@@ -179,12 +177,8 @@ def test_sync_policy_once_refuses_unknown_schema(monkeypatch):
         body = json.dumps({"schema": 99, "routing": {}}).encode()
         return {"schema": 99, "routing": {}}, body, "deadbeef"
 
-    monkeypatch.setattr(
-        "daari.enterprise.policy_sync.fetch_org_config", fake_fetch
-    )
-    monkeypatch.setattr(
-        "daari.enterprise.policy_sync.verify_signature", lambda *a, **k: True
-    )
+    monkeypatch.setattr("daari.enterprise.policy_sync.fetch_org_config", fake_fetch)
+    monkeypatch.setattr("daari.enterprise.policy_sync.verify_signature", lambda *a, **k: True)
     result = sync_policy_once(settings, router=None, insecure=True)
     assert result["ok"] is False
     assert result["reason"] == "unknown_schema"

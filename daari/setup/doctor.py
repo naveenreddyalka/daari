@@ -1037,9 +1037,9 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
             detail="no pending store migrations",
             optional=not strict,
         )
-    detail = "; ".join(
-        f"{n.name}: {', '.join(n.pending)}" for n in pending
-    ) + " — run: daari migrate"
+    detail = (
+        "; ".join(f"{n.name}: {', '.join(n.pending)}" for n in pending) + " — run: daari migrate"
+    )
     return CheckResult(
         name="store_migrate",
         ok=False,

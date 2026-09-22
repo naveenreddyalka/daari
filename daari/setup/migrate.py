@@ -62,9 +62,7 @@ def _pending_ledger(conn: sqlite3.Connection) -> list[str]:
     # Tables created by _migrate when missing.
     tables = {
         row[0]
-        for row in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
     if "budget_window_state" not in tables:
         pending.append("budget_window_state: create")

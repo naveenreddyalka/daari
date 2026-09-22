@@ -96,9 +96,7 @@ def apply_policy_to_runtime(
         for key in sorted(SAFE_ROUTING_KEYS):
             if key not in routing:
                 continue
-            value = _coerce(
-                routing[key], _ROUTING_COERCE[key], section="routing", key=key
-            )
+            value = _coerce(routing[key], _ROUTING_COERCE[key], section="routing", key=key)
             if value is _UNSET:
                 continue
             setattr(settings.routing, key, value)
@@ -117,9 +115,7 @@ def apply_policy_to_runtime(
         for key in sorted(SAFE_FRONTIER_KEYS):
             if key not in frontier:
                 continue
-            value = _coerce(
-                frontier[key], _FRONTIER_COERCE[key], section="frontier", key=key
-            )
+            value = _coerce(frontier[key], _FRONTIER_COERCE[key], section="frontier", key=key)
             if value is _UNSET:
                 continue
             setattr(settings.frontier, key, value)
@@ -176,9 +172,7 @@ def apply_policy_to_runtime(
             )
 
             prev = router.boundaries
-            router.boundaries = engine_from_settings(
-                settings, judge=default_local_judge
-            )
+            router.boundaries = engine_from_settings(settings, judge=default_local_judge)
             copy_runtime_hooks(router.boundaries, prev)
 
     return applied
@@ -201,9 +195,7 @@ def sync_policy_once(
             return {"ok": False, "reason": "insecure_url"}
         if not secret:
             return {"ok": False, "reason": "no_signing_secret"}
-    data, raw, signature = fetch_org_config(
-        url, token=settings.enterprise.org_token or ""
-    )
+    data, raw, signature = fetch_org_config(url, token=settings.enterprise.org_token or "")
     if not insecure and not verify_signature(raw, signature, secret):
         return {"ok": False, "reason": "bad_signature"}
     try:
