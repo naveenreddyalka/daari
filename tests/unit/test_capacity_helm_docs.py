@@ -20,6 +20,12 @@ def test_capacity_helm_documents_local_pool_frontier_fallback() -> None:
     assert "DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK" in text
 
 
+def test_capacity_helm_documents_asr_frontier_fallback() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "asr.frontierFallback" in text
+    assert "DAARI_ASR__FRONTIER_FALLBACK" in text
+
+
 def test_capacity_helm_documents_otlp_logs() -> None:
     text = DOC.read_text(encoding="utf-8")
     assert "otlpLogs" in text or "observability.otlpLogs" in text

@@ -4013,6 +4013,13 @@ notes. Covered by `tests/unit/test_sampling_params.py`.
 **Status:** Done (2026-09-22). GET/HEAD/OPTIONS skip `request.body()` (TPM=0);
 POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
 
+### Capacity-helm documents asr.frontierFallback ([#927](https://github.com/naveenreddyalka/daari/issues/927))
+
+<!-- tracking:#927 -->
+**Status:** Done (2026-09-22). Contract test locks `asr.frontierFallback` and
+`DAARI_ASR__FRONTIER_FALLBACK` in capacity-helm.md. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
 
 ## How to update
 
