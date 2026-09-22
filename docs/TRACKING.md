@@ -3774,6 +3774,13 @@ open (merged/closed) are skipped by `autodev_backlog.py --pick` so they cannot
 block the backlog after conflict repair. Covered by
 `tests/unit/test_autodev_backlog.py`.
 
+### CLI --priority for admission QoS ([#868](https://github.com/naveenreddyalka/daari/issues/868))
+
+<!-- tracking:#868 -->
+**Status:** Done (2026-09-21). `daari keys create` / `team-create` accept
+`--priority high|normal|low`; list shows `prio`; Postgres VK schema stores
+`priority` on keys and teams. Covered by `tests/unit/test_keys_priority_cli.py`.
+
 ### Doctor warns when request deadline unset ([#867](https://github.com/naveenreddyalka/daari/issues/867))
 
 <!-- tracking:#867 -->
