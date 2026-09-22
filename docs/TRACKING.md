@@ -4120,6 +4120,15 @@ spend ledger `request_id`. Covered by `tests/unit/test_request_id.py`.
 `tts.model` / `tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Drain stuck PRs first; watcher survives label-permission errors ([#983](https://github.com/naveenreddyalka/daari/issues/983))
+
+<!-- tracking:#983 -->
+**Status:** Done (2026-09-22). `apply_sweep` logs and skips label edits the
+PAT cannot perform instead of aborting `stall-watch`; the dev-cycle prompt
+drains open `autodev/*` PRs (update-branch → wait → `gh pr merge --squash`;
+resolve `DIRTY` conflicts) in priority order before picking new work. Covered
+by `test_apply_sweep_survives_label_edit_failure` and
+`test_workflow_drains_stuck_prs_before_picking`.
 ### Reuse pooled httpx.AsyncClient across upstream hops ([#971](https://github.com/naveenreddyalka/daari/issues/971))
 
 <!-- tracking:#971 -->
