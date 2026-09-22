@@ -162,6 +162,45 @@ def _openai_tool_call_deltas(tool_calls: list[Any]) -> list[dict[str, Any]]:
     return deltas
 
 
+def _openai_deltas_from_anthropic_tool_event(event: dict[str, Any]) -> list[dict[str, Any]]:
+    """Map Anthropic tool SSE payloads to OpenAI ``delta.tool_calls`` chunks (#934)."""
+    event_type = event.get("type")
+    if event_type == "content_block_start":
+        block = event.get("content_block") or {}
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            return []
+        index = int(event.get("index") or 0)
+        return [
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "id": block.get("id") or f"call_{uuid.uuid4().hex[:24]}",
+                        "type": "function",
+                        "function": {"name": block.get("name") or "", "arguments": ""},
+                    }
+                ]
+            }
+        ]
+    if event_type == "content_block_delta":
+        delta = event.get("delta") or {}
+        if not isinstance(delta, dict) or delta.get("type") != "input_json_delta":
+            return []
+        index = int(event.get("index") or 0)
+        partial = delta.get("partial_json") or ""
+        return [
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "function": {"arguments": partial},
+                    }
+                ]
+            }
+        ]
+    return []
+
+
 def _draft_hint(draft: str, similarity: float) -> str:
     return (
         f"A previous answer to a similar question (similarity {similarity:.2f}) is provided "
@@ -2284,15 +2323,32 @@ class Router:
                     scanner = self._incremental_output_scanner()
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
+                    relayed_tool_calls = False
                     try:
                         from daari.router.deadline import guard_upstream
 
                         guard_upstream("L6")
                         l6_request = await self._frontier_request(stream_request)
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                        async for delta in self.frontier.stream(
+                        async for event in self.frontier.stream(
                             l6_request, escalated_from=tier, local_confidence=confidence
                         ):
+                            if isinstance(event, dict) and event.get("tool_calls"):
+                                relayed_tool_calls = True
+                                yield f"data: {json.dumps(chunk_payload(delta={'tool_calls': event['tool_calls']}))}\n\n"
+                                continue
+                            if isinstance(event, dict) and event.get("anthropic_event"):
+                                # Anthropic L6 upstream → OpenAI client shape (#934).
+                                converted = _openai_deltas_from_anthropic_tool_event(
+                                    event["anthropic_event"]
+                                )
+                                for delta in converted:
+                                    relayed_tool_calls = True
+                                    yield f"data: {json.dumps(chunk_payload(delta=delta))}\n\n"
+                                continue
+                            delta = event if isinstance(event, str) else ""
+                            if not delta:
+                                continue
                             if l6_first_at is None and delta:
                                 l6_first_at = time.perf_counter()
                             relayed.append(delta)
@@ -2309,7 +2365,7 @@ class Router:
                         log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
                         # Nothing was emitted yet if the failure came before the
                         # first delta; otherwise the partial answer stands.
-                        if not relayed:
+                        if not relayed and not relayed_tool_calls:
                             if scanner is not None:
                                 release = scanner.push(streamed_text)
                                 if release.text:
@@ -2322,6 +2378,7 @@ class Router:
                             else:
                                 yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
                                 relayed.append(streamed_text)
+                    finish_reason = "tool_calls" if relayed_tool_calls else "stop"
                     if scanner is not None and not scanner.blocked:
                         flush = scanner.flush()
                         if flush.text:
@@ -2332,7 +2389,7 @@ class Router:
                         relayed_text = scanner.scanned_text
                     else:
                         relayed_text = "".join(relayed)
-                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
                     yield usage_chunk(len(relayed_text), stream_tier="L6")
                     yield "data: [DONE]\n\n"
                     latency_ms = int((time.perf_counter() - started) * 1000)
@@ -3074,12 +3131,64 @@ class Router:
                     )
                 except Exception:
                     escalated = served
-                if escalated.daari_meta.tier != tier and escalated.content.strip():
+                if escalated.daari_meta.tier != tier and (
+                    escalated.content.strip() or escalated.tool_calls
+                ):
                     log_gateway_event(
                         "anthropic_stream_escalated",
                         {"from": tier, "to": escalated.daari_meta.tier},
                     )
                     served = escalated
+                    if served.tool_calls:
+                        # L6 returned tools — emit Anthropic tool_use blocks (#934).
+                        meta = served.daari_meta.model_dump()
+                        yield message_start
+                        for index, call in enumerate(_openai_tool_call_deltas(served.tool_calls)):
+                            yield sse(
+                                "content_block_start",
+                                {
+                                    "type": "content_block_start",
+                                    "index": index,
+                                    "content_block": {
+                                        "type": "tool_use",
+                                        "id": call["id"],
+                                        "name": call["function"]["name"],
+                                        "input": {},
+                                    },
+                                    "daari_meta": meta,
+                                },
+                            )
+                            yield sse(
+                                "content_block_delta",
+                                {
+                                    "type": "content_block_delta",
+                                    "index": index,
+                                    "delta": {
+                                        "type": "input_json_delta",
+                                        "partial_json": call["function"]["arguments"],
+                                    },
+                                    "daari_meta": meta,
+                                },
+                            )
+                            yield block_stop(index)
+                        yield sse(
+                            "message_delta",
+                            {
+                                "type": "message_delta",
+                                "delta": {"stop_reason": "tool_use", "stop_sequence": None},
+                                "usage": self._anthropic_stream_usage(
+                                    served.daari_meta.tier or tier,
+                                    prompt_tokens=input_tokens,
+                                    output_tokens=0,
+                                    served=served,
+                                    session_id=getattr(request.meta, "session_id", None),
+                                ),
+                            },
+                        )
+                        yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
+                        latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                        record_served(served, latency_ms)
+                        return
                 scanner = self._incremental_output_scanner()
                 if scanner is not None and served.content == streamed_text:
                     # Replay local deltas through the holdback scanner.

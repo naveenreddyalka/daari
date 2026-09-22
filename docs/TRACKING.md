@@ -4023,6 +4023,14 @@ doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
 Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
 `test_helm_chart.py`.
 
+### Frontier tool parity — streamed tool-calls, tool_choice, output_format ([#934](https://github.com/naveenreddyalka/daari/issues/934))
+
+<!-- tracking:#934 -->
+**Status:** Done (2026-09-21). Frontier SSE relays `delta.tool_calls` / Anthropic
+tool blocks; `tool_choice` and `output_format`/`json_schema` reach L6 payloads;
+OpenAI + Anthropic gateways preserve escalated tool turns. Covered by
+`tests/unit/test_frontier_tool_parity.py` and
+`tests/integration/test_gateway_flow.py`.
 ### CORS allowlist and default security headers ([#938](https://github.com/naveenreddyalka/daari/issues/938))
 
 <!-- tracking:#938 -->

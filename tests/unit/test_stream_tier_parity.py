@@ -233,7 +233,7 @@ async def test_frontier_executor_parses_upstream_sse():
         api_key="sk-test",
         transport=httpx.MockTransport(handler),
     )
-    deltas = [d async for d in executor.stream(_request("hi"))]
+    deltas = [d async for d in executor.stream(_request("hi")) if isinstance(d, str)]
     assert deltas == ["Hello", " world"], "blank, malformed, and [DONE] lines must be skipped"
 
 
