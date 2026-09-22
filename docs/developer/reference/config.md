@@ -14,7 +14,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
-| `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds before a streaming response emits a keepalive frame (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow-to-first-token streams. 0 disables. |
+| `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds between streamed chunks before emitting a keepalive for the entire stream lifetime (#972). SSE comment `: keepalive` on OpenAI/Anthropic/Responses; blank line on NDJSON Ollama. 0 disables. |
+| `server.stream_idle_timeout_seconds` | float | `0` | If upstream produces no chunk for this many seconds, end with an in-band `stream_idle_timeout` error (#972). 0 disables. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |

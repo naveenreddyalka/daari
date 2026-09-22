@@ -902,6 +902,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         async for chunk in stream_with_keepalive(
                             ctx.router.stream_openai_chunks(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                            idle_timeout_seconds=ctx.settings.server.stream_idle_timeout_seconds,
                             on_cancel=lambda: note_request_cancelled(
                                 ctx.metrics, "stream", model=body.model
                             ),

@@ -1,4 +1,4 @@
-"""Unit tests for gateway streaming keepalive (#276)."""
+"""Unit tests for gateway streaming keepalive (#276, #972)."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import pytest
 
 from daari.gateway.streaming import (
     NDJSON_KEEPALIVE_FRAME,
+    SSE_IDLE_ERROR_FRAME,
     SSE_KEEPALIVE_FRAME,
     stream_with_keepalive,
 )
@@ -38,14 +39,18 @@ async def test_keepalive_before_first_chunk():
 
 
 @pytest.mark.asyncio
-async def test_no_keepalive_after_first_chunk():
+async def test_keepalive_mid_stream_after_first_chunk():
+    """Heartbeats continue for the whole stream, not only TTFT (#972)."""
+
     async def gap_after_first():
         yield "first\n"
         await asyncio.sleep(0.05)
         yield "second\n"
 
     body = await _collect(stream_with_keepalive(gap_after_first(), interval_seconds=0.01))
-    assert body == ["first\n", "second\n"]
+    assert body[0] == "first\n"
+    assert body[-1] == "second\n"
+    assert SSE_KEEPALIVE_FRAME in body[1:-1]
 
 
 @pytest.mark.asyncio
@@ -70,6 +75,26 @@ async def test_ndjson_keepalive_frame():
         )
     )
     assert NDJSON_KEEPALIVE_FRAME in body
+
+
+@pytest.mark.asyncio
+async def test_idle_timeout_emits_in_band_error_then_stops():
+    async def hang_after_first():
+        yield "first\n"
+        await asyncio.sleep(1.0)
+        yield "never\n"
+
+    body = await _collect(
+        stream_with_keepalive(
+            hang_after_first(),
+            interval_seconds=0.01,
+            idle_timeout_seconds=0.05,
+        )
+    )
+    assert body[0] == "first\n"
+    assert body[-1] == SSE_IDLE_ERROR_FRAME
+    assert "never\n" not in body
+    assert "stream_idle_timeout" in body[-1]
 
 
 async def _raising_after_first():
