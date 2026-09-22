@@ -317,3 +317,57 @@ class TestAnthropicBody:
 
     def test_top_k_splits_the_cache(self):
         assert SamplingParams(top_k=7).cache_fingerprint() != SamplingParams().cache_fingerprint()
+
+
+class TestAgentSdkSamplingKnobs:
+    """parallel_tool_calls / logit_bias / top_logprobs (#940)."""
+
+    def test_from_openai_body_parses_all_three(self):
+        params = SamplingParams.from_openai_body(
+            {
+                "parallel_tool_calls": False,
+                "logit_bias": {"42": -100, "7": 5.5},
+                "top_logprobs": 3,
+            }
+        )
+        assert params.parallel_tool_calls is False
+        assert params.logit_bias == {"42": -100.0, "7": 5.5}
+        assert params.top_logprobs == 3
+
+    def test_openai_payload_forwards_knobs(self):
+        payload = SamplingParams(
+            parallel_tool_calls=True,
+            logit_bias={"1": 2.0},
+            top_logprobs=5,
+        ).openai_payload()
+        assert payload["parallel_tool_calls"] is True
+        assert payload["logit_bias"] == {"1": 2.0}
+        assert payload["top_logprobs"] == 5
+
+    def test_unsupported_locally_notes(self):
+        notes = SamplingParams(
+            parallel_tool_calls=False,
+            logit_bias={"1": 1.0},
+            top_logprobs=2,
+        ).unsupported_locally()
+        assert any("parallel_tool_calls" in note for note in notes)
+        assert any("logit_bias" in note for note in notes)
+        assert any("top_logprobs" in note for note in notes)
+
+    def test_honored_fields_split_cache(self):
+        base = SamplingParams().cache_fingerprint()
+        assert SamplingParams(parallel_tool_calls=False).cache_fingerprint() != base
+        assert SamplingParams(logit_bias={"9": -1.0}).cache_fingerprint() != base
+        assert SamplingParams(top_logprobs=1).cache_fingerprint() != base
+
+    def test_malformed_shapes_are_dropped(self):
+        params = SamplingParams.from_openai_body(
+            {
+                "parallel_tool_calls": "yes",
+                "logit_bias": "nope",
+                "top_logprobs": True,
+            }
+        )
+        assert params.parallel_tool_calls is None
+        assert params.logit_bias is None
+        assert params.top_logprobs is None

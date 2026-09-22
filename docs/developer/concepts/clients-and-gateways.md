@@ -31,11 +31,14 @@ daari setup openai-compat
 Generation controls are read on every surface and mapped to the backend: `max_tokens`
 (`max_completion_tokens`, `max_output_tokens`, or `num_predict` depending on the
 surface), `top_p`, `top_k`, `stop` / `stop_sequences`, `seed`, `frequency_penalty`,
-and `response_format: json_object`. Omitted parameters are not sent, so backend
-defaults stand.
+and `response_format: json_object`. Agent SDKs also send `parallel_tool_calls`,
+`logit_bias`, and `top_logprobs` — those reach frontier / OpenAI-compat executors
+via `openai_payload()` and split the L0 cache fingerprint when set. Omitted
+parameters are not sent, so backend defaults stand.
 
 What a local model cannot do is reported in `daari_meta.warning` rather than silently
-dropped: `presence_penalty`, `n > 1`, `logprobs`, and `tool_choice: required`.
+dropped: `presence_penalty`, `n > 1`, `logprobs`, `top_logprobs`, `logit_bias`,
+`parallel_tool_calls`, and `tool_choice: required`.
 `frequency_penalty` is approximated by Ollama's `repeat_penalty`. Sampling parameters
 are part of the cache key, so a 16-token answer is never served to a request asking
 for 500.

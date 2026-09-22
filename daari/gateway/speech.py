@@ -36,6 +36,24 @@ _CONTENT_TYPES = {
     "pcm": "audio/pcm",
 }
 
+_http: httpx.AsyncClient | None = None
+
+
+def _shared_client() -> httpx.AsyncClient:
+    global _http
+    if _http is None or getattr(_http, "is_closed", False):
+        from daari.router.http_pool import build_async_client
+
+        _http = build_async_client(httpx)
+    return _http
+
+
+async def aclose_http() -> None:
+    global _http
+    if _http is not None and not getattr(_http, "is_closed", True):
+        await _http.aclose()
+    _http = None
+
 
 @dataclass(frozen=True)
 class TtsTarget:
@@ -76,8 +94,7 @@ async def post_speech(
     payload: dict[str, Any],
     timeout: float,
 ) -> httpx.Response:
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        return await client.post(url, headers=headers, json=payload)
+    return await _shared_client().post(url, headers=headers, json=payload, timeout=timeout)
 
 
 def _caller_client_id(request: Request) -> str | None:
@@ -230,9 +247,16 @@ async def handle_speech(
     started = time.perf_counter()
     try:
         timeout = nonstream_timeout(target.timeout, "tts")
+        from daari.observability.otel import inject_trace_headers
+
         upstream = await await_unless_disconnected(
             request,
-            post_speech(url, headers={}, payload=payload, timeout=timeout),
+            post_speech(
+                url,
+                headers=inject_trace_headers({}),
+                payload=payload,
+                timeout=timeout,
+            ),
             metrics=ctx.metrics,
             phase="tts",
             model=model_name,

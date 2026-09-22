@@ -24,3 +24,9 @@ def test_asr_guide_names_helm_model() -> None:
     text = ASR_GUIDE.read_text(encoding="utf-8")
     assert "asr.model" in text
     assert "DAARI_ASR__MODEL" in text
+
+
+def test_asr_guide_links_capacity_helm() -> None:
+    text = ASR_GUIDE.read_text(encoding="utf-8")
+    assert "capacity-helm.md" in text
+    assert "../operations/capacity-helm.md" in text

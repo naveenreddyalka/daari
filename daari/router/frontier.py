@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
 import httpx
@@ -68,6 +68,25 @@ class FrontierExecutor:
     transport: httpx.AsyncBaseTransport | None = None
     retry: RetryPolicy | None = None
     metrics: Any = None
+    pool_limits: Any = None
+    _http: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None or getattr(self._http, "is_closed", False):
+            from daari.router.http_pool import PoolLimits, build_async_client
+
+            self._http = build_async_client(
+                httpx,
+                base_url=self.base_url,
+                limits=self.pool_limits or PoolLimits(),
+                transport=self.transport,
+            )
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None and not getattr(self._http, "is_closed", True):
+            await self._http.aclose()
+        self._http = None
 
     def _build_messages(self, request: InternalRequest) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = []
@@ -158,54 +177,56 @@ class FrontierExecutor:
         )
 
         guard_upstream("L6")
-        async with httpx.AsyncClient(
-            base_url=self.base_url, timeout=self.timeout, transport=self.transport
-        ) as client:
-            async with deadline_bounded_stream(
-                client, "POST", path, json=payload, headers=headers
-            ) as response:
-                response.raise_for_status()
-                tool_block_open = False
-                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
-                    if self._is_anthropic():
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[len("data:") :].strip()
-                        if not data:
-                            continue
-                        tool_event = anthropic_tool_event_from_sse_data(data)
-                        if tool_event is not None:
-                            event_type = tool_event.get("type")
-                            if event_type == "content_block_start":
-                                tool_block_open = True
-                                yield {"anthropic_event": tool_event}
-                            elif event_type == "content_block_delta":
-                                yield {"anthropic_event": tool_event}
-                            elif event_type == "content_block_stop" and tool_block_open:
-                                tool_block_open = False
-                                yield {"anthropic_event": tool_event}
-                            continue
-                        delta = text_delta_from_sse_data(data)
-                        if delta:
-                            yield delta
-                        continue
+        async with deadline_bounded_stream(
+            self._client(),
+            "POST",
+            path,
+            json=payload,
+            headers=headers,
+            timeout=self.timeout,
+        ) as response:
+            response.raise_for_status()
+            tool_block_open = False
+            async for line in aiter_with_ttft_deadline(response.aiter_lines()):
+                if self._is_anthropic():
                     if not line.startswith("data:"):
                         continue
                     data = line[len("data:") :].strip()
-                    if not data or data == "[DONE]":
+                    if not data:
                         continue
-                    try:
-                        chunk = json.loads(data)
-                    except ValueError:
+                    tool_event = anthropic_tool_event_from_sse_data(data)
+                    if tool_event is not None:
+                        event_type = tool_event.get("type")
+                        if event_type == "content_block_start":
+                            tool_block_open = True
+                            yield {"anthropic_event": tool_event}
+                        elif event_type == "content_block_delta":
+                            yield {"anthropic_event": tool_event}
+                        elif event_type == "content_block_stop" and tool_block_open:
+                            tool_block_open = False
+                            yield {"anthropic_event": tool_event}
                         continue
-                    for choice in chunk.get("choices", []):
-                        delta_obj = choice.get("delta") or {}
-                        tool_calls = delta_obj.get("tool_calls")
-                        if tool_calls:
-                            yield {"tool_calls": tool_calls}
-                        text = delta_obj.get("content")
-                        if text:
-                            yield text
+                    delta = text_delta_from_sse_data(data)
+                    if delta:
+                        yield delta
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if not data or data == "[DONE]":
+                    continue
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue
+                for choice in chunk.get("choices", []):
+                    delta_obj = choice.get("delta") or {}
+                    tool_calls = delta_obj.get("tool_calls")
+                    if tool_calls:
+                        yield {"tool_calls": tool_calls}
+                    text = delta_obj.get("content")
+                    if text:
+                        yield text
 
     async def execute(
         self,
@@ -243,12 +264,11 @@ class FrontierExecutor:
         timeout = nonstream_timeout(self.timeout, "L6")
 
         async def attempt() -> dict[str, Any]:
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=timeout, transport=self.transport
-            ) as client:
-                response = await client.post(path, json=payload, headers=headers)
-                response.raise_for_status()
-                return response.json()
+            response = await self._client().post(
+                path, json=payload, headers=headers, timeout=timeout
+            )
+            response.raise_for_status()
+            return response.json()
 
         data = await run_upstream(
             attempt,

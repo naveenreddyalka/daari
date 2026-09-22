@@ -13,6 +13,9 @@ AUDIO = b"RIFF"
 
 
 def _patch_upstream(monkeypatch, handler):
+    from daari.gateway import transcriptions
+
+    transcriptions._http = None
     real = httpx.AsyncClient
 
     class Patched(real):
@@ -22,6 +25,7 @@ def _patch_upstream(monkeypatch, handler):
             super().__init__(*args, **kwargs)
 
     monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.transcriptions.httpx.AsyncClient", Patched)
 
 
 def _app(settings):
