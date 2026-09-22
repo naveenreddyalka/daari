@@ -4090,6 +4090,13 @@ empty list adds no rows. Covered by `tests/unit/test_doctor_mcp_servers.py`.
 `X-Request-ID` (or generate one), echo it on the response, and prefer it for
 spend ledger `request_id`. Covered by `tests/unit/test_request_id.py`.
 
+### Docs: capacity-helm documents tts.model and tts.voice ([#962](https://github.com/naveenreddyalka/daari/issues/962))
+
+<!-- tracking:#962 -->
+**Status:** Done (2026-09-22). Doc contract asserts `capacity-helm.md` names
+`tts.model` / `tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
 
 ## How to update
 
