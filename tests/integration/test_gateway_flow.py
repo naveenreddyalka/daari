@@ -3354,3 +3354,48 @@ async def test_deadline_header_is_504_before_upstream(app):
     assert error["type"] == "request_deadline_exceeded"
     assert "deadline" in error["message"]
 
+
+@pytest.mark.asyncio
+async def test_oversized_chat_body_returns_413(settings, monkeypatch):
+    """server.max_body_bytes rejects early with OpenAI 413 (#933)."""
+    settings.server.max_body_bytes = 128
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/chat/completions",
+            content=(
+                b'{"model":"daari","messages":[{"role":"user","content":"'
+                + (b"x" * 400)
+                + b'"}]}'
+            ),
+            headers={**META_HEADERS, "content-type": "application/json"},
+        )
+        ok = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "normal body"}],
+            },
+            headers=META_HEADERS,
+        )
+    assert denied.status_code == 413
+    assert denied.json()["error"]["code"] == "request_too_large"
+    assert ok.status_code == 200
+    assert ok.json()["daari_meta"]["tier"] in {"L3", "L0"}
+

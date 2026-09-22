@@ -29,6 +29,12 @@ asr:
   model: ""
   frontier_fallback: false
 
+# Local text-to-speech. Empty base_url → 501 on POST /v1/audio/speech.
+tts:
+  base_url: ""
+  model: ""
+  voice: ""
+
 cache:
   l0:
     enabled: true
