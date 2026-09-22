@@ -13,27 +13,30 @@
 
 ## Where daari stands (verified in-tree, 2026-09-21)
 
-Shipped since the 2026-09-20 resilience scan: local TTS (`POST /v1/audio/speech`)
-plus Helm `tts.baseUrl` / `tts.model` / `tts.voice`, opt-in
-`routing.local_pool.frontier_fallback`, OTLP logs (`observability.otlp_logs`),
-doctor probes for deadline, TTS, OTLP logs, local-pool failover, and
-`scoped_cache_fleet`. Still queued on open PRs (not refiled): L1 entries
-namespaced by embedding model, `daari models warm`, virtual-key `--priority`,
-and the P3 docs/test tail. Idempotency-Key remains in progress.
+Morning's data-plane set (TLS/mTLS, body-size 413, frontier tool fidelity,
+401 throttle, lifetime budgets) is queued and untouched this run. Still
+queued from earlier: L1 embed-model cache versioning, `models warm`,
+Idempotency-Key (in flight), Helm TTS base URL, virtual-key admission
+priority CLI, plus a P3 docs/test tail.
 
-**Outward (this run):** GitHub latest non-prerelease tags — LiteLLM **v1.101.0**
-(2026-09-15), Ollama **v0.34.2** (2026-09-15), vLLM **v0.29.0** (2026-09-09).
-No newer stable bar than the prior scan. Portkey enterprise and Kong AI Gateway
-unchanged at the versions already recorded. Ollama `typical_p` deprecation is
-create-time only; existing GGUF models keep it, so daari does not need a
-sampler change this run.
+**Outward (this run):** LiteLLM stable bar is **v1.102.0** (2026-09-19) —
+auto-router controls, native OCR default, PgBouncer/spend-collector
+reliability, MCP schema-discovery proxy, OTel HTTP/JSON export; **v1.103.0rc1**
+exists on PyPI (lifetime caps already filed this morning — watch for stable).
+Portkey enterprise line still **v2.23.x**-era (no fresh GA bump since last
+scan). Kong AI Gateway **2.0** GA (MCP bundling, modality cost, identity
+policies) unchanged. Ollama **v0.34.2** stable / **v0.34.3-rc1** still rc.
+vLLM **0.29.0**, OpenRouter quiet since 08-19.
 
-**Inward theme: ASR guide lags the chart.** Helm now has `asr.model` and
-`asr.frontierFallback` (alongside TTS). capacity-helm names those env vars.
-`backends/asr.md` still does not name the chart keys, does not link the Helm
-guide, and the capacity-helm contract tests do not lock `asr.model` or
-`asr.frontierFallback`. Prior speech-chart and cancel-phase rows are queued
-on open PRs.
+**Inward theme: browser clients and agent SDK knobs still go dark.**
+`daari web-ui` is a separate origin hitting a key-gated API with no CORS and
+no security headers; rate-limit middleware buffers every GET body; agent SDKs
+send `parallel_tool_calls` / `logit_bias` / `top_logprobs` that
+`extra="ignore"` silently drops; MCP tool counters exist in metrics but never
+reach `/v1/daari/stats` or the web-ui; stores migrate on open with no
+operator `migrate` / schema skew guard. Verified fine, not filed: morning
+security findings remain accurate; local streams still relay tool-call
+deltas; `config validate` and secret redaction unchanged.
 
 ---
 
@@ -41,111 +44,75 @@ on open PRs.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **ASR guide omits Helm `asr.model`** — chart mounts `DAARI_ASR__MODEL`; the speech page only shows the YAML field | 2 | 1 | Cloud speech vendor docs | Whisper fleets read one page and see the on-box model id the chart sets | File ([#924](https://github.com/naveenreddyalka/daari/issues/924)) |
-| 2 | **ASR guide omits Helm `asr.frontierFallback`** — chart opt-in can upload audio; the guide only names the settings field | 2 | 1 | LiteLLM fallback docs | The page that says audio stays local must name the chart flag that changes that | File ([#925](https://github.com/naveenreddyalka/daari/issues/925)) |
-| 3 | **No contract for capacity-helm `asr.model`** — prose exists; `test_capacity_helm_docs.py` does not lock it | 1 | 1 | n/a (docs lock) | The whisper model id knob stays in the operator guide | File ([#926](https://github.com/naveenreddyalka/daari/issues/926)) |
-| 4 | **No contract for capacity-helm `asr.frontierFallback`** — same gap for the audio opt-in | 1 | 1 | n/a (docs lock) | Default-off cloud transcription stays documented | File ([#927](https://github.com/naveenreddyalka/daari/issues/927)) |
-| 5 | **ASR guide does not link capacity-helm** — TTS links it; ASR Next points at vLLM and Ollama only | 1 | 1 | n/a (docs link) | Local whisper deploys reach the chart page from the speech guide | File ([#928](https://github.com/naveenreddyalka/daari/issues/928)) |
-| 6 | **Idempotency-Key, admission QoS, L1 embedder namespace, model warm, WIF / A2A / SOC 2 / admin UI** | 2–4 | 2–5 | LiteLLM / cloud | First four are already queued or in progress; compliance stays deferred | Watch |
+| 1 | **No CORS / security headers** — web-ui (11437) fetches key-gated API (11435) cross-origin; no `CORSMiddleware`, no `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy` | 4 | 2 | Kong / LiteLLM (native CORS + header baselines) | Laptop dashboards talk to `127.0.0.1` with no nginx — one knob unblocks ops UI | File ([#938](https://github.com/naveenreddyalka/daari/issues/938)) |
+| 2 | **Rate-limit buffers every GET body** — middleware always `await request.body()` + JSON parse, including `/v1/models`, traces, report; distinct from any 413 size cap | 3 | 1 | Kong / nginx (header-only for safe methods) | Same box as Ollama — cheaper admission leaves RAM for local inference | File ([#939](https://github.com/naveenreddyalka/daari/issues/939)) |
+| 3 | **Agent sampling knobs silently dropped** — `parallel_tool_calls`, `logit_bias`, `top_logprobs` absent from `ChatCompletionRequest` / `openai_payload()`; `extra="ignore"` → 200 with no effect | 3 | 2 | LiteLLM (uniform passthrough) | Local warns in meta; frontier/OpenAI-compat forward so L3–L6 feel identical to SDKs | File ([#940](https://github.com/naveenreddyalka/daari/issues/940)) |
+| 4 | **MCP invisible on laptop stats** — `mcp_tool_calls` in metrics snapshot but omitted from `/v1/daari/stats`; no task list; web-ui has no MCP panel | 3 | 2 | Cloud gateways (MCP live in same console) | One `web-ui serve` shows deny/guardrail pressure without Grafana | File ([#941](https://github.com/naveenreddyalka/daari/issues/941)) |
+| 5 | **No `daari migrate` / schema skew guard** — stores migrate quietly on open; policy sync has no schema version; upgrade guide admits the gap | 3 | 3 | LiteLLM / cloud (versioned config claims) | Offline dry-run + doctor warn before a laptop-fleet skew bricks policy | File ([#942](https://github.com/naveenreddyalka/daari/issues/942)) |
+| 6 | **MCP session registry + force-close / MCP egress httpx reuse / doctor mcp_servers probe / `input_audio` chat blocks / moderations + rerank / OCR / Fuse / WIF / A2A / SOC 2 / admin UI** | 2–4 | 1–5 | LiteLLM / Kong / cloud | Session ops and chat-audio wait for a client ask; compliance deferred | Watch |
 
-Pruned this run: Helm `asr.model` / `asr.frontierFallback`, MCP cancel-phase
-docs, ASR `baseUrl` guide note, and the doctor `asr` row contract — filed
-earlier this session and in flight.
+Pruned this run: morning data-plane rows stay queued as issues (not table
+rows). L1 embed versioning / models warm / Idempotency-Key remain queued.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **ASR operator docs** — guide names Helm `asr.model` and `asr.frontierFallback` and links capacity-helm.
-2. **Docs locks** — capacity-helm contract tests cover the new ASR chart knobs.
-3. **Queued cache and QoS** — L1 embedding-model namespace, virtual-key admission priority, `daari models warm` (open PRs).
-4. **Idempotency-Key** — still in progress on chat and Responses; do not refile.
-5. **Speech chart parity** — `asr.model` and `asr.frontierFallback` chart values (in flight from the prior refill).
+1. **Encrypt + bound the data plane** — TLS/mTLS, body-size 413, 401 throttle (queued from morning).
+2. **Browser-safe ops surface** — CORS allowlist + default security headers so web-ui and IDE webviews work with keys.
+3. **Lossless agent SDK parity** — frontier tool fidelity (queued) plus sampling/tool-parallel passthrough.
+4. **MCP visible without Grafana** — stats + web-ui surface tool/task pressure; session registry later.
+5. **Upgrade without fear** — `daari migrate --dry-run` and policy schema skew guards for laptop fleets.
 
-Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred.
+Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay deferred.
 
 ---
 
 ## Changelog
 
-- **2026-09-21 (ASR guide follow-up)** — Chart knobs from the speech-parity
-  refill are in flight. Eligible backlog drained again. Outward unchanged
-  (LiteLLM v1.101.0, Ollama v0.34.2, vLLM v0.29.0). Inward: ASR guide still
-  omits Helm `asr.model`, `asr.frontierFallback`, and the capacity-helm link;
-  capacity-helm contract tests do not lock those two knobs. Filing five.
+- **2026-09-21 (browser/ops + agent SDK knobs)** — Second run today. Outward:
+  LiteLLM **v1.102.0** stable (auto-router, native OCR, gateway reliability);
+  **v1.103.0rc1** on PyPI (lifetime caps already queued). Portkey/Kong/Ollama/
+  vLLM flat vs morning. Inward (code-verified): no CORS/security headers,
+  rate-limit buffers GETs, three sampling fields silently dropped, MCP stats
+  missing from `/v1/daari/stats`+web-ui, no migrate/skew CLI. Filing five.
+  Morning data-plane five remain queued.
 
-- **2026-09-21 (speech chart parity)** — Eligible `auto-dev` backlog was empty
-  (every labeled issue had an open PR). Outward: GitHub latest stable tags
-  LiteLLM v1.101.0, Ollama v0.34.2, vLLM v0.29.0; no newer bar. Inward: Helm
-  pins TTS model/voice but not `asr.model` or `asr.frontierFallback`;
-  metrics-prometheus omits cancel phase `mcp`; ASR guide omits Helm
-  `asr.baseUrl`; doctor `asr` row has no contract test. Pruned shipped TTS,
-  local-pool failover, OTLP logs, and the new doctor probes. Filing five.
+- **2026-09-21 (data-plane hardening + lossless escalation)** — Yesterday's
+  five-row table drained overnight except L1 embed versioning and models
+  warm. Outward flat; only LiteLLM v1.103.0-rc.1 moved (config ownership,
+  Fuse routing, gateway hardening, lifetime caps — parity row filed; VS Code
+  provider extension noted). Inward security/client-compat audit
+  (code-verified): no TLS/mTLS, no body cap, no 401 throttle, frontier strips
+  tool-call deltas / `tool_choice` / `output_format`, no lifetime budgets.
+  Verified fine: tight open-path list, secret redaction, config validate,
+  local-stream tool deltas. Filing five.
 
-- **2026-09-20 (resilience + modality delta)** — Delta run 12 min after the
-  17:14 sibling merged its refresh. Outward re-verified flat: LiteLLM newest
-  tag v1.103.0-rc.1 (fixes/UI only, bar unchanged), Portkey v2.23.0, Kong
-  2.0.3, Ollama 0.34.3 still rc, OpenRouter last moved 08-19. Inward
-  (code-verified): L1 cache unversioned by embedding model, all-local-down
-  hard 503 with no frontier failover, no `/v1/audio/speech`, FIFO-only
-  admission gate, no OTLP logs. Verified fine: local pool LB/health/breakers,
-  upgrade docs + additive migrations, L1 trim/TTL. Filing five.
+- **2026-09-20 (two runs)** — Governance secondary ingress (MCP route meta,
+  batch limiter bypass, embed L0 scope, Helm auth knobs, model warm) then a
+  resilience/modality delta (L1 embed versioning, all-local-down failover,
+  TTS, admission priority, OTLP logs). Outward: LiteLLM v1.102.0 on PyPI;
+  v1.103.0-rc.1 watch; Ollama 0.34.2 stable.
 
-- **2026-09-20 (governance secondary ingress)** — Prior cache/deadline/cancel/
-  retention set confirmed shipped. Outward: LiteLLM v1.102.0 on PyPI (OCR +
-  auto-router); v1.103.0-rc.1 config ownership / Fuse watch; Kong 2.0.3 and
-  Ollama 0.34.2 stable (0.34.3-rc1 already mirrored). Inward: MCP route bare
-  meta, batch limiter bypass + incomplete item meta, embed L0 global-only,
-  Helm auth/rate/frontier gap, no proactive model warm. Filing five.
+- **2026-09-19 (four runs)** — Embed/ASR measurement, cache tenancy +
+  request lifecycle (tenant cache_scope, disconnect cancel, invalidation,
+  deadline, request-log retention), embedding chargeback, day-cap surfaces.
+  Ollama v0.34.3-rc1 thinking controls watch row added.
 
-- **2026-09-19 (cache tenancy)** — Delta run an hour after the 16:55
-  sibling (embed/ASR set queued). Outward delta: Ollama v0.34.3-rc1 adds
-  `/api/show` thinking controls (watch until stable); LiteLLM/Portkey/
-  Kong/vLLM flat. Inward theme verified in-tree: tenant-blind L0/L1
-  cache keys, no disconnect cancellation, no selective cache
-  invalidation, no request-scoped deadline, request log outside the
-  retention sweep. Filing all five.
+- **2026-09-18 (three runs)** — Soft-budget/observability drain; governance +
+  chargeback theme (model allowlists, spend export, config validate, master
+  key rotation, per-provider retry/timeout); Responses lifecycle, idempotency,
+  audio route, request-rate HPA, rpd. Portkey v2.23.0.
 
-- **2026-09-19 (embed drain)** — Embedding chargeback and the chargeback
-  guide's audio sentence shipped. Outward: LiteLLM stable still v1.101.0;
-  v1.102.0-rc.2 is a Responses leak backport; v1.103.0-dev.2 is not stable.
-  Portkey and Kong 2.0.3 flat. Ollama v0.34.2, no v0.35; `/api/embed` batch
-  is the local surface. Filing embed/ASR latency, Helm Ollama URL, doctor
-  embed probe, audio TPM, and batched embeds. Idempotency, Helm ASR, and
-  audio translations left queued.
-- **2026-09-19 (refill)** — Day-cap surfaces, transcription allowlists, doctor
-  ASR, and transcription chargeback shipped. Outward still flat: LiteLLM
-  v1.101.0 stable, v1.102.0 rc.1, Portkey v2.23.0, Kong 2.0.3, Ollama
-  v0.34.2. Filing embedding chargeback, Helm ASR URL, chargeback docs, and
-  audio translations. Idempotency left in progress.
-- **2026-09-19** — Prior lifecycle/audio/KEDA/rpd rows shipped. Outward flat:
-  LiteLLM v1.101.0 stable (v1.102.0 still RC), Portkey v2.23.0, Kong 2.0.3,
-  Ollama v0.34.2, no v0.35. Inward: day-cap retry, transcription allowlists,
-  doctor ASR, stats/dashboard rpd, per-key rpd scrape. Idempotency left in
-  progress, not refiled.
-- **2026-09-18 (late)** — Evening governance/chargeback set already queued, so
-  this run moved on. Outward: LiteLLM v1.101.0 stable; v1.102.0 still RC
-  (Responses cancel/delete auth, request-rate autoscale). Portkey v2.23.0
-  ElevenLabs is cloud speech, not a reason to add a vendor SDK. Kong 2.0.3
-  flat. Ollama v0.34.2 setup/llama.cpp only. vLLM 0.29 transcriptions is the
-  local-first surface. Filing five issues (Responses lifecycle, idempotency,
-  audio route, request-rate HPA, rpd).
-- **2026-09-18 (evening)** — All 19 fleet/tenancy/resilience issues from the
-  09-14→09-16 runs confirmed shipped; backlog had degraded to P3 docs/test
-  trivia. Rebuilt table around governance + chargeback: filing five issues
-  (model allowlists, spend export, config validate, master key rotation,
-  per-provider retry/timeout). Outward: Portkey v2.23.0, Ollama v0.34.2
-  stable, LiteLLM bar unchanged at v1.101.0, Kong/OpenRouter/vLLM flat.
-- **2026-09-18 (early)** — Soft-budget / observability drain: pruned shipped gap
-  rows from the 2026-09-17 night table. Watch rows only remained.
-- **2026-09-17 (4 runs)** — Morning→night refills drained same-day: ops/RBAC,
-  facade/bench, stats/web-ui, scrape port, Anthropic SSE L0, Grafana alert + MCP
-  panels, Helm metrics port, agent_turn meta, soft USD warn, team gauges,
-  introspect, hermetic 402. Outward flat (LiteLLM v1.101.0 bar).
+- **2026-09-17 (4 runs)** — Ops/RBAC, facade/bench, stats/web-ui, scrape port,
+  Anthropic SSE L0, Grafana alert + MCP panels, Helm metrics port, agent_turn
+  meta, soft USD warn, team gauges, introspect, hermetic 402.
+
 - **2026-09-16 (3 runs)** — Fleet-auth theme: Postgres keys/teams, Helm graceful
   rollout, team RPM/TPM, keys export/import, facade capabilities; plus dry-run,
   TTFT counter, bench + harness rows. Ollama v0.34.1 stable.
+
 - **2026-09-15 and earlier** — Condensed: loop restructure (never-empty refill +
-  14:00 UTC Actions prd run), fleet story, resilience + metering, stored-artifact
+  scheduled Actions prd run), fleet story, resilience + metering, stored-artifact
   tenancy, Batch/Files API, pricing refresh, session affinity, stall escalation,
   MCP pagination, Apache 2.0 relicense, this PRD's creation (2026-08-28).
