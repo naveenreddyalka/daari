@@ -22,6 +22,7 @@ from daari.router.local_pool import (
 )
 from daari.router.router import AppContext, OllamaExecutor
 from daari.server.app import create_app
+from tests.conftest import META_HEADERS
 
 
 CHAT = {"model": "daari", "messages": [{"role": "user", "content": "hi"}]}
@@ -298,6 +299,102 @@ async def test_all_backends_down_is_typed_503(settings):
         response = await client.post("/v1/chat/completions", json=CHAT)
     assert response.status_code == 503
     assert response.json()["error"]["type"] == "backend_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_frontier_fallback_default_off(settings):
+    assert settings.routing.local_pool.frontier_fallback is False
+
+
+@pytest.mark.asyncio
+async def test_all_backends_down_frontier_fallback_to_l6(settings, monkeypatch):
+    """#846: opt-in escalates to L6 when every local host is down."""
+    settings.routing.local_pool.frontier_fallback = True
+    settings.routing.local_pool.backends = [
+        LocalBackendSettings(id="a", base_url="http://127.0.0.1:1"),
+        LocalBackendSettings(id="b", base_url="http://127.0.0.1:2"),
+    ]
+    settings.frontier.enabled = True
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    app = _app(settings)
+    for slot in app.state.ctx.router.local_pool.slots:
+        slot.healthy = False
+
+    async def fake_l6(
+        request,
+        *,
+        escalated_from: str,
+        local_confidence: float,
+    ):
+        return InternalResponse(
+            content="Frontier standby answer with enough detail.",
+            model="gpt-4o-mini",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="openai",
+                latency_ms=10,
+                escalated_from=escalated_from,
+                confidence=local_confidence,
+            ),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.frontier, "execute", fake_l6)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions", json=CHAT, headers=META_HEADERS
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daari_meta"]["tier"] == "L6"
+    assert body["daari_meta"]["warning"] == "local_pool_frontier_fallback"
+    assert body["daari_meta"]["escalated_from"] in {"L3", "L4", "L5"}
+    assert app.state.ctx.metrics.tiers["L6"].count == 1
+
+
+@pytest.mark.asyncio
+async def test_frontier_fallback_respects_no_frontier(settings, monkeypatch):
+    """#846: frontier-blocked keys still get typed 503."""
+    settings.routing.local_pool.frontier_fallback = True
+    settings.routing.local_pool.backends = [
+        LocalBackendSettings(id="a", base_url="http://127.0.0.1:1"),
+    ]
+    settings.frontier.enabled = True
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    app = _app(settings)
+    for slot in app.state.ctx.router.local_pool.slots:
+        slot.healthy = False
+
+    called = False
+
+    async def fake_l6(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("L6 must not run when no_frontier")
+
+    monkeypatch.setattr(app.state.ctx.router.frontier, "execute", fake_l6)
+
+    # Inject no_frontier via a project profile / request path: patch route entry.
+    original_route = app.state.ctx.router.route
+
+    async def route_no_frontier(request, *args, **kwargs):
+        request.meta.no_frontier = True
+        return await original_route(request, *args, **kwargs)
+
+    monkeypatch.setattr(app.state.ctx.router, "route", route_no_frontier)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions", json=CHAT, headers=META_HEADERS
+        )
+    assert response.status_code == 503
+    assert response.json()["error"]["type"] == "backend_unavailable"
+    assert called is False
 
 
 @pytest.mark.asyncio
