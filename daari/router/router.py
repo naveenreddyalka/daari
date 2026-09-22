@@ -201,6 +201,24 @@ class OllamaExecutor:
     timeout: float = 120.0
     retry: RetryPolicy | None = None
     metrics: Any = None
+    pool_limits: Any = None
+    _http: Any = field(default=None, init=False, repr=False)
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None or getattr(self._http, "is_closed", False):
+            from daari.router.http_pool import PoolLimits, build_async_client
+
+            self._http = build_async_client(
+                httpx,
+                base_url=self.base_url,
+                limits=self.pool_limits or PoolLimits(),
+            )
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None and not getattr(self._http, "is_closed", True):
+            await self._http.aclose()
+        self._http = None
 
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
@@ -258,17 +276,17 @@ class OllamaExecutor:
         async def attempt() -> dict[str, Any]:
             from daari.observability.otel import inject_trace_headers
 
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=timeout
-            ) as client:
-                response = await client.post(
-                    "/api/chat", json=payload, headers=inject_trace_headers()
+            response = await self._client().post(
+                "/api/chat",
+                json=payload,
+                headers=inject_trace_headers(),
+                timeout=timeout,
+            )
+            if response.status_code >= 400:
+                raise OllamaRequestError(
+                    response.status_code, str(response.request.url), response.text
                 )
-                if response.status_code >= 400:
-                    raise OllamaRequestError(
-                        response.status_code, str(response.request.url), response.text
-                    )
-                return response.json()
+            return response.json()
 
         data = await run_upstream(
             attempt,
@@ -311,23 +329,23 @@ class OllamaExecutor:
         )
 
         guard_upstream(self.tier)
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            async with deadline_bounded_stream(
-                client,
-                "POST",
-                "/api/chat",
-                json=payload,
-                headers=inject_trace_headers(),
-            ) as response:
-                if response.status_code >= 400:
-                    body = (await response.aread()).decode("utf-8", errors="replace")
-                    raise OllamaRequestError(
-                        response.status_code, str(response.request.url), body
-                    )
-                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
-                    if not line:
-                        continue
-                    yield json.loads(line)
+        async with deadline_bounded_stream(
+            self._client(),
+            "POST",
+            "/api/chat",
+            json=payload,
+            headers=inject_trace_headers(),
+            timeout=self.timeout,
+        ) as response:
+            if response.status_code >= 400:
+                body = (await response.aread()).decode("utf-8", errors="replace")
+                raise OllamaRequestError(
+                    response.status_code, str(response.request.url), body
+                )
+            async for line in aiter_with_ttft_deadline(response.aiter_lines()):
+                if not line:
+                    continue
+                yield json.loads(line)
 
 
 @dataclass
@@ -927,7 +945,9 @@ class Router:
         input_tokens, output_tokens, _ = response_token_usage(response, prompt_chars)
         self._open_spend_context(
             request,
-            response.daari_meta.trace_id or uuid.uuid4().hex[:16],
+            getattr(request.meta, "request_id", None)
+            or response.daari_meta.trace_id
+            or uuid.uuid4().hex[:16],
         )
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
@@ -4777,12 +4797,15 @@ class AppContext:
                 )
 
     def reload_cache_handles(self) -> dict[str, str | bool]:
+        from daari.router.http_pool import pool_limits_from_settings
+
         l0_path, l1_path, context_path = self._resolve_runtime_paths()
         self.cache = _build_l0_cache(self.settings, l0_path)
         embedder = OllamaEmbedder(
             base_url=self.settings.ollama.base_url.rstrip("/"),
             model=self.settings.cache.l1.embedding_model,
             cache_size=self.settings.cache.l1.embed_cache_size,
+            pool_limits=pool_limits_from_settings(self.settings),
         )
         self.semantic_cache = _build_l1_cache(self.settings, l1_path, embedder)
         self.command_context = self._build_command_context_store(self.settings, context_path)
@@ -4943,8 +4966,37 @@ class AppContext:
             pass
         self.retention_task = None
 
+    async def aclose_upstream_clients(self) -> None:
+        """Close pooled httpx clients on shutdown (#971)."""
+        from daari.gateway import speech, transcriptions
+
+        await speech.aclose_http()
+        await transcriptions.aclose_http()
+        router = self.router
+        for name in ("ollama_l3", "ollama_l4", "ollama_l5", "org_pool_executor"):
+            executor = getattr(router, name, None)
+            aclose = getattr(executor, "aclose", None)
+            if aclose is not None:
+                await aclose()
+        frontier = getattr(router, "frontier", None)
+        if frontier is not None:
+            aclose = getattr(frontier, "aclose", None)
+            if aclose is not None:
+                await aclose()
+            for slot in getattr(frontier, "slots", None) or []:
+                executor = getattr(slot, "executor", None)
+                aclose = getattr(executor, "aclose", None)
+                if aclose is not None:
+                    await aclose()
+        embedder = getattr(getattr(self, "semantic_cache", None), "embedder", None)
+        aclose = getattr(embedder, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
     @classmethod
     def from_settings(cls, settings: Settings) -> AppContext:
+        from daari.router.http_pool import pool_limits_from_settings
+
         l0_path = settings.l0_cache_path
         l1_path = settings.l1_cache_path
         context_path = settings.context_store_path
@@ -4954,6 +5006,7 @@ class AppContext:
             context_path = resolve_org_scoped_path(context_path, settings.enterprise, leaf="ccs")
         org_cache_client: OrgCacheClient | None = None
         org_learning_client: OrgLearningClient | None = None
+        pool_limits = pool_limits_from_settings(settings)
         if settings.enterprise.shared_cache_url:
             org_cache_client = OrgCacheClient(
                 base_url=settings.enterprise.shared_cache_url,
@@ -4964,6 +5017,7 @@ class AppContext:
                     settings.ollama.base_url,
                     settings.cache.l1.embedding_model,
                     cache_size=settings.cache.l1.embed_cache_size,
+                    pool_limits=pool_limits,
                 ),
                 similarity_threshold=settings.cache.l1.similarity_threshold,
             )
@@ -4980,6 +5034,7 @@ class AppContext:
             base_url=settings.ollama.base_url.rstrip("/"),
             model=settings.cache.l1.embedding_model,
             cache_size=settings.cache.l1.embed_cache_size,
+            pool_limits=pool_limits,
         )
         semantic_cache = _build_l1_cache(settings, l1_path, embedder)
         command_context = cls._build_command_context_store(settings, context_path)
@@ -4999,6 +5054,7 @@ class AppContext:
                     tier=tier,
                     timeout=timeout,
                     retry=local_retry,
+                    pool_limits=pool_limits,
                 )
             return OllamaExecutor(
                 base_url=settings.ollama.base_url.rstrip("/"),
@@ -5006,6 +5062,7 @@ class AppContext:
                 tier=tier,
                 timeout=timeout,
                 retry=local_retry,
+                pool_limits=pool_limits,
             )
 
         ollama_l3 = tier_executor("L3", settings.models.l3)
@@ -5021,6 +5078,7 @@ class AppContext:
                 tier=org_tier,
                 timeout=settings.models.timeout_for(org_tier, local_timeout),
                 retry=local_retry,
+                pool_limits=pool_limits,
             )
         from daari.router.frontier_pool import build_frontier_pool
         from daari.router.local_pool import build_local_pool

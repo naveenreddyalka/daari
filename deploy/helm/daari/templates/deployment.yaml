@@ -95,6 +95,16 @@ spec:
                   key: {{ .key | default "api-key" | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.server.corsOrigins }}
+            - name: DAARI_SERVER__CORS_ORIGINS
+              value: {{ . | toJson | quote }}
+            {{- end }}
+            {{- if hasKey (.Values.server.securityHeaders | default dict) "enabled" }}
+            {{- if not .Values.server.securityHeaders.enabled }}
+            - name: DAARI_SERVER__SECURITY_HEADERS
+              value: "false"
+            {{- end }}
+            {{- end }}
             {{- if $tls.enabled }}
             - name: DAARI_SERVER__TLS__CERT_FILE
               value: {{ $tls.certFile | default "/etc/daari/tls/tls.crt" | quote }}

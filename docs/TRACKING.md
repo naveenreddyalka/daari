@@ -3711,6 +3711,13 @@ apply virtual-key `cache_scope` / `key_id` / `team_id` to embed L0 keys so
 scoped tenants do not share vectors; `daari cache invalidate --key/--team`
 removes those entries. Covered by `tests/unit/test_embeddings.py`.
 
+### CLI models warm preload ([#843](https://github.com/naveenreddyalka/daari/issues/843))
+
+<!-- tracking:#843 -->
+**Status:** Done (2026-09-20). `daari models warm` loads configured L3–L5 and
+the embed model via Ollama generate/embeddings; `onboard --warm` runs it after
+pull; doctor optional `warm_models` hints when the daemon is up but `/api/ps`
+is cold. Covered by `tests/unit/test_models_warm.py`.
 ### Opt-in frontier failover when local pool is down ([#846](https://github.com/naveenreddyalka/daari/issues/846))
 
 <!-- tracking:#846 -->
@@ -3781,6 +3788,13 @@ block the backlog after conflict repair. Covered by
 `upstream.request_deadline_seconds` is unset or `<= 0`, passes with a positive
 value. Documented in doctor-health. Covered by
 `tests/unit/test_doctor_deadline.py`.
+
+### Helm exposes tts.baseUrl ([#870](https://github.com/naveenreddyalka/daari/issues/870))
+
+<!-- tracking:#870 -->
+**Status:** Done (2026-09-21). Chart `tts.baseUrl` mounts `DAARI_TTS__BASE_URL`
+when set; empty default omits the env. Documented in capacity-helm. Covered by
+`tests/unit/test_helm_chart.py`.
 
 ### Doctor probes TTS reachability ([#869](https://github.com/naveenreddyalka/daari/issues/869))
 
@@ -3899,6 +3913,12 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Docs: scoped_cache_fleet in org-cache guide ([#899](https://github.com/naveenreddyalka/daari/issues/899))
+
+<!-- tracking:#899 -->
+**Status:** Done (2026-09-21). Org-cache guide documents Redis requirement for
+multi-replica `cache_scope` and links doctor `scoped_cache_fleet`. Covered by
+`tests/unit/test_scoped_cache_fleet_docs.py`.
 ### Helm tts.baseUrl render contract ([#906](https://github.com/naveenreddyalka/daari/issues/906))
 
 <!-- tracking:#906 -->
@@ -3906,6 +3926,13 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `DAARI_TTS__BASE_URL` and set `tts.baseUrl` renders it. Covered by
 `tests/unit/test_helm_chart.py`.
 
+
+### Docs: doctor-health scoped_cache_fleet row ([#908](https://github.com/naveenreddyalka/daari/issues/908))
+
+<!-- tracking:#908 -->
+**Status:** Done (2026-09-21). Contract test asserts the doctor-health
+`scoped_cache_fleet` row names `cache.backend` / Redis and `cache_scope`.
+Covered by `tests/unit/test_scoped_cache_fleet_docs.py`.
 
 ### Docs: mkdocs nav lists TTS guide ([#905](https://github.com/naveenreddyalka/daari/issues/905))
 
@@ -3951,6 +3978,19 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 `tests/unit/test_metrics_prometheus_docs.py`.
 
 
+### Docs: doctor-health ASR frontier_fallback row ([#917](https://github.com/naveenreddyalka/daari/issues/917))
+
+<!-- tracking:#917 -->
+**Status:** Done (2026-09-21). Contract test asserts the doctor-health `asr`
+row names `asr.base_url` and `frontier_fallback`. Covered by
+`tests/unit/test_doctor_health_asr_docs.py`.
+### Docs: capacity-helm asr.model contract ([#926](https://github.com/naveenreddyalka/daari/issues/926))
+
+<!-- tracking:#926 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`asr.model` and `DAARI_ASR__MODEL`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
 ### Docs: ASR guide names Helm asr.frontierFallback ([#925](https://github.com/naveenreddyalka/daari/issues/925))
 
 <!-- tracking:#925 -->
@@ -3982,6 +4022,102 @@ doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
 `existingSecret`; SECURITY.md documents native vs reverse-proxy TLS.
 Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
 `test_helm_chart.py`.
+
+### CORS allowlist and default security headers ([#938](https://github.com/naveenreddyalka/daari/issues/938))
+
+<!-- tracking:#938 -->
+**Status:** Done (2026-09-22). `server.cors_origins` enablelist + OPTIONS 204;
+baseline `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`
+(toggle `security_headers`); Helm `corsOrigins` / `securityHeaders.enabled`;
+SECURITY.md + web-ui README. Covered by `tests/unit/test_cors_security_headers.py`.
+
+
+### Lifetime spend caps and temporary budget boosts ([#936](https://github.com/naveenreddyalka/daari/issues/936))
+
+<!-- tracking:#936 -->
+**Status:** Done (2026-09-22). `BudgetWindow` accepts `lifetime`/`total` (all-time
+ledger sum, no rollover); `daari keys budget-boost` / `team-budget-boost` grant
+audited auto-expiring increases; `daari keys show` lists active boosts; expiry
+audited at enforcement. Covered by `tests/unit/test_lifetime_budget_boosts.py`.
+
+### Passthrough parallel_tool_calls, logit_bias, top_logprobs ([#940](https://github.com/naveenreddyalka/daari/issues/940))
+
+<!-- tracking:#940 -->
+**Status:** Done (2026-09-22). Declared on `ChatCompletionRequest` + `SamplingParams`;
+forwarded in `openai_payload()` / cache fingerprint; local `unsupported_locally`
+notes. Covered by `tests/unit/test_sampling_params.py`.
+
+### Skip rate-limit body buffer on safe HTTP methods ([#939](https://github.com/naveenreddyalka/daari/issues/939))
+
+<!-- tracking:#939 -->
+**Status:** Done (2026-09-22). GET/HEAD/OPTIONS skip `request.body()` (TPM=0);
+POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
+
+### ASR guide links capacity-helm ([#928](https://github.com/naveenreddyalka/daari/issues/928))
+
+<!-- tracking:#928 -->
+**Status:** Done (2026-09-22). `backends/asr.md` Next links capacity-helm; contract
+test locks the path. Covered by `tests/unit/test_asr_docs.py`.
+
+### MCP tool and task stats on /v1/daari/stats and web-ui ([#941](https://github.com/naveenreddyalka/daari/issues/941))
+
+<!-- tracking:#941 -->
+**Status:** Done (2026-09-22). Stats payload includes `mcp_tool_calls` +
+`mcp_tasks` snapshot; web-ui panel; `McpTaskStore.snapshot()`. Covered by
+`tests/unit/test_stats_mcp.py` and `packages/web-ui/test/dashboard.test.js`.
+
+### `daari migrate` dry-run and policy/store schema skew ([#942](https://github.com/naveenreddyalka/daari/issues/942))
+
+<!-- tracking:#942 -->
+**Status:** Done (2026-09-22). `daari migrate` / `--dry-run` inspects or opens
+ledger, virtual-keys, audit, responses, and mcp-tasks via existing `_migrate`
+paths; policy bundles gain integer `schema` (`POLICY_SCHEMA=1`) with unknown
+majors refused; `daari doctor` warns on pending migrate (`--strict` required).
+No Alembic. Docs: upgrade guide. Covered by
+`tests/unit/test_migrate_schema.py`.
+
+### Doctor probes integrations.mcp_servers ([#963](https://github.com/naveenreddyalka/daari/issues/963))
+
+<!-- tracking:#963 -->
+**Status:** Done (2026-09-22). Optional `mcp:<id>` doctor rows POST a lightweight
+JSON-RPC `initialize` to each configured egress URL (Bearer when token set);
+empty list adds no rows. Covered by `tests/unit/test_doctor_mcp_servers.py`.
+
+### Reuse httpx.AsyncClient for MCP egress ([#964](https://github.com/naveenreddyalka/daari/issues/964))
+
+<!-- tracking:#964 -->
+**Status:** Done (2026-09-22). `McpEgressProvider` lazily reuses one
+`httpx.AsyncClient` per instance (`aclose()` for teardown). Covered by
+`tests/unit/test_mcp_egress.py`.
+
+### Honor and echo X-Request-ID ([#965](https://github.com/naveenreddyalka/daari/issues/965))
+
+<!-- tracking:#965 -->
+**Status:** Done (2026-09-22). Chat completions resolve sanitized inbound
+`X-Request-ID` (or generate one), echo it on the response, and prefer it for
+spend ledger `request_id`. Covered by `tests/unit/test_request_id.py`.
+
+### Docs: capacity-helm documents tts.model and tts.voice ([#962](https://github.com/naveenreddyalka/daari/issues/962))
+
+<!-- tracking:#962 -->
+**Status:** Done (2026-09-22). Doc contract asserts `capacity-helm.md` names
+`tts.model` / `tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
+### Reuse pooled httpx.AsyncClient across upstream hops ([#971](https://github.com/naveenreddyalka/daari/issues/971))
+
+<!-- tracking:#971 -->
+**Status:** Done (2026-09-22). Ollama, OpenAI-compat, MLX, frontier, embedder,
+TTS, and ASR reuse a long-lived `httpx.AsyncClient` with configurable
+`upstream.pool_max_connections` / `upstream.pool_keepalive_connections`;
+per-request timeouts unchanged. Covered by `tests/unit/test_http_pool.py`.
+
+### Forward X-Request-ID on all upstream hops ([#977](https://github.com/naveenreddyalka/daari/issues/977))
+
+<!-- tracking:#977 -->
+**Status:** Done (2026-09-22). Middleware binds the resolved id; `inject_trace_headers`
+forwards `X-Request-ID` on Ollama, OpenAI-compat, MLX, frontier, ASR, TTS,
+embeddings, and MCP egress. Covered by `tests/unit/test_request_id.py`.
 
 
 ## How to update

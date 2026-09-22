@@ -735,3 +735,31 @@ class TestHelmTls:
             r"name: DAARI_SERVER__TLS__CLIENT_CA\s+value: \"/etc/daari/tls/ca.crt\"",
             rendered,
         )
+
+
+class TestHelmCors:
+    def test_defaults_omit_cors_env(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SERVER__CORS_ORIGINS" not in rendered
+        assert "DAARI_SERVER__SECURITY_HEADERS" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["server"]["corsOrigins"] == []
+        assert values["server"]["securityHeaders"]["enabled"] is True
+
+    def test_cors_origins_json_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set-json",
+            'server.corsOrigins=["http://127.0.0.1:11437"]',
+        )
+        assert "DAARI_SERVER__CORS_ORIGINS" in rendered
+        assert "http://127.0.0.1:11437" in rendered
+
+    def test_security_headers_disabled_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "server.securityHeaders.enabled=false",
+        )
+        assert re.search(
+            r'name: DAARI_SERVER__SECURITY_HEADERS\s+value: "false"',
+            rendered,
+        )

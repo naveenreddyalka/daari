@@ -7,6 +7,9 @@ const tiersNode = document.getElementById("tiers-table");
 const tiersChartNode = document.getElementById("tiers-chart");
 const softWarningsNode = document.getElementById("soft-warnings-table");
 const rejectsNode = document.getElementById("rejects-table");
+const mcpToolCallsNode = document.getElementById("mcp-tool-calls-table");
+const mcpTasksNode = document.getElementById("mcp-tasks-table");
+const mcpTasksSummaryNode = document.getElementById("mcp-tasks-summary");
 const teamRateLimitsNode = document.getElementById("team-rate-limits-table");
 const keyRateLimitsNode = document.getElementById("key-rate-limits-table");
 const backendsNode = document.getElementById("backends-table");
@@ -139,6 +142,21 @@ function renderKindCounts(tbody, counts, emptyLabel) {
     const row = document.createElement("tr");
     row.innerHTML = `<td>${kind}</td><td>${formatNumber(typeof count === "number" ? count : 0)}</td>`;
     tbody.appendChild(row);
+  }
+}
+
+function renderMcpStats(toolCalls, tasks) {
+  renderKindCounts(mcpToolCallsNode, toolCalls || {}, "No MCP tool calls yet.");
+  const statusCounts = { ...(tasks || {}) };
+  const active = statusCounts.active;
+  const total = statusCounts.total;
+  delete statusCounts.active;
+  delete statusCounts.total;
+  renderKindCounts(mcpTasksNode, statusCounts, "No MCP tasks tracked.");
+  if (mcpTasksSummaryNode) {
+    const activeText = typeof active === "number" ? formatNumber(active) : "-";
+    const totalText = typeof total === "number" ? formatNumber(total) : "-";
+    mcpTasksSummaryNode.textContent = `Active tasks: ${activeText} (total tracked: ${totalText})`;
   }
 }
 
@@ -365,6 +383,7 @@ async function loadStats() {
     renderTiers(stats.tiers || {});
     renderKindCounts(softWarningsNode, stats.soft_warnings, "No soft warnings yet.");
     renderKindCounts(rejectsNode, stats.rejects, "No hard rejects yet.");
+    renderMcpStats(stats.mcp_tool_calls, stats.mcp_tasks);
     renderTeamRateLimits(stats.team_rate_limits);
     renderKeyRateLimits(stats.key_rate_limits);
     renderBackendSummary(stats.backend_summary);
@@ -398,6 +417,7 @@ async function loadStats() {
     renderTiers({});
     renderKindCounts(softWarningsNode, {}, "No soft warnings yet.");
     renderKindCounts(rejectsNode, {}, "No hard rejects yet.");
+    renderMcpStats({}, {});
     renderTeamRateLimits([]);
     renderKeyRateLimits([]);
     renderBackends([]);

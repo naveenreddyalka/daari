@@ -754,3 +754,48 @@ def test_team_rpd_gauge_decreases_and_rpm_stays_independent(monkeypatch):
     assert after["rpd"]["remaining"] == 2
     unlimited = SimpleNamespace(team_id="t2", name="ops", rpm=0, tpm=0, rpd=0)
     assert limiter.team_rate_gauges([unlimited]) == []
+
+
+def test_safe_methods_skip_body_buffer_helper():
+    from daari.auth.rate_limit import should_buffer_body_for_rate_limit
+
+    assert should_buffer_body_for_rate_limit("GET") is False
+    assert should_buffer_body_for_rate_limit("head") is False
+    assert should_buffer_body_for_rate_limit("OPTIONS") is False
+    assert should_buffer_body_for_rate_limit("POST") is True
+    assert should_buffer_body_for_rate_limit("PUT") is True
+
+
+@pytest.mark.asyncio
+async def test_get_does_not_call_request_body(settings, monkeypatch):
+    """Rate-limit middleware must not buffer bodies on safe methods (#939)."""
+    settings.rate_limit.tpm = 1  # would 429 if a chat-sized body were estimated
+    app = _app(settings)
+    body_calls = {"n": 0}
+    from starlette.requests import Request
+
+    original = Request.body
+
+    async def spy(self):
+        body_calls["n"] += 1
+        return await original(self)
+
+    monkeypatch.setattr(Request, "body", spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/models")
+    assert response.status_code == 200
+    assert body_calls["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_post_still_estimates_tokens_for_tpm(settings):
+    settings.rate_limit.tpm = 2
+    app = _app(settings)
+    fat = {
+        "model": "daari",
+        "messages": [{"role": "user", "content": "x" * 80}],
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=fat)
+    assert response.status_code == 429
+    assert response.json()["error"]["type"] == "rate_limit_error"

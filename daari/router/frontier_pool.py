@@ -20,6 +20,7 @@ from daari.observability.trace import add_step
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.retry import RetryPolicy, is_retryable, resolve_upstream_policy, status_of
 from daari.router.frontier import FrontierExecutor
+from daari.router.http_pool import pool_limits_from_settings
 from daari.security.secret_refs import SecretRefError, current_secret
 
 
@@ -235,6 +236,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             prompt_cache=frontier.prompt_cache,
             timeout=timeout,
             retry=retry,
+            pool_limits=pool_limits_from_settings(settings),
         )
         return FrontierPool.from_single(executor)
 
@@ -259,6 +261,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             prompt_cache=frontier.prompt_cache,
             timeout=entry_timeout,
             retry=entry_retry,
+            pool_limits=pool_limits_from_settings(settings),
         )
         slots.append(
             ProviderSlot(
