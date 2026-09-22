@@ -4040,6 +4040,16 @@ test locks the path. Covered by `tests/unit/test_asr_docs.py`.
 `mcp_tasks` snapshot; web-ui panel; `McpTaskStore.snapshot()`. Covered by
 `tests/unit/test_stats_mcp.py` and `packages/web-ui/test/dashboard.test.js`.
 
+### `daari migrate` dry-run and policy/store schema skew ([#942](https://github.com/naveenreddyalka/daari/issues/942))
+
+<!-- tracking:#942 -->
+**Status:** Done (2026-09-22). `daari migrate` / `--dry-run` inspects or opens
+ledger, virtual-keys, audit, responses, and mcp-tasks via existing `_migrate`
+paths; policy bundles gain integer `schema` (`POLICY_SCHEMA=1`) with unknown
+majors refused; `daari doctor` warns on pending migrate (`--strict` required).
+No Alembic. Docs: upgrade guide. Covered by
+`tests/unit/test_migrate_schema.py`.
+
 
 ## How to update
 
