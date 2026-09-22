@@ -3899,6 +3899,12 @@ in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
 `DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Docs: scoped_cache_fleet in org-cache guide ([#899](https://github.com/naveenreddyalka/daari/issues/899))
+
+<!-- tracking:#899 -->
+**Status:** Done (2026-09-21). Org-cache guide documents Redis requirement for
+multi-replica `cache_scope` and links doctor `scoped_cache_fleet`. Covered by
+`tests/unit/test_scoped_cache_fleet_docs.py`.
 ### Helm tts.baseUrl render contract ([#906](https://github.com/naveenreddyalka/daari/issues/906))
 
 <!-- tracking:#906 -->
