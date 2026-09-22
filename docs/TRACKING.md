@@ -3823,6 +3823,167 @@ frontier.enabled. Documented in doctor-health. Covered by
 Documented in doctor-health. Covered by `tests/unit/test_doctor_otlp_logs.py`.
 
 
+
+### Docs: otlp_logs in otel-genai guide ([#881](https://github.com/naveenreddyalka/daari/issues/881))
+
+<!-- tracking:#881 -->
+**Status:** Done (2026-09-21). Contract test asserts otel-genai documents
+`otlp_logs` and `OTEL_EXPORTER_OTLP_ENDPOINT` beside traces/metrics. Covered by
+`tests/unit/test_otel_docs.py`.
+
+### Docs: capacity-helm documents tts.baseUrl ([#880](https://github.com/naveenreddyalka/daari/issues/880))
+
+<!-- tracking:#880 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`tts.baseUrl` and `DAARI_TTS__BASE_URL`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
+### Helm observability.otlpLogs + OTEL endpoint ([#888](https://github.com/naveenreddyalka/daari/issues/888))
+
+<!-- tracking:#888 -->
+**Status:** Done (2026-09-21). Chart `observability.otlpLogs` /
+`otlpEndpoint` mount `DAARI_OBSERVABILITY__OTLP_LOGS` and
+`OTEL_EXPORTER_OTLP_ENDPOINT`; defaults omit both. Documented in
+capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
+### Helm localPool.frontierFallback ([#887](https://github.com/naveenreddyalka/daari/issues/887))
+
+<!-- tracking:#887 -->
+**Status:** Done (2026-09-21). Chart `localPool.frontierFallback` mounts
+`DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK` when true; default omits env.
+Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
+### Docs: local text-to-speech backend guide ([#890](https://github.com/naveenreddyalka/daari/issues/890))
+
+<!-- tracking:#890 -->
+**Status:** Done (2026-09-21). New `backends/tts.md`; overview and
+clients-and-gateways link it for `/v1/audio/speech`. Covered by
+`tests/unit/test_tts_docs.py`.
+
+### TTS disconnect cancelled_requests phase=tts ([#889](https://github.com/naveenreddyalka/daari/issues/889))
+
+<!-- tracking:#889 -->
+**Status:** Done (2026-09-21). Unit coverage for speech disconnect 499 +
+`daari_cancelled_requests_total{phase="tts"}`; metrics-prometheus lists `tts`.
+Covered by `tests/unit/test_client_disconnect.py` and
+`tests/unit/test_metrics_prometheus_docs.py`.
+
+### Helm tts.model and tts.voice ([#900](https://github.com/naveenreddyalka/daari/issues/900))
+
+<!-- tracking:#900 -->
+**Status:** Done (2026-09-21). Chart `tts.model` / `tts.voice` mount
+`DAARI_TTS__MODEL` / `DAARI_TTS__VOICE` when set; empty defaults omit env.
+Also wires `tts.baseUrl` so capacity-helm matches. Covered by
+`tests/unit/test_helm_chart.py`.
+
+### Doctor scoped_cache_fleet check ([#891](https://github.com/naveenreddyalka/daari/issues/891))
+
+<!-- tracking:#891 -->
+**Status:** Done (2026-09-21). Optional doctor check fails when multi-replica
+fleets use disk cache with non-global virtual-key/team `cache_scope`. Documented
+in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
+
+### Docs: capacity-helm observability.otlpLogs ([#898](https://github.com/naveenreddyalka/daari/issues/898))
+
+<!-- tracking:#898 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`otlpLogs`, `DAARI_OBSERVABILITY__OTLP_LOGS`, and
+`OTEL_EXPORTER_OTLP_ENDPOINT`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
+### Docs: capacity-helm localPool.frontierFallback ([#897](https://github.com/naveenreddyalka/daari/issues/897))
+
+<!-- tracking:#897 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`localPool.frontierFallback` and
+`DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
+### Helm tts.baseUrl render contract ([#906](https://github.com/naveenreddyalka/daari/issues/906))
+
+<!-- tracking:#906 -->
+**Status:** Done (2026-09-21). Helm unit tests assert empty default omits
+`DAARI_TTS__BASE_URL` and set `tts.baseUrl` renders it. Covered by
+`tests/unit/test_helm_chart.py`.
+
+
+### Docs: mkdocs nav lists TTS guide ([#905](https://github.com/naveenreddyalka/daari/issues/905))
+
+<!-- tracking:#905 -->
+**Status:** Done (2026-09-21). Contract test asserts `mkdocs.yml` lists
+`developer/guides/backends/tts.md` beside the ASR guide. Covered by
+`tests/unit/test_tts_docs.py`.
+
+### Docs: TTS guide names Helm tts.model/voice ([#907](https://github.com/naveenreddyalka/daari/issues/907))
+
+<!-- tracking:#907 -->
+**Status:** Done (2026-09-21). `backends/tts.md` names Helm `tts.model` /
+`tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
+`tests/unit/test_tts_docs.py`.
+
+
+### Helm asr.frontierFallback ([#914](https://github.com/naveenreddyalka/daari/issues/914))
+
+<!-- tracking:#914 -->
+**Status:** Done (2026-09-21). Chart `asr.frontierFallback` mounts
+`DAARI_ASR__FRONTIER_FALLBACK=true` when enabled; default false omits env.
+Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
+### Helm asr.model ([#913](https://github.com/naveenreddyalka/daari/issues/913))
+
+<!-- tracking:#913 -->
+**Status:** Done (2026-09-21). Chart `asr.model` mounts `DAARI_ASR__MODEL`
+when set; empty default omits env. Documented in capacity-helm. Covered by
+`tests/unit/test_helm_chart.py`.
+
+
+### Docs: ASR guide names Helm asr.baseUrl ([#916](https://github.com/naveenreddyalka/daari/issues/916))
+
+<!-- tracking:#916 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.baseUrl` and
+`DAARI_ASR__BASE_URL`. Covered by `tests/unit/test_asr_docs.py`.
+
+### Docs: cancelled_requests phase includes mcp ([#915](https://github.com/naveenreddyalka/daari/issues/915))
+
+<!-- tracking:#915 -->
+**Status:** Done (2026-09-21). metrics-prometheus lists `mcp` among
+`daari_cancelled_requests_total` phases. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
+
+
+### Docs: ASR guide names Helm asr.frontierFallback ([#925](https://github.com/naveenreddyalka/daari/issues/925))
+
+<!-- tracking:#925 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm
+`asr.frontierFallback` and `DAARI_ASR__FRONTIER_FALLBACK`. Covered by
+`tests/unit/test_asr_docs.py`.
+
+### Docs: ASR guide names Helm asr.model ([#924](https://github.com/naveenreddyalka/daari/issues/924))
+
+<!-- tracking:#924 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.model` and
+`DAARI_ASR__MODEL`. Covered by `tests/unit/test_asr_docs.py`.
+
+### Request body size cap with early 413 ([#933](https://github.com/naveenreddyalka/daari/issues/933))
+
+<!-- tracking:#933 -->
+**Status:** Done (2026-09-21). `server.max_body_bytes` (default 10 MiB) rejects
+oversized bodies with 413 before buffering; OpenAI/Anthropic error shapes;
+upload routes use a higher floor; `daari_rejects_total{kind="body_too_large"}`.
+Covered by `tests/unit/test_body_limit.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Native TLS and optional mTLS for daari serve ([#932](https://github.com/naveenreddyalka/daari/issues/932))
+
+<!-- tracking:#932 -->
+**Status:** Done (2026-09-21). `server.tls` + `--tls-cert/--tls-key/--tls-client-ca`
+wire uvicorn HTTPS/mTLS; `secret://` key refs materialize to temp PEM files;
+doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
+`existingSecret`; SECURITY.md documents native vs reverse-proxy TLS.
+Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
+`test_helm_chart.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -508,4 +508,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(MCPGatewayAdapter().router())
     app.include_router(OllamaCompatGatewayAdapter().router())
     app.include_router(ResponsesGatewayAdapter().router())
+    # Outermost: reject oversized bodies before rate-limit buffering (#933).
+    from daari.server.body_limit import install_body_size_limit
+
+    install_body_size_limit(app, resolved)
     return app

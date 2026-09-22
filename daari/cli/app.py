@@ -1050,6 +1050,21 @@ def serve(
         "--strict",
         help="Fail startup when nested config keys are unknown (also DAARI_STRICT_CONFIG=1).",
     ),
+    tls_cert: str | None = typer.Option(
+        None,
+        "--tls-cert",
+        help="PEM cert path (overrides server.tls.cert_file).",
+    ),
+    tls_key: str | None = typer.Option(
+        None,
+        "--tls-key",
+        help="PEM key path or secret:// ref (overrides server.tls.key_file).",
+    ),
+    tls_client_ca: str | None = typer.Option(
+        None,
+        "--tls-client-ca",
+        help="Client CA path for mTLS (overrides server.tls.client_ca).",
+    ),
 ) -> None:
     """Start the daari HTTP daemon."""
     settings = (Settings.load(strict=True) if strict else Settings.load()).model_copy(deep=True)
@@ -1059,16 +1074,30 @@ def serve(
     if resolved_org:
         settings.enterprise.enabled = True
         settings.enterprise.org_id = resolved_org
+    if tls_cert is not None:
+        settings.server.tls.cert_file = tls_cert
+    if tls_key is not None:
+        settings.server.tls.key_file = tls_key
+    if tls_client_ca is not None:
+        settings.server.tls.client_ca = tls_client_ca
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
-    typer.echo(f"daari serving on http://{bind_host}:{bind_port}/v1")
+    from daari.security.secret_refs import SecretRefError
+    from daari.server.tls import build_uvicorn_ssl_kwargs
+
+    try:
+        ssl_kwargs = build_uvicorn_ssl_kwargs(settings.server.tls)
+    except (SecretRefError, ValueError, OSError) as exc:
+        typer.echo(f"  ✗ tls: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    scheme = "https" if ssl_kwargs else "http"
+    typer.echo(f"daari serving on {scheme}://{bind_host}:{bind_port}/v1")
     metrics_port = int(getattr(settings.observability, "metrics_port", 0) or 0)
     if settings.observability.prometheus and metrics_port > 0:
         typer.echo(
             f"prometheus scrape on http://127.0.0.1:{metrics_port}/metrics "
             "(no API key; keep off public ingress)"
         )
-    from daari.security.secret_refs import SecretRefError
 
     try:
         app_instance = create_app(settings)
@@ -1081,6 +1110,7 @@ def serve(
         host=bind_host,
         port=bind_port,
         log_level="info",
+        **ssl_kwargs,
     )
 
 
