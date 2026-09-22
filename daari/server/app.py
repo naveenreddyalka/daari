@@ -127,6 +127,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.virtual_key_store = vk_store
     app.state.rate_limiter = build_rate_limiter(resolved)
 
+    cors_origins = [origin.strip() for origin in resolved.server.cors_origins if origin.strip()]
+    cors_allow_headers = "Authorization, Content-Type, x-api-key, X-Daari-Meta"
+    cors_allow_methods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+
+    if cors_origins or resolved.server.security_headers:
+
+        @app.middleware("http")
+        async def cors_and_security_headers(request: Request, call_next):
+            origin = (request.headers.get("origin") or "").strip()
+            if (
+                cors_origins
+                and request.method == "OPTIONS"
+                and origin in cors_origins
+            ):
+                from fastapi.responses import Response
+
+                preflight = Response(status_code=204)
+                preflight.headers["Access-Control-Allow-Origin"] = origin
+                preflight.headers["Access-Control-Allow-Methods"] = cors_allow_methods
+                preflight.headers["Access-Control-Allow-Headers"] = cors_allow_headers
+                preflight.headers["Access-Control-Max-Age"] = "600"
+                preflight.headers["Vary"] = "Origin"
+                if resolved.server.security_headers:
+                    preflight.headers.setdefault("X-Content-Type-Options", "nosniff")
+                    preflight.headers.setdefault("X-Frame-Options", "DENY")
+                    preflight.headers.setdefault("Referrer-Policy", "no-referrer")
+                return preflight
+
+            response = await call_next(request)
+            if cors_origins and origin in cors_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Vary"] = "Origin"
+            if resolved.server.security_headers:
+                response.headers.setdefault("X-Content-Type-Options", "nosniff")
+                response.headers.setdefault("X-Frame-Options", "DENY")
+                response.headers.setdefault("Referrer-Policy", "no-referrer")
+            return response
+
     if resolved.observability.otel:
 
         @app.middleware("http")
@@ -165,10 +203,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         open_paths = {"/health", "/ready", "/v1/messages/health"}
         if not master_keys:
             open_paths.add("/metrics")
+        cors_allow = {
+            origin.strip() for origin in resolved.server.cors_origins if origin.strip()
+        }
 
         @app.middleware("http")
         async def require_api_key(request: Request, call_next):
             if request.url.path in open_paths:
+                return await call_next(request)
+            # Browser CORS preflight never carries Authorization (#938).
+            if (
+                cors_allow
+                and request.method == "OPTIONS"
+                and (request.headers.get("origin") or "").strip() in cors_allow
+            ):
                 return await call_next(request)
             # When no master key and the VK store is empty, stay open so
             # local single-user installs aren't suddenly locked out.
