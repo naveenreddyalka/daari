@@ -4083,6 +4083,13 @@ empty list adds no rows. Covered by `tests/unit/test_doctor_mcp_servers.py`.
 `httpx.AsyncClient` per instance (`aclose()` for teardown). Covered by
 `tests/unit/test_mcp_egress.py`.
 
+### Honor and echo X-Request-ID ([#965](https://github.com/naveenreddyalka/daari/issues/965))
+
+<!-- tracking:#965 -->
+**Status:** Done (2026-09-22). Chat completions resolve sanitized inbound
+`X-Request-ID` (or generate one), echo it on the response, and prefer it for
+spend ledger `request_id`. Covered by `tests/unit/test_request_id.py`.
+
 
 ## How to update
 
