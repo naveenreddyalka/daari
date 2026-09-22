@@ -422,6 +422,39 @@ class TestHelmAsrBaseUrl:
         )
 
 
+class TestHelmAsrFrontierFallback:
+    def test_asr_frontier_fallback_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ASR__FRONTIER_FALLBACK" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["asr"]["frontierFallback"] is False
+
+    def test_asr_frontier_fallback_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "asr.frontierFallback=true")
+        assert re.search(
+            r'name: DAARI_ASR__FRONTIER_FALLBACK\s+value: "true"',
+            rendered,
+        )
+
+
+class TestHelmTtsBaseUrl:
+    def test_tts_base_url_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_TTS__BASE_URL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["tts"]["baseUrl"] == ""
+
+    def test_tts_base_url_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "tts.baseUrl=http://kokoro.internal:8880/v1",
+        )
+        assert re.search(
+            r'name: DAARI_TTS__BASE_URL\s+value: "http://kokoro.internal:8880/v1"',
+            rendered,
+        )
+
+
 class TestHelmTtsModelVoice:
     def test_tts_model_voice_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
@@ -440,6 +473,18 @@ class TestHelmTtsModelVoice:
         )
         assert re.search(r'name: DAARI_TTS__MODEL\s+value: "kokoro"', rendered)
         assert re.search(r'name: DAARI_TTS__VOICE\s+value: "af_bella"', rendered)
+
+
+class TestHelmAsrModel:
+    def test_asr_model_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ASR__MODEL" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["asr"]["model"] == ""
+
+    def test_asr_model_when_set(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "asr.model=ggml-base")
+        assert re.search(r'name: DAARI_ASR__MODEL\s+value: "ggml-base"', rendered)
 
 
 class TestHelmRequestDeadlineAndRetention:
@@ -653,3 +698,68 @@ class TestHelmAuthRateLimitFrontier:
         assert "per-pod SQLite" in notes
         assert "Frontier enabled" in notes
         assert "DAARI_FRONTIER_API_KEY" in notes
+
+
+class TestHelmTls:
+    def test_defaults_omit_tls(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SERVER__TLS__CERT_FILE" not in rendered
+        assert "DAARI_SERVER__TLS__KEY_FILE" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["tls"]["enabled"] is False
+        assert values["tls"]["existingSecret"] == ""
+
+    def test_tls_existing_secret_mounts_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "tls.enabled=true",
+            "--set",
+            "tls.existingSecret=daari-tls",
+        )
+        assert "DAARI_SERVER__TLS__CERT_FILE" in rendered
+        assert "DAARI_SERVER__TLS__KEY_FILE" in rendered
+        assert 'secretName: "daari-tls"' in rendered or "secretName: daari-tls" in rendered
+        assert "/etc/daari/tls" in rendered
+        assert "scheme: HTTPS" in rendered
+
+    def test_tls_client_ca_sets_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "tls.enabled=true",
+            "--set",
+            "tls.existingSecret=daari-tls",
+            "--set",
+            "tls.clientCAFile=/etc/daari/tls/ca.crt",
+        )
+        assert re.search(
+            r"name: DAARI_SERVER__TLS__CLIENT_CA\s+value: \"/etc/daari/tls/ca.crt\"",
+            rendered,
+        )
+
+
+class TestHelmCors:
+    def test_defaults_omit_cors_env(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SERVER__CORS_ORIGINS" not in rendered
+        assert "DAARI_SERVER__SECURITY_HEADERS" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["server"]["corsOrigins"] == []
+        assert values["server"]["securityHeaders"]["enabled"] is True
+
+    def test_cors_origins_json_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set-json",
+            'server.corsOrigins=["http://127.0.0.1:11437"]',
+        )
+        assert "DAARI_SERVER__CORS_ORIGINS" in rendered
+        assert "http://127.0.0.1:11437" in rendered
+
+    def test_security_headers_disabled_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "server.securityHeaders.enabled=false",
+        )
+        assert re.search(
+            r'name: DAARI_SERVER__SECURITY_HEADERS\s+value: "false"',
+            rendered,
+        )

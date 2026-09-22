@@ -1,4 +1,4 @@
-"""org-cache guide documents scoped_cache_fleet / Redis for fleets (#899)."""
+"""org-cache + doctor-health document scoped_cache_fleet (#899, #908)."""
 
 from __future__ import annotations
 
@@ -20,3 +20,14 @@ def test_org_cache_documents_scoped_cache_fleet() -> None:
 def test_doctor_health_lists_scoped_cache_fleet() -> None:
     text = DOCTOR.read_text(encoding="utf-8")
     assert "scoped_cache_fleet" in text
+
+
+def test_doctor_health_scoped_cache_fleet_row_mentions_backend_and_scope() -> None:
+    text = DOCTOR.read_text(encoding="utf-8")
+    row = next(
+        line
+        for line in text.splitlines()
+        if line.startswith("|") and "scoped_cache_fleet" in line
+    )
+    assert "cache.backend" in row or "redis" in row.lower()
+    assert "cache_scope" in row

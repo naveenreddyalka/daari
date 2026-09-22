@@ -92,6 +92,38 @@
       </section>
 
       <section class="card">
+        <h2>MCP tools &amp; tasks</h2>
+        <p class="subtle">Ingress <code>tools/call</code> outcomes and in-flight MCP Tasks from <code>stats.mcp_tool_calls</code> / <code>stats.mcp_tasks</code>.</p>
+        <p class="subtle" id="mcp-tasks-summary">Active tasks: -</p>
+        <section class="row">
+          <article class="card inner">
+            <h3>Tool outcomes</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Count</th>
+                </tr>
+              </thead>
+              <tbody id="mcp-tool-calls-table"></tbody>
+            </table>
+          </article>
+          <article class="card inner">
+            <h3>Task status</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Count</th>
+                </tr>
+              </thead>
+              <tbody id="mcp-tasks-table"></tbody>
+            </table>
+          </article>
+        </section>
+      </section>
+
+      <section class="card">
         <h2>Team rate limits</h2>
         <p class="subtle">Remaining rpm, tpm, and rpd from <code>stats.team_rate_limits</code>.</p>
         <table>
