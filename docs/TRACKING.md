@@ -4006,6 +4006,13 @@ audited at enforcement. Covered by `tests/unit/test_lifetime_budget_boosts.py`.
 **Status:** Done (2026-09-22). GET/HEAD/OPTIONS skip `request.body()` (TPM=0);
 POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
 
+### MCP tool and task stats on /v1/daari/stats and web-ui ([#941](https://github.com/naveenreddyalka/daari/issues/941))
+
+<!-- tracking:#941 -->
+**Status:** Done (2026-09-22). Stats payload includes `mcp_tool_calls` +
+`mcp_tasks` snapshot; web-ui panel; `McpTaskStore.snapshot()`. Covered by
+`tests/unit/test_stats_mcp.py` and `packages/web-ui/test/dashboard.test.js`.
+
 
 ## How to update
 
