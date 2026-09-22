@@ -74,6 +74,7 @@ def run_doctor(
     results.append(daemon)
     results.append(_check_ready(cfg, httpx_client, daemon_ok=daemon.ok))
     results.append(_check_metrics_auth(cfg, httpx_client, daemon_ok=daemon.ok))
+    results.append(_check_warm_models(cfg, httpx_client, daemon_ok=daemon.ok))
     if tunnel_url:
         results.append(_check_tunnel(tunnel_url, httpx_client))
 
@@ -461,6 +462,77 @@ def _check_daemon(
             name="daemon",
             ok=False,
             detail="not running (start with: daari serve)",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+
+
+def _check_warm_models(
+    settings: Settings,
+    client: httpx.Client | None,
+    *,
+    daemon_ok: bool,
+) -> CheckResult:
+    """Optional hint when daari is up but Ollama has no configured models loaded (#843)."""
+    if not daemon_ok:
+        return CheckResult(
+            name="warm_models",
+            ok=True,
+            detail="skipped (daemon not running)",
+            optional=True,
+        )
+    from daari.setup.models import configured_warm_models, model_present
+
+    wanted = configured_warm_models(settings)
+    if not wanted:
+        return CheckResult(
+            name="warm_models",
+            ok=True,
+            detail="no configured models",
+            optional=True,
+        )
+    url = f"{settings.ollama.base_url.rstrip('/')}/api/ps"
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    try:
+        response = http.get(url)
+        if response.status_code >= 400:
+            return CheckResult(
+                name="warm_models",
+                ok=True,
+                detail=f"/api/ps not checked (HTTP {response.status_code})",
+                optional=True,
+            )
+        models = response.json().get("models") or []
+        loaded = [
+            str(item.get("name") or item.get("model") or "")
+            for item in models
+            if isinstance(item, dict)
+        ]
+        loaded = [name for name in loaded if name]
+        if any(model_present(want, loaded) for want in wanted):
+            return CheckResult(
+                name="warm_models",
+                ok=True,
+                detail=f"loaded: {', '.join(loaded) or '(none)'}",
+                optional=True,
+            )
+        return CheckResult(
+            name="warm_models",
+            ok=False,
+            detail=(
+                "daemon up but no configured models in /api/ps — "
+                "run: daari models warm"
+            ),
+            optional=True,
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="warm_models",
+            ok=True,
+            detail=f"/api/ps not checked ({exc})",
             optional=True,
         )
     finally:
