@@ -35,6 +35,17 @@ Three different operations:
 | `daari context clear` | Deletes the L0, L1, and command-context directories entirely, then asks the daemon to reopen handles. |
 | `daari cache prune` | Removes only TTL-expired disk entries. When `cache.backend` is Redis and `cache.l0.ttl_seconds > 0`, prune does not scan — Redis key expiry is the reclaim path. When Redis L0 TTL is `0` (unbounded), prune deletes keys whose stored `t` is older than **7 days**. |
 
+## Tenant `cache_scope` on multi-replica fleets
+
+Virtual keys and teams can set `cache_scope` to `team` or `key` so L0/L1 hits
+stay tenant-isolated. On a multi-replica gateway (`DAARI_FLEET_REPLICAS` > 1),
+that only works when `cache.backend=redis` — otherwise each pod keeps its own
+scoped silo and invalidate/`--team` on one replica misses the others.
+
+`daari doctor` optional check `scoped_cache_fleet` fails when replicas > 1,
+cache is not Redis, and any key or team has a non-global `cache_scope`. See
+[Doctor and health](../operations/doctor-health.md).
+
 ## Next
 
 → [Capacity and Helm](../operations/capacity-helm.md) · [ADR-0014](../../../adr/0014-enterprise-distributed-org-learning.md)
