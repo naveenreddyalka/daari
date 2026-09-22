@@ -4076,6 +4076,13 @@ No Alembic. Docs: upgrade guide. Covered by
 JSON-RPC `initialize` to each configured egress URL (Bearer when token set);
 empty list adds no rows. Covered by `tests/unit/test_doctor_mcp_servers.py`.
 
+### Reuse httpx.AsyncClient for MCP egress ([#964](https://github.com/naveenreddyalka/daari/issues/964))
+
+<!-- tracking:#964 -->
+**Status:** Done (2026-09-22). `McpEgressProvider` lazily reuses one
+`httpx.AsyncClient` per instance (`aclose()` for teardown). Covered by
+`tests/unit/test_mcp_egress.py`.
+
 
 ## How to update
 
