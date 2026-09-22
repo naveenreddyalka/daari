@@ -4000,6 +4000,13 @@ ledger sum, no rollover); `daari keys budget-boost` / `team-budget-boost` grant
 audited auto-expiring increases; `daari keys show` lists active boosts; expiry
 audited at enforcement. Covered by `tests/unit/test_lifetime_budget_boosts.py`.
 
+### Passthrough parallel_tool_calls, logit_bias, top_logprobs ([#940](https://github.com/naveenreddyalka/daari/issues/940))
+
+<!-- tracking:#940 -->
+**Status:** Done (2026-09-22). Declared on `ChatCompletionRequest` + `SamplingParams`;
+forwarded in `openai_payload()` / cache fingerprint; local `unsupported_locally`
+notes. Covered by `tests/unit/test_sampling_params.py`.
+
 ### Skip rate-limit body buffer on safe HTTP methods ([#939](https://github.com/naveenreddyalka/daari/issues/939))
 
 <!-- tracking:#939 -->
