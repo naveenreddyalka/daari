@@ -318,14 +318,32 @@ def test_pick_re_eligible_after_state_change():
             }
         ],
     }
-    # Same old comment, but PR now has a new run id → pick the stall again
+    # Same old comment, but PR now has a new run id → pick the stall again.
+    # The referenced PR must still be open (merged/closed stalls are skipped).
+    open_prs = [{"number": 340, "body": "Closes #999", "headRefName": "autodev/x", "title": "x"}]
     picked = module.pick(
         [stall],
-        open_prs=[],
+        open_prs=open_prs,
         comments_by_issue=comments_by_issue,
         blocked_fingerprints={341: "awaiting-approval run=999"},
     )
     assert picked is not None and picked["number"] == 341
+
+
+def test_pick_skips_stall_when_referenced_pr_merged():
+    module = _load_module()
+    stall = _issue(857, labels=("auto-dev", "P1", "regression"), created="2026-09-01T00:00:00Z")
+    stall["body"] = _stall_body(pr_number=833)
+    other = _issue(860, labels=("auto-dev", "P2"), created="2026-09-05T00:00:00Z")
+    other["body"] = "normal work"
+    # PR #833 is gone from open_prs (merged) → stall must not win --pick.
+    picked = module.pick([stall, other], open_prs=[])
+    assert picked is not None and picked["number"] == 860
+    assert module.should_skip_resolved_stall(stall, [])
+    assert not module.should_skip_resolved_stall(
+        stall,
+        [{"number": 833, "body": "", "headRefName": "x", "title": "x"}],
+    )
 
 
 def test_non_stall_issues_unaffected_by_blocked_helpers():

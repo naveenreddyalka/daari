@@ -91,3 +91,28 @@ In your collector, filter by that `trace-id`: the `chat {model}` span and its
 `tier_attempt` / `served` children sit under the caller's span, and upstream
 provider spans (when the backend honors `traceparent`) share the same id.
 
+## OTLP logs (gateway events)
+
+Gateway request events (`log_gateway_event`) always write JSONL to
+`~/.daari/cursor-requests.log` and optionally mirror to stdout via
+`observability.structured_json_logs`. To also ship them on the same OTLP pipe
+as traces and metrics (Datadog / Splunk / Loki via your collector):
+
+```yaml
+observability:
+  otlp_logs: true
+```
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 daari serve
+```
+
+Requires the optional `daari[otel]` extra. Each event becomes an OTel
+`LogRecord` with `event_name` set to the gateway event and payload fields as
+attributes (`daari.event` plus the original keys). When a request already has
+an active span or inbound `traceparent`, the log record carries that
+trace/span id so it joins the GenAI tree in the collector.
+
+Collector unavailability fails open — request handling never blocks or errors
+on log export. File JSONL and stdout mirror behavior are unchanged.
+

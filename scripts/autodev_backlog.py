@@ -194,6 +194,21 @@ def resolve_blocked_fingerprint(
     return fingerprint_for_blocked_stall(normalized, workflow_runs=runs)
 
 
+def should_skip_resolved_stall(
+    issue: dict[str, Any],
+    open_prs: list[dict[str, Any]],
+) -> bool:
+    """True when a stall issue's referenced PR is no longer open (merged/closed).
+
+    After auto-merge succeeds the stall ticket can linger open (label/comment
+    permissions), but it must not keep winning ``--pick``.
+    """
+    pr_number = extract_stall_pr_number(issue.get("body") or "")
+    if pr_number is None:
+        return False
+    return not any(int(pr.get("number") or 0) == pr_number for pr in open_prs)
+
+
 def eligible_issues(
     issues: list[dict[str, Any]],
     open_prs: list[dict[str, Any]],
@@ -210,6 +225,8 @@ def eligible_issues(
             continue
         number = int(issue["number"])
         if any(pr_references_issue(pr, number) for pr in open_prs):
+            continue
+        if should_skip_resolved_stall(issue, open_prs):
             continue
         if should_skip_human_gated_stall(
             issue,

@@ -38,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_bytes=resolved.observability.request_log_max_bytes,
         backups=resolved.observability.request_log_backups,
         structured_json_logs=resolved.observability.structured_json_logs,
+        otlp_logs=resolved.observability.otlp_logs,
     )
     vk_store: VirtualKeyStore | None = None
     if resolved.server.virtual_keys.enabled:
@@ -87,7 +88,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
                     job = batch_store.get(job_id)
                     gov = job.governance if job is not None else None
-                    return await _execute_batch_chat_body(app.state.ctx, item_body, governance=gov)
+                    return await _execute_batch_chat_body(
+                        app.state.ctx,
+                        item_body,
+                        governance=gov,
+                        rate_limiter=limiter,
+                    )
 
                 return execute_one
 
@@ -412,6 +418,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         team_rpm = None
         team_tpm = None
         team_rpd = None
+        team = None
         if team_id:
             store = getattr(request.app.state, "virtual_key_store", None)
             team = (
@@ -461,7 +468,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if rate_soft:
             request.state.rate_limit_soft = True
 
-        slot = await limiter.acquire()
+        from daari.auth.virtual_keys import admission_priority_for
+
+        slot = await limiter.acquire(priority=admission_priority_for(virtual, team))
         if not slot.allowed:
             headers = slot.headers()
             headers.setdefault("Retry-After", str(limiter.retry_after_seconds))
@@ -499,4 +508,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(MCPGatewayAdapter().router())
     app.include_router(OllamaCompatGatewayAdapter().router())
     app.include_router(ResponsesGatewayAdapter().router())
+    # Outermost: reject oversized bodies before rate-limit buffering (#933).
+    from daari.server.body_limit import install_body_size_limit
+
+    install_body_size_limit(app, resolved)
     return app

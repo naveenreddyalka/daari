@@ -1,8 +1,10 @@
-"""Optional OpenTelemetry export for RequestTrace steps (issues #115, #167, #485).
+"""Optional OpenTelemetry export for RequestTrace steps (issues #115, #167, #485)
+and gateway request-log events as OTLP logs (issue #849).
 
 Off by default. When enabled and `opentelemetry-api` is installed, each
-finished RequestTrace is exported as a span tree. Missing OTel packages are
-a no-op so the core daemon never hard-depends on them.
+finished RequestTrace is exported as a span tree. Opt-in `otlp_logs` also
+emits `log_gateway_event` records via the OTel logs API. Missing OTel
+packages are a no-op so the core daemon never hard-depends on them.
 
 Spans and metrics follow the OpenTelemetry GenAI semantic conventions
 (`gen_ai.*`), which are Development status as of v1.42.0 and may still shift;
@@ -89,17 +91,31 @@ def inject_trace_headers(headers: dict[str, str] | None = None) -> dict[str, str
     return out
 
 
-def configure_providers(service_name: str = "daari") -> bool:
-    """Install OTLP-exporting tracer/meter providers at startup, best-effort.
+def configure_providers(
+    service_name: str = "daari",
+    *,
+    otlp_logs: bool = False,
+    traces: bool = True,
+) -> bool:
+    """Install OTLP-exporting tracer/meter/(optional) log providers at startup.
 
     Only acts when `OTEL_EXPORTER_OTLP_ENDPOINT` is set (so a bare
     `observability.otel: true` never spams connection errors at a default
     endpoint nobody runs) and when no real SDK provider is installed yet —
     a host app or `opentelemetry-instrument` wrapper always wins. Returns
-    True only when this call installed the providers.
+    True only when this call installed at least one provider.
     """
     if not os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
         return False
+    installed = False
+    if traces:
+        installed = _configure_trace_meter_providers(service_name) or installed
+    if otlp_logs:
+        installed = _configure_log_provider(service_name) or installed
+    return installed
+
+
+def _configure_trace_meter_providers(service_name: str) -> bool:
     try:
         from opentelemetry import metrics as otel_metrics
         from opentelemetry import trace as otel_trace
@@ -129,6 +145,61 @@ def configure_providers(service_name: str = "daari") -> bool:
                 metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())],
             )
         )
+        return True
+    except Exception:
+        return False
+
+
+def _configure_log_provider(service_name: str) -> bool:
+    """Install an OTLP LoggerProvider when none is set yet (issue #849)."""
+    try:
+        from opentelemetry._logs import get_logger_provider, set_logger_provider
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import (
+            OTLPLogExporter,
+        )
+        from opentelemetry.sdk._logs import LoggerProvider
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+        from opentelemetry.sdk.resources import Resource
+    except ImportError:
+        return False
+    try:
+        if isinstance(get_logger_provider(), LoggerProvider):
+            return False
+        resource = Resource.create({"service.name": service_name})
+        logger_provider = LoggerProvider(resource=resource)
+        logger_provider.add_log_record_processor(
+            BatchLogRecordProcessor(OTLPLogExporter())
+        )
+        set_logger_provider(logger_provider)
+        return True
+    except Exception:
+        return False
+
+
+def export_gateway_log(event: str, payload: dict[str, Any]) -> bool:
+    """Best-effort OTLP log emit for a gateway event. Returns True if emitted.
+
+    Correlates with the inbound W3C context when present, otherwise the active
+    span. Collector / package failures are swallowed (fail-open).
+    """
+    try:
+        from opentelemetry._logs import SeverityNumber, get_logger
+    except ImportError:
+        return False
+    try:
+        attrs: dict[str, Any] = {"daari.event": str(event)[:_MAX_ATTR_CHARS]}
+        for key, value in (payload or {}).items():
+            attrs[str(key)[:_MAX_ATTR_CHARS]] = _attr_value(value)
+        emit_kwargs: dict[str, Any] = {
+            "event_name": str(event)[:_MAX_ATTR_CHARS],
+            "body": str(event)[:_MAX_ATTR_CHARS],
+            "attributes": attrs,
+            "severity_number": SeverityNumber.INFO,
+        }
+        inbound = _inbound_context.get()
+        if inbound is not None:
+            emit_kwargs["context"] = inbound
+        get_logger("daari").emit(**emit_kwargs)
         return True
     except Exception:
         return False

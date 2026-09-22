@@ -267,44 +267,60 @@ async def _execute_batch_chat_body(
     body_dict: dict[str, Any],
     *,
     governance: Any | None = None,
+    rate_limiter: Any | None = None,
 ) -> dict[str, Any]:
     """Run one batch item through the same router path as /v1/chat/completions."""
-    from daari.gateway.batches import BatchGovernance
+    from daari.gateway.batches import BatchGovernance, BatchItemRejected
 
-    body = ChatCompletionRequest.model_validate(body_dict)
-    gov = governance if isinstance(governance, BatchGovernance) else None
-    body_user = (body.user or "").strip() or None
-    meta = RequestMeta(
-        tier_cap=gov.tier_cap if gov else None,
-        latency_budget_ms=gov.latency_budget_ms if gov else None,
-        deadline_ms=gov.deadline_ms if gov else None,
-        client_id=gov.client_id if gov else None,
-        user_agent=gov.user_agent if gov else None,
-        user=body_user or (gov.user if gov else None),
-        session_id=gov.session_id if gov else None,
-        no_frontier=bool(gov.no_frontier) if gov else False,
-        boundary_profile=gov.boundary_profile if gov else None,
-        key_id=gov.key_id if gov else None,
-        team_id=gov.team_id if gov else None,
-        cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
-    )
-    apply_cost_tier(body, meta)
-    _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
-    _enforce_batch_item_rate_limits(ctx, body_dict, governance=gov)
-    _enforce_batch_item_budgets(ctx, meta, governance=gov)
-    internal = _prepare_internal_request(
-        body,
-        default_model=ctx.settings.models.l3,
-        meta=meta,
-    )
-    result = await ctx.router.route(internal)
-    prompt_chars = sum(len(message.content or "") for message in internal.messages)
-    return build_chat_completion_payload(
-        result,
-        prompt_chars=prompt_chars,
-        include_daari_meta=False,
-        client_model=body.model or None,
-    )
+    acquired = False
+    if rate_limiter is not None and int(getattr(rate_limiter, "max_in_flight", 0) or 0) > 0:
+        slot = await rate_limiter.acquire(priority="low")
+        if not slot.allowed:
+            raise BatchItemRejected(
+                {
+                    "type": "rate_limit_error",
+                    "message": "In-flight concurrency limit exceeded.",
+                }
+            )
+        acquired = True
+    try:
+        body = ChatCompletionRequest.model_validate(body_dict)
+        gov = governance if isinstance(governance, BatchGovernance) else None
+        body_user = (body.user or "").strip() or None
+        meta = RequestMeta(
+            tier_cap=gov.tier_cap if gov else None,
+            latency_budget_ms=gov.latency_budget_ms if gov else None,
+            deadline_ms=gov.deadline_ms if gov else None,
+            client_id=gov.client_id if gov else None,
+            user_agent=gov.user_agent if gov else None,
+            user=body_user or (gov.user if gov else None),
+            session_id=gov.session_id if gov else None,
+            no_frontier=bool(gov.no_frontier) if gov else False,
+            boundary_profile=gov.boundary_profile if gov else None,
+            key_id=gov.key_id if gov else None,
+            team_id=gov.team_id if gov else None,
+            cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
+        )
+        apply_cost_tier(body, meta)
+        _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
+        _enforce_batch_item_rate_limits(ctx, body_dict, governance=gov)
+        _enforce_batch_item_budgets(ctx, meta, governance=gov)
+        internal = _prepare_internal_request(
+            body,
+            default_model=ctx.settings.models.l3,
+            meta=meta,
+        )
+        result = await ctx.router.route(internal)
+        prompt_chars = sum(len(message.content or "") for message in internal.messages)
+        return build_chat_completion_payload(
+            result,
+            prompt_chars=prompt_chars,
+            include_daari_meta=False,
+            client_model=body.model or None,
+        )
+    finally:
+        if acquired:
+            await rate_limiter.release()
 
 
 def _batch_lookup_virtual_key(ctx: AppContext, governance: Any) -> Any | None:
@@ -997,6 +1013,41 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 model=model,
                 prompt=prompt,
                 response_format=response_format,
+            )
+
+        @router.post("/v1/audio/speech", response_model=None)
+        async def audio_speech(request: Request) -> Any:
+            """OpenAI-compatible local TTS proxy (#847)."""
+            from daari.gateway.speech import handle_speech
+
+            try:
+                body = await request.json()
+            except Exception:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "request body must be JSON",
+                        }
+                    },
+                )
+            if not isinstance(body, dict):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "request body must be a JSON object",
+                        }
+                    },
+                )
+            return await handle_speech(
+                request,
+                model=str(body.get("model") or ""),
+                input_text=str(body.get("input") or ""),
+                voice=(str(body["voice"]) if body.get("voice") is not None else None),
+                response_format=str(body.get("response_format") or "mp3"),
             )
 
         @router.post("/v1/embeddings")
@@ -1944,7 +1995,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             governance = job.governance
 
             async def execute_one(item_body: dict[str, Any]) -> dict[str, Any]:
-                return await _execute_batch_chat_body(ctx, item_body, governance=governance)
+                return await _execute_batch_chat_body(
+                    ctx,
+                    item_body,
+                    governance=governance,
+                    rate_limiter=getattr(request.app.state, "rate_limiter", None),
+                )
 
             store.schedule(job.id, execute_one)
             return store.as_public(job)
