@@ -263,7 +263,7 @@ def test_grafana_dashboard_includes_cancelled_requests_panel():
 
 
 def test_grafana_dashboard_includes_deadline_exceeded_panel():
-    """Request-deadline burns should be visible on the overview (#788)."""
+    """Request-deadline burns should be visible on the overview (#788, #837)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
     panel = next(
         (p for p in payload["panels"] if "deadline exceeded" in p.get("title", "").lower()),
@@ -273,4 +273,9 @@ def test_grafana_dashboard_includes_deadline_exceeded_panel():
     exprs = [t.get("expr", "") for t in panel.get("targets", [])]
     assert any("daari_request_deadline_exceeded_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
+    description = panel.get("description", "").lower()
+    assert "chat-only" not in description or "not chat-only" in description
+    assert "audio" in description
+    assert "embed" in description
+    assert "mcp" in description
 
