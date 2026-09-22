@@ -3958,6 +3958,13 @@ when set; empty default omits env. Documented in capacity-helm. Covered by
 `tests/unit/test_metrics_prometheus_docs.py`.
 
 
+### Docs: capacity-helm asr.model contract ([#926](https://github.com/naveenreddyalka/daari/issues/926))
+
+<!-- tracking:#926 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`asr.model` and `DAARI_ASR__MODEL`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
 ### Docs: ASR guide names Helm asr.frontierFallback ([#925](https://github.com/naveenreddyalka/daari/issues/925))
 
 <!-- tracking:#925 -->
