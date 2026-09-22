@@ -3356,6 +3356,65 @@ async def test_deadline_header_is_504_before_upstream(app):
 
 
 @pytest.mark.asyncio
+async def test_frontier_stream_tool_call_survives_escalation(settings, monkeypatch):
+    """Streamed L6 tool_calls are relayed through the OpenAI gateway (#934)."""
+    settings.frontier.enabled = True
+    settings.routing.confidence_threshold = 0.99
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    class _Frontier:
+        api_key = "sk-test"
+
+        async def stream(self, request, escalated_from=None, local_confidence=None):
+            yield {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "call_int",
+                        "type": "function",
+                        "function": {"name": "lookup", "arguments": "{}"},
+                    }
+                ]
+            }
+
+        async def execute(self, *args, **kwargs):
+            raise AssertionError("must relay via stream")
+
+    async def fake_local_stream(request):
+        yield {"message": {"role": "assistant", "content": "idk"}, "done": True}
+
+    application.state.ctx.router.frontier = _Frontier()
+    monkeypatch.setattr(application.state.ctx.router.ollama, "stream", fake_local_stream)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "stream", fake_local_stream)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "stream": True,
+                "messages": [{"role": "user", "content": "use a tool please"}],
+                "tools": [
+                    {
+                        "type": "function",
+                        "function": {"name": "lookup", "parameters": {"type": "object"}},
+                    }
+                ],
+            },
+            headers={**META_HEADERS, "X-Daari-No-Cache": "true"},
+        )
+    assert response.status_code == 200
+    assert "tool_calls" in response.text
+    assert "lookup" in response.text
+    assert "call_int" in response.text
+
+
+@pytest.mark.asyncio
 async def test_oversized_chat_body_returns_413(settings, monkeypatch):
     """server.max_body_bytes rejects early with OpenAI 413 (#933)."""
     settings.server.max_body_bytes = 128
@@ -3398,4 +3457,28 @@ async def test_oversized_chat_body_returns_413(settings, monkeypatch):
     assert denied.json()["error"]["code"] == "request_too_large"
     assert ok.status_code == 200
     assert ok.json()["daari_meta"]["tier"] in {"L3", "L0"}
+
+
+@pytest.mark.asyncio
+async def test_invalid_key_throttle_returns_429(settings):
+    """N invalid keys from one IP → 429; valid key still works (#935)."""
+    settings.server.api_key = "master-secret"
+    settings.auth.max_failures = 3
+    settings.auth.window_seconds = 60.0
+    settings.auth.exempt_loopback = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=application, client=("198.51.100.10", 40000))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for _ in range(3):
+            assert (
+                await client.get("/v1/models", headers={"Authorization": "Bearer bad"})
+            ).status_code == 401
+        throttled = await client.get("/v1/models", headers={"Authorization": "Bearer bad"})
+        assert throttled.status_code == 429
+        assert throttled.json()["error"]["code"] == "auth_throttled"
+        ok = await client.get(
+            "/v1/models", headers={"Authorization": "Bearer master-secret"}
+        )
+        assert ok.status_code == 200
 
