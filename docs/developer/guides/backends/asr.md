@@ -29,4 +29,4 @@ With `asr.base_url` set, a short clip returns `{ "text": "..." }`. With nothing 
 
 ## Next
 
-→ [vLLM / llama.cpp](../configuration/vllm-local-tier.md) · [Ollama](ollama.md)
+→ [vLLM / llama.cpp](../configuration/vllm-local-tier.md) · [Ollama](ollama.md) · [Capacity and Helm](../operations/capacity-helm.md)

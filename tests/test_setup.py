@@ -961,7 +961,7 @@ class TestDoctorCLI:
     def test_doctor_tunnel_url_passed_to_run_doctor(self, monkeypatch):
         captured: dict[str, str | None] = {}
 
-        def fake_run_doctor(settings, *, httpx_client=None, tunnel_url=None):
+        def fake_run_doctor(settings, *, httpx_client=None, tunnel_url=None, strict=False):
             captured["tunnel_url"] = tunnel_url
             return []
 

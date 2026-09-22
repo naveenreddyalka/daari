@@ -69,6 +69,33 @@ async def test_outbound_requests_carry_mcp_method_and_name_headers(monkeypatch):
     assert "Mcp-Name" not in listing.headers
 
 
+@pytest.mark.asyncio
+async def test_reuses_async_client_across_calls(monkeypatch):
+    """One AsyncClient per provider instance (#964)."""
+    constructed: list[httpx.AsyncClient] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}})
+
+    class Patched(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+            constructed.append(self)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    provider = McpEgressProvider(McpServerConfig(id="demo", url="http://mcp.test/rpc"))
+    req = InternalRequest(
+        messages=[Message(role="user", content="@mcp:demo get_forecast Paris")],
+        model="daari",
+    )
+    await provider.execute(req)
+    await provider.execute(req)
+    assert len(constructed) == 1
+    await provider.aclose()
+    assert constructed[0].is_closed
+
+
 def _patched_client(handler):
     class Patched(httpx.AsyncClient):
         def __init__(self, *args, **kwargs):

@@ -7,7 +7,8 @@
 ```mermaid
 flowchart LR
     subgraph cloudLoop [Cloud loop]
-        Sched[Scheduled agent run] --> Pick[Pick top auto-dev issue]
+        Sched[Scheduled agent run] --> Drain[Drain stuck autodev PRs: update-branch / resolve / merge]
+        Drain --> Pick[Pick top auto-dev issue]
         Pick -->|empty| Refill[PRD refill 3-5 issues]
         Refill --> Pick
         Pick --> Impl[Implement TDD per AGENTS.md]
@@ -80,7 +81,8 @@ tail -f ~/.daari/autodev/watchdog.out.log
 - You only need to look at GitHub notifications for: blocked PRs, `regression` issues, red CI on main.
 - Stalled auto-merge (`DIRTY` / no checks): `scripts/autodev_pr_watch.py` comments on the PR and files `auto-dev,regression` (#200). Runs in `autodev-cycle` without `CURSOR_API_KEY`.
 - `BEHIND` auto-merge PRs: the same watcher merges `origin/main` (keeps both `docs/TRACKING.md` `###` sections) and approves first-party `action_required` runs so a park drains without a human *Update branch* click (#368).
-- Bot-PR approval gate (GitHub 2026-06-11): PRs opened with `GITHUB_TOKEN` (`github-actions[bot]`) need *Approve and run* on every synchronize. Set repo secret `AUTODEV_GH_TOKEN` to a fine-grained PAT (contents + PRs + actions, this repo only) so autodev opens PRs as a write-access user and CI starts on its own. Until that secret exists the workflow falls back to `GITHUB_TOKEN`.
+- Drain-first (#983): the watcher's rebase alone loses the up-to-date race while a run is merging every few minutes, so the dev-cycle agent starts each run by draining open `autodev/*` PRs itself — update-branch, wait for `test`, `gh pr merge --squash`; `DIRTY` PRs get conflicts resolved and the suite re-run — in issue priority order, before it picks new work.
+- Bot-PR approval gate (GitHub 2026-06-11): PRs opened with `GITHUB_TOKEN` (`github-actions[bot]`) need *Approve and run* on every synchronize. Set repo secret `AUTODEV_GH_TOKEN` to a fine-grained PAT (contents + issues + PRs + actions, this repo only; without **Issues: write** the agent cannot manage `agent:working` and the watcher logs a warning instead of failing) so autodev opens PRs as a write-access user and CI starts on its own. Until that secret exists the workflow falls back to `GITHUB_TOKEN`.
 
 ## Issue labels
 

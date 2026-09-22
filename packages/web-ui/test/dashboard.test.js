@@ -14,6 +14,8 @@ const STATS = {
     { id: "gpu-b", healthy: false, circuit: "open", outstanding: 0 },
   ],
   backend_summary: { total: 2, healthy: 1, unhealthy: 1, open_circuit: 1 },
+  mcp_tool_calls: { "route:ok": 5, "stats:deny": 2 },
+  mcp_tasks: { working: 1, failed: 1, completed: 3, cancelled: 0, input_required: 0, active: 1, total: 5 },
   team_rate_limits: [
     { team: "eng", kind: "rpd", limit: 100, remaining: 40 },
     { team: "eng", kind: "rpm", limit: 10, remaining: 7 },
@@ -117,6 +119,23 @@ test("soft warnings and hard rejects tables render from stats", async (t) => {
   assert.equal(rejectRows.length, 2);
   assert.match(rejectRows.map((r) => r.textContent).join("|"), /budget/);
   assert.match(rejectRows.map((r) => r.textContent).join("|"), /rate_limit/);
+});
+
+test("MCP tool outcomes and task counts render from stats", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const toolRows = [...doc.querySelectorAll("#mcp-tool-calls-table tr")];
+  assert.equal(toolRows.length, 2);
+  assert.match(toolRows.map((r) => r.textContent).join("|"), /route:ok/);
+  assert.match(toolRows.map((r) => r.textContent).join("|"), /stats:deny/);
+  const taskRows = [...doc.querySelectorAll("#mcp-tasks-table tr")];
+  assert.match(taskRows.map((r) => r.textContent).join("|"), /working/);
+  assert.match(taskRows.map((r) => r.textContent).join("|"), /failed/);
+  assert.match(doc.getElementById("mcp-tasks-summary").textContent, /Active tasks: 1/);
 });
 
 test("team rate limits table includes rpd remaining", async (t) => {

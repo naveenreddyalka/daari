@@ -98,6 +98,7 @@ class LocalBackendPool:
                 timeout=getattr(template, "timeout", 120.0),
                 retry=getattr(template, "retry", None),
                 metrics=getattr(template, "metrics", None),
+                pool_limits=getattr(template, "pool_limits", None),
             )
         if not is_dataclass(template) or isinstance(template, type):
             return template

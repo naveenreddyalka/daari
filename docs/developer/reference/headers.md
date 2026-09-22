@@ -15,6 +15,7 @@
 | `X-Daari-Boundary-Profile` | Named `boundaries.profiles` overlay for this request (browser extension site profiles) |
 | `X-Daari-Tools` | Tool-related client hints |
 | `X-Daari-Confirm*` / `X-Daari-ReRun-Command` | Lt ask-gate confirmation |
+| `X-Request-ID` | Correlation id: sanitized inbound value or a generated 16-char hex id. Echoed on chat completions responses and forwarded on upstream hops (Ollama, OpenAI-compat, MLX, frontier, ASR, TTS, embeddings, MCP egress) as `X-Request-ID`. |
 
 Explicit headers win over project profiles and most config defaults.
 

@@ -127,19 +127,32 @@ daari serve --strict
   `SAFE_FRONTIER_KEYS`, `SAFE_CACHE_KEYS` plus `guardrails.enabled` and
   boundaries; unknown keys are ignored and a value of the wrong type is logged
   as `policy_sync_value_rejected` and skipped without aborting the sync
-  (`daari/enterprise/policy_sync.py`).
+  (`daari/enterprise/policy_sync.py`). Policy bundles may include an integer
+  `schema` field (`POLICY_SCHEMA` in `bootstrap.py`, currently `1`). Laptops
+  on this release **reject** unknown majors (`schema > POLICY_SCHEMA`) so a
+  fleet upgrading independently fails closed instead of silently mis-applying
+  policy. Older clients **ignore** the `schema` key (and any other unknown
+  keys). Omit `schema` for legacy bundles.
 
 ## What survives, and what is rebuilt
 
 Everything lives under `~/.daari/` (or the Docker volume / PVC). There is no
 Alembic; every store creates its own tables with `CREATE TABLE IF NOT EXISTS`
 on first open and, where the schema has changed, migrates in place on that
-same open.
+same open. Operators can also run the same opens explicitly:
+
+```bash
+daari migrate --dry-run   # inspect pending additive migrations; exit 0 if safe
+daari migrate             # open ledger / virtual-keys / audit / responses /
+                          # mcp-tasks and report what changed
+daari doctor              # warns on pending migrate (optional)
+daari doctor --strict     # pending migrate fails the exit code
+```
 
 | Store | Location | Across an upgrade |
 |-------|----------|-------------------|
 | L0 exact cache | `~/.daari/cache/l0` (diskcache) or Redis `daari:l0:*` | **Survives.** Keys are a SHA-256 of messages, model, temperature, tools, tier and sampling (`daari/cache/exact.py`). Safe to delete; it refills. |
-| L1 semantic cache | `~/.daari/cache/l1` (diskcache) or Redis `daari:l1:entries` | **Survives**, keyed by model/temperature/tools/tier (`daari/cache/semantic.py`). The embedding model name is *not* part of the key: if you change `cache.l1.embedding_model`, delete the L1 directory (or the Redis key) or old vectors will score ~0 and never hit. Unreadable entry lists are treated as empty, not fatal. |
+| L1 semantic cache | `~/.daari/cache/l1` (diskcache) or Redis `daari:l1:entries` | **Survives**, keyed by model/temperature/tools/tier **and** `cache.l1.embedding_model` (`daari/cache/semantic.py`). Changing the embedder yields clean misses (no cross-model cosine hits); stale-model rows are preferred for eviction when over `max_entries`. Unreadable entry lists are treated as empty, not fatal. |
 | Org shared cache | `~/.daari/org/<id>/shared-cache/` | Survives; same rebuildable semantics (`daari/enterprise/service.py`). |
 | Usage ledger | `~/.daari/usage/ledger.sqlite3` | **Durable.** Tables rebuilt in place when a pre-#156 schema is found (`UsageLedger._migrate`, `daari/observability/usage.py`). If init fails the ledger disables itself rather than crashing the gateway. |
 | Virtual keys / teams | `~/.daari/auth/virtual-keys.sqlite3` | **Durable.** Additive `ALTER TABLE … ADD COLUMN` migrations (`_migrate` in `daari/auth/virtual_keys.py`). Back this up — keys cannot be regenerated. Prefer `daari keys export --json --out …` / `daari keys import` over copying the SQLite file when migrating hosts or backends. |
@@ -199,11 +212,12 @@ developer laptops that pull policy from it.
 
 1. **Gateway first, then laptops.** The policy-sync protocol is a signed JSON
    object (`X-Daari-Signature`, HMAC-SHA256 of the body —
-   `daari/enterprise/bootstrap.py`) with no schema-version field. Laptops
-   ignore keys they do not recognise, so a newer gateway can publish new keys
-   before laptops upgrade; the reverse (new laptop, old gateway) simply sees
-   fewer keys. Either direction is tolerated; gateway-first means new policy
-   is live the moment laptops upgrade.
+   `daari/enterprise/bootstrap.py`) with an optional integer `schema` field.
+   Current daari refuses unknown majors; older clients ignore the `schema` key
+   (and any other unknown keys), so a newer gateway can publish new keys
+   before laptops upgrade. Gateway-first still means new policy is live the
+   moment laptops upgrade; a laptop that sees `schema` ahead of its
+   `POLICY_SCHEMA` fails closed instead of applying a half-understood bundle.
 2. **Shared Redis/Postgres tolerate mixed versions.** L0/L1 entries are
    version-agnostic (see the table); Postgres tables are create-if-missing.
    Run mixed replicas during a rolling update without draining the cache.
@@ -216,6 +230,7 @@ developer laptops that pull policy from it.
 ## Verify
 
 ```bash
+daari migrate --dry-run
 daari doctor
 curl -fsS http://127.0.0.1:11435/ready
 daari report          # ledger still has history → durable stores survived

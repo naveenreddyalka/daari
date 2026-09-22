@@ -34,6 +34,34 @@ inbound bodies **before** middleware buffers them. Oversized requests return
 `files.max_total_bytes` can still govern stored uploads. Set `0` to disable.
 `daari_rejects_total{kind="body_too_large"}` counts denials.
 
+## Invalid API-key throttle
+
+After `auth.max_failures` (default 10) invalid API-key attempts from one client IP
+within `auth.window_seconds` (default 60), further **invalid** attempts return
+**429** with `Retry-After` and exponential backoff. Loopback is exempt by default
+(`auth.exempt_loopback`). Counters use Redis when `cache.backend=redis`, else
+in-process memory; Redis errors fail open. Trips emit `auth.throttled` audit
+events and `daari_rejects_total{kind="auth_throttled"}`. Disable with
+`auth.throttle_enabled=false` or `auth.max_failures=0`.
+## CORS and security headers
+
+Laptop dashboards (`daari web-ui serve` on `:11437`) and IDE webviews call the
+gateway cross-origin with a Bearer token. Set an explicit Origin allowlist:
+
+```yaml
+server:
+  cors_origins:
+    - http://127.0.0.1:11437
+  security_headers: true   # default; X-Content-Type-Options / X-Frame-Options / Referrer-Policy
+```
+
+Empty `cors_origins` disables CORS middleware (no `Access-Control-*` headers).
+Disallowed origins never receive a reflecting `Access-Control-Allow-Origin`.
+Native CORS does **not** replace reverse-proxy TLS/CORS — when an ingress or
+nginx already terminates TLS and sets CORS, leave `cors_origins` empty and
+configure the proxy instead. Helm: `server.corsOrigins` /
+`server.securityHeaders.enabled`.
+
 ## TLS for the gateway
 
 Two supported modes (pick one; do not double-terminate without understanding the hop):
