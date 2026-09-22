@@ -202,9 +202,12 @@ class OllamaEmbedder:
             async with httpx.AsyncClient(
                 base_url=self.base_url, timeout=timeout, transport=self._transport
             ) as client:
+                from daari.observability.otel import inject_trace_headers
+
                 response = await client.post(
                     "/api/embed",
                     json={"model": model, "input": texts},
+                    headers=inject_trace_headers(),
                 )
                 if response.status_code == 404:
                     return None
@@ -231,9 +234,12 @@ class OllamaEmbedder:
             async with httpx.AsyncClient(
                 base_url=self.base_url, timeout=timeout, transport=self._transport
             ) as client:
+                from daari.observability.otel import inject_trace_headers
+
                 response = await client.post(
                     "/api/embeddings",
                     json={"model": model, "prompt": text},
+                    headers=inject_trace_headers(),
                 )
                 response.raise_for_status()
                 data = response.json()

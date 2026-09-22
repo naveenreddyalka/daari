@@ -4097,6 +4097,13 @@ spend ledger `request_id`. Covered by `tests/unit/test_request_id.py`.
 `tts.model` / `tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Forward X-Request-ID on all upstream hops ([#977](https://github.com/naveenreddyalka/daari/issues/977))
+
+<!-- tracking:#977 -->
+**Status:** Done (2026-09-22). Middleware binds the resolved id; `inject_trace_headers`
+forwards `X-Request-ID` on Ollama, OpenAI-compat, MLX, frontier, ASR, TTS,
+embeddings, and MCP egress. Covered by `tests/unit/test_request_id.py`.
+
 
 ## How to update
 

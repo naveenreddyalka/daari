@@ -268,6 +268,9 @@ async def handle_transcription(
     headers: dict[str, str] = {}
     if target.api_key:
         headers["Authorization"] = f"Bearer {target.api_key}"
+    from daari.observability.otel import inject_trace_headers
+
+    headers = inject_trace_headers(headers)
 
     url = f"{target.base_url}/{upstream_path.lstrip('/')}"
     started = time.perf_counter()

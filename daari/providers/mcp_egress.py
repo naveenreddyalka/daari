@@ -105,6 +105,11 @@ class McpEgressProvider(HttpIntegrationProvider):
         headers = {"Content-Type": "application/json"}
         if self.server.token:
             headers["Authorization"] = f"Bearer {self.server.token}"
+        from daari.observability.otel import inject_trace_headers
+
+        headers = inject_trace_headers(
+            headers, request_id=getattr(request.meta, "request_id", None)
+        )
 
         if tool in {"tools/list", "list"}:
             headers["Mcp-Method"] = "tools/list"
