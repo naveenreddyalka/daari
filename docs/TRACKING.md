@@ -3110,6 +3110,12 @@ bullet; watch rows only. Docs-only.
 healthy / unhealthy / open_circuit) above the local pool backends table.
 Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Expand package-map observability for stats cliff maps ([#656](https://github.com/naveenreddyalka/daari/issues/656))
+
+<!-- tracking:#656 -->
+**Status:** Done (2026-09-18). `package-map.md` `observability/` row notes
+stats `soft_warnings` / `rejects` and `backend_summary` (link to traces-stats).
+
 ### Note stats tier p50/p95 in traces-stats ([#655](https://github.com/naveenreddyalka/daari/issues/655))
 
 <!-- tracking:#655 -->
@@ -3133,6 +3139,19 @@ includes `soft_warnings` / `rejects` and `backend_summary`.
 <!-- tracking:#663 -->
 **Status:** Done (2026-09-18). `metrics-prometheus.md` notes
 `backend_summary` on `GET /v1/daari/stats` (link to traces-stats).
+
+### Assert POST /introspect in architecture API table ([#665](https://github.com/naveenreddyalka/daari/issues/665))
+
+<!-- tracking:#665 -->
+**Status:** Done (2026-09-18). `tests/unit/test_architecture_introspect.py`
+asserts `docs/ARCHITECTURE.md` lists `POST /introspect` (RFC 7662).
+
+### Note agent_turn in traces-stats meta section ([#666](https://github.com/naveenreddyalka/daari/issues/666))
+
+<!-- tracking:#666 -->
+**Status:** Done (2026-09-18). `traces-stats.md` `daari_meta` list includes
+`agent_turn`.
+
 
 ### Cross-link backend_summary from savings-report ([#673](https://github.com/naveenreddyalka/daari/issues/673))
 
