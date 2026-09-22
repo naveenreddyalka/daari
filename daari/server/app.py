@@ -122,6 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.ctx.stop_backend_health()
             await app.state.ctx.stop_org_learning_sync()
             await app.state.ctx.stop_retention_sweep()
+            await app.state.ctx.aclose_upstream_clients()
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.state.virtual_key_store = vk_store
@@ -164,6 +165,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 response.headers.setdefault("X-Frame-Options", "DENY")
                 response.headers.setdefault("Referrer-Policy", "no-referrer")
             return response
+
+    @app.middleware("http")
+    async def bind_x_request_id(request: Request, call_next):
+        """Resolve once per request so upstream inject sees the same id (#977)."""
+        from daari.gateway.request_id import (
+            bind_request_id,
+            reset_request_id,
+            resolve_request_id,
+        )
+
+        request_id = resolve_request_id(request.headers)
+        request.state.request_id = request_id
+        token = bind_request_id(request_id)
+        try:
+            return await call_next(request)
+        finally:
+            reset_request_id(token)
 
     if resolved.observability.otel:
 

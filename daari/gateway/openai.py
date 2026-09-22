@@ -777,7 +777,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             user_agent = request.headers.get("user-agent", "")
             from daari.gateway.request_id import resolve_request_id
 
-            request_id = resolve_request_id(request.headers)
+            request_id = getattr(request.state, "request_id", None) or resolve_request_id(
+                request.headers
+            )
             # T5b / #421: explicit header wins; otherwise attribute agent
             # traffic by user-agent so per-client reports and classify_user_turn
             # shortcuts work with zero config.
