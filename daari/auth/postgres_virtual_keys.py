@@ -88,6 +88,7 @@ _PG_TEAM_MIGRATIONS = (
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS model_groups_json TEXT",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS cache_scope TEXT NOT NULL DEFAULT 'global'",
     "ALTER TABLE teams ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE teams ADD COLUMN IF NOT EXISTS metadata_json TEXT NOT NULL DEFAULT '{}'",
 )
 _PG_KEY_MIGRATIONS = (
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS allowed_models_json TEXT",
@@ -365,13 +366,15 @@ class PostgresVirtualKeyStore:
             with conn.cursor() as cur:
                 if team_id:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
+                        " allowed_models_json, model_groups_json, rpd, cache_scope, priority, metadata_json"
                         " FROM teams WHERE team_id = %s",
                         (team_id,),
                     )
                 else:
                     cur.execute(
-                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                        "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
+                        " allowed_models_json, model_groups_json, rpd, cache_scope, priority, metadata_json"
                         " FROM teams WHERE name = %s",
                         (name,),
                     )
@@ -390,6 +393,7 @@ class PostgresVirtualKeyStore:
             rpd=int(row[8] or 0) if len(row) > 8 else 0,
             cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
+            metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
         )
 
     def list_teams(self) -> list[Team]:
@@ -400,7 +404,8 @@ class PostgresVirtualKeyStore:
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                    "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority, metadata_json"
                     " FROM teams ORDER BY created_at ASC, team_id ASC"
                 )
                 rows = cur.fetchall()
@@ -417,6 +422,7 @@ class PostgresVirtualKeyStore:
                 rpd=int(row[8] or 0) if len(row) > 8 else 0,
                 cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
                 priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
+                metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
             )
             for row in rows
         ]
@@ -657,6 +663,122 @@ class PostgresVirtualKeyStore:
                 updated = cur.rowcount > 0
             conn.commit()
         return updated
+
+    def get_key(self, key_id: str) -> VirtualKey | None:
+        if self._inner is not None:
+            return self._inner.get_key(key_id)
+        if not self.enabled or not key_id:
+            return None
+        for key in self.list():
+            if key.key_id == key_id:
+                return key
+        return None
+
+    def grant_budget_boost(
+        self,
+        key_id: str,
+        *,
+        usd: float = 0.0,
+        requests: int = 0,
+        until: str,
+    ) -> dict[str, Any] | None:
+        if self._inner is not None:
+            return self._inner.grant_budget_boost(
+                key_id, usd=usd, requests=requests, until=until
+            )
+        if not self.enabled:
+            return None
+        from daari.auth.budgets import make_budget_boost
+
+        boost = make_budget_boost(usd=usd, requests=requests, until=until)
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+                meta = _parse_metadata(row[0])
+                boosts = list(meta.get("budget_boosts") or [])
+                boosts.append(boost)
+                meta["budget_boosts"] = boosts
+                cur.execute(
+                    "UPDATE virtual_keys SET metadata_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (json.dumps(meta), key_id),
+                )
+            conn.commit()
+        return boost
+
+    def grant_team_budget_boost(
+        self,
+        team_id: str,
+        *,
+        usd: float = 0.0,
+        requests: int = 0,
+        until: str,
+    ) -> dict[str, Any] | None:
+        if self._inner is not None:
+            return self._inner.grant_team_budget_boost(
+                team_id, usd=usd, requests=requests, until=until
+            )
+        if not self.enabled:
+            return None
+        from daari.auth.budgets import make_budget_boost
+
+        boost = make_budget_boost(usd=usd, requests=requests, until=until)
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM teams WHERE team_id = %s",
+                    (team_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return None
+                meta = _parse_metadata(row[0])
+                boosts = list(meta.get("budget_boosts") or [])
+                boosts.append(boost)
+                meta["budget_boosts"] = boosts
+                cur.execute(
+                    "UPDATE teams SET metadata_json = %s WHERE team_id = %s",
+                    (json.dumps(meta), team_id),
+                )
+            conn.commit()
+        return boost
+
+    def prune_key_budget_boosts(
+        self, key_id: str, *, now: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        if self._inner is not None:
+            return self._inner.prune_key_budget_boosts(key_id, now=now)
+        if not self.enabled:
+            return []
+        from daari.auth.budgets import prune_expired_boosts
+
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT metadata_json FROM virtual_keys"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (key_id,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    return []
+                meta, expired = prune_expired_boosts(_parse_metadata(row[0]), now=now)
+                if not expired:
+                    return []
+                cur.execute(
+                    "UPDATE virtual_keys SET metadata_json = %s"
+                    " WHERE key_id = %s AND revoked_at IS NULL",
+                    (json.dumps(meta), key_id),
+                )
+            conn.commit()
+        return expired
 
     def update_model_access(
         self,

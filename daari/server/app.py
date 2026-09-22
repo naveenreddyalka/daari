@@ -13,6 +13,7 @@ from daari.auth.rate_limit import (
     estimate_audio_upload_tokens,
     estimate_request_tokens,
     request_model,
+    should_buffer_body_for_rate_limit,
 )
 from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
 from daari.auth.virtual_keys import VirtualKeyStore
@@ -126,6 +127,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.virtual_key_store = vk_store
     app.state.rate_limiter = build_rate_limiter(resolved)
 
+    cors_origins = [origin.strip() for origin in resolved.server.cors_origins if origin.strip()]
+    cors_allow_headers = "Authorization, Content-Type, x-api-key, X-Daari-Meta"
+    cors_allow_methods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+
+    if cors_origins or resolved.server.security_headers:
+
+        @app.middleware("http")
+        async def cors_and_security_headers(request: Request, call_next):
+            origin = (request.headers.get("origin") or "").strip()
+            if (
+                cors_origins
+                and request.method == "OPTIONS"
+                and origin in cors_origins
+            ):
+                from fastapi.responses import Response
+
+                preflight = Response(status_code=204)
+                preflight.headers["Access-Control-Allow-Origin"] = origin
+                preflight.headers["Access-Control-Allow-Methods"] = cors_allow_methods
+                preflight.headers["Access-Control-Allow-Headers"] = cors_allow_headers
+                preflight.headers["Access-Control-Max-Age"] = "600"
+                preflight.headers["Vary"] = "Origin"
+                if resolved.server.security_headers:
+                    preflight.headers.setdefault("X-Content-Type-Options", "nosniff")
+                    preflight.headers.setdefault("X-Frame-Options", "DENY")
+                    preflight.headers.setdefault("Referrer-Policy", "no-referrer")
+                return preflight
+
+            response = await call_next(request)
+            if cors_origins and origin in cors_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Vary"] = "Origin"
+            if resolved.server.security_headers:
+                response.headers.setdefault("X-Content-Type-Options", "nosniff")
+                response.headers.setdefault("X-Frame-Options", "DENY")
+                response.headers.setdefault("Referrer-Policy", "no-referrer")
+            return response
+
     if resolved.observability.otel:
 
         @app.middleware("http")
@@ -164,10 +203,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         open_paths = {"/health", "/ready", "/v1/messages/health"}
         if not master_keys:
             open_paths.add("/metrics")
+        cors_allow = {
+            origin.strip() for origin in resolved.server.cors_origins if origin.strip()
+        }
 
         @app.middleware("http")
         async def require_api_key(request: Request, call_next):
             if request.url.path in open_paths:
+                return await call_next(request)
+            # Browser CORS preflight never carries Authorization (#938).
+            if (
+                cors_allow
+                and request.method == "OPTIONS"
+                and (request.headers.get("origin") or "").strip() in cors_allow
+            ):
                 return await call_next(request)
             # When no master key and the VK store is empty, stay open so
             # local single-user installs aren't suddenly locked out.
@@ -264,6 +313,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     pricing = getattr(resolved, "pricing", None)
                     fallback = float(resolved.usage.frontier_price_per_1k_tokens or 0.002)
                     key = claims.virtual_key
+                    # Drop expired temporary boosts and audit once (#936).
+                    prune = getattr(store, "prune_key_budget_boosts", None)
+                    if callable(prune) and key is not None:
+                        expired = prune(key.key_id)
+                        if expired:
+                            from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                            audit_log_from_settings(resolved).record(
+                                actor="gateway",
+                                role="system",
+                                action="budget.boost.expire",
+                                detail={
+                                    "scope": "key",
+                                    "key_id": key.key_id,
+                                    "expired": expired,
+                                },
+                            )
+                            # Refresh key so budget_status sees pruned metadata.
+                            refreshed = (
+                                store.get_key(key.key_id)
+                                if hasattr(store, "get_key")
+                                else None
+                            )
+                            if refreshed is not None:
+                                key = refreshed
+                                claims.virtual_key = refreshed
                     team = store.get_team(key.team_id) if key is not None else None
                     team_ids = store.team_client_ids(team.team_id) if team is not None else []
                     statuses = budget_status(
@@ -382,23 +457,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if limiter is None:
             return await call_next(request)
 
-        raw = await request.body()
         payload: dict = {}
-        if raw:
-            try:
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    payload = parsed
-            except json.JSONDecodeError:
-                payload = {}
-        model = request_model(payload)
-        tokens = estimate_request_tokens(payload)
-        if request.url.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
-            audio_tokens = estimate_audio_upload_tokens(
-                raw, request.headers.get("content-type", "")
-            )
-            if audio_tokens is not None:
-                tokens = audio_tokens
+        raw = b""
+        if should_buffer_body_for_rate_limit(request.method):
+            raw = await request.body()
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        payload = parsed
+                except json.JSONDecodeError:
+                    payload = {}
+            model = request_model(payload)
+            tokens = estimate_request_tokens(payload)
+            if request.url.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
+                audio_tokens = estimate_audio_upload_tokens(
+                    raw, request.headers.get("content-type", "")
+                )
+                if audio_tokens is not None:
+                    tokens = audio_tokens
+        else:
+            # GET/HEAD/OPTIONS: never buffer a body for TPM (#939).
+            model = "daari"
+            tokens = 0
         claims = getattr(request.state, "auth_claims", None)
         if claims is None:
             store = getattr(request.app.state, "virtual_key_store", None)

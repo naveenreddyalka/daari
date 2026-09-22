@@ -227,6 +227,8 @@ class Team:
     cache_scope: str = "global"
     # In-flight admission class (#848). high | normal | low.
     priority: str = "normal"
+    # Temporary budget boosts and other team-scoped extras (#936).
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -422,6 +424,10 @@ class VirtualKeyStore:
             conn.execute(
                 "ALTER TABLE teams ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'"
             )
+        if "metadata_json" not in team_cols:
+            conn.execute(
+                "ALTER TABLE teams ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
+            )
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -615,14 +621,16 @@ class VirtualKeyStore:
             if team_id:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                    " metadata_json"
                     " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
             else:
                 row = conn.execute(
                     "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                    " metadata_json"
                     " FROM teams WHERE name = ?",
                     (name,),
                 ).fetchone()
@@ -640,6 +648,7 @@ class VirtualKeyStore:
             rpd=int(row[8] or 0) if len(row) > 8 else 0,
             cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
+            metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
         )
 
     def list_teams(self) -> list[Team]:
@@ -649,7 +658,8 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                " metadata_json"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
         return [
@@ -665,6 +675,7 @@ class VirtualKeyStore:
                 rpd=int(row[8] or 0) if len(row) > 8 else 0,
                 cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
                 priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
+                metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
             )
             for row in rows
         ]
@@ -862,6 +873,105 @@ class VirtualKeyStore:
             )
             return cur.rowcount > 0
 
+    def get_key(self, key_id: str) -> VirtualKey | None:
+        """Load one active key by id (no plaintext)."""
+        if not self.enabled or not key_id:
+            return None
+        for key in self.list():
+            if key.key_id == key_id:
+                return key
+        return None
+
+    def grant_budget_boost(
+        self,
+        key_id: str,
+        *,
+        usd: float = 0.0,
+        requests: int = 0,
+        until: str,
+    ) -> dict[str, Any] | None:
+        """Append an auto-expiring temporary budget increase (#936)."""
+        if not self.enabled:
+            return None
+        from daari.auth.budgets import make_budget_boost
+
+        boost = make_budget_boost(usd=usd, requests=requests, until=until)
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM virtual_keys"
+                " WHERE key_id = ? AND revoked_at IS NULL",
+                (key_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            meta = _parse_metadata(row[0])
+            boosts = list(meta.get("budget_boosts") or [])
+            boosts.append(boost)
+            meta["budget_boosts"] = boosts
+            conn.execute(
+                "UPDATE virtual_keys SET metadata_json = ?"
+                " WHERE key_id = ? AND revoked_at IS NULL",
+                (json.dumps(meta), key_id),
+            )
+        return boost
+
+    def grant_team_budget_boost(
+        self,
+        team_id: str,
+        *,
+        usd: float = 0.0,
+        requests: int = 0,
+        until: str,
+    ) -> dict[str, Any] | None:
+        """Append a temporary team-scoped budget increase (#936)."""
+        if not self.enabled:
+            return None
+        from daari.auth.budgets import make_budget_boost
+
+        boost = make_budget_boost(usd=usd, requests=requests, until=until)
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM teams WHERE team_id = ?",
+                (team_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            meta = _parse_metadata(row[0] if len(row) else None)
+            boosts = list(meta.get("budget_boosts") or [])
+            boosts.append(boost)
+            meta["budget_boosts"] = boosts
+            conn.execute(
+                "UPDATE teams SET metadata_json = ? WHERE team_id = ?",
+                (json.dumps(meta), team_id),
+            )
+        return boost
+
+    def prune_key_budget_boosts(
+        self, key_id: str, *, now: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        """Drop expired boosts; return the expired rows for audit (#936)."""
+        if not self.enabled:
+            return []
+        from daari.auth.budgets import prune_expired_boosts
+
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT metadata_json FROM virtual_keys"
+                " WHERE key_id = ? AND revoked_at IS NULL",
+                (key_id,),
+            ).fetchone()
+            if row is None:
+                return []
+            meta, expired = prune_expired_boosts(_parse_metadata(row[0]), now=now)
+            if not expired:
+                return []
+            conn.execute(
+                "UPDATE virtual_keys SET metadata_json = ?"
+                " WHERE key_id = ? AND revoked_at IS NULL",
+                (json.dumps(meta), key_id),
+            )
+        return expired
+
     def update_model_access(
         self,
         key_id: str,
@@ -998,7 +1108,6 @@ class VirtualKeyStore:
         model_groups: tuple[str, ...] | None = None,
         rpd: int = 0,
         cache_scope: str = "global",
-        priority: str | None = None,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -1014,7 +1123,6 @@ class VirtualKeyStore:
         if pin is None and len(row) > 12:
             # Prefer explicit column when present (list/resolve SELECTs).
             pass
-        meta_prio = parsed.get("priority") if isinstance(parsed, dict) else None
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -1038,7 +1146,9 @@ class VirtualKeyStore:
             allowed_models=allowed_models,
             model_groups=model_groups,
             cache_scope=coerce_cache_scope(cache_scope),
-            priority=coerce_priority(priority if priority is not None else meta_prio),
+            priority=coerce_priority(
+                (parsed.get("priority") if isinstance(parsed, dict) else None)
+            ),
         )
 
     def list(self) -> list[VirtualKey]:
@@ -1050,7 +1160,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope, v.priority"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -1067,7 +1177,6 @@ class VirtualKeyStore:
                 model_groups=decode_names(r[18]) if len(r) > 18 else None,
                 rpd=int(r[19] or 0) if len(r) > 19 else 0,
                 cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
-                priority=coerce_priority(r[21]) if len(r) > 21 else None,
             )
             for r in rows
         ]
@@ -1082,7 +1191,7 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope, v.priority"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
@@ -1108,7 +1217,6 @@ class VirtualKeyStore:
             model_groups=decode_names(row[20]) if len(row) > 20 else None,
             rpd=int(row[21] or 0) if len(row) > 21 else 0,
             cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
-            priority=coerce_priority(row[23]) if len(row) > 23 else None,
         )
 
     def check_rpm(self, key: VirtualKey) -> bool:
