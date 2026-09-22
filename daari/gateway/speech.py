@@ -247,9 +247,16 @@ async def handle_speech(
     started = time.perf_counter()
     try:
         timeout = nonstream_timeout(target.timeout, "tts")
+        from daari.observability.otel import inject_trace_headers
+
         upstream = await await_unless_disconnected(
             request,
-            post_speech(url, headers={}, payload=payload, timeout=timeout),
+            post_speech(
+                url,
+                headers=inject_trace_headers({}),
+                payload=payload,
+                timeout=timeout,
+            ),
             metrics=ctx.metrics,
             phase="tts",
             model=model_name,

@@ -85,3 +85,83 @@ async def test_chat_completions_generates_x_request_id_when_absent(settings, mon
     echoed = response.headers["x-request-id"]
     assert echoed == seen[0]
     assert len(echoed) == 16
+
+
+@pytest.mark.asyncio
+async def test_chat_forwards_x_request_id_to_ollama(settings, monkeypatch):
+    """Inbound (or generated) id reaches the Ollama hop (#977)."""
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={"message": {"role": "assistant", "content": "ok"}, "done": True},
+        )
+
+    transport = httpx.MockTransport(handler)
+    original = httpx.AsyncClient
+
+    def patched(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr("daari.router.router.httpx.AsyncClient", patched)
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport_asgi = ASGITransport(app=app)
+    async with AsyncClient(transport=transport_asgi, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            headers={"X-Request-ID": "chat-corr-77", "X-Daari-No-Cache": "true"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers["x-request-id"] == "chat-corr-77"
+    chat_calls = [r for r in seen if r.method == "POST" and r.url.path.endswith("/api/chat")]
+    assert chat_calls, f"expected an Ollama chat call, saw {[str(r.url) for r in seen]}"
+    assert chat_calls[0].headers.get("x-request-id") == "chat-corr-77"
+
+
+@pytest.mark.asyncio
+async def test_asr_forwards_x_request_id_upstream(settings, monkeypatch):
+    """ASR modality posts carry the same correlation id (#977)."""
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"text": "hello"})
+
+    original = httpx.AsyncClient
+
+    class Patched(original):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.transcriptions.httpx.AsyncClient", Patched)
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = "whisper-1"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/transcriptions",
+            data={"model": "whisper-1", "response_format": "json"},
+            files={"file": ("a.wav", b"RIFF", "audio/wav")},
+            headers={"X-Request-ID": "asr-corr-55"},
+        )
+    assert response.status_code == 200, response.text
+    assert seen
+    assert seen[0].headers.get("x-request-id") == "asr-corr-55"

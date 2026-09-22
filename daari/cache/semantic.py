@@ -219,9 +219,12 @@ class OllamaEmbedder:
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
+            from daari.observability.otel import inject_trace_headers
+
             response = await self._client().post(
                 "/api/embed",
                 json={"model": model, "input": texts},
+                headers=inject_trace_headers(),
                 timeout=timeout,
             )
             if response.status_code == 404:
@@ -246,9 +249,12 @@ class OllamaEmbedder:
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
+            from daari.observability.otel import inject_trace_headers
+
             response = await self._client().post(
                 "/api/embeddings",
                 json={"model": model, "prompt": text},
+                headers=inject_trace_headers(),
                 timeout=timeout,
             )
             response.raise_for_status()

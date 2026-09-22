@@ -1,7 +1,8 @@
-"""Inbound X-Request-ID sanitization and resolution (#965)."""
+"""Inbound X-Request-ID sanitization and resolution (#965, #977)."""
 
 from __future__ import annotations
 
+import contextvars
 import re
 import uuid
 from typing import Any, Mapping
@@ -9,6 +10,10 @@ from typing import Any, Mapping
 # Cap matches common proxy limits (nginx default custom header practical length).
 _MAX_LEN = 128
 _PRINTABLE = re.compile(r"^[!-~]+$")
+
+_active_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "daari_request_id", default=None
+)
 
 
 def sanitize_request_id(raw: str | None) -> str | None:
@@ -31,3 +36,19 @@ def resolve_request_id(headers: Mapping[str, Any] | Any) -> str:
     if cleaned:
         return cleaned
     return uuid.uuid4().hex[:16]
+
+
+def bind_request_id(request_id: str | None) -> Any:
+    """Bind the active request id for outbound inject (#977)."""
+    return _active_request_id.set(request_id or None)
+
+
+def reset_request_id(token: Any) -> None:
+    try:
+        _active_request_id.reset(token)
+    except Exception:
+        pass
+
+
+def current_request_id() -> str | None:
+    return _active_request_id.get()
