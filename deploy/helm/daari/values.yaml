@@ -104,6 +104,10 @@ serviceMonitor:
 # Service port `metrics` and prefer ServiceMonitor → metrics (no bearer).
 observability:
   metricsPort: 0
+  # Opt-in OTLP log export (#849 / #888). Pair with otlpEndpoint (or set
+  # OTEL_EXPORTER_OTLP_ENDPOINT yourself). See otel-genai.md.
+  otlpLogs: false
+  otlpEndpoint: ""
   # Days to keep gateway request-log lines (#786). Empty leaves the app default
   # (0 = size-only rotation via request_log_max_bytes).
   retention:
@@ -137,6 +141,25 @@ orgPool:
 # (open local install). Example: { name: daari-master, key: api-key }
 server:
   apiKeySecret: {}
+  # Browser Origin allowlist for CORS (#938). Empty = no CORS middleware.
+  # Example: ["http://127.0.0.1:11437"] for daari web-ui serve.
+  corsOrigins: []
+  # Baseline X-Content-Type-Options / X-Frame-Options / Referrer-Policy.
+  securityHeaders:
+    enabled: true
+
+# Native TLS / optional mTLS for the container (#932). When enabled, mounts
+# tls.existingSecret at /etc/daari/tls (expects tls.crt + tls.key; optional
+# ca.crt for client mTLS) and sets DAARI_SERVER__TLS__* so uvicorn serves
+# HTTPS. Probes switch to scheme HTTPS. Prefer ingress TLS termination when
+# the cluster already has a cert-manager / ingress controller.
+tls:
+  enabled: false
+  existingSecret: ""
+  certFile: /etc/daari/tls/tls.crt
+  keyFile: /etc/daari/tls/tls.key
+  # Empty omits DAARI_SERVER__TLS__CLIENT_CA (no mTLS).
+  clientCAFile: ""
 
 # Global RPM/TPM caps (#842). When enabled with redis.enabled (or rateLimit.redisUrl),
 # fleet counters share Redis via cache.backend=redis. Without Redis, limits are
@@ -156,6 +179,11 @@ frontier:
   enabled: false
   apiKeySecret: {}
 
+# When every local-pool host is down, escalate chat to L6 (#846 / #887).
+# Requires frontier.enabled (+ API key). Default false omits the env var.
+localPool:
+  frontierFallback: false
+
 # Embedder base URL for POST /v1/embeddings and L1. Empty leaves the image
 # default (localhost). Distinct from orgPool, which only sets the routing URL.
 ollama:
@@ -165,6 +193,20 @@ ollama:
 # POST /v1/audio/transcriptions unconfigured (501) instead of a cloud ASR API.
 asr:
   baseUrl: ""
+  # Optional. When set, replaces the client model so whisper/vLLM always sees
+  # its own id (DAARI_ASR__MODEL). Empty omits the env.
+  model: ""
+  # Opt-in: when true and baseUrl is empty, one transcription may go to frontier.
+  # Default false omits DAARI_ASR__FRONTIER_FALLBACK so audio stays on-box.
+  frontierFallback: false
+
+# Local OpenAI-compatible text-to-speech (Kokoro/openedai-speech). Empty
+# baseUrl leaves POST /v1/audio/speech at 501. model/voice override client
+# fields when set (#900).
+tts:
+  baseUrl: ""
+  model: ""
+  voice: ""
 
 # Wall-clock budget across cache/local/frontier hops (#786 / #771). Empty =
 # per-tier timeouts only; X-Daari-Deadline-Ms still overrides when set.

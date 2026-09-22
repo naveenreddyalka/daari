@@ -1864,6 +1864,13 @@ Malformed schemas log `json_schema_ignored` and are dropped. Covered by
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
+
 ### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
 
 <!-- tracking:#834 -->
@@ -3512,6 +3519,14 @@ rows and L1 rows whose `context_key` contains that segment. CLI
 omit the object; `/api/tags` stays capability-string-only. Covered by
 `tests/unit/test_ollama_show_thinking.py`.
 
+### Cancel Ollama facade non-stream on disconnect ([#797](https://github.com/naveenreddyalka/daari/issues/797))
+
+<!-- tracking:#797 -->
+**Status:** Done (2026-09-20). Non-stream `/api/chat` and `/api/generate` wrap
+`router.route` in `await_unless_disconnected` (phase `chat`) and return 499 on
+disconnect. Streaming NDJSON unchanged. Covered by
+`tests/unit/test_client_disconnect.py`.
+
 ### Cancel MCP tools/call on disconnect ([#798](https://github.com/naveenreddyalka/daari/issues/798))
 
 <!-- tracking:#798 -->
@@ -3626,6 +3641,14 @@ audio transcriptions/translations and embeddings among
 rows by the ledger `tier` column (combinable with `--key` / `--team`). Covered
 by `tests/unit/test_spend_export.py`.
 
+### Client guides document /api/show thinking controls ([#809](https://github.com/naveenreddyalka/daari/issues/809))
+
+<!-- tracking:#809 -->
+**Status:** Done (2026-09-20). ChatGPT Desktop and IntelliJ guides note that
+`/api/show` returns `thinking` controls (`low`/`medium`/`high`, default
+`medium`) when the capability is advertised. Covered by
+`tests/unit/test_thinking_controls_docs.py`.
+
 ### Cache invalidate --help documents --token ([#826](https://github.com/naveenreddyalka/daari/issues/826))
 
 <!-- tracking:#826 -->
@@ -3633,6 +3656,12 @@ by `tests/unit/test_spend_export.py`.
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
 ### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
 
 <!-- tracking:#834 -->
@@ -3682,6 +3711,328 @@ removes those entries. Covered by `tests/unit/test_embeddings.py`.
 the embed model via Ollama generate/embeddings; `onboard --warm` runs it after
 pull; doctor optional `warm_models` hints when the daemon is up but `/api/ps`
 is cold. Covered by `tests/unit/test_models_warm.py`.
+### Opt-in frontier failover when local pool is down ([#846](https://github.com/naveenreddyalka/daari/issues/846))
+
+<!-- tracking:#846 -->
+**Status:** Done (2026-09-20). `routing.local_pool.frontier_fallback` (default
+false) escalates chat to L6 when every local backend for the chosen tier is
+unavailable, respecting `no_frontier`, allowlists, budgets, and PII scrub.
+Event `local_pool_frontier_fallback`. Covered by
+`tests/unit/test_local_pool.py`.
+
+### Local-first POST /v1/audio/speech TTS ([#847](https://github.com/naveenreddyalka/daari/issues/847))
+
+<!-- tracking:#847 -->
+**Status:** Done (2026-09-20). `tts.base_url` proxies OpenAI-shaped
+`POST /v1/audio/speech` to a local TTS server; unconfigured returns 501
+`tts_unavailable`. Virtual-key allowlists, RPM, deadlines, and disconnect
+cancel apply; spend ledger uses tier `tts`. Covered by
+`tests/unit/test_speech.py`.
+
+### Per-key priority classes on the admission gate ([#848](https://github.com/naveenreddyalka/daari/issues/848))
+
+<!-- tracking:#848 -->
+**Status:** Done (2026-09-20). Virtual keys/teams accept `priority`
+(`high`|`normal`|`low`); the global in-flight gate admits by priority then
+FIFO. Batch drain acquires at `low`. Covered by
+`tests/unit/test_rate_limit.py`.
+
+### Export gateway events as OTLP logs ([#849](https://github.com/naveenreddyalka/daari/issues/849))
+
+<!-- tracking:#849 -->
+**Status:** Done (2026-09-20). Opt-in `observability.otlp_logs` emits each
+`log_gateway_event` as an OTel LogRecord (event name + attributes) on the
+same OTLP endpoint as traces/metrics, correlated with the active span when
+present; fail-open. Covered by `tests/unit/test_otel_logs.py`.
+
+### Docs: MCP tools/call honors X-Daari-Deadline-Ms ([#835](https://github.com/naveenreddyalka/daari/issues/835))
+
+<!-- tracking:#835 -->
+**Status:** Done (2026-09-20). MCP guide documents `tools/call` +
+`X-Daari-Deadline-Ms` / 504 `request_deadline_exceeded`; headers contract
+asserts the same. Covered by `tests/unit/test_deadline_docs.py`.
+
+### CLI reference mentions spend export --tier ([#836](https://github.com/naveenreddyalka/daari/issues/836))
+
+<!-- tracking:#836 -->
+**Status:** Done (2026-09-20). `cli.md` lists `spend export` with `--tier` and
+links the chargeback guide. Covered by `tests/unit/test_chargeback_docs.py`.
+
+### Grafana deadline panel covers audio/embed/MCP ([#837](https://github.com/naveenreddyalka/daari/issues/837))
+
+<!-- tracking:#837 -->
+**Status:** Done (2026-09-20). Overview panel description and metrics docs note
+deadlines are not chat-only (audio, embeddings, MCP `tools/call`); panel still
+scrapes `daari_request_deadline_exceeded_total`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+### Skip resolved stall issues in autodev --pick ([#857](https://github.com/naveenreddyalka/daari/issues/857))
+
+<!-- tracking:#857 -->
+**Status:** Done (2026-09-20). Stall tickets whose referenced PR is no longer
+open (merged/closed) are skipped by `autodev_backlog.py --pick` so they cannot
+block the backlog after conflict repair. Covered by
+`tests/unit/test_autodev_backlog.py`.
+
+### Doctor warns when request deadline unset ([#867](https://github.com/naveenreddyalka/daari/issues/867))
+
+<!-- tracking:#867 -->
+**Status:** Done (2026-09-21). Optional doctor check `request_deadline` fails when
+`upstream.request_deadline_seconds` is unset or `<= 0`, passes with a positive
+value. Documented in doctor-health. Covered by
+`tests/unit/test_doctor_deadline.py`.
+
+### Doctor probes TTS reachability ([#869](https://github.com/naveenreddyalka/daari/issues/869))
+
+<!-- tracking:#869 -->
+**Status:** Done (2026-09-21). Optional doctor check `tts` probes
+`{tts.base_url}/models` when configured; unreachable fails optionally; empty
+config stays quiet (501 path). Documented in doctor-health. Covered by
+`tests/unit/test_doctor_tts.py`.
+
+
+### Docs: virtual-keys --priority ([#877](https://github.com/naveenreddyalka/daari/issues/877))
+
+<!-- tracking:#877 -->
+**Status:** Done (2026-09-21). Virtual-keys guide documents admission
+`--priority high|normal|low` and the list `prio` column. Covered by
+priority docs contract tests.
+
+### Docs: speech under X-Daari-Deadline-Ms ([#871](https://github.com/naveenreddyalka/daari/issues/871))
+
+<!-- tracking:#871 -->
+**Status:** Done (2026-09-21). `headers.md` lists `POST /v1/audio/speech` among
+deadline-honoring routes; `test_deadline_docs` asserts it. Covered by
+`tests/unit/test_deadline_docs.py`.
+
+
+
+### Doctor surfaces local_pool frontier failover ([#879](https://github.com/naveenreddyalka/daari/issues/879))
+
+<!-- tracking:#879 -->
+**Status:** Done (2026-09-21). Optional doctor check calls
+`local_pool_frontier_fallback_findings` and fails when failover is on without
+frontier.enabled. Documented in doctor-health. Covered by
+`tests/unit/test_doctor_local_pool_failover.py`.
+
+### Doctor warns otlp_logs without OTEL endpoint ([#878](https://github.com/naveenreddyalka/daari/issues/878))
+
+<!-- tracking:#878 -->
+**Status:** Done (2026-09-21). Optional doctor check `otlp_logs` fails when
+`observability.otlp_logs` is true without `OTEL_EXPORTER_OTLP_ENDPOINT`.
+Documented in doctor-health. Covered by `tests/unit/test_doctor_otlp_logs.py`.
+
+
+
+### Docs: otlp_logs in otel-genai guide ([#881](https://github.com/naveenreddyalka/daari/issues/881))
+
+<!-- tracking:#881 -->
+**Status:** Done (2026-09-21). Contract test asserts otel-genai documents
+`otlp_logs` and `OTEL_EXPORTER_OTLP_ENDPOINT` beside traces/metrics. Covered by
+`tests/unit/test_otel_docs.py`.
+
+### Docs: capacity-helm documents tts.baseUrl ([#880](https://github.com/naveenreddyalka/daari/issues/880))
+
+<!-- tracking:#880 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`tts.baseUrl` and `DAARI_TTS__BASE_URL`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
+### Helm observability.otlpLogs + OTEL endpoint ([#888](https://github.com/naveenreddyalka/daari/issues/888))
+
+<!-- tracking:#888 -->
+**Status:** Done (2026-09-21). Chart `observability.otlpLogs` /
+`otlpEndpoint` mount `DAARI_OBSERVABILITY__OTLP_LOGS` and
+`OTEL_EXPORTER_OTLP_ENDPOINT`; defaults omit both. Documented in
+capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
+### Helm localPool.frontierFallback ([#887](https://github.com/naveenreddyalka/daari/issues/887))
+
+<!-- tracking:#887 -->
+**Status:** Done (2026-09-21). Chart `localPool.frontierFallback` mounts
+`DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK` when true; default omits env.
+Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
+### Docs: local text-to-speech backend guide ([#890](https://github.com/naveenreddyalka/daari/issues/890))
+
+<!-- tracking:#890 -->
+**Status:** Done (2026-09-21). New `backends/tts.md`; overview and
+clients-and-gateways link it for `/v1/audio/speech`. Covered by
+`tests/unit/test_tts_docs.py`.
+
+### TTS disconnect cancelled_requests phase=tts ([#889](https://github.com/naveenreddyalka/daari/issues/889))
+
+<!-- tracking:#889 -->
+**Status:** Done (2026-09-21). Unit coverage for speech disconnect 499 +
+`daari_cancelled_requests_total{phase="tts"}`; metrics-prometheus lists `tts`.
+Covered by `tests/unit/test_client_disconnect.py` and
+`tests/unit/test_metrics_prometheus_docs.py`.
+
+### Helm tts.model and tts.voice ([#900](https://github.com/naveenreddyalka/daari/issues/900))
+
+<!-- tracking:#900 -->
+**Status:** Done (2026-09-21). Chart `tts.model` / `tts.voice` mount
+`DAARI_TTS__MODEL` / `DAARI_TTS__VOICE` when set; empty defaults omit env.
+Also wires `tts.baseUrl` so capacity-helm matches. Covered by
+`tests/unit/test_helm_chart.py`.
+
+### Doctor scoped_cache_fleet check ([#891](https://github.com/naveenreddyalka/daari/issues/891))
+
+<!-- tracking:#891 -->
+**Status:** Done (2026-09-21). Optional doctor check fails when multi-replica
+fleets use disk cache with non-global virtual-key/team `cache_scope`. Documented
+in doctor-health. Covered by `tests/unit/test_doctor_scoped_cache_fleet.py`.
+
+### Docs: capacity-helm observability.otlpLogs ([#898](https://github.com/naveenreddyalka/daari/issues/898))
+
+<!-- tracking:#898 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`otlpLogs`, `DAARI_OBSERVABILITY__OTLP_LOGS`, and
+`OTEL_EXPORTER_OTLP_ENDPOINT`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
+### Docs: capacity-helm localPool.frontierFallback ([#897](https://github.com/naveenreddyalka/daari/issues/897))
+
+<!-- tracking:#897 -->
+**Status:** Done (2026-09-21). Contract test asserts capacity-helm mentions
+`localPool.frontierFallback` and
+`DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK`. Covered by
+`tests/unit/test_capacity_helm_docs.py`.
+
+### Helm tts.baseUrl render contract ([#906](https://github.com/naveenreddyalka/daari/issues/906))
+
+<!-- tracking:#906 -->
+**Status:** Done (2026-09-21). Helm unit tests assert empty default omits
+`DAARI_TTS__BASE_URL` and set `tts.baseUrl` renders it. Covered by
+`tests/unit/test_helm_chart.py`.
+
+
+### Docs: doctor-health scoped_cache_fleet row ([#908](https://github.com/naveenreddyalka/daari/issues/908))
+
+<!-- tracking:#908 -->
+**Status:** Done (2026-09-21). Contract test asserts the doctor-health
+`scoped_cache_fleet` row names `cache.backend` / Redis and `cache_scope`.
+Covered by `tests/unit/test_scoped_cache_fleet_docs.py`.
+
+### Docs: mkdocs nav lists TTS guide ([#905](https://github.com/naveenreddyalka/daari/issues/905))
+
+<!-- tracking:#905 -->
+**Status:** Done (2026-09-21). Contract test asserts `mkdocs.yml` lists
+`developer/guides/backends/tts.md` beside the ASR guide. Covered by
+`tests/unit/test_tts_docs.py`.
+
+### Docs: TTS guide names Helm tts.model/voice ([#907](https://github.com/naveenreddyalka/daari/issues/907))
+
+<!-- tracking:#907 -->
+**Status:** Done (2026-09-21). `backends/tts.md` names Helm `tts.model` /
+`tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
+`tests/unit/test_tts_docs.py`.
+
+
+### Helm asr.frontierFallback ([#914](https://github.com/naveenreddyalka/daari/issues/914))
+
+<!-- tracking:#914 -->
+**Status:** Done (2026-09-21). Chart `asr.frontierFallback` mounts
+`DAARI_ASR__FRONTIER_FALLBACK=true` when enabled; default false omits env.
+Documented in capacity-helm. Covered by `tests/unit/test_helm_chart.py`.
+
+### Helm asr.model ([#913](https://github.com/naveenreddyalka/daari/issues/913))
+
+<!-- tracking:#913 -->
+**Status:** Done (2026-09-21). Chart `asr.model` mounts `DAARI_ASR__MODEL`
+when set; empty default omits env. Documented in capacity-helm. Covered by
+`tests/unit/test_helm_chart.py`.
+
+
+### Docs: ASR guide names Helm asr.baseUrl ([#916](https://github.com/naveenreddyalka/daari/issues/916))
+
+<!-- tracking:#916 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.baseUrl` and
+`DAARI_ASR__BASE_URL`. Covered by `tests/unit/test_asr_docs.py`.
+
+### Docs: cancelled_requests phase includes mcp ([#915](https://github.com/naveenreddyalka/daari/issues/915))
+
+<!-- tracking:#915 -->
+**Status:** Done (2026-09-21). metrics-prometheus lists `mcp` among
+`daari_cancelled_requests_total` phases. Covered by
+`tests/unit/test_metrics_prometheus_docs.py`.
+
+
+### Docs: ASR guide names Helm asr.frontierFallback ([#925](https://github.com/naveenreddyalka/daari/issues/925))
+
+<!-- tracking:#925 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm
+`asr.frontierFallback` and `DAARI_ASR__FRONTIER_FALLBACK`. Covered by
+`tests/unit/test_asr_docs.py`.
+
+### Docs: ASR guide names Helm asr.model ([#924](https://github.com/naveenreddyalka/daari/issues/924))
+
+<!-- tracking:#924 -->
+**Status:** Done (2026-09-21). `backends/asr.md` names Helm `asr.model` and
+`DAARI_ASR__MODEL`. Covered by `tests/unit/test_asr_docs.py`.
+
+### Request body size cap with early 413 ([#933](https://github.com/naveenreddyalka/daari/issues/933))
+
+<!-- tracking:#933 -->
+**Status:** Done (2026-09-21). `server.max_body_bytes` (default 10 MiB) rejects
+oversized bodies with 413 before buffering; OpenAI/Anthropic error shapes;
+upload routes use a higher floor; `daari_rejects_total{kind="body_too_large"}`.
+Covered by `tests/unit/test_body_limit.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Native TLS and optional mTLS for daari serve ([#932](https://github.com/naveenreddyalka/daari/issues/932))
+
+<!-- tracking:#932 -->
+**Status:** Done (2026-09-21). `server.tls` + `--tls-cert/--tls-key/--tls-client-ca`
+wire uvicorn HTTPS/mTLS; `secret://` key refs materialize to temp PEM files;
+doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
+`existingSecret`; SECURITY.md documents native vs reverse-proxy TLS.
+Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
+`test_helm_chart.py`.
+
+### CORS allowlist and default security headers ([#938](https://github.com/naveenreddyalka/daari/issues/938))
+
+<!-- tracking:#938 -->
+**Status:** Done (2026-09-22). `server.cors_origins` enablelist + OPTIONS 204;
+baseline `X-Content-Type-Options` / `X-Frame-Options` / `Referrer-Policy`
+(toggle `security_headers`); Helm `corsOrigins` / `securityHeaders.enabled`;
+SECURITY.md + web-ui README. Covered by `tests/unit/test_cors_security_headers.py`.
+
+
+### Lifetime spend caps and temporary budget boosts ([#936](https://github.com/naveenreddyalka/daari/issues/936))
+
+<!-- tracking:#936 -->
+**Status:** Done (2026-09-22). `BudgetWindow` accepts `lifetime`/`total` (all-time
+ledger sum, no rollover); `daari keys budget-boost` / `team-budget-boost` grant
+audited auto-expiring increases; `daari keys show` lists active boosts; expiry
+audited at enforcement. Covered by `tests/unit/test_lifetime_budget_boosts.py`.
+
+### Passthrough parallel_tool_calls, logit_bias, top_logprobs ([#940](https://github.com/naveenreddyalka/daari/issues/940))
+
+<!-- tracking:#940 -->
+**Status:** Done (2026-09-22). Declared on `ChatCompletionRequest` + `SamplingParams`;
+forwarded in `openai_payload()` / cache fingerprint; local `unsupported_locally`
+notes. Covered by `tests/unit/test_sampling_params.py`.
+
+### Skip rate-limit body buffer on safe HTTP methods ([#939](https://github.com/naveenreddyalka/daari/issues/939))
+
+<!-- tracking:#939 -->
+**Status:** Done (2026-09-22). GET/HEAD/OPTIONS skip `request.body()` (TPM=0);
+POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
+
+### ASR guide links capacity-helm ([#928](https://github.com/naveenreddyalka/daari/issues/928))
+
+<!-- tracking:#928 -->
+**Status:** Done (2026-09-22). `backends/asr.md` Next links capacity-helm; contract
+test locks the path. Covered by `tests/unit/test_asr_docs.py`.
+
+### MCP tool and task stats on /v1/daari/stats and web-ui ([#941](https://github.com/naveenreddyalka/daari/issues/941))
+
+<!-- tracking:#941 -->
+**Status:** Done (2026-09-22). Stats payload includes `mcp_tool_calls` +
+`mcp_tasks` snapshot; web-ui panel; `McpTaskStore.snapshot()`. Covered by
+`tests/unit/test_stats_mcp.py` and `packages/web-ui/test/dashboard.test.js`.
+
 
 ## How to update
 
@@ -3703,6 +4054,12 @@ is cold. Covered by `tests/unit/test_models_warm.py`.
 --help` mentions `--token` for SSO daemon auth. Covered by
 `tests/unit/test_cache_invalidate_cli_help.py`.
 
+### Docs: cache invalidate --token ([#828](https://github.com/naveenreddyalka/daari/issues/828))
+
+<!-- tracking:#828 -->
+**Status:** Done (2026-09-20). `cli.md` and org-cache guide document
+`cache invalidate --token` for SSO/master Bearer. Covered by
+`tests/unit/test_cache_invalidate_docs.py`.
 ### Unit tests for ASR frontier_fallback findings ([#834](https://github.com/naveenreddyalka/daari/issues/834))
 
 <!-- tracking:#834 -->

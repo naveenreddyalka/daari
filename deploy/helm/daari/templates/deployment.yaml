@@ -34,6 +34,7 @@ spec:
         - name: daari
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- $tls := .Values.tls | default dict }}
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -94,6 +95,26 @@ spec:
                   key: {{ .key | default "api-key" | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.server.corsOrigins }}
+            - name: DAARI_SERVER__CORS_ORIGINS
+              value: {{ . | toJson | quote }}
+            {{- end }}
+            {{- if hasKey (.Values.server.securityHeaders | default dict) "enabled" }}
+            {{- if not .Values.server.securityHeaders.enabled }}
+            - name: DAARI_SERVER__SECURITY_HEADERS
+              value: "false"
+            {{- end }}
+            {{- end }}
+            {{- if $tls.enabled }}
+            - name: DAARI_SERVER__TLS__CERT_FILE
+              value: {{ $tls.certFile | default "/etc/daari/tls/tls.crt" | quote }}
+            - name: DAARI_SERVER__TLS__KEY_FILE
+              value: {{ $tls.keyFile | default "/etc/daari/tls/tls.key" | quote }}
+            {{- if $tls.clientCAFile }}
+            - name: DAARI_SERVER__TLS__CLIENT_CA
+              value: {{ $tls.clientCAFile | quote }}
+            {{- end }}
+            {{- end }}
             {{- if .Values.rateLimit.enabled }}
             - name: DAARI_RATE_LIMIT__RPM
               value: {{ .Values.rateLimit.rpm | default 0 | quote }}
@@ -123,6 +144,10 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
+            {{- if .Values.localPool.frontierFallback }}
+            - name: DAARI_ROUTING__LOCAL_POOL__FRONTIER_FALLBACK
+              value: "true"
+            {{- end }}
             {{- if .Values.ollama.baseUrl }}
             - name: DAARI_OLLAMA__BASE_URL
               value: {{ .Values.ollama.baseUrl | quote }}
@@ -131,6 +156,26 @@ spec:
             - name: DAARI_ASR__BASE_URL
               value: {{ .Values.asr.baseUrl | quote }}
             {{- end }}
+            {{- if .Values.asr.model }}
+            - name: DAARI_ASR__MODEL
+              value: {{ .Values.asr.model | quote }}
+            {{- end }}
+            {{- if .Values.asr.frontierFallback }}
+            - name: DAARI_ASR__FRONTIER_FALLBACK
+              value: "true"
+            {{- end }}
+            {{- if .Values.tts.baseUrl }}
+            - name: DAARI_TTS__BASE_URL
+              value: {{ .Values.tts.baseUrl | quote }}
+            {{- end }}
+            {{- if .Values.tts.model }}
+            - name: DAARI_TTS__MODEL
+              value: {{ .Values.tts.model | quote }}
+            {{- end }}
+            {{- if .Values.tts.voice }}
+            - name: DAARI_TTS__VOICE
+              value: {{ .Values.tts.voice | quote }}
+            {{- end }}
             {{- if .Values.upstream.requestDeadlineSeconds }}
             - name: DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS
               value: {{ .Values.upstream.requestDeadlineSeconds | quote }}
@@ -138,6 +183,14 @@ spec:
             {{- if and .Values.observability.retention (ne (toString .Values.observability.retention.requestLogDays) "") }}
             - name: DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS
               value: {{ .Values.observability.retention.requestLogDays | quote }}
+            {{- end }}
+            {{- if .Values.observability.otlpLogs }}
+            - name: DAARI_OBSERVABILITY__OTLP_LOGS
+              value: "true"
+            {{- end }}
+            {{- if .Values.observability.otlpEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.observability.otlpEndpoint | quote }}
             {{- end }}
           {{- $preStop := 5 }}
           {{- if and .Values.lifecycle (hasKey .Values.lifecycle "preStopSleepSeconds") }}
@@ -149,16 +202,22 @@ spec:
               exec:
                 command: ["/bin/sh", "-c", "sleep {{ $preStop }}"]
           {{- end }}
+          {{- $probeScheme := "HTTP" }}
+          {{- if $tls.enabled }}
+          {{- $probeScheme = "HTTPS" }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.livenessPath }}
               port: http
+              scheme: {{ $probeScheme }}
             initialDelaySeconds: 10
             periodSeconds: 20
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readinessPath }}
               port: http
+              scheme: {{ $probeScheme }}
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
@@ -168,8 +227,18 @@ spec:
               mountPath: /home/daari/.daari
             - name: tmp
               mountPath: /tmp
+            {{- if and $tls.enabled $tls.existingSecret }}
+            - name: tls
+              mountPath: /etc/daari/tls
+              readOnly: true
+            {{- end }}
       volumes:
         - name: daari-home
           emptyDir: {}
         - name: tmp
           emptyDir: {}
+        {{- if and $tls.enabled $tls.existingSecret }}
+        - name: tls
+          secret:
+            secretName: {{ $tls.existingSecret | quote }}
+        {{- end }}

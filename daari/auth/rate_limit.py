@@ -7,6 +7,7 @@ the gateway (issue #463).
 from __future__ import annotations
 
 import asyncio
+import heapq
 import sqlite3
 import threading
 import time
@@ -21,6 +22,14 @@ WINDOW_SECONDS = 60
 DAY_SECONDS = 86400
 DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
 RATELIMIT_WARNING_HEADER = "x-daari-ratelimit-warning"
+
+# Lower rank wakes first at the in-flight gate (#848).
+PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
+
+
+def normalize_priority(value: str | None) -> str:
+    text = str(value or "normal").strip().lower()
+    return text if text in PRIORITY_RANK else "normal"
 
 
 @dataclass(frozen=True)
@@ -203,7 +212,10 @@ class RateLimiter:
         self.in_flight = 0
         self.interactive_in_flight = 0
         self.queued = 0
-        self._cond = asyncio.Condition()
+        self._lock = asyncio.Lock()
+        # (rank, seq, Future) — lower rank wakes first; seq is FIFO within class (#848).
+        self._waiters: list[tuple[int, int, asyncio.Future[bool]]] = []
+        self._waiter_seq = 0
         self._interactive_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._degraded = False
@@ -421,7 +433,16 @@ class RateLimiter:
                 return decision
         return tightest
 
-    async def acquire(self) -> RateLimitDecision:
+    def _wake_next_locked(self) -> None:
+        while self._waiters and self.in_flight < self.max_in_flight:
+            _rank, _seq, fut = heapq.heappop(self._waiters)
+            self.queued = max(0, self.queued - 1)
+            if fut.done():
+                continue
+            self.in_flight += 1
+            fut.set_result(True)
+
+    async def acquire(self, priority: str = "normal") -> RateLimitDecision:
         if self.max_in_flight <= 0:
             return RateLimitDecision(
                 allowed=True,
@@ -432,8 +453,14 @@ class RateLimiter:
                 scope="concurrency",
                 bucket="concurrency",
             )
-        async with self._cond:
-            if self.in_flight < self.max_in_flight:
+        rank = PRIORITY_RANK[normalize_priority(priority)]
+        async with self._lock:
+            # Free slots go to the highest-priority waiter before a new arrival.
+            self._wake_next_locked()
+            can_take = self.in_flight < self.max_in_flight and (
+                not self._waiters or rank < self._waiters[0][0]
+            )
+            if can_take:
                 self.in_flight += 1
                 return RateLimitDecision(
                     allowed=True,
@@ -455,29 +482,49 @@ class RateLimiter:
                     backend=self.backend.name,
                     bucket="concurrency",
                 )
+            loop = asyncio.get_running_loop()
+            fut: asyncio.Future[bool] = loop.create_future()
+            seq = self._waiter_seq
+            self._waiter_seq += 1
+            heapq.heappush(self._waiters, (rank, seq, fut))
             self.queued += 1
-            try:
-                while self.in_flight >= self.max_in_flight:
-                    await self._cond.wait()
-                self.in_flight += 1
-                return RateLimitDecision(
-                    allowed=True,
-                    limit=self.max_in_flight,
-                    remaining=max(0, self.max_in_flight - self.in_flight),
-                    reset_epoch=int(time.time()) + self.retry_after_seconds,
-                    backend=self.backend.name,
-                    scope="concurrency",
-                    bucket="concurrency",
-                )
-            finally:
-                self.queued -= 1
+        try:
+            await fut
+            return RateLimitDecision(
+                allowed=True,
+                limit=self.max_in_flight,
+                remaining=max(0, self.max_in_flight - self.in_flight),
+                reset_epoch=int(time.time()) + self.retry_after_seconds,
+                backend=self.backend.name,
+                scope="concurrency",
+                bucket="concurrency",
+            )
+        except asyncio.CancelledError:
+            async with self._lock:
+                self._drop_waiter(fut)
+            raise
+
+    def _drop_waiter(self, fut: asyncio.Future[bool]) -> None:
+        kept: list[tuple[int, int, asyncio.Future[bool]]] = []
+        removed = False
+        for item in self._waiters:
+            if item[2] is fut and not removed:
+                removed = True
+                self.queued = max(0, self.queued - 1)
+                continue
+            kept.append(item)
+        if removed:
+            heapq.heapify(kept)
+            self._waiters = kept
+        if not fut.done():
+            fut.cancel()
 
     async def release(self) -> None:
         if self.max_in_flight <= 0:
             return
-        async with self._cond:
+        async with self._lock:
             self.in_flight = max(0, self.in_flight - 1)
-            self._cond.notify()
+            self._wake_next_locked()
 
     def team_rate_gauges(self, teams: list[Any]) -> list[dict[str, Any]]:
         """Scrape-time RPM/TPM remaining for teams with configured ceilings (#617)."""
@@ -623,6 +670,14 @@ def request_model(payload: dict[str, Any] | None) -> str:
     if payload and isinstance(payload.get("model"), str) and payload["model"].strip():
         return payload["model"].strip()
     return "daari"
+
+
+# Safe methods never carry a JSON body worth buffering for TPM (#939).
+SAFE_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def should_buffer_body_for_rate_limit(method: str) -> bool:
+    return (method or "").upper() not in SAFE_HTTP_METHODS
 
 
 def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLimiter:

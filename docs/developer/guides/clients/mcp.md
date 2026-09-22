@@ -5,6 +5,8 @@ configured integrations).
 
 daari speaks JSON-RPC 2.0 at `POST /mcp` over streamable HTTP. When `server.api_key`
 is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
+`GET /v1/daari/stats` (and `daari web-ui serve`) expose `mcp_tool_calls` outcome
+counts and an `mcp_tasks` status summary for local ops without Prometheus.
 
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with
@@ -61,6 +63,15 @@ This is the *tools* path. To route Claude Desktop's chat itself through daari
 | `stats` | Current tier metrics snapshot |
 | `sourcegraph` / `ghe` / `gitlab` | Registered integration providers |
 | `mcp_*` | Each `integrations.mcp_servers` entry |
+
+## Request deadlines on `tools/call`
+
+`tools/call` (JSON-RPC `POST /mcp` and the legacy `/v1/mcp/query` path) honors
+the same wall-clock budget as chat: send `X-Daari-Deadline-Ms` (or set
+`upstream.request_deadline_seconds` in config). When the budget is spent before
+the tool finishes, the gateway returns **504** with
+`request_deadline_exceeded` and does not keep running the call. See
+[Request headers](../../reference/headers.md).
 
 ## Tool governance
 

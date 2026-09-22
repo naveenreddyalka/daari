@@ -313,6 +313,72 @@ async def test_concurrency_cap_holds_under_burst():
 
 
 @pytest.mark.asyncio
+async def test_high_priority_waiter_admitted_before_earlier_normal():
+    """#848: priority class beats FIFO order at the in-flight gate."""
+    limiter = RateLimiter(
+        MemoryCounterBackend(), max_in_flight=1, queue_size=8, retry_after_seconds=1
+    )
+    order: list[str] = []
+    started = asyncio.Event()
+
+    async def hold() -> None:
+        slot = await limiter.acquire(priority="normal")
+        assert slot.allowed
+        started.set()
+        await asyncio.sleep(0.05)
+        await limiter.release()
+
+    async def wait(label: str, priority: str, delay: float) -> None:
+        await started.wait()
+        await asyncio.sleep(delay)
+        slot = await limiter.acquire(priority=priority)
+        assert slot.allowed
+        order.append(label)
+        await limiter.release()
+
+    await asyncio.gather(
+        hold(),
+        wait("normal", "normal", 0.0),
+        wait("high", "high", 0.01),
+    )
+    assert order == ["high", "normal"]
+
+
+@pytest.mark.asyncio
+async def test_batch_low_priority_yields_to_interactive():
+    """#848: batch acquire(low) loses to interactive normal when contended."""
+    limiter = RateLimiter(
+        MemoryCounterBackend(), max_in_flight=1, queue_size=8, retry_after_seconds=1
+    )
+    order: list[str] = []
+
+    # Hold the sole slot as batch would, then admit interactive before batch waiters.
+    hold = await limiter.acquire(priority="low")
+    assert hold.allowed
+
+    async def interactive() -> None:
+        await asyncio.sleep(0.01)
+        slot = await limiter.acquire(priority="normal")
+        assert slot.allowed
+        order.append("interactive")
+        await limiter.release()
+
+    async def batch_waiter() -> None:
+        await asyncio.sleep(0.0)
+        slot = await limiter.acquire(priority="low")
+        assert slot.allowed
+        order.append("batch")
+        await limiter.release()
+
+    waiter_i = asyncio.create_task(interactive())
+    waiter_b = asyncio.create_task(batch_waiter())
+    await asyncio.sleep(0.02)
+    await limiter.release()
+    await asyncio.gather(waiter_i, waiter_b)
+    assert order == ["interactive", "batch"]
+
+
+@pytest.mark.asyncio
 async def test_metrics_exposes_limits_and_utilization(settings):
     settings.rate_limit.rpm = 20
     settings.rate_limit.max_in_flight = 4
@@ -688,3 +754,48 @@ def test_team_rpd_gauge_decreases_and_rpm_stays_independent(monkeypatch):
     assert after["rpd"]["remaining"] == 2
     unlimited = SimpleNamespace(team_id="t2", name="ops", rpm=0, tpm=0, rpd=0)
     assert limiter.team_rate_gauges([unlimited]) == []
+
+
+def test_safe_methods_skip_body_buffer_helper():
+    from daari.auth.rate_limit import should_buffer_body_for_rate_limit
+
+    assert should_buffer_body_for_rate_limit("GET") is False
+    assert should_buffer_body_for_rate_limit("head") is False
+    assert should_buffer_body_for_rate_limit("OPTIONS") is False
+    assert should_buffer_body_for_rate_limit("POST") is True
+    assert should_buffer_body_for_rate_limit("PUT") is True
+
+
+@pytest.mark.asyncio
+async def test_get_does_not_call_request_body(settings, monkeypatch):
+    """Rate-limit middleware must not buffer bodies on safe methods (#939)."""
+    settings.rate_limit.tpm = 1  # would 429 if a chat-sized body were estimated
+    app = _app(settings)
+    body_calls = {"n": 0}
+    from starlette.requests import Request
+
+    original = Request.body
+
+    async def spy(self):
+        body_calls["n"] += 1
+        return await original(self)
+
+    monkeypatch.setattr(Request, "body", spy)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/v1/models")
+    assert response.status_code == 200
+    assert body_calls["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_post_still_estimates_tokens_for_tpm(settings):
+    settings.rate_limit.tpm = 2
+    app = _app(settings)
+    fat = {
+        "model": "daari",
+        "messages": [{"role": "user", "content": "x" * 80}],
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/chat/completions", json=fat)
+    assert response.status_code == 429
+    assert response.json()["error"]["type"] == "rate_limit_error"

@@ -51,12 +51,18 @@ def run_doctor(
     results.append(_check_embedding_endpoint(cfg, httpx_client))
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
+    results.append(_check_tts(cfg, httpx_client))
+    results.append(_check_request_deadline(cfg))
+    results.append(_check_tls_exposure(cfg))
+    results.append(_check_local_pool_frontier_fallback(cfg))
+    results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
+    results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_budget_webhook_secret(cfg))
@@ -830,6 +836,91 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
     )
 
 
+def _check_scoped_cache_fleet(settings: Settings) -> CheckResult:
+    """Warn when tenant cache_scope meets disk cache on a multi-replica fleet (#891)."""
+    raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=False,
+            detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
+            optional=True,
+        )
+
+    cache_backend = (settings.cache.backend or "disk").strip().lower()
+    if replicas <= 1:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas} (scoped cache fine on single node)",
+            optional=True,
+        )
+    if cache_backend == "redis":
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; cache.backend=redis",
+            optional=True,
+        )
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail="virtual keys disabled (no tenant cache_scope)",
+            optional=True,
+        )
+
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+
+    scoped: list[str] = []
+    for key in store.list():
+        scope = (getattr(key, "cache_scope", None) or "global").strip().lower()
+        if scope != "global":
+            scoped.append(f"key {key.name}={scope}")
+    try:
+        teams = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        teams = []
+    for team in teams:
+        scope = (getattr(team, "cache_scope", None) or "global").strip().lower()
+        if scope != "global":
+            scoped.append(f"team {team.name}={scope}")
+
+    if not scoped:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; all cache_scope=global",
+            optional=True,
+        )
+
+    shown = ", ".join(scoped[:6])
+    extra = f" (+{len(scoped) - 6} more)" if len(scoped) > 6 else ""
+    return CheckResult(
+        name="scoped_cache_fleet",
+        ok=False,
+        detail=(
+            f"DAARI_FLEET_REPLICAS={replicas} with cache.backend={cache_backend} "
+            f"and non-global cache_scope ({shown}{extra}) — tenant L0/L1 stays "
+            "per-pod; set cache.backend=redis so scoped keys share across replicas, "
+            "or keep a single replica"
+        ),
+        optional=True,
+    )
+
+
 def _has_request_quota_windows(settings: Settings) -> bool:
     """True when any key/team budget window carries a request cap."""
     if not getattr(settings.server.virtual_keys, "enabled", False):
@@ -1115,6 +1206,138 @@ def _check_mlx(settings: Settings, client: httpx.Client | None) -> CheckResult:
             http.close()
 
 
+def _check_local_pool_frontier_fallback(settings: Settings) -> CheckResult:
+    """Surface routing.local_pool.frontier_fallback misconfig (#879)."""
+    from daari.config.validate import local_pool_frontier_fallback_findings
+
+    findings = local_pool_frontier_fallback_findings(settings)
+    if not findings:
+        enabled = bool(
+            getattr(getattr(settings.routing, "local_pool", None), "frontier_fallback", False)
+        )
+        detail = (
+            "routing.local_pool.frontier_fallback configured"
+            if enabled
+            else "routing.local_pool.frontier_fallback=false"
+        )
+        return CheckResult(
+            name="local_pool_frontier_fallback",
+            ok=True,
+            detail=detail,
+            optional=True,
+        )
+    return CheckResult(
+        name="local_pool_frontier_fallback",
+        ok=False,
+        detail="; ".join(findings),
+        optional=True,
+    )
+
+
+def _check_otlp_logs(settings: Settings) -> CheckResult:
+    """Warn when otlp_logs is on but no OTLP endpoint is configured (#878)."""
+    enabled = bool(getattr(settings.observability, "otlp_logs", False))
+    if not enabled:
+        return CheckResult(
+            name="otlp_logs",
+            ok=True,
+            detail="observability.otlp_logs=false",
+            optional=True,
+        )
+    endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    if endpoint:
+        return CheckResult(
+            name="otlp_logs",
+            ok=True,
+            detail=f"otlp_logs enabled; OTEL_EXPORTER_OTLP_ENDPOINT={endpoint}",
+            optional=True,
+        )
+    return CheckResult(
+        name="otlp_logs",
+        ok=False,
+        detail=(
+            "observability.otlp_logs is true but OTEL_EXPORTER_OTLP_ENDPOINT is "
+            "unset — gateway events will not export as OTLP logs; set the "
+            "endpoint (same collector as traces/metrics) or disable otlp_logs"
+        ),
+        optional=True,
+    )
+
+
+def _check_request_deadline(settings: Settings) -> CheckResult:
+    """Warn when no wall-clock request budget is configured (#867)."""
+    raw = getattr(settings.upstream, "request_deadline_seconds", None)
+    try:
+        seconds = float(raw) if raw is not None else 0.0
+    except (TypeError, ValueError):
+        seconds = 0.0
+    if seconds > 0:
+        return CheckResult(
+            name="request_deadline",
+            ok=True,
+            detail=f"upstream.request_deadline_seconds={seconds}",
+            optional=True,
+        )
+    return CheckResult(
+        name="request_deadline",
+        ok=False,
+        detail=(
+            "upstream.request_deadline_seconds is unset or 0 — requests use "
+            "per-tier timeouts only; set a positive wall-clock budget (or send "
+            "X-Daari-Deadline-Ms) so escalation stops with 504 before runaway "
+            "local/frontier hops"
+        ),
+        optional=True,
+    )
+
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "0:0:0:0:0:0:0:1"})
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = (host or "").strip().lower().strip("[]")
+    return normalized in _LOOPBACK_HOSTS
+
+
+def _check_tls_exposure(settings: Settings) -> CheckResult:
+    """Warn when auth is on, TLS is off, and the bind host is non-loopback (#932)."""
+    api_key = settings.server.primary_master_key()
+    tls = getattr(settings.server, "tls", None)
+    cert = str(getattr(tls, "cert_file", "") or "").strip()
+    key = str(getattr(tls, "key_file", "") or "").strip()
+    tls_on = bool(cert and key)
+    host = str(settings.server.host or "").strip()
+    if not api_key:
+        return CheckResult(
+            name="tls_exposure",
+            ok=True,
+            detail="skipped (server.api_key unset)",
+            optional=True,
+        )
+    if tls_on:
+        detail = "HTTPS enabled (server.tls.cert_file + key_file)"
+        if str(getattr(tls, "client_ca", "") or "").strip():
+            detail += " with mTLS (client_ca)"
+        return CheckResult(name="tls_exposure", ok=True, detail=detail, optional=True)
+    if _is_loopback_host(host):
+        return CheckResult(
+            name="tls_exposure",
+            ok=True,
+            detail=f"loopback bind ({host}) — plaintext acceptable for local-only",
+            optional=True,
+        )
+    return CheckResult(
+        name="tls_exposure",
+        ok=False,
+        detail=(
+            f"auth enabled on non-loopback host {host!r} without TLS — API keys "
+            "travel in plaintext; set server.tls.cert_file + key_file "
+            "(or --tls-cert/--tls-key), or terminate TLS at a reverse proxy/ingress"
+        ),
+        optional=True,
+    )
+
+
 def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
     """Local ASR reachability. Optional; unconfigured transcriptions stay 501."""
     asr = settings.asr
@@ -1176,6 +1399,47 @@ def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
         name="asr",
         ok=True,
         detail="not configured (POST /v1/audio/transcriptions returns 501)",
+        optional=True,
+    )
+
+
+def _check_tts(settings: Settings, client: httpx.Client | None) -> CheckResult:
+    """Local TTS reachability. Optional; unconfigured speech stays 501 (#869)."""
+    tts = settings.tts
+    base = str(tts.base_url or "").strip().rstrip("/")
+    if not base:
+        return CheckResult(
+            name="tts",
+            ok=True,
+            detail="not configured (POST /v1/audio/speech returns 501)",
+            optional=True,
+        )
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    url = f"{base}/models"
+    try:
+        response = http.get(url)
+    except Exception as exc:
+        return CheckResult(
+            name="tts",
+            ok=False,
+            detail=f"unreachable at {base}: {exc}",
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
+    if response.status_code == 200:
+        return CheckResult(
+            name="tts",
+            ok=True,
+            detail=f"reachable at {base}",
+            optional=True,
+        )
+    return CheckResult(
+        name="tts",
+        ok=False,
+        detail=f"unreachable at {base} (HTTP {response.status_code})",
         optional=True,
     )
 
