@@ -4013,6 +4013,12 @@ notes. Covered by `tests/unit/test_sampling_params.py`.
 **Status:** Done (2026-09-22). GET/HEAD/OPTIONS skip `request.body()` (TPM=0);
 POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
 
+### ASR guide links capacity-helm ([#928](https://github.com/naveenreddyalka/daari/issues/928))
+
+<!-- tracking:#928 -->
+**Status:** Done (2026-09-22). `backends/asr.md` Next links capacity-helm; contract
+test locks the path. Covered by `tests/unit/test_asr_docs.py`.
+
 
 ## How to update
 
