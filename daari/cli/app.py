@@ -433,7 +433,9 @@ def keys_budget_boost(
     key_id: str = typer.Argument(..., help="key_id from `daari keys list`"),
     usd: float = typer.Option(0.0, "--usd", help="Temporary USD increase on active windows"),
     requests: int = typer.Option(0, "--requests", help="Temporary request-quota increase"),
-    until: str = typer.Option(..., "--until", help="ISO-8601 expiry (UTC); evaluated at check time"),
+    until: str = typer.Option(
+        ..., "--until", help="ISO-8601 expiry (UTC); evaluated at check time"
+    ),
 ) -> None:
     """Grant an audited, auto-expiring temporary budget increase (#936)."""
     import os
@@ -479,9 +481,7 @@ def keys_team_budget_boost(
         typer.echo(f"No team {team}", err=True)
         raise typer.Exit(code=1)
     try:
-        boost = store.grant_team_budget_boost(
-            row.team_id, usd=usd, requests=requests, until=until
-        )
+        boost = store.grant_team_budget_boost(row.team_id, usd=usd, requests=requests, until=until)
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
@@ -1010,7 +1010,13 @@ def enterprise_bootstrap(
                 err=True,
             )
             raise typer.Exit(code=1)
-    path = apply_org_config(data, config_path=config_path, device_id=device_id or None)
+    from daari.enterprise.bootstrap import PolicySchemaError
+
+    try:
+        path = apply_org_config(data, config_path=config_path, device_id=device_id or None)
+    except PolicySchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote enterprise profile to {path}")
     typer.echo("Restart `daari serve` to pick up shared cache / org pool settings.")
 
@@ -1045,7 +1051,13 @@ def enterprise_policy_sync(
     if not insecure and not verify_signature(raw, signature, secret):
         typer.echo("Policy sync signature invalid.", err=True)
         raise typer.Exit(code=1)
-    path = apply_org_config(data, device_id=settings.enterprise.device_id)
+    from daari.enterprise.bootstrap import PolicySchemaError
+
+    try:
+        path = apply_org_config(data, device_id=settings.enterprise.device_id)
+    except PolicySchemaError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Synced org policy into {path}")
 
 
@@ -1818,6 +1830,11 @@ def doctor(
         "--suggest-models",
         help="Print a VRAM/RAM-aware L3/L4/L5 stack recommendation (issue #113).",
     ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Treat optional checks (e.g. pending store migrate) as required (#942).",
+    ),
 ) -> None:
     """Verify Python, config, Ollama, model, fleet artifact backends, and optional daemon."""
     if suggest_models:
@@ -1842,7 +1859,7 @@ def doctor(
                 err=True,
             )
             raise typer.Exit(code=1)
-    results = run_doctor(settings, tunnel_url=resolved_tunnel_url)
+    results = run_doctor(settings, tunnel_url=resolved_tunnel_url, strict=strict)
     for result in results:
         mark = "✓" if result.ok else "✗"
         suffix = " (optional)" if result.optional else ""
@@ -1854,6 +1871,27 @@ def doctor(
     code = doctor_exit_code(results)
     if code != 0:
         raise typer.Exit(code=code)
+
+
+@app.command()
+def migrate(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Inspect stores and print pending additive migrations without applying.",
+    ),
+) -> None:
+    """Open durable stores (or dry-run inspect) and report schema migrate status (#942)."""
+    from daari.setup.migrate import inspect_stores, run_migrate
+
+    settings = get_settings()
+    lines = run_migrate(settings, dry_run=dry_run)
+    for line in lines:
+        typer.echo(line)
+    if dry_run:
+        notes = inspect_stores(settings)
+        if any(not n.additive_safe for n in notes):
+            raise typer.Exit(code=1)
 
 
 def _echo_onboard_report(report: OnboardReport) -> None:
@@ -2378,8 +2416,7 @@ def cache_prune() -> None:
             typer.echo(f"L0: removed {l0_removed} expired entries{note}")
         else:
             typer.echo(
-                f"L0: removed {l0_removed} expired entries "
-                "(unbounded Redis keys older than 7d)"
+                f"L0: removed {l0_removed} expired entries (unbounded Redis keys older than 7d)"
             )
         typer.echo("L1: removed 0 expired entries (Redis L1 uses its own TTL path)")
         return
@@ -2462,12 +2499,14 @@ def _daemon_invalidate_caches(
 
 @cache_app.command("invalidate")
 def cache_invalidate(
-    model: str | None = typer.Option(None, "--model", help="Served model (L0) or context_key prefix (L1)."),
-    entry_hash: str | None = typer.Option(
-        None, "--hash", help="L0 cache key or L1 answer_hash."
+    model: str | None = typer.Option(
+        None, "--model", help="Served model (L0) or context_key prefix (L1)."
     ),
+    entry_hash: str | None = typer.Option(None, "--hash", help="L0 cache key or L1 answer_hash."),
     team: str | None = typer.Option(
-        None, "--team", help="Drop L0 rows scoped to team:<id> and L1 context_keys with that segment."
+        None,
+        "--team",
+        help="Drop L0 rows scoped to team:<id> and L1 context_keys with that segment.",
     ),
     key: str | None = typer.Option(
         None, "--key", help="Drop L0 rows scoped to key:<id> and L1 context_keys with that segment."
