@@ -53,6 +53,7 @@ def run_doctor(
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
+    results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
@@ -61,6 +62,7 @@ def run_doctor(
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
+    results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_budget_webhook_secret(cfg))
@@ -762,6 +764,91 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
     )
 
 
+def _check_scoped_cache_fleet(settings: Settings) -> CheckResult:
+    """Warn when tenant cache_scope meets disk cache on a multi-replica fleet (#891)."""
+    raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=False,
+            detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
+            optional=True,
+        )
+
+    cache_backend = (settings.cache.backend or "disk").strip().lower()
+    if replicas <= 1:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas} (scoped cache fine on single node)",
+            optional=True,
+        )
+    if cache_backend == "redis":
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; cache.backend=redis",
+            optional=True,
+        )
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail="virtual keys disabled (no tenant cache_scope)",
+            optional=True,
+        )
+
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+
+    scoped: list[str] = []
+    for key in store.list():
+        scope = (getattr(key, "cache_scope", None) or "global").strip().lower()
+        if scope != "global":
+            scoped.append(f"key {key.name}={scope}")
+    try:
+        teams = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        teams = []
+    for team in teams:
+        scope = (getattr(team, "cache_scope", None) or "global").strip().lower()
+        if scope != "global":
+            scoped.append(f"team {team.name}={scope}")
+
+    if not scoped:
+        return CheckResult(
+            name="scoped_cache_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; all cache_scope=global",
+            optional=True,
+        )
+
+    shown = ", ".join(scoped[:6])
+    extra = f" (+{len(scoped) - 6} more)" if len(scoped) > 6 else ""
+    return CheckResult(
+        name="scoped_cache_fleet",
+        ok=False,
+        detail=(
+            f"DAARI_FLEET_REPLICAS={replicas} with cache.backend={cache_backend} "
+            f"and non-global cache_scope ({shown}{extra}) — tenant L0/L1 stays "
+            "per-pod; set cache.backend=redis so scoped keys share across replicas, "
+            "or keep a single replica"
+        ),
+        optional=True,
+    )
+
+
 def _has_request_quota_windows(settings: Settings) -> bool:
     """True when any key/team budget window carries a request cap."""
     if not getattr(settings.server.virtual_keys, "enabled", False):
@@ -1127,6 +1214,53 @@ def _check_request_deadline(settings: Settings) -> CheckResult:
             "per-tier timeouts only; set a positive wall-clock budget (or send "
             "X-Daari-Deadline-Ms) so escalation stops with 504 before runaway "
             "local/frontier hops"
+        ),
+        optional=True,
+    )
+
+
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "0:0:0:0:0:0:0:1"})
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = (host or "").strip().lower().strip("[]")
+    return normalized in _LOOPBACK_HOSTS
+
+
+def _check_tls_exposure(settings: Settings) -> CheckResult:
+    """Warn when auth is on, TLS is off, and the bind host is non-loopback (#932)."""
+    api_key = settings.server.primary_master_key()
+    tls = getattr(settings.server, "tls", None)
+    cert = str(getattr(tls, "cert_file", "") or "").strip()
+    key = str(getattr(tls, "key_file", "") or "").strip()
+    tls_on = bool(cert and key)
+    host = str(settings.server.host or "").strip()
+    if not api_key:
+        return CheckResult(
+            name="tls_exposure",
+            ok=True,
+            detail="skipped (server.api_key unset)",
+            optional=True,
+        )
+    if tls_on:
+        detail = "HTTPS enabled (server.tls.cert_file + key_file)"
+        if str(getattr(tls, "client_ca", "") or "").strip():
+            detail += " with mTLS (client_ca)"
+        return CheckResult(name="tls_exposure", ok=True, detail=detail, optional=True)
+    if _is_loopback_host(host):
+        return CheckResult(
+            name="tls_exposure",
+            ok=True,
+            detail=f"loopback bind ({host}) — plaintext acceptable for local-only",
+            optional=True,
+        )
+    return CheckResult(
+        name="tls_exposure",
+        ok=False,
+        detail=(
+            f"auth enabled on non-loopback host {host!r} without TLS — API keys "
+            "travel in plaintext; set server.tls.cert_file + key_file "
+            "(or --tls-cert/--tls-key), or terminate TLS at a reverse proxy/ingress"
         ),
         optional=True,
     )

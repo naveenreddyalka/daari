@@ -326,6 +326,70 @@ async def test_asr_disconnect_cancels_upstream(settings, monkeypatch, path, phas
 
 
 @pytest.mark.asyncio
+async def test_tts_disconnect_cancels_upstream(settings, monkeypatch):
+    import httpx
+
+    from daari.gateway import speech as speech_mod
+
+    app = _app(settings)
+    settings.tts.base_url = "http://tts.local/v1"
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def hanging_post(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        return httpx.Response(200, content=b"should-not")
+
+    monkeypatch.setattr(speech_mod, "post_speech", hanging_post)
+
+    async def is_disconnected(self: Request) -> bool:
+        return started.is_set()
+
+    monkeypatch.setattr(Request, "is_disconnected", is_disconnected)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={"model": "tts-1", "input": "hang please", "voice": "alloy"},
+        )
+    assert cancelled.is_set()
+    assert response.status_code == 499
+    assert response.json()["error"]["type"] == "client_disconnected"
+    assert 'daari_cancelled_requests_total{phase="tts"} 1' in render_prometheus(
+        app.state.ctx.metrics
+    )
+
+
+@pytest.mark.asyncio
+async def test_tts_happy_path_does_not_increment_cancelled(settings, monkeypatch):
+    import httpx
+
+    from daari.gateway import speech as speech_mod
+
+    app = _app(settings)
+    settings.tts.base_url = "http://tts.local/v1"
+
+    async def ok_post(*args, **kwargs):
+        return httpx.Response(
+            200, content=b"ID3ok", headers={"content-type": "audio/mpeg"}
+        )
+
+    monkeypatch.setattr(speech_mod, "post_speech", ok_post)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/speech",
+            json={"model": "tts-1", "input": "hello", "voice": "alloy"},
+        )
+    assert response.status_code == 200
+    text = render_prometheus(app.state.ctx.metrics)
+    assert 'daari_cancelled_requests_total{phase="tts"}' not in text
+
+
+@pytest.mark.asyncio
 async def test_client_stream_close_stops_fake_upstream(settings, monkeypatch):
     """Closing the response stream mid-generation stops the fake upstream."""
     app = _app(settings)
