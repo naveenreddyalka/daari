@@ -13,38 +13,29 @@
 
 ## Where daari stands (verified in-tree, 2026-09-22)
 
-The 09-21 sets drained almost entirely overnight: TLS/mTLS, body-size 413,
-lifetime budgets, CORS + security headers, safe-method rate-limit skip,
-sampling-knob passthrough, MCP stats, migrate dry-run + skew guard all merged;
-frontier tool parity and the 401 throttle are in open PRs. Today's autodev
-refill (X-Request-ID echo, doctor MCP probe, MCP egress client reuse) shipped
-within 30 minutes of filing. Remaining queue: admission-priority CLI, L1 embed
-versioning, Idempotency-Key (in flight), plus a P3 docs/test tail.
+Second scan same day. Morning set (pooled httpx, whole-stream SSE keepalive,
+`stream_incomplete` + breaker, stream host failover, Postgres pool) is open in
+the `auto-dev` queue; X-Request-ID echo on chat, doctor MCP probe, and MCP
+egress client reuse already merged. Remaining older queue: admission-priority
+CLI, L1 embed versioning, Idempotency-Key, frontier tool parity / 401 throttle
+(open PRs), plus a P3 docs/test tail.
 
-**Outward (this run):** three competitors moved **today**. **Portkey v2.24.0**
-(09-22): per-attempt retry logging, **truncated-stream detection on all
-providers** (in-band `stream_incomplete` event, partial kept in log, excluded
-from cache), MCP OAuth robustness. **Kong AI Gateway 2.1.0** (09-22): MCP
-protocol revision 2026-07-28 up/downstream with `ttlMs`/`cacheScope` cache
-hints and version negotiation, W3C trace context on MCP tool calls,
-per-modality token costs, CEL ACL expressions. **vLLM v0.30.0** stable
-(09-22): engine internals (Fast Start weight cache, watermarking) — nothing
-daari must speak natively. LiteLLM bar still **v1.102.0** (v1.103.0-rc.1),
-Ollama **v0.34.2** / 0.34.3 still rc, OpenRouter quiet since 08-19.
+**Outward (this run):** no newer competitor cuts since the morning scan —
+**Portkey v2.24.0** (truncated-stream detection, per-attempt retry logs),
+**Kong AI Gateway 2.1.0** (MCP 2026-07-28 `ttlMs`/`cacheScope`, W3C on MCP
+tool calls, modality costs, CEL ACL), **vLLM 0.30.0** (engine internals).
+LiteLLM bar still **v1.102.0**; Ollama **v0.34.2**; OpenRouter quiet.
 
-**Inward theme: data-plane efficiency + stream truncation fidelity**
-(code-verified): every upstream hop except MCP egress builds a fresh
-`httpx.AsyncClient` per request (Ollama, OpenAI-compat, MLX, frontier,
-embeddings, TTS, ASR — zero `httpx.Limits`/keepalive anywhere); SSE
-keepalives stop after the first chunk so mid-stream thinking pauses get
-idle-killed by proxies; a frontier stream dying after deltas ends with **no
-in-band signal** (local tiers do signal); stream failures never feed the
-per-host circuit breaker and streams pick one host with no pre-first-token
-failover (non-stream loops hosts); Postgres stores `psycopg.connect` per
-operation. Verified fine, not filed: retries are per-attempt-traced with
-metrics (Portkey retry-logging parity already covered); partial streams are
-never cached; request deadline, traceparent, OTLP logs all shipped;
-speech/ASR meter spend; MCP ingress negotiates 2026-07-28.
+**Inward theme: end-to-end correlation + modality resilience** (code-verified):
+`X-Request-ID` resolves+echoes on chat only — never forwarded on
+`inject_trace_headers()` upstream hops, and Anthropic / Responses / Ollama /
+embeddings / audio omit the response header; MCP `tools/list` negotiates
+2026-07-28 but emits no `_meta` cache hints (Kong 2.1.0 parity); ASR / TTS /
+embed HTTP skip `RetryPolicy`/`run_upstream` (chat path already has it);
+`content.py` extracts images but drops OpenAI `input_audio` blocks. Verified
+fine / already filed: pooled clients + stream fidelity (morning set); partial
+streams uncached; deadline/traceparent/OTLP; MCP 2026-07-28 negotiation;
+speech/ASR meter spend.
 
 ---
 
@@ -52,29 +43,29 @@ speech/ASR meter spend; MCP ingress negotiates 2026-07-28.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Per-request `httpx.AsyncClient` on every hop** — Ollama/OpenAI-compat/MLX/frontier/embeds/TTS/ASR make a TCP(+TLS) handshake per call; only MCP egress pools | 5 | 2 | LiteLLM / Portkey (pooled provider clients, single-digit-ms overhead claims) | Gateway shares the box with Ollama — pooled keepalive turns handshake tax into local latency headroom | File ([#971](https://github.com/naveenreddyalka/daari/issues/971)) |
-| 2 | **SSE keepalive dies after first chunk** — `stream_with_keepalive` heartbeats only pre-first-token; 30–120s thinking pauses get idle-killed by nginx/LBs | 4 | 2 | Portkey / Kong (whole-stream heartbeats) | Local tiers pause too (model load, CPU laptops) — survives stock reverse proxies with zero tuning | File ([#972](https://github.com/naveenreddyalka/daari/issues/972)) |
-| 3 | **Silent frontier stream truncation** — death after deltas ends the stream with no in-band event; stream failures never hit `breaker.record_failure()` | 4 | 2 | Portkey v2.24.0 (`stream_incomplete` event, log retention, cache exclusion) | Laptops die mid-stream more than clouds — honest truncation + breaker feedback is fleet trust | File ([#973](https://github.com/naveenreddyalka/daari/issues/973)) |
-| 4 | **No stream host failover** — streaming `pick()`s one host; a dead host fails the tier though siblings are healthy; non-stream loops hosts | 4 | 3 | LiteLLM (router retries pre-stream) | Pre-first-token failover is lossless; agent/IDE traffic is ~all streamed | File ([#974](https://github.com/naveenreddyalka/daari/issues/974)) |
-| 5 | **Postgres connect-per-operation** — ledger/batches/files/responses open `psycopg.connect(dsn)` each op; no pool, operators need external PgBouncer | 4 | 2 | LiteLLM (PgBouncer reliability work in latest stables) | In-process `psycopg[pool]` removes a whole moving part at daari fleet scale | File ([#975](https://github.com/naveenreddyalka/daari/issues/975)) |
-| 6 | **X-Request-ID not forwarded upstream / MCP `ttlMs`+`cacheScope` cache hints (Kong 2.1.0) / ASR-TTS-embed retry wrapper / moderations + rerank / `input_audio` blocks / WIF / A2A / SOC 2 / admin UI** | 2–3 | 1–5 | Kong / LiteLLM / cloud | Correlation + cache hints are small parity deltas; compliance waits for a paying ask | Watch |
+| 1 | **`X-Request-ID` not forwarded upstream** — hops only get W3C `traceparent`; Ollama/frontier/ASR/TTS/embed/MCP never see the gateway id | 4 | 1 | Kong / Portkey (end-to-end correlation) | One box → one id through local + frontier logs without APM | File ([#977](https://github.com/naveenreddyalka/daari/issues/977)) |
+| 2 | **`X-Request-ID` echo missing on non-chat surfaces** — Anthropic, Responses, Ollama facade, embeddings, audio omit the response header | 3 | 1 | Portkey (all unified routes) | Cursor / Claude Code / JetBrains / ASR clients join spend rows to client traces | File ([#978](https://github.com/naveenreddyalka/daari/issues/978)) |
+| 3 | **MCP `tools/list` lacks `ttlMs`/`cacheScope`** — 2026-07-28 negotiated, result is bare `{"tools":…}`; Kong 2.1.0 emits cache hints | 3 | 2 | Kong AI Gateway 2.1.0 | Local catalogs change rarely — honest TTL cuts agent re-list churn | File ([#979](https://github.com/naveenreddyalka/daari/issues/979)) |
+| 4 | **ASR / TTS / embed skip gateway retry** — bare httpx; chat already uses `RetryPolicy`/`run_upstream` | 4 | 2 | LiteLLM / Portkey (uniform modality retry) | Local whisper/TTS/Ollama embed flaps should not 502 the IDE | File ([#980](https://github.com/naveenreddyalka/daari/issues/980)) |
+| 5 | **`input_audio` content blocks dropped** — `content.py` handles images only; voice-agent chat loses audio on local tiers | 3 | 2 | LiteLLM / cloud gateways | Optional local ASR inject keeps voice turns on-box | File ([#981](https://github.com/naveenreddyalka/daari/issues/981)) |
+| 6 | **Pooled httpx / whole-stream keepalive / `stream_incomplete`+breaker / stream host failover / Postgres pool** (morning set) / moderations+rerank / WIF / A2A / SOC 2 / admin UI | 2–5 | 1–5 | LiteLLM / Portkey / Kong / cloud | Data-plane set already queued; compliance waits for a paying ask | Watch / in flight |
 
-Pruned this run: all five 09-21 browser/ops rows (shipped overnight).
+Pruned this run: morning data-plane rows move to watch/in-flight; 09-21 browser/ops rows stay shipped.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Pooled data plane** — shared upstream HTTP clients and Postgres pools; the
-   gateway overhead story becomes measurable, not apologized for.
-2. **Streams that never lie** — whole-stream keepalive, in-band truncation
-   events, breaker feedback, pre-first-token host failover.
-3. **Lossless agent SDK parity** — frontier tool fidelity + 401 throttle land
-   (open PRs), Idempotency-Key completes.
-4. **Fleet QoS** — admission-priority CLI ships; per-key priority becomes
-   usable end to end.
-5. **Correlation everywhere** — X-Request-ID forwarded upstream, MCP cache
-   hints, so one request is one thread through logs, traces, and MCP calls.
+1. **Correlation everywhere** — forward + echo `X-Request-ID` on every surface and
+   upstream hop so one request is one thread through logs and spend.
+2. **Pooled data plane** — shared upstream HTTP clients and Postgres pools
+   (morning backlog) make gateway overhead measurable.
+3. **Streams that never lie** — whole-stream keepalive, in-band truncation,
+   breaker feedback, pre-first-token host failover (morning backlog).
+4. **MCP catalog honesty** — `ttlMs`/`cacheScope` hints so agents cache
+   `tools/list` instead of re-listing every turn.
+5. **Modality parity** — ASR/TTS/embed retry + `input_audio` passthrough so
+   voice and embed paths match chat resilience.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay deferred.
 
@@ -82,17 +73,20 @@ Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay de
 
 ## Changelog
 
+- **2026-09-22b (correlation + modality resilience)** — No newer competitor
+  cuts since morning. Inward (code-verified): `X-Request-ID` chat-only echo
+  and never forwarded upstream; non-chat gateways omit response header; MCP
+  `tools/list` missing `ttlMs`/`cacheScope` despite 2026-07-28; ASR/TTS/embed
+  skip `RetryPolicy`; `input_audio` blocks dropped. Filing five. Morning
+  data-plane set remains open in the queue.
+
 - **2026-09-22 (data-plane efficiency + stream truncation fidelity)** — Three
   same-day competitor releases: **Portkey v2.24.0** (truncated-stream
   detection, per-attempt retry logs), **Kong 2.1.0** (MCP 2026-07-28 + cache
   hints, modality costs), **vLLM 0.30.0** (internals only). LiteLLM bar
-  v1.102.0 unchanged. Inward (code-verified): per-request httpx clients on
-  every non-MCP hop, first-chunk-only SSE keepalive, silent frontier stream
-  truncation with no breaker feedback, no stream host failover, Postgres
-  connect-per-op. Verified fine: retry tracing, partial-stream cache
-  exclusion, deadline/traceparent/OTLP, MCP 2026-07-28 negotiation. Filing
-  five. The 09-21 sets drained overnight; today's autodev refill shipped in
-  30 minutes.
+  v1.102.0 unchanged. Inward: per-request httpx clients, first-chunk-only SSE
+  keepalive, silent frontier stream truncation, no stream host failover,
+  Postgres connect-per-op. Filed five (pooled httpx → Postgres pool).
 
 - **2026-09-21 (two runs)** — Data-plane hardening + lossless escalation
   (TLS/mTLS, body cap, 401 throttle, frontier tool parity, lifetime budgets),
