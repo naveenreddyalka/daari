@@ -53,6 +53,7 @@ def run_doctor(
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
+    results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -1476,6 +1477,83 @@ def _check_tts(settings: Settings, client: httpx.Client | None) -> CheckResult:
         detail=f"unreachable at {base} (HTTP {response.status_code})",
         optional=True,
     )
+
+
+def _check_mcp_servers(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> list[CheckResult]:
+    """Probe each configured MCP egress URL (#963). Empty list → no rows."""
+    servers = list(settings.integrations.mcp_servers or [])
+    if not servers:
+        return []
+
+    own_client = client is None
+    http = client or httpx.Client(timeout=3.0)
+    rows: list[CheckResult] = []
+    try:
+        for server in servers:
+            sid = str(server.id or "").strip() or "unnamed"
+            base = str(server.url or "").strip().rstrip("/")
+            name = f"mcp:{sid}"
+            if not base:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=False,
+                        detail="url is empty",
+                        optional=True,
+                    )
+                )
+                continue
+            headers = {"Content-Type": "application/json", "Mcp-Method": "initialize"}
+            token = str(server.token or "").strip()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "daari-doctor", "version": "1"},
+                },
+            }
+            try:
+                response = http.post(base, json=payload, headers=headers)
+            except Exception as exc:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=False,
+                        detail=f"unreachable at {base}: {exc}",
+                        optional=True,
+                    )
+                )
+                continue
+            if 200 <= response.status_code < 300:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=True,
+                        detail=f"reachable at {base}",
+                        optional=True,
+                    )
+                )
+            else:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=False,
+                        detail=f"unreachable at {base} (HTTP {response.status_code})",
+                        optional=True,
+                    )
+                )
+    finally:
+        if own_client:
+            http.close()
+    return rows
 
 
 def _check_org_cache(
