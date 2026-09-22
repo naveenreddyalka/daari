@@ -29,10 +29,12 @@ A virtual key can carry its own caps, charged only against that key's own spend:
 ```bash
 daari keys team-create eng --daily-budget 5
 daari keys create ci-bot --daily-budget 2 --monthly-budget 20 --team eng --window 7d=10
+daari keys create contractor --window lifetime=50
 ```
 
 Each window is checked independently. A key can carry several
-`{duration, max_usd}` windows at once (`day`/`24h`, `month`/`30d`, `7d`, …);
+`{duration, max_usd}` windows at once (`day`/`24h`, `month`/`30d`, `7d`,
+`lifetime`/`total`, …);
 team caps apply to every key on that team and the tighter of key vs team wins.
 The org `frontier.*` caps above remain an outer ceiling. A key over budget gets
 `402` naming the window that tripped and when it resets:
@@ -52,6 +54,29 @@ The org `frontier.*` caps above remain an outer ceiling. A key over budget gets
   }
 }
 ```
+
+### Lifetime caps
+
+`lifetime` (aliases: `total`, `all`) sums all-time frontier spend for the key
+(or team) from the usage ledger — no calendar reset, no rollover. The `402`
+payload names `window: "lifetime"` and omits a reset time. Same shape works for
+`--window-requests lifetime=1000`. Per-end-user lifetime caps use key metadata
+`user_lifetime_usd_cap` (charged via the user ledger, `scope: "user"`).
+
+### Temporary budget boosts
+
+When a team hits its monthly cap mid-incident, grant a bounded, auto-expiring
+increase. Expiry is evaluated at enforcement time — no cron:
+
+```bash
+daari keys budget-boost <key_id> --usd 25 --until 2026-09-23T00:00:00Z
+daari keys team-budget-boost eng --usd 100 --until 2026-09-23T12:00:00Z
+daari keys show <key_id>   # lists active boosts
+```
+
+Grant and expiry emit audit actions `budget.boost.grant` /
+`budget.boost.expire`. Active boosts add to the effective USD (and optional
+request) limit on every matching window for that scope.
 
 ### Per-end-user caps on a shared key
 
