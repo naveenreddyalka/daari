@@ -3251,6 +3251,12 @@ traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 `tests/unit/test_prune_cli_help.py`.
 
 ### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
+### Assert report --help documents format and breakdown flags ([#701](https://github.com/naveenreddyalka/daari/issues/701))
+
+<!-- tracking:#701 -->
+**Status:** Done (2026-09-18). `daari report --help` contract test asserts
+format, by-client, by-team, and by-user. Covered by
+`tests/unit/test_report_cli_help.py`.
 
 ### Assert context clear --help documents L0/L1/CCS ([#700](https://github.com/naveenreddyalka/daari/issues/700))
 
@@ -3258,7 +3264,6 @@ traces, ledger, audit, shadow, and tasks appear in Typer help. Covered by
 **Status:** Done (2026-09-18). `daari context clear --help` contract test
 asserts l0, l1, and ccs appear in Typer help. Covered by
 `tests/unit/test_context_clear_cli_help.py`.
-
 
 ### Fix route preview stale --json in cli.md ([#699](https://github.com/naveenreddyalka/daari/issues/699))
 
