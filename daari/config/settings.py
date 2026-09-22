@@ -970,6 +970,35 @@ class ResponsesSettings(BaseModel):
     )
 
 
+class IdempotencySettings(BaseModel):
+    """Replay Identical Idempotency-Key requests without a second route (#714)."""
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "When true, honor Idempotency-Key on chat completions and Responses. "
+            "A missing header is always a no-op."
+        ),
+    )
+    backend: Literal["sqlite", "postgres"] = Field(
+        default="sqlite",
+        description=(
+            "sqlite (default, path next to traces) or postgres "
+            "(observability.postgres_url) for multi-replica fleets."
+        ),
+    )
+    ttl_seconds: int = Field(
+        default=86400,
+        ge=0,
+        description="How long completed idempotency records are kept (default 24h).",
+    )
+    wait_seconds: float = Field(
+        default=60.0,
+        ge=0.0,
+        description="How long an in-flight duplicate waits for the first request.",
+    )
+
+
 class TraceSettings(BaseModel):
     enabled: bool = True
     path: str = "~/.daari/traces/traces.sqlite3"
@@ -1326,6 +1355,7 @@ class Settings(BaseSettings):
     files: FilesSettings = Field(default_factory=FilesSettings)
     batches: BatchesSettings = Field(default_factory=BatchesSettings)
     responses: ResponsesSettings = Field(default_factory=ResponsesSettings)
+    idempotency: IdempotencySettings = Field(default_factory=IdempotencySettings)
     pricing: PricingSettings = Field(default_factory=PricingSettings)
     upstream: UpstreamSettings = Field(default_factory=UpstreamSettings)
     trace: TraceSettings = Field(default_factory=TraceSettings)
