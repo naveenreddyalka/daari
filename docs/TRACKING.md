@@ -4069,6 +4069,13 @@ majors refused; `daari doctor` warns on pending migrate (`--strict` required).
 No Alembic. Docs: upgrade guide. Covered by
 `tests/unit/test_migrate_schema.py`.
 
+### Doctor probes integrations.mcp_servers ([#963](https://github.com/naveenreddyalka/daari/issues/963))
+
+<!-- tracking:#963 -->
+**Status:** Done (2026-09-22). Optional `mcp:<id>` doctor rows POST a lightweight
+JSON-RPC `initialize` to each configured egress URL (Bearer when token set);
+empty list adds no rows. Covered by `tests/unit/test_doctor_mcp_servers.py`.
+
 
 ## How to update
 
