@@ -114,6 +114,23 @@ class ServerSettings(BaseModel):
         ),
     )
     tls: TlsSettings = Field(default_factory=TlsSettings)
+    cors_origins: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Browser Origin allowlist for CORS (#938). Empty disables CORS "
+            "middleware. When set, enables ACAO for listed origins, Authorization "
+            "header, and OPTIONS preflight. Env: DAARI_SERVER__CORS_ORIGINS "
+            '(JSON list, e.g. \'["http://127.0.0.1:11437"]\').'
+        ),
+    )
+    security_headers: bool = Field(
+        default=True,
+        description=(
+            "Attach baseline security headers on every response (#938): "
+            "X-Content-Type-Options: nosniff, X-Frame-Options: DENY, "
+            "Referrer-Policy: no-referrer. Env: DAARI_SERVER__SECURITY_HEADERS."
+        ),
+    )
     sse_keepalive_seconds: float = Field(
         default=10.0,
         ge=0.0,
@@ -721,6 +738,20 @@ class UpstreamSettings(BaseModel):
         ),
     )
     retry: UpstreamRetrySettings = Field(default_factory=UpstreamRetrySettings)
+    pool_max_connections: int = Field(
+        default=100,
+        description=(
+            "Max concurrent connections across the shared upstream httpx pool "
+            "(Ollama, OpenAI-compat, MLX, frontier, embedder, TTS, ASR)."
+        ),
+    )
+    pool_keepalive_connections: int = Field(
+        default=20,
+        description=(
+            "Max idle keepalive connections retained in the shared upstream "
+            "httpx pool. Cuts TCP/TLS handshake cost on repeated local hops."
+        ),
+    )
 
 
 class ModelPrice(BaseModel):

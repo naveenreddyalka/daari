@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
 import httpx
@@ -39,6 +39,25 @@ class FrontierExecutor:
     transport: httpx.AsyncBaseTransport | None = None
     retry: RetryPolicy | None = None
     metrics: Any = None
+    pool_limits: Any = None
+    _http: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None or getattr(self._http, "is_closed", False):
+            from daari.router.http_pool import PoolLimits, build_async_client
+
+            self._http = build_async_client(
+                httpx,
+                base_url=self.base_url,
+                limits=self.pool_limits or PoolLimits(),
+                transport=self.transport,
+            )
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None and not getattr(self._http, "is_closed", True):
+            await self._http.aclose()
+        self._http = None
 
     def _build_messages(self, request: InternalRequest) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = []
@@ -127,35 +146,37 @@ class FrontierExecutor:
         )
 
         guard_upstream("L6")
-        async with httpx.AsyncClient(
-            base_url=self.base_url, timeout=self.timeout, transport=self.transport
-        ) as client:
-            async with deadline_bounded_stream(
-                client, "POST", path, json=payload, headers=headers
-            ) as response:
-                response.raise_for_status()
-                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
-                    if self._is_anthropic():
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[len("data:") :].strip()
-                        delta = text_delta_from_sse_data(data) if data else None
-                        if delta:
-                            yield delta
-                        continue
+        async with deadline_bounded_stream(
+            self._client(),
+            "POST",
+            path,
+            json=payload,
+            headers=headers,
+            timeout=self.timeout,
+        ) as response:
+            response.raise_for_status()
+            async for line in aiter_with_ttft_deadline(response.aiter_lines()):
+                if self._is_anthropic():
                     if not line.startswith("data:"):
                         continue
                     data = line[len("data:") :].strip()
-                    if not data or data == "[DONE]":
-                        continue
-                    try:
-                        chunk = json.loads(data)
-                    except ValueError:
-                        continue
-                    for choice in chunk.get("choices", []):
-                        delta = (choice.get("delta") or {}).get("content")
-                        if delta:
-                            yield delta
+                    delta = text_delta_from_sse_data(data) if data else None
+                    if delta:
+                        yield delta
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if not data or data == "[DONE]":
+                    continue
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue
+                for choice in chunk.get("choices", []):
+                    delta = (choice.get("delta") or {}).get("content")
+                    if delta:
+                        yield delta
 
     async def execute(
         self,
@@ -193,12 +214,11 @@ class FrontierExecutor:
         timeout = nonstream_timeout(self.timeout, "L6")
 
         async def attempt() -> dict[str, Any]:
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=timeout, transport=self.transport
-            ) as client:
-                response = await client.post(path, json=payload, headers=headers)
-                response.raise_for_status()
-                return response.json()
+            response = await self._client().post(
+                path, json=payload, headers=headers, timeout=timeout
+            )
+            response.raise_for_status()
+            return response.json()
 
         data = await run_upstream(
             attempt,

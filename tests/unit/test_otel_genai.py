@@ -365,6 +365,29 @@ def test_inject_noop_without_inbound_context():
     }
 
 
+def test_inject_adds_x_request_id_from_context():
+    from daari.gateway.request_id import bind_request_id, reset_request_id
+
+    token = bind_request_id("corr-upstream-1")
+    try:
+        out = inject_trace_headers({"Authorization": "Bearer x"})
+    finally:
+        reset_request_id(token)
+    assert out["Authorization"] == "Bearer x"
+    assert out["X-Request-ID"] == "corr-upstream-1"
+
+
+def test_inject_explicit_request_id_wins_over_context():
+    from daari.gateway.request_id import bind_request_id, reset_request_id
+
+    token = bind_request_id("from-context")
+    try:
+        out = inject_trace_headers({}, request_id="from-arg")
+    finally:
+        reset_request_id(token)
+    assert out["X-Request-ID"] == "from-arg"
+
+
 def test_export_without_inbound_still_root():
     trace = RequestTrace()
     assert export_trace(trace, request=_request(), response=_response()) is True
@@ -402,7 +425,7 @@ async def test_frontier_injects_traceparent(monkeypatch):
         async def __aexit__(self, *a):
             return None
 
-        async def post(self, path, json=None, headers=None):
+        async def post(self, path, json=None, headers=None, **kwargs):
             seen.append(dict(headers or {}))
             return _Resp()
 

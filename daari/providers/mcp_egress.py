@@ -58,6 +58,17 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.embedder = embedder
         self.tool_policy = tool_policy
         self._tool_embed_cache = ToolEmbeddingCache()
+        self._http: httpx.AsyncClient | None = None
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None or self._http.is_closed:
+            self._http = httpx.AsyncClient(timeout=30.0)
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None and not self._http.is_closed:
+            await self._http.aclose()
+        self._http = None
 
     def _guardrail_blocked(self, request: InternalRequest, tool: str, rule: str) -> InternalResponse:
         return InternalResponse(
@@ -94,6 +105,11 @@ class McpEgressProvider(HttpIntegrationProvider):
         headers = {"Content-Type": "application/json"}
         if self.server.token:
             headers["Authorization"] = f"Bearer {self.server.token}"
+        from daari.observability.otel import inject_trace_headers
+
+        headers = inject_trace_headers(
+            headers, request_id=getattr(request.meta, "request_id", None)
+        )
 
         if tool in {"tools/list", "list"}:
             headers["Mcp-Method"] = "tools/list"
@@ -132,10 +148,10 @@ class McpEgressProvider(HttpIntegrationProvider):
                 "params": {"name": tool, "arguments": arguments},
             }
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(self.base_url, json=payload, headers=headers)
-                response.raise_for_status()
-                data = response.json()
+            client = self._client()
+            response = await client.post(self.base_url, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
             if "error" in data:
                 return self._failure(request, RuntimeError(str(data["error"])))
             result = data.get("result", data)
@@ -150,39 +166,39 @@ class McpEgressProvider(HttpIntegrationProvider):
         seen: set[str] = set()
         cursor: str | None = None
         started = time.monotonic()
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for page in range(self.list_page_cap):
-                if page and time.monotonic() - started >= self.list_timeout_seconds:
-                    break
-                params: dict[str, Any] = {}
-                if cursor:
-                    params["cursor"] = cursor
-                payload = {
-                    "jsonrpc": "2.0",
-                    "id": page + 1,
-                    "method": "tools/list",
-                    "params": params,
-                }
-                response = await client.post(self.base_url, json=payload, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-                if "error" in data:
-                    raise RuntimeError(str(data["error"]))
-                result = data.get("result", data)
-                if not isinstance(result, dict):
-                    break
-                for tool in result.get("tools") or []:
-                    if not isinstance(tool, dict):
-                        continue
-                    name = str(tool.get("name") or "")
-                    if name and name in seen:
-                        continue
-                    if name:
-                        seen.add(name)
-                    tools.append(tool)
-                cursor = result.get("nextCursor") or None
-                if not cursor:
-                    break
+        client = self._client()
+        for page in range(self.list_page_cap):
+            if page and time.monotonic() - started >= self.list_timeout_seconds:
+                break
+            params: dict[str, Any] = {}
+            if cursor:
+                params["cursor"] = cursor
+            payload = {
+                "jsonrpc": "2.0",
+                "id": page + 1,
+                "method": "tools/list",
+                "params": params,
+            }
+            response = await client.post(self.base_url, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            if "error" in data:
+                raise RuntimeError(str(data["error"]))
+            result = data.get("result", data)
+            if not isinstance(result, dict):
+                break
+            for tool in result.get("tools") or []:
+                if not isinstance(tool, dict):
+                    continue
+                name = str(tool.get("name") or "")
+                if name and name in seen:
+                    continue
+                if name:
+                    seen.add(name)
+                tools.append(tool)
+            cursor = result.get("nextCursor") or None
+            if not cursor:
+                break
         return tools
 
 
