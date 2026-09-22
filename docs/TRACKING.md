@@ -3782,6 +3782,13 @@ block the backlog after conflict repair. Covered by
 value. Documented in doctor-health. Covered by
 `tests/unit/test_doctor_deadline.py`.
 
+### Helm exposes tts.baseUrl ([#870](https://github.com/naveenreddyalka/daari/issues/870))
+
+<!-- tracking:#870 -->
+**Status:** Done (2026-09-21). Chart `tts.baseUrl` mounts `DAARI_TTS__BASE_URL`
+when set; empty default omits the env. Documented in capacity-helm. Covered by
+`tests/unit/test_helm_chart.py`.
+
 ### Doctor probes TTS reachability ([#869](https://github.com/naveenreddyalka/daari/issues/869))
 
 <!-- tracking:#869 -->
