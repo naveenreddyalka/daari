@@ -14,6 +14,7 @@ LOG_PATH = DEFAULT_LOG_PATH
 _max_bytes = DEFAULT_MAX_BYTES
 _backups = DEFAULT_BACKUPS
 _stdout_json = False
+_otlp_logs = False
 _lock = threading.Lock()
 
 
@@ -23,9 +24,10 @@ def configure_request_log(
     max_bytes: int | None = None,
     backups: int | None = None,
     structured_json_logs: bool | None = None,
+    otlp_logs: bool | None = None,
 ) -> None:
     """Apply settings at daemon startup; max_bytes=0 disables rotation."""
-    global LOG_PATH, _max_bytes, _backups, _stdout_json
+    global LOG_PATH, _max_bytes, _backups, _stdout_json, _otlp_logs
     if path is not None:
         LOG_PATH = Path(path)
     if max_bytes is not None:
@@ -34,6 +36,8 @@ def configure_request_log(
         _backups = max(1, int(backups))
     if structured_json_logs is not None:
         _stdout_json = bool(structured_json_logs)
+    if otlp_logs is not None:
+        _otlp_logs = bool(otlp_logs)
 
 
 def _rotate_if_needed() -> None:
@@ -75,6 +79,13 @@ def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
                 handle.write(line)
     except OSError:
         pass
+    if _otlp_logs:
+        try:
+            from daari.observability.otel import export_gateway_log
+
+            export_gateway_log(event, payload)
+        except Exception:
+            pass
 
 
 def _rotated_logs(path: Path) -> list[Path]:

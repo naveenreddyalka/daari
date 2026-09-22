@@ -1,4 +1,4 @@
-"""Request deadline appears in headers + config reference (#799)."""
+"""Request deadline appears in headers + config + MCP docs (#799, #835)."""
 
 from __future__ import annotations
 
@@ -14,10 +14,21 @@ def test_headers_document_deadline_ms() -> None:
     assert "time-to-first-token" in headers
     assert "/v1/audio/transcriptions" in headers
     assert "/v1/audio/translations" in headers
+    assert "/v1/audio/speech" in headers
     assert "/v1/embeddings" in headers
+    assert "tools/call" in headers
+    assert "504" in headers
 
 
 def test_config_documents_request_deadline_seconds() -> None:
     config = (ROOT / "docs/developer/reference/config.md").read_text(encoding="utf-8")
     assert "upstream.request_deadline_seconds" in config
     assert "X-Daari-Deadline-Ms" in config
+
+
+def test_mcp_guide_documents_tools_call_deadline() -> None:
+    mcp = (ROOT / "docs/developer/guides/clients/mcp.md").read_text(encoding="utf-8")
+    assert "tools/call" in mcp
+    assert "X-Daari-Deadline-Ms" in mcp
+    assert "504" in mcp
+    assert "request_deadline_exceeded" in mcp

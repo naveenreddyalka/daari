@@ -53,6 +53,20 @@ A request whose model is outside the allowlist is HTTP 403
 `auth.model_denied` audit row. Router fallback will not send that key to a
 frontier model outside the allowlist.
 
+## Admission priority
+
+The global in-flight gate admits waiters by priority class, then FIFO:
+`high` before `normal` before `low`. Mark interactive IDE keys `high` and
+overnight batch / eval keys `low` so one GPU favors live turns. Key priority
+wins over team priority; the default is `normal`. Batch drain acquires at
+`low`.
+
+```bash
+daari keys team-create batch --priority low
+daari keys create ide --priority high --team eng
+daari keys list   # prio column
+```
+
 ## Cache scope
 
 The org-shared cache is the default: identical prompts (L0) and similar prompts
