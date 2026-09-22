@@ -117,6 +117,11 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: Any | None = None
     n: Any | None = None
     logprobs: Any | None = None
+    # Agent SDK sampling knobs (#940). Same #161 pattern — declare so they
+    # reach SamplingParams instead of vanishing under extra="ignore".
+    parallel_tool_calls: Any | None = None
+    logit_bias: Any | None = None
+    top_logprobs: Any | None = None
     # OpenRouter `provider` object (G2 / #224). extra="ignore" would drop it.
     provider: Any | None = None
     # OpenAI reasoning_effort (o-series / gpt-5 clients). Same #161 pattern (#297).
