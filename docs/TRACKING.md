@@ -3110,6 +3110,12 @@ bullet; watch rows only. Docs-only.
 healthy / unhealthy / open_circuit) above the local pool backends table.
 Covered by `packages/web-ui/test/dashboard.test.js`.
 
+### Expand package-map observability for stats cliff maps ([#656](https://github.com/naveenreddyalka/daari/issues/656))
+
+<!-- tracking:#656 -->
+**Status:** Done (2026-09-18). `package-map.md` `observability/` row notes
+stats `soft_warnings` / `rejects` and `backend_summary` (link to traces-stats).
+
 ### Note stats tier p50/p95 in traces-stats ([#655](https://github.com/naveenreddyalka/daari/issues/655))
 
 <!-- tracking:#655 -->
