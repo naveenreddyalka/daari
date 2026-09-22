@@ -3774,6 +3774,13 @@ open (merged/closed) are skipped by `autodev_backlog.py --pick` so they cannot
 block the backlog after conflict repair. Covered by
 `tests/unit/test_autodev_backlog.py`.
 
+### CLI --priority for admission QoS ([#868](https://github.com/naveenreddyalka/daari/issues/868))
+
+<!-- tracking:#868 -->
+**Status:** Done (2026-09-21). `daari keys create` / `team-create` accept
+`--priority high|normal|low`; list shows `prio`; Postgres VK schema stores
+`priority` on keys and teams. Covered by `tests/unit/test_keys_priority_cli.py`.
+
 ### Doctor warns when request deadline unset ([#867](https://github.com/naveenreddyalka/daari/issues/867))
 
 <!-- tracking:#867 -->
@@ -4016,6 +4023,14 @@ doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
 Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
 `test_helm_chart.py`.
 
+### Frontier tool parity — streamed tool-calls, tool_choice, output_format ([#934](https://github.com/naveenreddyalka/daari/issues/934))
+
+<!-- tracking:#934 -->
+**Status:** Done (2026-09-21). Frontier SSE relays `delta.tool_calls` / Anthropic
+tool blocks; `tool_choice` and `output_format`/`json_schema` reach L6 payloads;
+OpenAI + Anthropic gateways preserve escalated tool turns. Covered by
+`tests/unit/test_frontier_tool_parity.py` and
+`tests/integration/test_gateway_flow.py`.
 ### CORS allowlist and default security headers ([#938](https://github.com/naveenreddyalka/daari/issues/938))
 
 <!-- tracking:#938 -->
