@@ -4019,6 +4019,13 @@ POST/PUT/PATCH/DELETE unchanged. Covered by `tests/unit/test_rate_limit.py`.
 **Status:** Done (2026-09-22). `backends/asr.md` Next links capacity-helm; contract
 test locks the path. Covered by `tests/unit/test_asr_docs.py`.
 
+### MCP tool and task stats on /v1/daari/stats and web-ui ([#941](https://github.com/naveenreddyalka/daari/issues/941))
+
+<!-- tracking:#941 -->
+**Status:** Done (2026-09-22). Stats payload includes `mcp_tool_calls` +
+`mcp_tasks` snapshot; web-ui panel; `McpTaskStore.snapshot()`. Covered by
+`tests/unit/test_stats_mcp.py` and `packages/web-ui/test/dashboard.test.js`.
+
 
 ## How to update
 
