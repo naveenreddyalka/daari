@@ -408,6 +408,26 @@ def record_invalid_key(
     return True
 
 
+def record_auth_throttled(
+    audit: AuditLog,
+    *,
+    client_ip: str,
+    failures: int,
+    retry_after: int,
+) -> None:
+    """Record ``auth.throttled`` when invalid-key backoff trips (#935)."""
+    audit.record(
+        actor=(client_ip or "unknown")[:64],
+        role="anonymous",
+        action="auth.throttled",
+        detail={
+            "client_ip": (client_ip or "")[:64],
+            "failures": int(failures),
+            "retry_after": int(retry_after),
+        },
+    )
+
+
 def record_tenancy_denied(
     audit: AuditLog,
     *,
