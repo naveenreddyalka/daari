@@ -3687,6 +3687,13 @@ Covered by `tests/unit/test_batches.py`.
 capacity-helm document multi-replica combos. Covered by
 `tests/unit/test_helm_chart.py`.
 
+### L1 namespace includes embedding model ([#845](https://github.com/naveenreddyalka/daari/issues/845))
+
+<!-- tracking:#845 -->
+**Status:** Done (2026-09-20). L1 `context_key` folds in `cache.l1.embedding_model`
+so switching embedders yields clean misses; trim prefers dropping stale-model
+rows. `upgrade.md` updated. Covered by `tests/unit/test_semantic_cache.py`.
+
 ### MCP virtual-key governance on tools/call ([#839](https://github.com/naveenreddyalka/daari/issues/839))
 
 <!-- tracking:#839 -->
@@ -4023,6 +4030,14 @@ doctor warns on auth + non-loopback without TLS; Helm `tls.enabled` +
 Covered by `tests/unit/test_server_tls.py`, `test_doctor_tls.py`,
 `test_helm_chart.py`.
 
+### Auth throttle for invalid API keys ([#935](https://github.com/naveenreddyalka/daari/issues/935))
+
+<!-- tracking:#935 -->
+**Status:** Done (2026-09-21). Per-IP invalid-key counter (`auth.max_failures` /
+`window_seconds`) returns 429 + Retry-After; Redis when cache.backend=redis,
+in-process otherwise, fail-open; loopback exempt; `auth.throttled` audit +
+`daari_rejects_total{kind="auth_throttled"}`. Covered by
+`tests/unit/test_auth_throttle.py`.
 ### Frontier tool parity — streamed tool-calls, tool_choice, output_format ([#934](https://github.com/naveenreddyalka/daari/issues/934))
 
 <!-- tracking:#934 -->
@@ -4118,6 +4133,15 @@ spend ledger `request_id`. Covered by `tests/unit/test_request_id.py`.
 `tts.model` / `tts.voice` and `DAARI_TTS__MODEL` / `DAARI_TTS__VOICE`. Covered by
 `tests/unit/test_capacity_helm_docs.py`.
 
+### Drain stuck PRs first; watcher survives label-permission errors ([#983](https://github.com/naveenreddyalka/daari/issues/983))
+
+<!-- tracking:#983 -->
+**Status:** Done (2026-09-22). `apply_sweep` logs and skips label edits the
+PAT cannot perform instead of aborting `stall-watch`; the dev-cycle prompt
+drains open `autodev/*` PRs (update-branch → wait → `gh pr merge --squash`;
+resolve `DIRTY` conflicts) in priority order before picking new work. Covered
+by `test_apply_sweep_survives_label_edit_failure` and
+`test_workflow_drains_stuck_prs_before_picking`.
 ### Reuse pooled httpx.AsyncClient across upstream hops ([#971](https://github.com/naveenreddyalka/daari/issues/971))
 
 <!-- tracking:#971 -->

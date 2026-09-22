@@ -302,7 +302,7 @@ def render_prometheus(
     if rejects:
         lines.append(
             "# HELP daari_rejects_total Hard 402/429/413 denials, by kind "
-            "(budget, request_quota, rate_limit, body_too_large)."
+            "(budget, request_quota, rate_limit, body_too_large, auth_throttled)."
         )
         lines.append("# TYPE daari_rejects_total counter")
         for kind, count in rejects.items():

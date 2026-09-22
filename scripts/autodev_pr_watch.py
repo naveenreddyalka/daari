@@ -432,11 +432,22 @@ def apply_sweep(
         comments = list_comments(number) if list_comments else []
         if any(SWEEP_MARKER in (item.get("body") or "") for item in comments):
             continue
+        removed = True
         if remove_label:
-            remove_label(number)
+            try:
+                remove_label(number)
+            except subprocess.CalledProcessError as exc:
+                # A PAT without label permissions must not abort the rest of
+                # the watcher (#983); the comment still marks the sweep.
+                removed = False
+                print(
+                    f"warning: could not remove {WORKING_LABEL!r} from issue #{number}: {exc}",
+                    file=sys.stderr,
+                )
         if comment:
             comment(number, render_sweep_comment(issue, ttl_hours))
-        swept.append(number)
+        if removed:
+            swept.append(number)
     return swept
 
 
