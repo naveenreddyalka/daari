@@ -50,7 +50,12 @@ def agent_suffix_hash(request: InternalRequest) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def semantic_context_key(request: InternalRequest) -> str:
+def semantic_context_key(
+    request: InternalRequest,
+    *,
+    embedding_model: str | None = None,
+) -> str:
+    """L1 namespace: model/temperature/tools/tier/scope + embedder identity (#845)."""
     parts = [
         request.model,
         str(request.temperature),
@@ -60,6 +65,9 @@ def semantic_context_key(request: InternalRequest) -> str:
     segment = cache_scope_segment(request)
     if segment:
         parts.append(segment)
+    embed = (embedding_model or "").strip()
+    if embed:
+        parts.append(f"embed:{embed}")
     return "|".join(parts)
 
 
@@ -298,6 +306,14 @@ class SemanticCache:
         # Concurrent same-key nearest() share one embed+scan (#517).
         self._lookup_flight = SingleFlight()
 
+    def _embedding_model_id(self) -> str | None:
+        raw = getattr(self.embedder, "model", None)
+        text = str(raw or "").strip()
+        return text or None
+
+    def _context_key(self, request: InternalRequest) -> str:
+        return semantic_context_key(request, embedding_model=self._embedding_model_id())
+
     def flight_key(
         self,
         request: InternalRequest,
@@ -309,7 +325,7 @@ class SemanticCache:
         return l1_flight_key(
             request,
             text=embed_text,
-            context_key=context_key,
+            context_key=context_key if context_key is not None else self._context_key(request),
         )
 
     def _embed_text(self, request: InternalRequest) -> str:
@@ -370,7 +386,7 @@ class SemanticCache:
         # The suffix hash is part of the key, so a changed last tool result can
         # never cosine-match the answer produced from the previous one (G1b).
         return "|".join(
-            ["agent-prefix", semantic_context_key(request), agent_suffix_hash(request)]
+            ["agent-prefix", self._context_key(request), agent_suffix_hash(request)]
         )
 
     def _agent_prefix_text(self, request: InternalRequest) -> str:
@@ -420,7 +436,7 @@ class SemanticCache:
         if not text.strip():
             return None, 0.0, None
 
-        ctx = context_key or semantic_context_key(request)
+        ctx = context_key or self._context_key(request)
         flight = f"{self.flight_key(request, context_key=ctx, text=text)}|age={max_age}"
 
         async def _scan() -> tuple[InternalResponse | None, float, str | None]:
@@ -450,7 +466,7 @@ class SemanticCache:
         if embedding is None:
             return None, 0.0, None
 
-        context_key = context_key or semantic_context_key(request)
+        context_key = context_key or self._context_key(request)
         best_score = 0.0
         best_entry: dict[str, Any] | None = None
 
@@ -580,7 +596,7 @@ class SemanticCache:
         entries = self._load_entries()
         entries.append(
             {
-                "context_key": context_key or semantic_context_key(request),
+                "context_key": context_key or self._context_key(request),
                 "embedding": embedding,
                 # Kept so a hit can be verified against the question that
                 # produced it, not just its embedding (#168).
@@ -594,8 +610,24 @@ class SemanticCache:
             }
         )
         if len(entries) > self.max_entries:
-            entries = entries[-self.max_entries :]
+            entries = self._trim_entries(entries)
         self._save_entries(entries)
+
+    def _trim_entries(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep newest max_entries; drop other-embedder rows first (#845)."""
+        if len(entries) <= self.max_entries:
+            return entries
+        embed_id = self._embedding_model_id()
+        marker = f"embed:{embed_id}" if embed_id else None
+        if marker:
+            current = [e for e in entries if marker in str(e.get("context_key") or "")]
+            stale = [e for e in entries if marker not in str(e.get("context_key") or "")]
+            # Prefer discarding stale-model rows before touching the live set.
+            if len(current) >= self.max_entries:
+                return current[-self.max_entries :]
+            need = self.max_entries - len(current)
+            return stale[-need:] + current if need > 0 else current
+        return entries[-self.max_entries :]
 
     def diversity_stats(self) -> dict[str, dict[str, Any]]:
         """Unique-answer ratio per category (Trust PRD T1b).

@@ -3687,6 +3687,13 @@ Covered by `tests/unit/test_batches.py`.
 capacity-helm document multi-replica combos. Covered by
 `tests/unit/test_helm_chart.py`.
 
+### L1 namespace includes embedding model ([#845](https://github.com/naveenreddyalka/daari/issues/845))
+
+<!-- tracking:#845 -->
+**Status:** Done (2026-09-20). L1 `context_key` folds in `cache.l1.embedding_model`
+so switching embedders yields clean misses; trim prefers dropping stale-model
+rows. `upgrade.md` updated. Covered by `tests/unit/test_semantic_cache.py`.
+
 ### MCP virtual-key governance on tools/call ([#839](https://github.com/naveenreddyalka/daari/issues/839))
 
 <!-- tracking:#839 -->
