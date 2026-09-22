@@ -162,6 +162,45 @@ def _openai_tool_call_deltas(tool_calls: list[Any]) -> list[dict[str, Any]]:
     return deltas
 
 
+def _openai_deltas_from_anthropic_tool_event(event: dict[str, Any]) -> list[dict[str, Any]]:
+    """Map Anthropic tool SSE payloads to OpenAI ``delta.tool_calls`` chunks (#934)."""
+    event_type = event.get("type")
+    if event_type == "content_block_start":
+        block = event.get("content_block") or {}
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            return []
+        index = int(event.get("index") or 0)
+        return [
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "id": block.get("id") or f"call_{uuid.uuid4().hex[:24]}",
+                        "type": "function",
+                        "function": {"name": block.get("name") or "", "arguments": ""},
+                    }
+                ]
+            }
+        ]
+    if event_type == "content_block_delta":
+        delta = event.get("delta") or {}
+        if not isinstance(delta, dict) or delta.get("type") != "input_json_delta":
+            return []
+        index = int(event.get("index") or 0)
+        partial = delta.get("partial_json") or ""
+        return [
+            {
+                "tool_calls": [
+                    {
+                        "index": index,
+                        "function": {"arguments": partial},
+                    }
+                ]
+            }
+        ]
+    return []
+
+
 def _draft_hint(draft: str, similarity: float) -> str:
     return (
         f"A previous answer to a similar question (similarity {similarity:.2f}) is provided "
@@ -201,6 +240,24 @@ class OllamaExecutor:
     timeout: float = 120.0
     retry: RetryPolicy | None = None
     metrics: Any = None
+    pool_limits: Any = None
+    _http: Any = field(default=None, init=False, repr=False)
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http is None or getattr(self._http, "is_closed", False):
+            from daari.router.http_pool import PoolLimits, build_async_client
+
+            self._http = build_async_client(
+                httpx,
+                base_url=self.base_url,
+                limits=self.pool_limits or PoolLimits(),
+            )
+        return self._http
+
+    async def aclose(self) -> None:
+        if self._http is not None and not getattr(self._http, "is_closed", True):
+            await self._http.aclose()
+        self._http = None
 
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
@@ -258,17 +315,17 @@ class OllamaExecutor:
         async def attempt() -> dict[str, Any]:
             from daari.observability.otel import inject_trace_headers
 
-            async with httpx.AsyncClient(
-                base_url=self.base_url, timeout=timeout
-            ) as client:
-                response = await client.post(
-                    "/api/chat", json=payload, headers=inject_trace_headers()
+            response = await self._client().post(
+                "/api/chat",
+                json=payload,
+                headers=inject_trace_headers(),
+                timeout=timeout,
+            )
+            if response.status_code >= 400:
+                raise OllamaRequestError(
+                    response.status_code, str(response.request.url), response.text
                 )
-                if response.status_code >= 400:
-                    raise OllamaRequestError(
-                        response.status_code, str(response.request.url), response.text
-                    )
-                return response.json()
+            return response.json()
 
         data = await run_upstream(
             attempt,
@@ -311,23 +368,23 @@ class OllamaExecutor:
         )
 
         guard_upstream(self.tier)
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
-            async with deadline_bounded_stream(
-                client,
-                "POST",
-                "/api/chat",
-                json=payload,
-                headers=inject_trace_headers(),
-            ) as response:
-                if response.status_code >= 400:
-                    body = (await response.aread()).decode("utf-8", errors="replace")
-                    raise OllamaRequestError(
-                        response.status_code, str(response.request.url), body
-                    )
-                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
-                    if not line:
-                        continue
-                    yield json.loads(line)
+        async with deadline_bounded_stream(
+            self._client(),
+            "POST",
+            "/api/chat",
+            json=payload,
+            headers=inject_trace_headers(),
+            timeout=self.timeout,
+        ) as response:
+            if response.status_code >= 400:
+                body = (await response.aread()).decode("utf-8", errors="replace")
+                raise OllamaRequestError(
+                    response.status_code, str(response.request.url), body
+                )
+            async for line in aiter_with_ttft_deadline(response.aiter_lines()):
+                if not line:
+                    continue
+                yield json.loads(line)
 
 
 @dataclass
@@ -927,7 +984,9 @@ class Router:
         input_tokens, output_tokens, _ = response_token_usage(response, prompt_chars)
         self._open_spend_context(
             request,
-            response.daari_meta.trace_id or uuid.uuid4().hex[:16],
+            getattr(request.meta, "request_id", None)
+            or response.daari_meta.trace_id
+            or uuid.uuid4().hex[:16],
         )
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
@@ -2264,15 +2323,32 @@ class Router:
                     scanner = self._incremental_output_scanner()
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
+                    relayed_tool_calls = False
                     try:
                         from daari.router.deadline import guard_upstream
 
                         guard_upstream("L6")
                         l6_request = await self._frontier_request(stream_request)
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                        async for delta in self.frontier.stream(
+                        async for event in self.frontier.stream(
                             l6_request, escalated_from=tier, local_confidence=confidence
                         ):
+                            if isinstance(event, dict) and event.get("tool_calls"):
+                                relayed_tool_calls = True
+                                yield f"data: {json.dumps(chunk_payload(delta={'tool_calls': event['tool_calls']}))}\n\n"
+                                continue
+                            if isinstance(event, dict) and event.get("anthropic_event"):
+                                # Anthropic L6 upstream → OpenAI client shape (#934).
+                                converted = _openai_deltas_from_anthropic_tool_event(
+                                    event["anthropic_event"]
+                                )
+                                for delta in converted:
+                                    relayed_tool_calls = True
+                                    yield f"data: {json.dumps(chunk_payload(delta=delta))}\n\n"
+                                continue
+                            delta = event if isinstance(event, str) else ""
+                            if not delta:
+                                continue
                             if l6_first_at is None and delta:
                                 l6_first_at = time.perf_counter()
                             relayed.append(delta)
@@ -2289,7 +2365,7 @@ class Router:
                         log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
                         # Nothing was emitted yet if the failure came before the
                         # first delta; otherwise the partial answer stands.
-                        if not relayed:
+                        if not relayed and not relayed_tool_calls:
                             if scanner is not None:
                                 release = scanner.push(streamed_text)
                                 if release.text:
@@ -2302,6 +2378,7 @@ class Router:
                             else:
                                 yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
                                 relayed.append(streamed_text)
+                    finish_reason = "tool_calls" if relayed_tool_calls else "stop"
                     if scanner is not None and not scanner.blocked:
                         flush = scanner.flush()
                         if flush.text:
@@ -2312,7 +2389,7 @@ class Router:
                         relayed_text = scanner.scanned_text
                     else:
                         relayed_text = "".join(relayed)
-                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                    yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
                     yield usage_chunk(len(relayed_text), stream_tier="L6")
                     yield "data: [DONE]\n\n"
                     latency_ms = int((time.perf_counter() - started) * 1000)
@@ -3054,12 +3131,64 @@ class Router:
                     )
                 except Exception:
                     escalated = served
-                if escalated.daari_meta.tier != tier and escalated.content.strip():
+                if escalated.daari_meta.tier != tier and (
+                    escalated.content.strip() or escalated.tool_calls
+                ):
                     log_gateway_event(
                         "anthropic_stream_escalated",
                         {"from": tier, "to": escalated.daari_meta.tier},
                     )
                     served = escalated
+                    if served.tool_calls:
+                        # L6 returned tools — emit Anthropic tool_use blocks (#934).
+                        meta = served.daari_meta.model_dump()
+                        yield message_start
+                        for index, call in enumerate(_openai_tool_call_deltas(served.tool_calls)):
+                            yield sse(
+                                "content_block_start",
+                                {
+                                    "type": "content_block_start",
+                                    "index": index,
+                                    "content_block": {
+                                        "type": "tool_use",
+                                        "id": call["id"],
+                                        "name": call["function"]["name"],
+                                        "input": {},
+                                    },
+                                    "daari_meta": meta,
+                                },
+                            )
+                            yield sse(
+                                "content_block_delta",
+                                {
+                                    "type": "content_block_delta",
+                                    "index": index,
+                                    "delta": {
+                                        "type": "input_json_delta",
+                                        "partial_json": call["function"]["arguments"],
+                                    },
+                                    "daari_meta": meta,
+                                },
+                            )
+                            yield block_stop(index)
+                        yield sse(
+                            "message_delta",
+                            {
+                                "type": "message_delta",
+                                "delta": {"stop_reason": "tool_use", "stop_sequence": None},
+                                "usage": self._anthropic_stream_usage(
+                                    served.daari_meta.tier or tier,
+                                    prompt_tokens=input_tokens,
+                                    output_tokens=0,
+                                    served=served,
+                                    session_id=getattr(request.meta, "session_id", None),
+                                ),
+                            },
+                        )
+                        yield sse("message_stop", {"type": "message_stop", "daari_meta": meta})
+                        latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                        record_served(served, latency_ms)
+                        return
                 scanner = self._incremental_output_scanner()
                 if scanner is not None and served.content == streamed_text:
                     # Replay local deltas through the holdback scanner.
@@ -4777,12 +4906,15 @@ class AppContext:
                 )
 
     def reload_cache_handles(self) -> dict[str, str | bool]:
+        from daari.router.http_pool import pool_limits_from_settings
+
         l0_path, l1_path, context_path = self._resolve_runtime_paths()
         self.cache = _build_l0_cache(self.settings, l0_path)
         embedder = OllamaEmbedder(
             base_url=self.settings.ollama.base_url.rstrip("/"),
             model=self.settings.cache.l1.embedding_model,
             cache_size=self.settings.cache.l1.embed_cache_size,
+            pool_limits=pool_limits_from_settings(self.settings),
         )
         self.semantic_cache = _build_l1_cache(self.settings, l1_path, embedder)
         self.command_context = self._build_command_context_store(self.settings, context_path)
@@ -4943,8 +5075,37 @@ class AppContext:
             pass
         self.retention_task = None
 
+    async def aclose_upstream_clients(self) -> None:
+        """Close pooled httpx clients on shutdown (#971)."""
+        from daari.gateway import speech, transcriptions
+
+        await speech.aclose_http()
+        await transcriptions.aclose_http()
+        router = self.router
+        for name in ("ollama_l3", "ollama_l4", "ollama_l5", "org_pool_executor"):
+            executor = getattr(router, name, None)
+            aclose = getattr(executor, "aclose", None)
+            if aclose is not None:
+                await aclose()
+        frontier = getattr(router, "frontier", None)
+        if frontier is not None:
+            aclose = getattr(frontier, "aclose", None)
+            if aclose is not None:
+                await aclose()
+            for slot in getattr(frontier, "slots", None) or []:
+                executor = getattr(slot, "executor", None)
+                aclose = getattr(executor, "aclose", None)
+                if aclose is not None:
+                    await aclose()
+        embedder = getattr(getattr(self, "semantic_cache", None), "embedder", None)
+        aclose = getattr(embedder, "aclose", None)
+        if aclose is not None:
+            await aclose()
+
     @classmethod
     def from_settings(cls, settings: Settings) -> AppContext:
+        from daari.router.http_pool import pool_limits_from_settings
+
         l0_path = settings.l0_cache_path
         l1_path = settings.l1_cache_path
         context_path = settings.context_store_path
@@ -4954,6 +5115,7 @@ class AppContext:
             context_path = resolve_org_scoped_path(context_path, settings.enterprise, leaf="ccs")
         org_cache_client: OrgCacheClient | None = None
         org_learning_client: OrgLearningClient | None = None
+        pool_limits = pool_limits_from_settings(settings)
         if settings.enterprise.shared_cache_url:
             org_cache_client = OrgCacheClient(
                 base_url=settings.enterprise.shared_cache_url,
@@ -4964,6 +5126,7 @@ class AppContext:
                     settings.ollama.base_url,
                     settings.cache.l1.embedding_model,
                     cache_size=settings.cache.l1.embed_cache_size,
+                    pool_limits=pool_limits,
                 ),
                 similarity_threshold=settings.cache.l1.similarity_threshold,
             )
@@ -4980,6 +5143,7 @@ class AppContext:
             base_url=settings.ollama.base_url.rstrip("/"),
             model=settings.cache.l1.embedding_model,
             cache_size=settings.cache.l1.embed_cache_size,
+            pool_limits=pool_limits,
         )
         semantic_cache = _build_l1_cache(settings, l1_path, embedder)
         command_context = cls._build_command_context_store(settings, context_path)
@@ -4999,6 +5163,7 @@ class AppContext:
                     tier=tier,
                     timeout=timeout,
                     retry=local_retry,
+                    pool_limits=pool_limits,
                 )
             return OllamaExecutor(
                 base_url=settings.ollama.base_url.rstrip("/"),
@@ -5006,6 +5171,7 @@ class AppContext:
                 tier=tier,
                 timeout=timeout,
                 retry=local_retry,
+                pool_limits=pool_limits,
             )
 
         ollama_l3 = tier_executor("L3", settings.models.l3)
@@ -5021,6 +5187,7 @@ class AppContext:
                 tier=org_tier,
                 timeout=settings.models.timeout_for(org_tier, local_timeout),
                 retry=local_retry,
+                pool_limits=pool_limits,
             )
         from daari.router.frontier_pool import build_frontier_pool
         from daari.router.local_pool import build_local_pool

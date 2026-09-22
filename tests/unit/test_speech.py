@@ -15,6 +15,9 @@ AUDIO = b"ID3fake-mp3-bytes"
 
 
 def _patch_upstream(monkeypatch, handler):
+    from daari.gateway import speech
+
+    speech._http = None
     real = httpx.AsyncClient
 
     class Patched(real):
@@ -24,6 +27,7 @@ def _patch_upstream(monkeypatch, handler):
             super().__init__(*args, **kwargs)
 
     monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.speech.httpx.AsyncClient", Patched)
 
 
 def _ok_handler(seen: list[httpx.Request]):

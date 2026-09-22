@@ -204,3 +204,59 @@ class TestSemanticCache:
         hit, _ = await cache.get(last)
         assert hit is not None
         assert hit.content == "resp-2"
+
+
+class ModelTaggedEmbedder:
+    def __init__(self, model: str, vectors: dict[str, list[float]]) -> None:
+        self.model = model
+        self.vectors = vectors
+        self.calls = 0
+
+    async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+        self.calls += 1
+        return self.vectors.get(text)
+
+
+@pytest.mark.asyncio
+async def test_embedding_model_change_yields_clean_miss(tmp_path):
+    """Entries under embed model A are not candidates under model B (#845)."""
+    text = "user:same prompt"
+    vectors = {text: [1.0, 0.0, 0.0]}
+    a = ModelTaggedEmbedder("nomic-a", vectors)
+    b = ModelTaggedEmbedder("nomic-b", vectors)
+    request = InternalRequest(
+        messages=[Message(role="user", content="same prompt")],
+        model="llama3.2:3b",
+    )
+    response = InternalResponse(
+        content="answer",
+        model="llama3.2:3b",
+        daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+    )
+    cache_a = SemanticCache(str(tmp_path / "l1a"), a, enabled=True, similarity_threshold=0.5)
+    await cache_a.put(request, response)
+    hit, score = await cache_a.nearest(request)
+    assert hit is not None and score >= 0.5
+
+    cache_b = SemanticCache(str(tmp_path / "l1a"), b, enabled=True, similarity_threshold=0.5)
+    # Same on-disk entries, different embedder identity → miss (no cross-model hit).
+    miss, miss_score = await cache_b.nearest(request)
+    assert miss is None
+    assert miss_score == 0.0
+    assert semantic_context_key(request, embedding_model="nomic-a") != semantic_context_key(
+        request, embedding_model="nomic-b"
+    )
+
+
+def test_trim_prefers_dropping_stale_embed_rows(tmp_path):
+    embedder = ModelTaggedEmbedder("live", {})
+    cache = SemanticCache(str(tmp_path / "trim"), embedder, enabled=True, max_entries=2)
+    entries = [
+        {"context_key": "m|0.7||embed:old", "answer_hash": "1"},
+        {"context_key": "m|0.7||embed:old", "answer_hash": "2"},
+        {"context_key": "m|0.7||embed:live", "answer_hash": "3"},
+        {"context_key": "m|0.7||embed:live", "answer_hash": "4"},
+    ]
+    trimmed = cache._trim_entries(entries)
+    assert len(trimmed) == 2
+    assert all("embed:live" in e["context_key"] for e in trimmed)

@@ -213,11 +213,13 @@ async def test_spent_budget_does_not_call_frontier(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_absent_deadline_keeps_configured_httpx_timeout(monkeypatch):
-    seen: list[float] = []
+    """Per-request timeout is passed on post; client has no baked-in timeout (#971)."""
+    client_timeouts: list[object] = []
+    post_timeouts: list[object] = []
 
     class FakeClient:
         def __init__(self, **kwargs):
-            seen.append(kwargs["timeout"])
+            client_timeouts.append(kwargs.get("timeout"))
 
         async def __aenter__(self):
             return self
@@ -226,6 +228,8 @@ async def test_absent_deadline_keeps_configured_httpx_timeout(monkeypatch):
             return None
 
         async def post(self, *args, **kwargs):
+            post_timeouts.append(kwargs.get("timeout"))
+
             class Response:
                 status_code = 200
                 text = ""
@@ -240,7 +244,9 @@ async def test_absent_deadline_keeps_configured_httpx_timeout(monkeypatch):
     await executor.execute(
         InternalRequest(messages=[Message(role="user", content="hi")], model="llama3.2:3b")
     )
-    assert seen == [120.0]
+    assert client_timeouts == [None]
+    assert post_timeouts == [120.0]
+    await executor.aclose()
 
 
 @pytest.mark.asyncio

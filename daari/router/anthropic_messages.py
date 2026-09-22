@@ -124,6 +124,28 @@ def _merge_cache_control(
     return merged
 
 
+def openai_tool_choice_to_anthropic(tool_choice: Any) -> dict[str, Any] | None:
+    """Map OpenAI ``tool_choice`` to Anthropic's Messages API shape (#934)."""
+    if tool_choice is None:
+        return None
+    if tool_choice == "auto":
+        return {"type": "auto"}
+    if tool_choice == "none":
+        return {"type": "none"}
+    if tool_choice == "required":
+        return {"type": "any"}
+    if isinstance(tool_choice, dict):
+        kind = tool_choice.get("type")
+        if kind == "function":
+            function = tool_choice.get("function") if isinstance(tool_choice.get("function"), dict) else {}
+            name = function.get("name")
+            if isinstance(name, str) and name:
+                return {"type": "tool", "name": name}
+        if kind in {"auto", "none", "any", "tool"}:
+            return dict(tool_choice)
+    return None
+
+
 def to_anthropic_payload(
     request: InternalRequest,
     *,
@@ -196,6 +218,14 @@ def to_anthropic_payload(
         payload["stop_sequences"] = list(request.sampling.stop)
     if request.sampling.service_tier:
         payload["service_tier"] = request.sampling.service_tier
+    mapped_choice = openai_tool_choice_to_anthropic(request.sampling.tool_choice)
+    if mapped_choice is not None:
+        payload["tool_choice"] = mapped_choice
+    if request.sampling.json_schema:
+        payload["output_format"] = {
+            "type": "json_schema",
+            "schema": request.sampling.json_schema,
+        }
     return payload
 
 
@@ -282,4 +312,25 @@ def text_delta_from_sse_data(data: str) -> str | None:
     delta = payload.get("delta") or {}
     if delta.get("type") == "text_delta" and isinstance(delta.get("text"), str):
         return delta["text"]
+    return None
+
+
+def anthropic_tool_event_from_sse_data(data: str) -> dict[str, Any] | None:
+    """Return tool-related Anthropic SSE payloads for L6 relay (#934)."""
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        return None
+    event_type = payload.get("type")
+    if event_type == "content_block_start":
+        block = payload.get("content_block") or {}
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            return payload
+    if event_type == "content_block_delta":
+        delta = payload.get("delta") or {}
+        if isinstance(delta, dict) and delta.get("type") == "input_json_delta":
+            return payload
+    if event_type == "content_block_stop":
+        # Callers decide whether this stop closes a tool_use block.
+        return payload
     return None

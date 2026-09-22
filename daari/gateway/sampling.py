@@ -103,6 +103,32 @@ def normalize_reasoning_effort(raw: Any) -> str | None:
     return text or None
 
 
+def _normalize_parallel_tool_calls(raw: Any) -> bool | None:
+    if isinstance(raw, bool):
+        return raw
+    return None
+
+
+def _normalize_logit_bias(raw: Any) -> dict[str, float] | None:
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out: dict[str, float] = {}
+    for key, value in raw.items():
+        try:
+            out[str(key)] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return out or None
+
+
+def _normalize_top_logprobs(raw: Any) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int) and raw >= 0:
+        return raw
+    return None
+
+
 class SamplingParams(BaseModel):
     """Generation controls, in OpenAI's vocabulary."""
 
@@ -118,13 +144,18 @@ class SamplingParams(BaseModel):
     response_format_json: bool = False
     # OpenAI structured outputs (`type: json_schema`). None when absent / invalid.
     json_schema: dict[str, Any] | None = None
-    tool_choice: str | None = None
+    # str ("auto"/"none"/"required") or OpenAI function object; forwarded to L6 (#934).
+    tool_choice: str | dict[str, Any] | None = None
     n: int | None = None
     logprobs: bool | None = None
     # Client reasoning_effort (minimal|low|medium|high); forwarded / mapped (#297).
     reasoning_effort: str | None = None
     # OpenAI/Anthropic/OpenRouter service_tier (flex|standard|priority) (#430).
     service_tier: str | None = None
+    # Agent SDK / OpenAI chat knobs (#940).
+    parallel_tool_calls: bool | None = None
+    logit_bias: dict[str, float] | None = None
+    top_logprobs: int | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -164,8 +195,8 @@ class SamplingParams(BaseModel):
 
         tool_choice = body.get("tool_choice")
         if isinstance(tool_choice, dict):
-            # {"type": "function", "function": {...}} forces a specific call.
-            tool_choice = "required"
+            # Keep the object so L6 can force a specific function (#934).
+            pass
         elif not isinstance(tool_choice, str):
             tool_choice = None
 
@@ -183,6 +214,11 @@ class SamplingParams(BaseModel):
             logprobs=body.get("logprobs"),
             reasoning_effort=normalize_reasoning_effort(body.get("reasoning_effort")),
             service_tier=_normalize_service_tier(body.get("service_tier")),
+            parallel_tool_calls=_normalize_parallel_tool_calls(
+                body.get("parallel_tool_calls")
+            ),
+            logit_bias=_normalize_logit_bias(body.get("logit_bias")),
+            top_logprobs=_normalize_top_logprobs(body.get("top_logprobs")),
         )
 
     @classmethod
@@ -212,6 +248,11 @@ class SamplingParams(BaseModel):
                 log_gateway_event("json_schema_ignored", {"reason": "malformed"})
             else:
                 wants_json = True
+        tool_choice = body.get("tool_choice")
+        if isinstance(tool_choice, dict):
+            pass
+        elif not isinstance(tool_choice, str):
+            tool_choice = None
         return cls(
             max_tokens=int(raw_max) if isinstance(raw_max, int) and raw_max > 0 else None,
             top_p=body.get("top_p"),
@@ -219,6 +260,7 @@ class SamplingParams(BaseModel):
             stop=stop or None,
             response_format_json=wants_json,
             json_schema=json_schema,
+            tool_choice=tool_choice,
             service_tier=_normalize_service_tier(body.get("service_tier")),
         )
 
@@ -307,12 +349,16 @@ class SamplingParams(BaseModel):
             "frequency_penalty",
             "reasoning_effort",
             "service_tier",
+            "parallel_tool_calls",
+            "top_logprobs",
         ):
             value = getattr(self, name)
             if value is not None:
                 payload[name] = value
         if self.stop:
             payload["stop"] = list(self.stop)
+        if self.logit_bias:
+            payload["logit_bias"] = dict(self.logit_bias)
         if self.json_schema:
             payload["response_format"] = {
                 "type": "json_schema",
@@ -320,6 +366,8 @@ class SamplingParams(BaseModel):
             }
         elif self.response_format_json:
             payload["response_format"] = {"type": "json_object"}
+        if self.tool_choice is not None:
+            payload["tool_choice"] = self.tool_choice
         return payload
 
     def unsupported_locally(self) -> list[str]:
@@ -331,7 +379,13 @@ class SamplingParams(BaseModel):
             notes.append(f"n {self.n} requested; daari returns a single choice")
         if self.logprobs:
             notes.append("logprobs are not available from local models")
-        if self.tool_choice == "required":
+        if self.top_logprobs is not None:
+            notes.append("top_logprobs are not available from local models")
+        if self.logit_bias:
+            notes.append("logit_bias has no local equivalent and was ignored")
+        if self.parallel_tool_calls is not None:
+            notes.append("parallel_tool_calls is not enforced on local models")
+        if self.tool_choice == "required" or isinstance(self.tool_choice, dict):
             notes.append("tool_choice required cannot be forced locally; treated as auto")
         return notes
 
@@ -346,12 +400,16 @@ class SamplingParams(BaseModel):
             "frequency_penalty",
             "reasoning_effort",
             "service_tier",
+            "parallel_tool_calls",
+            "top_logprobs",
         ):
             value = getattr(self, name)
             if value is not None:
                 data[name] = value
         if self.stop:
             data["stop"] = list(self.stop)
+        if self.logit_bias:
+            data["logit_bias"] = dict(self.logit_bias)
         if self.json_schema:
             data["response_format"] = {"type": "json_schema", "schema": self.json_schema}
         elif self.response_format_json:

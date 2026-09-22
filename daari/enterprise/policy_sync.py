@@ -14,7 +14,13 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-from daari.enterprise.bootstrap import apply_org_config, fetch_org_config, verify_signature
+from daari.enterprise.bootstrap import (
+    PolicySchemaError,
+    apply_org_config,
+    fetch_org_config,
+    validate_policy_schema,
+    verify_signature,
+)
 from daari.gateway.request_log import log_gateway_event
 
 
@@ -83,15 +89,14 @@ def apply_policy_to_runtime(
     config: dict[str, Any],
 ) -> dict[str, Any]:
     """Apply a safe subset of org config to live settings + router. Returns applied keys."""
+    validate_policy_schema(config)
     applied: dict[str, Any] = {}
     routing = config.get("routing") or {}
     if isinstance(routing, dict):
         for key in sorted(SAFE_ROUTING_KEYS):
             if key not in routing:
                 continue
-            value = _coerce(
-                routing[key], _ROUTING_COERCE[key], section="routing", key=key
-            )
+            value = _coerce(routing[key], _ROUTING_COERCE[key], section="routing", key=key)
             if value is _UNSET:
                 continue
             setattr(settings.routing, key, value)
@@ -110,9 +115,7 @@ def apply_policy_to_runtime(
         for key in sorted(SAFE_FRONTIER_KEYS):
             if key not in frontier:
                 continue
-            value = _coerce(
-                frontier[key], _FRONTIER_COERCE[key], section="frontier", key=key
-            )
+            value = _coerce(frontier[key], _FRONTIER_COERCE[key], section="frontier", key=key)
             if value is _UNSET:
                 continue
             setattr(settings.frontier, key, value)
@@ -169,9 +172,7 @@ def apply_policy_to_runtime(
             )
 
             prev = router.boundaries
-            router.boundaries = engine_from_settings(
-                settings, judge=default_local_judge
-            )
+            router.boundaries = engine_from_settings(settings, judge=default_local_judge)
             copy_runtime_hooks(router.boundaries, prev)
 
     return applied
@@ -194,11 +195,14 @@ def sync_policy_once(
             return {"ok": False, "reason": "insecure_url"}
         if not secret:
             return {"ok": False, "reason": "no_signing_secret"}
-    data, raw, signature = fetch_org_config(
-        url, token=settings.enterprise.org_token or ""
-    )
+    data, raw, signature = fetch_org_config(url, token=settings.enterprise.org_token or "")
     if not insecure and not verify_signature(raw, signature, secret):
         return {"ok": False, "reason": "bad_signature"}
+    try:
+        validate_policy_schema(data)
+    except PolicySchemaError as exc:
+        log_gateway_event("policy_sync_schema_rejected", {"error": str(exc)})
+        return {"ok": False, "reason": "unknown_schema", "error": str(exc)}
     applied: dict[str, Any] = {}
     if router is not None:
         applied = apply_policy_to_runtime(settings, router, data)
