@@ -141,6 +141,12 @@ orgPool:
 # (open local install). Example: { name: daari-master, key: api-key }
 server:
   apiKeySecret: {}
+  # Browser Origin allowlist for CORS (#938). Empty = no CORS middleware.
+  # Example: ["http://127.0.0.1:11437"] for daari web-ui serve.
+  corsOrigins: []
+  # Baseline X-Content-Type-Options / X-Frame-Options / Referrer-Policy.
+  securityHeaders:
+    enabled: true
 
 # Native TLS / optional mTLS for the container (#932). When enabled, mounts
 # tls.existingSecret at /etc/daari/tls (expects tls.crt + tls.key; optional
