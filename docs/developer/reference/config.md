@@ -139,6 +139,10 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
 | `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) so store:true / previous_response_id / background polling work across replicas (#481). |
 | `responses.retention_days` | int | `0` | Delete stored responses older than this many days (#497). 0 keeps them forever. |
+| `idempotency.enabled` | bool | `true` | Honor `Idempotency-Key` on chat completions and Responses (#714). Missing header is always a no-op. |
+| `idempotency.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (`observability.postgres_url`). |
+| `idempotency.ttl_seconds` | int | `86400` | How long completed idempotency records are kept (default 24h). Swept by `daari prune`. |
+| `idempotency.wait_seconds` | float | `60` | How long an in-flight duplicate waits for the first request. |
 | `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
 | `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |

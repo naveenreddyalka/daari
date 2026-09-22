@@ -196,6 +196,35 @@ def prune_all(
     else:
         results.append(PruneResult("responses", 0, True))
 
+    idem_cfg = getattr(settings, "idempotency", None)
+    idem_ttl = int(getattr(idem_cfg, "ttl_seconds", 0) or 0) if idem_cfg is not None else 0
+    if idem_ttl > 0:
+        cutoff_epoch = (current - timedelta(seconds=idem_ttl)).timestamp()
+        pg_url = (getattr(settings.observability, "postgres_url", "") or "").strip()
+        if getattr(idem_cfg, "backend", "sqlite") == "postgres" and pg_url:
+            from daari.gateway.postgres_idempotency import PostgresIdempotencyStore
+
+            store = PostgresIdempotencyStore(pg_url, ttl_seconds=idem_ttl)
+        else:
+            from daari.gateway.idempotency_store import IdempotencyStore
+
+            traces_path = Path(settings.trace.path).expanduser()
+            store = IdempotencyStore(
+                traces_path.parent / "idempotency.sqlite3",
+                ttl_seconds=idem_ttl,
+            )
+        deleted = store.prune_older_than(cutoff_epoch, dry_run=dry_run)
+        results.append(
+            PruneResult(
+                "idempotency",
+                deleted,
+                False,
+                datetime.fromtimestamp(cutoff_epoch, timezone.utc).isoformat(),
+            )
+        )
+    else:
+        results.append(PruneResult("idempotency", 0, True))
+
     request_log_days = int(getattr(retention, "request_log_days", 0) or 0)
     if request_log_days:
         from daari.gateway.request_log import LOG_PATH, prune_request_log

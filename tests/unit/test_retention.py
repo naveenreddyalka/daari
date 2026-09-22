@@ -80,6 +80,8 @@ def _seed_trace(store: TraceStore, trace_id: str, ts: str) -> None:
 class TestPrune:
     def test_zero_days_deletes_nothing(self, tmp_path):
         settings = _settings(tmp_path)
+        # Idempotency defaults to a 24h TTL (#714), so that store is not skipped.
+        settings.idempotency.ttl_seconds = 0
         traces = TraceStore(settings.trace.path)
         _seed_trace(traces, "old", OLD)
         results = prune_all(settings, now=NOW)

@@ -486,18 +486,47 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             )
             response_id = f"resp_{uuid.uuid4().hex[:16]}"
 
+            from daari.gateway.idempotency import resolve_idempotency
+
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(
+                request, ctx, body
+            )
+            if idem_kind in {"replay", "conflict"} and idem_response is not None:
+                return idem_response
+
             if body.stream and not body.background:
+                async def _idempotent_event_stream() -> AsyncIterator[str]:
+                    collected: list[str] = []
+                    try:
+                        async for chunk in self._event_stream(
+                            ctx,
+                            internal,
+                            response_id,
+                            input_chars,
+                            metadata=body.metadata,
+                            store=store if body.store else None,
+                            history=messages,
+                            owner_key_id=owner_key_id,
+                        ):
+                            collected.append(chunk)
+                            yield chunk
+                    finally:
+                        if idem_slot is not None:
+                            from daari.gateway.idempotency import (
+                                assemble_assistant_text_from_sse,
+                            )
+
+                            sse_text = "".join(collected)
+                            idem_slot.complete(
+                                status_code=200,
+                                response_body=sse_text,
+                                media_type="text/event-stream",
+                                stream=True,
+                                assistant_text=assemble_assistant_text_from_sse(sse_text),
+                            )
+
                 return StreamingResponse(
-                    self._event_stream(
-                        ctx,
-                        internal,
-                        response_id,
-                        input_chars,
-                        metadata=body.metadata,
-                        store=store if body.store else None,
-                        history=messages,
-                        owner_key_id=owner_key_id,
-                    ),
+                    _idempotent_event_stream(),
                     media_type="text/event-stream",
                     headers=SSE_HEADERS,
                 )
@@ -535,6 +564,13 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 )
                 _BACKGROUND_JOBS[response_id] = task
                 task.add_done_callback(lambda _t, rid=response_id: _BACKGROUND_JOBS.pop(rid, None))
+                if idem_slot is not None:
+                    idem_slot.complete(
+                        status_code=200,
+                        response_body=json.dumps(queued, separators=(",", ":")),
+                        media_type="application/json",
+                        stream=False,
+                    )
                 return queued
 
             try:
@@ -546,6 +582,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     model=internal.model,
                 )
             except ClientDisconnected:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 return JSONResponse(
                     status_code=499,
                     content={
@@ -556,8 +594,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     },
                 )
             except UnsupportedCapability as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 ctx.metrics.record_error()
                 return JSONResponse(
                     status_code=503,
@@ -569,8 +611,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     },
                 )
             except RequestDeadlineExceeded as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 return request_deadline_response(exc)
             except Exception as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
             if getattr(request.state, "request_quota_soft", False):
@@ -593,6 +639,14 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 stored=body.store,
                 owner_key_id=owner_key_id,
             )
+            if idem_slot is not None:
+                idem_slot.complete(
+                    status_code=200,
+                    response_body=json.dumps(payload, separators=(",", ":")),
+                    media_type="application/json",
+                    stream=False,
+                    assistant_text=result.content,
+                )
             return payload
 
         return router

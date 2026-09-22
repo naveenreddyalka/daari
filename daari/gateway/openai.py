@@ -877,16 +877,27 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 except ZdrUnavailable as exc:
                     raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
 
+            from daari.gateway.idempotency import resolve_idempotency
+
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(
+                request, ctx, body
+            )
+            if idem_kind in {"replay", "conflict"} and idem_response is not None:
+                return idem_response
+
             if body.stream:
                 try:
                     ctx.router.ensure_capable(internal)
                 except UnsupportedCapability as exc:
+                    if idem_slot is not None:
+                        idem_slot.abandon()
                     raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
 
                 outcome = StreamOutcome()
 
                 async def event_stream() -> AsyncIterator[str]:
                     content_chars = 0
+                    collected: list[str] = []
                     try:
                         async for chunk in stream_with_keepalive(
                             ctx.router.stream_openai_chunks(internal, outcome=outcome),
@@ -897,11 +908,28 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         ):
                             if '"delta": {"content":' in chunk or '"delta":{"content":' in chunk:
                                 content_chars += 1
+                            collected.append(chunk)
                             yield chunk
                     except Exception as exc:
-                        yield f"data: {json.dumps({'error': f'stream failed: {safe_detail(exc)}'})}\n\n"
+                        err = f"data: {json.dumps({'error': f'stream failed: {safe_detail(exc)}'})}\n\n"
+                        collected.append(err)
+                        collected.append("data: [DONE]\n\n")
+                        yield err
                         yield "data: [DONE]\n\n"
                     finally:
+                        if idem_slot is not None:
+                            from daari.gateway.idempotency import (
+                                assemble_assistant_text_from_sse,
+                            )
+
+                            sse_text = "".join(collected)
+                            idem_slot.complete(
+                                status_code=200,
+                                response_body=sse_text,
+                                media_type="text/event-stream",
+                                stream=True,
+                                assistant_text=assemble_assistant_text_from_sse(sse_text),
+                            )
                         log_gateway_event(
                             "chat_completions_stream_done",
                             {
@@ -927,6 +955,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     model=body.model,
                 )
             except ClientDisconnected:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 return JSONResponse(
                     status_code=499,
                     content={
@@ -937,12 +967,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     },
                 )
             except ZdrUnavailable as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except RegionUnavailable as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 ctx.metrics.record_error()
                 return JSONResponse(
                     status_code=503,
@@ -954,8 +992,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     },
                 )
             except RequestDeadlineExceeded as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 return request_deadline_response(exc)
             except Exception as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
@@ -977,6 +1019,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 include_daari_meta=include_daari_meta,
                 usage=response_token_usage(result, prompt_chars),
             )
+            if idem_slot is not None:
+                idem_slot.complete(
+                    status_code=200,
+                    response_body=json.dumps(payload, separators=(",", ":")),
+                    media_type="application/json",
+                    stream=False,
+                    assistant_text=result.content,
+                )
             return JSONResponse(
                 payload,
                 headers={

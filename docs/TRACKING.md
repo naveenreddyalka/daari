@@ -4189,6 +4189,16 @@ forwards `X-Request-ID` on Ollama, OpenAI-compat, MLX, frontier, ASR, TTS,
 embeddings, and MCP egress. Covered by `tests/unit/test_request_id.py`.
 
 
+### Honor Idempotency-Key on chat and Responses ([#714](https://github.com/naveenreddyalka/daari/issues/714))
+
+<!-- tracking:#714 -->
+**Status:** Done (2026-09-22). `Idempotency-Key` on `POST /v1/chat/completions`
+and `POST /v1/responses` replays the original status/body for the same
+principal + body hash within TTL (default 24h) without a second router call;
+mismatched body returns 409 `idempotency_conflict`; in-flight duplicates wait.
+SQLite default / postgres when configured; `daari prune` sweeps expired rows.
+Covered by `tests/unit/test_idempotency.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

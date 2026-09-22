@@ -16,6 +16,7 @@
 | `X-Daari-Tools` | Tool-related client hints |
 | `X-Daari-Confirm*` / `X-Daari-ReRun-Command` | Lt ask-gate confirmation |
 | `X-Request-ID` | Correlation id: sanitized inbound value or a generated 16-char hex id. Echoed on chat completions responses and forwarded on upstream hops (Ollama, OpenAI-compat, MLX, frontier, ASR, TTS, embeddings, MCP egress) as `X-Request-ID`. |
+| `Idempotency-Key` | Replay-safe retries for `POST /v1/chat/completions` and `POST /v1/responses` (stream and non-stream). Scoped to the authenticated principal (virtual key id, or master/anonymous). Same key + same body hash within `idempotency.ttl_seconds` (default 24h) returns the original status/body without calling the router again. Same key + different body returns **409** `idempotency_conflict`. In-flight duplicates wait for the first request (bounded by `idempotency.wait_seconds`). Missing header is a no-op. |
 
 Explicit headers win over project profiles and most config defaults.
 
@@ -71,6 +72,24 @@ Rules:
 - Only frontier (L6) spend counts toward USD `remaining`; local tiers and cache
   hits are free for USD. Request quotas count every non-cache serve (local +
   frontier); L0/L1 cache hits do not consume request quota.
+
+## Idempotency-Key
+
+Safe client retries for chat completions and Responses. Scope is the
+authenticated principal plus the header value; records expire after
+`idempotency.ttl_seconds` (default 86400) and are deleted by `daari prune`.
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/chat/completions \
+  -H "Authorization: Bearer $DAARI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: deploy-rollout-42" \
+  -d '{"model":"llama3.2:3b","messages":[{"role":"user","content":"ping"}]}'
+```
+
+A second identical request with the same key returns the same JSON without
+another router call. Changing the body while reusing the key returns **409**
+`idempotency_conflict`.
 
 ## Streaming contract
 
