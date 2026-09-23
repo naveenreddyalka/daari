@@ -55,6 +55,69 @@ def test_openai_payload_includes_tool_choice():
     assert params.openai_payload()["tool_choice"]["function"]["name"] == "f"
 
 
+def test_openai_stream_and_nonstream_payloads_share_tools_and_tool_choice():
+    """Non-stream L6 OpenAI must carry tools/tool_choice like the stream path (#1006)."""
+    executor = FrontierExecutor(
+        base_url="http://frontier.test",
+        default_model="gpt-4o",
+        api_key="sk-test",
+    )
+    request = _request(tool_choice="required")
+    stream_payload = executor._openai_payload(request, stream=True)
+    nonstream_payload = executor._openai_payload(request, stream=False)
+    assert nonstream_payload.get("tools") == request.tools
+    assert nonstream_payload.get("tool_choice") == "required"
+    assert nonstream_payload["tools"] == stream_payload["tools"]
+    assert nonstream_payload["tool_choice"] == stream_payload["tool_choice"]
+    assert stream_payload["stream"] is True
+    assert nonstream_payload["stream"] is False
+
+
+@pytest.mark.asyncio
+async def test_frontier_execute_sends_tools_on_openai():
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        captured.append(payload)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"name": "lookup", "arguments": "{}"},
+                                }
+                            ],
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            },
+        )
+
+    executor = FrontierExecutor(
+        base_url="http://frontier.test",
+        default_model="gpt-4o",
+        api_key="sk-test",
+        transport=httpx.MockTransport(handler),
+    )
+    response = await executor.execute(
+        _request(tool_choice="required"), escalated_from="L3", local_confidence=0.1
+    )
+    assert captured[0]["stream"] is False
+    assert captured[0]["tools"] == _request().tools
+    assert captured[0]["tool_choice"] == "required"
+    assert response.tool_calls is not None
+    assert response.tool_calls[0]["function"]["name"] == "lookup"
+
+
 @pytest.mark.asyncio
 async def test_frontier_stream_forwards_openai_tool_call_deltas():
     body = (
