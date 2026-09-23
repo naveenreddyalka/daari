@@ -177,7 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def bind_x_request_id(request: Request, call_next):
-        """Resolve once per request so upstream inject sees the same id (#977)."""
+        """Resolve once per request; echo on every response (#965, #977, #978)."""
         from daari.gateway.request_id import (
             bind_request_id,
             reset_request_id,
@@ -188,7 +188,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.state.request_id = request_id
         token = bind_request_id(request_id)
         try:
-            return await call_next(request)
+            response = await call_next(request)
+            response.headers.setdefault("X-Request-ID", request_id)
+            return response
         finally:
             reset_request_id(token)
 

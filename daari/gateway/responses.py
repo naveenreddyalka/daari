@@ -438,6 +438,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 messages = prior_messages + messages
             if not messages:
                 raise HTTPException(status_code=400, detail="input produced no messages")
+            from daari.gateway.request_id import request_id_from_request
+
+            request_id = request_id_from_request(request)
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
@@ -446,6 +449,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 deadline_ms=deadline_ms,
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
+                request_id=request_id,
             )
             apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
@@ -528,7 +532,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 return StreamingResponse(
                     _idempotent_event_stream(),
                     media_type="text/event-stream",
-                    headers=SSE_HEADERS,
+                    headers={**SSE_HEADERS, "X-Request-ID": request_id},
                 )
 
             if body.background:

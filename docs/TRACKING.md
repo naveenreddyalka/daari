@@ -4231,6 +4231,14 @@ Covered by `tests/unit/test_stream_host_failover.py`.
 `psycopg_pool.ConnectionPool` (`observability.postgres_pool_min/max`, default
 1/4); pools close on app shutdown. Covered by `tests/unit/test_pg_pool.py`.
 
+### Echo X-Request-ID on Anthropic, Responses, Ollama, embeddings, audio ([#978](https://github.com/naveenreddyalka/daari/issues/978))
+
+<!-- tracking:#978 -->
+**Status:** Done (2026-09-23). Middleware echoes `X-Request-ID` on every
+response; Anthropic/Responses/Ollama bind the id on `RequestMeta`;
+embeddings/ASR/TTS spend rows carry the same `request_id`. Covered by
+`tests/unit/test_request_id.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

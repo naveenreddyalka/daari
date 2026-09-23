@@ -15,7 +15,7 @@
 | `X-Daari-Boundary-Profile` | Named `boundaries.profiles` overlay for this request (browser extension site profiles) |
 | `X-Daari-Tools` | Tool-related client hints |
 | `X-Daari-Confirm*` / `X-Daari-ReRun-Command` | Lt ask-gate confirmation |
-| `X-Request-ID` | Correlation id: sanitized inbound value or a generated 16-char hex id. Echoed on chat completions responses and forwarded on upstream hops (Ollama, OpenAI-compat, MLX, frontier, ASR, TTS, embeddings, MCP egress) as `X-Request-ID`. |
+| `X-Request-ID` | Correlation id: sanitized inbound value or a generated 16-char hex id. Echoed on every gateway response (chat, Anthropic Messages, Responses, Ollama facade, embeddings, audio) and forwarded on upstream hops (Ollama, OpenAI-compat, MLX, frontier, ASR, TTS, embeddings, MCP egress) as `X-Request-ID`. |
 | `Idempotency-Key` | Replay-safe retries for `POST /v1/chat/completions` and `POST /v1/responses` (stream and non-stream). Scoped to the authenticated principal (virtual key id, or master/anonymous). Same key + same body hash within `idempotency.ttl_seconds` (default 24h) returns the original status/body without calling the router again. Same key + different body returns **409** `idempotency_conflict`. In-flight duplicates wait for the first request (bounded by `idempotency.wait_seconds`). Missing header is a no-op. |
 
 Explicit headers win over project profiles and most config defaults.

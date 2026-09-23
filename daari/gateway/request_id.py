@@ -1,4 +1,4 @@
-"""Inbound X-Request-ID sanitization and resolution (#965, #977)."""
+"""Inbound X-Request-ID sanitization and resolution (#965, #977, #978)."""
 
 from __future__ import annotations
 
@@ -36,6 +36,14 @@ def resolve_request_id(headers: Mapping[str, Any] | Any) -> str:
     if cleaned:
         return cleaned
     return uuid.uuid4().hex[:16]
+
+
+def request_id_from_request(request: Any) -> str:
+    """Prefer middleware-bound ``request.state.request_id``; else resolve headers."""
+    existing = getattr(getattr(request, "state", None), "request_id", None)
+    if isinstance(existing, str) and existing:
+        return existing
+    return resolve_request_id(getattr(request, "headers", {}) or {})
 
 
 def bind_request_id(request_id: str | None) -> Any:

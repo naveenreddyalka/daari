@@ -163,5 +163,102 @@ async def test_asr_forwards_x_request_id_upstream(settings, monkeypatch):
             headers={"X-Request-ID": "asr-corr-55"},
         )
     assert response.status_code == 200, response.text
+    assert response.headers["x-request-id"] == "asr-corr-55"
     assert seen
     assert seen[0].headers.get("x-request-id") == "asr-corr-55"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_messages_echoes_x_request_id(settings, monkeypatch):
+    """Anthropic JSON responses echo the resolved correlation id (#978)."""
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        assert request.meta.request_id == "anth-corr-1"
+        return InternalResponse(
+            content="ok",
+            model="claude-3-haiku",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "route", fake_route)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/messages",
+            json={
+                "model": "claude-3-haiku",
+                "max_tokens": 16,
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+            headers={
+                "X-Request-ID": "anth-corr-1",
+                "anthropic-version": "2023-06-01",
+                "x-api-key": "test-key",
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers["x-request-id"] == "anth-corr-1"
+
+
+@pytest.mark.asyncio
+async def test_ollama_chat_echoes_x_request_id(settings, monkeypatch):
+    """Ollama facade /api/chat echoes X-Request-ID (#978)."""
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        assert request.meta.request_id == "ollama-corr-2"
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router, "route", fake_route)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/chat",
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
+            headers={"X-Request-ID": "ollama-corr-2"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers["x-request-id"] == "ollama-corr-2"
+
+
+@pytest.mark.asyncio
+async def test_embeddings_echoes_and_spend_carries_request_id(settings, tmp_path, monkeypatch):
+    """Embeddings echo X-Request-ID and bind it on spend rows (#978)."""
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    settings.cache.l1.embedding_model = "nomic-embed-text"
+
+    class FixedEmbedder:
+        async def embed(self, text: str, *, model: str | None = None) -> list[float] | None:
+            return [0.1, 0.2, 0.3]
+
+        async def embed_many(
+            self, texts: list[str], *, model: str | None = None
+        ) -> list[list[float] | None]:
+            return [[0.1, 0.2, 0.3] for _ in texts]
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.ctx.router.semantic_cache.embedder = FixedEmbedder()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/embeddings",
+            json={"model": "nomic-embed-text", "input": "hello"},
+            headers={"X-Request-ID": "embed-corr-3"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers["x-request-id"] == "embed-corr-3"
+    rows = list(
+        app.state.ctx.router.spend_ledger.iter_rows(since="2000-01-01T00:00:00+00:00")
+    )
+    assert len(rows) == 1
+    assert rows[0]["request_id"] == "embed-corr-3"

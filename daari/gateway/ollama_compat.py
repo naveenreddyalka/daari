@@ -279,6 +279,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             client_model: str,
             *,
             line_fn,
+            request_id: str | None = None,
         ) -> StreamingResponse:
             async def ndjson_stream() -> AsyncIterator[str]:
                 # The router emits its usage chunk right before [DONE]; the
@@ -308,7 +309,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 except Exception as exc:
                     yield json.dumps({"error": safe_detail(exc), "done": True}) + "\n"
 
-            return StreamingResponse(ndjson_stream(), media_type="application/x-ndjson")
+            headers = {"X-Request-ID": request_id} if request_id else None
+            return StreamingResponse(
+                ndjson_stream(), media_type="application/x-ndjson", headers=headers
+            )
 
         async def _route_non_stream(
             ctx: AppContext, internal: InternalRequest, request: Request
@@ -370,6 +374,9 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             client_model = body.model or "daari"
             deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
+            from daari.gateway.request_id import request_id_from_request
+
+            request_id = request_id_from_request(request)
             internal = InternalRequest(
                 messages=[
                     Message(
@@ -392,6 +399,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 meta=RequestMeta(
                     client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip(),
                     deadline_ms=deadline_ms,
+                    request_id=request_id,
                 ),
                 sampling=SamplingParams.from_ollama_options(body.options),
             )
@@ -412,14 +420,16 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                             guard_upstream("stream")
                     except RequestDeadlineExceeded as exc:
                         return request_deadline_response(exc)
-                return await _stream_ndjson(ctx, internal, client_model, line_fn=_chat_line)
+                return await _stream_ndjson(
+                    ctx, internal, client_model, line_fn=_chat_line, request_id=request_id
+                )
 
             result = await _route_non_stream(ctx, internal, request)
             if isinstance(result, JSONResponse):
                 return result
             payload = json.loads(_chat_line(client_model, result.content, done=True))
             payload["daari_meta"] = result.daari_meta.model_dump(exclude_none=True)
-            return payload
+            return JSONResponse(payload, headers={"X-Request-ID": request_id})
 
         @router.post("/api/generate", response_model=None)
         async def generate(
@@ -439,6 +449,9 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             client_model = body.model or "daari"
             deadline_ms = parse_deadline_ms(x_daari_deadline_ms)
+            from daari.gateway.request_id import request_id_from_request
+
+            request_id = request_id_from_request(request)
             messages: list[Message] = []
             if body.system:
                 messages.append(Message(role="system", content=body.system))
@@ -462,6 +475,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 meta=RequestMeta(
                     client_id=(x_daari_client_id or DEFAULT_CLIENT_ID).strip(),
                     deadline_ms=deadline_ms,
+                    request_id=request_id,
                 ),
                 sampling=SamplingParams.from_ollama_options(options or None),
             )
@@ -482,14 +496,20 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                             guard_upstream("stream")
                     except RequestDeadlineExceeded as exc:
                         return request_deadline_response(exc)
-                return await _stream_ndjson(ctx, internal, client_model, line_fn=_generate_line)
+                return await _stream_ndjson(
+                    ctx,
+                    internal,
+                    client_model,
+                    line_fn=_generate_line,
+                    request_id=request_id,
+                )
 
             result = await _route_non_stream(ctx, internal, request)
             if isinstance(result, JSONResponse):
                 return result
             payload = json.loads(_generate_line(client_model, result.content, done=True))
             payload["daari_meta"] = result.daari_meta.model_dump(exclude_none=True)
-            return payload
+            return JSONResponse(payload, headers={"X-Request-ID": request_id})
 
         @router.post("/api/embed")
         async def embed(body: OllamaEmbedRequest, request: Request) -> Any:
