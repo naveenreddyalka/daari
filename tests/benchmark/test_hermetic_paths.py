@@ -26,6 +26,7 @@ from daari.cache.semantic import SemanticCache
 from daari.gateway.batches import BatchStore
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
+from daari.router.local_pool import LocalBackendPool, LocalBackendSlot
 from daari.router.router import AppContext, OllamaExecutor, Router
 from daari.server.app import create_app
 from tests.conftest import NoopEmbedder
@@ -70,6 +71,9 @@ SOFT_USD_BUDGET_BURST_CEILING_S = 5.000
 SOFT_USD_BUDGET_CONCURRENCY = 32
 SOFT_USD_BUDGET_LIMIT = 1.0
 SOFT_USD_BUDGET_PREFILL = 0.8  # soft line at 0.8 * 1.0 = 0.8
+# Pre-first-token stream host failover (#1015). Single stream collect, mocked hosts.
+STREAM_FAILOVER_CEILING_S = 0.500
+STREAM_HAPPY_PATH_CEILING_S = 0.200
 
 
 class FakeLedger:
@@ -901,4 +905,111 @@ async def test_soft_usd_budget_warn_burst_under_ceiling(settings, tmp_path):
         f"soft USD budget warn burst {elapsed:.4f}s exceeds ceiling "
         f"{SOFT_USD_BUDGET_BURST_CEILING_S}s "
         f"(soft-budget warn middleware regression)"
+    )
+
+
+class _BenchHostExecutor(OllamaExecutor):
+    """Per-host stream stub for hermetic failover ceilings (#1015)."""
+
+    def __init__(self, host_id: str, *, fail: bool = False) -> None:
+        super().__init__(base_url=f"http://{host_id}", default_model="llama3.2:3b")
+        self.host_id = host_id
+        self.fail = fail
+        self.stream_calls = 0
+
+    async def execute(self, request, model=None, **kwargs):  # type: ignore[override]
+        return InternalResponse(
+            content=f"from-{self.host_id}",
+            model=self.default_model,
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    async def stream(self, request, **kwargs):  # type: ignore[override]
+        self.stream_calls += 1
+        if self.fail:
+            raise ConnectionError(f"{self.host_id} connect failed")
+        yield {"message": {"content": f"ok-from-{self.host_id}"}}
+        yield {"done": True}
+
+
+def _bench_slot(slot_id: str, *, url: str) -> LocalBackendSlot:
+    return LocalBackendSlot(id=slot_id, base_url=url, model="llama3.2:3b")
+
+
+def _bench_stream_router(tmp_path, template: OllamaExecutor, pool: LocalBackendPool) -> Router:
+    return Router(
+        cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+        semantic_cache=SemanticCache(str(tmp_path / "l1"), NoopEmbedder(), enabled=False),
+        ollama=template,
+        ollama_l3=template,
+        ollama_l4=template,
+        ollama_l5=template,
+        metrics=Metrics(),
+        local_pool=pool,
+    )
+
+
+async def _collect_stream(agen) -> str:
+    return "".join([chunk async for chunk in agen])
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_stream_host_failover_under_ceiling(tmp_path):
+    """First host fails before token; second succeeds — TTFT stays bounded (#1015)."""
+    primary = _BenchHostExecutor("gpu-a", fail=True)
+    secondary = _BenchHostExecutor("gpu-b", fail=False)
+    template = _BenchHostExecutor("template", fail=False)
+    pool = LocalBackendPool(
+        slots=[_bench_slot("gpu-a", url="http://a"), _bench_slot("gpu-b", url="http://b")],
+        strategy="round_robin",
+    )
+    pool._rr["L3"] = 0
+    router = _bench_stream_router(tmp_path, template, pool)
+
+    def bind(slot, tmpl):
+        return primary if slot.id == "gpu-a" else secondary
+
+    pool.bind_executor = bind  # type: ignore[method-assign]
+
+    start = time.perf_counter()
+    body = await _collect_stream(router.stream_openai_chunks(_request("failover")))
+    elapsed = time.perf_counter() - start
+
+    assert primary.stream_calls == 1
+    assert secondary.stream_calls == 1
+    assert "ok-from-gpu-b" in body
+    assert elapsed < STREAM_FAILOVER_CEILING_S, (
+        f"stream host failover {elapsed:.4f}s exceeds ceiling {STREAM_FAILOVER_CEILING_S}s"
+    )
+
+
+@pytest.mark.benchmark
+@pytest.mark.asyncio
+async def test_stream_happy_path_under_tighter_ceiling(tmp_path):
+    """First host OK — failover logic must not tax the common case (#1015)."""
+    primary = _BenchHostExecutor("gpu-a", fail=False)
+    secondary = _BenchHostExecutor("gpu-b", fail=False)
+    template = _BenchHostExecutor("template", fail=False)
+    pool = LocalBackendPool(
+        slots=[_bench_slot("gpu-a", url="http://a"), _bench_slot("gpu-b", url="http://b")],
+        strategy="round_robin",
+    )
+    pool._rr["L3"] = 0
+    router = _bench_stream_router(tmp_path, template, pool)
+
+    def bind(slot, tmpl):
+        return primary if slot.id == "gpu-a" else secondary
+
+    pool.bind_executor = bind  # type: ignore[method-assign]
+
+    start = time.perf_counter()
+    body = await _collect_stream(router.stream_openai_chunks(_request("happy")))
+    elapsed = time.perf_counter() - start
+
+    assert primary.stream_calls == 1
+    assert secondary.stream_calls == 0
+    assert "ok-from-gpu-a" in body
+    assert elapsed < STREAM_HAPPY_PATH_CEILING_S, (
+        f"stream happy path {elapsed:.4f}s exceeds ceiling {STREAM_HAPPY_PATH_CEILING_S}s"
     )
