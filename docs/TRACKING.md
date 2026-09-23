@@ -4352,6 +4352,15 @@ Docs: [clients-and-gateways.md](developer/concepts/clients-and-gateways.md).
 Covered by `tests/unit/test_responses_sampling.py` and
 `tests/integration/test_responses_api.py`.
 
+### Default dropped-parameter visibility ([#1013](https://github.com/naveenreddyalka/daari/issues/1013))
+
+<!-- tracking:#1013 -->
+**Status:** Done (2026-09-23). Local tiers set `daari_meta.dropped_params` and
+emit always-on `x-daari-dropped-params` (plus `dropped_params` log event);
+stream sets the header via `StreamOutcome` when the served tier is not L6.
+Docs: [headers.md](developer/reference/headers.md). Covered by
+`tests/unit/test_dropped_params.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -32,6 +32,8 @@ CACHE_HEADER = "x-daari-cache"
 REGION_HEADER = "x-daari-region"
 # Always-on sampling / soft-warning signal — no X-Daari-Meta opt-in (#1007).
 WARNING_HEADER = "x-daari-warning"
+# Comma-separated client params the serving tier could not honor (#1013).
+DROPPED_PARAMS_HEADER = "x-daari-dropped-params"
 
 FRONTIER_TIER = "L6"
 
@@ -240,6 +242,8 @@ def response_cost_headers(
         headers[REGION_HEADER] = str(meta.region)
     if meta.warning:
         headers[WARNING_HEADER] = str(meta.warning)
+    if meta.dropped_params:
+        headers[DROPPED_PARAMS_HEADER] = ",".join(meta.dropped_params)
     sid = (session_id or "").strip()
     if sid and savings is not None:
         headers[SESSION_COST_AVOIDED_HEADER] = _decimal(savings.add(sid, avoided))
@@ -299,6 +303,8 @@ class StreamOutcome:
 
     tier: str | None = None
     cache: str | None = None
+    # Prefetched from sampling; emitted only when the served tier is not L6 (#1013).
+    dropped_params: list[str] | None = None
 
     def note(
         self, tier: str | None, *, cache_hit: bool = False, draft: bool = False
@@ -311,7 +317,10 @@ class StreamOutcome:
     def headers(self) -> dict[str, str]:
         if not self.tier:
             return {}
-        return {TIER_HEADER: self.tier, CACHE_HEADER: self.cache or "miss"}
+        out = {TIER_HEADER: self.tier, CACHE_HEADER: self.cache or "miss"}
+        if self.dropped_params and (self.tier or "").upper() != "L6":
+            out[DROPPED_PARAMS_HEADER] = ",".join(self.dropped_params)
+        return out
 
 
 class DeferredHeadersStreamingResponse(StreamingResponse):

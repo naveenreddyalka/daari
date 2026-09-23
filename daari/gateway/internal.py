@@ -164,6 +164,8 @@ class DaariMeta(BaseModel):
     escalated_from: str | None = None
     rule_id: str | None = None
     warning: str | None = None
+    # Client params the serving tier could not honor (#1013).
+    dropped_params: list[str] | None = None
     policy: str | None = None
     pending_command: str | None = None
     confirmation_prompt: str | None = None

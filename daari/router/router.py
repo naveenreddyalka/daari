@@ -892,10 +892,23 @@ class Router:
         # dropped.
         if response.daari_meta.tier != "L6":
             unsupported = request.sampling.unsupported_locally()
+            dropped = request.sampling.dropped_param_names()
             if unsupported:
                 existing = response.daari_meta.warning
                 notes = "; ".join(unsupported)
                 response.daari_meta.warning = f"{existing}; {notes}" if existing else notes
+            if dropped:
+                response.daari_meta.dropped_params = dropped
+                from daari.gateway.request_log import log_gateway_event
+
+                log_gateway_event(
+                    "dropped_params",
+                    {
+                        "params": dropped,
+                        "request_id": getattr(request.meta, "request_id", None),
+                        "tier": response.daari_meta.tier,
+                    },
+                )
         if response.daari_meta.task_type is None:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:
@@ -1801,6 +1814,9 @@ class Router:
         self._open_spend_context(
             request, trace.trace_id if trace is not None else chunk_id
         )
+        dropped = request.sampling.dropped_param_names()
+        if dropped:
+            outcome.dropped_params = dropped
         if reused:
             add_step(
                 "classify_user_turn",
