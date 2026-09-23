@@ -6,9 +6,10 @@ import pytest
 
 from daari.config.settings import Settings
 from daari.gateway.cost_headers import COST_HEADER, response_cost_headers
-from daari.gateway.internal import DaariMeta
+from daari.gateway.internal import DaariMeta, InternalRequest, Message
 from daari.gateway.sampling import SamplingParams
 from daari.pricing import cost_usd, service_tier_factor
+from daari.router.anthropic_messages import to_anthropic_payload
 
 
 def test_known_tiers_have_factors():
@@ -63,6 +64,58 @@ def test_openai_and_anthropic_bodies_keep_service_tier():
     assert openai.service_tier == "flex"
     assert anthropic.service_tier == "priority"
     assert openai.openai_payload()["service_tier"] == "flex"
+    assert (
+        to_anthropic_payload(
+            InternalRequest(
+                messages=[Message(role="user", content="hi")],
+                model="daari",
+                sampling=anthropic,
+            ),
+            model="claude-sonnet-4-0",
+        )["service_tier"]
+        == "priority"
+    )
+
+
+def test_http_models_preserve_service_tier():
+    """service_tier must survive ChatCompletionRequest / AnthropicRequest validation (#1005)."""
+    from daari.gateway.anthropic import AnthropicRequest
+    from daari.gateway.openai import ChatCompletionRequest
+
+    openai_req = ChatCompletionRequest.model_validate(
+        {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hi"}],
+            "service_tier": "priority",
+        }
+    )
+    anthropic_req = AnthropicRequest.model_validate(
+        {
+            "model": "claude-sonnet-4",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 10,
+            "service_tier": "flex",
+        }
+    )
+    assert openai_req.service_tier == "priority"
+    assert anthropic_req.service_tier == "flex"
+
+    openai = SamplingParams.from_openai_body(openai_req.model_dump())
+    anthropic = SamplingParams.from_anthropic_body(anthropic_req.model_dump())
+    assert openai.service_tier == "priority"
+    assert anthropic.service_tier == "flex"
+    assert openai.openai_payload()["service_tier"] == "priority"
+    assert (
+        to_anthropic_payload(
+            InternalRequest(
+                messages=[Message(role="user", content="hi")],
+                model="daari",
+                sampling=anthropic,
+            ),
+            model="claude-sonnet-4",
+        )["service_tier"]
+        == "flex"
+    )
 
 
 def test_cost_header_uses_service_tier():

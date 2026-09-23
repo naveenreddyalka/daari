@@ -4279,6 +4279,14 @@ onto `Message.audio` and runs the same ASR inject path as chat. Docs:
 [asr.md](developer/guides/backends/asr.md#chat-input_audio-blocks). Covered by
 `tests/unit/test_responses_input_audio.py`.
 
+### Accept service_tier on OpenAI and Anthropic HTTP ingress ([#1005](https://github.com/naveenreddyalka/daari/issues/1005))
+
+<!-- tracking:#1005 -->
+**Status:** Done (2026-09-23). `ChatCompletionRequest` and `AnthropicRequest`
+declare `service_tier` so it survives validation and reaches
+`openai_payload()` / `to_anthropic_payload()`. Covered by
+`tests/unit/test_service_tier.py`.
+
 ### Doctor CORS web-ui origin advisory ([#999](https://github.com/naveenreddyalka/daari/issues/999))
 
 <!-- tracking:#999 -->

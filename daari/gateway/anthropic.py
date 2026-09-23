@@ -230,6 +230,8 @@ class AnthropicRequest(BaseModel):
     provider: Any | None = None
     cost_tier: str | None = None
     plugins: list[Any] | None = None
+    # Anthropic/OpenRouter service_tier (flex|standard|priority|fast) (#1005).
+    service_tier: str | None = None
 
 
 class AnthropicTextBlock(BaseModel):
