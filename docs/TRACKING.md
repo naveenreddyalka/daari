@@ -4216,6 +4216,14 @@ log `stream_incomplete` via `log_gateway_event`, and trip the serving host's
 circuit breaker; partial streams stay out of L0/L1. Covered by
 `tests/unit/test_stream_incomplete.py`.
 
+### Pre-first-token host failover for streamed local requests ([#974](https://github.com/naveenreddyalka/daari/issues/974))
+
+<!-- tracking:#974 -->
+**Status:** Done (2026-09-23). Streaming local requests that fail before the
+first chunk retry the next healthy host in the same tier (OpenAI and Anthropic
+paths); post-first-token behavior unchanged; breakers record failure/success.
+Covered by `tests/unit/test_stream_host_failover.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
