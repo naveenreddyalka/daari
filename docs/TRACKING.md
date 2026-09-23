@@ -4287,6 +4287,14 @@ declare `service_tier` so it survives validation and reaches
 `openai_payload()` / `to_anthropic_payload()`. Covered by
 `tests/unit/test_service_tier.py`.
 
+### Non-stream frontier OpenAI includes tools ([#1006](https://github.com/naveenreddyalka/daari/issues/1006))
+
+<!-- tracking:#1006 -->
+**Status:** Done (2026-09-23). `_openai_payload` forwards `tools` on both
+stream and non-stream L6 OpenAI calls so agent loops with `stream: false`
+get tool schemas. Covered by `tests/unit/test_frontier_tool_parity.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ### Doctor CORS web-ui origin advisory ([#999](https://github.com/naveenreddyalka/daari/issues/999))
 
 <!-- tracking:#999 -->

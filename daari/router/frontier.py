@@ -121,6 +121,10 @@ class FrontierExecutor:
             "stream": stream,
             **request.sampling.openai_payload(),
         }
+        # Stream and non-stream must both forward tools (#1006). tool_choice
+        # already arrives via sampling.openai_payload().
+        if request.tools:
+            payload["tools"] = request.tools
         if request.provider is not None and (
             self.provider == "openrouter" or is_openrouter_base(self.base_url)
         ):
@@ -167,8 +171,6 @@ class FrontierExecutor:
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=True)
-            if request.tools:
-                payload = {**payload, "tools": request.tools}
             headers = self._openai_headers()
             path = "/chat/completions"
 
