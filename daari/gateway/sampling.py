@@ -162,6 +162,40 @@ def _normalize_top_logprobs(raw: Any) -> int | None:
     return None
 
 
+def _normalize_bool(raw: Any) -> bool | None:
+    if isinstance(raw, bool):
+        return raw
+    return None
+
+
+def _normalize_str(raw: Any) -> str | None:
+    if isinstance(raw, str):
+        text = raw.strip()
+        return text or None
+    return None
+
+
+def _normalize_dict(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, dict) and raw:
+        return dict(raw)
+    return None
+
+
+def _normalize_modalities(raw: Any) -> list[str] | None:
+    if not isinstance(raw, list) or not raw:
+        return None
+    out = [str(item) for item in raw if item]
+    return out or None
+
+
+def _normalize_n(raw: Any) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int) and raw >= 1:
+        return raw
+    return None
+
+
 class SamplingParams(BaseModel):
     """Generation controls, in OpenAI's vocabulary."""
 
@@ -192,6 +226,14 @@ class SamplingParams(BaseModel):
     parallel_tool_calls: bool | None = None
     logit_bias: dict[str, float] | None = None
     top_logprobs: int | None = None
+    # Remaining OpenAI chat knobs forwarded on openai-kind backends (#1007).
+    store: bool | None = None
+    metadata: dict[str, Any] | None = None
+    prediction: dict[str, Any] | None = None
+    modalities: list[str] | None = None
+    audio: dict[str, Any] | None = None
+    verbosity: str | None = None
+    web_search_options: dict[str, Any] | None = None
     # Facade top-level Ollama `think` (bool or level string) (#1011).
     ollama_think_value: bool | str | None = None
     # Facade top-level Ollama `keep_alive` (duration string or number) (#1011).
@@ -257,8 +299,8 @@ class SamplingParams(BaseModel):
             json_schema_name=json_schema_name,
             json_schema_strict=json_schema_strict,
             tool_choice=tool_choice,
-            n=body.get("n"),
-            logprobs=body.get("logprobs"),
+            n=_normalize_n(body.get("n")),
+            logprobs=_normalize_bool(body.get("logprobs")),
             reasoning_effort=normalize_reasoning_effort(body.get("reasoning_effort")),
             service_tier=_normalize_service_tier(body.get("service_tier")),
             parallel_tool_calls=_normalize_parallel_tool_calls(
@@ -266,6 +308,13 @@ class SamplingParams(BaseModel):
             ),
             logit_bias=_normalize_logit_bias(body.get("logit_bias")),
             top_logprobs=_normalize_top_logprobs(body.get("top_logprobs")),
+            store=_normalize_bool(body.get("store")),
+            metadata=_normalize_dict(body.get("metadata")),
+            prediction=_normalize_dict(body.get("prediction")),
+            modalities=_normalize_modalities(body.get("modalities")),
+            audio=_normalize_dict(body.get("audio")),
+            verbosity=_normalize_str(body.get("verbosity")),
+            web_search_options=_normalize_dict(body.get("web_search_options")),
         )
 
     @classmethod
@@ -442,6 +491,10 @@ class SamplingParams(BaseModel):
             "service_tier",
             "parallel_tool_calls",
             "top_logprobs",
+            "n",
+            "logprobs",
+            "store",
+            "verbosity",
         ):
             value = getattr(self, name)
             if value is not None:
@@ -450,6 +503,16 @@ class SamplingParams(BaseModel):
             payload["stop"] = list(self.stop)
         if self.logit_bias:
             payload["logit_bias"] = dict(self.logit_bias)
+        if self.metadata:
+            payload["metadata"] = dict(self.metadata)
+        if self.prediction:
+            payload["prediction"] = dict(self.prediction)
+        if self.modalities:
+            payload["modalities"] = list(self.modalities)
+        if self.audio:
+            payload["audio"] = dict(self.audio)
+        if self.web_search_options:
+            payload["web_search_options"] = dict(self.web_search_options)
         if self.json_schema:
             wrapper: dict[str, Any] = {
                 "name": self.json_schema_name or "daari",
@@ -484,6 +547,20 @@ class SamplingParams(BaseModel):
             notes.append("parallel_tool_calls is not enforced on local models")
         if self.tool_choice == "required" or isinstance(self.tool_choice, dict):
             notes.append("tool_choice required cannot be forced locally; treated as auto")
+        if self.store is not None:
+            notes.append("store is not available from local models")
+        if self.metadata:
+            notes.append("metadata is not available from local models")
+        if self.prediction:
+            notes.append("prediction is not available from local models")
+        if self.modalities:
+            notes.append("modalities are not available from local models")
+        if self.audio:
+            notes.append("audio output is not available from local models")
+        if self.verbosity is not None:
+            notes.append("verbosity is not available from local models")
+        if self.web_search_options:
+            notes.append("web_search_options are not available from local models")
         return notes
 
     def honored_fields(self) -> dict[str, Any]:

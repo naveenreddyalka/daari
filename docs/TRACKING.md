@@ -4324,6 +4324,15 @@ allowlists and warns when the web-ui origin is missing. Covered by
 `server.tls.*`, and `auth.*` throttle knobs without wiping the `rpd` footnote.
 Covered by `tests/unit/test_config_server_tls_auth_docs.py`.
 
+### Forward remaining OpenAI chat params ([#1007](https://github.com/naveenreddyalka/daari/issues/1007))
+
+<!-- tracking:#1007 -->
+**Status:** Done (2026-09-23). `ChatCompletionRequest` / `SamplingParams` declare
+`store`, `metadata`, `prediction`, `modalities`, `audio`, `verbosity`,
+`web_search_options`; `openai_payload()` also emits `logprobs` / `n`; local
+tiers warn via always-on `x-daari-warning` (no `X-Daari-Meta` required).
+Covered by `tests/unit/test_remaining_openai_chat_params.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
