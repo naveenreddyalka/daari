@@ -123,6 +123,19 @@ def normalize_reasoning_effort(raw: Any) -> str | None:
     return text or None
 
 
+def _normalize_ollama_think(raw: Any) -> tuple[bool | str | None, str | None]:
+    """Return (ollama_think_value, reasoning_effort) from a facade `think` (#1011)."""
+    if isinstance(raw, bool):
+        return raw, ("medium" if raw else "minimal")
+    if isinstance(raw, str):
+        level = raw.strip().lower()
+        if level in {"low", "medium", "high", "max"}:
+            # OpenAI reasoning_effort has no `max`; map it to high for L6.
+            effort = "high" if level == "max" else level
+            return level, effort
+    return None, None
+
+
 def _normalize_parallel_tool_calls(raw: Any) -> bool | None:
     if isinstance(raw, bool):
         return raw
@@ -173,12 +186,16 @@ class SamplingParams(BaseModel):
     logprobs: bool | None = None
     # Client reasoning_effort (minimal|low|medium|high); forwarded / mapped (#297).
     reasoning_effort: str | None = None
-    # OpenAI/Anthropic/OpenRouter service_tier (flex|standard|priority) (#430).
+    # Client service_tier (flex|standard|priority|fast); forwarded / mapped (#430).
     service_tier: str | None = None
     # Agent SDK / OpenAI chat knobs (#940).
     parallel_tool_calls: bool | None = None
     logit_bias: dict[str, float] | None = None
     top_logprobs: int | None = None
+    # Facade top-level Ollama `think` (bool or level string) (#1011).
+    ollama_think_value: bool | str | None = None
+    # Facade top-level Ollama `keep_alive` (duration string or number) (#1011).
+    keep_alive: Any | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -315,6 +332,20 @@ class SamplingParams(BaseModel):
             stop = None
 
         cap = options.get("num_predict")
+        wants_json = False
+        json_schema = None
+        fmt = options.get("format")
+        if fmt == "json" or fmt is True:
+            wants_json = True
+        elif isinstance(fmt, dict):
+            # Schema object (or OpenAI-shaped wrapper) for structured output.
+            if isinstance(fmt.get("schema"), dict):
+                json_schema = fmt["schema"]
+            elif any(key in fmt for key in ("type", "properties", "$schema")):
+                json_schema = fmt
+            if json_schema is not None:
+                wants_json = True
+
         return cls(
             # -1 and -2 are Ollama's "unlimited" and "fill context"; leaving them
             # unset means the same thing without pretending it was a request.
@@ -323,7 +354,35 @@ class SamplingParams(BaseModel):
             top_k=options.get("top_k"),
             stop=stop or None,
             seed=options.get("seed"),
+            response_format_json=wants_json,
+            json_schema=json_schema,
         )
+
+    @classmethod
+    def from_ollama_facade(
+        cls,
+        options: dict[str, Any] | None,
+        *,
+        think: Any = None,
+        format: Any = None,
+        keep_alive: Any = None,
+    ) -> SamplingParams:
+        """Merge top-level Ollama facade knobs into SamplingParams (#1011)."""
+        merged = dict(options or {})
+        if format is not None and "format" not in merged:
+            merged["format"] = format
+        params = cls.from_ollama_options(merged)
+        think_value, effort = _normalize_ollama_think(think)
+        updates: dict[str, Any] = {}
+        if think_value is not None:
+            updates["ollama_think_value"] = think_value
+        if effort is not None:
+            updates["reasoning_effort"] = effort
+        if keep_alive is not None:
+            updates["keep_alive"] = keep_alive
+        if updates:
+            return params.model_copy(update=updates)
+        return params
 
     def ollama_options(self) -> dict[str, Any]:
         """The subset Ollama's `options` block understands."""
@@ -355,8 +414,10 @@ class SamplingParams(BaseModel):
             return self.json_schema
         return "json" if self.response_format_json else None
 
-    def ollama_think(self) -> str | None:
-        """Map reasoning_effort to Ollama's top-level `think`, or None to omit."""
+    def ollama_think(self) -> bool | str | None:
+        """Ollama top-level `think`: facade value, else reasoning_effort map."""
+        if self.ollama_think_value is not None:
+            return self.ollama_think_value
         effort = normalize_reasoning_effort(self.reasoning_effort)
         if effort is None:
             return None

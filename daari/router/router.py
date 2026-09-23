@@ -313,10 +313,12 @@ class OllamaExecutor:
         response_format = request.sampling.ollama_format()
         if response_format:
             payload["format"] = response_format
-        # reasoning_effort → top-level think when the model supports levels (#297).
+        # reasoning_effort / facade think → top-level think when supported (#297/#1011).
         think = request.sampling.ollama_think()
         if think is not None and model_supports_thinking(model):
             payload["think"] = think
+        if request.sampling.keep_alive is not None:
+            payload["keep_alive"] = request.sampling.keep_alive
         return payload
 
     async def execute(self, request: InternalRequest) -> InternalResponse:
