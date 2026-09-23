@@ -13,33 +13,32 @@
 
 ## Where daari stands (verified in-tree, 2026-09-23)
 
-Full drain again: both 09-22 sets (correlation + data-plane/stream-fidelity)
-merged, plus overnight extras — Idempotency-Key, CORS/security headers,
-TLS/body-cap/auth-throttle docs, `input_audio` on chat and Responses, MCP
-`ttlMs`/`cacheScope`, ASR/TTS/embed retry, X-Request-ID on every surface and
-hop, pooled httpx and Postgres. Queue at scan start: two P3 audio follow-ups.
+Second scan same day. Morning's client-parameter-fidelity set is still open
+in the queue (non-stream tools, `service_tier` ingress, `strict`/`name`,
+chat drop cluster, Anthropic thinking/metadata/`top_k`) plus two P3 audio
+follow-ups. This run pivots to **facade + Responses shape + drop visibility**
+— gaps the earlier pass left in the watch row.
 
-**Outward (this run):** **Ollama v0.34.3 stable** — `/api/show` thinking
-controls (`values`+`default`); daari's facade parity already shipped, watch
-row resolved. **LiteLLM v1.102.1** patch wave (backports); dev channel
-v1.104.0-dev.1 shows MCP live-session visibility, Amazon Transcribe
-passthrough, A2A Foundry Entra auth, per-deployment `max_parallel_requests`
-429. **Portkey v2.24.0**, **Kong 2.1.0**, **vLLM 0.30.0**, OpenRouter
-(08-19), MCP blog (08-22 roadmap) all unchanged.
+**Outward (this run):** **LiteLLM v1.104.0-dev.1** still the tip (MCP live
+sessions, Transcribe, A2A Entra); stable patch train unchanged from morning.
+**Ollama v0.34.3**, **vLLM 0.30.0** unchanged. **OpenRouter** Batch API
+(09-22) + US in-region routing (09-09) — daari already has Batch/Files;
+region pin stays a watch until a tenant asks. **Kong AI Gateway** changelog
+shows 2.0.3 (08-31), not a 2.1 GA bump. Portkey Agent Gateway / Prisma AIRS
+narrative unchanged (compliance deferred).
 
-**Inward theme: client parameter fidelity** (code-verified): frontier OpenAI
-non-stream `execute()` never attaches `tools` (stream path does);
-`service_tier` is plumbed through `SamplingParams` but neither HTTP ingress
-model declares it; the `response_format` rebuild hardcodes `name:"daari"` and
-strips `strict`; `store`/`metadata`/`prediction`/`modalities`/output
-`audio`/`verbosity`/`web_search_options` die on `extra="ignore"` and parsed
-`logprobs`/`n` never reach `openai_payload()`; Anthropic request-level
-`thinking` budgets and `metadata` are dropped and `top_k` misses
-`to_anthropic_payload`. Verified fine — not filing: `parallel_tool_calls`/
-`logit_bias`/`top_logprobs` forwarded; `max_completion_tokens` precedence;
-`reasoning_effort` → Ollama `think`; Anthropic system blocks +
-`cache_control` + `output_format` + thinking-block replay; facade
-`/api/show` thinking + `/api/tags` capabilities.
+**Inward theme: facade contract + Responses shapes (code-verified):**
+`/api/show` advertises thinking controls but `OllamaChatRequest` never
+declares top-level `think`/`format`/`keep_alive` (`extra="ignore"`);
+generate has `format` only. Responses `from_responses_body` only renames
+`max_output_tokens` — Agents SDK `reasoning.effort` and `text.format` never
+reach `SamplingParams`. No default dropped-params header. MCP explorers get
+`Method not found` on `resources/list` / `prompts/list`. Stream host failover
+has unit tests but no hermetic TTFT ceiling.
+
+Verified fine / already queued — not re-filing: chat param cluster and
+Anthropic thinking budget (morning filings); Ollama show thinking object;
+Idempotency-Key docs; pooled httpx/Postgres.
 
 ---
 
@@ -47,36 +46,42 @@ strips `strict`; `store`/`metadata`/`prediction`/`modalities`/output
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Non-stream frontier OpenAI omits `tools`/`tool_choice`** — stream path attaches them, `execute()` does not; agent loops break exactly on escalation | 5 | 1 | Everyone (table stakes) | Lossless escalation is the pitch — same behavior local and frontier | File ([#1006](https://github.com/naveenreddyalka/daari/issues/1006)) |
-| 2 | **`service_tier` dropped at both HTTP ingresses** — `SamplingParams` forwards it but the request models never deliver it | 4 | 1 | Portkey v2.22+ (tier-aware pricing incl. `fast`) | Feeds daari's own admission priority + budget pricing | File ([#1005](https://github.com/naveenreddyalka/daari/issues/1005)) |
-| 3 | **`json_schema` `strict` + `name` stripped in `response_format` rebuild** — structured-output contract silently downgraded on frontier + openai-kind local | 4 | 1 | LiteLLM / direct APIs | vLLM/llama.cpp honor `strict` grammar decoding — local tiers deserve the real contract | File ([#1008](https://github.com/naveenreddyalka/daari/issues/1008)) |
-| 4 | **OpenAI chat silent-drop cluster** — `store`, `metadata`, `prediction`, `modalities`, output `audio`, `verbosity`, `web_search_options` eaten by `extra="ignore"`; `logprobs`/`n` parsed but never forwarded; warnings need opt-in header | 4 | 2 | LiteLLM / Portkey (full passthrough) | Drop-in replacement means every knob works or warns loudly | File ([#1007](https://github.com/naveenreddyalka/daari/issues/1007)) |
-| 5 | **Anthropic `thinking` budget / `metadata` / `top_k` parity** — Claude Code's request-level thinking never reaches L6; budget could map to local `think` | 4 | 2 | Direct Anthropic API | Only a router can map a thinking budget onto local reasoning levels | File ([#1009](https://github.com/naveenreddyalka/daari/issues/1009)) |
-| 6 | Ollama facade `keep_alive`/`format`/`think` passthrough (facade advertises thinking controls but ignores chat `think`) / MCP live-session visibility (LiteLLM dev) / moderations + rerank / WIF / A2A / SOC 2 / admin UI | 2–3 | 2–5 | Ollama native / LiteLLM / cloud | Facade + session gaps file on client demand; compliance waits for a paying ask | Watch |
+| 1 | **Facade ignores chat `think`/`format`/`keep_alive`** — show advertises thinking; native Ollama clients' knobs vanish under `extra="ignore"` | 5 | 2 | Ollama native | Desktop IDEs get the full router only if the facade matches real Ollama | File ([#1011](https://github.com/naveenreddyalka/daari/issues/1011)) |
+| 2 | **Responses-native shapes unmapped** — `reasoning.effort`, `text.format`, `tool_choice`, `service_tier` never feed `SamplingParams` (chat names only) | 4 | 2 | Direct OpenAI Responses / Agents SDK | Same local grammar + L6 path as chat when agents speak Responses | File ([#1012](https://github.com/naveenreddyalka/daari/issues/1012)) |
+| 3 | **No default dropped-param visibility** — operators cannot see which knobs the tier ignored without opt-in | 4 | 2 | Portkey / LiteLLM dashboards | Localhost can put the drop list on the same response the agent already holds | File ([#1013](https://github.com/naveenreddyalka/daari/issues/1013)) |
+| 4 | **MCP `resources/list` / `prompts/list` Method not found** — tools-only server; explorers still probe and paint red errors | 3 | 1 | LiteLLM MCP gateway | Honest empty lists keep local handshake green | File ([#1014](https://github.com/naveenreddyalka/daari/issues/1014)) |
+| 5 | **No hermetic TTFT ceiling for stream host failover** — unit coverage only; regressions can hide in optional benches | 3 | 1 | (none — daari-specific) | Local-first streaming promise is enforceable only with a bound | File ([#1015](https://github.com/naveenreddyalka/daari/issues/1015)) |
+| 6 | Morning parameter-fidelity queue (non-stream frontier tools, `service_tier` ingress, `strict`/`name`, chat drop cluster, Anthropic thinking/metadata/`top_k`) / OpenRouter in-region pin / MCP live-session visibility / moderations + rerank / WIF / A2A / SOC 2 / admin UI | 2–5 | 1–5 | LiteLLM / Portkey / cloud | Prior queue drains first; compliance waits for a paying ask | Watch / queued |
 
-Pruned this run: both 09-22 sets and the 09-21 security/browser rows (shipped);
-Ollama thinking-controls watch row (parity verified in-tree).
+Pruned this run: none shipped since morning; Ollama thinking-controls watch
+row stays resolved. Morning File rows remain open (not duplicated).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Lossless escalation** — tools on non-stream frontier calls and thinking
-   budgets forwarded; routing must never change request semantics.
-2. **Parameter fidelity** — `service_tier`, `strict` structured outputs, and
-   the passthrough cluster so evals through daari match direct calls.
-3. **No silent drops** — a visible warning channel for anything the serving
-   tier can't honor, without opt-in headers.
-4. **Facade completeness** — Ollama facade honors `keep_alive`/`format`/
-   `think` so native clients get what `/api/show` advertises.
-5. **MCP session visibility** — stateless ingress today; LiteLLM's dev
-   channel ships live-session views, file when a fleet asks.
+1. **Facade contract** — native Ollama `think`/`format`/`keep_alive` match
+   what `/api/show` advertises so desktop clients stop lying to themselves.
+2. **Lossless escalation** — drain the morning queue (non-stream tools,
+   thinking budgets) so routing never changes request semantics.
+3. **Responses shape fidelity** — Agents SDK `reasoning` / `text.format`
+   map onto the same SamplingParams as chat.
+4. **No silent drops** — default `X-Daari-Dropped-Params` (or equivalent)
+   on every response that ignored a knob.
+5. **MCP explorer hygiene** — empty resources/prompts lists; live-session
+   visibility stays deferred until a fleet asks.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI, OCR until a paying ask) stay deferred.
 
 ---
 
 ## Changelog
+
+- **2026-09-23 (facade + Responses shapes)** — Second scan. Outward flat
+  vs morning (LiteLLM still on v1.104.0-dev.1; OpenRouter Batch 09-22 noted;
+  Kong 2.0.3). Inward: facade drops `think`/`format`/`keep_alive`, Responses
+  shape mapper gap, missing drop header, MCP probe 404s, no hermetic stream
+  failover ceiling. Filed five. Morning fidelity filings remain open.
 
 - **2026-09-23 (client parameter fidelity)** — Ollama v0.34.3 stable
   (thinking controls; facade parity already in-tree), LiteLLM v1.102.1
