@@ -4369,6 +4369,14 @@ Docs: [headers.md](developer/reference/headers.md). Covered by
 [mcp.md](developer/guides/clients/mcp.md). Covered by
 `tests/unit/test_mcp_server.py`.
 
+### Hermetic stream host failover ceilings ([#1015](https://github.com/naveenreddyalka/daari/issues/1015))
+
+<!-- tracking:#1015 -->
+**Status:** Done (2026-09-23). Benchmark pins pre-first-token failover under
+`STREAM_FAILOVER_CEILING_S` (0.500s) and happy-path under
+`STREAM_HAPPY_PATH_CEILING_S` (0.200s). Covered by
+`tests/benchmark/test_hermetic_paths.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
