@@ -127,6 +127,14 @@ class ChatCompletionRequest(BaseModel):
     parallel_tool_calls: Any | None = None
     logit_bias: Any | None = None
     top_logprobs: Any | None = None
+    # Remaining OpenAI chat knobs (#1007). Same #161 pattern.
+    store: Any | None = None
+    metadata: Any | None = None
+    prediction: Any | None = None
+    modalities: Any | None = None
+    audio: Any | None = None
+    verbosity: Any | None = None
+    web_search_options: Any | None = None
     # OpenRouter `provider` object (G2 / #224). extra="ignore" would drop it.
     provider: Any | None = None
     # OpenAI reasoning_effort (o-series / gpt-5 clients). Same #161 pattern (#297).

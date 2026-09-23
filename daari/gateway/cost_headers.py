@@ -30,6 +30,8 @@ SESSION_COST_AVOIDED_HEADER = "x-daari-session-cost-avoided"
 TIER_HEADER = "x-daari-tier"
 CACHE_HEADER = "x-daari-cache"
 REGION_HEADER = "x-daari-region"
+# Always-on sampling / soft-warning signal — no X-Daari-Meta opt-in (#1007).
+WARNING_HEADER = "x-daari-warning"
 
 FRONTIER_TIER = "L6"
 
@@ -236,6 +238,8 @@ def response_cost_headers(
     }
     if meta.region:
         headers[REGION_HEADER] = str(meta.region)
+    if meta.warning:
+        headers[WARNING_HEADER] = str(meta.warning)
     sid = (session_id or "").strip()
     if sid and savings is not None:
         headers[SESSION_COST_AVOIDED_HEADER] = _decimal(savings.add(sid, avoided))
