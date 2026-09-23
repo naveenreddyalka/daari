@@ -289,6 +289,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     async for sse_chunk in stream_with_keepalive(
                         ctx.router.stream_openai_chunks(internal),
                         interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                        idle_timeout_seconds=ctx.settings.server.stream_idle_timeout_seconds,
                         frame=NDJSON_KEEPALIVE_FRAME,
                         on_cancel=lambda: note_request_cancelled(
                             ctx.metrics, "stream", model=client_model

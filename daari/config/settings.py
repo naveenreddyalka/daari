@@ -135,10 +135,21 @@ class ServerSettings(BaseModel):
         default=10.0,
         ge=0.0,
         description=(
-            "Idle seconds before a streaming response emits a keepalive frame "
-            "(SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a "
-            "blank line on the NDJSON Ollama facade). Keeps proxies and SDK read "
-            "timeouts from dropping slow-to-first-token streams. 0 disables."
+            "Idle seconds between streamed chunks before emitting a keepalive "
+            "frame for the entire stream lifetime (#972) (SSE comment "
+            "`: keepalive` on OpenAI/Anthropic/Responses routes, a blank line "
+            "on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts "
+            "from dropping slow streams (including mid-generation pauses). "
+            "0 disables."
+        ),
+    )
+    stream_idle_timeout_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "If upstream produces no chunk for this many seconds mid-stream, "
+            "end with an in-band error event instead of hanging (#972). "
+            "0 disables (default)."
         ),
     )
 

@@ -375,6 +375,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         async for event in stream_with_keepalive(
                             ctx.router.stream_anthropic_events(internal, outcome=outcome),
                             interval_seconds=ctx.settings.server.sse_keepalive_seconds,
+                            idle_timeout_seconds=ctx.settings.server.stream_idle_timeout_seconds,
                             on_cancel=lambda: note_request_cancelled(
                                 ctx.metrics, "stream", model=body.model
                             ),

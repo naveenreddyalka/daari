@@ -4199,6 +4199,14 @@ mismatched body returns 409 `idempotency_conflict`; in-flight duplicates wait.
 SQLite default / postgres when configured; `daari prune` sweeps expired rows.
 Covered by `tests/unit/test_idempotency.py`.
 
+### SSE keepalive for the entire stream lifetime ([#972](https://github.com/naveenreddyalka/daari/issues/972))
+
+<!-- tracking:#972 -->
+**Status:** Done (2026-09-22). `stream_with_keepalive` emits heartbeats between
+chunks for the full stream (not only TTFT); optional
+`server.stream_idle_timeout_seconds` ends hung streams with an in-band error.
+Covered by `tests/unit/test_streaming_keepalive.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
