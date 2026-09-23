@@ -4247,6 +4247,14 @@ with configurable `ttlMs` (`integrations.mcp_list_cache.ttl_ms`, default
 60000) and `cacheScope` (`public` unfiltered / `private` when ACL-filtered).
 Covered by `tests/unit/test_mcp_server.py`.
 
+### RetryPolicy on ASR, TTS, and embedding HTTP ([#980](https://github.com/naveenreddyalka/daari/issues/980))
+
+<!-- tracking:#980 -->
+**Status:** Done (2026-09-23). Transcriptions, speech, and Ollama embed HTTP
+go through `run_upstream` with `RetryPolicy.from_settings(upstream.retry)`;
+transient 5xx/connect retry, non-retryable 4xx fail fast. Covered by
+`tests/unit/test_modality_retry.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

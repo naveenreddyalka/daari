@@ -116,7 +116,11 @@ async def post_transcription(
     content_type: str,
     form: dict[str, str],
     timeout: float,
+    retry: Any | None = None,
+    metrics: Any | None = None,
 ) -> httpx.Response:
+    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+
     files = {
         "file": (
             filename or "audio",
@@ -124,8 +128,22 @@ async def post_transcription(
             content_type or "application/octet-stream",
         )
     }
-    return await _shared_client().post(
-        url, headers=headers, data=form, files=files, timeout=timeout
+    policy = retry if isinstance(retry, RetryPolicy) else RetryPolicy.from_settings(retry)
+
+    async def attempt() -> httpx.Response:
+        response = await _shared_client().post(
+            url, headers=headers, data=form, files=files, timeout=timeout
+        )
+        if response.status_code in RETRYABLE_STATUS:
+            response.raise_for_status()
+        return response
+
+    return await run_upstream(
+        attempt,
+        upstream="asr",
+        policy=policy,
+        timeout=timeout,
+        metrics=metrics,
     )
 
 
@@ -297,6 +315,7 @@ async def handle_transcription(
     phase = "translation" if upstream_path.rstrip("/").endswith("translations") else "asr"
     try:
         timeout = nonstream_timeout(target.timeout, phase)
+        retry_settings = getattr(getattr(ctx.settings, "upstream", None), "retry", None)
         upstream = await await_unless_disconnected(
             request,
             post_transcription(
@@ -307,6 +326,8 @@ async def handle_transcription(
                 content_type=file.content_type or "application/octet-stream",
                 form=form,
                 timeout=timeout,
+                retry=retry_settings,
+                metrics=ctx.metrics,
             ),
             metrics=ctx.metrics,
             phase=phase,
