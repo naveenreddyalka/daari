@@ -36,6 +36,19 @@ No tunnel required (localhost is fine).
 
 Chat once, then `daari report`. Agent turns use `/v1/messages` with tool passthrough.
 
+## Thinking budgets
+
+Claude Code's request-level `thinking: {type, budget_tokens}` is forwarded
+verbatim on L6 Anthropic escalations. Locally it maps onto Ollama `think` via
+`reasoning_effort`:
+
+| `budget_tokens` | local `think` |
+|-----------------|---------------|
+| ≤ 2048 | `low` |
+| ≤ 8192 | `medium` |
+| > 8192 | `high` |
+| `type: disabled` | omitted |
+
 ## Troubleshoot
 
 | Problem | Fix |

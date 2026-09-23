@@ -4333,6 +4333,15 @@ Covered by `tests/unit/test_config_server_tls_auth_docs.py`.
 tiers warn via always-on `x-daari-warning` (no `X-Daari-Meta` required).
 Covered by `tests/unit/test_remaining_openai_chat_params.py`.
 
+### Anthropic thinking, metadata, and top_k parity ([#1009](https://github.com/naveenreddyalka/daari/issues/1009))
+
+<!-- tracking:#1009 -->
+**Status:** Done (2026-09-23). `/v1/messages` accepts `thinking` / `metadata`;
+`to_anthropic_payload` forwards them plus `top_k`; thinking budgets map to
+Ollama `think` via `reasoning_effort`. Docs:
+[claude-code.md](developer/guides/clients/claude-code.md#thinking-budgets).
+Covered by `tests/unit/test_anthropic_thinking_parity.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

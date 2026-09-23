@@ -181,6 +181,35 @@ def _normalize_dict(raw: Any) -> dict[str, Any] | None:
     return None
 
 
+def _normalize_thinking(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, dict) and raw:
+        return dict(raw)
+    return None
+
+
+def reasoning_effort_from_thinking(thinking: dict[str, Any] | None) -> str | None:
+    """Map Anthropic request-level thinking onto reasoning_effort (#1009).
+
+    ``type: disabled`` → no local think. Otherwise budget_tokens buckets:
+    ≤2048 → low, ≤8192 → medium, else → high. Enabled without a budget → medium.
+    """
+    if not thinking:
+        return None
+    kind = thinking.get("type")
+    if isinstance(kind, str) and kind.strip().lower() == "disabled":
+        return None
+    budget = thinking.get("budget_tokens")
+    if isinstance(budget, bool) or not isinstance(budget, int):
+        if isinstance(kind, str) and kind.strip().lower() == "enabled":
+            return "medium"
+        return None
+    if budget <= 2048:
+        return "low"
+    if budget <= 8192:
+        return "medium"
+    return "high"
+
+
 def _normalize_modalities(raw: Any) -> list[str] | None:
     if not isinstance(raw, list) or not raw:
         return None
@@ -234,6 +263,8 @@ class SamplingParams(BaseModel):
     audio: dict[str, Any] | None = None
     verbosity: str | None = None
     web_search_options: dict[str, Any] | None = None
+    # Anthropic request-level thinking object (#1009).
+    thinking: dict[str, Any] | None = None
     # Facade top-level Ollama `think` (bool or level string) (#1011).
     ollama_think_value: bool | str | None = None
     # Facade top-level Ollama `keep_alive` (duration string or number) (#1011).
@@ -349,6 +380,8 @@ class SamplingParams(BaseModel):
             pass
         elif not isinstance(tool_choice, str):
             tool_choice = None
+        thinking = _normalize_thinking(body.get("thinking"))
+        effort = reasoning_effort_from_thinking(thinking)
         return cls(
             max_tokens=int(raw_max) if isinstance(raw_max, int) and raw_max > 0 else None,
             top_p=body.get("top_p"),
@@ -358,6 +391,9 @@ class SamplingParams(BaseModel):
             json_schema=json_schema,
             tool_choice=tool_choice,
             service_tier=_normalize_service_tier(body.get("service_tier")),
+            thinking=thinking,
+            metadata=_normalize_dict(body.get("metadata")),
+            reasoning_effort=effort,
         )
 
     @classmethod
