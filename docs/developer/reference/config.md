@@ -16,8 +16,16 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
+| `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File/audio upload routes may use a higher floor so `files.max_total_bytes` still applies. Env: `DAARI_SERVER__MAX_BODY_BYTES`. |
+| `server.tls.cert_file` | str | `''` | PEM certificate path (or `secret://` ref). Env: `DAARI_SERVER__TLS__CERT_FILE`. |
+| `server.tls.key_file` | str | `''` | PEM private key path or `secret://` ref. Env: `DAARI_SERVER__TLS__KEY_FILE`. |
+| `server.tls.client_ca` | str | `''` | Optional client CA path/ref; when set, require a valid client cert (mTLS). Env: `DAARI_SERVER__TLS__CLIENT_CA`. |
 | `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds between streamed chunks before emitting a keepalive for the entire stream lifetime (#972). SSE comment `: keepalive` on OpenAI/Anthropic/Responses; blank line on NDJSON Ollama. 0 disables. |
 | `server.stream_idle_timeout_seconds` | float | `0` | If upstream produces no chunk for this many seconds, end with an in-band `stream_idle_timeout` error (#972). 0 disables. |
+| `auth.throttle_enabled` | bool | `True` | When false, invalid-key attempts are never rate-limited. |
+| `auth.max_failures` | int | `10` | Invalid-key failures per client IP within `window_seconds` before 429. 0 disables the counter. Env: `DAARI_AUTH__MAX_FAILURES`. |
+| `auth.window_seconds` | float | `60.0` | Sliding window for `auth.max_failures`. Env: `DAARI_AUTH__WINDOW_SECONDS`. |
+| `auth.exempt_loopback` | bool | `True` | Skip throttling for `127.0.0.1` / `::1` / `localhost`. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |

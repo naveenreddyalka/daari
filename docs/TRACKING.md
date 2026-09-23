@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-23 (doctor cors_origins — [#999](https://github.com/naveenreddyalka/daari/issues/999))
+> Last updated: 2026-09-23 (config TLS/auth rows — [#998](https://github.com/naveenreddyalka/daari/issues/998))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -4285,6 +4285,13 @@ onto `Message.audio` and runs the same ASR inject path as chat. Docs:
 **Status:** Done (2026-09-23). Optional `cors_origins` doctor check tips empty
 allowlists and warns when the web-ui origin is missing. Covered by
 `tests/unit/test_doctor_cors_origins.py`.
+
+### Docs: server body/TLS and auth throttle rows ([#998](https://github.com/naveenreddyalka/daari/issues/998))
+
+<!-- tracking:#998 -->
+**Status:** Done (2026-09-23). `config.md` documents `server.max_body_bytes`,
+`server.tls.*`, and `auth.*` throttle knobs without wiping the `rpd` footnote.
+Covered by `tests/unit/test_config_server_tls_auth_docs.py`.
 
 ## How to update
 
