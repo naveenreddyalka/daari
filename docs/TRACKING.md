@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-23 (cors/security_headers config docs — [#966](https://github.com/naveenreddyalka/daari/issues/966))
+> Last updated: 2026-09-23 (Responses input_audio — [#997](https://github.com/naveenreddyalka/daari/issues/997))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -4270,6 +4270,14 @@ inline clips are transcribed into the local-tier prompt. Docs:
 **Status:** Done (2026-09-23). `docs/developer/reference/config.md` documents
 `server.cors_origins` and `server.security_headers`. Covered by
 `tests/unit/test_cors_security_headers_docs.py`.
+
+### Responses API input_audio ([#997](https://github.com/naveenreddyalka/daari/issues/997))
+
+<!-- tracking:#997 -->
+**Status:** Done (2026-09-23). Responses message content extracts `input_audio`
+onto `Message.audio` and runs the same ASR inject path as chat. Docs:
+[asr.md](developer/guides/backends/asr.md#chat-input_audio-blocks). Covered by
+`tests/unit/test_responses_input_audio.py`.
 
 ## How to update
 

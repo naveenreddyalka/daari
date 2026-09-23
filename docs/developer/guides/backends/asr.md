@@ -19,7 +19,14 @@ Helm fleets can set `asr.baseUrl`, which mounts `DAARI_ASR__BASE_URL`. Optional 
 
 ## Chat `input_audio` blocks
 
-OpenAI chat completions may include `{"type": "input_audio", "input_audio": {"data": "<base64>", "format": "wav"|"mp3"}}` parts. daari keeps those on the internal message and rebuilds them on the L6 OpenAI payload so frontier never sees a silently stripped turn. When `asr.base_url` is set, daari also POSTs each clip to the local ASR endpoint and appends the transcript to the message text before local tiers run — voice-agent turns can stay on-box. With ASR unset, local tiers see only the text caption (if any); the raw audio still rides to frontier on escalation.
+OpenAI chat completions and Responses message content may include
+`{"type": "input_audio", "input_audio": {"data": "<base64>", "format": "wav"|"mp3"}}`
+parts. daari keeps those on the internal message and rebuilds them on the L6 OpenAI
+payload so frontier never sees a silently stripped turn. When `asr.base_url` is set,
+daari also POSTs each clip to the local ASR endpoint and appends the transcript to the
+message text before local tiers run — voice-agent turns can stay on-box. With ASR unset,
+local tiers see only the text caption (if any); the raw audio still rides to frontier on
+escalation.
 
 ## Request
 
