@@ -47,7 +47,24 @@ async def test_initialize_handshake(settings):
     result = payload["result"]
     assert result["protocolVersion"] == "2025-03-26"
     assert "tools" in result["capabilities"]
+    assert result["capabilities"]["resources"] == {"listChanged": False}
+    assert result["capabilities"]["prompts"] == {"listChanged": False}
     assert result["serverInfo"]["name"] == "daari"
+
+
+@pytest.mark.asyncio
+async def test_resources_and_prompts_list_return_empty(settings):
+    """Explorer clients probe these; empty lists beat Method not found (#1014)."""
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resources = await _rpc(client, "resources/list")
+        prompts = await _rpc(client, "prompts/list", rpc_id=2)
+    assert resources.status_code == 200
+    assert resources.json()["result"] == {"resources": []}
+    assert prompts.status_code == 200
+    assert prompts.json()["result"] == {"prompts": []}
+    assert "error" not in resources.json()
+    assert "error" not in prompts.json()
 
 
 @pytest.mark.asyncio

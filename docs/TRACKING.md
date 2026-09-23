@@ -4361,6 +4361,14 @@ stream sets the header via `StreamOutcome` when the served tier is not L6.
 Docs: [headers.md](developer/reference/headers.md). Covered by
 `tests/unit/test_dropped_params.py`.
 
+### MCP empty resources/list and prompts/list ([#1014](https://github.com/naveenreddyalka/daari/issues/1014))
+
+<!-- tracking:#1014 -->
+**Status:** Done (2026-09-23). `initialize` advertises empty `resources` /
+`prompts` capabilities; list methods return `[]`. Docs:
+[mcp.md](developer/guides/clients/mcp.md). Covered by
+`tests/unit/test_mcp_server.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

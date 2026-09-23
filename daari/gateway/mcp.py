@@ -815,6 +815,14 @@ class MCPGatewayAdapter(GatewayAdapter):
                             rpc_id, _tools_list_payload(ctx, governance.policy)
                         ),
                     )
+                if method == "resources/list":
+                    return _rpc_response(
+                        request, _jsonrpc_result(rpc_id, {"resources": []})
+                    )
+                if method == "prompts/list":
+                    return _rpc_response(
+                        request, _jsonrpc_result(rpc_id, {"prompts": []})
+                    )
                 if method == "tasks/get":
                     return await _handle_tasks_get(ctx, request, rpc_id, params)
                 if method == "tasks/update":
