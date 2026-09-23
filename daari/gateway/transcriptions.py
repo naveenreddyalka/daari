@@ -128,7 +128,11 @@ async def post_transcription(
             content_type or "application/octet-stream",
         )
     }
-    policy = retry if isinstance(retry, RetryPolicy) else RetryPolicy.from_settings(retry)
+    policy = (
+        retry
+        if isinstance(retry, RetryPolicy)
+        else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
+    )
 
     async def attempt() -> httpx.Response:
         response = await _shared_client().post(

@@ -98,7 +98,11 @@ async def post_speech(
 ) -> httpx.Response:
     from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
 
-    policy = retry if isinstance(retry, RetryPolicy) else RetryPolicy.from_settings(retry)
+    policy = (
+        retry
+        if isinstance(retry, RetryPolicy)
+        else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
+    )
 
     async def attempt() -> httpx.Response:
         response = await _shared_client().post(

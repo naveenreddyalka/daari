@@ -237,7 +237,11 @@ class OllamaEmbedder:
             policy = (
                 self.retry
                 if isinstance(self.retry, RetryPolicy)
-                else RetryPolicy.from_settings(self.retry)
+                else (
+                    RetryPolicy(attempts=1)
+                    if self.retry is None
+                    else RetryPolicy.from_settings(self.retry)
+                )
             )
 
             async def attempt() -> httpx.Response:
@@ -286,7 +290,11 @@ class OllamaEmbedder:
             policy = (
                 self.retry
                 if isinstance(self.retry, RetryPolicy)
-                else RetryPolicy.from_settings(self.retry)
+                else (
+                    RetryPolicy(attempts=1)
+                    if self.retry is None
+                    else RetryPolicy.from_settings(self.retry)
+                )
             )
 
             async def attempt() -> httpx.Response:
