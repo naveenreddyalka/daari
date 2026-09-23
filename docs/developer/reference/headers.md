@@ -33,6 +33,8 @@ bodies. Values agree with `daari_meta` on the same response.
 | `x-daari-session-cost-avoided` | Running sum of `x-daari-response-cost-avoided` for the `X-Daari-Session` id, TTL matching `routing.session_affinity_ttl_seconds` (default 30m). Omitted when the client sends no session id. With `cache.backend: redis`, the accumulator is fleet-shared (same Redis as pins); otherwise it is per-process. |
 | `x-daari-tier` | Serving tier (`L0`, `L1`, `L3` … `L6`, `Lt`, `L2`, `CCS`). Same as `daari_meta.tier`. |
 | `x-daari-cache` | `hit` (L0/L1 served the answer), `draft` (an L1 near-miss steered generation), or `miss`. |
+| `x-daari-warning` | Human-readable soft warning (sampling knobs the local tier could not honor, budget soft-band, etc.). Always set when `daari_meta.warning` is set — no `X-Daari-Meta` opt-in required. |
+| `x-daari-dropped-params` | Comma-separated client parameter names the serving tier could not honor (e.g. `logprobs,store`). Omitted when nothing was dropped. Same info as the sampling half of `x-daari-warning`, machine-readable. |
 
 Values are plain decimal strings (`0`, `0.0004`), never scientific notation.
 

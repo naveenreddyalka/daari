@@ -404,6 +404,9 @@ class SamplingParams(BaseModel):
         prefers ``reasoning.effort``, ``text.format``, etc.
         """
         mapped = dict(body)
+        # Responses `store` persists the response object locally; it is not the
+        # OpenAI chat `store` distillation flag (#1007 / #1013).
+        mapped.pop("store", None)
         cap = body.get("max_output_tokens")
         if cap is None:
             cap = body.get("max_tokens")
@@ -627,6 +630,39 @@ class SamplingParams(BaseModel):
         if self.web_search_options:
             notes.append("web_search_options are not available from local models")
         return notes
+
+    def dropped_param_names(self) -> list[str]:
+        """Stable, comma-header-ready names for knobs local tiers cannot honor (#1013)."""
+        names: list[str] = []
+        if self.presence_penalty is not None:
+            names.append("presence_penalty")
+        if self.n is not None and self.n > 1:
+            names.append("n")
+        if self.logprobs:
+            names.append("logprobs")
+        if self.top_logprobs is not None:
+            names.append("top_logprobs")
+        if self.logit_bias:
+            names.append("logit_bias")
+        if self.parallel_tool_calls is not None:
+            names.append("parallel_tool_calls")
+        if self.tool_choice == "required" or isinstance(self.tool_choice, dict):
+            names.append("tool_choice")
+        if self.store is not None:
+            names.append("store")
+        if self.metadata:
+            names.append("metadata")
+        if self.prediction:
+            names.append("prediction")
+        if self.modalities:
+            names.append("modalities")
+        if self.audio:
+            names.append("audio")
+        if self.verbosity is not None:
+            names.append("verbosity")
+        if self.web_search_options:
+            names.append("web_search_options")
+        return names
 
     def honored_fields(self) -> dict[str, Any]:
         """Only what actually reaches a backend, for cache keying."""

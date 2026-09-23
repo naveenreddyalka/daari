@@ -663,7 +663,19 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     stream=False,
                     assistant_text=result.content,
                 )
-            return payload
+            from daari.gateway.cost_headers import response_cost_headers
+
+            return JSONResponse(
+                payload,
+                headers=response_cost_headers(
+                    result.daari_meta,
+                    ctx.settings,
+                    prompt_chars=input_chars,
+                    completion_chars=len(result.content or ""),
+                    session_id=internal.meta.session_id,
+                    savings=ctx.router.session_savings,
+                ),
+            )
 
         return router
 
