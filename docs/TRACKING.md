@@ -4224,6 +4224,13 @@ first chunk retry the next healthy host in the same tier (OpenAI and Anthropic
 paths); post-first-token behavior unchanged; breakers record failure/success.
 Covered by `tests/unit/test_stream_host_failover.py`.
 
+### Pooled Postgres connections for fleet stores ([#975](https://github.com/naveenreddyalka/daari/issues/975))
+
+<!-- tracking:#975 -->
+**Status:** Done (2026-09-23). Spend/batches/files/responses share a per-DSN
+`psycopg_pool.ConnectionPool` (`observability.postgres_pool_min/max`, default
+1/4); pools close on app shutdown. Covered by `tests/unit/test_pg_pool.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -1075,6 +1075,9 @@ class ObservabilitySettings(RuntimeSettings):
     # sqlite (default) or postgres for ledger + traces (issue #116).
     backend: Literal["sqlite", "postgres"] = "sqlite"
     postgres_url: str = ""
+    # In-process pool for Postgres-backed stores (#975). Laptop-friendly defaults.
+    postgres_pool_min: int = Field(default=1, ge=0)
+    postgres_pool_max: int = Field(default=4, ge=1)
     # Emit gateway request logs as single-line JSON to stdout (containers).
     structured_json_logs: bool = False
     # Opt-in OTLP logs export of gateway events (issue #849). Requires

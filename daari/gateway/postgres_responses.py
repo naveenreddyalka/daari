@@ -67,14 +67,16 @@ class PostgresResponseStore:
                 self.enabled = False
 
     def _connect(self) -> Any:
+        from daari.gateway.pg_pool import pooled_connection
+
         try:
-            import psycopg
+            import psycopg  # noqa: F401
         except ImportError as exc:
             raise RuntimeError(
                 "responses.backend=postgres requires psycopg — "
-                "pip install 'psycopg[binary]>=3' (or daari[postgres])"
+                "pip install 'psycopg[binary,pool]>=3' (or daari[postgres])"
             ) from exc
-        return psycopg.connect(self.dsn)
+        return pooled_connection(self.dsn)
 
     def put(
         self,
