@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import threading
-from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 _lock = threading.Lock()
 _pools: dict[str, Any] = {}
@@ -53,12 +52,14 @@ def _get_pool(dsn: str) -> Any:
         return pool
 
 
-@contextmanager
-def pooled_connection(dsn: str) -> Iterator[Any]:
-    """Yield a connection from the per-DSN pool (reconnects after Postgres restarts)."""
+def pooled_connection(dsn: str) -> Any:
+    """Return a connection context manager from the per-DSN pool.
+
+    Resolves the pool eagerly so missing psycopg/psycopg_pool raises on
+    ``store._connect()`` the same way bare ``psycopg.connect`` did.
+    """
     pool = _get_pool(dsn)
-    with pool.connection() as conn:
-        yield conn
+    return pool.connection()
 
 
 def close_postgres_pools() -> None:

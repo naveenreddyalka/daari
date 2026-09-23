@@ -104,13 +104,6 @@ class PostgresBatchStore(BatchStore):
     def _pg_connect(self) -> Any:
         from daari.gateway.pg_pool import pooled_connection
 
-        try:
-            import psycopg  # noqa: F401
-        except ImportError as exc:
-            raise RuntimeError(
-                "batches.backend=postgres requires psycopg — "
-                "pip install 'psycopg[binary,pool]>=3' (or daari[postgres])"
-            ) from exc
         return pooled_connection(self.dsn)
 
     def _load_from_db(self) -> None:
