@@ -224,6 +224,21 @@ never an error to the client.
 resurface a denied tool. Off by default; catalogs at or under
 `min_catalog_size` are unchanged.
 
+## tools/list cache hints (MCP 2026-07-28)
+
+`tools/list` (JSON-RPC and `/v1/mcp/query`) includes result `_meta` with
+`ttlMs` and `cacheScope` so clients can cache the catalog between turns:
+
+```yaml
+integrations:
+  mcp_list_cache:
+    ttl_ms: 60000   # default; emitted as _meta.ttlMs
+```
+
+`cacheScope` is `public` when no allow/deny ACL filters the catalog, and
+`private` when a policy filtered the list (Kong-compatible: never advertise
+`public` on ACL-filtered catalogs).
+
 ## Deprecated alias
 
 `POST /v1/mcp/query` remains for older callers. Responses include

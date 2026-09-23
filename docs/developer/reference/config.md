@@ -238,6 +238,7 @@ Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rat
 | `integrations.mcp_tool_search.enabled` | bool | `False` | When true and the catalog exceeds min_catalog_size, rank tools by embedding similarity and return top_k. Default off — listing is unchanged. |
 | `integrations.mcp_tool_search.min_catalog_size` | int | `40` | Catalogs at or under this size are returned unranked. |
 | `integrations.mcp_tool_search.top_k` | int | `40` | Maximum tools returned after ranking. |
+| `integrations.mcp_list_cache.ttl_ms` | int | `60000` | Client-hint TTL in milliseconds for tools/list _meta.ttlMs. 0 still emits the field; clients may treat it as uncacheable. |
 | `integrations.mcp_guardrails.enabled` | bool | `False` |  |
 | `integrations.mcp_guardrails.max_prompt_chars` | int | `0` |  |
 | `integrations.mcp_guardrails.injection_action` | str | `'block'` |  |
