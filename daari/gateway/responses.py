@@ -23,7 +23,7 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
-from daari.gateway.content import extract_images
+from daari.gateway.content import extract_audio, extract_images
 from daari.gateway.internal import InternalRequest, InternalResponse, Message, RequestMeta
 from daari.gateway.request_log import log_gateway_event
 from daari.gateway.response_store import ResponseStore
@@ -122,6 +122,7 @@ def responses_input_to_messages(body: ResponsesRequest) -> list[Message]:
                 role=role,
                 content=_content_to_text(content),
                 images=extract_images(content),
+                audio=extract_audio(content),
             )
         )
     return messages
@@ -476,7 +477,10 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 meta=meta,
                 sampling=SamplingParams.from_responses_body(body.model_dump()),
             )
-            input_chars = sum(len(message.content or "") for message in messages)
+            from daari.gateway.transcriptions import inject_inline_audio_transcripts
+
+            internal = await inject_inline_audio_transcripts(internal, ctx.settings)
+            input_chars = sum(len(message.content or "") for message in internal.messages)
             log_gateway_event(
                 "responses_request",
                 {
