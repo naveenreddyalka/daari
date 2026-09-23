@@ -1259,6 +1259,19 @@ class McpToolSearchSettings(BaseModel):
     )
 
 
+class McpListCacheSettings(BaseModel):
+    """MCP 2026-07-28 tools/list _meta cache hints (#979)."""
+
+    ttl_ms: int = Field(
+        default=60_000,
+        ge=0,
+        description=(
+            "Client-hint TTL in milliseconds for tools/list _meta.ttlMs. "
+            "0 still emits the field; clients may treat it as uncacheable."
+        ),
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -1296,6 +1309,13 @@ class IntegrationsSettings(BaseModel):
         default_factory=McpToolSearchSettings,
         description=(
             "Semantic ranking for large MCP tools/list catalogs (#376). Off by default."
+        ),
+    )
+    mcp_list_cache: McpListCacheSettings = Field(
+        default_factory=McpListCacheSettings,
+        description=(
+            "tools/list _meta cache hints (ttlMs, cacheScope) for MCP 2026-07-28 (#979). "
+            "cacheScope is public when the catalog is not ACL-filtered; private otherwise."
         ),
     )
     mcp_guardrails: GuardrailSettings = Field(

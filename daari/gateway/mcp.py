@@ -238,6 +238,34 @@ def _mcp_list_tools(ctx: AppContext, policy: McpToolPolicy | None = None) -> lis
     return listed
 
 
+def _list_cache_scope(policy: McpToolPolicy | None) -> str:
+    """Kong-style: public only when no ACL allow/deny filters the catalog (#979)."""
+    if policy is None:
+        return "public"
+    if policy.allow or policy.deny:
+        return "private"
+    return "public"
+
+
+def _tools_list_payload(
+    ctx: AppContext,
+    policy: McpToolPolicy | None = None,
+    *,
+    legacy: bool = False,
+) -> dict[str, Any]:
+    """tools/list body with MCP 2026-07-28 _meta cache hints (#979)."""
+    tools = _tool_catalog(ctx, policy) if legacy else _mcp_list_tools(ctx, policy)
+    cache = getattr(getattr(ctx.settings, "integrations", None), "mcp_list_cache", None)
+    ttl_ms = int(getattr(cache, "ttl_ms", 60_000) or 0)
+    return {
+        "tools": tools,
+        "_meta": {
+            "ttlMs": ttl_ms,
+            "cacheScope": _list_cache_scope(policy),
+        },
+    }
+
+
 def _legacy(payload: dict[str, Any]) -> JSONResponse:
     return JSONResponse(payload, headers=LEGACY_HEADERS)
 
@@ -623,7 +651,8 @@ class MCPGatewayAdapter(GatewayAdapter):
             if tool in {"tools/list", "list_tools"}:
                 return _legacy(
                     MCPQueryResponse(
-                        tool="tools/list", result={"tools": _tool_catalog(ctx, governance.policy)}
+                        tool="tools/list",
+                        result=_tools_list_payload(ctx, governance.policy, legacy=True),
                     ).model_dump()
                 )
 
@@ -782,7 +811,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                 if method == "tools/list":
                     return _rpc_response(
                         request,
-                        _jsonrpc_result(rpc_id, {"tools": _mcp_list_tools(ctx, governance.policy)}),
+                        _jsonrpc_result(
+                            rpc_id, _tools_list_payload(ctx, governance.policy)
+                        ),
                     )
                 if method == "tasks/get":
                     return await _handle_tasks_get(ctx, request, rpc_id, params)

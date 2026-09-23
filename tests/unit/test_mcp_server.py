@@ -261,3 +261,41 @@ async def test_tools_call_deadline_header_is_504(settings):
     assert body["type"] == "request_deadline_exceeded"
     assert called["n"] == 0
     assert app.state.ctx.metrics.deadline_exhausted == 1
+
+
+@pytest.mark.asyncio
+async def test_tools_list_meta_public_when_unfiltered(settings):
+    """Unfiltered catalog advertises public cacheScope + ttlMs (#979)."""
+    settings.integrations.mcp_list_cache.ttl_ms = 45_000
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await _rpc(client, "tools/list")
+        legacy = await client.post(
+            "/v1/mcp/query",
+            json={"tool": "tools/list"},
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200
+    meta = response.json()["result"]["_meta"]
+    assert meta["cacheScope"] == "public"
+    assert meta["ttlMs"] == 45_000
+    assert legacy.status_code == 200
+    legacy_meta = legacy.json()["result"]["_meta"]
+    assert legacy_meta["cacheScope"] == "public"
+    assert legacy_meta["ttlMs"] == 45_000
+
+
+@pytest.mark.asyncio
+async def test_tools_list_meta_private_when_policy_filtered(settings):
+    """ACL-filtered catalogs must not advertise public cacheScope (#979)."""
+    settings.integrations.mcp_policy.deny = ["stats"]
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await _rpc(client, "tools/list")
+    assert response.status_code == 200
+    result = response.json()["result"]
+    names = {tool["name"] for tool in result["tools"]}
+    assert "stats" not in names
+    assert "route" in names
+    assert result["_meta"]["cacheScope"] == "private"
+    assert result["_meta"]["ttlMs"] == 60_000

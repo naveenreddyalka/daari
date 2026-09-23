@@ -4239,6 +4239,14 @@ response; Anthropic/Responses/Ollama bind the id on `RequestMeta`;
 embeddings/ASR/TTS spend rows carry the same `request_id`. Covered by
 `tests/unit/test_request_id.py`.
 
+### MCP tools/list ttlMs and cacheScope hints ([#979](https://github.com/naveenreddyalka/daari/issues/979))
+
+<!-- tracking:#979 -->
+**Status:** Done (2026-09-23). `tools/list` (JSON-RPC + legacy) emits `_meta`
+with configurable `ttlMs` (`integrations.mcp_list_cache.ttl_ms`, default
+60000) and `cacheScope` (`public` unfiltered / `private` when ACL-filtered).
+Covered by `tests/unit/test_mcp_server.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
