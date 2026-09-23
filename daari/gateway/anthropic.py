@@ -313,7 +313,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 internal_tools = anthropic_tools_to_openai(body.tools) or None
 
             from daari.router.deadline import RequestDeadlineExceeded, parse_deadline_ms
+            from daari.gateway.request_id import request_id_from_request
 
+            request_id = request_id_from_request(request)
             meta = RequestMeta(
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
@@ -328,6 +330,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 anthropic_beta=(request.headers.get("anthropic-beta") or "").strip() or None,
                 anthropic_version=(request.headers.get("anthropic-version") or "").strip()
                 or None,
+                request_id=request_id,
             )
             apply_cost_tier(body, meta)
             from daari.server.auth import apply_auth_claims_to_meta
@@ -427,7 +430,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop', 'daari_meta': fallback_meta})}\n\n"
 
                 return DeferredHeadersStreamingResponse(
-                    event_stream(), media_type="text/event-stream", late_headers=outcome.headers
+                    event_stream(),
+                    media_type="text/event-stream",
+                    headers={"X-Request-ID": request_id},
+                    late_headers=outcome.headers,
                 )
 
             try:
@@ -486,14 +492,17 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             prompt_chars = sum(len(message.content or "") for message in internal.messages)
             return JSONResponse(
                 payload,
-                headers=response_cost_headers(
-                    result.daari_meta,
-                    ctx.settings,
-                    prompt_chars=prompt_chars,
-                    completion_chars=len(result.content or ""),
-                    session_id=internal.meta.session_id,
-                    savings=ctx.router.session_savings,
-                ),
+                headers={
+                    **response_cost_headers(
+                        result.daari_meta,
+                        ctx.settings,
+                        prompt_chars=prompt_chars,
+                        completion_chars=len(result.content or ""),
+                        session_id=internal.meta.session_id,
+                        savings=ctx.router.session_savings,
+                    ),
+                    "X-Request-ID": request_id,
+                },
             )
 
         @router.post("/v1/messages/count_tokens")

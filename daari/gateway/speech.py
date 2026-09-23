@@ -138,6 +138,7 @@ def _bind_spend_context(
             key_id=key_id,
             team_id=team_id,
             client_id=client_id or "",
+            request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
             pricing=pricing,
             fallback_per_1k=fallback,
@@ -308,4 +309,10 @@ async def handle_speech(
         latency_ms=latency_ms,
     )
     media = upstream.headers.get("content-type") or _CONTENT_TYPES[fmt]
-    return Response(content=audio, media_type=media.split(";")[0].strip())
+    request_id = str(getattr(request.state, "request_id", None) or "")
+    headers = {"X-Request-ID": request_id} if request_id else None
+    return Response(
+        content=audio,
+        media_type=media.split(";")[0].strip(),
+        headers=headers,
+    )
