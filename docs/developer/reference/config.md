@@ -11,6 +11,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.host` | str | `'127.0.0.1'` |  |
 | `server.port` | int | `11435` |  |
 | `server.api_key` | str | list[str] | `''` |  |
+| `server.cors_origins` | list[str] | `[]` | Browser Origin allowlist for CORS (#938). Empty disables CORS middleware. When set, enables ACAO for listed origins, Authorization, and OPTIONS preflight. Env: `DAARI_SERVER__CORS_ORIGINS` (JSON list). |
+| `server.security_headers` | bool | `True` | Attach baseline security headers on every response (#938): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Env: `DAARI_SERVER__SECURITY_HEADERS`. |
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
