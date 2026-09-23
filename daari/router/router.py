@@ -2144,187 +2144,290 @@ class Router:
         try:
             last_error = None
             for tier_index, tier in enumerate(tier_chain):
-                stream_slot = None
-                stream_executor = self._executor_for_tier(tier)
-                if self.local_pool is not None:
-                    try:
-                        stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
-                    except Exception as pick_exc:
-                        from daari.router.local_pool import BackendUnavailable
-
-                        if not isinstance(pick_exc, BackendUnavailable):
-                            raise
-                        last_error = pick_exc
-                        if tier_index < len(tier_chain) - 1:
-                            add_step("fallback", from_tier=tier, error="backend_unavailable")
-                            continue
-                        fallback = await self._try_local_pool_frontier_fallback(
-                            stream_request, from_tier=tier, exc=pick_exc
-                        )
-                        if fallback is None:
-                            raise
-                        # Buffered L6 answer when no local host can stream.
-                        yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                        if fallback.content:
-                            yield f"data: {json.dumps(chunk_payload(delta={'content': fallback.content}))}\n\n"
-                        yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
-                        prompt_chars = sum(
-                            len(m.content or "") for m in stream_request.messages
-                        )
-                        stream_in, stream_out, usage_estimated = response_token_usage(
-                            fallback, prompt_chars
-                        )
-                        yield usage_chunk(
-                            prompt_tokens=stream_in,
-                            completion_tokens=stream_out,
-                            estimated=usage_estimated,
-                        )
-                        yield "data: [DONE]\n\n"
-                        latency_ms = int((time.perf_counter() - started) * 1000)
-                        self.metrics.record(
-                            "L6",
-                            cache_hit=False,
-                            latency_ms=latency_ms,
-                            model=fallback.daari_meta.model or fallback.model,
-                        )
-                        if self.usage_ledger is not None:
-                            self.usage_ledger.record(
-                                tier="L6",
-                                cache_hit=False,
-                                prompt_chars=prompt_chars,
-                                completion_chars=len(fallback.content),
-                                client_id=request.meta.client_id,
-                                user_id=request.meta.user,
-                            )
-                        add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
-                        stream_flight_result = fallback
-                        finish_trace("L6")
-                        return
-                    stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
-                    self.local_pool.acquire(stream_slot)
-                    add_step(
-                        "backend_pick",
-                        tier=tier,
-                        backend_id=stream_slot.id,
-                        strategy=self.local_pool.strategy,
-                        stream=True,
-                    )
-                ollama_model = stream_executor.default_model
-                stream_request.model = ollama_model
-                add_step("tier_attempt", tier=tier, stream=True)
-                log_gateway_event("stream_attempt", {"tier": tier, "ollama_model": ollama_model})
-
-                role_chunk = f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                pending_chunks: list[str] = []
-                tier_text_parts: list[str] = []
+                tried_hosts: set[str] = set()
                 content_sent = False
                 tool_calls_sent = False
+                pending_chunks: list[str] = []
+                tier_text_parts: list[str] = []
                 tier_completion_chars = 0
                 reported_usage: tuple[int, int] | None = None
                 first_delta_at: float | None = None
                 last_delta_at: float | None = None
                 delta_count = 0
-                try:
-                    from daari.router.deadline import guard_upstream
+                ollama_model = ""
+                stream_slot = None
+                host_ok = False
 
-                    guard_upstream(tier)
-                    async for event in stream_executor.stream(stream_request):
-                        if event.get("prompt_eval_count") is not None:
-                            # Ollama reports real counts on the terminal event (#156).
-                            reported_usage = (
-                                int(event.get("prompt_eval_count") or 0),
-                                int(event.get("eval_count") or 0),
+                while not host_ok:
+                    stream_slot = None
+                    stream_executor = self._executor_for_tier(tier)
+                    if self.local_pool is not None:
+                        try:
+                            stream_slot = self.local_pool.pick(
+                                tier,
+                                warm_models=self._warm_models,
+                                exclude=tried_hosts,
                             )
-                        message = event.get("message", {})
-                        delta = message.get("content", "")
-                        raw_tool_calls = message.get("tool_calls")
-                        if raw_tool_calls and agent_flow:
-                            if not content_sent:
-                                pending_chunks.append(role_chunk)
-                                content_sent = True
-                            tool_calls_sent = True
-                            deltas = _openai_tool_call_deltas(raw_tool_calls)
-                            pending_chunks.append(
-                                f"data: {json.dumps(chunk_payload(delta={'tool_calls': deltas}))}\n\n"
-                            )
-                        elif not delta and raw_tool_calls:
-                            # Ask mode: model ignored the no-tools hint; degrade to text.
-                            delta = json.dumps(raw_tool_calls)
-                        if delta:
-                            if not content_sent:
-                                pending_chunks.append(role_chunk)
-                                content_sent = True
-                            last_delta_at = time.perf_counter()
-                            if first_delta_at is None:
-                                first_delta_at = last_delta_at
-                            delta_count += 1
-                            tier_completion_chars += len(delta)
-                            tier_text_parts.append(delta)
-                            pending_chunks.append(
-                                f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
-                            )
-                        if event.get("done"):
-                            break
-                except Exception as exc:
-                    from daari.router.deadline import reraise_deadline
+                        except Exception as pick_exc:
+                            from daari.router.local_pool import BackendUnavailable
 
-                    reraise_deadline(exc)
-                    last_error = exc
-                    self._record_stream_host_failure(stream_slot)
+                            if not isinstance(pick_exc, BackendUnavailable):
+                                raise
+                            last_error = pick_exc
+                            if tried_hosts and tier_index < len(tier_chain) - 1:
+                                add_step(
+                                    "fallback",
+                                    from_tier=tier,
+                                    error="backend_unavailable",
+                                )
+                                break
+                            if tier_index < len(tier_chain) - 1:
+                                add_step(
+                                    "fallback",
+                                    from_tier=tier,
+                                    error="backend_unavailable",
+                                )
+                                break
+                            fallback = await self._try_local_pool_frontier_fallback(
+                                stream_request, from_tier=tier, exc=pick_exc
+                            )
+                            if fallback is None:
+                                raise
+                            # Buffered L6 answer when no local host can stream.
+                            yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                            if fallback.content:
+                                yield f"data: {json.dumps(chunk_payload(delta={'content': fallback.content}))}\n\n"
+                            yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason='stop'))}\n\n"
+                            prompt_chars = sum(
+                                len(m.content or "") for m in stream_request.messages
+                            )
+                            stream_in, stream_out, usage_estimated = response_token_usage(
+                                fallback, prompt_chars
+                            )
+                            yield usage_chunk(
+                                prompt_tokens=stream_in,
+                                completion_tokens=stream_out,
+                                estimated=usage_estimated,
+                            )
+                            yield "data: [DONE]\n\n"
+                            latency_ms = int((time.perf_counter() - started) * 1000)
+                            self.metrics.record(
+                                "L6",
+                                cache_hit=False,
+                                latency_ms=latency_ms,
+                                model=fallback.daari_meta.model or fallback.model,
+                            )
+                            if self.usage_ledger is not None:
+                                self.usage_ledger.record(
+                                    tier="L6",
+                                    cache_hit=False,
+                                    prompt_chars=prompt_chars,
+                                    completion_chars=len(fallback.content),
+                                    client_id=request.meta.client_id,
+                                    user_id=request.meta.user,
+                                )
+                            add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+                            stream_flight_result = fallback
+                            finish_trace("L6")
+                            return
+                        tried_hosts.add(stream_slot.id)
+                        stream_executor = self.local_pool.bind_executor(
+                            stream_slot, stream_executor
+                        )
+                        self.local_pool.acquire(stream_slot)
+                        add_step(
+                            "backend_pick",
+                            tier=tier,
+                            backend_id=stream_slot.id,
+                            strategy=self.local_pool.strategy,
+                            stream=True,
+                        )
+                    ollama_model = stream_executor.default_model
+                    stream_request.model = ollama_model
+                    add_step("tier_attempt", tier=tier, stream=True)
                     log_gateway_event(
-                        "stream_attempt_failed",
-                        {"tier": tier, "ollama_model": ollama_model, "error": str(exc)[:300]},
+                        "stream_attempt", {"tier": tier, "ollama_model": ollama_model}
                     )
-                    if tier_index < len(tier_chain) - 1:
-                        from daari.router.failover import is_context_length_error
 
-                        if is_context_length_error(exc):
-                            add_step(
-                                "context_length_failover",
-                                from_tier=tier,
-                                to_tier=tier_chain[tier_index + 1],
-                                reason="context_too_long",
-                            )
-                        else:
-                            add_step("fallback", from_tier=tier, error=str(exc)[:120])
-                        continue
-                    if content_sent:
-                        for chunk in pending_chunks:
-                            yield chunk
+                    role_chunk = (
+                        f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
+                    )
+                    pending_chunks = []
+                    tier_text_parts = []
+                    content_sent = False
+                    tool_calls_sent = False
+                    tier_completion_chars = 0
+                    reported_usage = None
+                    first_delta_at = None
+                    last_delta_at = None
+                    delta_count = 0
+                    pre_token_failover = False
+                    attempt_failed = False
+                    try:
+                        from daari.router.deadline import guard_upstream
+
+                        guard_upstream(tier)
+                        async for event in stream_executor.stream(stream_request):
+                            if event.get("prompt_eval_count") is not None:
+                                # Ollama reports real counts on the terminal event (#156).
+                                reported_usage = (
+                                    int(event.get("prompt_eval_count") or 0),
+                                    int(event.get("eval_count") or 0),
+                                )
+                            message = event.get("message", {})
+                            delta = message.get("content", "")
+                            raw_tool_calls = message.get("tool_calls")
+                            if raw_tool_calls and agent_flow:
+                                if not content_sent:
+                                    pending_chunks.append(role_chunk)
+                                    content_sent = True
+                                tool_calls_sent = True
+                                deltas = _openai_tool_call_deltas(raw_tool_calls)
+                                pending_chunks.append(
+                                    f"data: {json.dumps(chunk_payload(delta={'tool_calls': deltas}))}\n\n"
+                                )
+                            elif not delta and raw_tool_calls:
+                                # Ask mode: model ignored the no-tools hint; degrade to text.
+                                delta = json.dumps(raw_tool_calls)
+                            if delta:
+                                if not content_sent:
+                                    pending_chunks.append(role_chunk)
+                                    content_sent = True
+                                last_delta_at = time.perf_counter()
+                                if first_delta_at is None:
+                                    first_delta_at = last_delta_at
+                                delta_count += 1
+                                tier_completion_chars += len(delta)
+                                tier_text_parts.append(delta)
+                                pending_chunks.append(
+                                    f"data: {json.dumps(chunk_payload(delta={'content': delta}))}\n\n"
+                                )
+                            if event.get("done"):
+                                break
+                    except Exception as exc:
+                        from daari.router.deadline import reraise_deadline
+
+                        reraise_deadline(exc)
+                        last_error = exc
+                        attempt_failed = True
+                        self._record_stream_host_failure(stream_slot)
                         log_gateway_event(
-                            "stream_incomplete",
+                            "stream_attempt_failed",
                             {
                                 "tier": tier,
                                 "ollama_model": ollama_model,
                                 "error": str(exc)[:300],
-                                "partial_chars": tier_completion_chars,
                             },
                         )
-                        yield _openai_stream_error_frame(
-                            error_type="stream_incomplete",
-                            message=str(exc)[:300],
-                        )
-                    else:
-                        yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
-                    yield "data: [DONE]\n\n"
-                    add_step("served", tier=None, error=str(exc)[:120])
-                    if getattr(self, "otel_enabled", False) and trace is not None:
-                        from daari.observability.otel import export_trace
+                        # Pre-first-token: try the next healthy host in this tier (#974).
+                        more_hosts = False
+                        if (
+                            not content_sent
+                            and self.local_pool is not None
+                            and stream_slot is not None
+                        ):
+                            more_hosts = any(
+                                slot.id not in tried_hosts
+                                for slot in self.local_pool._eligible(
+                                    tier, warm_models=self._warm_models
+                                )
+                            )
+                        if more_hosts:
+                            add_step(
+                                "backend_fail",
+                                backend_id=stream_slot.id,
+                                error_type=type(exc).__name__,
+                                breaker=stream_slot.breaker.state,
+                                stream=True,
+                            )
+                            add_step(
+                                "host_failover",
+                                tier=tier,
+                                from_backend=stream_slot.id,
+                                reason="pre_first_token",
+                            )
+                            pre_token_failover = True
+                        elif tier_index < len(tier_chain) - 1:
+                            from daari.router.failover import is_context_length_error
 
-                        export_trace(trace, request=request, error_type=type(exc).__name__)
-                    finish_trace(None)
-                    return
-                finally:
-                    if stream_slot is not None and self.local_pool is not None:
-                        self.local_pool.release(stream_slot)
+                            if is_context_length_error(exc):
+                                add_step(
+                                    "context_length_failover",
+                                    from_tier=tier,
+                                    to_tier=tier_chain[tier_index + 1],
+                                    reason="context_too_long",
+                                )
+                            else:
+                                add_step(
+                                    "fallback", from_tier=tier, error=str(exc)[:120]
+                                )
+                        elif content_sent:
+                            for chunk in pending_chunks:
+                                yield chunk
+                            log_gateway_event(
+                                "stream_incomplete",
+                                {
+                                    "tier": tier,
+                                    "ollama_model": ollama_model,
+                                    "error": str(exc)[:300],
+                                    "partial_chars": tier_completion_chars,
+                                },
+                            )
+                            yield _openai_stream_error_frame(
+                                error_type="stream_incomplete",
+                                message=str(exc)[:300],
+                            )
+                            yield "data: [DONE]\n\n"
+                            add_step("served", tier=None, error=str(exc)[:120])
+                            if getattr(self, "otel_enabled", False) and trace is not None:
+                                from daari.observability.otel import export_trace
+
+                                export_trace(
+                                    trace, request=request, error_type=type(exc).__name__
+                                )
+                            finish_trace(None)
+                            return
+                        else:
+                            yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+                            yield "data: [DONE]\n\n"
+                            add_step("served", tier=None, error=str(exc)[:120])
+                            if getattr(self, "otel_enabled", False) and trace is not None:
+                                from daari.observability.otel import export_trace
+
+                                export_trace(
+                                    trace, request=request, error_type=type(exc).__name__
+                                )
+                            finish_trace(None)
+                            return
+                    finally:
+                        if stream_slot is not None and self.local_pool is not None:
+                            self.local_pool.release(stream_slot)
+
+                    if pre_token_failover:
+                        continue
+                    if attempt_failed:
+                        break
+
+                    if stream_slot is not None:
+                        stream_slot.breaker.record_success()
+                        stream_slot.requests += 1
+                    last_error = None
+                    host_ok = True
+
+                if not host_ok:
+                    continue
 
                 if not content_sent and tier_index < len(tier_chain) - 1:
                     add_step("fallback", from_tier=tier, error="empty_response")
-                    log_gateway_event("stream_empty_retry", {"tier": tier, "ollama_model": ollama_model})
+                    log_gateway_event(
+                        "stream_empty_retry", {"tier": tier, "ollama_model": ollama_model}
+                    )
                     continue
 
                 if tier_index > 0 and content_sent:
-                    log_gateway_event("stream_fallback_ok", {"tier": tier, "ollama_model": ollama_model})
+                    log_gateway_event(
+                        "stream_fallback_ok", {"tier": tier, "ollama_model": ollama_model}
+                    )
 
                 streamed_text = "".join(tier_text_parts)
                 served = InternalResponse(
@@ -2339,6 +2442,7 @@ class Router:
                         input_tokens=reported_usage[0] if reported_usage else None,
                         output_tokens=reported_usage[1] if reported_usage else None,
                         usage_estimated=reported_usage is None,
+                        backend_id=stream_slot.id if stream_slot is not None else None,
                     ),
                 )
                 # A low-confidence answer escalates to L6. When nothing needs the
@@ -2916,230 +3020,307 @@ class Router:
 
         last_error: Exception | None = None
         for tier_index, tier in enumerate(tier_chain):
-            stream_slot = None
-            stream_executor = self._executor_for_tier(tier)
-            if self.local_pool is not None:
-                try:
-                    stream_slot = self.local_pool.pick(tier, warm_models=self._warm_models)
-                except Exception as pick_exc:
-                    from daari.router.local_pool import BackendUnavailable
-
-                    if not isinstance(pick_exc, BackendUnavailable):
-                        raise
-                    last_error = pick_exc
-                    if tier_index < len(tier_chain) - 1:
-                        continue
-                    fallback = await self._try_local_pool_frontier_fallback(
-                        stream_request, from_tier=tier, exc=pick_exc
-                    )
-                    if fallback is None:
-                        raise
-                    latency_ms = int((time.perf_counter() - stream_started) * 1000)
-                    self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
-                    if self.usage_ledger is not None:
-                        self.usage_ledger.record(
-                            tier="L6",
-                            cache_hit=False,
-                            prompt_chars=prompt_chars,
-                            completion_chars=len(fallback.content or ""),
-                            client_id=request.meta.client_id,
-                            user_id=request.meta.user,
-                        )
-                    outcome.note("L6")
-                    for event in terminal_events(fallback.content, "L6"):
-                        yield event
-                    return
-                stream_executor = self.local_pool.bind_executor(stream_slot, stream_executor)
-                self.local_pool.acquire(stream_slot)
-                add_step(
-                    "backend_pick",
-                    tier=tier,
-                    backend_id=stream_slot.id,
-                    strategy=self.local_pool.strategy,
-                    stream=True,
-                )
-            model_name = stream_executor.default_model
-            stream_request.model = model_name
-            meta = {
-                "tier": tier,
-                "executor": "ollama",
-                "provider_id": f"ollama:{tier.lower()}",
-                "model": model_name,
-                "stream": True,
-            }
-            if agent_flow:
-                meta["agent_turn"] = True
-            def message_start_event(prompt_tokens: int) -> str:
-                return sse(
-                    "message_start",
-                    {
-                        "type": "message_start",
-                        "message": {
-                            "id": message_id,
-                            "type": "message",
-                            "role": "assistant",
-                            "model": model_name,
-                            "content": [],
-                            "stop_reason": None,
-                            "stop_sequence": None,
-                            "usage": {"input_tokens": prompt_tokens, "output_tokens": 0},
-                        },
-                        "daari_meta": meta,
-                    },
-                )
-
-            message_start = message_start_event(input_tokens)
-
-            def text_block_start(index: int) -> str:
-                return sse(
-                    "content_block_start",
-                    {
-                        "type": "content_block_start",
-                        "index": index,
-                        "content_block": {"type": "text", "text": ""},
-                        "daari_meta": meta,
-                    },
-                )
-
-            def block_stop(index: int) -> str:
-                return sse(
-                    "content_block_stop",
-                    {"type": "content_block_stop", "index": index, "daari_meta": meta},
-                )
-
-            pending: list[str] = []
+            tried_hosts: set[str] = set()
             any_output = False
+            host_ok = False
+            model_name = ""
+            stream_slot = None
+            pending: list[str] = []
             text_block_open = False
             block_index = 0
             tool_use_sent = False
             completion_chars = 0
             tier_text_parts: list[str] = []
             reported_usage: tuple[int, int] | None = None
-            try:
-                from daari.router.deadline import guard_upstream
+            meta: dict[str, Any] = {}
+            message_start = ""
 
-                guard_upstream(tier)
-                async for event in stream_executor.stream(stream_request):
-                    if event.get("prompt_eval_count") is not None:
-                        # Last report wins: cumulative-usage providers would
-                        # otherwise be summed into a many-fold overcount (#320).
-                        reported_usage = (
-                            int(event.get("prompt_eval_count") or 0),
-                            int(event.get("eval_count") or 0),
+            while not host_ok:
+                stream_slot = None
+                stream_executor = self._executor_for_tier(tier)
+                if self.local_pool is not None:
+                    try:
+                        stream_slot = self.local_pool.pick(
+                            tier,
+                            warm_models=self._warm_models,
+                            exclude=tried_hosts,
                         )
-                    message = event.get("message", {})
-                    delta = message.get("content", "")
-                    raw_tool_calls = message.get("tool_calls")
-                    if raw_tool_calls and agent_flow:
-                        if not any_output:
-                            pending.append(message_start)
-                            any_output = True
-                        if text_block_open:
-                            pending.append(block_stop(block_index))
-                            text_block_open = False
-                            block_index += 1
-                        for call in _openai_tool_call_deltas(raw_tool_calls):
-                            pending.append(
-                                sse(
-                                    "content_block_start",
-                                    {
-                                        "type": "content_block_start",
-                                        "index": block_index,
-                                        "content_block": {
-                                            "type": "tool_use",
-                                            "id": call["id"],
-                                            "name": call["function"]["name"],
-                                            "input": {},
-                                        },
-                                        "daari_meta": meta,
-                                    },
-                                )
+                    except Exception as pick_exc:
+                        from daari.router.local_pool import BackendUnavailable
+
+                        if not isinstance(pick_exc, BackendUnavailable):
+                            raise
+                        last_error = pick_exc
+                        if tier_index < len(tier_chain) - 1:
+                            break
+                        fallback = await self._try_local_pool_frontier_fallback(
+                            stream_request, from_tier=tier, exc=pick_exc
+                        )
+                        if fallback is None:
+                            raise
+                        latency_ms = int((time.perf_counter() - stream_started) * 1000)
+                        self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
+                        if self.usage_ledger is not None:
+                            self.usage_ledger.record(
+                                tier="L6",
+                                cache_hit=False,
+                                prompt_chars=prompt_chars,
+                                completion_chars=len(fallback.content or ""),
+                                client_id=request.meta.client_id,
+                                user_id=request.meta.user,
                             )
+                        outcome.note("L6")
+                        for event in terminal_events(fallback.content, "L6"):
+                            yield event
+                        return
+                    tried_hosts.add(stream_slot.id)
+                    stream_executor = self.local_pool.bind_executor(
+                        stream_slot, stream_executor
+                    )
+                    self.local_pool.acquire(stream_slot)
+                    add_step(
+                        "backend_pick",
+                        tier=tier,
+                        backend_id=stream_slot.id,
+                        strategy=self.local_pool.strategy,
+                        stream=True,
+                    )
+                model_name = stream_executor.default_model
+                stream_request.model = model_name
+                meta = {
+                    "tier": tier,
+                    "executor": "ollama",
+                    "provider_id": f"ollama:{tier.lower()}",
+                    "model": model_name,
+                    "stream": True,
+                }
+                if agent_flow:
+                    meta["agent_turn"] = True
+
+                def message_start_event(prompt_tokens: int) -> str:
+                    return sse(
+                        "message_start",
+                        {
+                            "type": "message_start",
+                            "message": {
+                                "id": message_id,
+                                "type": "message",
+                                "role": "assistant",
+                                "model": model_name,
+                                "content": [],
+                                "stop_reason": None,
+                                "stop_sequence": None,
+                                "usage": {
+                                    "input_tokens": prompt_tokens,
+                                    "output_tokens": 0,
+                                },
+                            },
+                            "daari_meta": meta,
+                        },
+                    )
+
+                message_start = message_start_event(input_tokens)
+
+                def text_block_start(index: int) -> str:
+                    return sse(
+                        "content_block_start",
+                        {
+                            "type": "content_block_start",
+                            "index": index,
+                            "content_block": {"type": "text", "text": ""},
+                            "daari_meta": meta,
+                        },
+                    )
+
+                def block_stop(index: int) -> str:
+                    return sse(
+                        "content_block_stop",
+                        {
+                            "type": "content_block_stop",
+                            "index": index,
+                            "daari_meta": meta,
+                        },
+                    )
+
+                pending = []
+                any_output = False
+                text_block_open = False
+                block_index = 0
+                tool_use_sent = False
+                completion_chars = 0
+                tier_text_parts = []
+                reported_usage = None
+                pre_token_failover = False
+                attempt_failed = False
+                try:
+                    from daari.router.deadline import guard_upstream
+
+                    guard_upstream(tier)
+                    async for event in stream_executor.stream(stream_request):
+                        if event.get("prompt_eval_count") is not None:
+                            # Last report wins: cumulative-usage providers would
+                            # otherwise be summed into a many-fold overcount (#320).
+                            reported_usage = (
+                                int(event.get("prompt_eval_count") or 0),
+                                int(event.get("eval_count") or 0),
+                            )
+                        message = event.get("message", {})
+                        delta = message.get("content", "")
+                        raw_tool_calls = message.get("tool_calls")
+                        if raw_tool_calls and agent_flow:
+                            if not any_output:
+                                pending.append(message_start)
+                                any_output = True
+                            if text_block_open:
+                                pending.append(block_stop(block_index))
+                                text_block_open = False
+                                block_index += 1
+                            for call in _openai_tool_call_deltas(raw_tool_calls):
+                                pending.append(
+                                    sse(
+                                        "content_block_start",
+                                        {
+                                            "type": "content_block_start",
+                                            "index": block_index,
+                                            "content_block": {
+                                                "type": "tool_use",
+                                                "id": call["id"],
+                                                "name": call["function"]["name"],
+                                                "input": {},
+                                            },
+                                            "daari_meta": meta,
+                                        },
+                                    )
+                                )
+                                pending.append(
+                                    sse(
+                                        "content_block_delta",
+                                        {
+                                            "type": "content_block_delta",
+                                            "index": block_index,
+                                            "delta": {
+                                                "type": "input_json_delta",
+                                                "partial_json": call["function"][
+                                                    "arguments"
+                                                ],
+                                            },
+                                            "daari_meta": meta,
+                                        },
+                                    )
+                                )
+                                pending.append(block_stop(block_index))
+                                block_index += 1
+                            tool_use_sent = True
+                        elif not delta and raw_tool_calls:
+                            # Plain chat: model ignored the no-tools hint; degrade to text.
+                            delta = json.dumps(raw_tool_calls)
+                        if delta:
+                            if not any_output:
+                                pending.append(message_start)
+                                any_output = True
+                            if not text_block_open:
+                                pending.append(text_block_start(block_index))
+                                text_block_open = True
+                            completion_chars += len(delta)
+                            tier_text_parts.append(delta)
                             pending.append(
                                 sse(
                                     "content_block_delta",
                                     {
                                         "type": "content_block_delta",
                                         "index": block_index,
-                                        "delta": {
-                                            "type": "input_json_delta",
-                                            "partial_json": call["function"]["arguments"],
-                                        },
+                                        "delta": {"type": "text_delta", "text": delta},
                                         "daari_meta": meta,
                                     },
                                 )
                             )
-                            pending.append(block_stop(block_index))
-                            block_index += 1
-                        tool_use_sent = True
-                    elif not delta and raw_tool_calls:
-                        # Plain chat: model ignored the no-tools hint; degrade to text.
-                        delta = json.dumps(raw_tool_calls)
-                    if delta:
-                        if not any_output:
-                            pending.append(message_start)
-                            any_output = True
-                        if not text_block_open:
-                            pending.append(text_block_start(block_index))
-                            text_block_open = True
-                        completion_chars += len(delta)
-                        tier_text_parts.append(delta)
-                        pending.append(
-                            sse(
-                                "content_block_delta",
-                                {
-                                    "type": "content_block_delta",
-                                    "index": block_index,
-                                    "delta": {"type": "text_delta", "text": delta},
-                                    "daari_meta": meta,
-                                },
-                            )
-                        )
-                    if event.get("done"):
-                        break
-            except Exception as exc:
-                from daari.router.deadline import reraise_deadline
+                        if event.get("done"):
+                            break
+                except Exception as exc:
+                    from daari.router.deadline import reraise_deadline
 
-                reraise_deadline(exc)
-                last_error = exc
-                self._record_stream_host_failure(stream_slot)
-                log_gateway_event(
-                    "anthropic_stream_attempt_failed",
-                    {
-                        "tier": tier,
-                        "ollama_model": model_name,
-                        # Timeouts stringify to "" (issue #101); the type name
-                        # keeps the cause diagnosable.
-                        "error_type": type(exc).__name__,
-                        "error": str(exc)[:300],
-                    },
-                )
-                if tier_index < len(tier_chain) - 1:
-                    continue
-                if any_output:
-                    for event in pending:
-                        yield event
-                    if text_block_open:
-                        yield block_stop(block_index)
+                    reraise_deadline(exc)
+                    last_error = exc
+                    attempt_failed = True
+                    self._record_stream_host_failure(stream_slot)
                     log_gateway_event(
-                        "stream_incomplete",
+                        "anthropic_stream_attempt_failed",
                         {
                             "tier": tier,
                             "ollama_model": model_name,
+                            # Timeouts stringify to "" (issue #101); the type name
+                            # keeps the cause diagnosable.
+                            "error_type": type(exc).__name__,
                             "error": str(exc)[:300],
-                            "partial_chars": completion_chars,
                         },
                     )
-                    yield _anthropic_stream_error_frame(
-                        error_type="stream_incomplete",
-                        message=str(exc)[:300],
-                    )
-                    yield sse("message_stop", {"type": "message_stop"})
-                    return
-                raise
-            finally:
-                if stream_slot is not None and self.local_pool is not None:
-                    self.local_pool.release(stream_slot)
+                    more_hosts = False
+                    if (
+                        not any_output
+                        and self.local_pool is not None
+                        and stream_slot is not None
+                    ):
+                        more_hosts = any(
+                            slot.id not in tried_hosts
+                            for slot in self.local_pool._eligible(
+                                tier, warm_models=self._warm_models
+                            )
+                        )
+                    if more_hosts:
+                        add_step(
+                            "backend_fail",
+                            backend_id=stream_slot.id,
+                            error_type=type(exc).__name__,
+                            breaker=stream_slot.breaker.state,
+                            stream=True,
+                        )
+                        add_step(
+                            "host_failover",
+                            tier=tier,
+                            from_backend=stream_slot.id,
+                            reason="pre_first_token",
+                        )
+                        pre_token_failover = True
+                    elif tier_index < len(tier_chain) - 1:
+                        pass
+                    elif any_output:
+                        for event in pending:
+                            yield event
+                        if text_block_open:
+                            yield block_stop(block_index)
+                        log_gateway_event(
+                            "stream_incomplete",
+                            {
+                                "tier": tier,
+                                "ollama_model": model_name,
+                                "error": str(exc)[:300],
+                                "partial_chars": completion_chars,
+                            },
+                        )
+                        yield _anthropic_stream_error_frame(
+                            error_type="stream_incomplete",
+                            message=str(exc)[:300],
+                        )
+                        yield sse("message_stop", {"type": "message_stop"})
+                        return
+                    else:
+                        raise
+                finally:
+                    if stream_slot is not None and self.local_pool is not None:
+                        self.local_pool.release(stream_slot)
+
+                if pre_token_failover:
+                    continue
+                if attempt_failed:
+                    break
+                if stream_slot is not None:
+                    stream_slot.breaker.record_success()
+                    stream_slot.requests += 1
+                last_error = None
+                host_ok = True
+
+            if not host_ok:
+                continue
 
             if not any_output and tier_index < len(tier_chain) - 1:
                 log_gateway_event(
@@ -3167,6 +3348,7 @@ class Router:
                     input_tokens=reported_usage[0] if reported_usage else None,
                     output_tokens=reported_usage[1] if reported_usage else None,
                     usage_estimated=reported_usage is None,
+                    backend_id=stream_slot.id if stream_slot is not None else None,
                 ),
             )
 

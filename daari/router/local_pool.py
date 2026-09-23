@@ -75,8 +75,16 @@ class LocalBackendPool:
             return candidates[index % len(candidates)]
         return min(candidates, key=lambda slot: slot.outstanding)
 
-    def pick(self, tier: str, *, warm_models: set[str] | None = None) -> LocalBackendSlot:
+    def pick(
+        self,
+        tier: str,
+        *,
+        warm_models: set[str] | None = None,
+        exclude: set[str] | frozenset[str] | None = None,
+    ) -> LocalBackendSlot:
         candidates = self._eligible(tier, warm_models=warm_models)
+        if exclude:
+            candidates = [slot for slot in candidates if slot.id not in exclude]
         if not candidates:
             raise BackendUnavailable(tier)
         return self._choose(candidates, tier)
