@@ -53,7 +53,7 @@ dev = [
 ]
 docs = ["mkdocs-material>=9.5"]
 redis = ["redis>=5.0"]
-postgres = ["psycopg[binary]>=3.1"]
+postgres = ["psycopg[binary,pool]>=3.1"]
 # The SDK + OTLP exporter make `observability.otel: true` export on its own
 # when OTEL_EXPORTER_OTLP_ENDPOINT is set (#167); api alone stays a no-op.
 otel = [

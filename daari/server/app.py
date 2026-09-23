@@ -59,8 +59,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ctx.start_backend_health()
         app.state.ctx.start_retention_sweep()
         from daari.enterprise.postgres_audit import audit_log_from_settings
+        from daari.gateway.pg_pool import close_postgres_pools, configure_postgres_pool
         from daari.observability.budget_alerts import BudgetAlerter
 
+        obs = resolved.observability
+        configure_postgres_pool(
+            min_size=int(getattr(obs, "postgres_pool_min", 1) or 1),
+            max_size=int(getattr(obs, "postgres_pool_max", 4) or 4),
+        )
         cache = resolved.cache
         redis_url = ""
         redis_timeout = 2.0
@@ -100,7 +106,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             batch_store.resume_incomplete_with(_make_execute)
         metrics_stop = None
-        obs = resolved.observability
         metrics_port = int(getattr(obs, "metrics_port", 0) or 0)
         if obs.prometheus and metrics_port > 0:
             from daari.gateway.request_log import log_gateway_event
@@ -123,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await app.state.ctx.stop_org_learning_sync()
             await app.state.ctx.stop_retention_sweep()
             await app.state.ctx.aclose_upstream_clients()
+            close_postgres_pools()
 
     app = FastAPI(title="daari", version="0.1.0", lifespan=lifespan)
     app.state.virtual_key_store = vk_store

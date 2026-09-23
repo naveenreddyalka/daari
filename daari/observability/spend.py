@@ -386,14 +386,9 @@ class PostgresSpendLedger(SpendLedger):
             self.enabled = False
 
     def _connect(self) -> Any:
-        try:
-            import psycopg
-        except ImportError as exc:
-            raise RuntimeError(
-                "observability.backend=postgres requires psycopg — "
-                "pip install 'psycopg[binary]>=3' (or daari[postgres])"
-            ) from exc
-        return psycopg.connect(self.dsn)
+        from daari.gateway.pg_pool import pooled_connection
+
+        return pooled_connection(self.dsn)
 
     def record(
         self,
