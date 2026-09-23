@@ -5203,6 +5203,8 @@ class AppContext:
             model=self.settings.cache.l1.embedding_model,
             cache_size=self.settings.cache.l1.embed_cache_size,
             pool_limits=pool_limits_from_settings(self.settings),
+            retry=RetryPolicy.from_settings(self.settings.upstream.retry),
+            metrics=self.metrics,
         )
         self.semantic_cache = _build_l1_cache(self.settings, l1_path, embedder)
         self.command_context = self._build_command_context_store(self.settings, context_path)
@@ -5415,6 +5417,7 @@ class AppContext:
                     settings.cache.l1.embedding_model,
                     cache_size=settings.cache.l1.embed_cache_size,
                     pool_limits=pool_limits,
+                    retry=RetryPolicy.from_settings(settings.upstream.retry),
                 ),
                 similarity_threshold=settings.cache.l1.similarity_threshold,
             )
@@ -5432,6 +5435,7 @@ class AppContext:
             model=settings.cache.l1.embedding_model,
             cache_size=settings.cache.l1.embed_cache_size,
             pool_limits=pool_limits,
+            retry=RetryPolicy.from_settings(settings.upstream.retry),
         )
         semantic_cache = _build_l1_cache(settings, l1_path, embedder)
         command_context = cls._build_command_context_store(settings, context_path)

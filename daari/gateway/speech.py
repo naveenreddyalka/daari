@@ -93,8 +93,32 @@ async def post_speech(
     headers: dict[str, str],
     payload: dict[str, Any],
     timeout: float,
+    retry: Any | None = None,
+    metrics: Any | None = None,
 ) -> httpx.Response:
-    return await _shared_client().post(url, headers=headers, json=payload, timeout=timeout)
+    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+
+    policy = (
+        retry
+        if isinstance(retry, RetryPolicy)
+        else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
+    )
+
+    async def attempt() -> httpx.Response:
+        response = await _shared_client().post(
+            url, headers=headers, json=payload, timeout=timeout
+        )
+        if response.status_code in RETRYABLE_STATUS:
+            response.raise_for_status()
+        return response
+
+    return await run_upstream(
+        attempt,
+        upstream="tts",
+        policy=policy,
+        timeout=timeout,
+        metrics=metrics,
+    )
 
 
 def _caller_client_id(request: Request) -> str | None:
@@ -250,6 +274,7 @@ async def handle_speech(
         timeout = nonstream_timeout(target.timeout, "tts")
         from daari.observability.otel import inject_trace_headers
 
+        retry_settings = getattr(getattr(ctx.settings, "upstream", None), "retry", None)
         upstream = await await_unless_disconnected(
             request,
             post_speech(
@@ -257,6 +282,8 @@ async def handle_speech(
                 headers=inject_trace_headers({}),
                 payload=payload,
                 timeout=timeout,
+                retry=retry_settings,
+                metrics=ctx.metrics,
             ),
             metrics=ctx.metrics,
             phase="tts",

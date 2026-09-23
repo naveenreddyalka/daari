@@ -138,6 +138,8 @@ class OllamaEmbedder:
         cache_size: int = 512,
         transport: httpx.AsyncBaseTransport | None = None,
         pool_limits: Any = None,
+        retry: Any | None = None,
+        metrics: Any | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -145,6 +147,8 @@ class OllamaEmbedder:
         self.cache_size = max(0, cache_size)
         self._transport = transport
         self.pool_limits = pool_limits
+        self.retry = retry
+        self.metrics = metrics
         self._http: httpx.AsyncClient | None = None
         # LRU keyed by (model, text hash); embeddings for identical text are
         # deterministic, so memoizing skips an HTTP round-trip per L1 lookup.
@@ -224,16 +228,39 @@ class OllamaEmbedder:
     ) -> list[list[float] | None] | None:
         """POST /api/embed with input[]. None means the server needs the legacy path."""
         from daari.router.deadline import nonstream_timeout
+        from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
             from daari.observability.otel import inject_trace_headers
 
-            response = await self._client().post(
-                "/api/embed",
-                json={"model": model, "input": texts},
-                headers=inject_trace_headers(),
+            policy = (
+                self.retry
+                if isinstance(self.retry, RetryPolicy)
+                else (
+                    RetryPolicy(attempts=1)
+                    if self.retry is None
+                    else RetryPolicy.from_settings(self.retry)
+                )
+            )
+
+            async def attempt() -> httpx.Response:
+                response = await self._client().post(
+                    "/api/embed",
+                    json={"model": model, "input": texts},
+                    headers=inject_trace_headers(),
+                    timeout=timeout,
+                )
+                if response.status_code in RETRYABLE_STATUS:
+                    response.raise_for_status()
+                return response
+
+            response = await run_upstream(
+                attempt,
+                upstream="embed",
+                policy=policy,
                 timeout=timeout,
+                metrics=self.metrics,
             )
             if response.status_code == 404:
                 return None
@@ -254,16 +281,39 @@ class OllamaEmbedder:
 
     async def _embed_http(self, text: str, *, model: str) -> list[float] | None:
         from daari.router.deadline import nonstream_timeout
+        from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
 
         try:
             timeout = nonstream_timeout(self.timeout, "embed")
             from daari.observability.otel import inject_trace_headers
 
-            response = await self._client().post(
-                "/api/embeddings",
-                json={"model": model, "prompt": text},
-                headers=inject_trace_headers(),
+            policy = (
+                self.retry
+                if isinstance(self.retry, RetryPolicy)
+                else (
+                    RetryPolicy(attempts=1)
+                    if self.retry is None
+                    else RetryPolicy.from_settings(self.retry)
+                )
+            )
+
+            async def attempt() -> httpx.Response:
+                response = await self._client().post(
+                    "/api/embeddings",
+                    json={"model": model, "prompt": text},
+                    headers=inject_trace_headers(),
+                    timeout=timeout,
+                )
+                if response.status_code in RETRYABLE_STATUS:
+                    response.raise_for_status()
+                return response
+
+            response = await run_upstream(
+                attempt,
+                upstream="embed",
+                policy=policy,
                 timeout=timeout,
+                metrics=self.metrics,
             )
             response.raise_for_status()
             data = response.json()

@@ -135,6 +135,9 @@ async def test_asr_forwards_x_request_id_upstream(settings, monkeypatch):
     """ASR modality posts carry the same correlation id (#977)."""
     import httpx
 
+    from daari.gateway import transcriptions
+
+    transcriptions._http = None
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
