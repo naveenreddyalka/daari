@@ -244,7 +244,12 @@ def tool_should_become_task(
 
 
 def initialize_capabilities(protocol_version: str) -> dict[str, Any]:
-    caps: dict[str, Any] = {"tools": {"listChanged": False}}
+    caps: dict[str, Any] = {
+        "tools": {"listChanged": False},
+        # Empty surfaces so explorer clients probing resources/prompts succeed (#1014).
+        "resources": {"listChanged": False},
+        "prompts": {"listChanged": False},
+    }
     if protocol_version >= "2026-07-28":
         caps[TASKS_CAPABILITY] = {"listChanged": False}
     return caps

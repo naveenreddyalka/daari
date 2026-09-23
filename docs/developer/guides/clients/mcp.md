@@ -5,6 +5,9 @@ configured integrations).
 
 daari speaks JSON-RPC 2.0 at `POST /mcp` over streamable HTTP. When `server.api_key`
 is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
+`initialize` advertises `tools`, `resources`, and `prompts` capabilities;
+`resources/list` and `prompts/list` return empty arrays (tools-only server —
+explorer probes succeed instead of `Method not found`).
 `GET /v1/daari/stats` (and `daari web-ui serve`) expose `mcp_tool_calls` outcome
 counts and an `mcp_tasks` status summary for local ops without Prometheus.
 `daari doctor` probes each configured `integrations.mcp_servers` URL (optional
