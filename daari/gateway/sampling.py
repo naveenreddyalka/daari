@@ -398,11 +398,40 @@ class SamplingParams(BaseModel):
 
     @classmethod
     def from_responses_body(cls, body: dict[str, Any]) -> SamplingParams:
-        """The Responses API renames the cap; the rest of the names carry over."""
+        """Map Responses-native shapes onto SamplingParams (#1012).
+
+        Chat-completions names still work when clients send them; Responses
+        prefers ``reasoning.effort``, ``text.format``, etc.
+        """
+        mapped = dict(body)
         cap = body.get("max_output_tokens")
         if cap is None:
             cap = body.get("max_tokens")
-        return cls.from_openai_body({**body, "max_tokens": cap, "max_completion_tokens": None})
+        mapped["max_tokens"] = cap
+        mapped["max_completion_tokens"] = None
+
+        reasoning = body.get("reasoning")
+        if isinstance(reasoning, dict) and not mapped.get("reasoning_effort"):
+            effort = reasoning.get("effort")
+            if effort is not None:
+                mapped["reasoning_effort"] = effort
+
+        text = body.get("text")
+        if isinstance(text, dict) and not mapped.get("response_format"):
+            fmt = text.get("format")
+            if isinstance(fmt, dict):
+                mapped["response_format"] = fmt
+
+        truncation = body.get("truncation")
+        if truncation is not None:
+            from daari.gateway.request_log import log_gateway_event
+
+            log_gateway_event(
+                "responses_truncation_ignored",
+                {"truncation": truncation},
+            )
+
+        return cls.from_openai_body(mapped)
 
     @classmethod
     def from_ollama_options(cls, options: dict[str, Any] | None) -> SamplingParams:

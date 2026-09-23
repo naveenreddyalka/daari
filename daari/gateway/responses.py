@@ -58,6 +58,14 @@ class ResponsesRequest(BaseModel):
     background: bool = False
     include: list[str] | None = None
     metadata: dict[str, str] | None = None
+    # Responses-native sampling knobs (#1012). Declared for clarity; extra=allow
+    # already kept them on model_dump for from_responses_body.
+    reasoning: dict[str, Any] | None = None
+    text: dict[str, Any] | None = None
+    tool_choice: Any | None = None
+    parallel_tool_calls: bool | None = None
+    truncation: str | None = None
+    service_tier: str | None = None
 
 
 def _content_to_text(content: Any) -> str:

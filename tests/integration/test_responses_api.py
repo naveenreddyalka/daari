@@ -358,6 +358,49 @@ async def test_metadata_is_echoed(settings):
 
 
 @pytest.mark.asyncio
+async def test_responses_native_reasoning_and_text_format_map_to_sampling(settings):
+    """Responses shapes (reasoning.effort, text.format) reach SamplingParams (#1012)."""
+    app = _app(settings)
+    fake = _mock_route(app)
+    schema = {
+        "type": "object",
+        "properties": {"ok": {"type": "boolean"}},
+        "required": ["ok"],
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses",
+            json={
+                "model": "daari",
+                "input": "hi",
+                "reasoning": {"effort": "medium"},
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": "result",
+                            "strict": True,
+                            "schema": schema,
+                        },
+                    }
+                },
+                "tool_choice": "auto",
+                "parallel_tool_calls": False,
+                "service_tier": "flex",
+            },
+        )
+    assert response.status_code == 200
+    sampling = fake.last_request.sampling
+    assert sampling.reasoning_effort == "medium"
+    assert sampling.json_schema == schema
+    assert sampling.json_schema_name == "result"
+    assert sampling.json_schema_strict is True
+    assert sampling.tool_choice == "auto"
+    assert sampling.parallel_tool_calls is False
+    assert sampling.service_tier == "flex"
+
+
+@pytest.mark.asyncio
 async def test_openai_sdk_responses_client(settings):
     openai = pytest.importorskip("openai")
     app = _app(settings)

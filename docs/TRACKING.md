@@ -4342,6 +4342,16 @@ Ollama `think` via `reasoning_effort`. Docs:
 [claude-code.md](developer/guides/clients/claude-code.md#thinking-budgets).
 Covered by `tests/unit/test_anthropic_thinking_parity.py`.
 
+### Map Responses-native sampling shapes ([#1012](https://github.com/naveenreddyalka/daari/issues/1012))
+
+<!-- tracking:#1012 -->
+**Status:** Done (2026-09-23). `from_responses_body` maps `reasoning.effort`,
+`text.format` (json_object / json_schema with name/strict), `tool_choice`,
+`parallel_tool_calls`, `service_tier`; logs `responses_truncation_ignored`.
+Docs: [clients-and-gateways.md](developer/concepts/clients-and-gateways.md).
+Covered by `tests/unit/test_responses_sampling.py` and
+`tests/integration/test_responses_api.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
