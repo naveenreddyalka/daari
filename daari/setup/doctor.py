@@ -53,6 +53,7 @@ def run_doctor(
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
+    results.append(_check_cors_origins(cfg))
     results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
@@ -1434,6 +1435,46 @@ def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
         name="asr",
         ok=True,
         detail="not configured (POST /v1/audio/transcriptions returns 501)",
+        optional=True,
+    )
+
+
+_DEFAULT_WEB_UI_ORIGIN = "http://127.0.0.1:11437"
+
+
+def _check_cors_origins(settings: Settings) -> CheckResult:
+    """Advise when the web-ui origin is missing from the CORS allowlist (#999)."""
+    origins = [
+        str(origin).strip().rstrip("/")
+        for origin in (getattr(settings.server, "cors_origins", None) or [])
+        if str(origin).strip()
+    ]
+    expected = (os.environ.get("DAARI_WEB_UI_ORIGIN") or _DEFAULT_WEB_UI_ORIGIN).strip().rstrip("/")
+    if not origins:
+        return CheckResult(
+            name="cors_origins",
+            ok=True,
+            detail=(
+                "server.cors_origins empty (CORS off). For daari web-ui add "
+                f"{expected!r} — see SECURITY.md"
+            ),
+            optional=True,
+        )
+    normalized = {origin.rstrip("/") for origin in origins}
+    if expected in normalized:
+        return CheckResult(
+            name="cors_origins",
+            ok=True,
+            detail=f"allowlist includes web-ui origin {expected!r}",
+            optional=True,
+        )
+    return CheckResult(
+        name="cors_origins",
+        ok=False,
+        detail=(
+            f"server.cors_origins is set but missing web-ui origin {expected!r} "
+            "(browsers will block credentialed dashboard calls)"
+        ),
         optional=True,
     )
 
