@@ -136,6 +136,9 @@ class ChatCompletionRequest(BaseModel):
     # OpenRouter Auto `cost_tier` / `plugins: [{id: auto-router}]` (#388).
     cost_tier: str | None = None
     plugins: list[Any] | None = None
+    # OpenAI/OpenRouter service_tier (flex|standard|priority|fast). Same #161
+    # pattern — declare so it reaches SamplingParams (#1005).
+    service_tier: str | None = None
 
 
 def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
