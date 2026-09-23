@@ -51,6 +51,21 @@ from daari.router.profile import PromptProfile, build_prompt_profile, categorize
 from daari.tools.shell import ShellExecutor
 
 
+def _openai_stream_error_frame(*, error_type: str, message: str) -> str:
+    """In-band OpenAI SSE error (matches stream_idle_timeout shape; #973)."""
+    return (
+        "data: "
+        + json.dumps({"error": {"type": error_type, "message": message}})
+        + "\n\n"
+    )
+
+
+def _anthropic_stream_error_frame(*, error_type: str, message: str) -> str:
+    """In-band Anthropic SSE error event (#973)."""
+    payload = {"type": "error", "error": {"type": error_type, "message": message}}
+    return f"event: error\ndata: {json.dumps(payload)}\n\n"
+
+
 def _guardrails_from_settings(settings: Settings) -> Any | None:
     from daari.gateway.guardrails import engine_from_settings
 
@@ -2255,6 +2270,7 @@ class Router:
 
                     reraise_deadline(exc)
                     last_error = exc
+                    self._record_stream_host_failure(stream_slot)
                     log_gateway_event(
                         "stream_attempt_failed",
                         {"tier": tier, "ollama_model": ollama_model, "error": str(exc)[:300]},
@@ -2272,7 +2288,24 @@ class Router:
                         else:
                             add_step("fallback", from_tier=tier, error=str(exc)[:120])
                         continue
-                    yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
+                    if content_sent:
+                        for chunk in pending_chunks:
+                            yield chunk
+                        log_gateway_event(
+                            "stream_incomplete",
+                            {
+                                "tier": tier,
+                                "ollama_model": ollama_model,
+                                "error": str(exc)[:300],
+                                "partial_chars": tier_completion_chars,
+                            },
+                        )
+                        yield _openai_stream_error_frame(
+                            error_type="stream_incomplete",
+                            message=str(exc)[:300],
+                        )
+                    else:
+                        yield f"data: {json.dumps({'error': f'stream failed: {exc}'})}\n\n"
                     yield "data: [DONE]\n\n"
                     add_step("served", tier=None, error=str(exc)[:120])
                     if getattr(self, "otel_enabled", False) and trace is not None:
@@ -2324,6 +2357,7 @@ class Router:
                     outcome.note("L6", draft=draft_used)
                     l6_first_at: float | None = None
                     relayed_tool_calls = False
+                    relay_incomplete = False
                     try:
                         from daari.router.deadline import guard_upstream
 
@@ -2364,7 +2398,8 @@ class Router:
                     except Exception as exc:
                         log_gateway_event("stream_frontier_relay_failed", {"error": str(exc)[:300]})
                         # Nothing was emitted yet if the failure came before the
-                        # first delta; otherwise the partial answer stands.
+                        # first delta; otherwise the partial answer stands and we
+                        # signal truncation so the client does not treat it as complete (#973).
                         if not relayed and not relayed_tool_calls:
                             if scanner is not None:
                                 release = scanner.push(streamed_text)
@@ -2378,7 +2413,17 @@ class Router:
                             else:
                                 yield f"data: {json.dumps(chunk_payload(delta={'content': streamed_text}))}\n\n"
                                 relayed.append(streamed_text)
-                    finish_reason = "tool_calls" if relayed_tool_calls else "stop"
+                        else:
+                            self._record_frontier_stream_failure()
+                            log_gateway_event(
+                                "stream_incomplete",
+                                {
+                                    "tier": "L6",
+                                    "error": str(exc)[:300],
+                                    "partial_chars": sum(len(part) for part in relayed),
+                                },
+                            )
+                            relay_incomplete = True
                     if scanner is not None and not scanner.blocked:
                         flush = scanner.flush()
                         if flush.text:
@@ -2389,6 +2434,23 @@ class Router:
                         relayed_text = scanner.scanned_text
                     else:
                         relayed_text = "".join(relayed)
+                    if relay_incomplete:
+                        yield _openai_stream_error_frame(
+                            error_type="stream_incomplete",
+                            message="frontier stream ended before a terminal event",
+                        )
+                        yield "data: [DONE]\n\n"
+                        latency_ms = int((time.perf_counter() - started) * 1000)
+                        add_step(
+                            "served",
+                            tier="L6",
+                            cache_hit=False,
+                            latency_ms=latency_ms,
+                            error="stream_incomplete",
+                        )
+                        finish_trace("L6")
+                        return
+                    finish_reason = "tool_calls" if relayed_tool_calls else "stop"
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
                     yield usage_chunk(len(relayed_text), stream_tier="L6")
                     yield "data: [DONE]\n\n"
@@ -3040,6 +3102,7 @@ class Router:
 
                 reraise_deadline(exc)
                 last_error = exc
+                self._record_stream_host_failure(stream_slot)
                 log_gateway_event(
                     "anthropic_stream_attempt_failed",
                     {
@@ -3053,6 +3116,26 @@ class Router:
                 )
                 if tier_index < len(tier_chain) - 1:
                     continue
+                if any_output:
+                    for event in pending:
+                        yield event
+                    if text_block_open:
+                        yield block_stop(block_index)
+                    log_gateway_event(
+                        "stream_incomplete",
+                        {
+                            "tier": tier,
+                            "ollama_model": model_name,
+                            "error": str(exc)[:300],
+                            "partial_chars": completion_chars,
+                        },
+                    )
+                    yield _anthropic_stream_error_frame(
+                        error_type="stream_incomplete",
+                        message=str(exc)[:300],
+                    )
+                    yield sse("message_stop", {"type": "message_stop"})
+                    return
                 raise
             finally:
                 if stream_slot is not None and self.local_pool is not None:
@@ -4506,6 +4589,29 @@ class Router:
         l6_request = self._slim_for_frontier(request)
         l6_request = await self._compress_for_frontier(l6_request)
         return self._scrub_for_frontier(l6_request)
+
+    def _record_stream_host_failure(self, stream_slot: Any | None) -> None:
+        """Trip the circuit breaker for the local slot that died mid-stream (#973)."""
+        if stream_slot is None:
+            return
+        breaker = getattr(stream_slot, "breaker", None)
+        if breaker is not None:
+            breaker.record_failure()
+
+    def _record_frontier_stream_failure(self) -> None:
+        """Trip the frontier breaker after a truncated L6 relay (#973)."""
+        frontier = self.frontier
+        if frontier is None:
+            return
+        breaker = getattr(frontier, "breaker", None)
+        if breaker is not None:
+            breaker.record_failure()
+            return
+        for slot in getattr(frontier, "slots", None) or []:
+            slot_breaker = getattr(slot, "breaker", None)
+            if slot_breaker is not None:
+                slot_breaker.record_failure()
+                return
 
     def _can_relay_frontier_stream(
         self, request: InternalRequest, text: str, confidence: float, threshold: float

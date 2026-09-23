@@ -4207,6 +4207,15 @@ chunks for the full stream (not only TTFT); optional
 `server.stream_idle_timeout_seconds` ends hung streams with an in-band error.
 Covered by `tests/unit/test_streaming_keepalive.py`.
 
+### In-band stream_incomplete + breaker on truncated streams ([#973](https://github.com/naveenreddyalka/daari/issues/973))
+
+<!-- tracking:#973 -->
+**Status:** Done (2026-09-23). OpenAI and Anthropic streams that die after
+emitting deltas append a `stream_incomplete` in-band error before stream end,
+log `stream_incomplete` via `log_gateway_event`, and trip the serving host's
+circuit breaker; partial streams stay out of L0/L1. Covered by
+`tests/unit/test_stream_incomplete.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
