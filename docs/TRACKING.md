@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-23 (Responses input_audio — [#997](https://github.com/naveenreddyalka/daari/issues/997))
+> Last updated: 2026-09-23 (doctor cors_origins — [#999](https://github.com/naveenreddyalka/daari/issues/999))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -4278,6 +4278,13 @@ inline clips are transcribed into the local-tier prompt. Docs:
 onto `Message.audio` and runs the same ASR inject path as chat. Docs:
 [asr.md](developer/guides/backends/asr.md#chat-input_audio-blocks). Covered by
 `tests/unit/test_responses_input_audio.py`.
+
+### Doctor CORS web-ui origin advisory ([#999](https://github.com/naveenreddyalka/daari/issues/999))
+
+<!-- tracking:#999 -->
+**Status:** Done (2026-09-23). Optional `cors_origins` doctor check tips empty
+allowlists and warns when the web-ui origin is missing. Covered by
+`tests/unit/test_doctor_cors_origins.py`.
 
 ## How to update
 
