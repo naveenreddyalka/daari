@@ -232,6 +232,9 @@ class AnthropicRequest(BaseModel):
     plugins: list[Any] | None = None
     # Anthropic/OpenRouter service_tier (flex|standard|priority|fast) (#1005).
     service_tier: str | None = None
+    # Request-level extended thinking + metadata (#1009).
+    thinking: Any | None = None
+    metadata: Any | None = None
 
 
 class AnthropicTextBlock(BaseModel):

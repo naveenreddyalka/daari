@@ -214,10 +214,16 @@ def to_anthropic_payload(
             payload["tools"] = anthropic_tools
     if request.sampling.top_p is not None:
         payload["top_p"] = request.sampling.top_p
+    if request.sampling.top_k is not None:
+        payload["top_k"] = request.sampling.top_k
     if request.sampling.stop:
         payload["stop_sequences"] = list(request.sampling.stop)
     if request.sampling.service_tier:
         payload["service_tier"] = request.sampling.service_tier
+    if request.sampling.thinking:
+        payload["thinking"] = dict(request.sampling.thinking)
+    if request.sampling.metadata:
+        payload["metadata"] = dict(request.sampling.metadata)
     mapped_choice = openai_tool_choice_to_anthropic(request.sampling.tool_choice)
     if mapped_choice is not None:
         payload["tool_choice"] = mapped_choice
