@@ -425,3 +425,68 @@ async def test_embed_unknown_model_is_400(app):
 
     assert response.status_code == 400
     assert embedder.calls == []
+
+
+@pytest.mark.asyncio
+async def test_chat_forwards_think_format_keep_alive(settings, monkeypatch):
+    """Facade top-level think/format/keep_alive reach the local Ollama payload (#1011)."""
+    settings.models.l3 = "qwen3:8b"
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    captured: list[dict] = []
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        captured.append(
+            application.state.ctx.router.ollama._payload(
+                request, request.model or "qwen3:8b", stream=False
+            )
+        )
+        return InternalResponse(
+            content='{"ok": true}',
+            model="qwen3:8b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "execute", fake_execute)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        with_knobs = await client.post(
+            "/api/chat",
+            json={
+                "model": "qwen3:8b",
+                "stream": False,
+                "messages": [{"role": "user", "content": "think"}],
+                "think": "high",
+                "format": schema,
+                "keep_alive": "10m",
+            },
+        )
+        bare = await client.post(
+            "/api/chat",
+            json={
+                "model": "qwen3:8b",
+                "stream": False,
+                "messages": [{"role": "user", "content": "plain"}],
+            },
+        )
+
+    assert with_knobs.status_code == 200
+    assert bare.status_code == 200
+    assert captured[0]["think"] == "high"
+    assert captured[0]["format"] == schema
+    assert captured[0]["keep_alive"] == "10m"
+    assert "think" not in captured[1]
+    assert "format" not in captured[1]
+    assert "keep_alive" not in captured[1]

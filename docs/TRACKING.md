@@ -4302,6 +4302,14 @@ get tool schemas. Covered by `tests/unit/test_frontier_tool_parity.py` and
 forwards them on openai-kind `response_format`; Ollama `format` stays
 schema-only. Covered by `tests/unit/test_sampling_params.py`.
 
+### Ollama facade think/format/keep_alive ([#1011](https://github.com/naveenreddyalka/daari/issues/1011))
+
+<!-- tracking:#1011 -->
+**Status:** Done (2026-09-23). Facade chat/generate declare and forward
+`think`, `format`, and `keep_alive` onto local Ollama payloads. Docs:
+[chatgpt-desktop.md](developer/guides/clients/chatgpt-desktop.md). Covered by
+`tests/integration/test_ollama_compat.py`.
+
 ### Doctor CORS web-ui origin advisory ([#999](https://github.com/naveenreddyalka/daari/issues/999))
 
 <!-- tracking:#999 -->
