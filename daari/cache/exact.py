@@ -31,10 +31,10 @@ def tools_schema_hash(tools: list[Any] | None) -> str:
 
 
 def _messages_for_cache(request: InternalRequest) -> list[dict[str, Any]]:
-    """Dump messages without an empty `images` field, so pre-#164 keys survive."""
+    """Dump messages without empty multimodal fields, so pre-#164 keys survive."""
     dumped: list[dict[str, Any]] = []
     for message in request.messages:
-        exclude = {"images"}
+        exclude = {"images", "audio"}
         if not message.tool_call_id:
             exclude.add("tool_call_id")
         # Empty thinking_blocks omitted so pre-#431 keys stay reachable.
@@ -43,6 +43,8 @@ def _messages_for_cache(request: InternalRequest) -> list[dict[str, Any]]:
         data = message.model_dump(exclude=exclude)
         if message.images:
             data["images"] = [image.cache_token() for image in message.images]
+        if message.audio:
+            data["audio"] = [clip.cache_token() for clip in message.audio]
         dumped.append(data)
     return dumped
 

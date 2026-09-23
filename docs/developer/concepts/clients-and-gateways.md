@@ -48,6 +48,11 @@ Image parts (`image_url`, Anthropic `image` sources, Ollama `images`) ride on
 gateway returns **422** — it never strips the image and answers as if the question
 were text-only.
 
+OpenAI `input_audio` parts ride on `Message.audio`. They are rebuilt on the L6
+OpenAI payload. When `asr.base_url` is set, daari also transcribes each clip and
+injects the text into the local-tier prompt; see
+[local speech-to-text](../guides/backends/asr.md#chat-input_audio-blocks).
+
 `POST /v1/embeddings` is served by the same embedder L1 already uses, so a client
 pointed at daari does not need a second host for vectors.
 

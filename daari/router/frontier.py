@@ -94,7 +94,7 @@ class FrontierExecutor:
             entry: dict[str, Any] = {"role": message.role}
             if message.tool_calls:
                 entry["tool_calls"] = message.tool_calls
-            if message.images:
+            if message.images or message.audio:
                 parts: list[dict[str, Any]] = []
                 if message.content:
                     parts.append({"type": "text", "text": message.content})
@@ -102,6 +102,8 @@ class FrontierExecutor:
                     url = image.as_data_url()
                     if url:
                         parts.append({"type": "image_url", "image_url": {"url": url}})
+                for clip in message.audio:
+                    parts.append(clip.as_openai_part())
                 entry["content"] = parts
             elif message.content is not None:
                 entry["content"] = message.content
