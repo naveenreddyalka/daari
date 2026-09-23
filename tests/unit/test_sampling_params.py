@@ -187,6 +187,37 @@ class TestParsingFromClientBody:
         assert params.ollama_format() == schema
         assert params.openai_payload()["response_format"]["type"] == "json_schema"
 
+    def test_json_schema_name_and_strict_round_trip(self):
+        """Client name + strict must reach openai_payload (not hardcoded daari) (#1008)."""
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        params = SamplingParams.from_openai_body(
+            {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "my_schema",
+                        "strict": True,
+                        "schema": schema,
+                    },
+                }
+            }
+        )
+        assert params.json_schema == schema
+        assert params.json_schema_name == "my_schema"
+        assert params.json_schema_strict is True
+        # Ollama stays schema-only.
+        assert params.ollama_format() == schema
+        wrapper = params.openai_payload()["response_format"]["json_schema"]
+        assert wrapper == {"name": "my_schema", "strict": True, "schema": schema}
+        # Regression: must not rename to the old hardcoded "daari".
+        assert wrapper["name"] != "daari"
+
+    def test_json_schema_without_name_defaults_to_daari(self):
+        schema = {"type": "object"}
+        params = SamplingParams(json_schema=schema)
+        assert params.openai_payload()["response_format"]["json_schema"]["name"] == "daari"
+        assert "strict" not in params.openai_payload()["response_format"]["json_schema"]
+
     def test_malformed_json_schema_is_ignored(self, monkeypatch):
         events: list[str] = []
         monkeypatch.setattr(

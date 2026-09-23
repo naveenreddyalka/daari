@@ -62,6 +62,26 @@ def ollama_thinking_controls() -> dict[str, Any]:
     return {"values": values, "default": "medium"}
 
 
+def _json_schema_meta_from_response_format(
+    response_format: Any,
+) -> tuple[str | None, bool | None]:
+    """Return (name, strict) from an OpenAI `response_format` wrapper (#1008)."""
+    if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":
+        return None, None
+    wrapper = response_format.get("json_schema")
+    if not isinstance(wrapper, dict):
+        return None, None
+    name = wrapper.get("name")
+    if not isinstance(name, str) or not name.strip():
+        name = None
+    else:
+        name = name.strip()
+    strict = wrapper.get("strict")
+    if not isinstance(strict, bool):
+        strict = None
+    return name, strict
+
+
 def _json_schema_from_response_format(response_format: Any) -> dict[str, Any] | None:
     """Return the JSON Schema object from an OpenAI `response_format`, or None."""
     if not isinstance(response_format, dict) or response_format.get("type") != "json_schema":
@@ -144,6 +164,9 @@ class SamplingParams(BaseModel):
     response_format_json: bool = False
     # OpenAI structured outputs (`type: json_schema`). None when absent / invalid.
     json_schema: dict[str, Any] | None = None
+    # Client-supplied wrapper fields for openai-kind payloads (#1008).
+    json_schema_name: str | None = None
+    json_schema_strict: bool | None = None
     # str ("auto"/"none"/"required") or OpenAI function object; forwarded to L6 (#934).
     tool_choice: str | dict[str, Any] | None = None
     n: int | None = None
@@ -182,6 +205,8 @@ class SamplingParams(BaseModel):
             and response_format.get("type") == "json_object"
         )
         json_schema = _json_schema_from_response_format(response_format)
+        json_schema_name: str | None = None
+        json_schema_strict: bool | None = None
         if (
             isinstance(response_format, dict)
             and response_format.get("type") == "json_schema"
@@ -192,6 +217,9 @@ class SamplingParams(BaseModel):
                 log_gateway_event("json_schema_ignored", {"reason": "malformed"})
             else:
                 wants_json = True
+                json_schema_name, json_schema_strict = _json_schema_meta_from_response_format(
+                    response_format
+                )
 
         tool_choice = body.get("tool_choice")
         if isinstance(tool_choice, dict):
@@ -209,6 +237,8 @@ class SamplingParams(BaseModel):
             presence_penalty=body.get("presence_penalty"),
             response_format_json=wants_json,
             json_schema=json_schema,
+            json_schema_name=json_schema_name,
+            json_schema_strict=json_schema_strict,
             tool_choice=tool_choice,
             n=body.get("n"),
             logprobs=body.get("logprobs"),
@@ -360,9 +390,15 @@ class SamplingParams(BaseModel):
         if self.logit_bias:
             payload["logit_bias"] = dict(self.logit_bias)
         if self.json_schema:
+            wrapper: dict[str, Any] = {
+                "name": self.json_schema_name or "daari",
+                "schema": self.json_schema,
+            }
+            if self.json_schema_strict is not None:
+                wrapper["strict"] = self.json_schema_strict
             payload["response_format"] = {
                 "type": "json_schema",
-                "json_schema": {"name": "daari", "schema": self.json_schema},
+                "json_schema": wrapper,
             }
         elif self.response_format_json:
             payload["response_format"] = {"type": "json_object"}
@@ -411,7 +447,12 @@ class SamplingParams(BaseModel):
         if self.logit_bias:
             data["logit_bias"] = dict(self.logit_bias)
         if self.json_schema:
-            data["response_format"] = {"type": "json_schema", "schema": self.json_schema}
+            fmt: dict[str, Any] = {"type": "json_schema", "schema": self.json_schema}
+            if self.json_schema_name is not None:
+                fmt["name"] = self.json_schema_name
+            if self.json_schema_strict is not None:
+                fmt["strict"] = self.json_schema_strict
+            data["response_format"] = fmt
         elif self.response_format_json:
             data["response_format"] = "json_object"
         if self.tool_choice in {"none"}:

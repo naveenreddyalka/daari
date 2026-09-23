@@ -4295,6 +4295,13 @@ stream and non-stream L6 OpenAI calls so agent loops with `stream: false`
 get tool schemas. Covered by `tests/unit/test_frontier_tool_parity.py` and
 `tests/integration/test_gateway_flow.py`.
 
+### Preserve json_schema name and strict ([#1008](https://github.com/naveenreddyalka/daari/issues/1008))
+
+<!-- tracking:#1008 -->
+**Status:** Done (2026-09-23). `SamplingParams` keeps client `name`/`strict` and
+forwards them on openai-kind `response_format`; Ollama `format` stays
+schema-only. Covered by `tests/unit/test_sampling_params.py`.
+
 ### Doctor CORS web-ui origin advisory ([#999](https://github.com/naveenreddyalka/daari/issues/999))
 
 <!-- tracking:#999 -->
