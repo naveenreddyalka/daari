@@ -277,7 +277,7 @@ class OllamaExecutor:
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
         messages: list[dict[str, Any]] = []
         for m in request.messages:
-            data = m.model_dump(exclude_none=True, exclude={"images"})
+            data = m.model_dump(exclude_none=True, exclude={"images", "audio"})
             tool_calls = data.get("tool_calls")
             image_b64 = [img.as_base64() for img in m.images if img.as_base64()]
             if tool_calls:

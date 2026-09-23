@@ -107,6 +107,99 @@ def resolve_asr_target(settings: Any) -> AsrTarget | None:
     )
 
 
+_AUDIO_CONTENT_TYPES = {
+    "wav": ("audio/wav", "clip.wav"),
+    "mp3": ("audio/mpeg", "clip.mp3"),
+}
+
+
+async def inject_inline_audio_transcripts(request: Any, settings: Any) -> Any:
+    """When ``asr.base_url`` is set, transcribe ``Message.audio`` into text (#981).
+
+    Frontier still receives the original ``input_audio`` blocks; local tiers get
+    the transcript appended to ``content`` so the turn stays on-box.
+    """
+    from daari.gateway.internal import Message
+
+    if not any(getattr(message, "audio", None) for message in request.messages):
+        return request
+    asr = getattr(settings, "asr", None)
+    base = str(getattr(asr, "base_url", "") or "").strip().rstrip("/") if asr else ""
+    if not base:
+        return request
+    target = resolve_asr_target(settings)
+    if target is None or target.via != "local":
+        return request
+
+    import base64
+
+    from daari.gateway.request_log import log_gateway_event
+
+    updated: list[Message] = []
+    changed = False
+    for message in request.messages:
+        clips = list(getattr(message, "audio", None) or [])
+        if not clips:
+            updated.append(message)
+            continue
+        transcripts: list[str] = []
+        for clip in clips:
+            raw = getattr(clip, "data", None)
+            if not isinstance(raw, str) or not raw.strip():
+                continue
+            try:
+                content = base64.b64decode(raw, validate=False)
+            except Exception:
+                log_gateway_event("input_audio_decode_failed", {"format": clip.format})
+                continue
+            fmt = str(getattr(clip, "format", "") or "wav").lower()
+            content_type, filename = _AUDIO_CONTENT_TYPES.get(fmt, ("application/octet-stream", "clip.bin"))
+            form: dict[str, str] = {"response_format": "json"}
+            if target.model:
+                form["model"] = target.model
+            headers: dict[str, str] = {}
+            if target.api_key:
+                headers["Authorization"] = f"Bearer {target.api_key}"
+            try:
+                upstream = getattr(settings, "upstream", None)
+                retry = getattr(upstream, "retry", None) if upstream is not None else None
+                response = await post_transcription(
+                    f"{target.base_url}/audio/transcriptions",
+                    headers=headers,
+                    filename=filename,
+                    content=content,
+                    content_type=content_type,
+                    form=form,
+                    timeout=target.timeout,
+                    retry=retry,
+                )
+                response.raise_for_status()
+                body = response.json()
+                text = body.get("text") if isinstance(body, dict) else None
+                if isinstance(text, str) and text.strip():
+                    transcripts.append(text.strip())
+            except Exception as exc:
+                log_gateway_event(
+                    "input_audio_asr_failed",
+                    {"error": summarize_upstream_failure(exc), "format": fmt},
+                )
+        if not transcripts:
+            updated.append(message)
+            continue
+        joined = "\n".join(transcripts)
+        existing = (message.content or "").strip()
+        new_content = f"{existing}\n{joined}".strip() if existing else joined
+        updated.append(message.model_copy(update={"content": new_content}))
+        changed = True
+        log_gateway_event(
+            "input_audio_asr_injected",
+            {"clips": len(clips), "chars": len(joined)},
+        )
+    if not changed:
+        return request
+    return request.model_copy(update={"messages": updated})
+
+
 async def post_transcription(
     url: str,
     *,

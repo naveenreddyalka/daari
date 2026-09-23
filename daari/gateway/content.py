@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from daari.gateway.internal import ContentImage, Message
+from daari.gateway.internal import ContentAudio, ContentImage, Message
 
 _TEXT_BLOCK_TYPES = frozenset({"text", "input_text", "output_text"})
 _THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+_AUDIO_FORMATS = frozenset({"wav", "mp3"})
 
 
 def content_to_text(content: str | list[dict[str, Any]] | dict[str, Any] | None) -> str | None:
@@ -105,6 +106,31 @@ def extract_images(content: str | list[dict[str, Any]] | dict[str, Any] | None) 
     return images
 
 
+def extract_audio(content: str | list[dict[str, Any]] | dict[str, Any] | None) -> list[ContentAudio]:
+    """Pull OpenAI ``input_audio`` blocks out of a message content value (#981).
+
+    Shape: ``{"type": "input_audio", "input_audio": {"data": "<b64>", "format": "wav"}}``.
+    """
+    if content is None or isinstance(content, str):
+        return []
+    blocks = [content] if isinstance(content, dict) else content
+    audio: list[ContentAudio] = []
+    for block in blocks:
+        if not isinstance(block, dict) or block.get("type") != "input_audio":
+            continue
+        payload = block.get("input_audio")
+        if not isinstance(payload, dict):
+            continue
+        data = payload.get("data")
+        if not isinstance(data, str) or not data.strip():
+            continue
+        fmt = str(payload.get("format") or "wav").strip().lower() or "wav"
+        if fmt not in _AUDIO_FORMATS:
+            fmt = "wav"
+        audio.append(ContentAudio(data=data, format=fmt))
+    return audio
+
+
 def _image_from_url(url: str) -> ContentImage:
     if url.startswith("data:") and "," in url:
         header, data = url.split(",", 1)
@@ -140,10 +166,23 @@ def sanitize_messages_for_ollama(messages: list[Message]) -> list[Message]:
             if not text:
                 names = _tool_call_names(message.tool_calls)
                 text = f"(called tools: {', '.join(names)})" if names else "(called tools)"
-            sanitized.append(Message(role=message.role, content=text, images=list(message.images)))
+            sanitized.append(
+                Message(
+                    role=message.role,
+                    content=text,
+                    images=list(message.images),
+                    audio=list(message.audio),
+                )
+            )
             continue
         # Strip thinking_blocks: local models must not see signed Anthropic chain.
+        # Keep audio for L6 replay; local executors ignore the field (#981).
         sanitized.append(
-            Message(role=message.role, content=message.content, images=list(message.images))
+            Message(
+                role=message.role,
+                content=message.content,
+                images=list(message.images),
+                audio=list(message.audio),
+            )
         )
     return sanitized

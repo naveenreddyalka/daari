@@ -36,11 +36,32 @@ class ContentImage(BaseModel):
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
+class ContentAudio(BaseModel):
+    """One OpenAI ``input_audio`` part. ``data`` is raw base64; ``format`` is wav/mp3."""
+
+    data: str
+    format: str = "wav"
+
+    def cache_token(self) -> str:
+        import hashlib
+
+        raw = f"{self.format}:{self.data}"
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+    def as_openai_part(self) -> dict[str, Any]:
+        return {
+            "type": "input_audio",
+            "input_audio": {"data": self.data, "format": self.format},
+        }
+
+
 class Message(BaseModel):
     role: str
     content: str | None = None
     tool_calls: list[Any] | None = None
     images: list[ContentImage] = Field(default_factory=list)
+    # OpenAI input_audio parts (#981). Empty by default so cache keys stay stable.
+    audio: list[ContentAudio] = Field(default_factory=list)
     # Anthropic tool_result blocks carry tool_use_id; OpenAI uses this as
     # tool_call_id. Absent on ordinary turns so cache keys stay stable.
     tool_call_id: str | None = None

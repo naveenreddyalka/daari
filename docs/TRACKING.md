@@ -1,6 +1,6 @@
 # daari — Task tracking
 
-> Last updated: 2026-09-19 (audio translations — [#758](https://github.com/naveenreddyalka/daari/issues/758))
+> Last updated: 2026-09-23 (input_audio chat blocks — [#981](https://github.com/naveenreddyalka/daari/issues/981))
 > Update this file when phases/tasks complete.  
 > Repo layout and request flow: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -4254,6 +4254,15 @@ Covered by `tests/unit/test_mcp_server.py`.
 go through `run_upstream` with `RetryPolicy.from_settings(upstream.retry)`;
 transient 5xx/connect retry, non-retryable 4xx fail fast. Covered by
 `tests/unit/test_modality_retry.py`.
+
+### OpenAI input_audio content blocks ([#981](https://github.com/naveenreddyalka/daari/issues/981))
+
+<!-- tracking:#981 -->
+**Status:** Done (2026-09-23). `extract_audio` keeps `input_audio` parts on
+`Message.audio`; L6 OpenAI payloads rebuild them; when `asr.base_url` is set,
+inline clips are transcribed into the local-tier prompt. Docs:
+[asr.md](developer/guides/backends/asr.md#chat-input_audio-blocks). Covered by
+`tests/unit/test_input_audio.py`.
 
 ## How to update
 

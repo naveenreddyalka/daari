@@ -21,7 +21,12 @@ from daari.gateway.client_errors import (
 )
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
-from daari.gateway.content import content_to_text, extract_images, sanitize_messages_for_ollama
+from daari.gateway.content import (
+    content_to_text,
+    extract_audio,
+    extract_images,
+    sanitize_messages_for_ollama,
+)
 from daari.gateway.internal import (
     InternalRequest,
     InternalResponse,
@@ -138,12 +143,13 @@ def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
     for message in messages:
         text = content_to_text(message.content)
         images = extract_images(message.content)
+        audio = extract_audio(message.content)
         role = message.role
         if role == "developer":
             role = "system"
         if role == "assistant" and not text and not message.tool_calls:
             continue
-        if role in {"user", "system"} and not text and not images:
+        if role in {"user", "system"} and not text and not images and not audio:
             continue
         internal.append(
             Message(
@@ -151,6 +157,7 @@ def _to_internal_messages(messages: list[ChatMessage]) -> list[Message]:
                 content=text,
                 tool_calls=message.tool_calls,
                 images=images,
+                audio=audio,
             )
         )
     return internal
@@ -315,6 +322,9 @@ async def _execute_batch_chat_body(
             default_model=ctx.settings.models.l3,
             meta=meta,
         )
+        from daari.gateway.transcriptions import inject_inline_audio_transcripts
+
+        internal = await inject_inline_audio_transcripts(internal, ctx.settings)
         result = await ctx.router.route(internal)
         prompt_chars = sum(len(message.content or "") for message in internal.messages)
         return build_chat_completion_payload(
@@ -871,6 +881,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 tools_mode=x_daari_tools,
                 meta=meta,
             )
+            from daari.gateway.transcriptions import inject_inline_audio_transcripts
+
+            internal = await inject_inline_audio_transcripts(internal, ctx.settings)
             if internal.provider and internal.provider.zdr and ctx.settings.frontier.enabled:
                 try:
                     require_zdr_slot(internal.provider, configured_frontier_slots(ctx.settings))
