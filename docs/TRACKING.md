@@ -4435,6 +4435,13 @@ L6 OpenAI forward). Docs:
 caption with clip-B misses after clip-A is stored; caption+clip-A still hits.
 Covered by `tests/integration/test_l1_semantic_cache.py`.
 
+### Integration pin: distinct images miss L1 ([#1039](https://github.com/naveenreddyalka/daari/issues/1039))
+
+<!-- tracking:#1039 -->
+**Status:** Done (2026-09-24). Router L1 integration (mocked embedder): same
+caption with image-B misses after image-A is stored; caption+image-A still hits.
+Covered by `tests/integration/test_l1_semantic_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

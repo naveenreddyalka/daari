@@ -9,6 +9,7 @@ from daari.cache.normalize import normalize_for_embedding
 from daari.cache.semantic import SemanticCache, extract_embed_text
 from daari.gateway.internal import (
     ContentAudio,
+    ContentImage,
     DaariMeta,
     InternalRequest,
     InternalResponse,
@@ -232,4 +233,77 @@ async def test_l1_misses_when_audio_clip_differs(tmp_path):
     assert hit.daari_meta.tier == "L1"
     assert hit.daari_meta.cache_hit is True
     assert hit.content == "seeded voice answer"
+    assert metrics.tiers["L1"].cache_hits == 1
+
+
+def _vision_request(caption: str, image_data: str) -> InternalRequest:
+    return InternalRequest(
+        messages=[
+            Message(
+                role="user",
+                content=caption,
+                images=[ContentImage(data=image_data, media_type="image/png")],
+            )
+        ],
+        model="llama3.2:3b",
+    )
+
+
+@pytest.mark.asyncio
+async def test_l1_misses_when_image_differs(tmp_path):
+    """#1039: same caption + different image must not share an L1 hit."""
+    caption = "what is in this picture?"
+    image_a = _vision_request(caption, "img-a")
+    image_b = _vision_request(caption, "img-b")
+    assert normalize_for_embedding(extract_embed_text(image_a)) != normalize_for_embedding(
+        extract_embed_text(image_b)
+    )
+
+    embedder = OrthogonalEmbedder()
+    cache = ExactCache(str(tmp_path / "l0"), enabled=False)
+    semantic = SemanticCache(
+        str(tmp_path / "l1"),
+        embedder,
+        enabled=True,
+        similarity_threshold=0.92,
+    )
+    metrics = Metrics()
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="vision miss answer",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(cache=cache, semantic_cache=semantic, ollama=ollama, metrics=metrics)
+
+    seed = InternalResponse(
+        content="seeded vision answer",
+        model="llama3.2:3b",
+        daari_meta=DaariMeta(
+            tier="L3",
+            executor="ollama",
+            provider_id="ollama",
+            latency_ms=1,
+        ),
+    )
+    await semantic.put(image_a, seed)
+
+    miss = await router.route(image_b)
+    assert miss.daari_meta.cache_hit is False
+    assert miss.daari_meta.tier != "L1"
+    assert "L1" not in metrics.tiers or metrics.tiers["L1"].cache_hits == 0
+
+    hit = await router.route(image_a)
+    assert hit.daari_meta.tier == "L1"
+    assert hit.daari_meta.cache_hit is True
+    assert hit.content == "seeded vision answer"
     assert metrics.tiers["L1"].cache_hits == 1
