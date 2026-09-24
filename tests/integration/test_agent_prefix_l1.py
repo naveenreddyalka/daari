@@ -6,7 +6,13 @@ import pytest
 
 from daari.cache.exact import ExactCache
 from daari.cache.semantic import SemanticCache, agent_prefix_text, agent_suffix_hash
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.internal import (
+    ContentImage,
+    DaariMeta,
+    InternalRequest,
+    InternalResponse,
+    Message,
+)
 from daari.observability.metrics import Metrics
 from daari.router.router import OllamaExecutor, Router
 
@@ -125,3 +131,53 @@ async def test_identical_agent_turn_still_hits_l0(tmp_path):
 
     assert second.daari_meta.tier == "L0"
     assert calls[0] == before
+
+
+def _vision_agent_request(
+    tool_result: str, *, image_data: str, call_id: str = "c1"
+) -> InternalRequest:
+    messages = [
+        Message(role="system", content="You are a deal assistant."),
+        Message(
+            role="user",
+            content="Summarize the Stripe deal.",
+            images=[ContentImage(data=image_data, media_type="image/png")],
+        ),
+        Message(
+            role="assistant",
+            content=None,
+            tool_calls=[
+                {"id": call_id, "type": "function", "function": {"name": "lookup_deal"}}
+            ],
+        ),
+        Message(role="tool", content=tool_result, tool_call_id=call_id),
+    ]
+    return InternalRequest(messages=messages, model="llama3.2:3b", tools=TOOLS)
+
+
+@pytest.mark.asyncio
+async def test_agent_prefix_l1_misses_when_image_differs(tmp_path):
+    """#1042: same tools/suffix with a different image must not share prefix-L1."""
+    router, metrics, calls = _router(tmp_path)
+    tool_result = "balance: 100"
+
+    first = await router.route(
+        _vision_agent_request(tool_result, image_data="img-a", call_id="c1")
+    )
+    assert first.daari_meta.cache_hit is False
+
+    miss = await router.route(
+        _vision_agent_request(tool_result, image_data="img-b", call_id="c2")
+    )
+    assert miss.daari_meta.cache_hit is False
+    assert miss.daari_meta.tier != "L1"
+    assert "L1" not in metrics.tiers or metrics.tiers["L1"].cache_hits == 0
+    assert miss.content == "answer for balance: 100"
+
+    hit = await router.route(
+        _vision_agent_request(tool_result, image_data="img-a", call_id="c3")
+    )
+    assert hit.daari_meta.tier == "L1"
+    assert hit.daari_meta.cache_hit is True
+    assert hit.content == first.content
+    assert metrics.tiers["L1"].cache_hits == 1
