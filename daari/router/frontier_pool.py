@@ -15,7 +15,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from daari.gateway.internal import InternalRequest, InternalResponse
-from daari.gateway.provider_prefs import filter_slots_for_region, require_region_slot, require_zdr_slot
+from daari.gateway.provider_prefs import (
+    filter_slots_for_region,
+    normalize_region,
+    require_region_slot,
+    require_zdr_slot,
+)
 from daari.observability.trace import add_step
 from daari.router.circuit_breaker import CircuitBreaker
 from daari.router.retry import RetryPolicy, is_retryable, resolve_upstream_policy, status_of
@@ -147,11 +152,18 @@ class FrontierPool:
                 continue
             # Rotate the key onto the executor for this attempt.
             slot.executor.api_key = key
+            from daari.router.openrouter import openrouter_base_for_region
+
+            original_base = str(getattr(slot.executor, "base_url", "") or "")
+            regional_base = openrouter_base_for_region(region_pin, original_base)
+            if regional_base != original_base:
+                slot.executor.base_url = regional_base
             add_step(
                 "frontier_try",
                 provider=slot.id,
                 model=slot.executor.default_model,
                 key_fingerprint=key[-4:] if len(key) >= 4 else "****",
+                **({"openrouter_region_base": regional_base} if regional_base != original_base else {}),
             )
             try:
                 from daari.router.deadline import RequestDeadlineExceeded, guard_upstream
@@ -166,8 +178,13 @@ class FrontierPool:
                 add_step("frontier_ok", provider=slot.id, model=response.model)
                 # Surface which provider won for ledger/meta.
                 response.daari_meta.provider_id = slot.id
-                if slot.region:
-                    response.daari_meta.region = slot.region
+                served_region = slot.region or (
+                    normalize_region(region_pin)
+                    if regional_base != original_base
+                    else ""
+                )
+                if served_region:
+                    response.daari_meta.region = served_region
                 return response
             except RequestDeadlineExceeded:
                 raise
@@ -188,6 +205,9 @@ class FrontierPool:
                     breaker=slot.breaker.state,
                 )
                 continue
+            finally:
+                if regional_base != original_base and hasattr(slot.executor, "base_url"):
+                    slot.executor.base_url = original_base
 
         raise RuntimeError(
             "all frontier providers failed or open: " + (", ".join(errors) or "none tried")

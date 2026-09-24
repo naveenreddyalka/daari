@@ -91,15 +91,32 @@ def require_region_slot(region_pin: str | None, slots: list[Any]) -> None:
     pin = normalize_region(region_pin)
     if not pin:
         return
-    if not any(normalize_region(getattr(slot, "region", "")) == pin for slot in slots):
-        raise RegionUnavailable(pin)
+    if any(_slot_satisfies_region(slot, pin) for slot in slots):
+        return
+    raise RegionUnavailable(pin)
 
 
 def filter_slots_for_region(region_pin: str | None, slots: list[Any]) -> list[Any]:
     pin = normalize_region(region_pin)
     if not pin:
         return list(slots)
-    return [slot for slot in slots if normalize_region(getattr(slot, "region", "")) == pin]
+    return [slot for slot in slots if _slot_satisfies_region(slot, pin)]
+
+
+def _slot_satisfies_region(slot: Any, pin: str) -> bool:
+    if normalize_region(getattr(slot, "region", "")) == pin:
+        return True
+    # OpenRouter in-region routing is hostname-based (#1052): a global
+    # openrouter.ai slot can honor us/eu pins by rewriting the base URL.
+    from daari.router.openrouter import openrouter_can_satisfy_region
+
+    base = ""
+    executor = getattr(slot, "executor", None)
+    if executor is not None:
+        base = str(getattr(executor, "base_url", "") or "")
+    if not base:
+        base = str(getattr(slot, "base_url", "") or "")
+    return openrouter_can_satisfy_region(pin, base)
 
 
 def usage_cost_and_cache(data: dict[str, Any]) -> tuple[float | None, int | None]:

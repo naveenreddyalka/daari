@@ -14,4 +14,10 @@ OpenRouter is a **hosted marketplace** (400+ models, one key, price/latency rout
 
 **Pick daari** when the goal is *not sending* most Cursor / Claude Code turns to any remote model.
 
+When a virtual key or team sets `region_pin` to `us` or `eu` and L6 is an
+OpenRouter slot, daari rewrites the request to
+`https://us.openrouter.ai/api/v1` or `https://eu.openrouter.ai/api/v1` (OpenRouter
+in-region routing) instead of the global host. Non-OpenRouter slots still match
+on the slot's configured `region` label only.
+
 Stripe announced an OpenRouter acquisition (Aug 2026). That does not change daari’s job. Roadmap: [ROADMAP-v3](../../prd/ROADMAP-v3.md). Short matrix: [compare](compare.md).
