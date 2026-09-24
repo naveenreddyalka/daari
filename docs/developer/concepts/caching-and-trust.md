@@ -15,7 +15,9 @@ trust signals. When `cache.backend: redis`, replica writes use `WATCH`/`MULTI`
 so concurrent puts do not clobber each other's entries. Embed text folds
 `ContentAudio.cache_token()` / `ContentImage.cache_token()` when a turn carries
 `input_audio` or images, so identical captions with different clips or pictures
-cannot near-miss collide.
+cannot near-miss collide. Agent-prefix L1 (`agent_prefix_text`) uses the same
+`_message_embed_chunk` path, so tool-loop prefixes with different screenshots or
+clips also stay distinct.
 
 ## Verifying a hit before serving it
 
