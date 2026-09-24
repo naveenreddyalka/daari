@@ -86,6 +86,57 @@ class TestSemanticHelpers:
         )
         assert extract_embed_text(request) == "user:hello\nassistant:hi there"
 
+    def test_extract_embed_text_includes_image_cache_tokens(self):
+        """#1029: different images with the same caption must not share an L1 embed."""
+        from daari.gateway.internal import ContentImage
+
+        caption = "what is in this picture?"
+        a = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content=caption,
+                    images=[ContentImage(data="img-a", media_type="image/png")],
+                )
+            ],
+            model="llama3.2:3b",
+        )
+        b = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content=caption,
+                    images=[ContentImage(data="img-b", media_type="image/png")],
+                )
+            ],
+            model="llama3.2:3b",
+        )
+        text_a = extract_embed_text(a)
+        text_b = extract_embed_text(b)
+        token_a = a.messages[0].images[0].cache_token()
+        token_b = b.messages[0].images[0].cache_token()
+        assert token_a in text_a
+        assert token_b in text_b
+        assert text_a != text_b
+        assert caption in text_a
+
+    def test_extract_embed_text_audio_only_unchanged_by_image_fold(self):
+        """#1029: audio-only embed strings stay as after #1001."""
+        from daari.gateway.internal import ContentAudio
+
+        request = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content="caption",
+                    audio=[ContentAudio(data="clip-a", format="wav")],
+                )
+            ],
+            model="llama3.2:3b",
+        )
+        token = request.messages[0].audio[0].cache_token()
+        assert extract_embed_text(request) == f"user:caption|audio:{token}"
+
     def test_semantic_context_key_ignores_message_content(self):
         a = InternalRequest(
             messages=[Message(role="user", content="one")],

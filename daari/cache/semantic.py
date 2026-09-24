@@ -20,6 +20,10 @@ def extract_embed_text(request: InternalRequest) -> str:
     parts: list[str] = []
     for message in request.messages:
         chunk = message.content or ""
+        if message.images:
+            tokens = ",".join(image.cache_token() for image in message.images)
+            suffix = f"image:{tokens}"
+            chunk = f"{chunk}|{suffix}" if chunk else suffix
         if message.audio:
             tokens = ",".join(clip.cache_token() for clip in message.audio)
             suffix = f"audio:{tokens}"
