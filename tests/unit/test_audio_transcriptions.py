@@ -734,3 +734,61 @@ async def test_frontier_fallback_unpinned_keeps_first_slot(settings, monkeypatch
         response = await _post(client)
     assert response.status_code == 200, response.text
     assert seen == ["primary.example"]
+
+
+@pytest.mark.asyncio
+async def test_transcription_cost_headers_local_and_frontier(settings, tmp_path, monkeypatch):
+    from daari.gateway.cost_headers import COST_AVOIDED_HEADER, COST_HEADER, TIER_HEADER
+
+    seen: list[httpx.Request] = []
+    _patch_upstream(monkeypatch, _ok_handler(seen))
+    _enable_spend(settings, tmp_path)
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = "ggml-base"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        local = await _post(client)
+    assert local.status_code == 200, local.text
+    assert local.headers[TIER_HEADER] == "asr"
+    assert float(local.headers[COST_HEADER]) == 0.0
+    assert float(local.headers[COST_AVOIDED_HEADER]) > 0.0
+    local_rows = _spend_rows(app)
+    assert float(local_rows[0]["cost_usd"]) == float(local.headers[COST_HEADER])
+
+    monkeypatch.setenv("DAARI_FRONTIER_API_KEY", "sk-frontier-test")
+    settings.frontier.enabled = True
+    settings.frontier.base_url = "https://frontier.example/v1"
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    frontier_app = _app(settings)
+    async with AsyncClient(
+        transport=ASGITransport(app=frontier_app), base_url="http://test"
+    ) as client:
+        frontier = await _post(client)
+    assert frontier.status_code == 200, frontier.text
+    assert frontier.headers[TIER_HEADER] == "L6"
+    assert float(frontier.headers[COST_AVOIDED_HEADER]) == 0.0
+    frontier_rows = [row for row in _spend_rows(frontier_app) if row["tier"] == "L6"]
+    assert len(frontier_rows) == 1
+    assert float(frontier_rows[0]["cost_usd"]) == float(frontier.headers[COST_HEADER])
+
+
+@pytest.mark.asyncio
+async def test_translation_includes_cost_headers(settings, monkeypatch):
+    from daari.gateway.cost_headers import COST_HEADER, TIER_HEADER
+
+    seen: list[httpx.Request] = []
+    _patch_upstream(monkeypatch, _ok_handler(seen))
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = "ggml-base"
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/audio/translations",
+            files={"file": ("note.wav", AUDIO, "audio/wav")},
+            data=_form(),
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers[TIER_HEADER] == "translation"
+    assert float(response.headers[COST_HEADER]) == 0.0

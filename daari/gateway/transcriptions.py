@@ -573,7 +573,26 @@ async def handle_transcription(
         latency_ms=latency_ms,
         local_tier=phase,
     )
-    return payload
+    from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+    tier = "L6" if target.via == "frontier" else phase
+    out_tokens = max(0, len(payload["text"]) // 4)
+    headers = modality_response_headers(
+        ctx.settings,
+        tier=tier,
+        model=model_name,
+        prompt_chars=0,
+        completion_chars=len(payload["text"]),
+        input_tokens=0,
+        output_tokens=out_tokens,
+        executor="frontier" if target.via == "frontier" else phase,
+        session_id=session_id_from_request(request),
+        savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+    )
+    request_id = str(getattr(request.state, "request_id", None) or "")
+    if request_id:
+        headers = {**headers, "X-Request-ID": request_id}
+    return JSONResponse(payload, headers=headers)
 
 
 async def handle_translation(

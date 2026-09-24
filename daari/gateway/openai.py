@@ -1205,7 +1205,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             }
                         },
                     )
-                return openai_embeddings_payload(model, vectors, texts)
+                from daari.gateway.cost_headers import (
+                    modality_response_headers,
+                    session_id_from_request,
+                )
+
+                payload = openai_embeddings_payload(model, vectors, texts)
+                prompt_chars = int(getattr(request.state, "daari_embed_prompt_chars", 0) or 0)
+                if not prompt_chars:
+                    prompt_chars = sum(len(text) for text in texts)
+                cache_hit = bool(getattr(request.state, "daari_embed_cache_hit", False))
+                headers = modality_response_headers(
+                    ctx.settings,
+                    tier="embed",
+                    model=model,
+                    prompt_chars=prompt_chars,
+                    cache_hit=cache_hit,
+                    session_id=session_id_from_request(request),
+                    savings=getattr(ctx.router, "session_savings", None),
+                )
+                request_id = str(getattr(request.state, "request_id", None) or "")
+                if request_id:
+                    headers = {**headers, "X-Request-ID": request_id}
+                return JSONResponse(payload, headers=headers)
 
             try:
                 if seconds is not None and not deadline_active():

@@ -314,7 +314,20 @@ async def handle_rerank(request: Request, body: RerankRequest) -> Any:
             query=query,
             documents=documents,
         )
-        return data
+        from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+        prompt_chars = len(query) + sum(len(doc) for doc in documents)
+        headers = modality_response_headers(
+            ctx.settings,
+            tier="rerank",
+            model=model,
+            prompt_chars=prompt_chars,
+            input_tokens=len(documents),
+            output_tokens=0,
+            session_id=session_id_from_request(request),
+            savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+        )
+        return JSONResponse(data, headers=headers)
 
     if last_upstream is not None:
         log_gateway_event("rerank_upstream_http", {"status": last_upstream.status_code})

@@ -181,6 +181,10 @@ async def test_tts_spend_row_uses_tts_tier(settings, tmp_path, monkeypatch):
     assert rows[0]["team_id"] == key.key.team_id
     assert rows[0]["model"] == "kokoro"
     assert app.state.ctx.metrics.snapshot(include_histograms=True)["tiers"]["tts"]["count"] == 1
+    from daari.gateway.cost_headers import COST_HEADER, TIER_HEADER
+
+    assert response.headers[TIER_HEADER] == "tts"
+    assert float(response.headers[COST_HEADER]) == float(rows[0]["cost_usd"]) == 0.0
 
 
 @pytest.mark.asyncio

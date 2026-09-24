@@ -284,3 +284,24 @@ async def test_global_and_master_embed_cache_unchanged(settings, tmp_path):
         )
     assert a.status_code == 200 and b.status_code == 200
     assert len(embedder.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_embeddings_include_response_cost_headers(settings, tmp_path):
+    from daari.gateway.cost_headers import COST_AVOIDED_HEADER, COST_HEADER, TIER_HEADER
+
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    settings.usage.frontier_price_per_1k_tokens = 0.002
+    embedder = RecordingEmbedder()
+    app = _app(settings, embedder)
+    response = await _post(app, {"model": "nomic-embed-text", "input": "hello world!!"})
+    assert response.status_code == 200, response.text
+    assert response.headers[TIER_HEADER] == "embed"
+    assert float(response.headers[COST_HEADER]) == 0.0
+    assert float(response.headers[COST_AVOIDED_HEADER]) > 0.0
+    ledger = app.state.ctx.router.spend_ledger
+    rows = list(ledger.iter_rows(since="2000-01-01T00:00:00+00:00"))
+    assert len(rows) == 1
+    assert float(rows[0]["cost_usd"]) == float(response.headers[COST_HEADER])
+    assert rows[0]["tier"] == "embed"

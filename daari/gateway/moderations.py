@@ -285,8 +285,22 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
         log_gateway_event("moderations_ok", {"model": model, "slot": target.slot_id})
         caller = _caller_client_id(request)
         _bind_spend_context(request, ctx, model=model, client_id=caller)
-        _record_request(ctx, client_id=caller, model=model, input_text=_input_text(body.input))
-        return data
+        metered = _input_text(body.input)
+        _record_request(ctx, client_id=caller, model=model, input_text=metered)
+        from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+        cost_headers = modality_response_headers(
+            ctx.settings,
+            tier="moderations",
+            model=model,
+            prompt_chars=len(metered),
+            input_tokens=max(0, len(metered) // 4),
+            output_tokens=0,
+            cost_usd=0.0,
+            session_id=session_id_from_request(request),
+            savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+        )
+        return JSONResponse(data, headers=cost_headers)
 
     if last_upstream is not None:
         log_gateway_event(

@@ -390,3 +390,29 @@ async def test_rerank_region_pin_filters_slots(settings, tmp_path, monkeypatch):
     assert response.status_code == 400
     assert response.json()["error"]["type"] == "region_unavailable"
 
+
+@pytest.mark.asyncio
+async def test_rerank_include_response_cost_headers(settings, tmp_path, monkeypatch):
+    from daari.gateway.cost_headers import COST_HEADER, TIER_HEADER
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_RERANK_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    _enable_frontier(settings)
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/rerank",
+            json={"query": "q", "documents": ["a", "b"]},
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers[TIER_HEADER] == "rerank"
+    assert float(response.headers[COST_HEADER]) == 0.0
+    ledger = app.state.ctx.router.spend_ledger
+    rows = list(ledger.iter_rows(since="2000-01-01T00:00:00+00:00"))
+    assert len(rows) == 1
+    assert float(rows[0]["cost_usd"]) == float(response.headers[COST_HEADER])
+
