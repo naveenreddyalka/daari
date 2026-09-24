@@ -1,8 +1,7 @@
-"""POST /v1/rerank — Cohere/LiteLLM-shaped L6 passthrough (#1051, #1058)."""
+"""POST /v1/rerank — Cohere/LiteLLM-shaped L6 passthrough (#1051, #1058, #1060)."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -11,6 +10,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daari.gateway.client_errors import summarize_upstream_failure
+from daari.gateway.l6_passthrough import (
+    L6Target,
+    RegionUnavailable,
+    is_slot_failure,
+    post_l6,
+    region_pin_from_request,
+    resolve_l6_targets,
+)
 from daari.gateway.request_log import log_gateway_event
 
 _UNAVAILABLE = (
@@ -18,6 +25,8 @@ _UNAVAILABLE = (
     "endpoint. Set frontier.enabled=true and provide an API key; daari does "
     "not invent relevance scores locally."
 )
+
+RerankTarget = L6Target
 
 _http: httpx.AsyncClient | None = None
 
@@ -36,14 +45,6 @@ async def aclose_http() -> None:
     if _http is not None and not getattr(_http, "is_closed", True):
         await _http.aclose()
     _http = None
-
-
-@dataclass(frozen=True)
-class RerankTarget:
-    base_url: str
-    api_key: str
-    default_model: str
-    timeout: float
 
 
 class RerankRequest(BaseModel):
@@ -76,37 +77,16 @@ def normalize_documents(documents: list[str | dict[str, Any]]) -> list[str]:
     return out
 
 
-def resolve_rerank_target(settings: Any) -> RerankTarget | None:
-    frontier = getattr(settings, "frontier", None)
-    if frontier is None or not bool(getattr(frontier, "enabled", False)):
-        return None
-    from daari.router.frontier_pool import build_frontier_pool
-    from daari.security.secret_refs import SecretRefError
-
-    pool = build_frontier_pool(settings)
-    if not pool.slots:
-        return None
-    slot = pool.slots[0]
+def resolve_rerank_target(
+    settings: Any, *, region_pin: str | None = None
+) -> RerankTarget | None:
     try:
-        key = slot.pick_key()
-    except SecretRefError:
+        targets = resolve_l6_targets(
+            settings, region_pin=region_pin, default_model="rerank-english-v3.0"
+        )
+    except RegionUnavailable:
         return None
-    secret = str(key or "").strip()
-    if not secret:
-        return None
-    slot_base = str(getattr(slot.executor, "base_url", "") or "").strip().rstrip("/")
-    if not slot_base:
-        return None
-    timeout = float(getattr(slot.executor, "timeout", 90.0) or 90.0)
-    model = str(getattr(slot.executor, "default_model", "") or "").strip()
-    if not model:
-        model = str(getattr(frontier, "model", "") or "").strip() or "rerank-english-v3.0"
-    return RerankTarget(
-        base_url=slot_base,
-        api_key=secret,
-        default_model=model,
-        timeout=timeout,
-    )
+    return targets[0] if targets else None
 
 
 async def post_rerank(
@@ -115,8 +95,19 @@ async def post_rerank(
     headers: dict[str, str],
     payload: dict[str, Any],
     timeout: float,
+    retry: Any | None = None,
+    metrics: Any | None = None,
 ) -> httpx.Response:
-    return await _shared_client().post(url, headers=headers, json=payload, timeout=timeout)
+    return await post_l6(
+        _shared_client(),
+        url,
+        headers=headers,
+        payload=payload,
+        timeout=timeout,
+        upstream="rerank",
+        retry=retry,
+        metrics=metrics,
+    )
 
 
 def _caller_client_id(request: Request) -> str | None:
@@ -179,7 +170,6 @@ def _record_request(
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
         return
-    # Cohere-style: one search unit per document in the request.
     search_units = len(documents)
     prompt_chars = len(query) + sum(len(doc) for doc in documents)
     ledger.record(
@@ -204,8 +194,15 @@ async def handle_rerank(request: Request, body: RerankRequest) -> Any:
 
     ctx = request.app.state.ctx
     settings = ctx.settings
-    target = resolve_rerank_target(settings)
-    if target is None:
+    pin = region_pin_from_request(request)
+    try:
+        targets = resolve_l6_targets(
+            settings, region_pin=pin, default_model="rerank-english-v3.0"
+        )
+    except RegionUnavailable as exc:
+        log_gateway_event("rerank_region_unavailable", {"pin": exc.pin})
+        return _error(400, "region_unavailable", str(exc))
+    if not targets:
         log_gateway_event("rerank_unavailable", {"reason": "frontier_disabled_or_no_key"})
         return _error(501, "not_implemented", _UNAVAILABLE)
 
@@ -216,7 +213,7 @@ async def handle_rerank(request: Request, body: RerankRequest) -> Any:
     if not documents:
         return _error(400, "invalid_request", "documents must be a non-empty list")
 
-    model = (body.model or "").strip() or target.default_model
+    model = (body.model or "").strip() or targets[0].default_model
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         return denied
@@ -249,42 +246,91 @@ async def handle_rerank(request: Request, body: RerankRequest) -> Any:
     if body.top_n is not None:
         payload["top_n"] = body.top_n
 
-    headers = {
-        "Authorization": f"Bearer {target.api_key}",
-        "Content-Type": "application/json",
-    }
-    url = f"{target.base_url}/rerank"
-    try:
-        upstream = await post_rerank(
-            url, headers=headers, payload=payload, timeout=target.timeout
+    retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
+    last_exc: Exception | None = None
+    last_upstream: httpx.Response | None = None
+
+    for target in targets:
+        headers = {
+            "Authorization": f"Bearer {target.api_key}",
+            "Content-Type": "application/json",
+        }
+        url = f"{target.base_url}/rerank"
+        try:
+            upstream = await post_rerank(
+                url,
+                headers=headers,
+                payload=payload,
+                timeout=target.timeout,
+                retry=target.retry if target.retry is not None else retry_settings,
+                metrics=metrics,
+            )
+        except httpx.HTTPStatusError as exc:
+            last_upstream = exc.response
+            last_exc = exc
+            log_gateway_event(
+                "rerank_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                    "status": exc.response.status_code if exc.response is not None else None,
+                },
+            )
+            continue
+        except Exception as exc:
+            last_exc = exc
+            log_gateway_event(
+                "rerank_slot_error",
+                {"slot": target.slot_id, "error": summarize_upstream_failure(exc)},
+            )
+            continue
+        if is_slot_failure(upstream):
+            last_upstream = upstream
+            log_gateway_event(
+                "rerank_slot_http",
+                {"slot": target.slot_id, "status": upstream.status_code},
+            )
+            continue
+        if upstream.status_code >= 400:
+            log_gateway_event("rerank_upstream_http", {"status": upstream.status_code})
+            try:
+                detail = upstream.json()
+            except Exception:
+                detail = {"error": {"type": "upstream_error", "message": upstream.text[:200]}}
+            return JSONResponse(status_code=upstream.status_code, content=detail)
+        try:
+            data = upstream.json()
+        except Exception:
+            return _error(502, "bad_gateway", "Rerank upstream returned non-JSON.")
+        log_gateway_event(
+            "rerank_ok", {"model": model, "docs": len(documents), "slot": target.slot_id}
         )
-    except Exception as exc:
+        caller = _caller_client_id(request)
+        _bind_spend_context(request, ctx, model=model, client_id=caller)
+        _record_request(
+            ctx,
+            client_id=caller,
+            model=model,
+            query=query,
+            documents=documents,
+        )
+        return data
+
+    if last_upstream is not None:
+        log_gateway_event("rerank_upstream_http", {"status": last_upstream.status_code})
+        try:
+            detail = last_upstream.json()
+        except Exception:
+            detail = {
+                "error": {
+                    "type": "upstream_error",
+                    "message": (last_upstream.text or "")[:200],
+                }
+            }
+        return JSONResponse(status_code=last_upstream.status_code, content=detail)
+    if last_exc is not None:
         log_gateway_event(
             "rerank_upstream_error",
-            {"error": summarize_upstream_failure(exc)},
+            {"error": summarize_upstream_failure(last_exc)},
         )
-        return _error(503, "upstream_error", "Rerank upstream request failed.")
-
-    if upstream.status_code >= 400:
-        log_gateway_event("rerank_upstream_http", {"status": upstream.status_code})
-        try:
-            detail = upstream.json()
-        except Exception:
-            detail = {"error": {"type": "upstream_error", "message": upstream.text[:200]}}
-        return JSONResponse(status_code=upstream.status_code, content=detail)
-
-    try:
-        data = upstream.json()
-    except Exception:
-        return _error(502, "bad_gateway", "Rerank upstream returned non-JSON.")
-    log_gateway_event("rerank_ok", {"model": model, "docs": len(documents)})
-    caller = _caller_client_id(request)
-    _bind_spend_context(request, ctx, model=model, client_id=caller)
-    _record_request(
-        ctx,
-        client_id=caller,
-        model=model,
-        query=query,
-        documents=documents,
-    )
-    return data
+    return _error(503, "upstream_error", "Rerank upstream request failed.")

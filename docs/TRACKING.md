@@ -4513,6 +4513,14 @@ key/team. Covered by `tests/unit/test_moderations.py` and
 (prompt + transcript; frontier fallback honors no_frontier), moderations, and
 rerank. Covered by `tests/unit/test_guardrails_endpoints.py`.
 
+### Retry + slot failover + region_pin for moderations/rerank ([#1060](https://github.com/naveenreddyalka/daari/issues/1060))
+
+<!-- tracking:#1060 -->
+**Status:** Done (2026-09-24). Moderations and rerank use `run_upstream` with
+provider retry policy, iterate frontier slots in chat order on failure, and
+filter by virtual-key `region_pin` (400 when none match). Covered by
+`tests/unit/test_moderations.py` and `tests/unit/test_rerank.py`.
+
 ### OpenRouter region_pin → us/eu hosts ([#1052](https://github.com/naveenreddyalka/daari/issues/1052))
 
 <!-- tracking:#1052 -->
