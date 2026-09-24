@@ -50,10 +50,12 @@ class OllamaChatRequest(BaseModel):
     # Native Ollama defaults to streaming NDJSON.
     stream: bool = True
     options: dict[str, Any] | None = None
-    # Top-level Ollama knobs (#1011). Permissive so odd shapes stay 200s.
+    # Top-level Ollama knobs (#1011 / #1031). Permissive so odd shapes stay 200s.
     think: Any | None = None
     format: Any | None = None
     keep_alive: Any | None = None
+    logprobs: Any | None = None
+    top_logprobs: Any | None = None
 
 
 class OllamaGenerateRequest(BaseModel):
@@ -68,6 +70,8 @@ class OllamaGenerateRequest(BaseModel):
     format: Any | None = None
     think: Any | None = None
     keep_alive: Any | None = None
+    logprobs: Any | None = None
+    top_logprobs: Any | None = None
 
 
 class OllamaEmbedRequest(BaseModel):
@@ -412,6 +416,8 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     think=body.think,
                     format=body.format,
                     keep_alive=body.keep_alive,
+                    logprobs=body.logprobs,
+                    top_logprobs=body.top_logprobs,
                 ),
             )
             denied = _enforce_ollama_model(
@@ -492,6 +498,8 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     options,
                     think=body.think,
                     keep_alive=body.keep_alive,
+                    logprobs=body.logprobs,
+                    top_logprobs=body.top_logprobs,
                 ),
             )
             denied = _enforce_ollama_model(

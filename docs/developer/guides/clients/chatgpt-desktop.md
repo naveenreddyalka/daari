@@ -33,8 +33,8 @@ custom headers so `daari report` attributes traffic correctly.
 
 | Surface | Notes |
 |---------|-------|
-| Chat (`/api/chat`) | Streaming NDJSON and non-stream JSON through cache, tiers, budgets; honors top-level `think`, `format`, and `keep_alive` like native Ollama |
-| Generate (`/api/generate`) | Same router path; prompt (+ optional `system` / `images`); same `think` / `format` / `keep_alive` knobs |
+| Chat (`/api/chat`) | Streaming NDJSON and non-stream JSON through cache, tiers, budgets; honors top-level `think`, `format`, `keep_alive`, `logprobs`, and `top_logprobs` like native Ollama (local tiers surface unsupported knobs via dropped-params) |
+| Generate (`/api/generate`) | Same router path; prompt (+ optional `system` / `images`); same `think` / `format` / `keep_alive` / `logprobs` / `top_logprobs` knobs |
 | Embed (`/api/embed`, `/api/embeddings`) | Mapped to daari's embedding model (L1 / `nomic-embed-text`) |
 | Tags / show / version / ps | Virtual model cards so the client can discover `daari` |
 

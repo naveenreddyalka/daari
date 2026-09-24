@@ -4411,6 +4411,16 @@ with `extract_embed_text` so image/audio cache tokens differentiate agent-turn
 L1 prefixes; text-only prefixes unchanged. Covered by
 `tests/unit/test_semantic_cache.py`.
 
+### Ollama facade logprobs / top_logprobs ([#1031](https://github.com/naveenreddyalka/daari/issues/1031))
+
+<!-- tracking:#1031 -->
+**Status:** Done (2026-09-24). Facade chat/generate accept top-level `logprobs`
+and `top_logprobs`, map them onto `SamplingParams` (local dropped-params /
+L6 OpenAI forward). Docs:
+[chatgpt-desktop.md](developer/guides/clients/chatgpt-desktop.md). Covered by
+`tests/unit/test_sampling_params.py` and
+`tests/integration/test_ollama_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
