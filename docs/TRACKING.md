@@ -4458,6 +4458,13 @@ onto SamplingParams and local dropped-params (parity with chat #1031);
 malformed `top_logprobs` ignored. Covered by
 `tests/integration/test_ollama_compat.py`.
 
+### Agent-prefix L1 misses when multimodal tokens differ ([#1042](https://github.com/naveenreddyalka/daari/issues/1042))
+
+<!-- tracking:#1042 -->
+**Status:** Done (2026-09-24). Router agent-prefix L1 integration: same tools
+and suffix with image-B miss after image-A is stored; image-A replay (fresh
+tool_call id) still hits. Covered by `tests/integration/test_agent_prefix_l1.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
