@@ -4428,6 +4428,13 @@ L6 OpenAI forward). Docs:
 `x-daari-dropped-params` for unsupported knobs; L6 omits the header. Covered by
 `tests/integration/test_gateway_flow.py`.
 
+### Integration pin: distinct audio clips miss L1 ([#1033](https://github.com/naveenreddyalka/daari/issues/1033))
+
+<!-- tracking:#1033 -->
+**Status:** Done (2026-09-24). Router L1 integration (mocked embedder): same
+caption with clip-B misses after clip-A is stored; caption+clip-A still hits.
+Covered by `tests/integration/test_l1_semantic_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

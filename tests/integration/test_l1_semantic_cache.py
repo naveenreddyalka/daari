@@ -5,8 +5,15 @@ from __future__ import annotations
 import pytest
 
 from daari.cache.exact import ExactCache
-from daari.cache.semantic import SemanticCache
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.cache.normalize import normalize_for_embedding
+from daari.cache.semantic import SemanticCache, extract_embed_text
+from daari.gateway.internal import (
+    ContentAudio,
+    DaariMeta,
+    InternalRequest,
+    InternalResponse,
+    Message,
+)
 from daari.observability.metrics import Metrics
 from daari.router.router import OllamaExecutor, Router
 
@@ -20,6 +27,22 @@ class MockEmbedder:
 
     async def embed(self, text: str) -> list[float] | None:
         return self.vectors.get(text)
+
+
+class OrthogonalEmbedder:
+    """Distinct embed texts get orthogonal unit vectors (cosine ~0)."""
+
+    def __init__(self) -> None:
+        self.vectors: dict[str, list[float]] = {}
+        self._next = 0
+
+    async def embed(self, text: str) -> list[float] | None:
+        if text not in self.vectors:
+            vector = [0.0] * 16
+            vector[self._next % 16] = 1.0
+            self._next += 1
+            self.vectors[text] = vector
+        return list(self.vectors[text])
 
 
 @pytest.mark.asyncio
@@ -133,3 +156,80 @@ async def test_router_skips_l1_with_tool_calls(tmp_path, semantic_cache_disabled
     assert second.daari_meta.tier == "L0"
     assert call_count == after_first
     assert "L1" not in metrics.tiers
+
+
+def _voice_request(caption: str, clip_data: str) -> InternalRequest:
+    return InternalRequest(
+        messages=[
+            Message(
+                role="user",
+                content=caption,
+                audio=[ContentAudio(data=clip_data, format="wav")],
+            )
+        ],
+        model="llama3.2:3b",
+    )
+
+
+@pytest.mark.asyncio
+async def test_l1_misses_when_audio_clip_differs(tmp_path):
+    """#1033: same caption + different audio clip must not share an L1 hit."""
+    caption = "what did I say?"
+    clip_a = _voice_request(caption, "clip-a")
+    clip_b = _voice_request(caption, "clip-b")
+    assert normalize_for_embedding(extract_embed_text(clip_a)) != normalize_for_embedding(
+        extract_embed_text(clip_b)
+    )
+
+    embedder = OrthogonalEmbedder()
+    # L0 off so the clip-A replay exercises L1, not exact.
+    cache = ExactCache(str(tmp_path / "l0"), enabled=False)
+    semantic = SemanticCache(
+        str(tmp_path / "l1"),
+        embedder,
+        enabled=True,
+        similarity_threshold=0.92,
+    )
+    metrics = Metrics()
+    call_count = 0
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        nonlocal call_count
+        call_count += 1
+        return InternalResponse(
+            content=f"transcript-{call_count}",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(cache=cache, semantic_cache=semantic, ollama=ollama, metrics=metrics)
+
+    seed = InternalResponse(
+        content="seeded voice answer",
+        model="llama3.2:3b",
+        daari_meta=DaariMeta(
+            tier="L3",
+            executor="ollama",
+            provider_id="ollama",
+            latency_ms=1,
+        ),
+    )
+    await semantic.put(clip_a, seed)
+
+    miss = await router.route(clip_b)
+    assert miss.daari_meta.cache_hit is False
+    assert miss.daari_meta.tier != "L1"
+    assert "L1" not in metrics.tiers or metrics.tiers["L1"].cache_hits == 0
+
+    hit = await router.route(clip_a)
+    assert hit.daari_meta.tier == "L1"
+    assert hit.daari_meta.cache_hit is True
+    assert hit.content == "seeded voice answer"
+    assert metrics.tiers["L1"].cache_hits == 1
