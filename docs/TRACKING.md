@@ -4496,6 +4496,15 @@ when frontier is off (never invents scores). Docs: http-api.md. Covered by
 frontier; 501 when frontier is off. Docs: http-api.md. Covered by
 `tests/unit/test_rerank.py`.
 
+### Key governance + spend for moderations/rerank ([#1058](https://github.com/naveenreddyalka/daari/issues/1058))
+
+<!-- tracking:#1058 -->
+**Status:** Done (2026-09-24). `/v1/moderations` and `/v1/rerank` honor
+`no_frontier` / local `tier_cap` (403 `frontier_not_allowed`), model allowlists
+(`reject_disallowed_model`), and write usage + spend ledger rows attributed to
+key/team. Covered by `tests/unit/test_moderations.py` and
+`tests/unit/test_rerank.py`.
+
 ### OpenRouter region_pin → us/eu hosts ([#1052](https://github.com/naveenreddyalka/daari/issues/1052))
 
 <!-- tracking:#1052 -->

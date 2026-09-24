@@ -1,4 +1,4 @@
-"""POST /v1/moderations — OpenAI-shaped L6 passthrough (#1050)."""
+"""POST /v1/moderations — OpenAI-shaped L6 passthrough (#1050, #1058)."""
 
 from __future__ import annotations
 
@@ -102,7 +102,93 @@ async def post_moderations(
     return await _shared_client().post(url, headers=headers, json=payload, timeout=timeout)
 
 
+def _caller_client_id(request: Request) -> str | None:
+    claims = getattr(request.state, "auth_claims", None)
+    if claims is None or getattr(claims, "kind", None) != "virtual":
+        return None
+    client_id = getattr(claims, "client_id", None) or getattr(claims, "key_id", None)
+    text = str(client_id or "").strip()
+    return text or None
+
+
+def _input_text(value: str | list[str]) -> str:
+    if isinstance(value, list):
+        return "\n".join(str(item) for item in value)
+    return str(value)
+
+
+def _bind_spend_context(
+    request: Request,
+    ctx: Any,
+    *,
+    model: str,
+    client_id: str | None,
+) -> None:
+    router = getattr(ctx, "router", None)
+    ledger = getattr(router, "spend_ledger", None)
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return
+    from daari.observability.spend import SpendContext, bind_spend_context
+
+    claims = getattr(request.state, "auth_claims", None)
+    key_id = ""
+    team_id = ""
+    if claims is not None and getattr(claims, "kind", None) == "virtual":
+        key_id = str(getattr(claims, "key_id", None) or "")
+        virtual_key = getattr(claims, "virtual_key", None)
+        if virtual_key is not None:
+            team_id = str(getattr(virtual_key, "team_id", None) or "")
+    settings = getattr(ctx, "settings", None)
+    usage = getattr(settings, "usage", None)
+    fallback = float(getattr(usage, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+    pricing = getattr(router, "pricing", None)
+    if pricing is None and settings is not None:
+        pricing = getattr(settings, "pricing", None)
+    bind_spend_context(
+        SpendContext(
+            key_id=key_id,
+            team_id=team_id,
+            client_id=client_id or "",
+            request_id=str(getattr(request.state, "request_id", None) or ""),
+            requested_model=model,
+            pricing=pricing,
+            fallback_per_1k=fallback,
+            reported_cost=0.0,
+        )
+    )
+
+
+def _record_request(
+    ctx: Any,
+    *,
+    client_id: str | None,
+    model: str,
+    input_text: str,
+) -> None:
+    ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
+    if ledger is None:
+        return
+    ledger.record(
+        tier="moderations",
+        cache_hit=False,
+        prompt_chars=len(input_text),
+        completion_chars=0,
+        client_id=client_id,
+        model=model,
+        provider="moderations",
+        input_tokens=max(0, len(input_text) // 4),
+        output_tokens=0,
+        reported_cost=0.0,
+    )
+
+
 async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
+    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
+
+    blocked = reject_frontier_passthrough(request)
+    if blocked is not None:
+        return blocked
+
     ctx = request.app.state.ctx
     settings = ctx.settings
     target = resolve_moderations_target(settings)
@@ -111,6 +197,10 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
         return _error(501, "not_implemented", _UNAVAILABLE)
 
     model = (body.model or "").strip() or target.default_model
+    denied = reject_disallowed_model(request, model, settings)
+    if denied is not None:
+        return denied
+
     payload: dict[str, Any] = {"input": body.input, "model": model}
     headers = {
         "Authorization": f"Bearer {target.api_key}",
@@ -144,4 +234,7 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
     except Exception:
         return _error(502, "bad_gateway", "Moderations upstream returned non-JSON.")
     log_gateway_event("moderations_ok", {"model": model})
+    caller = _caller_client_id(request)
+    _bind_spend_context(request, ctx, model=model, client_id=caller)
+    _record_request(ctx, client_id=caller, model=model, input_text=_input_text(body.input))
     return data
