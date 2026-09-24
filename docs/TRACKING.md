@@ -4496,6 +4496,14 @@ when frontier is off (never invents scores). Docs: http-api.md. Covered by
 frontier; 501 when frontier is off. Docs: http-api.md. Covered by
 `tests/unit/test_rerank.py`.
 
+### OpenRouter region_pin → us/eu hosts ([#1052](https://github.com/naveenreddyalka/daari/issues/1052))
+
+<!-- tracking:#1052 -->
+**Status:** Done (2026-09-24). `region_pin` `us`/`eu` keeps global OpenRouter
+slots eligible and rewrites L6 base URL to `https://{us|eu}.openrouter.ai/api/v1`
+for the attempt (restored after). Docs: compare-openrouter.md. Covered by
+`tests/unit/test_openrouter_region.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
