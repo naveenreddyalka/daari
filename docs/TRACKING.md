@@ -4421,6 +4421,13 @@ L6 OpenAI forward). Docs:
 `tests/unit/test_sampling_params.py` and
 `tests/integration/test_ollama_compat.py`.
 
+### Integration coverage for x-daari-dropped-params ([#1032](https://github.com/naveenreddyalka/daari/issues/1032))
+
+<!-- tracking:#1032 -->
+**Status:** Done (2026-09-24). Gateway integration pin: local chat sets
+`x-daari-dropped-params` for unsupported knobs; L6 omits the header. Covered by
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
