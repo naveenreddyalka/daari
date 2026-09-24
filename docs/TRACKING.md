@@ -4480,6 +4480,14 @@ and suffix with clip-B miss after clip-A is stored; clip-A replay (fresh
 tool_call id) still hits (parity with image pin #1042). Covered by
 `tests/integration/test_agent_prefix_l1.py`.
 
+### OpenAI POST /v1/moderations L6 passthrough ([#1050](https://github.com/naveenreddyalka/daari/issues/1050))
+
+<!-- tracking:#1050 -->
+**Status:** Done (2026-09-24). `POST /v1/moderations` forwards OpenAI-shaped
+`{input, model?}` to the configured frontier when enabled+keyed; returns 501
+when frontier is off (never invents scores). Docs: http-api.md. Covered by
+`tests/unit/test_moderations.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

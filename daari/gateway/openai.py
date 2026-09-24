@@ -1140,6 +1140,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 response_format=str(body.get("response_format") or "mp3"),
             )
 
+        @router.post("/v1/moderations", response_model=None)
+        async def moderations(body: dict[str, Any], request: Request) -> Any:
+            """OpenAI-shaped moderations via configured L6 (#1050)."""
+            from daari.gateway.moderations import ModerationsRequest, handle_moderations
+
+            parsed = ModerationsRequest.model_validate(body)
+            return await handle_moderations(request, parsed)
+
         @router.post("/v1/embeddings")
         async def embeddings(
             body: EmbeddingsRequest,
