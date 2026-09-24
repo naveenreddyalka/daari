@@ -547,3 +547,190 @@ async def test_local_and_frontier_transcriptions_record_latency(settings, monkey
     frontier = frontier_app.state.ctx.metrics.snapshot(include_histograms=True)["tiers"]["L6"]
     assert frontier["total_latency_ms"] > 0
     assert sum(frontier["latency_buckets"].values()) > 0
+
+
+@pytest.mark.asyncio
+async def test_frontier_fallback_no_frontier_key_never_uploads(settings, tmp_path, monkeypatch):
+    """Virtual-key no_frontier must not upload audio on ASR frontier fallback (#1061)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"must not upload audio to {request.url}")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="whisper-1",
+            keys=["sk-test"],
+        )
+    ]
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    locked = store.create("local-only", metadata={"no_frontier": True})
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(
+            client, headers={"Authorization": f"Bearer {locked.plaintext}"}
+        )
+    assert response.status_code == 403
+    assert response.json()["error"]["type"] == "frontier_not_allowed"
+
+
+@pytest.mark.asyncio
+async def test_frontier_fallback_region_pin_filters_slots(settings, tmp_path, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"must not upload audio to {request.url}")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="us",
+            base_url="https://us.example/v1",
+            model="whisper-1",
+            keys=["sk-us"],
+            region="us",
+        )
+    ]
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    pinned = store.create("eu-bot", region_pin="eu")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(
+            client, headers={"Authorization": f"Bearer {pinned.plaintext}"}
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "region_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_frontier_fallback_region_pin_uses_matching_slot(settings, tmp_path, monkeypatch):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        return httpx.Response(200, json={"text": "eu transcript"})
+
+    _patch_upstream(monkeypatch, handler)
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="us",
+            base_url="https://us.example/v1",
+            model="whisper-1",
+            keys=["sk-us"],
+            region="us",
+        ),
+        FrontierProviderConfig(
+            id="eu",
+            base_url="https://eu.example/v1",
+            model="whisper-1",
+            keys=["sk-eu"],
+            region="eu",
+        ),
+    ]
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    pinned = store.create("eu-bot", region_pin="eu")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(
+            client, headers={"Authorization": f"Bearer {pinned.plaintext}"}
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["text"] == "eu transcript"
+    assert seen == ["eu.example"]
+
+
+@pytest.mark.asyncio
+async def test_frontier_fallback_slot_failover(settings, monkeypatch):
+    seen_hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_hosts.append(request.url.host)
+        if request.url.host == "primary.example":
+            return httpx.Response(503, json={"error": {"type": "busy", "message": "down"}})
+        return httpx.Response(200, json={"text": "from secondary"})
+
+    _patch_upstream(monkeypatch, handler)
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="primary",
+            base_url="https://primary.example/v1",
+            model="whisper-1",
+            keys=["sk-a"],
+            retry_attempts=1,
+        ),
+        FrontierProviderConfig(
+            id="secondary",
+            base_url="https://secondary.example/v1",
+            model="whisper-1",
+            keys=["sk-b"],
+            retry_attempts=1,
+        ),
+    ]
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(client)
+    assert response.status_code == 200, response.text
+    assert response.json()["text"] == "from secondary"
+    assert seen_hosts[0] == "primary.example"
+    assert "secondary.example" in seen_hosts
+
+
+@pytest.mark.asyncio
+async def test_frontier_fallback_unpinned_keeps_first_slot(settings, monkeypatch):
+    """Unpinned keys keep today's first-eligible-slot behavior (#1061)."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        return httpx.Response(200, json={"text": "ok"})
+
+    _patch_upstream(monkeypatch, handler)
+    settings.asr.base_url = ""
+    settings.asr.frontier_fallback = True
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="primary",
+            base_url="https://primary.example/v1",
+            model="whisper-1",
+            keys=["sk-a"],
+        ),
+        FrontierProviderConfig(
+            id="secondary",
+            base_url="https://secondary.example/v1",
+            model="whisper-1",
+            keys=["sk-b"],
+        ),
+    ]
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _post(client)
+    assert response.status_code == 200, response.text
+    assert seen == ["primary.example"]

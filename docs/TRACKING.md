@@ -4529,6 +4529,14 @@ slots eligible and rewrites L6 base URL to `https://{us|eu}.openrouter.ai/api/v1
 for the attempt (restored after). Docs: compare-openrouter.md. Covered by
 `tests/unit/test_openrouter_region.py`.
 
+### ASR frontier fallback honors no_frontier and region_pin ([#1061](https://github.com/naveenreddyalka/daari/issues/1061))
+
+<!-- tracking:#1061 -->
+**Status:** Done (2026-09-24). ASR frontier fallback reuses `resolve_l6_targets`
+so `no_frontier` keys never upload audio, `region_pin` filters slots (400 when
+none match), and eligible slots fail over in pool order. Covered by
+`tests/unit/test_audio_transcriptions.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
