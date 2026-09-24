@@ -4403,6 +4403,14 @@ by `tests/unit/test_semantic_cache.py`.
 [caching-and-trust.md](developer/concepts/caching-and-trust.md). Covered by
 `tests/unit/test_semantic_cache.py`.
 
+### Agent prefix L1 folds multimodal tokens ([#1030](https://github.com/naveenreddyalka/daari/issues/1030))
+
+<!-- tracking:#1030 -->
+**Status:** Done (2026-09-24). `agent_prefix_text` shares `_message_embed_chunk`
+with `extract_embed_text` so image/audio cache tokens differentiate agent-turn
+L1 prefixes; text-only prefixes unchanged. Covered by
+`tests/unit/test_semantic_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

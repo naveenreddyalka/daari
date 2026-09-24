@@ -16,18 +16,24 @@ from daari.gateway.internal import InternalRequest, InternalResponse
 from daari.gateway.request_log import log_gateway_event
 
 
+def _message_embed_chunk(message: Any) -> str:
+    """Caption plus multimodal cache tokens for L1 embed / agent-prefix text."""
+    chunk = message.content or ""
+    if message.images:
+        tokens = ",".join(image.cache_token() for image in message.images)
+        suffix = f"image:{tokens}"
+        chunk = f"{chunk}|{suffix}" if chunk else suffix
+    if message.audio:
+        tokens = ",".join(clip.cache_token() for clip in message.audio)
+        suffix = f"audio:{tokens}"
+        chunk = f"{chunk}|{suffix}" if chunk else suffix
+    return chunk
+
+
 def extract_embed_text(request: InternalRequest) -> str:
     parts: list[str] = []
     for message in request.messages:
-        chunk = message.content or ""
-        if message.images:
-            tokens = ",".join(image.cache_token() for image in message.images)
-            suffix = f"image:{tokens}"
-            chunk = f"{chunk}|{suffix}" if chunk else suffix
-        if message.audio:
-            tokens = ",".join(clip.cache_token() for clip in message.audio)
-            suffix = f"audio:{tokens}"
-            chunk = f"{chunk}|{suffix}" if chunk else suffix
+        chunk = _message_embed_chunk(message)
         if chunk:
             parts.append(f"{message.role}:{chunk}")
     return "\n".join(parts)
@@ -45,9 +51,12 @@ def _split_agent_messages(request: InternalRequest) -> tuple[list[Any], list[Any
 def agent_prefix_text(request: InternalRequest) -> str:
     """Embeddable text for the stable prefix (system + history minus tool results)."""
     prefix, _ = _split_agent_messages(request)
-    return "\n".join(
-        f"{message.role}:{message.content}" for message in prefix if message.content
-    )
+    parts: list[str] = []
+    for message in prefix:
+        chunk = _message_embed_chunk(message)
+        if chunk:
+            parts.append(f"{message.role}:{chunk}")
+    return "\n".join(parts)
 
 
 def agent_suffix_hash(request: InternalRequest) -> str:
