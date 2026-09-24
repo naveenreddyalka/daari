@@ -4505,6 +4505,14 @@ frontier; 501 when frontier is off. Docs: http-api.md. Covered by
 key/team. Covered by `tests/unit/test_moderations.py` and
 `tests/unit/test_rerank.py`.
 
+### Guardrails on embeddings/audio/moderations/rerank ([#1059](https://github.com/naveenreddyalka/daari/issues/1059))
+
+<!-- tracking:#1059 -->
+**Status:** Done (2026-09-24). Shared `apply_endpoint_input_policy` /
+`apply_endpoint_output_policy` apply chat guardrails to embeddings, TTS, ASR
+(prompt + transcript; frontier fallback honors no_frontier), moderations, and
+rerank. Covered by `tests/unit/test_guardrails_endpoints.py`.
+
 ### OpenRouter region_pin → us/eu hosts ([#1052](https://github.com/naveenreddyalka/daari/issues/1052))
 
 <!-- tracking:#1052 -->

@@ -261,6 +261,19 @@ async def handle_speech(
     if denied is not None:
         return denied
 
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
+
+    policy = apply_endpoint_input_policy(
+        text, router_guardrails(ctx), metrics=getattr(ctx, "metrics", None)
+    )
+    if policy.blocked:
+        return endpoint_guardrail_blocked_response(policy.block_message)
+    text = policy.text
+
     voice_name = ((voice or "").strip() or target.voice or "alloy").strip()
     payload: dict[str, Any] = {
         "model": model_name,

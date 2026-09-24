@@ -201,6 +201,25 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
     if denied is not None:
         return denied
 
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
+
+    input_text = _input_text(body.input)
+    policy = apply_endpoint_input_policy(
+        input_text, router_guardrails(ctx), metrics=getattr(ctx, "metrics", None)
+    )
+    if policy.blocked:
+        return endpoint_guardrail_blocked_response(policy.block_message)
+    if policy.text != input_text:
+        # Redact: rewrite list/string input to scrubbed form before upstream.
+        if isinstance(body.input, list):
+            body = ModerationsRequest(input=[policy.text], model=body.model)
+        else:
+            body = ModerationsRequest(input=policy.text, model=body.model)
+
     payload: dict[str, Any] = {"input": body.input, "model": model}
     headers = {
         "Authorization": f"Bearer {target.api_key}",

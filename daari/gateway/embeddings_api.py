@@ -117,6 +117,28 @@ async def compute_embeddings(
     request: Any | None = None,
 ) -> list[list[float]]:
     """Embed texts via L0 + semantic embedder; records metrics and ledger."""
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        router_guardrails,
+    )
+
+    engine = router_guardrails(ctx)
+    metrics = getattr(ctx, "metrics", None)
+    scrubbed: list[str] = []
+    for text in texts:
+        policy = apply_endpoint_input_policy(text, engine, metrics=metrics)
+        if policy.blocked:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "guardrail_blocked",
+                    "code": "guardrail_blocked",
+                    "message": policy.block_message,
+                },
+            )
+        scrubbed.append(policy.text)
+    texts = scrubbed
+
     embedder = ctx.router.semantic_cache.embedder
     vectors: list[list[float] | None] = [None] * len(texts)
     cache_hits = 0

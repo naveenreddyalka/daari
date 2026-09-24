@@ -58,6 +58,8 @@ class GuardrailResult:
     # Rewritten request/response content when action=redact.
     request: InternalRequest | None = None
     response: InternalResponse | None = None
+    # Scrubbed plain text when input deny rules use action=redact (#1059).
+    rewritten: str | None = None
 
     @property
     def tripped(self) -> bool:
@@ -132,21 +134,30 @@ class GuardrailEngine:
         return result
 
     def check_input_text(self, text: str) -> GuardrailResult:
-        """Run the input rules over raw text (chat prompts, MCP tool arguments)."""
+        """Run the input rules over raw text (chat prompts, MCP tool arguments).
+
+        When a deny rule uses action=redact, matching spans are rewritten and the
+        scrubbed string is stored on ``result.request`` is not set — callers that
+        need the rewritten text should use ``apply_endpoint_input_policy`` or read
+        ``result.warning`` / re-scan. The rewritten text is returned via the
+        optional ``rewritten`` attribute on the result for endpoint adapters.
+        """
         result = GuardrailResult()
         if not self.enabled:
             return result
+        rewritten = text
         # Allowlist short-circuit: if any allow rule matches, skip denies.
         for rule in self.input_rules:
-            if rule.kind == "allow" and rule.pattern and re.search(rule.pattern, text, re.I):
+            if rule.kind == "allow" and rule.pattern and re.search(rule.pattern, rewritten, re.I):
+                result.rewritten = rewritten
                 return result
 
-        if self.max_prompt_chars > 0 and len(text) > self.max_prompt_chars:
+        if self.max_prompt_chars > 0 and len(rewritten) > self.max_prompt_chars:
             hit = GuardrailHit(
                 stage="input",
                 rule="max_length",
                 action="block",
-                detail=f"{len(text)}>{self.max_prompt_chars}",
+                detail=f"{len(rewritten)}>{self.max_prompt_chars}",
             )
             result.hits.append(hit)
             result.blocked = True
@@ -155,7 +166,7 @@ class GuardrailEngine:
         for rule in self.input_rules:
             if rule.kind != "deny" or not rule.pattern:
                 continue
-            if re.search(rule.pattern, text, re.I):
+            if re.search(rule.pattern, rewritten, re.I):
                 hit = GuardrailHit(
                     stage="input", rule=rule.name, action=rule.action, detail=rule.pattern
                 )
@@ -165,9 +176,11 @@ class GuardrailEngine:
                     return result
                 if rule.action == "warn":
                     result.warning = f"guardrail:{rule.name}"
+                if rule.action == "redact":
+                    rewritten = re.sub(rule.pattern, "<redacted>", rewritten, flags=re.I)
 
         for pattern in _INJECTION_PATTERNS:
-            if pattern.search(text):
+            if pattern.search(rewritten):
                 hit = GuardrailHit(
                     stage="input",
                     rule="prompt_injection",
@@ -181,6 +194,7 @@ class GuardrailEngine:
                 if self.injection_action == "warn":
                     result.warning = "guardrail:prompt_injection"
                 break
+        result.rewritten = rewritten
         return result
 
     def check_output(self, response: InternalResponse) -> GuardrailResult:
@@ -420,3 +434,123 @@ def blocked_response(request: InternalRequest, message: str) -> InternalResponse
             warning="guardrail_blocked",
         ),
     )
+
+
+@dataclass
+class EndpointTextPolicy:
+    """Outcome of applying guardrails to a modality-endpoint string (#1059)."""
+
+    text: str
+    blocked: bool = False
+    block_message: str = ""
+    warning: str | None = None
+    hits: list[GuardrailHit] = field(default_factory=list)
+
+
+def _record_endpoint_guardrail_hits(
+    hits: list[GuardrailHit],
+    *,
+    warning: str | None,
+    metrics: Any = None,
+) -> None:
+    from daari.gateway.request_log import log_gateway_event
+
+    for hit in hits:
+        log_gateway_event(
+            "guardrail",
+            {
+                "stage": hit.stage,
+                "rule": hit.rule,
+                "action": hit.action,
+                "detail": hit.detail,
+            },
+        )
+        if metrics is not None and hasattr(metrics, "record_guardrail"):
+            metrics.record_guardrail(hit.action)
+    if warning:
+        log_gateway_event("guardrail_warning", {"warning": warning})
+
+
+def apply_endpoint_input_policy(
+    text: str,
+    engine: GuardrailEngine | None,
+    *,
+    metrics: Any = None,
+) -> EndpointTextPolicy:
+    """Apply configured input guardrails to modality-endpoint text.
+
+    Short-circuits when the engine is missing or disabled so hot paths stay free.
+    """
+    if engine is None or not getattr(engine, "enabled", False):
+        return EndpointTextPolicy(text=text)
+    result = engine.check_input_text(text)
+    if result.hits or result.warning:
+        _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
+    if result.blocked:
+        message = engine.block_message or "Request blocked by daari guardrail."
+        return EndpointTextPolicy(
+            text=text,
+            blocked=True,
+            block_message=message,
+            warning=result.warning,
+            hits=list(result.hits),
+        )
+    rewritten = result.rewritten if result.rewritten is not None else text
+    return EndpointTextPolicy(
+        text=rewritten,
+        warning=result.warning,
+        hits=list(result.hits),
+    )
+
+
+def apply_endpoint_output_policy(
+    text: str,
+    engine: GuardrailEngine | None,
+    *,
+    metrics: Any = None,
+) -> EndpointTextPolicy:
+    """Apply configured output guardrails to modality-endpoint text (e.g. ASR)."""
+    if engine is None or not getattr(engine, "enabled", False):
+        return EndpointTextPolicy(text=text)
+    rewritten, result = engine.check_output_text(text)
+    if result.hits or result.warning:
+        _record_endpoint_guardrail_hits(result.hits, warning=result.warning, metrics=metrics)
+    if result.blocked:
+        message = engine.block_message or "Request blocked by daari guardrail."
+        return EndpointTextPolicy(
+            text=rewritten or message,
+            blocked=True,
+            block_message=message,
+            warning=result.warning,
+            hits=list(result.hits),
+        )
+    return EndpointTextPolicy(
+        text=rewritten,
+        warning=result.warning,
+        hits=list(result.hits),
+    )
+
+
+def endpoint_guardrail_blocked_response(message: str) -> Any:
+    """OpenAI-shaped 400 when a modality endpoint trips an input block."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": {
+                "type": "guardrail_blocked",
+                "code": "guardrail_blocked",
+                "message": message,
+            }
+        },
+    )
+
+
+def router_guardrails(ctx: Any) -> GuardrailEngine | None:
+    """Resolve the chat GuardrailEngine from an AppContext / router."""
+    router = getattr(ctx, "router", None)
+    engine = getattr(router, "guardrails", None) if router is not None else None
+    if engine is not None and getattr(engine, "enabled", False):
+        return engine
+    return None

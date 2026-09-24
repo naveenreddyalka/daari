@@ -383,11 +383,33 @@ async def handle_transcription(
     if not model_name:
         return _error(400, "invalid_request_error", "model is required")
 
-    from daari.gateway.model_access import reject_disallowed_model
+    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
 
     denied = reject_disallowed_model(request, model_name, ctx.settings)
     if denied is not None:
         return denied
+
+    # Frontier ASR leaves the box — honor the same L6 fence as other passthroughs.
+    if target.via == "frontier":
+        blocked = reject_frontier_passthrough(request)
+        if blocked is not None:
+            return blocked
+
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        apply_endpoint_output_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
+
+    engine = router_guardrails(ctx)
+    metrics = getattr(ctx, "metrics", None)
+    hint = (prompt or "").strip()
+    if hint:
+        prompt_policy = apply_endpoint_input_policy(hint, engine, metrics=metrics)
+        if prompt_policy.blocked:
+            return endpoint_guardrail_blocked_response(prompt_policy.block_message)
+        hint = prompt_policy.text
 
     content = await file.read()
     if not content:
@@ -397,7 +419,6 @@ async def handle_transcription(
     lang = (language or "").strip()
     if lang:
         form["language"] = lang
-    hint = (prompt or "").strip()
     if hint:
         form["prompt"] = hint
     headers: dict[str, str] = {}
@@ -462,6 +483,11 @@ async def handle_transcription(
             "asr_upstream_error",
             "ASR upstream JSON did not include text",
         )
+
+    out_policy = apply_endpoint_output_policy(payload["text"], engine, metrics=metrics)
+    if out_policy.blocked:
+        return endpoint_guardrail_blocked_response(out_policy.block_message)
+    payload = {**payload, "text": out_policy.text}
 
     log_gateway_event(
         event,
