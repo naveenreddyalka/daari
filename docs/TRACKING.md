@@ -4377,6 +4377,14 @@ Docs: [headers.md](developer/reference/headers.md). Covered by
 `STREAM_HAPPY_PATH_CEILING_S` (0.200s). Covered by
 `tests/benchmark/test_hermetic_paths.py`.
 
+### Integration coverage for chat input_audio L6 ([#1000](https://github.com/naveenreddyalka/daari/issues/1000))
+
+<!-- tracking:#1000 -->
+**Status:** Done (2026-09-24). Gateway integration pin: chat `input_audio`
+escalates to mocked L6 with OpenAI payload preserving the block; optional
+`asr.base_url` path injects the transcript into the local-tier prompt. Covered
+by `tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -2422,6 +2422,169 @@ async def test_nonstream_frontier_openai_payload_includes_tools(settings, monkey
 
 
 @pytest.mark.asyncio
+async def test_input_audio_escalates_to_l6_with_openai_payload(settings, monkeypatch):
+    """#1000: chat input_audio reaches L6 OpenAI payload (integration pin)."""
+    import base64
+
+    # Stable tiny WAV (RIFF header + silence) — matches unit fixture shape.
+    tiny_wav = base64.b64encode(b"RIFF" + b"\x00" * 36 + b"data" + b"\x00" * 8).decode()
+
+    settings.frontier.enabled = True
+    settings.frontier.confidence_threshold = 0.99
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def short_local(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    frontier_bodies: list[dict] = []
+
+    async def fake_l6(
+        request: InternalRequest,
+        *,
+        escalated_from: str,
+        local_confidence: float,
+    ) -> InternalResponse:
+        from daari.router.frontier import FrontierExecutor
+
+        stub = FrontierExecutor(
+            api_key="sk-test",
+            base_url="https://api.openai.com/v1",
+            default_model="gpt-4o-mini",
+            provider="openai",
+        )
+        frontier_bodies.append(stub._openai_payload(request, stream=False))
+        return InternalResponse(
+            content="Frontier heard the audio turn with enough detail.",
+            model="gpt-4o-mini",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="openai",
+                latency_ms=20,
+                escalated_from=escalated_from,
+                confidence=local_confidence,
+            ),
+        )
+
+    for tier in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        monkeypatch.setattr(getattr(application.state.ctx.router, tier), "execute", short_local)
+    monkeypatch.setattr(application.state.ctx.router.frontier, "execute", fake_l6)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "what did I say?"},
+                            {
+                                "type": "input_audio",
+                                "input_audio": {"data": tiny_wav, "format": "wav"},
+                            },
+                        ],
+                    }
+                ],
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["daari_meta"]["tier"] == "L6"
+    assert frontier_bodies, "frontier payload must be recorded"
+    content = frontier_bodies[0]["messages"][0]["content"]
+    assert isinstance(content, list)
+    audio_parts = [p for p in content if p.get("type") == "input_audio"]
+    assert len(audio_parts) == 1
+    assert audio_parts[0]["input_audio"]["data"] == tiny_wav
+    assert audio_parts[0]["input_audio"]["format"] == "wav"
+
+
+@pytest.mark.asyncio
+async def test_input_audio_asr_injects_transcript_on_local_tier(settings, monkeypatch):
+    """#1000: with asr.base_url mocked, local-tier prompt contains the transcript."""
+    import base64
+    import json as _json
+
+    import httpx
+
+    from daari.gateway import transcriptions
+
+    tiny_wav = base64.b64encode(b"RIFF" + b"\x00" * 36 + b"data" + b"\x00" * 8).decode()
+
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    settings.routing.max_tier_for_chat = "L3"
+    settings.asr.base_url = "http://asr.local/v1"
+    settings.asr.model = "whisper"
+
+    ollama_bodies: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/audio/transcriptions"):
+            return httpx.Response(200, json={"text": "hello from audio"})
+        ollama_bodies.append(_json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": MOCK_MODEL_CONTENT}})
+
+    transport_mock = httpx.MockTransport(handler)
+    transcriptions._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = transport_mock
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.transcriptions.httpx.AsyncClient", Patched)
+
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "what did I say?"},
+                            {
+                                "type": "input_audio",
+                                "input_audio": {"data": tiny_wav, "format": "wav"},
+                            },
+                        ],
+                    }
+                ],
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200, response.text
+    assert ollama_bodies, "local tier must be called"
+    prompt = ollama_bodies[0]["messages"][0]["content"]
+    assert "hello from audio" in prompt
+
+
+@pytest.mark.asyncio
 async def test_stall_escalation_lands_one_tier_higher(settings, monkeypatch):
     """Three identical tool calls bump a short prompt from L3 to L4."""
     settings.routing.stall_escalation.enabled = True
