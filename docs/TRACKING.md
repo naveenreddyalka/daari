@@ -4488,6 +4488,14 @@ tool_call id) still hits (parity with image pin #1042). Covered by
 when frontier is off (never invents scores). Docs: http-api.md. Covered by
 `tests/unit/test_moderations.py`.
 
+### Cohere-compatible POST /v1/rerank ([#1051](https://github.com/naveenreddyalka/daari/issues/1051))
+
+<!-- tracking:#1051 -->
+**Status:** Done (2026-09-24). `POST /v1/rerank` accepts Cohere/LiteLLM-shaped
+`query` + `documents` (+ optional `top_n`/`model`) and forwards to configured
+frontier; 501 when frontier is off. Docs: http-api.md. Covered by
+`tests/unit/test_rerank.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

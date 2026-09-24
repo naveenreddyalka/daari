@@ -56,6 +56,12 @@ injects the text into the local-tier prompt; see
 `POST /v1/embeddings` is served by the same embedder L1 already uses, so a client
 pointed at daari does not need a second host for vectors.
 
+`POST /v1/moderations` and `POST /v1/rerank` forward OpenAI/Cohere-shaped bodies
+to the configured frontier slot (`frontier.enabled` + API key / first
+`frontier.providers[]` entry). Point that slot at a moderations- or
+rerank-capable OpenAI-compatible root (including `/v1`). When frontier is off
+or no key resolves, both routes return **501** — daari never invents scores.
+
 `POST /v1/audio/transcriptions` accepts the OpenAI multipart form and forwards
 it to `asr.base_url` when that is set. With no local ASR the route returns
 **501**. `asr.frontier_fallback` defaults to false, so the file is never sent

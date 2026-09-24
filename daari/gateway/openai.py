@@ -1140,6 +1140,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 response_format=str(body.get("response_format") or "mp3"),
             )
 
+        @router.post("/v1/rerank", response_model=None)
+        async def rerank(body: dict[str, Any], request: Request) -> Any:
+            """Cohere/LiteLLM-shaped rerank via configured L6 (#1051)."""
+            from daari.gateway.rerank import RerankRequest, handle_rerank
+
+            parsed = RerankRequest.model_validate(body)
+            return await handle_rerank(request, parsed)
+
         @router.post("/v1/moderations", response_model=None)
         async def moderations(body: dict[str, Any], request: Request) -> Any:
             """OpenAI-shaped moderations via configured L6 (#1050)."""
