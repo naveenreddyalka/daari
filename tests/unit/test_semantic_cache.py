@@ -41,6 +41,51 @@ class TestSemanticHelpers:
         assert "user:hello" in text
         assert "assistant:hi there" in text
 
+    def test_extract_embed_text_includes_audio_cache_tokens(self):
+        """#1001: different clips with the same caption must not share an L1 embed."""
+        from daari.gateway.internal import ContentAudio
+
+        caption = "what did I say?"
+        a = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content=caption,
+                    audio=[ContentAudio(data="clip-a", format="wav")],
+                )
+            ],
+            model="llama3.2:3b",
+        )
+        b = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content=caption,
+                    audio=[ContentAudio(data="clip-b", format="wav")],
+                )
+            ],
+            model="llama3.2:3b",
+        )
+        text_a = extract_embed_text(a)
+        text_b = extract_embed_text(b)
+        token_a = a.messages[0].audio[0].cache_token()
+        token_b = b.messages[0].audio[0].cache_token()
+        assert token_a in text_a
+        assert token_b in text_b
+        assert text_a != text_b
+        assert caption in text_a
+
+    def test_extract_embed_text_text_only_unchanged(self):
+        """#1001: text-only requests keep the pre-change embed string."""
+        request = InternalRequest(
+            messages=[
+                Message(role="user", content="hello"),
+                Message(role="assistant", content="hi there"),
+            ],
+            model="llama3.2:3b",
+        )
+        assert extract_embed_text(request) == "user:hello\nassistant:hi there"
+
     def test_semantic_context_key_ignores_message_content(self):
         a = InternalRequest(
             messages=[Message(role="user", content="one")],

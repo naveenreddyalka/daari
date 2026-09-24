@@ -4385,6 +4385,15 @@ escalates to mocked L6 with OpenAI payload preserving the block; optional
 `asr.base_url` path injects the transcript into the local-tier prompt. Covered
 by `tests/integration/test_gateway_flow.py`.
 
+### L1 semantic embed includes audio tokens ([#1001](https://github.com/naveenreddyalka/daari/issues/1001))
+
+<!-- tracking:#1001 -->
+**Status:** Done (2026-09-24). `extract_embed_text` appends
+`ContentAudio.cache_token()` when messages carry audio so different clips with
+the same caption cannot share an L1 hit; text-only embed strings unchanged.
+Docs: [caching-and-trust.md](developer/concepts/caching-and-trust.md). Covered
+by `tests/unit/test_semantic_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
