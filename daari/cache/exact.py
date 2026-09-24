@@ -18,6 +18,8 @@ def normalize_messages(messages: list[dict[str, Any]]) -> str:
             entry["tool_calls"] = message["tool_calls"]
         if message.get("images"):
             entry["images"] = message["images"]
+        if message.get("audio"):
+            entry["audio"] = message["audio"]
         normalized.append(entry)
     return json.dumps(normalized, sort_keys=True, separators=(",", ":"))
 

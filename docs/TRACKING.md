@@ -4442,6 +4442,14 @@ Covered by `tests/integration/test_l1_semantic_cache.py`.
 caption with image-B misses after image-A is stored; caption+image-A still hits.
 Covered by `tests/integration/test_l1_semantic_cache.py`.
 
+### ExactCache L0 multimodal key differentiation ([#1040](https://github.com/naveenreddyalka/daari/issues/1040))
+
+<!-- tracking:#1040 -->
+**Status:** Done (2026-09-24). `normalize_messages` keeps audio tokens (parity
+with images) so `cache_key` differs for same caption with distinct clips;
+text-only keys still match a no-media request. Covered by
+`tests/unit/test_exact_multimodal_keys.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
