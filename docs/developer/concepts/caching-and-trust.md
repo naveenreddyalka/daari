@@ -13,8 +13,9 @@ similarity alone does not decide the hit — the candidate must also pass
 verification (below). Optional draft injection and shadow sampling add further
 trust signals. When `cache.backend: redis`, replica writes use `WATCH`/`MULTI`
 so concurrent puts do not clobber each other's entries. Embed text folds
-`ContentAudio.cache_token()` when a turn carries `input_audio`, so identical
-captions with different clips cannot near-miss collide.
+`ContentAudio.cache_token()` / `ContentImage.cache_token()` when a turn carries
+`input_audio` or images, so identical captions with different clips or pictures
+cannot near-miss collide.
 
 ## Verifying a hit before serving it
 

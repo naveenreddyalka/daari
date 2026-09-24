@@ -4394,6 +4394,15 @@ the same caption cannot share an L1 hit; text-only embed strings unchanged.
 Docs: [caching-and-trust.md](developer/concepts/caching-and-trust.md). Covered
 by `tests/unit/test_semantic_cache.py`.
 
+### L1 semantic embed includes image tokens ([#1029](https://github.com/naveenreddyalka/daari/issues/1029))
+
+<!-- tracking:#1029 -->
+**Status:** Done (2026-09-24). `extract_embed_text` appends
+`ContentImage.cache_token()` when messages carry images (parity with audio
+#1001); text-only and audio-only embed strings unchanged. Docs:
+[caching-and-trust.md](developer/concepts/caching-and-trust.md). Covered by
+`tests/unit/test_semantic_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
