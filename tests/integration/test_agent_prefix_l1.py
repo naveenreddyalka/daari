@@ -7,6 +7,7 @@ import pytest
 from daari.cache.exact import ExactCache
 from daari.cache.semantic import SemanticCache, agent_prefix_text, agent_suffix_hash
 from daari.gateway.internal import (
+    ContentAudio,
     ContentImage,
     DaariMeta,
     InternalRequest,
@@ -176,6 +177,56 @@ async def test_agent_prefix_l1_misses_when_image_differs(tmp_path):
 
     hit = await router.route(
         _vision_agent_request(tool_result, image_data="img-a", call_id="c3")
+    )
+    assert hit.daari_meta.tier == "L1"
+    assert hit.daari_meta.cache_hit is True
+    assert hit.content == first.content
+    assert metrics.tiers["L1"].cache_hits == 1
+
+
+def _audio_agent_request(
+    tool_result: str, *, clip_data: str, call_id: str = "c1"
+) -> InternalRequest:
+    messages = [
+        Message(role="system", content="You are a deal assistant."),
+        Message(
+            role="user",
+            content="Summarize the Stripe deal.",
+            audio=[ContentAudio(data=clip_data, format="wav")],
+        ),
+        Message(
+            role="assistant",
+            content=None,
+            tool_calls=[
+                {"id": call_id, "type": "function", "function": {"name": "lookup_deal"}}
+            ],
+        ),
+        Message(role="tool", content=tool_result, tool_call_id=call_id),
+    ]
+    return InternalRequest(messages=messages, model="llama3.2:3b", tools=TOOLS)
+
+
+@pytest.mark.asyncio
+async def test_agent_prefix_l1_misses_when_audio_differs(tmp_path):
+    """#1049: same tools/suffix with a different audio clip must not share prefix-L1."""
+    router, metrics, calls = _router(tmp_path)
+    tool_result = "balance: 100"
+
+    first = await router.route(
+        _audio_agent_request(tool_result, clip_data="clip-a", call_id="c1")
+    )
+    assert first.daari_meta.cache_hit is False
+
+    miss = await router.route(
+        _audio_agent_request(tool_result, clip_data="clip-b", call_id="c2")
+    )
+    assert miss.daari_meta.cache_hit is False
+    assert miss.daari_meta.tier != "L1"
+    assert "L1" not in metrics.tiers or metrics.tiers["L1"].cache_hits == 0
+    assert miss.content == "answer for balance: 100"
+
+    hit = await router.route(
+        _audio_agent_request(tool_result, clip_data="clip-a", call_id="c3")
     )
     assert hit.daari_meta.tier == "L1"
     assert hit.daari_meta.cache_hit is True

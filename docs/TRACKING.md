@@ -4472,6 +4472,14 @@ tool_call id) still hits. Covered by `tests/integration/test_agent_prefix_l1.py`
 `_message_embed_chunk` with embed text for image/audio tokens. Covered by
 `tests/unit/test_caching_trust_docs.py`.
 
+### Agent-prefix L1 misses when audio clips differ ([#1049](https://github.com/naveenreddyalka/daari/issues/1049))
+
+<!-- tracking:#1049 -->
+**Status:** Done (2026-09-24). Router agent-prefix L1 integration: same tools
+and suffix with clip-B miss after clip-A is stored; clip-A replay (fresh
+tool_call id) still hits (parity with image pin #1042). Covered by
+`tests/integration/test_agent_prefix_l1.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
