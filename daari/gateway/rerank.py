@@ -221,9 +221,29 @@ async def handle_rerank(request: Request, body: RerankRequest) -> Any:
     if denied is not None:
         return denied
 
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
+
+    engine = router_guardrails(ctx)
+    metrics = getattr(ctx, "metrics", None)
+    query_policy = apply_endpoint_input_policy(body.query, engine, metrics=metrics)
+    if query_policy.blocked:
+        return endpoint_guardrail_blocked_response(query_policy.block_message)
+    scrubbed_docs: list[str] = []
+    for doc in documents:
+        doc_policy = apply_endpoint_input_policy(doc, engine, metrics=metrics)
+        if doc_policy.blocked:
+            return endpoint_guardrail_blocked_response(doc_policy.block_message)
+        scrubbed_docs.append(doc_policy.text)
+    documents = scrubbed_docs
+    query = query_policy.text
+
     payload: dict[str, Any] = {
         "model": model,
-        "query": body.query,
+        "query": query,
         "documents": documents,
     }
     if body.top_n is not None:
@@ -264,7 +284,7 @@ async def handle_rerank(request: Request, body: RerankRequest) -> Any:
         ctx,
         client_id=caller,
         model=model,
-        query=body.query,
+        query=query,
         documents=documents,
     )
     return data
