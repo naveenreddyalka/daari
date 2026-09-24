@@ -24,7 +24,9 @@ Explicit headers win over project profiles and most config defaults.
 
 `/v1/chat/completions` and `/v1/messages` report cost and routing on every
 response so FinOps and observability tooling can scrape headers instead of
-bodies. Values agree with `daari_meta` on the same response.
+bodies. Values agree with `daari_meta` on the same response. The same
+`x-daari-response-cost*` set is also emitted on embeddings, audio
+(speech / transcriptions / translations), moderations, and rerank.
 
 | Header | Value |
 |--------|-------|

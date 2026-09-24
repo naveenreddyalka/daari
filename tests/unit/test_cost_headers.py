@@ -122,6 +122,45 @@ class TestResponseCostHeaders:
         assert store.total("s") is None
 
 
+class TestModalityResponseHeaders:
+    def test_local_embed_tier_is_free_with_avoided(self):
+        from daari.gateway.cost_headers import modality_response_headers
+
+        headers = modality_response_headers(
+            _settings(0.002),
+            tier="embed",
+            model="nomic-embed-text",
+            prompt_chars=4000,
+        )
+        assert headers[TIER_HEADER] == "embed"
+        assert float(headers[COST_HEADER]) == 0.0
+        assert float(headers[COST_AVOIDED_HEADER]) == pytest.approx(1000 / 1000 * 0.002)
+
+    def test_frontier_asr_prices_from_tokens(self):
+        from daari.gateway.cost_headers import modality_response_headers
+        from daari.pricing import cost_usd
+
+        settings = _settings(0.002)
+        headers = modality_response_headers(
+            settings,
+            tier="L6",
+            model="whisper-1",
+            completion_chars=400,
+            input_tokens=0,
+            output_tokens=100,
+            executor="frontier",
+        )
+        expected = cost_usd(
+            "whisper-1",
+            0,
+            100,
+            settings.pricing,
+            fallback_per_1k=0.002,
+        )
+        assert float(headers[COST_HEADER]) == pytest.approx(expected)
+        assert float(headers[COST_AVOIDED_HEADER]) == 0.0
+
+
 class TestStreamOutcome:
     def test_headers_empty_until_router_commits(self):
         outcome = StreamOutcome()

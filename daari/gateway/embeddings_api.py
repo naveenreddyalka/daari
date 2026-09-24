@@ -190,18 +190,21 @@ async def compute_embeddings(
             )
         filled.append(vector)
     prompt_chars = sum(len(text) for text in texts)
+    cache_hit = bool(texts) and cache_hits == len(texts)
     ctx.metrics.record(
         "embed",
-        cache_hit=bool(texts) and cache_hits == len(texts),
+        cache_hit=cache_hit,
         latency_ms=latency_ms,
     )
     client_id = _caller_client_id(request)
     if request is not None:
         _bind_spend_context(request, ctx, model=model, client_id=client_id)
+        request.state.daari_embed_cache_hit = cache_hit
+        request.state.daari_embed_prompt_chars = prompt_chars
     if ctx.router.usage_ledger is not None:
         ctx.router.usage_ledger.record(
             tier="embed",
-            cache_hit=bool(texts) and cache_hits == len(texts),
+            cache_hit=cache_hit,
             prompt_chars=prompt_chars,
             client_id=client_id,
             model=model,

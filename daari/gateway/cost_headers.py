@@ -250,6 +250,51 @@ def response_cost_headers(
     return headers
 
 
+def session_id_from_request(request: Any) -> str | None:
+    headers = getattr(request, "headers", None)
+    if headers is None:
+        return None
+    text = str(headers.get("x-daari-session") or "").strip()
+    return text or None
+
+
+def modality_response_headers(
+    settings: Any,
+    *,
+    tier: str,
+    model: str = "",
+    prompt_chars: int = 0,
+    completion_chars: int = 0,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cache_hit: bool = False,
+    cost_usd: float | None = None,
+    executor: str | None = None,
+    session_id: str | None = None,
+    savings: SessionAvoidedStore | None = None,
+) -> dict[str, str]:
+    """Cost-split headers for embeddings / audio / moderations / rerank (#1062)."""
+    label = (tier or "").strip() or "local"
+    meta = DaariMeta(
+        tier=label,
+        executor=executor
+        or ("frontier" if label.upper() == FRONTIER_TIER else label),
+        model=model or None,
+        cache_hit=cache_hit,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost_usd,
+    )
+    return response_cost_headers(
+        meta,
+        settings,
+        prompt_chars=prompt_chars,
+        completion_chars=completion_chars,
+        session_id=session_id,
+        savings=savings,
+    )
+
+
 def stream_usage_cost(
     *,
     tier: str | None,

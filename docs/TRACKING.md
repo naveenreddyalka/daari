@@ -4537,6 +4537,15 @@ so `no_frontier` keys never upload audio, `region_pin` filters slots (400 when
 none match), and eligible slots fail over in pool order. Covered by
 `tests/unit/test_audio_transcriptions.py`.
 
+### Response cost headers on embeddings and audio ([#1062](https://github.com/naveenreddyalka/daari/issues/1062))
+
+<!-- tracking:#1062 -->
+**Status:** Done (2026-09-24). Embeddings, speech, transcriptions/translations,
+moderations, and rerank emit the same `x-daari-response-cost*` header set as
+chat, matching spend_ledger amounts. Covered by `tests/unit/test_cost_headers.py`,
+`test_embeddings.py`, `test_speech.py`, `test_audio_transcriptions.py`,
+`test_moderations.py`, and `test_rerank.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

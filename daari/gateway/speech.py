@@ -350,7 +350,21 @@ async def handle_speech(
     )
     media = upstream.headers.get("content-type") or _CONTENT_TYPES[fmt]
     request_id = str(getattr(request.state, "request_id", None) or "")
-    headers = {"X-Request-ID": request_id} if request_id else None
+    from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+    headers = modality_response_headers(
+        ctx.settings,
+        tier="tts",
+        model=model_name,
+        prompt_chars=len(text),
+        completion_chars=0,
+        input_tokens=max(0, len(text) // 4),
+        output_tokens=max(0, len(audio) // 4),
+        session_id=session_id_from_request(request),
+        savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+    )
+    if request_id:
+        headers = {**headers, "X-Request-ID": request_id}
     return Response(
         content=audio,
         media_type=media.split(";")[0].strip(),
