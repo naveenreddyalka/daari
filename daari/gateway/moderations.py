@@ -1,8 +1,7 @@
-"""POST /v1/moderations — OpenAI-shaped L6 passthrough (#1050, #1058)."""
+"""POST /v1/moderations — OpenAI-shaped L6 passthrough (#1050, #1058, #1060)."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -11,6 +10,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from daari.gateway.client_errors import summarize_upstream_failure
+from daari.gateway.l6_passthrough import (
+    L6Target,
+    RegionUnavailable,
+    is_slot_failure,
+    post_l6,
+    region_pin_from_request,
+    resolve_l6_targets,
+)
 from daari.gateway.request_log import log_gateway_event
 
 _UNAVAILABLE = (
@@ -18,6 +25,9 @@ _UNAVAILABLE = (
     "Set frontier.enabled=true and provide an API key; daari never invents "
     "classification scores locally."
 )
+
+# Backward-compatible alias for tests that import ModerationsTarget.
+ModerationsTarget = L6Target
 
 _http: httpx.AsyncClient | None = None
 
@@ -38,14 +48,6 @@ async def aclose_http() -> None:
     _http = None
 
 
-@dataclass(frozen=True)
-class ModerationsTarget:
-    base_url: str
-    api_key: str
-    default_model: str
-    timeout: float
-
-
 class ModerationsRequest(BaseModel):
     input: str | list[str]
     model: str | None = Field(default=None)
@@ -58,38 +60,17 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
     )
 
 
-def resolve_moderations_target(settings: Any) -> ModerationsTarget | None:
-    """Frontier L6 only — never invent local moderation scores."""
-    frontier = getattr(settings, "frontier", None)
-    if frontier is None or not bool(getattr(frontier, "enabled", False)):
-        return None
-    from daari.router.frontier_pool import build_frontier_pool
-    from daari.security.secret_refs import SecretRefError
-
-    pool = build_frontier_pool(settings)
-    if not pool.slots:
-        return None
-    slot = pool.slots[0]
+def resolve_moderations_target(
+    settings: Any, *, region_pin: str | None = None
+) -> ModerationsTarget | None:
+    """First eligible frontier slot (or None). Prefer resolve_l6_targets for failover."""
     try:
-        key = slot.pick_key()
-    except SecretRefError:
+        targets = resolve_l6_targets(
+            settings, region_pin=region_pin, default_model="omni-moderation-latest"
+        )
+    except RegionUnavailable:
         return None
-    secret = str(key or "").strip()
-    if not secret:
-        return None
-    slot_base = str(getattr(slot.executor, "base_url", "") or "").strip().rstrip("/")
-    if not slot_base:
-        return None
-    timeout = float(getattr(slot.executor, "timeout", 90.0) or 90.0)
-    model = str(getattr(slot.executor, "default_model", "") or "").strip()
-    if not model:
-        model = str(getattr(frontier, "model", "") or "").strip() or "omni-moderation-latest"
-    return ModerationsTarget(
-        base_url=slot_base,
-        api_key=secret,
-        default_model=model,
-        timeout=timeout,
-    )
+    return targets[0] if targets else None
 
 
 async def post_moderations(
@@ -98,8 +79,19 @@ async def post_moderations(
     headers: dict[str, str],
     payload: dict[str, Any],
     timeout: float,
+    retry: Any | None = None,
+    metrics: Any | None = None,
 ) -> httpx.Response:
-    return await _shared_client().post(url, headers=headers, json=payload, timeout=timeout)
+    return await post_l6(
+        _shared_client(),
+        url,
+        headers=headers,
+        payload=payload,
+        timeout=timeout,
+        upstream="moderations",
+        retry=retry,
+        metrics=metrics,
+    )
 
 
 def _caller_client_id(request: Request) -> str | None:
@@ -191,12 +183,19 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
 
     ctx = request.app.state.ctx
     settings = ctx.settings
-    target = resolve_moderations_target(settings)
-    if target is None:
+    pin = region_pin_from_request(request)
+    try:
+        targets = resolve_l6_targets(
+            settings, region_pin=pin, default_model="omni-moderation-latest"
+        )
+    except RegionUnavailable as exc:
+        log_gateway_event("moderations_region_unavailable", {"pin": exc.pin})
+        return _error(400, "region_unavailable", str(exc))
+    if not targets:
         log_gateway_event("moderations_unavailable", {"reason": "frontier_disabled_or_no_key"})
         return _error(501, "not_implemented", _UNAVAILABLE)
 
-    model = (body.model or "").strip() or target.default_model
+    model = (body.model or "").strip() or targets[0].default_model
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         return denied
@@ -214,46 +213,99 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
     if policy.blocked:
         return endpoint_guardrail_blocked_response(policy.block_message)
     if policy.text != input_text:
-        # Redact: rewrite list/string input to scrubbed form before upstream.
         if isinstance(body.input, list):
             body = ModerationsRequest(input=[policy.text], model=body.model)
         else:
             body = ModerationsRequest(input=policy.text, model=body.model)
 
     payload: dict[str, Any] = {"input": body.input, "model": model}
-    headers = {
-        "Authorization": f"Bearer {target.api_key}",
-        "Content-Type": "application/json",
-    }
-    url = f"{target.base_url}/moderations"
-    try:
-        upstream = await post_moderations(
-            url, headers=headers, payload=payload, timeout=target.timeout
-        )
-    except Exception as exc:
-        log_gateway_event(
-            "moderations_upstream_error",
-            {"error": summarize_upstream_failure(exc)},
-        )
-        return _error(503, "upstream_error", "Moderations upstream request failed.")
+    retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
+    metrics = getattr(ctx, "metrics", None)
+    last_exc: Exception | None = None
+    last_upstream: httpx.Response | None = None
 
-    if upstream.status_code >= 400:
+    for target in targets:
+        headers = {
+            "Authorization": f"Bearer {target.api_key}",
+            "Content-Type": "application/json",
+        }
+        url = f"{target.base_url}/moderations"
+        try:
+            upstream = await post_moderations(
+                url,
+                headers=headers,
+                payload=payload,
+                timeout=target.timeout,
+                retry=target.retry if target.retry is not None else retry_settings,
+                metrics=metrics,
+            )
+        except httpx.HTTPStatusError as exc:
+            last_upstream = exc.response
+            last_exc = exc
+            log_gateway_event(
+                "moderations_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                    "status": exc.response.status_code if exc.response is not None else None,
+                },
+            )
+            continue
+        except Exception as exc:
+            last_exc = exc
+            log_gateway_event(
+                "moderations_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                },
+            )
+            continue
+        if is_slot_failure(upstream):
+            last_upstream = upstream
+            log_gateway_event(
+                "moderations_slot_http",
+                {"slot": target.slot_id, "status": upstream.status_code},
+            )
+            continue
+        if upstream.status_code >= 400:
+            log_gateway_event(
+                "moderations_upstream_http",
+                {"status": upstream.status_code, "slot": target.slot_id},
+            )
+            try:
+                detail = upstream.json()
+            except Exception:
+                detail = {"error": {"type": "upstream_error", "message": upstream.text[:200]}}
+            return JSONResponse(status_code=upstream.status_code, content=detail)
+        try:
+            data = upstream.json()
+        except Exception:
+            return _error(502, "bad_gateway", "Moderations upstream returned non-JSON.")
+        log_gateway_event("moderations_ok", {"model": model, "slot": target.slot_id})
+        caller = _caller_client_id(request)
+        _bind_spend_context(request, ctx, model=model, client_id=caller)
+        _record_request(ctx, client_id=caller, model=model, input_text=_input_text(body.input))
+        return data
+
+    if last_upstream is not None:
         log_gateway_event(
             "moderations_upstream_http",
-            {"status": upstream.status_code},
+            {"status": last_upstream.status_code},
         )
         try:
-            detail = upstream.json()
+            detail = last_upstream.json()
         except Exception:
-            detail = {"error": {"type": "upstream_error", "message": upstream.text[:200]}}
-        return JSONResponse(status_code=upstream.status_code, content=detail)
-
-    try:
-        data = upstream.json()
-    except Exception:
-        return _error(502, "bad_gateway", "Moderations upstream returned non-JSON.")
-    log_gateway_event("moderations_ok", {"model": model})
-    caller = _caller_client_id(request)
-    _bind_spend_context(request, ctx, model=model, client_id=caller)
-    _record_request(ctx, client_id=caller, model=model, input_text=_input_text(body.input))
-    return data
+            detail = {
+                "error": {
+                    "type": "upstream_error",
+                    "message": (last_upstream.text or "")[:200],
+                }
+            }
+        return JSONResponse(status_code=last_upstream.status_code, content=detail)
+    if last_exc is not None:
+        log_gateway_event(
+            "moderations_upstream_error",
+            {"error": summarize_upstream_failure(last_exc)},
+        )
+    return _error(503, "upstream_error", "Moderations upstream request failed.")

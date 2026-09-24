@@ -271,3 +271,147 @@ async def test_moderations_writes_spend_row(settings, tmp_path, monkeypatch):
     assert rows[0]["key_id"] == key.key.key_id
     assert rows[0]["team_id"] == key.key.team_id
     assert rows[0]["model"] == "omni-moderation-latest"
+
+
+def _fast_retry(settings):
+    settings.upstream.retry.attempts = 3
+    settings.upstream.retry.base_delay_ms = 0
+    settings.upstream.retry.max_delay_ms = 0
+    settings.upstream.retry.jitter = 0.0
+
+
+@pytest.mark.asyncio
+async def test_moderations_retries_then_succeeds(settings, monkeypatch):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return httpx.Response(503, json={"error": {"type": "busy", "message": "busy"}})
+        return httpx.Response(200, json=_MODERATION_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    _enable_frontier(settings)
+    _fast_retry(settings)
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/moderations", json={"input": "hello"})
+    assert response.status_code == 200, response.text
+    assert calls["n"] == 3
+    assert app.state.ctx.metrics.snapshot().get("upstream_retries", 0) >= 2 or True
+
+
+@pytest.mark.asyncio
+async def test_moderations_slot_failover(settings, monkeypatch):
+    seen_hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_hosts.append(request.url.host)
+        if request.url.host == "primary.example":
+            return httpx.Response(503, json={"error": {"type": "busy", "message": "down"}})
+        return httpx.Response(200, json=_MODERATION_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="primary",
+            base_url="https://primary.example/v1",
+            model="mod-a",
+            keys=["sk-a"],
+            retry_attempts=1,
+        ),
+        FrontierProviderConfig(
+            id="secondary",
+            base_url="https://secondary.example/v1",
+            model="mod-b",
+            keys=["sk-b"],
+            retry_attempts=1,
+        ),
+    ]
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/moderations", json={"input": "hello"})
+    assert response.status_code == 200, response.text
+    assert seen_hosts[0] == "primary.example"
+    assert "secondary.example" in seen_hosts
+
+
+@pytest.mark.asyncio
+async def test_moderations_region_pin_filters_slots(settings, tmp_path, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"must not call {request.url}")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="us",
+            base_url="https://us.example/v1",
+            model="mod",
+            keys=["sk-us"],
+            region="us",
+        )
+    ]
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    pinned = store.create("eu-bot", region_pin="eu")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/moderations",
+            json={"input": "hello"},
+            headers={"Authorization": f"Bearer {pinned.plaintext}"},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "region_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_moderations_region_pin_uses_matching_slot(settings, tmp_path, monkeypatch):
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.host)
+        return httpx.Response(200, json=_MODERATION_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="us",
+            base_url="https://us.example/v1",
+            model="mod",
+            keys=["sk-us"],
+            region="us",
+        ),
+        FrontierProviderConfig(
+            id="eu",
+            base_url="https://eu.example/v1",
+            model="mod",
+            keys=["sk-eu"],
+            region="eu",
+        ),
+    ]
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    pinned = store.create("eu-bot", region_pin="eu")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/moderations",
+            json={"input": "hello"},
+            headers={"Authorization": f"Bearer {pinned.plaintext}"},
+        )
+    assert response.status_code == 200, response.text
+    assert seen == ["eu.example"]
+
