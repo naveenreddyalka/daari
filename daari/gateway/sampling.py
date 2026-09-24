@@ -483,8 +483,10 @@ class SamplingParams(BaseModel):
         think: Any = None,
         format: Any = None,
         keep_alive: Any = None,
+        logprobs: Any = None,
+        top_logprobs: Any = None,
     ) -> SamplingParams:
-        """Merge top-level Ollama facade knobs into SamplingParams (#1011)."""
+        """Merge top-level Ollama facade knobs into SamplingParams (#1011 / #1031)."""
         merged = dict(options or {})
         if format is not None and "format" not in merged:
             merged["format"] = format
@@ -497,6 +499,12 @@ class SamplingParams(BaseModel):
             updates["reasoning_effort"] = effort
         if keep_alive is not None:
             updates["keep_alive"] = keep_alive
+        normalized_logprobs = _normalize_bool(logprobs)
+        if normalized_logprobs is not None:
+            updates["logprobs"] = normalized_logprobs
+        normalized_top = _normalize_top_logprobs(top_logprobs)
+        if normalized_top is not None:
+            updates["top_logprobs"] = normalized_top
         if updates:
             return params.model_copy(update=updates)
         return params

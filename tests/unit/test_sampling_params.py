@@ -402,3 +402,23 @@ class TestAgentSdkSamplingKnobs:
         assert params.parallel_tool_calls is None
         assert params.logit_bias is None
         assert params.top_logprobs is None
+
+
+class TestOllamaFacadeLogprobs:
+    """Facade top-level logprobs / top_logprobs map onto SamplingParams (#1031)."""
+
+    def test_from_ollama_facade_maps_logprobs(self):
+        params = SamplingParams.from_ollama_facade(
+            None, logprobs=True, top_logprobs=3
+        )
+        assert params.logprobs is True
+        assert params.top_logprobs == 3
+        assert "logprobs" in params.dropped_param_names()
+        assert "top_logprobs" in params.dropped_param_names()
+        payload = params.openai_payload()
+        assert payload["logprobs"] is True
+        assert payload["top_logprobs"] == 3
+
+    def test_from_ollama_facade_ignores_malformed_top_logprobs(self):
+        params = SamplingParams.from_ollama_facade(None, top_logprobs=True)
+        assert params.top_logprobs is None

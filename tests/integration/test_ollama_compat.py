@@ -490,3 +490,55 @@ async def test_chat_forwards_think_format_keep_alive(settings, monkeypatch):
     assert "think" not in captured[1]
     assert "format" not in captured[1]
     assert "keep_alive" not in captured[1]
+
+
+@pytest.mark.asyncio
+async def test_chat_maps_logprobs_to_dropped_params(settings, monkeypatch):
+    """Facade logprobs reach SamplingParams and local dropped-params (#1031)."""
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    seen: list[InternalRequest] = []
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        seen.append(request)
+        return InternalResponse(
+            content="ok with enough length to avoid confidence escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "execute", fake_execute)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/chat",
+            json={
+                "model": "daari",
+                "stream": False,
+                "messages": [{"role": "user", "content": "probs"}],
+                "logprobs": True,
+                "top_logprobs": 2,
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert seen, "local tier must run"
+    assert seen[0].sampling.logprobs is True
+    assert seen[0].sampling.top_logprobs == 2
+    meta = response.json()["daari_meta"]
+    dropped = meta.get("dropped_params") or []
+    assert "logprobs" in dropped
+    assert "top_logprobs" in dropped
+    assert meta.get("warning") and "logprobs" in meta["warning"]
