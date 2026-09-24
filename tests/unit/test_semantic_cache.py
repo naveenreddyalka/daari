@@ -4,6 +4,7 @@ import pytest
 
 from daari.cache.semantic import (
     SemanticCache,
+    agent_prefix_text,
     cosine_similarity,
     extract_embed_text,
     semantic_context_key,
@@ -136,6 +137,56 @@ class TestSemanticHelpers:
         )
         token = request.messages[0].audio[0].cache_token()
         assert extract_embed_text(request) == f"user:caption|audio:{token}"
+
+    def test_agent_prefix_text_includes_multimodal_tokens(self):
+        """#1030: agent prefix folds image/audio tokens like extract_embed_text."""
+        from daari.gateway.internal import ContentAudio, ContentImage
+
+        caption = "describe this"
+        a = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content=caption,
+                    images=[ContentImage(data="img-a", media_type="image/png")],
+                    audio=[ContentAudio(data="clip-a", format="wav")],
+                ),
+                Message(role="assistant", content="", tool_calls=[{"id": "c1"}]),
+                Message(role="tool", content="tool-result-a", tool_call_id="c1"),
+            ],
+            model="llama3.2:3b",
+        )
+        b = InternalRequest(
+            messages=[
+                Message(
+                    role="user",
+                    content=caption,
+                    images=[ContentImage(data="img-b", media_type="image/png")],
+                    audio=[ContentAudio(data="clip-b", format="wav")],
+                ),
+                Message(role="assistant", content="", tool_calls=[{"id": "c1"}]),
+                Message(role="tool", content="tool-result-a", tool_call_id="c1"),
+            ],
+            model="llama3.2:3b",
+        )
+        text_a = agent_prefix_text(a)
+        text_b = agent_prefix_text(b)
+        assert a.messages[0].images[0].cache_token() in text_a
+        assert a.messages[0].audio[0].cache_token() in text_a
+        assert text_a != text_b
+        assert "tool-result-a" not in text_a
+
+    def test_agent_prefix_text_text_only_unchanged(self):
+        """#1030: text-only agent prefixes keep the pre-change string."""
+        request = InternalRequest(
+            messages=[
+                Message(role="user", content="Summarize the Stripe deal."),
+                Message(role="assistant", content="", tool_calls=[{"id": "c1"}]),
+                Message(role="tool", content="balance: 100", tool_call_id="c1"),
+            ],
+            model="llama3.2:3b",
+        )
+        assert agent_prefix_text(request) == "user:Summarize the Stripe deal."
 
     def test_semantic_context_key_ignores_message_content(self):
         a = InternalRequest(
