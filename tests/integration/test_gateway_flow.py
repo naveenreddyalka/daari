@@ -2422,6 +2422,120 @@ async def test_nonstream_frontier_openai_payload_includes_tools(settings, monkey
 
 
 @pytest.mark.asyncio
+async def test_local_chat_sets_dropped_params_header(settings, monkeypatch):
+    """#1032: local tier surfaces x-daari-dropped-params for unsupported knobs."""
+    from daari.gateway.cost_headers import DROPPED_PARAMS_HEADER
+
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    settings.routing.max_tier_for_chat = "L3"
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def local_ok(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok with enough length to avoid confidence escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", local_ok)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "execute", local_ok)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "hello there"}],
+                "logprobs": True,
+                "store": True,
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["daari_meta"]["tier"] == "L3"
+    dropped = response.headers.get(DROPPED_PARAMS_HEADER)
+    assert dropped is not None
+    names = dropped.split(",")
+    assert "logprobs" in names
+    assert "store" in names
+
+
+@pytest.mark.asyncio
+async def test_frontier_omits_dropped_params_header(settings, monkeypatch):
+    """#1032: L6 serves omit x-daari-dropped-params when frontier honors knobs."""
+    from daari.gateway.cost_headers import DROPPED_PARAMS_HEADER
+
+    settings.frontier.enabled = True
+    settings.frontier.confidence_threshold = 0.99
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def short_local(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="no",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    async def fake_l6(
+        request: InternalRequest,
+        *,
+        escalated_from: str,
+        local_confidence: float,
+    ) -> InternalResponse:
+        return InternalResponse(
+            content="Frontier answer with enough detail for the user.",
+            model="gpt-4o-mini",
+            daari_meta=DaariMeta(
+                tier="L6",
+                executor="frontier",
+                provider_id="openai",
+                latency_ms=20,
+                escalated_from=escalated_from,
+                confidence=local_confidence,
+            ),
+        )
+
+    for tier in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        monkeypatch.setattr(getattr(application.state.ctx.router, tier), "execute", short_local)
+    monkeypatch.setattr(application.state.ctx.router.frontier, "execute", fake_l6)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "daari",
+                "messages": [{"role": "user", "content": "escalate please"}],
+                "logprobs": True,
+            },
+            headers=META_HEADERS,
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["daari_meta"]["tier"] == "L6"
+    assert DROPPED_PARAMS_HEADER not in response.headers
+
+
+@pytest.mark.asyncio
 async def test_input_audio_escalates_to_l6_with_openai_payload(settings, monkeypatch):
     """#1000: chat input_audio reaches L6 OpenAI payload (integration pin)."""
     import base64
