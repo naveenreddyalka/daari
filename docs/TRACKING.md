@@ -4465,6 +4465,13 @@ malformed `top_logprobs` ignored. Covered by
 and suffix with image-B miss after image-A is stored; image-A replay (fresh
 tool_call id) still hits. Covered by `tests/integration/test_agent_prefix_l1.py`.
 
+### Docs: agent-prefix multimodal fold in caching-and-trust ([#1043](https://github.com/naveenreddyalka/daari/issues/1043))
+
+<!-- tracking:#1043 -->
+**Status:** Done (2026-09-24). Trust concept doc states agent-prefix L1 shares
+`_message_embed_chunk` with embed text for image/audio tokens. Covered by
+`tests/unit/test_caching_trust_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
