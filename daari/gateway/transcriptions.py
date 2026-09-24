@@ -55,6 +55,8 @@ class AsrTarget:
     model: str
     via: str
     timeout: float
+    slot_id: str = ""
+    retry: Any | None = None
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -64,47 +66,62 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
     )
 
 
-def resolve_asr_target(settings: Any) -> AsrTarget | None:
-    """Local ASR when configured; otherwise one explicit frontier fallback."""
+def resolve_asr_targets(
+    settings: Any, *, region_pin: str | None = None
+) -> list[AsrTarget]:
+    """Local ASR when configured; else frontier slots in pool order (#1061).
+
+    Raises RegionUnavailable when a pin is set but no slot can satisfy it.
+    """
     asr = getattr(settings, "asr", None)
     if asr is None:
-        return None
+        return []
     base = str(getattr(asr, "base_url", "") or "").strip().rstrip("/")
     model = str(getattr(asr, "model", "") or "").strip()
     if base:
         upstream = getattr(settings, "upstream", None)
         timeout = float(getattr(upstream, "local_timeout_seconds", 120.0) or 120.0)
-        return AsrTarget(base_url=base, api_key=None, model=model, via="local", timeout=timeout)
+        return [
+            AsrTarget(
+                base_url=base,
+                api_key=None,
+                model=model,
+                via="local",
+                timeout=timeout,
+            )
+        ]
     if not bool(getattr(asr, "frontier_fallback", False)):
-        return None
-    frontier = getattr(settings, "frontier", None)
-    if frontier is None or not bool(getattr(frontier, "enabled", False)):
-        return None
-    from daari.router.frontier_pool import build_frontier_pool
-    from daari.security.secret_refs import SecretRefError
+        return []
+    from daari.gateway.l6_passthrough import resolve_l6_targets
 
-    pool = build_frontier_pool(settings)
-    if not pool.slots:
-        return None
-    slot = pool.slots[0]
-    try:
-        key = slot.pick_key()
-    except SecretRefError:
-        return None
-    secret = str(key or "").strip()
-    if not secret:
-        return None
-    slot_base = str(getattr(slot.executor, "base_url", "") or "").strip().rstrip("/")
-    if not slot_base:
-        return None
-    timeout = float(getattr(slot.executor, "timeout", 90.0) or 90.0)
-    return AsrTarget(
-        base_url=slot_base,
-        api_key=secret,
-        model=model,
-        via="frontier",
-        timeout=timeout,
+    l6 = resolve_l6_targets(
+        settings, region_pin=region_pin, default_model=model or "whisper-1"
     )
+    return [
+        AsrTarget(
+            base_url=target.base_url,
+            api_key=target.api_key,
+            model=model or target.default_model,
+            via="frontier",
+            timeout=target.timeout,
+            slot_id=target.slot_id,
+            retry=target.retry,
+        )
+        for target in l6
+    ]
+
+
+def resolve_asr_target(
+    settings: Any, *, region_pin: str | None = None
+) -> AsrTarget | None:
+    """Local ASR when configured; otherwise the first eligible frontier slot."""
+    from daari.gateway.l6_passthrough import RegionUnavailable
+
+    try:
+        targets = resolve_asr_targets(settings, region_pin=region_pin)
+    except RegionUnavailable:
+        return None
+    return targets[0] if targets else None
 
 
 _AUDIO_CONTENT_TYPES = {
@@ -375,25 +392,35 @@ async def handle_transcription(
         except RequestDeadlineExceeded as exc:
             return request_deadline_response(exc)
 
-    target = resolve_asr_target(ctx.settings)
-    if target is None:
+    from daari.gateway.l6_passthrough import (
+        RegionUnavailable,
+        is_slot_failure,
+        region_pin_from_request,
+    )
+    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
+
+    pin = region_pin_from_request(request)
+    try:
+        targets = resolve_asr_targets(ctx.settings, region_pin=pin)
+    except RegionUnavailable as exc:
+        log_gateway_event("asr_region_unavailable", {"pin": exc.pin})
+        return _error(400, "region_unavailable", str(exc))
+    if not targets:
         return _error(501, "asr_unavailable", _UNAVAILABLE)
 
-    model_name = (target.model or (model or "")).strip()
+    # Frontier ASR leaves the box — honor the same L6 fence as other passthroughs.
+    if any(t.via == "frontier" for t in targets):
+        blocked = reject_frontier_passthrough(request)
+        if blocked is not None:
+            return blocked
+
+    model_name = (targets[0].model or (model or "")).strip()
     if not model_name:
         return _error(400, "invalid_request_error", "model is required")
-
-    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
 
     denied = reject_disallowed_model(request, model_name, ctx.settings)
     if denied is not None:
         return denied
-
-    # Frontier ASR leaves the box — honor the same L6 fence as other passthroughs.
-    if target.via == "frontier":
-        blocked = reject_frontier_passthrough(request)
-        if blocked is not None:
-            return blocked
 
     from daari.gateway.guardrails import (
         apply_endpoint_input_policy,
@@ -421,50 +448,87 @@ async def handle_transcription(
         form["language"] = lang
     if hint:
         form["prompt"] = hint
-    headers: dict[str, str] = {}
-    if target.api_key:
-        headers["Authorization"] = f"Bearer {target.api_key}"
     from daari.observability.otel import inject_trace_headers
 
-    headers = inject_trace_headers(headers)
-
-    url = f"{target.base_url}/{upstream_path.lstrip('/')}"
     started = time.perf_counter()
     phase = "translation" if upstream_path.rstrip("/").endswith("translations") else "asr"
-    try:
-        timeout = nonstream_timeout(target.timeout, phase)
-        retry_settings = getattr(getattr(ctx.settings, "upstream", None), "retry", None)
-        upstream = await await_unless_disconnected(
-            request,
-            post_transcription(
-                url,
-                headers=headers,
-                filename=file.filename or "audio",
-                content=content,
-                content_type=file.content_type or "application/octet-stream",
-                form=form,
-                timeout=timeout,
-                retry=retry_settings,
+    retry_settings = getattr(getattr(ctx.settings, "upstream", None), "retry", None)
+    last_exc: Exception | None = None
+    last_status: int | None = None
+    target = targets[0]
+    upstream: httpx.Response | None = None
+
+    for target in targets:
+        headers: dict[str, str] = {}
+        if target.api_key:
+            headers["Authorization"] = f"Bearer {target.api_key}"
+        headers = inject_trace_headers(headers)
+        url = f"{target.base_url}/{upstream_path.lstrip('/')}"
+        try:
+            timeout = nonstream_timeout(target.timeout, phase)
+            slot_retry = target.retry if target.retry is not None else retry_settings
+            upstream = await await_unless_disconnected(
+                request,
+                post_transcription(
+                    url,
+                    headers=headers,
+                    filename=file.filename or "audio",
+                    content=content,
+                    content_type=file.content_type or "application/octet-stream",
+                    form=form,
+                    timeout=timeout,
+                    retry=slot_retry,
+                    metrics=ctx.metrics,
+                ),
                 metrics=ctx.metrics,
-            ),
-            metrics=ctx.metrics,
-            phase=phase,
-            model=model_name,
-        )
-    except RequestDeadlineExceeded as exc:
-        return request_deadline_response(exc)
-    except ClientDisconnected:
-        return JSONResponse(
-            status_code=499,
-            content={
-                "error": {
-                    "type": "client_disconnected",
-                    "message": "client disconnected.",
-                }
-            },
-        )
-    except httpx.HTTPError as exc:
-        return _error(502, "asr_upstream_error", summarize_upstream_failure(exc))
+                phase=phase,
+                model=model_name,
+            )
+        except RequestDeadlineExceeded as exc:
+            return request_deadline_response(exc)
+        except ClientDisconnected:
+            return JSONResponse(
+                status_code=499,
+                content={
+                    "error": {
+                        "type": "client_disconnected",
+                        "message": "client disconnected.",
+                    }
+                },
+            )
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            log_gateway_event(
+                "asr_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                    "via": target.via,
+                },
+            )
+            if target.via != "frontier" or target is targets[-1]:
+                return _error(502, "asr_upstream_error", summarize_upstream_failure(exc))
+            continue
+        if target.via == "frontier" and is_slot_failure(upstream) and target is not targets[-1]:
+            last_status = upstream.status_code
+            log_gateway_event(
+                "asr_slot_http",
+                {"slot": target.slot_id, "status": upstream.status_code},
+            )
+            continue
+        break
+    else:
+        if last_status is not None:
+            return _error(
+                502,
+                "asr_upstream_error",
+                f"ASR upstream returned HTTP {last_status}",
+            )
+        if last_exc is not None:
+            return _error(502, "asr_upstream_error", summarize_upstream_failure(last_exc))
+        return _error(502, "asr_upstream_error", "ASR upstream request failed")
+
+    assert upstream is not None
     latency_ms = _elapsed_ms(started)
 
     if upstream.status_code < 200 or upstream.status_code >= 300:
@@ -495,6 +559,7 @@ async def handle_transcription(
             "model": model_name,
             "bytes": len(content),
             "via": target.via,
+            "slot": target.slot_id or None,
         },
     )
     caller = _caller_client_id(request)

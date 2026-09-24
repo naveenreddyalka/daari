@@ -13,7 +13,7 @@ asr:
   frontier_fallback: false   # default — never upload audio implicitly
 ```
 
-Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet in that case. It warns when `asr.base_url` is set but `GET {base}/models` is unreachable, and when `frontier_fallback` is true while frontier is disabled or no API key resolves. `frontier_fallback` stays off so existing installs do not start sending meetings to a hosted API. Set it to `true` only when `frontier.enabled` is true and a frontier key is configured; daari then forwards one request to that frontier base (the first provider in `frontier.providers`, otherwise `frontier.base_url`).
+Leave `base_url` empty and the route returns **501**. `daari doctor` stays quiet in that case. It warns when `asr.base_url` is set but `GET {base}/models` is unreachable, and when `frontier_fallback` is true while frontier is disabled or no API key resolves. `frontier_fallback` stays off so existing installs do not start sending meetings to a hosted API. Set it to `true` only when `frontier.enabled` is true and a frontier key is configured; daari then forwards the transcription to eligible frontier slots in pool order (failover on transient failure). Virtual-key `no_frontier` blocks the upload (403); `region_pin` keeps audio on matching-region slots only (400 when none match).
 
 Helm fleets can set `asr.baseUrl`, which mounts `DAARI_ASR__BASE_URL`. Optional chart value `asr.model` mounts `DAARI_ASR__MODEL` so the pod always presents the on-box whisper id. `asr.frontierFallback` defaults off and omits env; set it to true to mount `DAARI_ASR__FRONTIER_FALLBACK` so an empty base URL may forward one transcription to frontier (see [Capacity and Helm](../operations/capacity-helm.md)).
 
