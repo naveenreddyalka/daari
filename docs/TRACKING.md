@@ -4450,6 +4450,14 @@ with images) so `cache_key` differs for same caption with distinct clips;
 text-only keys still match a no-media request. Covered by
 `tests/unit/test_exact_multimodal_keys.py`.
 
+### Integration pin: facade generate logprobs ([#1041](https://github.com/naveenreddyalka/daari/issues/1041))
+
+<!-- tracking:#1041 -->
+**Status:** Done (2026-09-24). `/api/generate` maps `logprobs` / `top_logprobs`
+onto SamplingParams and local dropped-params (parity with chat #1031);
+malformed `top_logprobs` ignored. Covered by
+`tests/integration/test_ollama_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
