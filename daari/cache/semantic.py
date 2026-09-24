@@ -19,8 +19,13 @@ from daari.gateway.request_log import log_gateway_event
 def extract_embed_text(request: InternalRequest) -> str:
     parts: list[str] = []
     for message in request.messages:
-        if message.content:
-            parts.append(f"{message.role}:{message.content}")
+        chunk = message.content or ""
+        if message.audio:
+            tokens = ",".join(clip.cache_token() for clip in message.audio)
+            suffix = f"audio:{tokens}"
+            chunk = f"{chunk}|{suffix}" if chunk else suffix
+        if chunk:
+            parts.append(f"{message.role}:{chunk}")
     return "\n".join(parts)
 
 
