@@ -4675,6 +4675,14 @@ multipart L6 passthrough (frontier gate, allowlists, `region_pin`, spend/cost
 headers). Docs: clients-and-gateways.md + regenerated http-api.md. Covered by
 `tests/unit/test_images_variations.py`, `test_images_surface_docs.py`.
 
+### Endpoint-family RPM/TPM on virtual keys ([#1099](https://github.com/naveenreddyalka/daari/issues/1099))
+
+<!-- tracking:#1099 -->
+**Status:** Done (2026-09-25). Virtual-key metadata `rate_families` (and
+`daari keys create --rate-family`) adds per-modality RPM/TPM counters so
+images cannot starve chat on a shared key. Docs: auth-and-keys + config.md.
+Covered by `tests/unit/test_rate_families.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

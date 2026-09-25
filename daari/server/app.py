@@ -590,6 +590,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         rpm = int(getattr(virtual, "rpm", 0) or 0) or None
         tpm = int(getattr(virtual, "tpm", 0) or 0) or None
         rpd = int(getattr(virtual, "rpd", 0) or 0) or None
+        from daari.auth.rate_families import family_limits_from_key, rate_limit_family
+
+        family = rate_limit_family(request.url.path)
+        fam_rpm, fam_tpm = family_limits_from_key(virtual, family)
         team_id = getattr(virtual, "team_id", None) if virtual is not None else None
         team_rpm = None
         team_tpm = None
@@ -617,17 +621,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             team_tpm=team_tpm,
             rpd=rpd,
             team_rpd=team_rpd,
+            family=family,
+            family_rpm=fam_rpm or None,
+            family_tpm=fam_tpm or None,
         )
         if not decision.allowed:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
             if metrics is not None and hasattr(metrics, "record_reject"):
                 metrics.record_reject("rate_limit")
+            scope = decision.scope or "rate"
+            bucket = decision.bucket or ""
+            if bucket.startswith("family:"):
+                message = f"{bucket} {scope} limit exceeded."
+            else:
+                message = f"{scope} limit exceeded."
             return JSONResponse(
                 status_code=429,
                 content={
                     "error": {
                         "type": "rate_limit_error",
-                        "message": f"{decision.scope or 'rate'} limit exceeded.",
+                        "message": message,
                     }
                 },
                 headers=decision.headers(),

@@ -348,6 +348,9 @@ class RateLimiter:
         team_tpm: int | None = None,
         rpd: int | None = None,
         team_rpd: int | None = None,
+        family: str | None = None,
+        family_rpm: int | None = None,
+        family_tpm: int | None = None,
     ) -> RateLimitDecision:
         key_rpm = self.default_rpm if rpm is None else rpm
         key_tpm = self.default_tpm if tpm is None else tpm
@@ -362,6 +365,9 @@ class RateLimiter:
         # 0 / unset = unlimited. Separate from rpm so a minute window can stay open (#717).
         key_rpd = 0 if rpd is None else int(rpd)
         agg_team_rpd = 0 if team_rpd is None else int(team_rpd)
+        fam = str(family or "").strip().lower() or None
+        fam_rpm = 0 if family_rpm is None else max(0, int(family_rpm))
+        fam_tpm = 0 if family_tpm is None else max(0, int(family_tpm))
 
         now = time.time()
         reset = (int(now // WINDOW_SECONDS) + 1) * WINDOW_SECONDS
@@ -376,12 +382,27 @@ class RateLimiter:
         checks: list[tuple[str, str, str, int, int, int]] = []
         if key_rpm > 0:
             checks.append((f"rpm:{key_id}", "rpm", "key", 1, key_rpm, WINDOW_SECONDS))
+        if fam and fam_rpm > 0:
+            checks.append(
+                (f"rpm:{key_id}:family:{fam}", "rpm", f"family:{fam}", 1, fam_rpm, WINDOW_SECONDS)
+            )
         if per_model_rpm > 0:
             checks.append(
                 (f"rpm:{key_id}:{model}", "rpm", "model", 1, per_model_rpm, WINDOW_SECONDS)
             )
         if key_tpm > 0:
             checks.append((f"tpm:{key_id}", "tpm", "key", max(1, tokens), key_tpm, WINDOW_SECONDS))
+        if fam and fam_tpm > 0:
+            checks.append(
+                (
+                    f"tpm:{key_id}:family:{fam}",
+                    "tpm",
+                    f"family:{fam}",
+                    max(1, tokens),
+                    fam_tpm,
+                    WINDOW_SECONDS,
+                )
+            )
         if per_model_tpm > 0:
             checks.append(
                 (

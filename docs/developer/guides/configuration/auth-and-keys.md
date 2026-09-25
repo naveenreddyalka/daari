@@ -46,6 +46,19 @@ daari keys create --name ci --rpm 60 --tpm 40000
 
 Defaults apply to every key (including the master key). A virtual key's `--rpm` / `--tpm` override the global defaults for that key. `0` means unlimited. Chat and embeddings charge TPM from request characters (`len // 4`, minimum 1). `POST /v1/audio/transcriptions` and `POST /v1/audio/translations` charge `len(file_bytes) // 4` so a large upload is not counted as one token. Teams can also set aggregate ceilings with `daari keys team-create --rpm/--tpm` (or `team-update`); those counters use `rpm:team:{team_id}` / `tpm:team:{team_id}` and are checked after per-key limits so N keys on one team share one budget (#546).
 
+Optional **modality-family** ceilings on a virtual key live in key metadata
+(`rate_families`) so chat cannot starve images (or the reverse) on a shared
+key (#1099). Families: `chat`, `embeddings`, `images`, `audio`, `moderations`,
+`rerank`, `other`. Each entry may set `rpm` and/or `tpm` (0 / omitted =
+no family ceiling). Counters are `rpm:{key_id}:family:{name}` /
+`tpm:{key_id}:family:{name}` — exhausting `images` leaves `chat` open.
+Unset `rate_families` preserves today's global key rpm/tpm only.
+
+```bash
+daari keys create --name studio --rate-family chat:120 --rate-family images:10
+# optional tpm: --rate-family chat:60:40000
+```
+
 `--rpd` on `daari keys create` / `keys update` and `daari keys team-create` / `team-update` sets a calendar-day request cap (UTC, 86400-second window, `0` or omitted = unlimited). It is independent of rpm: a key can exhaust its day cap while the minute window is still open, and the reverse. Key and team caps both apply; the tighter remaining counter wins. Team rpd sums member traffic on `rpd:team:{team_id}`, the same way team rpm sums `rpm:team:{team_id}`. A hard deny is `429` with `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` (epoch when the UTC day rolls) and a body that names `rpd`. `Retry-After` on that 429 is the seconds until the UTC day resets, not the short `rate_limit.retry_after_seconds` used by rpm/tpm. Export/import round-trips the field.
 
 ```yaml
