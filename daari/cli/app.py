@@ -104,6 +104,38 @@ app.add_typer(spend_app, name="spend")
 app.add_typer(route_app, name="route")
 
 
+def parse_rate_family_flag(raw: str) -> tuple[str, dict[str, int]]:
+    """Parse ``name:rpm`` or ``name:rpm:tpm`` for ``--rate-family`` (#1099)."""
+    text = str(raw or "").strip()
+    parts = text.split(":")
+    if len(parts) not in (2, 3) or not parts[0].strip():
+        raise ValueError(
+            f"invalid --rate-family {raw!r}; expected name:rpm or name:rpm:tpm"
+        )
+    name = parts[0].strip().lower()
+    from daari.auth.rate_families import RATE_FAMILIES
+
+    if name not in RATE_FAMILIES:
+        raise ValueError(
+            f"unknown rate family {name!r}; choose from {', '.join(sorted(RATE_FAMILIES))}"
+        )
+    try:
+        rpm = max(0, int(parts[1]))
+        tpm = max(0, int(parts[2])) if len(parts) == 3 else 0
+    except ValueError as exc:
+        raise ValueError(
+            f"invalid --rate-family {raw!r}; rpm/tpm must be integers"
+        ) from exc
+    entry: dict[str, int] = {}
+    if rpm:
+        entry["rpm"] = rpm
+    if tpm:
+        entry["tpm"] = tpm
+    if not entry:
+        raise ValueError(f"--rate-family {raw!r} needs a positive rpm and/or tpm")
+    return name, entry
+
+
 @keys_app.command("create")
 def keys_create(
     name: str = typer.Argument(..., help="Human label for the key"),
@@ -172,6 +204,11 @@ def keys_create(
         "--priority",
         help="Admission priority at the in-flight gate: high, normal, or low.",
     ),
+    rate_family: list[str] = typer.Option(
+        [],
+        "--rate-family",
+        help="Modality family ceiling as name:rpm or name:rpm:tpm (e.g. images:10). Repeatable.",
+    ),
 ) -> None:
     """Create a virtual API key (issue #111). Plaintext shown once."""
     from daari.auth.budgets import coalesce_windows, parse_window_flag, parse_window_requests_flag
@@ -191,6 +228,17 @@ def keys_create(
     metadata: dict | None = None
     if mcp_allow or mcp_deny:
         metadata = {"mcp": {"allow": list(mcp_allow), "deny": list(mcp_deny)}}
+    if rate_family:
+        families: dict[str, dict[str, int]] = {}
+        try:
+            for item in rate_family:
+                fam_name, entry = parse_rate_family_flag(item)
+                families[fam_name] = entry
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1) from exc
+        metadata = dict(metadata or {})
+        metadata["rate_families"] = families
     try:
         expires_at = expiry_from(expires)
         scope = normalize_cache_scope(cache_scope)
