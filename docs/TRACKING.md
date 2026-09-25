@@ -4579,6 +4579,13 @@ chatgpt-desktop.md. Covered by `tests/integration/test_ollama_compat.py`.
 `tests/unit/test_budget_windows.py`, `test_budget_rollover.py`,
 `test_virtual_keys.py`.
 
+### ExactCache L0 router pin for distinct audio clips ([#1053](https://github.com/naveenreddyalka/daari/issues/1053))
+
+<!-- tracking:#1053 -->
+**Status:** Done (2026-09-25). Router integration: L1 off + ExactCache on;
+caption+clip-A stores L0, caption+clip-B misses, clip-A hits L0. Covered by
+`tests/integration/test_l1_semantic_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
