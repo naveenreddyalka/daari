@@ -93,6 +93,13 @@ Roles rank `admin` > `analyst` > `user` (`daari/enterprise/rbac.py`). The master
 `server.api_key` always counts as admin. Claim name defaults to `role`
 (`enterprise.sso.role_claim`).
 
+**SSO bearers are control-plane only.** A verified IdP access token is accepted
+on `/v1/daari/*` and `/v1/org-learning/*` (role-gated admin surfaces). Raw SSO
+bearers on inference/data-plane routes (`/v1/chat/completions`, embeddings,
+images, …) return `401` with `code: sso_key_required` — mint a virtual key via
+`POST /v1/daari/sso/session` and send that `dk_…` key so budgets, allowlists,
+and attribution apply.
+
 | Surface | Minimum role |
 |---------|----------------|
 | `GET /v1/daari/stats`, `traces`, `report`, `audit`, `config` | `analyst` |
@@ -172,6 +179,7 @@ when `postgres.enabled` is true.
 | `teams.create` | `daari keys team-create` (new team) | `team_id`, `name`, `windows` |
 | `teams.update` | `daari keys team-update` | `team_id`, `name`, `windows` |
 | `auth.key_expired` | Expired virtual key 401 | `key_id`, `expires_at` |
+| `auth.sso_key_required` | Raw SSO bearer on inference route 401 | `path`, `sub` |
 | `auth.invalid_key` | Invalid/missing key 401 | `prefix` (≤10 chars), `path`; identical `(prefix, path)` deduped for 60s |
 | `tenancy.denied` | Cross-tenant file/batch/response access | `key_id`, `kind`, `id` |
 | `sso.mint_virtual_key` / `sso.revoke_virtual_key` | SSO key sync | claim + key_id |

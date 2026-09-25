@@ -257,16 +257,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             supplied = extract_api_key(request.headers)
             claims = resolve_auth(supplied, master_key=master_keys, store=store)
             if claims is None and resolved.enterprise.sso.enabled and supplied:
-                # Allow verified OIDC/HMAC SSO bearers through; endpoints still
-                # enforce role via _require_admin_role (issue #136).
+                # Verified OIDC/HMAC SSO bearers are control-plane only
+                # (/v1/daari/*, /v1/org-learning/*). Inference must use an
+                # IdP-minted virtual key so budgets/allowlists apply (#1103).
                 try:
                     from daari.enterprise.sso import verify_access_token
 
                     sso_claims = verify_access_token(supplied, resolved.enterprise.sso)
-                    request.state.sso_claims = sso_claims
-                    return await call_next(request)
                 except Exception:
-                    pass
+                    sso_claims = None
+                if sso_claims is not None:
+                    path = request.url.path
+                    control_plane = path.startswith("/v1/daari/") or path.startswith(
+                        "/v1/org-learning/"
+                    )
+                    if control_plane:
+                        request.state.sso_claims = sso_claims
+                        return await call_next(request)
+                    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                    subject = str(sso_claims.get("sub") or "sso")
+                    audit_log_from_settings(resolved).record(
+                        actor=subject,
+                        role="sso",
+                        action="auth.sso_key_required",
+                        detail={"path": path, "sub": subject},
+                    )
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            "error": {
+                                "type": "authentication_error",
+                                "code": "sso_key_required",
+                                "message": (
+                                    "SSO access tokens are control-plane only. "
+                                    "Mint a virtual key via POST /v1/daari/sso/session "
+                                    "and use that key for inference."
+                                ),
+                            }
+                        },
+                    )
             if claims is not None and claims.kind == "expired":
                 from daari.enterprise.postgres_audit import audit_log_from_settings
 

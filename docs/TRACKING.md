@@ -4658,6 +4658,15 @@ spend/cost headers). Binary multipart bodies no longer crash rate-limit JSON
 parse. Docs: clients-and-gateways.md. Covered by
 `tests/unit/test_images_edits.py`, `test_images_surface_docs.py`.
 
+### SSO bearers control-plane only ([#1103](https://github.com/naveenreddyalka/daari/issues/1103))
+
+<!-- tracking:#1103 -->
+**Status:** Done (2026-09-25). Verified SSO access tokens are accepted only on
+`/v1/daari/*` and `/v1/org-learning/*`; inference routes return
+`401 sso_key_required` and audit `auth.sso_key_required`. Docs note in
+auth-and-keys.md. Covered by
+`tests/integration/test_oidc_sso_gateway.py::test_sso_bearer_rejected_on_inference_routes`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
