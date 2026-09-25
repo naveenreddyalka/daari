@@ -36,7 +36,7 @@ def body_limit_for_path(path: str, *, max_body_bytes: int, files_max_total: int)
     base = max(0, int(max_body_bytes))
     if path.startswith("/v1/files") or path.startswith("/v1/audio/") or path.startswith(
         "/v1/images/edits"
-    ):
+    ) or path.startswith("/v1/images/variations"):
         floor = max(UPLOAD_ROUTE_FLOOR_BYTES, int(files_max_total or 0))
         return max(base, floor)
     return base

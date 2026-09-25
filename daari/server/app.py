@@ -564,6 +564,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "/v1/audio/transcriptions",
                 "/v1/audio/translations",
                 "/v1/images/edits",
+                "/v1/images/variations",
             ):
                 audio_tokens = estimate_audio_upload_tokens(
                     raw, request.headers.get("content-type", "")

@@ -65,10 +65,9 @@ or no key resolves, both routes return **501** — daari never invents scores.
 generation (`no_frontier`, model allowlists, `region_pin`, spend rows, and
 input guardrails on `prompt` apply before any upstream call).
 `POST /v1/images/edits` is the multipart sibling (image file + prompt, optional
-mask) with the same frontier gate and governance. OpenAI
-`POST /v1/images/variations` is **not supported** — it is not a registered
-route (clients get a normal 404, not a governed 501). Point variation traffic
-at the frontier host directly until that path ships.
+mask) with the same frontier gate and governance.
+`POST /v1/images/variations` is the multipart variation path (image file, no
+prompt) under the same L6 governance plane.
 
 `POST /v1/audio/transcriptions` accepts the OpenAI multipart form and forwards
 it to `asr.base_url` when that is set. With no local ASR the route returns
