@@ -5385,12 +5385,13 @@ class AppContext:
 
     async def aclose_upstream_clients(self) -> None:
         """Close pooled httpx clients on shutdown (#971)."""
-        from daari.gateway import moderations, rerank, speech, transcriptions
+        from daari.gateway import images, moderations, rerank, speech, transcriptions
 
         await speech.aclose_http()
         await transcriptions.aclose_http()
         await moderations.aclose_http()
         await rerank.aclose_http()
+        await images.aclose_http()
         router = self.router
         for name in ("ollama_l3", "ollama_l4", "ollama_l5", "org_pool_executor"):
             executor = getattr(router, name, None)

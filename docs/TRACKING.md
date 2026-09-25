@@ -4546,6 +4546,13 @@ chat, matching spend_ledger amounts. Covered by `tests/unit/test_cost_headers.py
 `test_embeddings.py`, `test_speech.py`, `test_audio_transcriptions.py`,
 `test_moderations.py`, and `test_rerank.py`.
 
+### OpenAI images/generations L6 passthrough ([#1064](https://github.com/naveenreddyalka/daari/issues/1064))
+
+<!-- tracking:#1064 -->
+**Status:** Done (2026-09-24). `POST /v1/images/generations` is a governed L6
+passthrough (`no_frontier`, model allowlist, `region_pin`, `run_upstream`
+retry/slot failover, usage+spend rows). Covered by `tests/unit/test_images.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
