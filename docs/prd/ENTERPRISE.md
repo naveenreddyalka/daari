@@ -11,36 +11,34 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-24 evening)
+## Where daari stands (verified in-tree, 2026-09-25)
 
-Morning's non-chat governance set is still open on the backlog (key claims,
-guardrails, retry/`region_pin`, ASR fence, modality cost headers). This
-second scan does **not** re-file those — it picks the next layer once that
-plane is in flight.
+**Outward: still flat.** **Ollama v0.34.4** unchanged — structured outputs on
+thinking models remain internal. **LiteLLM** stable bar **v1.102.1**; tip
+**v1.104.0-dev.1** (MCP live sessions, Transcribe passthrough, vault namespaces —
+file MCP sessions when the tip stabilizes). **Portkey** open-source gateway tag
+still **v1.15.2** (weekly/rpw windows, endpoint-scoped limits, Agent Gateway on
+the product side). **Kong AI Gateway 2.0** GA wave + **vLLM 0.30.0** unchanged.
+No new OpenRouter API surface.
 
-**Outward (this run): still flat.** **Ollama v0.34.4** (09-23) unchanged —
-structured outputs on thinking models remain internal; facade still silently
-drops 0.34 **tool_search** / **response_compaction** (compat tests pin ignore).
-**LiteLLM** stable bar **v1.102.1**; tip **v1.104.0-dev.1** (MCP live sessions,
-Transcribe passthrough, vault namespaces — file MCP sessions when stable).
-**Portkey** product changelog (weekly/**rpw** windows, endpoint-scoped limits,
-Agent Gateway) unchanged vs morning; open-source gateway tag still **v1.15.2**.
-**Kong AI Gateway 2.0** GA wave + **vLLM 0.30.0** unchanged. No new OpenRouter
-API surface.
+**Inward theme: creative-surface hardening + operator honesty.** Yesterday's
+modality/client-contract layer is **closed on main**: governed
+`POST /v1/images/generations` (governance, Idempotency-Key, guardrails, cost
+headers, integration pins), Idempotency-Key on embeddings/audio/moderations/
+rerank, facade forward-or-declare for Ollama 0.34 `tool_search` /
+`response_compaction`, `week`/`weekly`/`rpw` budget aliases, moderations/rerank
+gateway-flow pins, and a doctor dry-probe for images when frontier is on.
 
-**Inward theme: missing modality surface + client-contract honesty.** Image
-*generation* is the last common OpenAI path with no daari route (vision
-*inputs* exist; `POST /v1/images/generations` does not). Idempotency-Key stops
-at chat/Responses while embeddings/audio/moderations/rerank double-execute on
-SDK retries. Facade 0.34 knobs are accepted then discarded with no
-`x-daari-dropped-params`. Budget `normalize_duration` lacks `week`/`rpw`
-aliases Portkey templates use (`7d` works; `week` raises). Moderations/rerank
-have unit tests only — no gateway-flow integration pins (AGENTS.md bar).
+Verified shipped — pruned from watch: images/generations L6 slice + follow-ons,
+modality Idempotency-Key, facade 0.34 honesty, FinOps week/rpw aliases,
+moderations/rerank integration pins, morning non-chat governance set
+(allowlists/`no_frontier`/ledger, guardrails on payloads, ASR claim fence,
+modality cost headers, retry/`region_pin`), doctor images probe.
 
-Verified shipped — pruned from watch: morning's ten 09-23 fidelity/facade
-filings, moderations/rerank endpoints themselves, OpenRouter region hosts,
-`daari migrate` skew guard, facade think/format/keep_alive + /api/show
-thinking controls, OTel GenAI baseline (#167).
+**Next layer:** finish the OpenAI images family (edits/variations), deepen
+metering/test bar on creative routes, and pick operator gaps competitors
+already sell (endpoint-scoped RPM, MCP session visibility, Anthropic-native
+moderation ingress).
 
 ---
 
@@ -48,33 +46,29 @@ thinking controls, OTel GenAI baseline (#167).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **No `POST /v1/images/generations`** — clients need a second base URL for image gen; chat/embed/audio/moderations/rerank already on-box | 4 | 3 | LiteLLM / Portkey / Kong | One OpenAI root, one key fence, incl. creative workloads | File ([#1064](https://github.com/naveenreddyalka/daari/issues/1064)) |
-| 2 | **Idempotency-Key chat/Responses only** — embeddings/audio/moderations/rerank double-bill on retries | 4 | 2 | Portkey / cloud gateways | Tunnel flaps + cold local backends make retries common; chargeback must stay honest | File ([#1065](https://github.com/naveenreddyalka/daari/issues/1065)) |
-| 3 | **Facade silently drops Ollama 0.34 tool_search / response_compaction** — worse than talking to Ollama directly | 3 | 2 | Ollama native | Forward on local Ollama hops; declare drops via `x-daari-dropped-params` otherwise | File ([#1066](https://github.com/naveenreddyalka/daari/issues/1066)) |
-| 4 | **Budget durations reject `week`/`weekly`/`rpw`** — Portkey FinOps templates fail; only `7d` works | 3 | 1 | Portkey rpw | Alias parity makes migrate-from-Portkey mechanical | File ([#1067](https://github.com/naveenreddyalka/daari/issues/1067)) |
-| 5 | **Moderations/rerank lack gateway-flow integration pins** — unit-only; AGENTS.md wants integration for public routes | 3 | 1 | (internal bar) | Keeps thickening L6 slices from regressing OpenAPI/auth/happy-path | File ([#1068](https://github.com/naveenreddyalka/daari/issues/1068)) |
-| 6 | In flight (morning): moderations/rerank governance+metering, non-chat guardrails, retry/`region_pin`, ASR `no_frontier`/`region_pin`, modality cost headers | 3–5 | 2–3 | — | One governance/policy/cost plane on every route | In backlog |
-| 7 | Watch queue: MCP live-session visibility (LiteLLM v1.104-dev; file on stable), Anthropic-native moderations, endpoint-scoped RPM families, WIF upstream creds, A2A, SOC 2, admin UI | 2–4 | 2–5 | LiteLLM / Portkey / cloud | Operator or client demand triggers these | Watch |
+| 1 | **No `POST /v1/images/edits` (and variations)** — generations is on-box; edit/variation clients still need a second base URL | 4 | 2 | LiteLLM / Portkey | Same L6 key fence + governance for the rest of the OpenAI images family | File next |
+| 2 | **Images cost-header coverage thin outside route tests** — shared `test_cost_headers` suite does not pin the creative path | 3 | 1 | (internal bar) | One metering contract across modalities; prevents silent header drift | File next |
+| 3 | **No endpoint-scoped RPM/TPM families** — Portkey sells per-route quotas; daari is mostly global / key-scoped | 4 | 3 | Portkey | Local fleets need chat vs embed vs images budgets without a second gateway | File next |
+| 4 | **MCP live-session visibility missing** — LiteLLM tip tracks live MCP sessions; daari probes are request-scoped only | 3 | 3 | LiteLLM tip | Operators debugging local agent loops need session liveness without cloud | Watch (file on tip stable) |
+| 5 | **No Anthropic-native moderations ingress** — OpenAI `/v1/moderations` exists; Anthropic clients still dual-home | 3 | 2 | cloud gateways | One local root for mixed OpenAI + Anthropic moderation traffic | File next |
+| 6 | Watch queue: WIF upstream creds, A2A, SOC 2, admin UI, OpenAI Realtime/WebSocket surface, vault-style secret namespaces | 2–4 | 2–5 | LiteLLM / Portkey / cloud | Operator or client demand triggers these | Watch |
 
-Pruned this run: stale watch rows for migrate CLI, facade core options, and
-Ollama thinking-controls (all shipped). Morning non-chat rows stay "in
-backlog" rather than re-filed.
+Pruned this run: five 09-24 evening modality/client-contract filings (all
+shipped), plus doctor images probe. Do not re-file closed work.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Finish non-chat governance** — morning backlog: allowlists/`no_frontier`/
-   ledger on moderations+rerank, guardrails on every payload, ASR claim fence,
-   modality cost headers, retry/`region_pin` on the remaining raw POSTs.
-2. **Close the OpenAI surface hole** — governed `/v1/images/generations` so
-   creative clients share the same local-first key plane.
-3. **Retry-safe modality plane** — Idempotency-Key on embeddings/audio/
-   moderations/rerank matching chat/Responses.
-4. **Honest Ollama facade** — forward or declare 0.34 tool_search /
-   response_compaction; stop silent drops.
-5. **FinOps alias parity + test bar** — `week`/`rpw` budget windows; integration
-   pins on the newest L6 routes.
+1. **Complete the OpenAI images family** — governed edits/variations beside
+   generations so creative SDKs share one local root.
+2. **Metering and test bar for creative routes** — shared cost-header pins and
+   chargeback honesty for image spend.
+3. **Endpoint-scoped rate families** — Portkey-parity chat/embed/images quotas
+   on virtual keys without leaving the box.
+4. **MCP session operator plane** — live-session visibility when the LiteLLM
+   tip shape stabilizes (or invent a local-first equivalent sooner).
+5. **Anthropic moderation ingress** — stop dual-homing mixed-stack clients.
 
 Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying ask.
 
@@ -82,43 +76,34 @@ Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying as
 
 ## Changelog
 
-- **2026-09-24 evening (modality surface + client-contract honesty)** —
-  Outward still flat (Ollama v0.34.4; LiteLLM bar v1.102.1 / tip
-  v1.104.0-dev.1 MCP sessions watch; Portkey rpw + Kong/vLLM unchanged).
-  Morning non-chat governance filings left in flight. Next layer: missing
-  image-generations route, Idempotency-Key gap on modality endpoints, silent
-  facade drops of Ollama 0.34 knobs, `week`/`rpw` budget aliases, moderations/
-  rerank integration pins. Filed five. Pruned shipped watch rows
-  (migrate/skew, facade core options, thinking controls).
+- **2026-09-25 (images L6 surface closed → next layer)** — Overnight drain
+  closed the 09-24 evening modality/client-contract set plus images follow-ons
+  (Idempotency, guardrails, cost headers, integration pins) and doctor images
+  probe. Outward still flat (Ollama v0.34.4; LiteLLM bar v1.102.1 / tip
+  v1.104.0-dev.1 MCP sessions watch; Portkey/Kong/vLLM unchanged). Next:
+  images edits/variations, creative metering test bar, endpoint-scoped RPM,
+  Anthropic moderations ingress; MCP sessions remain watch. Pruned five shipped
+  evening rows + doctor probe.
 
-- **2026-09-24 (non-chat endpoint parity)** — Outward flat (Ollama v0.34.4
-  stable = internal only; LiteLLM bar v1.102.1; Portkey/Kong/vLLM/OpenRouter
-  unchanged). Full overnight drain again — all ten 09-23 filings plus
-  moderations/rerank/region-hosts shipped. Audit of the five non-chat
-  endpoint families found moderations+rerank second-class (governance,
-  metering, retry, residency), guardrails chat/MCP-only, ASR fallback
-  claim-blind, cost headers chat-only. Filed five. Pruned eleven shipped
-  watch rows incl. Postgres keys/teams, allowlists, spend export, Helm
-  rollout, MCP cache hints, CORS.
+- **2026-09-24 evening (modality surface + client-contract honesty)** —
+  Outward still flat. Filed images/generations, modality Idempotency-Key,
+  facade 0.34 honesty, week/rpw aliases, moderations/rerank integration pins.
+  All drained by 09-25.
+
+- **2026-09-24 (non-chat endpoint parity)** — Filed non-chat governance/
+  metering/guardrails/ASR fence/cost headers. Drained same day into evening
+  scan.
 
 - **2026-09-23 (two runs: client parameter fidelity; facade + Responses
-  shapes)** — Ollama v0.34.3 stable; LiteLLM v1.102.1 backport wave +
-  v1.104.0-dev.1. Silent drops across both ingresses (non-stream frontier
-  tools, `service_tier`, `strict`, seven-param cluster, Anthropic
-  thinking/metadata/top_k), then facade `think`/`format`/`keep_alive`,
-  Responses shape mapper, drop header, MCP probe 404s, stream failover
-  ceiling. Filed ten across the two runs; all drained by 09-24.
+  shapes)** — Silent drops across ingresses, then facade/Responses/MCP probe/
+  stream failover. Filed ten; drained by 09-24.
 
 - **2026-09-22 (two runs)** — Data-plane efficiency + stream truncation
-  fidelity (pooled httpx, keepalive, `stream_incomplete` + breaker, stream
-  host failover, Postgres pool), then correlation + modality resilience
-  (X-Request-ID everywhere, MCP cache hints, ASR/TTS/embed retry,
-  `input_audio`). Portkey v2.24.0, Kong 2.1.0, vLLM 0.30.0.
+  fidelity, then correlation + modality resilience. Portkey v2.24.0, Kong
+  2.1.0, vLLM 0.30.0.
 
-- **2026-09-21 (two runs)** — Data-plane hardening + lossless escalation
-  (TLS/mTLS, body cap, 401 throttle, frontier tool parity, lifetime budgets),
-  then browser/ops + agent SDK knobs (CORS/security headers, safe-method
-  rate-limit skip, sampling passthrough, MCP stats, migrate/skew CLI).
+- **2026-09-21 (two runs)** — Data-plane hardening + lossless escalation, then
+  browser/ops + agent SDK knobs.
 
 - **2026-09-15 → 09-20 and earlier** — Condensed: governance secondary
   ingress + resilience/modality delta; embed/ASR measurement + cache tenancy
