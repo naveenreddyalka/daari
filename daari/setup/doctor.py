@@ -53,6 +53,7 @@ def run_doctor(
     results.append(_check_mlx(cfg, httpx_client))
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
+    results.append(_check_images_generations(cfg))
     results.append(_check_cors_origins(cfg))
     results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
@@ -392,6 +393,63 @@ def _check_frontier(settings: Settings) -> CheckResult:
             "enabled but no API key — set DAARI_FRONTIER_API_KEY or OPENAI_API_KEY "
             "for L6 escalation"
         ),
+        optional=True,
+    )
+
+
+def _images_frontier_key_resolves(settings: Settings) -> bool:
+    """True when env key or provider slot can serve POST /v1/images/generations."""
+    if settings.resolve_frontier_api_key():
+        return True
+    try:
+        from daari.gateway.images import resolve_images_target
+
+        return resolve_images_target(settings) is not None
+    except Exception:
+        return False
+
+
+def _check_images_generations(
+    settings: Settings,
+    *,
+    openapi_paths: dict[str, Any] | None = None,
+) -> CheckResult:
+    """Dry OpenAPI tip for images/generations when frontier can escalate (#1092)."""
+    if not settings.frontier.enabled:
+        return CheckResult(
+            name="images_generations",
+            ok=True,
+            detail="skipped (frontier disabled — POST /v1/images/generations returns 501)",
+            optional=True,
+        )
+    if not _images_frontier_key_resolves(settings):
+        return CheckResult(
+            name="images_generations",
+            ok=False,
+            detail=(
+                "frontier.enabled but no API key — POST /v1/images/generations "
+                "returns 501; set DAARI_FRONTIER_API_KEY / OPENAI_API_KEY or "
+                "frontier.providers[].keys"
+            ),
+            optional=True,
+        )
+    path = "/v1/images/generations"
+    if openapi_paths is None:
+        from daari.server.app import create_app
+
+        openapi_paths = create_app(settings).openapi().get("paths") or {}
+    entry = openapi_paths.get(path) if isinstance(openapi_paths, dict) else None
+    if isinstance(entry, dict) and "post" in entry:
+        return CheckResult(
+            name="images_generations",
+            ok=True,
+            detail=f"OpenAPI lists POST {path}",
+            optional=True,
+        )
+    return CheckResult(
+        name="images_generations",
+        ok=False,
+        detail=f"OpenAPI missing POST {path} — image clients will get 501",
         optional=True,
     )
 

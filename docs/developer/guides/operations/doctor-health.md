@@ -28,6 +28,7 @@ package `version` for upgrade/rollback discovery.
 | doctor mlx | Optional backend misconfigured |
 | doctor `asr` | Optional: `asr.base_url` unreachable, or `asr.frontier_fallback` with frontier disabled / no API key. Empty ASR config is quiet (the route returns 501) |
 | doctor `tts` | Optional: `tts.base_url` unreachable. Empty TTS config is quiet (POST `/v1/audio/speech` returns 501) |
+| doctor `images_generations` | Optional: when `frontier.enabled` and a key resolves, dry-checks OpenAPI for `POST /v1/images/generations`; frontier on without a key warns that the route returns 501. Frontier off skips quietly |
 | doctor `cors_origins` | Optional: empty allowlist is an advisory tip for `daari web-ui` (`http://127.0.0.1:11437`); a non-empty list that omits that origin (or `DAARI_WEB_UI_ORIGIN`) warns — browsers will block credentialed dashboard calls |
 | doctor `request_deadline` | Optional: `upstream.request_deadline_seconds` unset or `<= 0` — per-tier timeouts only; set a positive budget (or send `X-Daari-Deadline-Ms`) so escalation stops with 504 |
 | doctor `local_pool_frontier_fallback` | Optional: `routing.local_pool.frontier_fallback` true while `frontier.enabled` is false |
