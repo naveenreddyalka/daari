@@ -601,3 +601,180 @@ async def handle_images_edits(
             {"error": summarize_upstream_failure(last_exc)},
         )
     return _error(503, "upstream_error", "Images edits upstream request failed.")
+
+
+async def handle_images_variations(
+    request: Request,
+    *,
+    image: Any,
+    model: str = "",
+    n: int | None = None,
+    size: str | None = None,
+    response_format: str | None = None,
+) -> Any:
+    """POST /v1/images/variations — multipart L6 passthrough (#1098)."""
+    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
+
+    blocked = reject_frontier_passthrough(request)
+    if blocked is not None:
+        return blocked
+
+    if image is None:
+        return _error(400, "invalid_request_error", "image is required")
+
+    async def _read_upload(upload: Any) -> tuple[bytes, str, str]:
+        read = getattr(upload, "read", None)
+        raw = await read() if callable(read) else bytes(upload or b"")
+        name = str(getattr(upload, "filename", None) or "image.png").strip() or "image.png"
+        ctype = (
+            str(getattr(upload, "content_type", None) or "application/octet-stream").strip()
+            or "application/octet-stream"
+        )
+        return bytes(raw or b""), name, ctype
+
+    image_bytes, image_name, image_type = await _read_upload(image)
+    if not image_bytes:
+        return _error(400, "invalid_request_error", "image is required")
+
+    ctx = request.app.state.ctx
+    settings = ctx.settings
+
+    pin = region_pin_from_request(request)
+    try:
+        targets = resolve_l6_targets(
+            settings, region_pin=pin, default_model="dall-e-2"
+        )
+    except RegionUnavailable as exc:
+        log_gateway_event("images_variations_region_unavailable", {"pin": exc.pin})
+        return _error(400, "region_unavailable", str(exc))
+    if not targets:
+        log_gateway_event(
+            "images_variations_unavailable", {"reason": "frontier_disabled_or_no_key"}
+        )
+        return _error(501, "not_implemented", _UNAVAILABLE)
+
+    resolved_model = (model or "").strip() or targets[0].default_model
+    denied = reject_disallowed_model(request, resolved_model, settings)
+    if denied is not None:
+        return denied
+
+    count = int(n or 1)
+    form: dict[str, str] = {
+        "model": resolved_model,
+        "n": str(count),
+    }
+    if size:
+        form["size"] = size
+    if response_format:
+        form["response_format"] = response_format
+
+    files: dict[str, tuple[str, bytes, str]] = {
+        "image": (image_name, image_bytes, image_type),
+    }
+
+    retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
+    metrics = getattr(ctx, "metrics", None)
+    last_exc: Exception | None = None
+    last_upstream: httpx.Response | None = None
+
+    for target in targets:
+        headers = {"Authorization": f"Bearer {target.api_key}"}
+        url = f"{target.base_url}/images/variations"
+        try:
+            upstream = await post_images_multipart(
+                url,
+                headers=headers,
+                form=form,
+                files=files,
+                timeout=target.timeout,
+                retry=target.retry if target.retry is not None else retry_settings,
+                metrics=metrics,
+            )
+        except httpx.HTTPStatusError as exc:
+            last_upstream = exc.response
+            last_exc = exc
+            log_gateway_event(
+                "images_variations_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                    "status": exc.response.status_code if exc.response is not None else None,
+                },
+            )
+            continue
+        except Exception as exc:
+            last_exc = exc
+            log_gateway_event(
+                "images_variations_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                },
+            )
+            continue
+        if is_slot_failure(upstream):
+            last_upstream = upstream
+            log_gateway_event(
+                "images_variations_slot_http",
+                {"slot": target.slot_id, "status": upstream.status_code},
+            )
+            continue
+        if upstream.status_code >= 400:
+            log_gateway_event(
+                "images_variations_upstream_http",
+                {"status": upstream.status_code, "slot": target.slot_id},
+            )
+            try:
+                detail = upstream.json()
+            except Exception:
+                detail = {"error": {"type": "upstream_error", "message": upstream.text[:200]}}
+            return JSONResponse(status_code=upstream.status_code, content=detail)
+        try:
+            data = upstream.json()
+        except Exception:
+            return _error(502, "bad_gateway", "Images variations upstream returned non-JSON.")
+        log_gateway_event(
+            "images_variations_ok",
+            {"model": resolved_model, "n": count, "slot": target.slot_id},
+        )
+        caller = _caller_client_id(request)
+        _bind_spend_context(request, ctx, model=resolved_model, client_id=caller)
+        _record_request(
+            ctx, client_id=caller, model=resolved_model, prompt="", n=count
+        )
+        from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+        cost_headers = modality_response_headers(
+            settings,
+            tier="images",
+            model=resolved_model,
+            prompt_chars=0,
+            input_tokens=max(1, count),
+            output_tokens=0,
+            cost_usd=0.0,
+            session_id=session_id_from_request(request),
+            savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+        )
+        return JSONResponse(data, headers=cost_headers)
+
+    if last_upstream is not None:
+        log_gateway_event(
+            "images_variations_upstream_http",
+            {"status": last_upstream.status_code},
+        )
+        try:
+            detail = last_upstream.json()
+        except Exception:
+            detail = {
+                "error": {
+                    "type": "upstream_error",
+                    "message": (last_upstream.text or "")[:200],
+                }
+            }
+        return JSONResponse(status_code=last_upstream.status_code, content=detail)
+    if last_exc is not None:
+        log_gateway_event(
+            "images_variations_upstream_error",
+            {"error": summarize_upstream_failure(last_exc)},
+        )
+    return _error(503, "upstream_error", "Images variations upstream request failed.")

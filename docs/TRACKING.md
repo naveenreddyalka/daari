@@ -4667,6 +4667,14 @@ parse. Docs: clients-and-gateways.md. Covered by
 auth-and-keys.md. Covered by
 `tests/integration/test_oidc_sso_gateway.py::test_sso_bearer_rejected_on_inference_routes`.
 
+### Images variations L6 passthrough ([#1098](https://github.com/naveenreddyalka/daari/issues/1098))
+
+<!-- tracking:#1098 -->
+**Status:** Done (2026-09-25). `POST /v1/images/variations` is a governed
+multipart L6 passthrough (frontier gate, allowlists, `region_pin`, spend/cost
+headers). Docs: clients-and-gateways.md + regenerated http-api.md. Covered by
+`tests/unit/test_images_variations.py`, `test_images_surface_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

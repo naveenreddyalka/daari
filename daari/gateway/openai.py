@@ -1196,6 +1196,27 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 response_format=response_format,
             )
 
+        @router.post("/v1/images/variations", response_model=None)
+        async def images_variations(
+            request: Request,
+            image: UploadFile = File(...),
+            model: str = Form(default=""),
+            n: int | None = Form(default=None),
+            size: str | None = Form(default=None),
+            response_format: str | None = Form(default=None),
+        ) -> Any:
+            """OpenAI-shaped image variations via configured L6 (#1098)."""
+            from daari.gateway.images import handle_images_variations
+
+            return await handle_images_variations(
+                request,
+                image=image,
+                model=model,
+                n=n,
+                size=size,
+                response_format=response_format,
+            )
+
         @router.post("/v1/moderations", response_model=None)
         async def moderations(body: dict[str, Any], request: Request) -> Any:
             """OpenAI-shaped moderations via configured L6 (#1050)."""
