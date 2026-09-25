@@ -4617,6 +4617,14 @@ Covered by `tests/unit/test_guardrails_endpoints.py`.
 `x-daari-response-cost*` / tier header set as other modality routes, matching
 spend_ledger. Docs: headers.md. Covered by `tests/unit/test_images.py`.
 
+### Integration pins for images/generations ([#1081](https://github.com/naveenreddyalka/daari/issues/1081))
+
+<!-- tracking:#1081 -->
+**Status:** Done (2026-09-25). Hermetic ASGI coverage for
+`POST /v1/images/generations`: OpenAPI path, auth middleware on
+(401 without key / 200 mocked happy path), frontier-disabled / no-key → 501.
+Covered by `tests/integration/test_images.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
