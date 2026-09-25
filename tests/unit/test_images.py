@@ -197,3 +197,29 @@ async def test_success_writes_spend_ledger_row(settings, tmp_path, monkeypatch):
     assert rows[0]["key_id"] == key.key.key_id
     assert rows[0]["team_id"] == key.key.team_id
     assert rows[0]["model"] == "dall-e-3"
+
+
+@pytest.mark.asyncio
+async def test_images_include_response_cost_headers(settings, tmp_path, monkeypatch):
+    from daari.gateway.cost_headers import COST_HEADER, TIER_HEADER
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_IMAGE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    _enable_frontier(settings)
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            json={"prompt": "a cube", "model": "dall-e-3"},
+        )
+    assert response.status_code == 200, response.text
+    assert response.headers[TIER_HEADER] == "images"
+    assert float(response.headers[COST_HEADER]) == 0.0
+    ledger = app.state.ctx.router.spend_ledger
+    rows = list(ledger.iter_rows(since="2000-01-01T00:00:00+00:00"))
+    assert len(rows) == 1
+    assert float(rows[0]["cost_usd"]) == float(response.headers[COST_HEADER])

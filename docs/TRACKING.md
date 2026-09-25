@@ -4610,6 +4610,13 @@ Covered by `tests/unit/test_idempotency.py`.
 before upstream (`block` → 400 `guardrail_blocked`; `redact` mutates prompt).
 Covered by `tests/unit/test_guardrails_endpoints.py`.
 
+### Response cost headers on images/generations ([#1084](https://github.com/naveenreddyalka/daari/issues/1084))
+
+<!-- tracking:#1084 -->
+**Status:** Done (2026-09-25). `POST /v1/images/generations` emits the same
+`x-daari-response-cost*` / tier header set as other modality routes, matching
+spend_ledger. Docs: headers.md. Covered by `tests/unit/test_images.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
