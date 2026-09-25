@@ -52,7 +52,8 @@ remaining across key and team scopes.
 |--------|-------|
 | `x-daari-budget-remaining` | USD left in the tightest window (`0` when exhausted). Same decimal format as the cost headers. |
 | `x-daari-budget-limit` | That window's cap in USD. |
-| `x-daari-budget-window` | Window duration: `1d`, `1mo`, or the configured `7d` / `12h`. |
+| `x-daari-budget-window` | Window duration: `1d`, `1w`, `1mo`, or the configured `7d` / `12h`. |
+
 | `x-daari-budget-reset` | Epoch seconds when the window resets — the same instant as the `402` body's `reset_at`. |
 | `x-daari-budget-scope` | `key` or `team` — which cap is the tightest. |
 | `x-daari-budget-warning` | `soft` when USD spend/limit ≥ `frontier.soft_budget_ratio` but under the hard cap (#626). Omitted otherwise (and on hard `402`). |

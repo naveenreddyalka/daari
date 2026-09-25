@@ -191,6 +191,26 @@ class TestCLI:
         assert key.team_name == "eng"
         assert any(w.duration == "7d" for w in key.budget_windows)
 
+    def test_create_with_week_window_alias(self, tmp_path, monkeypatch):
+        from daari.config.settings import Settings
+
+        settings = Settings()
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        runner = CliRunner()
+        created = runner.invoke(
+            cli_app,
+            ["keys", "create", "weekly-bot", "--window", "week=10"],
+        )
+        assert created.exit_code == 0, created.output
+        from daari.auth.budgets import window_header_label
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        store = VirtualKeyStore(settings.virtual_keys_path)
+        key = store.list()[0]
+        assert any(w.duration == "week" and w.max_usd == 10.0 for w in key.budget_windows)
+        assert window_header_label("week") == "1w"
+
     def test_create_with_mcp_tool_policy(self, tmp_path, monkeypatch):
         from daari.config.settings import Settings
 

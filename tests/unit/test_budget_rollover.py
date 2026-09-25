@@ -94,6 +94,16 @@ def test_period_ids_for_day_and_month():
     assert previous_period_id("month", now=NOW) == "2026-08"
 
 
+def test_period_ids_for_iso_week():
+    """week/weekly/rpw use ISO calendar week ids, not the 7d epoch bucket (#1067)."""
+    assert period_id("week", now=NOW) == "2026-W38"
+    assert period_id("weekly", now=NOW) == "2026-W38"
+    assert period_id("rpw", now=NOW) == "2026-W38"
+    assert previous_period_id("week", now=NOW) == "2026-W37"
+    # Distinct from rolling 7d epoch-day buckets.
+    assert not period_id("7d", now=NOW).startswith("2026-W")
+
+
 def test_default_off_ignores_prior_underspend():
     ledger = FakeLedger()
     ledger.spend["key-a:day:2026-09-14"] = 10.0

@@ -19,6 +19,17 @@ def test_normalize_aliases():
     assert normalize_duration("daily") == "day"
     assert normalize_duration("30d") == "month"
     assert normalize_duration("7d") == "7d"
+    assert normalize_duration("week") == "week"
+    assert normalize_duration("Weekly") == "week"
+    assert normalize_duration("rpw") == "week"
+    assert normalize_duration("1w") == "week"
+
+
+def test_normalize_rejects_unknown():
+    import pytest
+
+    with pytest.raises(ValueError, match="unsupported budget duration"):
+        normalize_duration("fortnight")
 
 
 def test_windows_from_flat_skips_unlimited():
