@@ -11,37 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-25 evening)
+## Where daari stands (verified in-tree, 2026-09-25 late)
 
-**Outward movers today.** **Portkey v2.25.0**: `/v1/decisions` typed-judgment
-endpoint (TypeSafe Jev), `startHooks` pre-auth guardrail stage (header
-allow/block + transform before authentication), gateway-local JWT request-time
-workspace selection **with per-request membership enforcement**, conditional
-routing on multipart form fields, bundled air-gapped pricing. **Ollama
-v0.40.0-rc0**: MLX becomes the default runtime on Apple Silicon (runtime-only,
-no API change — watch until stable; daari's local pool already speaks MLX).
-**LiteLLM**: same-day backport wave (v1.100.3 / v1.99.4 / v1.98.1 — gpt-6
-name-family fix, end-user budget-reset fixes, dep bumps); stable bar stays
-**v1.102.1**, tip v1.104.0-dev.2 is fixes/price syncs. Kong 2.1.0, vLLM
-0.30.0, OpenRouter (08-19) unchanged.
+**Outward movers today (late).** **LiteLLM v1.103.0-rc.1** (hours-old): config-file
+ownership (`source`/`editable`, refuse runtime writes to file-owned keys),
+budgets re-checked on every fallback hop, team-level `model_max_budget` with
+key overrides, per-member org spend. Stable bar stays **v1.102.0/v1.102.1**
+(stream post-call guardrails, percentile TTFT routing, native OCR). **Portkey
+enterprise changelog** still leads on startHooks / JWT workspace membership /
+`/v1/decisions`; WIF + MCP gateway guardrails remain watch. **Kong AI Gateway
+2.0 GA** (2026-09-01) — MCP bundling, modality-aware cost; 2.1.0 token series
+unchanged. Ollama tip remains MLX-default on capable Apple Silicon (stable
+since 0.30; 0.40-rc watch).
 
-**Inward theme: identity edges, shutdown lifecycle, and token observability
-depth** (code audit with file:line evidence). The headline defect: verified
-SSO bearers early-return through `require_api_key` before the budget
-pre-check and claims binding, reaching **inference** routes with no budgets,
-allowlists, `no_frontier` fences, or ledger attribution (see #1103). Also
-verified: no app-level drain (ready flip/admission stop on SIGTERM — Helm
-`preStop` is the only story, see #1104); the usage ledger **drops**
-`cached_tokens` at the SQL upsert and Prometheus/OTel have no cache-read/
-cache-write token series (see #1105); Prometheus has no token counter at all
-and images/moderations/rerank never call `metrics.record` (see #1106); team
-binding is mint-time-only with no membership concept (see #1107).
+**Inward theme: FinOps depth + operator honesty** after the evening identity/
+shutdown/token-metrics filing. Code audit: `model_groups` are allowlists only
+(no shared USD window); doctor probes images/ASR/TTS but not moderations/rerank;
+`GET/PATCH /v1/daari/config` mutates live settings without `source`/`editable`
+or live-vs-file delta; no pre-auth header screen before `require_api_key`;
+teams lack per-model USD caps.
 
-Verified shipped today — pruned: governed `/v1/images/edits` L6 passthrough,
-images cost-header pins in the shared suite, doctor images probe, morning PRD
-refresh. Open backlog carries images variations, endpoint-scoped RPM/TPM
-families, Anthropic-native moderations ingress, and images-edits integration
-pins from the morning run.
+Open from earlier today (not re-filed): SSO governance hole, app-level drain,
+cached-token + per-modality metrics, request-time team membership, endpoint
+RPM/TPM, images variations, Anthropic moderations ingress, edits integration
+pins.
 
 ---
 
@@ -49,78 +42,61 @@ pins from the morning run.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **SSO bearers ungoverned on inference routes** — early return skips budgets/allowlists/attribution (`server/app.py` ~L259) | 5 | 2 | (nobody — daari defect) | Governance-by-default is the core claim; a verified-but-unfenced identity class breaks it | Filed — see #1103 |
-| 2 | **No app-level graceful shutdown** — `/ready` never flips, admission has no drain mode, no `timeout_graceful_shutdown` | 4 | 2 | Kong / LiteLLM | Zero-dropped-request rollouts as a binary property, not a Helm-only trick | Filed — see #1104 |
-| 3 | **Cached-token observability missing** — usage ledger drops `cached_tokens`; no cache_read/creation in Prom/OTel; Anthropic cache usage fields never ingested | 4 | 2 | Kong 2.1.0 | On-box FinOps evidence for the prompt-cache savings daari already prices | Filed — see #1105 |
-| 4 | **No per-modality token metrics** — no `daari_tokens_total`; images/moderations/rerank invisible in `/metrics`; OTel op name hardcoded "chat" | 4 | 2 | Kong 2.1.0 | Local Grafana chargeback across chat/embed/audio/images without SaaS telemetry | Filed — see #1106 |
-| 5 | **Team fixed at key-mint; no membership enforcement** — no request-time team selection, no identity↔team check (Portkey v2.25 does both) | 4 | 3 | Portkey v2.25 | Multi-team users get correct chargeback + fences on-box, no key sprawl | Filed — see #1107 |
-| 6 | **Endpoint-scoped RPM/TPM families** (morning filing, open) | 4 | 3 | Portkey | Per-route quotas without a second gateway | Open — see #1099 |
-| 7 | **Images variations + edits pins; Anthropic moderations ingress** (morning filings, open) | 3 | 2 | LiteLLM / cloud | Complete the creative + moderation families on one local root | Open — see #1098 / #1100 / #1101 |
-| 8 | **`/v1/decisions` typed-judgment surface** — now in TWO competitors (Portkey v2.25 GA, LiteLLM Jev passthrough); daari could serve judgments from local guard/judge models | 3 | 3 | Portkey v2.25 | Typed judgments (boolean/choice/score + confidence) are a natural local-model workload | Watch (file on client demand) |
-| 9 | **Pre-auth `startHooks` header policy** — allow/block + header transforms before auth (Portkey v2.25) | 3 | 2 | Portkey v2.25 | Screen traffic before spending auth/store work | Watch (file on operator ask) |
-| 10 | Watch queue: MCP live-session visibility (LiteLLM tip), WIF upstream creds, A2A, SOC 2, admin UI, OpenAI Realtime/WebSocket, Ollama 0.40 MLX-default (rc) | 2–4 | 2–5 | LiteLLM / Portkey / cloud | Demand-triggered | Watch |
+| 1 | **SSO bearers ungoverned on inference** (evening) | 5 | 2 | (nobody — daari defect) | Governance-by-default | Open — evening filing |
+| 2 | **Shared USD budget per `model_group`** — allowlists only today (`settings.model_groups`) | 4 | 3 | LiteLLM v1.100 access-group budgets | On-box FinOps for named catalog slices without SaaS | Filed — see #1109 |
+| 3 | **Team `model_max_budget` + key overrides** | 4 | 2 | LiteLLM v1.103-rc.1 | Reserve frontier headroom per model; rest stays local | Filed — see #1113 |
+| 4 | **Config live-vs-file ownership honesty** — GET lacks `source`/`editable`; PATCH without persist silently diverges | 4 | 2 | LiteLLM v1.103-rc.1 | `config.yaml` remains operator source of truth | Filed — see #1111 |
+| 5 | **App-level graceful shutdown** (evening) | 4 | 2 | Kong / LiteLLM | Zero-drop rollouts as a binary property | Open — evening filing |
+| 6 | **Cached-token + per-modality Prometheus/OTel** (evening) | 4 | 2 | Kong 2.1.0 | Local Grafana chargeback | Open — evening filing |
+| 7 | **Request-time team membership** (evening) | 4 | 3 | Portkey v2.25 | Multi-team chargeback without key sprawl | Open — evening filing |
+| 8 | **Doctor probes for moderations + rerank** | 3 | 1 | (onboarding gap) | Same doctor contract as images/ASR/TTS | Filed — see #1110 |
+| 9 | **Pre-auth header allow/block policy** (Portkey startHooks) | 3 | 2 | Portkey v2.25 | Screen scrapers before auth/store work | Filed — see #1112 |
+| 10 | Endpoint RPM/TPM; images variations; Anthropic moderations; edits pins (morning) | 3–4 | 2–3 | Portkey / LiteLLM | Route-family parity | Open — morning filing |
+| 11 | Watch: `/v1/decisions`, `/v1/ocr`, WIF, A2A, MCP live sessions, SOC 2, admin UI, Realtime/WS, budget-on-fallback recheck | 2–4 | 2–5 | LiteLLM / Portkey / cloud | Demand-triggered | Watch |
 
-Pruned this run: images edits (shipped), images cost-header pins (shipped),
-doctor images probe (shipped). Do not re-file closed work.
+Pruned this run: none newly shipped since evening; kept evening identity rows
+as open pointers without re-filing. Do not re-file closed images-edits work.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
 1. **Close the SSO governance hole** — every authenticated identity class is
-   budget-fenced and attributed, or rejected on the data plane.
-2. **App-level drain** — ready flip + admission stop + stream-sized grace on
-   SIGTERM, on every deployment flavor.
-3. **Token observability depth** — cached-token dims and per-modality token/
-   spend series in Prometheus and OTel; make the new creative surface visible.
-4. **Request-time team resolution** — membership-enforced team selection so
-   multi-team users stop minting key sprawl.
-5. **Per-route quota families + finish creative/moderation parity** — drain
-   the morning backlog (endpoint RPM/TPM, variations, Anthropic moderations).
+   budget-fenced and attributed (evening P1).
+2. **FinOps depth** — model-group shared budgets + team `model_max_budget`,
+   then cached-token / per-modality metrics from the evening set.
+3. **Operator honesty** — live-vs-file config ownership + doctor probes for
+   every shipped modality + app-level drain.
+4. **Request-time team resolution** — membership-enforced team selection
+   (evening) plus pre-auth header policy for tunnel-exposed endpoints.
+5. **Drain morning modality backlog** — endpoint RPM/TPM, images variations,
+   Anthropic moderations ingress.
 
-Compliance non-goals (WIF, A2A, SOC 2, admin UI) stay deferred until a paying ask.
+Compliance non-goals (WIF, A2A, SOC 2, admin UI, Realtime) stay deferred.
 
 ---
 
 ## Changelog
 
+- **2026-09-25 late (FinOps depth + operator honesty)** — Third scan of the
+  day. Outward: LiteLLM v1.103.0-rc.1 (config ownership, model_max_budget,
+  fallback budget recheck); stable bar still v1.102.x; Portkey/Kong/Ollama
+  unchanged vs evening. Inward: filed five — model_group shared USD budgets,
+  team model_max_budget + key overrides, config live-vs-file ownership,
+  doctor moderations/rerank probes, pre-auth header allow/block (startHooks
+  parity). Watch: OCR, decisions API, budget-on-fallback recheck. Evening
+  identity/shutdown/token rows remain open.
+
 - **2026-09-25 evening (identity edges + shutdown + token observability)** —
-  Second scan of the day (morning sibling merged the images-L6 refresh; edits
-  route + cost-header pins shipped by 14:53). Outward: Portkey v2.25.0
-  (decisions API, startHooks, JWT workspace membership), Ollama v0.40.0-rc0
-  (MLX default on Apple Silicon, rc watch), LiteLLM stable-branch backport
-  wave (bar stays v1.102.1). Inward audit filed five: SSO bearers ungoverned
-  on inference (P1), app-level graceful shutdown, cached-token observability
-  (usage ledger drops cached_tokens), per-modality token metrics, request-time
-  team membership. New watch rows: decisions API, startHooks. Pruned three
-  shipped images rows.
+  Portkey v2.25.0, Ollama v0.40.0-rc0 watch, LiteLLM backport wave. Filed
+  SSO ungoverned bearers (P1), graceful shutdown, cached-token observability,
+  per-modality token metrics, request-time team membership.
 
-- **2026-09-25 morning (images L6 surface closed → next layer)** — Overnight
-  drain closed the 09-24 evening modality/client-contract set plus images
-  follow-ons and doctor images probe. Filed images edits/variations, creative
-  metering test bar, endpoint-scoped RPM, Anthropic moderations ingress; MCP
-  sessions remain watch. Edits + cost-header pins shipped same day.
+- **2026-09-25 morning (images L6 surface closed → next layer)** — Images
+  edits/variations, creative metering, endpoint-scoped RPM, Anthropic
+  moderations; edits + cost-header pins shipped same day.
 
-- **2026-09-24 (two runs: non-chat endpoint parity; modality surface +
-  client-contract honesty)** — Non-chat governance/metering/guardrails/ASR
-  fence/cost headers; then images/generations, modality Idempotency-Key,
-  facade 0.34 honesty, week/rpw aliases. All drained by 09-25.
-
-- **2026-09-23 (two runs: client parameter fidelity; facade + Responses
-  shapes)** — Silent drops across ingresses, then facade/Responses/MCP probe/
-  stream failover. Filed ten; drained by 09-24.
-
-- **2026-09-22 (two runs)** — Data-plane efficiency + stream truncation
-  fidelity, then correlation + modality resilience. Portkey v2.24.0, Kong
-  2.1.0, vLLM 0.30.0.
-
-- **2026-09-21 (two runs)** — Data-plane hardening + lossless escalation, then
-  browser/ops + agent SDK knobs.
-
-- **2026-09-15 → 09-20 and earlier** — Condensed: governance secondary
-  ingress + resilience/modality delta; embed/ASR measurement + cache tenancy
-  + request lifecycle; soft-budget drain + governance/chargeback theme; loop
-  restructure (never-empty refill + scheduled Actions prd run); fleet-auth,
-  fleet story, resilience + metering, stored-artifact tenancy, Batch/Files
-  API, pricing refresh, session affinity, stall escalation, MCP pagination,
-  Apache 2.0 relicense, this PRD's creation (2026-08-28).
+- **2026-09-24 → 09-15 and earlier** — Condensed: non-chat endpoint parity;
+  modality + client-contract honesty; facade/Responses shapes; data-plane
+  efficiency; governance secondary ingress; fleet-auth; Batch/Files; Apache
+  2.0; this PRD's creation (2026-08-28).
