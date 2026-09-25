@@ -4634,6 +4634,14 @@ on without a key warns that the route returns 501. Docs: doctor-health.md.
 Covered by `tests/unit/test_doctor_images_generations.py`,
 `test_doctor_health_images_docs.py`.
 
+### Images edits/variations surface honesty ([#1090](https://github.com/naveenreddyalka/daari/issues/1090))
+
+<!-- tracking:#1090 -->
+**Status:** Done (2026-09-25). OpenAPI audit: only
+`POST /v1/images/generations` exists (no edits/variations routes). Docs state
+edits/variations are not supported. Covered by
+`tests/unit/test_images_surface_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
