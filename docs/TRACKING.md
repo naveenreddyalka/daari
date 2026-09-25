@@ -4603,6 +4603,13 @@ and `POST /v1/rerank`: OpenAPI path registration, auth middleware on
 different body → 409 `idempotency_conflict`. Docs: headers.md, config.md.
 Covered by `tests/unit/test_idempotency.py`.
 
+### Guardrails on images/generations ([#1083](https://github.com/naveenreddyalka/daari/issues/1083))
+
+<!-- tracking:#1083 -->
+**Status:** Done (2026-09-25). Input guardrails run on the images `prompt`
+before upstream (`block` → 400 `guardrail_blocked`; `redact` mutates prompt).
+Covered by `tests/unit/test_guardrails_endpoints.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

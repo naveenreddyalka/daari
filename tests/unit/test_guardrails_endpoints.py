@@ -1,4 +1,4 @@
-"""Guardrails on embeddings, speech, ASR, moderations, rerank (#1059)."""
+"""Guardrails on embeddings, speech, ASR, moderations, rerank, images (#1059, #1083)."""
 
 from __future__ import annotations
 
@@ -396,3 +396,63 @@ async def test_transcriptions_frontier_respects_no_frontier(settings, monkeypatc
         )
     assert response.status_code == 403
     assert response.json()["error"]["type"] == "frontier_not_allowed"
+
+
+def _patch_images(monkeypatch, handler):
+    from daari.gateway import images
+
+    images._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.images.httpx.AsyncClient", Patched)
+
+
+@pytest.mark.asyncio
+async def test_images_block(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not call images")
+
+    _patch_images(monkeypatch, handler)
+    _enable_frontier(settings)
+    _enable_block(settings)
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            json={"prompt": "banned phrase", "model": "dall-e-3"},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "guardrail_blocked"
+
+
+@pytest.mark.asyncio
+async def test_images_redact(settings, monkeypatch):
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={"created": 1, "data": [{"url": "https://example.com/img.png"}]},
+        )
+
+    _patch_images(monkeypatch, handler)
+    _enable_frontier(settings)
+    _enable_redact(settings)
+    app = _app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/images/generations",
+            json={"prompt": "has SECRET inside", "model": "dall-e-3"},
+        )
+    assert response.status_code == 200, response.text
+    payload = seen[0].read()
+    assert b"SECRET" not in payload
+    assert b"<redacted>" in payload

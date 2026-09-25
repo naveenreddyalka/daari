@@ -62,8 +62,8 @@ to the configured frontier slot (`frontier.enabled` + API key / first
 rerank-capable OpenAI-compatible root (including `/v1`). When frontier is off
 or no key resolves, both routes return **501** — daari never invents scores.
 `POST /v1/images/generations` is the same governed L6 shape for image
-generation (`no_frontier`, model allowlists, `region_pin`, and spend rows
-apply before any upstream call).
+generation (`no_frontier`, model allowlists, `region_pin`, spend rows, and
+input guardrails on `prompt` apply before any upstream call).
 
 `POST /v1/audio/transcriptions` accepts the OpenAI multipart form and forwards
 it to `asr.base_url` when that is set. With no local ASR the route returns
