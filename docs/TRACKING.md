@@ -4642,6 +4642,13 @@ Covered by `tests/unit/test_doctor_images_generations.py`,
 edits/variations are not supported. Covered by
 `tests/unit/test_images_surface_docs.py`.
 
+### Images cost headers in shared suite ([#1091](https://github.com/naveenreddyalka/daari/issues/1091))
+
+<!-- tracking:#1091 -->
+**Status:** Done (2026-09-25). Shared `tests/unit/test_cost_headers.py`
+modality matrix pins `tier=images` / zero reported cost for
+`POST /v1/images/generations`, matching the route helper.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
