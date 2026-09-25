@@ -269,6 +269,10 @@ class SamplingParams(BaseModel):
     ollama_think_value: bool | str | None = None
     # Facade top-level Ollama `keep_alive` (duration string or number) (#1011).
     keep_alive: Any | None = None
+    # Ollama 0.34 tool search / response compaction (#1066). Forwarded on
+    # Ollama hops; declared via dropped_params on cache / non-Ollama tiers.
+    tool_search: Any | None = None
+    response_compaction: Any | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -485,8 +489,10 @@ class SamplingParams(BaseModel):
         keep_alive: Any = None,
         logprobs: Any = None,
         top_logprobs: Any = None,
+        tool_search: Any = None,
+        response_compaction: Any = None,
     ) -> SamplingParams:
-        """Merge top-level Ollama facade knobs into SamplingParams (#1011 / #1031)."""
+        """Merge top-level Ollama facade knobs into SamplingParams (#1011 / #1031 / #1066)."""
         merged = dict(options or {})
         if format is not None and "format" not in merged:
             merged["format"] = format
@@ -505,6 +511,10 @@ class SamplingParams(BaseModel):
         normalized_top = _normalize_top_logprobs(top_logprobs)
         if normalized_top is not None:
             updates["top_logprobs"] = normalized_top
+        if tool_search is not None:
+            updates["tool_search"] = tool_search
+        if response_compaction is not None:
+            updates["response_compaction"] = response_compaction
         if updates:
             return params.model_copy(update=updates)
         return params
@@ -606,6 +616,15 @@ class SamplingParams(BaseModel):
             payload["tool_choice"] = self.tool_choice
         return payload
 
+    def ollama_034_knob_names(self) -> list[str]:
+        """Names of Ollama 0.34 knobs present on this request (#1066)."""
+        names: list[str] = []
+        if self.tool_search is not None:
+            names.append("tool_search")
+        if self.response_compaction is not None:
+            names.append("response_compaction")
+        return names
+
     def unsupported_locally(self) -> list[str]:
         """Human-readable notes for parameters a local model cannot honor."""
         notes: list[str] = []
@@ -637,6 +656,15 @@ class SamplingParams(BaseModel):
             notes.append("verbosity is not available from local models")
         if self.web_search_options:
             notes.append("web_search_options are not available from local models")
+        return notes
+
+    def unsupported_non_ollama(self) -> list[str]:
+        """Notes for Ollama-only 0.34 knobs when the hop is not Ollama (#1066)."""
+        notes: list[str] = []
+        if self.tool_search is not None:
+            notes.append("tool_search requires an Ollama hop and was ignored")
+        if self.response_compaction is not None:
+            notes.append("response_compaction requires an Ollama hop and was ignored")
         return notes
 
     def dropped_param_names(self) -> list[str]:
@@ -704,6 +732,10 @@ class SamplingParams(BaseModel):
             data["response_format"] = "json_object"
         if self.tool_choice in {"none"}:
             data["tool_choice"] = self.tool_choice
+        if self.tool_search is not None:
+            data["tool_search"] = self.tool_search
+        if self.response_compaction is not None:
+            data["response_compaction"] = self.response_compaction
         return data
 
     def cache_fingerprint(self) -> str:

@@ -348,21 +348,157 @@ async def test_generate_repeat_hits_cache(app, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_chat_unknown_ollama_034_fields_ignored(app, monkeypatch):
-    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", _fake_execute())
+async def test_chat_forwards_ollama_034_tool_search_and_compaction(settings, monkeypatch):
+    """Local Ollama hop forwards tool_search / response_compaction (#1066)."""
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    captured: list[dict] = []
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        captured.append(
+            application.state.ctx.router.ollama._payload(
+                request, request.model or "llama3.2:3b", stream=False
+            )
+        )
+        return InternalResponse(
+            content="ok with enough length to avoid confidence escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "execute", fake_execute)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/chat",
+            json={
+                "model": "daari",
+                "stream": False,
+                "messages": [{"role": "user", "content": "compat fields"}],
+                "tool_search": True,
+                "response_compaction": {"enabled": True},
+            },
+        )
+
+    assert response.status_code == 200
+    assert captured, "local Ollama hop must run"
+    assert captured[0]["tool_search"] is True
+    assert captured[0]["response_compaction"] == {"enabled": True}
+    meta = response.json()["daari_meta"]
+    dropped = meta.get("dropped_params") or []
+    assert "tool_search" not in dropped
+    assert "response_compaction" not in dropped
+
+
+@pytest.mark.asyncio
+async def test_generate_forwards_ollama_034_fields(settings, monkeypatch):
+    """Facade /api/generate forwards Ollama 0.34 knobs on the local hop (#1066)."""
+    settings.cache.l0.enabled = False
+    settings.cache.l1.enabled = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    captured: list[dict] = []
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        captured.append(
+            application.state.ctx.router.ollama._payload(
+                request, request.model or "llama3.2:3b", stream=False
+            )
+        )
+        return InternalResponse(
+            content="ok with enough length to avoid confidence escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "execute", fake_execute)
+
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/generate",
+            json={
+                "model": "daari",
+                "stream": False,
+                "prompt": "compat generate",
+                "tool_search": {"enabled": True},
+                "response_compaction": {"max_tokens": 100},
+            },
+        )
+
+    assert response.status_code == 200
+    assert captured
+    assert captured[0]["tool_search"] == {"enabled": True}
+    assert captured[0]["response_compaction"] == {"max_tokens": 100}
+
+
+@pytest.mark.asyncio
+async def test_chat_cache_hit_declares_ollama_034_dropped_params(settings, monkeypatch):
+    """L0 cache hits declare tool_search / response_compaction as dropped (#1066)."""
+    settings.cache.l1.enabled = False
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok with enough length to avoid confidence escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=5,
+            ),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    for attr in ("ollama_l3", "ollama_l4", "ollama_l5"):
+        executor = getattr(application.state.ctx.router, attr, None)
+        if executor is not None:
+            monkeypatch.setattr(executor, "execute", fake_execute)
+
     payload = {
         "model": "daari",
         "stream": False,
-        "messages": [{"role": "user", "content": "compat fields"}],
+        "messages": [{"role": "user", "content": "cache me 034"}],
         "tool_search": True,
         "response_compaction": {"enabled": True},
     }
-
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=application)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post("/api/chat", json=payload)
+        first = await client.post("/api/chat", json=payload)
+        second = await client.post("/api/chat", json=payload)
 
-    assert response.status_code == 200
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["daari_meta"]["cache_hit"] is True
+    assert second.json()["daari_meta"]["tier"] == "L0"
+    dropped = second.json()["daari_meta"].get("dropped_params") or []
+    assert "tool_search" in dropped
+    assert "response_compaction" in dropped
 
 
 class _RecordingEmbedder:

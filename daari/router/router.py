@@ -319,6 +319,10 @@ class OllamaExecutor:
             payload["think"] = think
         if request.sampling.keep_alive is not None:
             payload["keep_alive"] = request.sampling.keep_alive
+        if request.sampling.tool_search is not None:
+            payload["tool_search"] = request.sampling.tool_search
+        if request.sampling.response_compaction is not None:
+            payload["response_compaction"] = request.sampling.response_compaction
         return payload
 
     async def execute(self, request: InternalRequest) -> InternalResponse:
@@ -892,7 +896,13 @@ class Router:
         # dropped.
         if response.daari_meta.tier != "L6":
             unsupported = request.sampling.unsupported_locally()
-            dropped = request.sampling.dropped_param_names()
+            dropped = list(request.sampling.dropped_param_names())
+            # Ollama 0.34 knobs: forward on Ollama hops; declare drops otherwise (#1066).
+            if response.daari_meta.executor != "ollama":
+                unsupported = unsupported + request.sampling.unsupported_non_ollama()
+                for name in request.sampling.ollama_034_knob_names():
+                    if name not in dropped:
+                        dropped.append(name)
             if unsupported:
                 existing = response.daari_meta.warning
                 notes = "; ".join(unsupported)
@@ -1814,9 +1824,11 @@ class Router:
         self._open_spend_context(
             request, trace.trace_id if trace is not None else chunk_id
         )
-        dropped = request.sampling.dropped_param_names()
+        dropped = list(request.sampling.dropped_param_names())
         if dropped:
             outcome.dropped_params = dropped
+        # Ollama 0.34 knobs: declare on cache hits via note(); Ollama hops omit (#1066).
+        outcome._ollama_034_knobs = request.sampling.ollama_034_knob_names()
         if reused:
             add_step(
                 "classify_user_turn",

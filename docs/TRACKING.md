@@ -4562,6 +4562,14 @@ rerank without a second upstream call; same key + different body → 409
 `idempotency_conflict`. Docs: headers.md, config.md. Covered by
 `tests/unit/test_idempotency.py`.
 
+### Honor or declare Ollama 0.34 tool_search and response_compaction ([#1066](https://github.com/naveenreddyalka/daari/issues/1066))
+
+<!-- tracking:#1066 -->
+**Status:** Done (2026-09-25). Facade `/api/chat` and `/api/generate` forward
+`tool_search` / `response_compaction` on local Ollama hops; cache and
+non-Ollama tiers declare them via `daari_meta.dropped_params`. Docs:
+chatgpt-desktop.md. Covered by `tests/integration/test_ollama_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
