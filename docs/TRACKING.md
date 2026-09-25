@@ -4586,6 +4586,15 @@ chatgpt-desktop.md. Covered by `tests/integration/test_ollama_compat.py`.
 caption+clip-A stores L0, caption+clip-B misses, clip-A hits L0. Covered by
 `tests/integration/test_l1_semantic_cache.py`.
 
+### Integration pins for moderations and rerank ([#1068](https://github.com/naveenreddyalka/daari/issues/1068))
+
+<!-- tracking:#1068 -->
+**Status:** Done (2026-09-25). Hermetic ASGI coverage for `POST /v1/moderations`
+and `POST /v1/rerank`: OpenAPI path registration, auth middleware on
+(401 without key / 200 mocked happy path), and frontier-disabled / no-key
+→ 501 `not_implemented`. Covered by
+`tests/integration/test_moderations_rerank.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
