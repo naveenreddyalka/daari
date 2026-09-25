@@ -4625,6 +4625,15 @@ spend_ledger. Docs: headers.md. Covered by `tests/unit/test_images.py`.
 (401 without key / 200 mocked happy path), frontier-disabled / no-key → 501.
 Covered by `tests/integration/test_images.py`.
 
+### Doctor probe for images/generations ([#1092](https://github.com/naveenreddyalka/daari/issues/1092))
+
+<!-- tracking:#1092 -->
+**Status:** Done (2026-09-25). When `frontier.enabled` and a key resolves,
+`daari doctor` dry-checks OpenAPI for `POST /v1/images/generations`; frontier
+on without a key warns that the route returns 501. Docs: doctor-health.md.
+Covered by `tests/unit/test_doctor_images_generations.py`,
+`test_doctor_health_images_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
