@@ -53,6 +53,8 @@ class TestLabels:
         assert window_header_label("daily") == "1d"
         assert window_header_label("month") == "1mo"
         assert window_header_label("7d") == "7d"
+        assert window_header_label("week") == "1w"
+        assert window_header_label("rpw") == "1w"
         assert window_header_label("12h") == "12h"
 
     def test_reset_epoch_matches_reset_at(self):

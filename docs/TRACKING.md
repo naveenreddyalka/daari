@@ -4570,6 +4570,15 @@ rerank without a second upstream call; same key + different body → 409
 non-Ollama tiers declare them via `daari_meta.dropped_params`. Docs:
 chatgpt-desktop.md. Covered by `tests/integration/test_ollama_compat.py`.
 
+### Week/weekly/rpw budget duration aliases ([#1067](https://github.com/naveenreddyalka/daari/issues/1067))
+
+<!-- tracking:#1067 -->
+**Status:** Done (2026-09-25). `normalize_duration` accepts `week` / `weekly` /
+`rpw` / `1w` as ISO calendar weeks (`period_id` like `2026-W38`); header label
+`1w`; CLI `--window week=10` persists. Docs: budgets-frontier.md. Covered by
+`tests/unit/test_budget_windows.py`, `test_budget_rollover.py`,
+`test_virtual_keys.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

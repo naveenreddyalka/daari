@@ -13,6 +13,7 @@ Scope = Literal["key", "team", "user"]
 
 _DAY_ALIASES = {"day", "daily", "24h"}
 _MONTH_ALIASES = {"month", "monthly", "30d"}
+_WEEK_ALIASES = {"week", "weekly", "rpw", "1w"}
 _LIFETIME_ALIASES = {"lifetime", "total", "all", "alltime", "all-time"}
 _DURATION = re.compile(r"^(\d+)([hd])$")
 
@@ -21,6 +22,8 @@ def normalize_duration(raw: str) -> str:
     value = (raw or "").strip().lower()
     if value in _DAY_ALIASES:
         return "day"
+    if value in _WEEK_ALIASES:
+        return "week"
     if value in _MONTH_ALIASES:
         return "month"
     if value in _LIFETIME_ALIASES:
@@ -35,6 +38,8 @@ def window_label(duration: str) -> str:
     canonical = normalize_duration(duration)
     if canonical == "day":
         return "daily"
+    if canonical == "week":
+        return "weekly"
     if canonical == "month":
         return "monthly"
     if canonical == "lifetime":
@@ -43,10 +48,12 @@ def window_label(duration: str) -> str:
 
 
 def window_header_label(duration: str) -> str:
-    """`x-daari-budget-window` value: `1d`, `1mo`, or the raw `7d` / `12h` form."""
+    """`x-daari-budget-window` value: `1d`, `1w`, `1mo`, or the raw `7d` / `12h` form."""
     canonical = normalize_duration(duration)
     if canonical == "day":
         return "1d"
+    if canonical == "week":
+        return "1w"
     if canonical == "month":
         return "1mo"
     if canonical == "lifetime":
@@ -226,6 +233,13 @@ def reset_at(duration: str, *, now: datetime | None = None) -> str:
     if canonical == "day":
         nxt = (moment + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         return nxt.isoformat()
+    if canonical == "week":
+        # Next Monday 00:00 UTC (ISO week boundary).
+        days = (8 - moment.isoweekday()) % 7 or 7
+        nxt = (moment + timedelta(days=days)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        return nxt.isoformat()
     if canonical == "month":
         if moment.month == 12:
             nxt = moment.replace(year=moment.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -259,6 +273,8 @@ def period_id(duration: str, *, now: datetime | None = None) -> str:
         return "lifetime"
     if canonical == "day":
         return moment.strftime("%Y-%m-%d")
+    if canonical == "week":
+        return moment.strftime("%G-W%V")
     if canonical == "month":
         return moment.strftime("%Y-%m")
     match = _DURATION.match(canonical)
@@ -282,6 +298,13 @@ def previous_period_id(duration: str, *, now: datetime | None = None) -> str:
     canonical = normalize_duration(duration)
     if canonical == "day":
         return (moment - timedelta(days=1)).strftime("%Y-%m-%d")
+    if canonical == "week":
+        weekday = moment.isoweekday()
+        monday = (moment - timedelta(days=weekday - 1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        prior = monday - timedelta(days=7)
+        return prior.strftime("%G-W%V")
     if canonical == "month":
         if moment.month == 1:
             prior = moment.replace(year=moment.year - 1, month=12, day=1)
@@ -335,6 +358,9 @@ def ledger_window(duration: str) -> tuple[str, int | None]:
         return "lifetime", None
     if canonical == "day":
         return "day", None
+    if canonical == "week":
+        # Calendar week period ids; spend uses a 7-day ledger rollup (#1067).
+        return "days", 7
     if canonical == "month":
         return "month", None
     match = _DURATION.match(canonical)

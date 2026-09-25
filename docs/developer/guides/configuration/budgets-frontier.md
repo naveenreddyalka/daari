@@ -29,12 +29,13 @@ A virtual key can carry its own caps, charged only against that key's own spend:
 ```bash
 daari keys team-create eng --daily-budget 5
 daari keys create ci-bot --daily-budget 2 --monthly-budget 20 --team eng --window 7d=10
+daari keys create weekly-bot --window week=10
 daari keys create contractor --window lifetime=50
 ```
 
 Each window is checked independently. A key can carry several
-`{duration, max_usd}` windows at once (`day`/`24h`, `month`/`30d`, `7d`,
-`lifetime`/`total`, …);
+`{duration, max_usd}` windows at once (`day`/`24h`/`daily`, `week`/`weekly`/`rpw`/`1w`
+for ISO calendar weeks, `month`/`30d`/`monthly`, `7d`, `lifetime`/`total`, …);
 team caps apply to every key on that team and the tighter of key vs team wins.
 The org `frontier.*` caps above remain an outer ceiling. A key over budget gets
 `402` naming the window that tripped and when it resets:
