@@ -160,6 +160,23 @@ class TestModalityResponseHeaders:
         assert float(headers[COST_HEADER]) == pytest.approx(expected)
         assert float(headers[COST_AVOIDED_HEADER]) == 0.0
 
+    def test_images_generations_tier_emits_zero_cost_with_images_label(self):
+        """Shared suite pin for POST /v1/images/generations (#1091)."""
+        from daari.gateway.cost_headers import modality_response_headers
+
+        headers = modality_response_headers(
+            _settings(0.002),
+            tier="images",
+            model="dall-e-3",
+            prompt_chars=len("a cube"),
+            input_tokens=1,
+            output_tokens=0,
+            cost_usd=0.0,
+        )
+        assert headers[TIER_HEADER] == "images"
+        assert float(headers[COST_HEADER]) == 0.0
+        assert COST_AVOIDED_HEADER in headers
+
 
 class TestStreamOutcome:
     def test_headers_empty_until_router_commits(self):
