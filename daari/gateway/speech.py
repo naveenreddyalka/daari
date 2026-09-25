@@ -220,9 +220,13 @@ async def handle_speech(
     input_text: str,
     voice: str | None,
     response_format: str,
+    idem_slot: Any | None = None,
 ) -> Response | JSONResponse:
+    from daari.gateway.idempotency import abandon_slot, complete_binary_slot
+
     fmt = (response_format or "mp3").strip().lower() or "mp3"
     if fmt not in _CONTENT_TYPES:
+        abandon_slot(idem_slot)
         return _error(
             400,
             "invalid_request_error",
@@ -239,26 +243,32 @@ async def handle_speech(
                     input_text=input_text,
                     voice=voice,
                     response_format=response_format,
+                    idem_slot=idem_slot,
                 )
         except RequestDeadlineExceeded as exc:
+            abandon_slot(idem_slot)
             return request_deadline_response(exc)
 
     target = resolve_tts_target(ctx.settings)
     if target is None:
+        abandon_slot(idem_slot)
         return _error(501, "tts_unavailable", _UNAVAILABLE)
 
     text = (input_text or "").strip()
     if not text:
+        abandon_slot(idem_slot)
         return _error(400, "invalid_request_error", "input is required")
 
     model_name = (target.model or (model or "")).strip()
     if not model_name:
+        abandon_slot(idem_slot)
         return _error(400, "invalid_request_error", "model is required")
 
     from daari.gateway.model_access import reject_disallowed_model
 
     denied = reject_disallowed_model(request, model_name, ctx.settings)
     if denied is not None:
+        abandon_slot(idem_slot)
         return denied
 
     from daari.gateway.guardrails import (
@@ -271,6 +281,7 @@ async def handle_speech(
         text, router_guardrails(ctx), metrics=getattr(ctx, "metrics", None)
     )
     if policy.blocked:
+        abandon_slot(idem_slot)
         return endpoint_guardrail_blocked_response(policy.block_message)
     text = policy.text
 
@@ -303,8 +314,10 @@ async def handle_speech(
             model=model_name,
         )
     except RequestDeadlineExceeded as exc:
+        abandon_slot(idem_slot)
         return request_deadline_response(exc)
     except ClientDisconnected:
+        abandon_slot(idem_slot)
         return JSONResponse(
             status_code=499,
             content={
@@ -315,10 +328,12 @@ async def handle_speech(
             },
         )
     except httpx.HTTPError as exc:
+        abandon_slot(idem_slot)
         return _error(502, "tts_upstream_error", summarize_upstream_failure(exc))
     latency_ms = _elapsed_ms(started)
 
     if upstream.status_code < 200 or upstream.status_code >= 300:
+        abandon_slot(idem_slot)
         return _error(
             502,
             "tts_upstream_error",
@@ -326,6 +341,7 @@ async def handle_speech(
         )
     audio = upstream.content or b""
     if not audio:
+        abandon_slot(idem_slot)
         return _error(502, "tts_upstream_error", "TTS upstream returned an empty body")
 
     log_gateway_event(
@@ -365,8 +381,12 @@ async def handle_speech(
     )
     if request_id:
         headers = {**headers, "X-Request-ID": request_id}
+    media_type = media.split(";")[0].strip()
+    complete_binary_slot(
+        idem_slot, status_code=200, data=audio, media_type=media_type
+    )
     return Response(
         content=audio,
-        media_type=media.split(";")[0].strip(),
+        media_type=media_type,
         headers=headers,
     )

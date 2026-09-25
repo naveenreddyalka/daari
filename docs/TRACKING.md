@@ -4553,6 +4553,15 @@ chat, matching spend_ledger amounts. Covered by `tests/unit/test_cost_headers.py
 passthrough (`no_frontier`, model allowlist, `region_pin`, `run_upstream`
 retry/slot failover, usage+spend rows). Covered by `tests/unit/test_images.py`.
 
+### Idempotency-Key on embeddings, audio, moderations, and rerank ([#1065](https://github.com/naveenreddyalka/daari/issues/1065))
+
+<!-- tracking:#1065 -->
+**Status:** Done (2026-09-25). `Idempotency-Key` replays embeddings, TTS
+(binary), ASR/translations (multipart form+file digest), moderations, and
+rerank without a second upstream call; same key + different body → 409
+`idempotency_conflict`. Docs: headers.md, config.md. Covered by
+`tests/unit/test_idempotency.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
