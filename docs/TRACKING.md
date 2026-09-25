@@ -4649,6 +4649,15 @@ edits/variations are not supported. Covered by
 modality matrix pins `tier=images` / zero reported cost for
 `POST /v1/images/generations`, matching the route helper.
 
+### Images edits L6 passthrough ([#1097](https://github.com/naveenreddyalka/daari/issues/1097))
+
+<!-- tracking:#1097 -->
+**Status:** Done (2026-09-25). `POST /v1/images/edits` is a governed multipart
+L6 passthrough (frontier gate, allowlists, `region_pin`, guardrails on prompt,
+spend/cost headers). Binary multipart bodies no longer crash rate-limit JSON
+parse. Docs: clients-and-gateways.md. Covered by
+`tests/unit/test_images_edits.py`, `test_images_surface_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

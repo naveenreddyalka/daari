@@ -1171,6 +1171,31 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             parsed = ImagesGenerationsRequest.model_validate(body)
             return await handle_images_generations(request, parsed)
 
+        @router.post("/v1/images/edits", response_model=None)
+        async def images_edits(
+            request: Request,
+            image: UploadFile = File(...),
+            prompt: str = Form(...),
+            mask: UploadFile | None = File(default=None),
+            model: str = Form(default=""),
+            n: int | None = Form(default=None),
+            size: str | None = Form(default=None),
+            response_format: str | None = Form(default=None),
+        ) -> Any:
+            """OpenAI-shaped image edits via configured L6 (#1097)."""
+            from daari.gateway.images import handle_images_edits
+
+            return await handle_images_edits(
+                request,
+                image=image,
+                prompt=prompt,
+                mask=mask,
+                model=model,
+                n=n,
+                size=size,
+                response_format=response_format,
+            )
+
         @router.post("/v1/moderations", response_model=None)
         async def moderations(body: dict[str, Any], request: Request) -> Any:
             """OpenAI-shaped moderations via configured L6 (#1050)."""

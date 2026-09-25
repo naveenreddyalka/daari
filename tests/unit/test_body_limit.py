@@ -43,6 +43,10 @@ def test_body_limit_upload_routes_raise_floor() -> None:
         )
         == UPLOAD_ROUTE_FLOOR_BYTES
     )
+    assert (
+        body_limit_for_path("/v1/images/edits", max_body_bytes=1024, files_max_total=0)
+        == UPLOAD_ROUTE_FLOOR_BYTES
+    )
 
 
 def test_openai_and_anthropic_error_shapes() -> None:

@@ -526,11 +526,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     parsed = json.loads(raw)
                     if isinstance(parsed, dict):
                         payload = parsed
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, UnicodeDecodeError):
                     payload = {}
             model = request_model(payload)
             tokens = estimate_request_tokens(payload)
-            if request.url.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
+            if request.url.path in (
+                "/v1/audio/transcriptions",
+                "/v1/audio/translations",
+                "/v1/images/edits",
+            ):
                 audio_tokens = estimate_audio_upload_tokens(
                     raw, request.headers.get("content-type", "")
                 )

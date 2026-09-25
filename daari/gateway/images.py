@@ -98,6 +98,42 @@ async def post_images(
     )
 
 
+async def post_images_multipart(
+    url: str,
+    *,
+    headers: dict[str, str],
+    form: dict[str, str],
+    files: dict[str, tuple[str, bytes, str]],
+    timeout: float,
+    retry: Any | None = None,
+    metrics: Any | None = None,
+) -> httpx.Response:
+    """Multipart POST for /images/edits (and similar) with retry (#1097)."""
+    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+
+    policy = (
+        retry
+        if isinstance(retry, RetryPolicy)
+        else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
+    )
+
+    async def attempt() -> httpx.Response:
+        response = await _shared_client().post(
+            url, headers=headers, data=form, files=files, timeout=timeout
+        )
+        if response.status_code in RETRYABLE_STATUS:
+            response.raise_for_status()
+        return response
+
+    return await run_upstream(
+        attempt,
+        upstream="images",
+        policy=policy,
+        timeout=timeout,
+        metrics=metrics,
+    )
+
+
 def _caller_client_id(request: Request) -> str | None:
     claims = getattr(request.state, "auth_claims", None)
     if claims is None or getattr(claims, "kind", None) != "virtual":
@@ -361,3 +397,207 @@ async def handle_images_generations(
         )
     abandon_slot(idem_slot)
     return _error(503, "upstream_error", "Images upstream request failed.")
+
+
+async def handle_images_edits(
+    request: Request,
+    *,
+    image: Any,
+    prompt: str,
+    mask: Any | None = None,
+    model: str = "",
+    n: int | None = None,
+    size: str | None = None,
+    response_format: str | None = None,
+) -> Any:
+    """POST /v1/images/edits — multipart L6 passthrough (#1097)."""
+    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
+
+    blocked = reject_frontier_passthrough(request)
+    if blocked is not None:
+        return blocked
+
+    prompt_text = (prompt or "").strip()
+    if not prompt_text:
+        return _error(400, "invalid_request_error", "prompt is required")
+    if image is None:
+        return _error(400, "invalid_request_error", "image is required")
+
+    async def _read_upload(upload: Any) -> tuple[bytes, str, str]:
+        read = getattr(upload, "read", None)
+        raw = await read() if callable(read) else bytes(upload or b"")
+        name = str(getattr(upload, "filename", None) or "image.png").strip() or "image.png"
+        ctype = (
+            str(getattr(upload, "content_type", None) or "application/octet-stream").strip()
+            or "application/octet-stream"
+        )
+        return bytes(raw or b""), name, ctype
+
+    image_bytes, image_name, image_type = await _read_upload(image)
+    if not image_bytes:
+        return _error(400, "invalid_request_error", "image is required")
+
+    mask_bytes: bytes | None = None
+    mask_name = "mask.png"
+    mask_type = "application/octet-stream"
+    if mask is not None:
+        mask_bytes, mask_name, mask_type = await _read_upload(mask)
+        if not mask_bytes:
+            mask_bytes = None
+
+    ctx = request.app.state.ctx
+    settings = ctx.settings
+
+    pin = region_pin_from_request(request)
+    try:
+        targets = resolve_l6_targets(
+            settings, region_pin=pin, default_model="dall-e-2"
+        )
+    except RegionUnavailable as exc:
+        log_gateway_event("images_edits_region_unavailable", {"pin": exc.pin})
+        return _error(400, "region_unavailable", str(exc))
+    if not targets:
+        log_gateway_event("images_edits_unavailable", {"reason": "frontier_disabled_or_no_key"})
+        return _error(501, "not_implemented", _UNAVAILABLE)
+
+    resolved_model = (model or "").strip() or targets[0].default_model
+    denied = reject_disallowed_model(request, resolved_model, settings)
+    if denied is not None:
+        return denied
+
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
+
+    policy = apply_endpoint_input_policy(
+        prompt_text, router_guardrails(ctx), metrics=getattr(ctx, "metrics", None)
+    )
+    if policy.blocked:
+        return endpoint_guardrail_blocked_response(policy.block_message)
+    prompt_text = policy.text
+
+    count = int(n or 1)
+    form: dict[str, str] = {
+        "prompt": prompt_text,
+        "model": resolved_model,
+        "n": str(count),
+    }
+    if size:
+        form["size"] = size
+    if response_format:
+        form["response_format"] = response_format
+
+    files: dict[str, tuple[str, bytes, str]] = {
+        "image": (image_name, image_bytes, image_type),
+    }
+    if mask_bytes is not None:
+        files["mask"] = (mask_name, mask_bytes, mask_type)
+
+    retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
+    metrics = getattr(ctx, "metrics", None)
+    last_exc: Exception | None = None
+    last_upstream: httpx.Response | None = None
+
+    for target in targets:
+        headers = {"Authorization": f"Bearer {target.api_key}"}
+        url = f"{target.base_url}/images/edits"
+        try:
+            upstream = await post_images_multipart(
+                url,
+                headers=headers,
+                form=form,
+                files=files,
+                timeout=target.timeout,
+                retry=target.retry if target.retry is not None else retry_settings,
+                metrics=metrics,
+            )
+        except httpx.HTTPStatusError as exc:
+            last_upstream = exc.response
+            last_exc = exc
+            log_gateway_event(
+                "images_edits_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                    "status": exc.response.status_code if exc.response is not None else None,
+                },
+            )
+            continue
+        except Exception as exc:
+            last_exc = exc
+            log_gateway_event(
+                "images_edits_slot_error",
+                {
+                    "slot": target.slot_id,
+                    "error": summarize_upstream_failure(exc),
+                },
+            )
+            continue
+        if is_slot_failure(upstream):
+            last_upstream = upstream
+            log_gateway_event(
+                "images_edits_slot_http",
+                {"slot": target.slot_id, "status": upstream.status_code},
+            )
+            continue
+        if upstream.status_code >= 400:
+            log_gateway_event(
+                "images_edits_upstream_http",
+                {"status": upstream.status_code, "slot": target.slot_id},
+            )
+            try:
+                detail = upstream.json()
+            except Exception:
+                detail = {"error": {"type": "upstream_error", "message": upstream.text[:200]}}
+            return JSONResponse(status_code=upstream.status_code, content=detail)
+        try:
+            data = upstream.json()
+        except Exception:
+            return _error(502, "bad_gateway", "Images edits upstream returned non-JSON.")
+        log_gateway_event(
+            "images_edits_ok",
+            {"model": resolved_model, "n": count, "slot": target.slot_id},
+        )
+        caller = _caller_client_id(request)
+        _bind_spend_context(request, ctx, model=resolved_model, client_id=caller)
+        _record_request(
+            ctx, client_id=caller, model=resolved_model, prompt=prompt_text, n=count
+        )
+        from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+        cost_headers = modality_response_headers(
+            settings,
+            tier="images",
+            model=resolved_model,
+            prompt_chars=len(prompt_text),
+            input_tokens=max(1, count),
+            output_tokens=0,
+            cost_usd=0.0,
+            session_id=session_id_from_request(request),
+            savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+        )
+        return JSONResponse(data, headers=cost_headers)
+
+    if last_upstream is not None:
+        log_gateway_event(
+            "images_edits_upstream_http",
+            {"status": last_upstream.status_code},
+        )
+        try:
+            detail = last_upstream.json()
+        except Exception:
+            detail = {
+                "error": {
+                    "type": "upstream_error",
+                    "message": (last_upstream.text or "")[:200],
+                }
+            }
+        return JSONResponse(status_code=last_upstream.status_code, content=detail)
+    if last_exc is not None:
+        log_gateway_event(
+            "images_edits_upstream_error",
+            {"error": summarize_upstream_failure(last_exc)},
+        )
+    return _error(503, "upstream_error", "Images edits upstream request failed.")
