@@ -48,6 +48,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `DELETE` | `/v1/files/{file_id}` | Delete File |
 | `GET` | `/v1/files/{file_id}` | Retrieve File |
 | `GET` | `/v1/files/{file_id}/content` | Download File Content |
+| `POST` | `/v1/images/generations` | Images Generations |
 | `POST` | `/v1/mcp/query` | Mcp Query |
 | `POST` | `/v1/messages` | Messages |
 | `POST` | `/v1/messages/count_tokens` | Count Tokens |
