@@ -422,3 +422,18 @@ class TestOllamaFacadeLogprobs:
     def test_from_ollama_facade_ignores_malformed_top_logprobs(self):
         params = SamplingParams.from_ollama_facade(None, top_logprobs=True)
         assert params.top_logprobs is None
+
+    def test_from_ollama_facade_maps_034_knobs(self):
+        params = SamplingParams.from_ollama_facade(
+            None,
+            tool_search=True,
+            response_compaction={"enabled": True},
+        )
+        assert params.tool_search is True
+        assert params.response_compaction == {"enabled": True}
+        assert params.ollama_034_knob_names() == [
+            "tool_search",
+            "response_compaction",
+        ]
+        # Not unconditionally dropped — only when the hop is not Ollama (#1066).
+        assert "tool_search" not in params.dropped_param_names()

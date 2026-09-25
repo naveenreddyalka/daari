@@ -350,6 +350,8 @@ class StreamOutcome:
     cache: str | None = None
     # Prefetched from sampling; emitted only when the served tier is not L6 (#1013).
     dropped_params: list[str] | None = None
+    # Ollama 0.34 knobs to append when the hop cannot honor them (#1066).
+    _ollama_034_knobs: list[str] | None = None
 
     def note(
         self, tier: str | None, *, cache_hit: bool = False, draft: bool = False
@@ -357,6 +359,12 @@ class StreamOutcome:
         if tier:
             self.tier = tier
             self.cache = _cache_state(cache_hit=cache_hit, draft=draft)
+            if cache_hit and self._ollama_034_knobs:
+                merged = list(self.dropped_params or [])
+                for name in self._ollama_034_knobs:
+                    if name not in merged:
+                        merged.append(name)
+                self.dropped_params = merged
         return self
 
     def headers(self) -> dict[str, str]:

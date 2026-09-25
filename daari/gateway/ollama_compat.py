@@ -56,6 +56,9 @@ class OllamaChatRequest(BaseModel):
     keep_alive: Any | None = None
     logprobs: Any | None = None
     top_logprobs: Any | None = None
+    # Ollama 0.34 (#1066).
+    tool_search: Any | None = None
+    response_compaction: Any | None = None
 
 
 class OllamaGenerateRequest(BaseModel):
@@ -72,6 +75,9 @@ class OllamaGenerateRequest(BaseModel):
     keep_alive: Any | None = None
     logprobs: Any | None = None
     top_logprobs: Any | None = None
+    # Ollama 0.34 (#1066).
+    tool_search: Any | None = None
+    response_compaction: Any | None = None
 
 
 class OllamaEmbedRequest(BaseModel):
@@ -418,6 +424,8 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     keep_alive=body.keep_alive,
                     logprobs=body.logprobs,
                     top_logprobs=body.top_logprobs,
+                    tool_search=body.tool_search,
+                    response_compaction=body.response_compaction,
                 ),
             )
             denied = _enforce_ollama_model(
@@ -500,6 +508,8 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                     keep_alive=body.keep_alive,
                     logprobs=body.logprobs,
                     top_logprobs=body.top_logprobs,
+                    tool_search=body.tool_search,
+                    response_compaction=body.response_compaction,
                 ),
             )
             denied = _enforce_ollama_model(
