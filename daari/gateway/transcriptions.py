@@ -448,6 +448,27 @@ async def handle_transcription(
         form["language"] = lang
     if hint:
         form["prompt"] = hint
+
+    from daari.gateway.idempotency import (
+        abandon_slot,
+        complete_json_slot,
+        multipart_body_hash,
+        resolve_idempotency,
+    )
+
+    # Hash via the public multipart helper so form key order and file digest match tests.
+    idem_payload = {
+        "path": upstream_path,
+        "digest": multipart_body_hash(
+            fields=form, file_bytes=content, filename=file.filename or ""
+        ),
+    }
+    idem_kind, idem_response, idem_slot = await resolve_idempotency(
+        request, ctx, idem_payload
+    )
+    if idem_kind in {"replay", "conflict"} and idem_response is not None:
+        return idem_response
+
     from daari.observability.otel import inject_trace_headers
 
     started = time.perf_counter()
@@ -485,8 +506,10 @@ async def handle_transcription(
                 model=model_name,
             )
         except RequestDeadlineExceeded as exc:
+            abandon_slot(idem_slot)
             return request_deadline_response(exc)
         except ClientDisconnected:
+            abandon_slot(idem_slot)
             return JSONResponse(
                 status_code=499,
                 content={
@@ -507,6 +530,7 @@ async def handle_transcription(
                 },
             )
             if target.via != "frontier" or target is targets[-1]:
+                abandon_slot(idem_slot)
                 return _error(502, "asr_upstream_error", summarize_upstream_failure(exc))
             continue
         if target.via == "frontier" and is_slot_failure(upstream) and target is not targets[-1]:
@@ -519,19 +543,23 @@ async def handle_transcription(
         break
     else:
         if last_status is not None:
+            abandon_slot(idem_slot)
             return _error(
                 502,
                 "asr_upstream_error",
                 f"ASR upstream returned HTTP {last_status}",
             )
         if last_exc is not None:
+            abandon_slot(idem_slot)
             return _error(502, "asr_upstream_error", summarize_upstream_failure(last_exc))
+        abandon_slot(idem_slot)
         return _error(502, "asr_upstream_error", "ASR upstream request failed")
 
     assert upstream is not None
     latency_ms = _elapsed_ms(started)
 
     if upstream.status_code < 200 or upstream.status_code >= 300:
+        abandon_slot(idem_slot)
         return _error(
             502,
             "asr_upstream_error",
@@ -540,8 +568,10 @@ async def handle_transcription(
     try:
         payload = upstream.json()
     except Exception:
+        abandon_slot(idem_slot)
         return _error(502, "asr_upstream_error", "ASR upstream returned a non-JSON body")
     if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+        abandon_slot(idem_slot)
         return _error(
             502,
             "asr_upstream_error",
@@ -550,6 +580,7 @@ async def handle_transcription(
 
     out_policy = apply_endpoint_output_policy(payload["text"], engine, metrics=metrics)
     if out_policy.blocked:
+        abandon_slot(idem_slot)
         return endpoint_guardrail_blocked_response(out_policy.block_message)
     payload = {**payload, "text": out_policy.text}
 
@@ -592,6 +623,7 @@ async def handle_transcription(
     request_id = str(getattr(request.state, "request_id", None) or "")
     if request_id:
         headers = {**headers, "X-Request-ID": request_id}
+    complete_json_slot(idem_slot, status_code=200, payload=payload)
     return JSONResponse(payload, headers=headers)
 
 

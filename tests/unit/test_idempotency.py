@@ -1,4 +1,4 @@
-"""Idempotency-Key replay on chat completions and Responses (#714)."""
+"""Idempotency-Key replay on chat, Responses, and modality routes (#714, #1065)."""
 
 from __future__ import annotations
 
@@ -319,3 +319,257 @@ async def test_missing_idempotency_key_is_noop(settings, monkeypatch, tmp_path):
         await client.post("/v1/chat/completions", json=body)
         await client.post("/v1/chat/completions", json=body)
     assert calls["n"] == 2
+
+
+# --- modality routes (#1065) -------------------------------------------------
+
+
+class _RecordingEmbedder:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def embed(self, text: str, *, model: str | None = None) -> list[float]:
+        self.calls.append(text)
+        return [0.1, 0.2, 0.3]
+
+    async def embed_many(
+        self, texts: list[str], *, model: str | None = None
+    ) -> list[list[float] | None]:
+        return [await self.embed(text, model=model) for text in texts]
+
+
+@pytest.mark.asyncio
+async def test_embeddings_idempotency_replays_without_second_embed(
+    settings, tmp_path
+):
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    settings.cache.l1.enabled = True
+    embedder = _RecordingEmbedder()
+    app = create_app(settings)
+    ctx = AppContext.from_settings(settings)
+    ctx.router.semantic_cache.embedder = embedder
+    app.state.ctx = ctx
+    body = {"model": "nomic-embed-text", "input": "hello"}
+    headers = {"Idempotency-Key": "embed-key-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/embeddings", json=body, headers=headers)
+        second = await client.post("/v1/embeddings", json=body, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert embedder.calls == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_embeddings_idempotency_conflict_on_body_mismatch(settings, tmp_path):
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    settings.cache.l1.enabled = True
+    embedder = _RecordingEmbedder()
+    app = create_app(settings)
+    ctx = AppContext.from_settings(settings)
+    ctx.router.semantic_cache.embedder = embedder
+    app.state.ctx = ctx
+    headers = {"Idempotency-Key": "embed-conflict"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/embeddings",
+            json={"model": "nomic-embed-text", "input": "one"},
+            headers=headers,
+        )
+        second = await client.post(
+            "/v1/embeddings",
+            json={"model": "nomic-embed-text", "input": "two"},
+            headers=headers,
+        )
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert second.json()["error"]["type"] == CONFLICT_TYPE
+
+
+@pytest.mark.asyncio
+async def test_embeddings_missing_idempotency_key_is_noop(settings, tmp_path):
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    settings.cache.l1.enabled = True
+    # Disable L0 so identical inputs still call the embedder twice.
+    settings.cache.l0.enabled = False
+    embedder = _RecordingEmbedder()
+    app = create_app(settings)
+    ctx = AppContext.from_settings(settings)
+    ctx.router.semantic_cache.embedder = embedder
+    app.state.ctx = ctx
+    body = {"model": "nomic-embed-text", "input": "hello"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/v1/embeddings", json=body)
+        await client.post("/v1/embeddings", json=body)
+    assert len(embedder.calls) == 2
+
+
+def _patch_httpx(monkeypatch, module_path: str, handler):
+    import httpx
+
+    mod = __import__(module_path, fromlist=["_http"])
+    mod._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr(f"{module_path}.httpx.AsyncClient", Patched)
+
+
+@pytest.mark.asyncio
+async def test_moderations_idempotency_replays_without_second_upstream(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+    from daari.config.settings import FrontierProviderConfig
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    seen: list[httpx.Request] = []
+    payload = {
+        "id": "modr-idem",
+        "model": "omni-moderation-latest",
+        "results": [{"flagged": False, "categories": {}, "category_scores": {}}],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=payload)
+
+    _patch_httpx(monkeypatch, "daari.gateway.moderations", handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    body = {"input": "hello", "model": "omni-moderation-latest"}
+    headers = {"Idempotency-Key": "mod-key-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/moderations", json=body, headers=headers)
+        second = await client.post("/v1/moderations", json=body, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_speech_idempotency_replays_binary_without_second_upstream(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    audio = b"ID3fake-mp3-bytes"
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=audio, headers={"content-type": "audio/mpeg"})
+
+    _patch_httpx(monkeypatch, "daari.gateway.speech", handler)
+    settings.tts.base_url = "http://tts.local/v1/"
+    settings.tts.model = "tts-1"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    body = {
+        "model": "tts-1",
+        "input": "Hello from daari",
+        "voice": "alloy",
+        "response_format": "mp3",
+    }
+    headers = {"Idempotency-Key": "tts-key-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/audio/speech", json=body, headers=headers)
+        second = await client.post("/v1/audio/speech", json=body, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.content == audio
+    assert second.content == audio
+    assert first.content == second.content
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_transcriptions_idempotency_honors_multipart_digest(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    audio = b"RIFF-audio-bytes"
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"text": "hello from asr"})
+
+    _patch_httpx(monkeypatch, "daari.gateway.transcriptions", handler)
+    settings.asr.base_url = "http://asr.local/v1/"
+    settings.asr.model = "whisper-1"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    headers = {"Idempotency-Key": "asr-key-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1", "response_format": "json"},
+            headers=headers,
+        )
+        second = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", audio, "audio/wav")},
+            data={"model": "whisper-1", "response_format": "json"},
+            headers=headers,
+        )
+        conflict = await client.post(
+            "/v1/audio/transcriptions",
+            files={"file": ("note.wav", audio + b"-other", "audio/wav")},
+            data={"model": "whisper-1", "response_format": "json"},
+            headers=headers,
+        )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert len(seen) == 1
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["type"] == CONFLICT_TYPE
+
+
+def test_multipart_body_hash_stable():
+    from daari.gateway.idempotency import multipart_body_hash
+
+    a = multipart_body_hash(
+        fields={"model": "whisper-1", "language": "en"},
+        file_bytes=b"RIFF",
+        filename="a.wav",
+    )
+    b = multipart_body_hash(
+        fields={"language": "en", "model": "whisper-1"},
+        file_bytes=b"RIFF",
+        filename="a.wav",
+    )
+    c = multipart_body_hash(
+        fields={"model": "whisper-1", "language": "en"},
+        file_bytes=b"RIFF-diff",
+        filename="a.wav",
+    )
+    assert a == b
+    assert a != c

@@ -1,8 +1,9 @@
-"""Idempotency-Key helpers for chat completions and Responses (#714)."""
+"""Idempotency-Key helpers for chat, Responses, and modality routes (#714, #1065)."""
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import time
@@ -19,6 +20,7 @@ from daari.gateway.idempotency_store import IdempotencyStore
 DEFAULT_TTL_SECONDS = 86400
 DEFAULT_WAIT_SECONDS = 60.0
 CONFLICT_TYPE = "idempotency_conflict"
+_B64_MARKER = "__daari_b64__:"
 
 # In-process waiters for concurrent duplicates (same process).
 _WAITERS: dict[tuple[str, str], asyncio.Event] = {}
@@ -44,6 +46,27 @@ def request_body_hash(payload: Any) -> str:
         data = json.loads(json.dumps(payload, default=str))
     canonical = json.dumps(data, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def multipart_body_hash(
+    *,
+    fields: dict[str, str],
+    file_bytes: bytes,
+    filename: str | None = None,
+) -> str:
+    """Stable digest for multipart ASR uploads (form fields + file sha256)."""
+    file_digest = hashlib.sha256(file_bytes).hexdigest()
+    return request_body_hash(
+        {
+            "fields": {str(k): str(v) for k, v in sorted(fields.items())},
+            "file_sha256": file_digest,
+            "filename": filename or "",
+        }
+    )
+
+
+def encode_binary_body(data: bytes) -> str:
+    return _B64_MARKER + base64.b64encode(data).decode("ascii")
 
 
 def extract_idempotency_key(headers: Any) -> str | None:
@@ -103,6 +126,9 @@ def replay_response(record: dict[str, Any]) -> Response:
                 yield "data: [DONE]\n\n"
 
         return StreamingResponse(_chunks(), media_type=media_type, status_code=status)
+    if isinstance(body, str) and body.startswith(_B64_MARKER):
+        raw = base64.b64decode(body[len(_B64_MARKER) :])
+        return Response(content=raw, media_type=media_type, status_code=status)
     if isinstance(body, str):
         try:
             content = json.loads(body)
@@ -111,6 +137,45 @@ def replay_response(record: dict[str, Any]) -> Response:
     else:
         content = body
     return JSONResponse(content, status_code=status, media_type=media_type)
+
+
+def complete_json_slot(
+    slot: IdempotencySlot | None,
+    *,
+    status_code: int,
+    payload: Any,
+    media_type: str = "application/json",
+) -> None:
+    if slot is None:
+        return
+    slot.complete(
+        status_code=status_code,
+        response_body=json.dumps(payload, separators=(",", ":"), default=str),
+        media_type=media_type,
+        stream=False,
+    )
+
+
+def complete_binary_slot(
+    slot: IdempotencySlot | None,
+    *,
+    status_code: int,
+    data: bytes,
+    media_type: str,
+) -> None:
+    if slot is None:
+        return
+    slot.complete(
+        status_code=status_code,
+        response_body=encode_binary_body(data),
+        media_type=media_type,
+        stream=False,
+    )
+
+
+def abandon_slot(slot: IdempotencySlot | None) -> None:
+    if slot is not None:
+        slot.abandon()
 
 
 @dataclass

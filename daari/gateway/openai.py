@@ -1108,6 +1108,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/audio/speech", response_model=None)
         async def audio_speech(request: Request) -> Any:
             """OpenAI-compatible local TTS proxy (#847)."""
+            from daari.gateway.idempotency import (
+                abandon_slot,
+                resolve_idempotency,
+            )
             from daari.gateway.speech import handle_speech
 
             try:
@@ -1132,13 +1136,24 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         }
                     },
                 )
-            return await handle_speech(
-                request,
-                model=str(body.get("model") or ""),
-                input_text=str(body.get("input") or ""),
-                voice=(str(body["voice"]) if body.get("voice") is not None else None),
-                response_format=str(body.get("response_format") or "mp3"),
+            ctx: AppContext = request.app.state.ctx
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(
+                request, ctx, body
             )
+            if idem_kind in {"replay", "conflict"} and idem_response is not None:
+                return idem_response
+            try:
+                return await handle_speech(
+                    request,
+                    model=str(body.get("model") or ""),
+                    input_text=str(body.get("input") or ""),
+                    voice=(str(body["voice"]) if body.get("voice") is not None else None),
+                    response_format=str(body.get("response_format") or "mp3"),
+                    idem_slot=idem_slot,
+                )
+            except Exception:
+                abandon_slot(idem_slot)
+                raise
 
         @router.post("/v1/rerank", response_model=None)
         async def rerank(body: dict[str, Any], request: Request) -> Any:
@@ -1192,6 +1207,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 getattr(ctx.settings.upstream, "request_deadline_seconds", None),
             )
 
+            from daari.gateway.idempotency import (
+                abandon_slot,
+                complete_json_slot,
+                resolve_idempotency,
+            )
+
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(
+                request, ctx, body
+            )
+            if idem_kind in {"replay", "conflict"} and idem_response is not None:
+                return idem_response
+
             async def _run() -> Any:
                 if deadline_active():
                     guard_upstream("embed")
@@ -1204,6 +1231,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         model=model,
                     )
                 except ClientDisconnected:
+                    abandon_slot(idem_slot)
                     return JSONResponse(
                         status_code=499,
                         content={
@@ -1235,6 +1263,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 request_id = str(getattr(request.state, "request_id", None) or "")
                 if request_id:
                     headers = {**headers, "X-Request-ID": request_id}
+                complete_json_slot(idem_slot, status_code=200, payload=payload)
                 return JSONResponse(payload, headers=headers)
 
             try:
@@ -1243,7 +1272,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         return await _run()
                 return await _run()
             except RequestDeadlineExceeded as exc:
+                abandon_slot(idem_slot)
                 return request_deadline_response(exc)
+            except Exception:
+                abandon_slot(idem_slot)
+                raise
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
