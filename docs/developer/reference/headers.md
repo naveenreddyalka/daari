@@ -16,7 +16,7 @@
 | `X-Daari-Tools` | Tool-related client hints |
 | `X-Daari-Confirm*` / `X-Daari-ReRun-Command` | Lt ask-gate confirmation |
 | `X-Request-ID` | Correlation id: sanitized inbound value or a generated 16-char hex id. Echoed on every gateway response (chat, Anthropic Messages, Responses, Ollama facade, embeddings, audio) and forwarded on upstream hops (Ollama, OpenAI-compat, MLX, frontier, ASR, TTS, embeddings, MCP egress) as `X-Request-ID`. |
-| `Idempotency-Key` | Replay-safe retries for `POST /v1/chat/completions`, `POST /v1/responses` (stream and non-stream), `POST /v1/embeddings`, `POST /v1/audio/speech`, `POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `POST /v1/moderations`, and `POST /v1/rerank`. Scoped to the authenticated principal (virtual key id, or master/anonymous). Same key + same body hash within `idempotency.ttl_seconds` (default 24h) returns the original status/body without calling upstream again (binary TTS replays the audio bytes). Multipart ASR/translations hash stable form fields plus the file sha256. Same key + different body returns **409** `idempotency_conflict`. In-flight duplicates wait for the first request (bounded by `idempotency.wait_seconds`). Missing header is a no-op. |
+| `Idempotency-Key` | Replay-safe retries for `POST /v1/chat/completions`, `POST /v1/responses` (stream and non-stream), `POST /v1/embeddings`, `POST /v1/audio/speech`, `POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `POST /v1/moderations`, `POST /v1/rerank`, and `POST /v1/images/generations`. Scoped to the authenticated principal (virtual key id, or master/anonymous). Same key + same body hash within `idempotency.ttl_seconds` (default 24h) returns the original status/body without calling upstream again (binary TTS replays the audio bytes). Multipart ASR/translations hash stable form fields plus the file sha256. Same key + different body returns **409** `idempotency_conflict`. In-flight duplicates wait for the first request (bounded by `idempotency.wait_seconds`). Missing header is a no-op. |
 
 Explicit headers win over project profiles and most config defaults.
 
@@ -81,11 +81,12 @@ Rules:
 ## Idempotency-Key
 
 Safe client retries for chat completions, Responses, embeddings, audio
-(speech / transcriptions / translations), moderations, and rerank. Scope is the
-authenticated principal plus the header value; records expire after
-`idempotency.ttl_seconds` (default 86400) and are deleted by `daari prune`.
-TTS (`/v1/audio/speech`) replays the original binary audio body. Multipart ASR
-uploads are hashed from stable form fields plus the uploaded file's sha256.
+(speech / transcriptions / translations), moderations, rerank, and images
+generations. Scope is the authenticated principal plus the header value;
+records expire after `idempotency.ttl_seconds` (default 86400) and are deleted
+by `daari prune`. TTS (`/v1/audio/speech`) replays the original binary audio
+body. Multipart ASR uploads are hashed from stable form fields plus the
+uploaded file's sha256.
 
 ```bash
 curl -sS http://127.0.0.1:8000/v1/chat/completions \

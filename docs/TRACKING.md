@@ -4595,6 +4595,14 @@ and `POST /v1/rerank`: OpenAPI path registration, auth middleware on
 → 501 `not_implemented`. Covered by
 `tests/integration/test_moderations_rerank.py`.
 
+### Idempotency-Key on images/generations ([#1082](https://github.com/naveenreddyalka/daari/issues/1082))
+
+<!-- tracking:#1082 -->
+**Status:** Done (2026-09-25). `Idempotency-Key` replays
+`POST /v1/images/generations` without a second upstream call; same key +
+different body → 409 `idempotency_conflict`. Docs: headers.md, config.md.
+Covered by `tests/unit/test_idempotency.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

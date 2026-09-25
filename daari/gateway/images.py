@@ -176,6 +176,11 @@ def _record_request(
 async def handle_images_generations(
     request: Request, body: ImagesGenerationsRequest
 ) -> Any:
+    from daari.gateway.idempotency import (
+        abandon_slot,
+        complete_json_slot,
+        resolve_idempotency,
+    )
     from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
 
     blocked = reject_frontier_passthrough(request)
@@ -188,6 +193,11 @@ async def handle_images_generations(
 
     ctx = request.app.state.ctx
     settings = ctx.settings
+
+    idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
+    if idem_kind in {"replay", "conflict"} and idem_response is not None:
+        return idem_response
+
     pin = region_pin_from_request(request)
     try:
         targets = resolve_l6_targets(
@@ -195,14 +205,17 @@ async def handle_images_generations(
         )
     except RegionUnavailable as exc:
         log_gateway_event("images_region_unavailable", {"pin": exc.pin})
+        abandon_slot(idem_slot)
         return _error(400, "region_unavailable", str(exc))
     if not targets:
         log_gateway_event("images_unavailable", {"reason": "frontier_disabled_or_no_key"})
+        abandon_slot(idem_slot)
         return _error(501, "not_implemented", _UNAVAILABLE)
 
     model = (body.model or "").strip() or targets[0].default_model
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
+        abandon_slot(idem_slot)
         return denied
 
     n = int(body.n or 1)
@@ -274,10 +287,12 @@ async def handle_images_generations(
                 detail = upstream.json()
             except Exception:
                 detail = {"error": {"type": "upstream_error", "message": upstream.text[:200]}}
+            abandon_slot(idem_slot)
             return JSONResponse(status_code=upstream.status_code, content=detail)
         try:
             data = upstream.json()
         except Exception:
+            abandon_slot(idem_slot)
             return _error(502, "bad_gateway", "Images upstream returned non-JSON.")
         log_gateway_event("images_ok", {"model": model, "n": n, "slot": target.slot_id})
         caller = _caller_client_id(request)
@@ -296,6 +311,7 @@ async def handle_images_generations(
             session_id=session_id_from_request(request),
             savings=getattr(getattr(ctx, "router", None), "session_savings", None),
         )
+        complete_json_slot(idem_slot, status_code=200, payload=data)
         return JSONResponse(data, headers=cost_headers)
 
     if last_upstream is not None:
@@ -312,10 +328,12 @@ async def handle_images_generations(
                     "message": (last_upstream.text or "")[:200],
                 }
             }
+        abandon_slot(idem_slot)
         return JSONResponse(status_code=last_upstream.status_code, content=detail)
     if last_exc is not None:
         log_gateway_event(
             "images_upstream_error",
             {"error": summarize_upstream_failure(last_exc)},
         )
+    abandon_slot(idem_slot)
     return _error(503, "upstream_error", "Images upstream request failed.")

@@ -573,3 +573,125 @@ def test_multipart_body_hash_stable():
     )
     assert a == b
     assert a != c
+
+
+@pytest.mark.asyncio
+async def test_images_idempotency_replays_without_second_upstream(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+    from daari.config.settings import FrontierProviderConfig
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    seen: list[httpx.Request] = []
+    payload = {
+        "created": 1,
+        "data": [{"url": "https://example.com/img.png"}],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=payload)
+
+    _patch_httpx(monkeypatch, "daari.gateway.images", handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    body = {"prompt": "a red cube", "model": "dall-e-3", "n": 1}
+    headers = {"Idempotency-Key": "img-key-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/images/generations", json=body, headers=headers)
+        second = await client.post("/v1/images/generations", json=body, headers=headers)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_images_idempotency_conflict_on_body_mismatch(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+    from daari.config.settings import FrontierProviderConfig
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"created": 1, "data": [{"url": "https://example.com/a.png"}]},
+        )
+
+    _patch_httpx(monkeypatch, "daari.gateway.images", handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    headers = {"Idempotency-Key": "img-conflict"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/images/generations",
+            json={"prompt": "one", "model": "dall-e-3"},
+            headers=headers,
+        )
+        second = await client.post(
+            "/v1/images/generations",
+            json={"prompt": "two", "model": "dall-e-3"},
+            headers=headers,
+        )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 409
+    assert second.json()["error"]["type"] == CONFLICT_TYPE
+
+
+@pytest.mark.asyncio
+async def test_images_missing_idempotency_key_is_noop(settings, monkeypatch, tmp_path):
+    import httpx
+    from daari.config.settings import FrontierProviderConfig
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={"created": 1, "data": [{"url": "https://example.com/b.png"}]},
+        )
+
+    _patch_httpx(monkeypatch, "daari.gateway.images", handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    body = {"prompt": "noop", "model": "dall-e-3"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/v1/images/generations", json=body)
+        await client.post("/v1/images/generations", json=body)
+    assert len(seen) == 2
