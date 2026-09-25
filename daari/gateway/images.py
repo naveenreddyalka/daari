@@ -218,6 +218,30 @@ async def handle_images_generations(
         abandon_slot(idem_slot)
         return denied
 
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
+
+    policy = apply_endpoint_input_policy(
+        prompt, router_guardrails(ctx), metrics=getattr(ctx, "metrics", None)
+    )
+    if policy.blocked:
+        abandon_slot(idem_slot)
+        return endpoint_guardrail_blocked_response(policy.block_message)
+    if policy.text != prompt:
+        prompt = policy.text
+        body = ImagesGenerationsRequest(
+            prompt=prompt,
+            model=body.model,
+            n=body.n,
+            size=body.size,
+            quality=body.quality,
+            response_format=body.response_format,
+            user=body.user,
+        )
+
     n = int(body.n or 1)
     payload: dict[str, Any] = {"prompt": prompt, "model": model, "n": n}
     if body.size:
