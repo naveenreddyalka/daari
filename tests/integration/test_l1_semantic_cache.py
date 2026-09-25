@@ -236,6 +236,60 @@ async def test_l1_misses_when_audio_clip_differs(tmp_path):
     assert metrics.tiers["L1"].cache_hits == 1
 
 
+@pytest.mark.asyncio
+async def test_l0_misses_when_audio_clip_differs(tmp_path):
+    """#1053: same caption + different audio clip must not share an Exact L0 hit."""
+    caption = "what did I say?"
+    clip_a = _voice_request(caption, "clip-a")
+    clip_b = _voice_request(caption, "clip-b")
+
+    cache = ExactCache(str(tmp_path / "l0"), enabled=True)
+    semantic = SemanticCache(
+        str(tmp_path / "l1"),
+        OrthogonalEmbedder(),
+        enabled=False,
+        similarity_threshold=0.92,
+    )
+    metrics = Metrics()
+    call_count = 0
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        nonlocal call_count
+        call_count += 1
+        return InternalResponse(
+            content=f"transcript-{call_count}",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+    ollama.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(cache=cache, semantic_cache=semantic, ollama=ollama, metrics=metrics)
+
+    first = await router.route(clip_a)
+    assert first.daari_meta.cache_hit is False
+    assert first.content == "transcript-1"
+    after_first = call_count
+
+    miss = await router.route(clip_b)
+    assert miss.daari_meta.cache_hit is False
+    assert miss.daari_meta.tier != "L0"
+    assert call_count == after_first + 1
+    assert miss.content == "transcript-2"
+
+    hit = await router.route(clip_a)
+    assert hit.daari_meta.tier == "L0"
+    assert hit.daari_meta.cache_hit is True
+    assert hit.content == "transcript-1"
+    assert call_count == after_first + 1
+    assert metrics.tiers["L0"].cache_hits == 1
+
+
 def _vision_request(caption: str, image_data: str) -> InternalRequest:
     return InternalRequest(
         messages=[
