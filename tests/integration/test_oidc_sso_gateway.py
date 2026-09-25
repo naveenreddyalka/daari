@@ -191,3 +191,62 @@ async def test_sso_rbac_role_matrix_for_admin_surfaces(settings, monkeypatch, tm
             assert (await _get(path, admin_tok)).status_code == 200, path
         for method, path in mutate_paths:
             assert (await _mutate(method, path, admin_tok)).status_code == 200, path
+
+
+@pytest.mark.asyncio
+async def test_sso_bearer_rejected_on_inference_routes(settings, monkeypatch, tmp_path):
+    """Raw SSO tokens are control-plane only; inference needs a minted VK (#1103)."""
+    from daari.enterprise.audit import AuditLog
+    from daari.router.router import AppContext
+    from daari.server.app import create_app
+
+    private, jwks = _rsa_pair()
+    issuer = "https://idp.test"
+    settings.observability.config_editor = True
+    settings.server.api_key = "master"
+    settings.enterprise.sso.enabled = True
+    settings.enterprise.sso.issuer = issuer
+    settings.enterprise.sso.audience = "daari-admin"
+    settings.enterprise.sso.jwks_url = "https://idp.test/jwks"
+    settings.server.virtual_keys.enabled = True
+    settings.server.virtual_keys.path = str(tmp_path / "keys.sqlite3")
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+
+    import daari.enterprise.sso as sso_mod
+
+    real_verify = sso_mod.verify_access_token
+
+    def patched_verify(token, sso, **kwargs):
+        kwargs.setdefault("jwks", jwks)
+        return real_verify(token, sso, **kwargs)
+
+    monkeypatch.setattr(sso_mod, "verify_access_token", patched_verify)
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    token = _token(private, issuer=issuer, role="admin", sub="carol")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        denied = await client.post(
+            "/v1/chat/completions",
+            json={"model": "llama3.2:3b", "messages": [{"role": "user", "content": "hi"}]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert denied.status_code == 401
+        err = denied.json()["error"]
+        assert err["code"] == "sso_key_required"
+        assert "/v1/daari/sso/session" in err["message"]
+
+        # Control-plane still accepts the same bearer.
+        ok = await client.get(
+            "/v1/daari/config",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert ok.status_code == 200
+
+    rows = AuditLog(tmp_path / "audit.sqlite3").list()
+    hit = [row for row in rows if row["action"] == "auth.sso_key_required"]
+    assert hit
+    assert hit[0]["detail"]["path"] == "/v1/chat/completions"
+    assert hit[0]["actor"] == "carol"
