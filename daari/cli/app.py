@@ -1600,7 +1600,12 @@ def spend_export(
     import io
 
     from daari.enterprise.audit import parse_since
-    from daari.observability.spend import EXPORT_FIELDS, export_dict, spend_ledger_from_settings
+    from daari.observability.spend import (
+        EXPORT_FIELDS,
+        annotate_model_group,
+        export_dict,
+        spend_ledger_from_settings,
+    )
 
     fmt = (output_format or "csv").strip().lower()
     if fmt not in {"csv", "jsonl"}:
@@ -1617,7 +1622,11 @@ def spend_export(
         typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
         raise typer.Exit(code=1)
     tier_filter = (tier or "").strip() or None
-    rows = ledger.iter_rows(since=cutoff, key_id=key, team_id=team, tier=tier_filter)
+    catalog = getattr(settings, "model_groups", None) or {}
+    rows = (
+        annotate_model_group(row, catalog)
+        for row in ledger.iter_rows(since=cutoff, key_id=key, team_id=team, tier=tier_filter)
+    )
     if fmt == "jsonl":
         for row in rows:
             typer.echo(json.dumps(export_dict(row), separators=(",", ":"), sort_keys=True))

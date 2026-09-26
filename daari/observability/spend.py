@@ -44,6 +44,7 @@ EXPORT_FIELDS = (
     "team_id",
     "client_id",
     "model",
+    "model_group",
     "tier",
     "input_tokens",
     "output_tokens",
@@ -194,6 +195,7 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "team_id": row["team_id"],
         "client_id": row["client_id"],
         "model": row["model"],
+        "model_group": row.get("model_group") or "",
         "tier": row["tier"],
         "input_tokens": int(row["input_tokens"]),
         "output_tokens": int(row["output_tokens"]),
@@ -203,6 +205,21 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "cost_avoided_usd": float(row["cost_avoided_usd"]),
         "cache_hit": bool(row["cache_hit"]),
     }
+
+
+def annotate_model_group(
+    row: dict[str, Any],
+    catalog: dict[str, list[str]] | None,
+) -> dict[str, Any]:
+    """Attach primary matching model_group name for chargeback export (#1109)."""
+    if row.get("model_group"):
+        return row
+    from daari.auth.model_access import groups_for_model
+
+    groups = groups_for_model(str(row.get("model") or ""), catalog)
+    out = dict(row)
+    out["model_group"] = groups[0] if groups else ""
+    return out
 
 
 def _where(

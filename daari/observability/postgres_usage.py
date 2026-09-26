@@ -448,6 +448,73 @@ class PostgresUsageLedger:
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * rate
 
+    def frontier_spend_usd_for_model_patterns(
+        self,
+        patterns: list[str] | tuple[str, ...],
+        *,
+        window: str = "day",
+        days: int | None = None,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        price_per_1k_tokens: float | None = None,
+        day: str | None = None,
+        month: str | None = None,
+    ) -> float:
+        """Org-wide L6 spend for models matching any pattern (#1109)."""
+        import fnmatch
+
+        from daari.pricing import cost_usd
+
+        exprs = [str(p).strip() for p in patterns if str(p).strip()]
+        if not self.enabled or not exprs:
+            return 0.0
+        rate = fallback_per_1k if price_per_1k_tokens is None else price_per_1k_tokens
+        if window in {"lifetime", "total", "all"}:
+            where, params = "1 = 1", ()
+        elif window == "month":
+            where, params = "day LIKE %s", ((month or _today()[:7]) + "-%",)
+        elif window == "days":
+            n = int(days or 1)
+            if n <= 0:
+                return 0.0
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, n - 1))).strftime(
+                "%Y-%m-%d"
+            )
+            where, params = "day >= %s", (cutoff,)
+        elif window == "day":
+            where, params = "day = %s", (day or _today(),)
+        else:
+            raise ValueError(
+                f"window must be 'day', 'month', 'days', or 'lifetime', got {window!r}"
+            )
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT model, COALESCE(SUM(input_tokens), 0),"
+                        " COALESCE(SUM(output_tokens), 0)"
+                        " FROM usage WHERE "
+                        + where
+                        + " AND tier = %s GROUP BY model",
+                        (*params, FRONTIER_TIER),
+                    )
+                    rows = cur.fetchall()
+        except Exception:
+            return 0.0
+        total = 0.0
+        for model, input_tokens, output_tokens in rows:
+            name = model or ""
+            if not any(fnmatch.fnmatchcase(name, expr) for expr in exprs):
+                continue
+            total += cost_usd(
+                name or None,
+                input_tokens,
+                output_tokens,
+                pricing,
+                fallback_per_1k=rate,
+            )
+        return total
+
     def request_count_for_client(
         self,
         client_id: str,

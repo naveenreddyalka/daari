@@ -9,7 +9,7 @@ from typing import Any, Iterable, Literal
 
 from daari.auth.virtual_keys import BudgetWindow, Team, VirtualKey
 
-Scope = Literal["key", "team", "user"]
+Scope = Literal["key", "team", "user", "model_group"]
 
 _DAY_ALIASES = {"day", "daily", "24h"}
 _MONTH_ALIASES = {"month", "monthly", "30d"}
@@ -380,6 +380,7 @@ def budget_error(
     quota: Literal["usd", "requests"] = "usd",
     spend_requests: int | None = None,
     limit_requests: int | None = None,
+    model_group: str | None = None,
 ) -> dict[str, Any]:
     label = window_label(window.duration)
     reset = reset_at(window.duration)
@@ -434,6 +435,8 @@ def budget_error(
         }
     if user_id is not None:
         payload["user_id"] = user_id
+    if model_group is not None:
+        payload["model_group"] = model_group
     return payload
 
 
@@ -838,6 +841,7 @@ class WindowStatus:
     quota: Literal["usd", "requests"] = "usd"
     boost_usd: float = 0.0
     boost_requests: int = 0
+    model_group: str | None = None
 
     @property
     def limit(self) -> float:
@@ -1131,4 +1135,280 @@ def collect_team_budget_gauges(
                     "remaining_hours": round(hours, 4),
                 }
             )
+    return rows
+
+
+def parse_model_group_budgets(
+    raw: Any,
+) -> dict[str, tuple[BudgetWindow, ...]]:
+    """Parse ``{group: [BudgetWindow|dict, ...]}`` from metadata or create kwargs (#1109)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, tuple[BudgetWindow, ...]] = {}
+    for name, windows in raw.items():
+        group = str(name).strip()
+        if not group:
+            continue
+        parsed: list[BudgetWindow] = []
+        if not isinstance(windows, (list, tuple)):
+            continue
+        for item in windows:
+            if isinstance(item, BudgetWindow):
+                if float(item.max_usd or 0) > 0:
+                    parsed.append(
+                        BudgetWindow(
+                            normalize_duration(item.duration),
+                            float(item.max_usd),
+                            rollover=bool(item.rollover),
+                            rollover_cap_multiple=float(item.rollover_cap_multiple or 2.0),
+                        )
+                    )
+                continue
+            if not isinstance(item, dict):
+                continue
+            max_usd = float(item.get("max_usd") or 0.0)
+            if max_usd <= 0:
+                continue
+            duration = normalize_duration(str(item.get("duration") or "day"))
+            parsed.append(
+                BudgetWindow(
+                    duration,
+                    max_usd,
+                    rollover=bool(item.get("rollover")),
+                    rollover_cap_multiple=float(item.get("rollover_cap_multiple") or 2.0),
+                )
+            )
+        if parsed:
+            out[group] = coalesce_windows(parsed)
+    return out
+
+
+def encode_model_group_budgets(
+    budgets: dict[str, tuple[BudgetWindow, ...] | list[BudgetWindow]],
+) -> dict[str, list[dict[str, Any]]]:
+    return {
+        name: [w.as_dict() for w in windows]
+        for name, windows in budgets.items()
+        if windows
+    }
+
+
+def model_group_budgets_of(entity: VirtualKey | Team | None) -> dict[str, tuple[BudgetWindow, ...]]:
+    if entity is None:
+        return {}
+    direct = getattr(entity, "model_group_budgets", None)
+    if isinstance(direct, dict) and direct:
+        return parse_model_group_budgets(direct)
+    meta = getattr(entity, "metadata", None) or {}
+    if isinstance(meta, dict):
+        return parse_model_group_budgets(meta.get("model_group_budgets"))
+    return {}
+
+
+def merge_model_group_budgets(
+    key: VirtualKey,
+    team: Team | None,
+) -> list[tuple[str, BudgetWindow, Scope]]:
+    """Tighter USD window wins per (group, duration); team ingested before key (#1109)."""
+    merged: dict[tuple[str, str], tuple[BudgetWindow, Scope]] = {}
+
+    def _ingest(budgets: dict[str, tuple[BudgetWindow, ...]], scope: Scope) -> None:
+        for group, windows in budgets.items():
+            for window in windows:
+                duration = normalize_duration(window.duration)
+                amount = float(window.max_usd or 0)
+                if amount <= 0:
+                    continue
+                slot = (group, duration)
+                existing = merged.get(slot)
+                if existing is None or amount < float(existing[0].max_usd):
+                    merged[slot] = (_clone_window(window, duration), scope)
+
+    _ingest(model_group_budgets_of(team), "model_group")
+    _ingest(model_group_budgets_of(key), "model_group")
+    return [(group, window, scope) for (group, _), (window, scope) in sorted(merged.items())]
+
+
+def _group_patterns(
+    group_name: str,
+    catalog: dict[str, list[str]] | None,
+) -> list[str]:
+    members = (catalog or {}).get(group_name) or []
+    if isinstance(members, str):
+        members = [members]
+    return [str(item).strip() for item in members if str(item).strip()]
+
+
+def spend_for_model_group_window(
+    ledger: Any,
+    group_name: str,
+    catalog: dict[str, list[str]] | None,
+    duration: str,
+    *,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> float:
+    """Org-wide L6 spend for models matching a named group (#1109)."""
+    patterns = _group_patterns(group_name, catalog)
+    if not patterns or not hasattr(ledger, "frontier_spend_usd_for_model_patterns"):
+        return 0.0
+    kind, days = ledger_window(duration)
+    if kind == "lifetime":
+        return float(
+            ledger.frontier_spend_usd_for_model_patterns(
+                patterns,
+                window="lifetime",
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            or 0.0
+        )
+    if kind == "days":
+        return float(
+            ledger.frontier_spend_usd_for_model_patterns(
+                patterns,
+                window="days",
+                days=days or 1,
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            or 0.0
+        )
+    return float(
+        ledger.frontier_spend_usd_for_model_patterns(
+            patterns,
+            window="month" if kind == "month" else "day",
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
+        or 0.0
+    )
+
+
+def model_group_budget_status(
+    model: str,
+    key: VirtualKey,
+    team: Team | None,
+    ledger: Any,
+    *,
+    catalog: dict[str, list[str]] | None,
+    client_id: str,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+    now: datetime | None = None,
+) -> list[WindowStatus]:
+    """Statuses for groups that both match ``model`` and have an attached budget (#1109)."""
+    from daari.auth.model_access import groups_for_model
+
+    attached = merge_model_group_budgets(key, team)
+    if not attached:
+        return []
+    matched = set(groups_for_model(model, catalog))
+    statuses: list[WindowStatus] = []
+    for group_name, window, scope in attached:
+        if group_name not in matched:
+            continue
+        spend = spend_for_model_group_window(
+            ledger,
+            group_name,
+            catalog,
+            window.duration,
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
+        statuses.append(
+            WindowStatus(
+                window=window,
+                scope=scope,
+                spend=spend,
+                now=now,
+                quota="usd",
+                model_group=group_name,
+            )
+        )
+    return statuses
+
+
+def model_group_spend_report_rows(
+    store: Any,
+    ledger: Any,
+    *,
+    catalog: dict[str, list[str]] | None,
+    soft_ratio: float,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> list[dict[str, Any]]:
+    """Per-model_group USD totals for report / FinOps (#1109)."""
+    rows: list[dict[str, Any]] = []
+    if store is None or not getattr(ledger, "enabled", False):
+        return rows
+    # Prefer the tightest attached budget per group for report caps.
+    best: dict[str, BudgetWindow] = {}
+    try:
+        keys = store.list()
+    except Exception:
+        return rows
+    for key in keys:
+        try:
+            team = store.get_team(key.team_id) if key.team_id else None
+            attached = merge_model_group_budgets(key, team)
+        except Exception:
+            continue
+        for group_name, window, _scope in attached:
+            existing = best.get(group_name)
+            if existing is None or float(window.max_usd) < float(existing.max_usd):
+                best[group_name] = window
+    seen: set[str] = set()
+    for group_name, window in best.items():
+        seen.add(group_name)
+        spend = spend_for_model_group_window(
+            ledger,
+            group_name,
+            catalog,
+            window.duration,
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
+        status = WindowStatus(
+            window=window,
+            scope="model_group",
+            spend=spend,
+            quota="usd",
+            model_group=group_name,
+        )
+        rows.append(
+            {
+                "model_group": group_name,
+                "window": window_header_label(window.duration),
+                "spend_usd": round(float(spend), 6),
+                "budget_usd": round(float(status.limit), 6),
+                "remaining_usd": round(float(status.remaining), 6),
+                "soft": status.in_soft_band(soft_ratio),
+                "exceeded": status.exceeded,
+            }
+        )
+    for group_name in catalog or {}:
+        if group_name in seen:
+            continue
+        spend = spend_for_model_group_window(
+            ledger,
+            group_name,
+            catalog,
+            "day",
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
+        if spend <= 0:
+            continue
+        rows.append(
+            {
+                "model_group": group_name,
+                "window": "1d",
+                "spend_usd": round(float(spend), 6),
+                "budget_usd": 0.0,
+                "remaining_usd": 0.0,
+                "soft": False,
+                "exceeded": False,
+            }
+        )
     return rows

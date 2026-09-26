@@ -596,6 +596,66 @@ class UsageLedger:
             table="client_usage",
         )
 
+    def frontier_spend_usd_for_model_patterns(
+        self,
+        patterns: list[str] | tuple[str, ...],
+        *,
+        window: str = "day",
+        days: int | None = None,
+        pricing: Any = None,
+        fallback_per_1k: float = 0.002,
+        day: str | None = None,
+        month: str | None = None,
+    ) -> float:
+        """Org-wide L6 spend for models matching any ``fnmatch`` pattern (#1109)."""
+        import fnmatch
+
+        exprs = [str(p).strip() for p in patterns if str(p).strip()]
+        if not self.enabled or not exprs:
+            return 0.0
+        if window in {"lifetime", "total", "all"}:
+            where, params = "1 = 1", ()
+        elif window == "month":
+            where, params = "day LIKE ?", ((month or _today()[:7]) + "-%",)
+        elif window == "days":
+            n = int(days or 1)
+            if n <= 0:
+                return 0.0
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, n - 1))).strftime(
+                "%Y-%m-%d"
+            )
+            where, params = "day >= ?", (cutoff,)
+        elif window == "day":
+            where, params = "day = ?", (day or _today(),)
+        else:
+            raise ValueError(
+                f"window must be 'day', 'month', 'days', or 'lifetime', got {window!r}"
+            )
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
+                    " FROM usage WHERE "
+                    + where
+                    + " AND tier = ? GROUP BY model",
+                    (*params, FRONTIER_TIER),
+                ).fetchall()
+        except Exception:
+            return 0.0
+        total = 0.0
+        for model, input_tokens, output_tokens in rows:
+            name = model or ""
+            if not any(fnmatch.fnmatchcase(name, expr) for expr in exprs):
+                continue
+            total += cost_usd(
+                name or None,
+                input_tokens,
+                output_tokens,
+                pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+        return total
+
     def request_count_for_client(
         self,
         client_id: str,

@@ -529,6 +529,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             request.state.request_quota_soft = True
             request.state.auth_claims = claims
             response = await call_next(request)
+            extra_budget_headers = getattr(request.state, "budget_response_headers", None)
+            if extra_budget_headers:
+                budget_response_headers.update(extra_budget_headers)
             if budget_response_headers and 200 <= response.status_code < 300:
                 for header, value in budget_response_headers.items():
                     response.headers.setdefault(header, value)
