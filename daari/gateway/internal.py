@@ -200,3 +200,6 @@ class InternalResponse(BaseModel):
     daari_meta: DaariMeta
     finish_reason: str = "stop"
     tool_calls: list[Any] | None = None
+    # Responses `reasoning` item text when the backend produced chain-of-thought (#1133).
+    reasoning_content: str | None = None
+    reasoning_encrypted: str | None = None

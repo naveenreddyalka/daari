@@ -20,7 +20,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from daari.config.project import apply_profile_to_meta, load_project_profile
-from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
+from daari.gateway.client_errors import (
+    backend_unavailable_message,
+    request_deadline_response,
+    routing_failure_detail,
+    safe_detail,
+)
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import extract_audio, extract_images
@@ -41,6 +46,42 @@ from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
 _BACKGROUND_JOBS: dict[str, asyncio.Task[None]] = {}
+# Clients feature-detect via the 400 detail allowlist (#1133).
+_SUPPORTED_INCLUDES: frozenset[str] = frozenset({"reasoning.encrypted_content"})
+
+
+def _reasoning_summary_text(item: dict[str, Any]) -> str:
+    summary = item.get("summary")
+    if isinstance(summary, list):
+        parts: list[str] = []
+        for part in summary:
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                parts.append(part["text"])
+        if parts:
+            return "".join(parts)
+    content = item.get("content")
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, dict) and isinstance(part.get("text"), str):
+                parts.append(part["text"])
+        if parts:
+            return "".join(parts)
+    if isinstance(item.get("text"), str):
+        return item["text"]
+    return ""
+
+
+def _reasoning_block_from_item(item: dict[str, Any]) -> dict[str, Any]:
+    block: dict[str, Any] = {
+        "type": "reasoning",
+        "id": str(item.get("id") or f"rs_{uuid.uuid4().hex[:12]}"),
+        "summary": item.get("summary")
+        or [{"type": "summary_text", "text": _reasoning_summary_text(item)}],
+    }
+    if item.get("encrypted_content"):
+        block["encrypted_content"] = item["encrypted_content"]
+    return block
 
 
 class ResponsesRequest(BaseModel):
@@ -121,6 +162,15 @@ def responses_input_to_messages(body: ResponsesRequest) -> list[Message]:
                 )
             )
             continue
+        if item_type == "reasoning":
+            messages.append(
+                Message(
+                    role="assistant",
+                    content="",
+                    thinking_blocks=[_reasoning_block_from_item(item)],
+                )
+            )
+            continue
         if item_type != "message":
             continue
         role = item.get("role", "user")
@@ -182,8 +232,23 @@ def _tool_calls_to_output_items(tool_calls: list[Any]) -> list[dict[str, Any]]:
     return items
 
 
-def _output_items_from_result(result: InternalResponse) -> list[dict[str, Any]]:
+def _output_items_from_result(
+    result: InternalResponse,
+    *,
+    include_encrypted: bool = False,
+) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
+    reasoning_text = (getattr(result, "reasoning_content", None) or "").strip()
+    if reasoning_text:
+        item: dict[str, Any] = {
+            "type": "reasoning",
+            "id": f"rs_{uuid.uuid4().hex[:12]}",
+            "summary": [{"type": "summary_text", "text": reasoning_text}],
+        }
+        encrypted = getattr(result, "reasoning_encrypted", None)
+        if include_encrypted and encrypted:
+            item["encrypted_content"] = encrypted
+        items.append(item)
     if result.tool_calls:
         items.extend(_tool_calls_to_output_items(result.tool_calls))
     if result.content or not items:
@@ -193,16 +258,28 @@ def _output_items_from_result(result: InternalResponse) -> list[dict[str, Any]]:
                 "id": f"msg_{uuid.uuid4().hex[:12]}",
                 "status": "completed",
                 "role": "assistant",
-                "content": [{"type": "output_text", "text": result.content or "", "annotations": []}],
+                "content": [
+                    {"type": "output_text", "text": result.content or "", "annotations": []}
+                ],
             }
         )
     return items
 
 
-def _conversation_after(messages: list[Message], output: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _conversation_after(
+    messages: list[Message], output: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     history = [message.model_dump(exclude_none=True) for message in messages]
     for item in output:
-        if item.get("type") == "function_call":
+        if item.get("type") == "reasoning":
+            history.append(
+                Message(
+                    role="assistant",
+                    content="",
+                    thinking_blocks=[_reasoning_block_from_item(item)],
+                ).model_dump(exclude_none=True)
+            )
+        elif item.get("type") == "function_call":
             history.append(
                 Message(
                     role="assistant",
@@ -236,6 +313,7 @@ def _response_body(
     include_daari_meta: bool,
     metadata: dict[str, str] | None = None,
     status: str = "completed",
+    include_encrypted: bool = False,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "id": response_id,
@@ -243,7 +321,11 @@ def _response_body(
         "created_at": int(time.time()),
         "status": status,
         "model": result.model,
-        "output": _output_items_from_result(result) if status == "completed" else [],
+        "output": (
+            _output_items_from_result(result, include_encrypted=include_encrypted)
+            if status == "completed"
+            else []
+        ),
         "usage": {
             "input_tokens": _estimate_tokens("x" * input_chars),
             "output_tokens": _estimate_tokens(result.content),
@@ -327,7 +409,6 @@ def _owner_key_id_from_request(request: Request) -> str | None:
     return None
 
 
-
 class ResponsesGatewayAdapter(GatewayAdapter):
     id = "responses"
 
@@ -396,7 +477,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             x_daari_tier_override: str | None = Header(default=None, alias="X-Daari-Tier-Override"),
             x_daari_tier_cap: str | None = Header(default=None, alias="X-Daari-Tier-Cap"),
             x_daari_no_frontier: str | None = Header(default=None, alias="X-Daari-No-Frontier"),
-            x_daari_latency_budget: str | None = Header(default=None, alias="X-Daari-Latency-Budget"),
+            x_daari_latency_budget: str | None = Header(
+                default=None, alias="X-Daari-Latency-Budget"
+            ),
             x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
             x_daari_client_id: str | None = Header(default=None, alias="X-Daari-Client-Id"),
             x_daari_meta: str | None = Header(default=None, alias="X-Daari-Meta"),
@@ -405,11 +488,15 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             from daari.gateway.response_store import response_visible_to_caller
 
             ctx: AppContext = request.app.state.ctx
-            if body.include:
+            requested_includes = list(body.include or [])
+            unsupported = [item for item in requested_includes if item not in _SUPPORTED_INCLUDES]
+            if unsupported:
+                allow = sorted(_SUPPORTED_INCLUDES) or ["none"]
                 raise HTTPException(
                     status_code=400,
-                    detail=f"include is not supported: {body.include}",
+                    detail=(f"include is not supported: {unsupported}. supported: {allow}"),
                 )
+            include_encrypted = "reasoning.encrypted_content" in requested_includes
             include_daari_meta = (x_daari_meta or "").strip().lower() in {"1", "true", "yes"}
             try:
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
@@ -504,13 +591,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
 
             from daari.gateway.idempotency import resolve_idempotency
 
-            idem_kind, idem_response, idem_slot = await resolve_idempotency(
-                request, ctx, body
-            )
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
 
             if body.stream and not body.background:
+
                 async def _idempotent_event_stream() -> AsyncIterator[str]:
                     collected: list[str] = []
                     try:
@@ -576,6 +662,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         messages,
                         store,
                         owner_key_id,
+                        include_encrypted=include_encrypted,
                     )
                 )
                 _BACKGROUND_JOBS[response_id] = task
@@ -647,6 +734,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 input_chars=input_chars,
                 include_daari_meta=include_daari_meta,
                 metadata=body.metadata,
+                include_encrypted=include_encrypted,
             )
             store.put(
                 response_id,
@@ -690,6 +778,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         history: list[Message],
         store: ResponseStore,
         owner_key_id: str | None = None,
+        *,
+        include_encrypted: bool = False,
     ) -> None:
         try:
             current = store.get(response_id)
@@ -705,6 +795,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 input_chars=input_chars,
                 include_daari_meta=include_daari_meta,
                 metadata=metadata,
+                include_encrypted=include_encrypted,
             )
             store.put(
                 response_id,
