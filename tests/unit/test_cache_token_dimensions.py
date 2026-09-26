@@ -276,7 +276,7 @@ def test_postgres_spend_round_trip_mocked(monkeypatch):
         def fetchmany(self, n):
             if stored and "SELECT" in getattr(self, "_last_sql", "").upper():
                 row = stored[0]
-                # ts, request_id, key_id, team_id, client_id, model, tier,
+                # ts, request_id, key_id, team_id, client_id, user_id, model, tier,
                 # input, output, cached, cache_write, cost, avoided, cache_hit
                 return [
                     (
@@ -294,6 +294,7 @@ def test_postgres_spend_round_trip_mocked(monkeypatch):
                         row[11],
                         row[12],
                         row[13],
+                        row[14],
                     )
                 ]
             return []
@@ -329,6 +330,6 @@ def test_postgres_spend_round_trip_mocked(monkeypatch):
         cost_usd=0.1,
     )
     assert stored, "expected INSERT"
-    assert stored[0][9] == 4  # cached_tokens
-    assert stored[0][10] == 3  # cache_write_tokens
+    assert stored[0][10] == 4  # cached_tokens
+    assert stored[0][11] == 3  # cache_write_tokens
 
