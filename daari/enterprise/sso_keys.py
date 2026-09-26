@@ -79,7 +79,27 @@ def _metadata(sso: SsoSettings, claim_value: str, policy: SsoKeyPolicy) -> dict[
         "mapping_claim": sso.mapping_claim,
         "claim_value": claim_value,
         "boundary_profile": policy.boundary_profile,
+        "allow_team_override": True,
     }
+
+
+def _sync_sso_team_membership(
+    store: VirtualKeyStore, *, subject: str, policy: SsoKeyPolicy
+) -> None:
+    """Re-validate IdP policy team entitlement on mint/refresh (#1107)."""
+    team_name = (policy.team or "").strip()
+    subjects = [subject, f"sso:{subject}"]
+    if not team_name:
+        for sub in subjects:
+            store.set_team_memberships(sub, [])
+        return
+    team = store.get_team(name=team_name) or store.get_team(team_name)
+    if team is None:
+        for sub in subjects:
+            store.set_team_memberships(sub, [])
+        return
+    for sub in subjects:
+        store.set_team_memberships(sub, [team.team_id])
 
 
 def find_sso_key(store: VirtualKeyStore, subject: str) -> VirtualKey | None:
@@ -150,6 +170,7 @@ def sync_sso_virtual_key(
             metadata=meta,
             expires_at=policy.key_ttl,
         )
+        _sync_sso_team_membership(store, subject=subject, policy=policy)
         audit.record(
             actor=subject,
             role=role,
@@ -180,6 +201,7 @@ def sync_sso_virtual_key(
         budget_windows=_windows(policy) or None,
         metadata=meta,
     )
+    _sync_sso_team_membership(store, subject=subject, policy=policy)
     return {
         "virtual_key_id": existing.key_id,
         "virtual_key_minted": False,

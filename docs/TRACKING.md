@@ -4716,6 +4716,15 @@ moderations / rerank call `metrics.record`; OTel
 requests by modality. Covered by `tests/unit/test_modality_metrics.py`,
 `tests/unit/test_otel_genai.py::test_operation_name_reflects_non_chat_modality`.
 
+### Request-time team selection with membership ([#1107](https://github.com/naveenreddyalka/daari/issues/1107))
+
+<!-- tracking:#1107 -->
+**Status:** Done (2026-09-26). Optional `X-Daari-Team` selects among teams the
+authenticated subject is entitled to (`team_members` table, sqlite+postgres);
+pinned keys require `metadata.allow_team_override`; non-members get 403 +
+audit. SSO mint/refresh re-syncs entitlements; CLI
+`daari keys team-members`. Covered by `tests/unit/test_team_selection.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
