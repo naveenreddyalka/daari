@@ -4819,6 +4819,16 @@ postgres migrate); `daari spend export --user` filters; `daari spend report
 `docs/developer/guides/observability/chargeback.md`. Covered by
 `tests/unit/test_spend_user_attribution.py`.
 
+### Responses reasoning items across turns ([#1133](https://github.com/naveenreddyalka/daari/issues/1133))
+
+<!-- tracking:#1133 -->
+**Status:** Done (2026-09-26). `/v1/responses` accepts, stores, and replays
+`type: reasoning` items on `previous_response_id` chains; output emits
+reasoning when `InternalResponse.reasoning_content` is set;
+`include=[reasoning.encrypted_content]` allowlisted. Covered by
+`tests/unit/test_responses_reasoning.py` and
+`tests/integration/test_responses_api.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

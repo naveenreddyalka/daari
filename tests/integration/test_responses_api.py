@@ -53,16 +53,20 @@ class TestInputMapping:
         body = ResponsesRequest(
             model="daari",
             input=[
-                {"type": "message", "role": "user", "content": [
-                    {"type": "input_text", "text": "part one "},
-                    {"type": "input_text", "text": "part two"},
-                ]},
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": "part one "},
+                        {"type": "input_text", "text": "part two"},
+                    ],
+                },
                 {"type": "message", "role": "assistant", "content": "earlier answer"},
                 {
                     "type": "function_call",
                     "call_id": "call_1",
                     "name": "lookup",
-                    "arguments": "{\"q\": \"x\"}",
+                    "arguments": '{"q": "x"}',
                 },
                 {
                     "type": "function_call_output",
@@ -92,9 +96,7 @@ async def test_non_stream_response_shape(settings):
     app = _app(settings)
     _mock_route(app)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.post(
-            "/v1/responses", json={"model": "daari", "input": "say hi"}
-        )
+        response = await client.post("/v1/responses", json={"model": "daari", "input": "say hi"})
     assert response.status_code == 200
     body = response.json()
     assert body["object"] == "response"
@@ -191,7 +193,7 @@ def _mock_route_with_tools(app):
                 {
                     "id": "call_abc",
                     "type": "function",
-                    "function": {"name": "get_weather", "arguments": "{\"city\": \"NYC\"}"},
+                    "function": {"name": "get_weather", "arguments": '{"city": "NYC"}'},
                 }
             ],
         )
@@ -210,7 +212,9 @@ async def test_function_call_output_item_is_emitted(settings):
             json={
                 "model": "daari",
                 "input": "weather?",
-                "tools": [{"type": "function", "name": "get_weather", "parameters": {"type": "object"}}],
+                "tools": [
+                    {"type": "function", "name": "get_weather", "parameters": {"type": "object"}}
+                ],
             },
         )
     assert response.status_code == 200
@@ -232,12 +236,12 @@ async def test_stream_emits_function_call_argument_deltas(settings):
                     "index": 0,
                     "id": "call_1",
                     "type": "function",
-                    "function": {"name": "lookup", "arguments": "{\"q\":"},
+                    "function": {"name": "lookup", "arguments": '{"q":'},
                 }
             ]
         }
         yield f"data: {json.dumps({'choices': [{'delta': delta}]})}\n\n"
-        delta2 = {"tool_calls": [{"index": 0, "function": {"arguments": " \"x\"}"}}]}
+        delta2 = {"tool_calls": [{"index": 0, "function": {"arguments": ' "x"}'}}]}
         yield f"data: {json.dumps({'choices': [{'delta': delta2}]})}\n\n"
         yield "data: [DONE]\n\n"
 
@@ -398,6 +402,44 @@ async def test_responses_native_reasoning_and_text_format_map_to_sampling(settin
     assert sampling.tool_choice == "auto"
     assert sampling.parallel_tool_calls is False
     assert sampling.service_tier == "flex"
+
+
+@pytest.mark.asyncio
+async def test_previous_response_id_replays_reasoning_items(settings):
+    """Turn-1 reasoning is stored and visible on turn-2 via previous_response_id (#1133)."""
+    app = _app(settings)
+
+    async def fake_route(request: InternalRequest) -> InternalResponse:
+        fake_route.last_request = request
+        return InternalResponse(
+            content="second turn" if getattr(fake_route, "calls", 0) else "first turn",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", latency_ms=5),
+            reasoning_content=(None if getattr(fake_route, "calls", 0) else "I reason carefully"),
+        )
+
+    fake_route.calls = 0
+    app.state.ctx.router.route = fake_route
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/v1/responses", json={"model": "daari", "input": "hello"})
+        assert first.status_code == 200, first.text
+        types = [item["type"] for item in first.json()["output"]]
+        assert "reasoning" in types
+        assert "message" in types
+        first_id = first.json()["id"]
+        fake_route.calls = 1
+        second = await client.post(
+            "/v1/responses",
+            json={"model": "daari", "input": "and then?", "previous_response_id": first_id},
+        )
+    assert second.status_code == 200, second.text
+    replayed = [
+        m
+        for m in fake_route.last_request.messages
+        if m.thinking_blocks and m.thinking_blocks[0].get("type") == "reasoning"
+    ]
+    assert replayed, "expected reasoning thinking_blocks in chained request"
+    assert "I reason carefully" in str(replayed[0].thinking_blocks[0].get("summary"))
 
 
 @pytest.mark.asyncio
