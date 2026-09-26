@@ -54,6 +54,8 @@ def run_doctor(
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_images_generations(cfg))
+    results.append(_check_moderations(cfg))
+    results.append(_check_rerank(cfg))
     results.append(_check_cors_origins(cfg))
     results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
@@ -451,6 +453,98 @@ def _check_images_generations(
         ok=False,
         detail=f"OpenAPI missing POST {path} — image clients will get 501",
         optional=True,
+    )
+
+
+def _modality_frontier_key_resolves(
+    settings: Settings,
+    *,
+    resolve_target,
+) -> bool:
+    if settings.resolve_frontier_api_key():
+        return True
+    try:
+        return resolve_target(settings) is not None
+    except Exception:
+        return False
+
+
+def _check_l6_modality_route(
+    settings: Settings,
+    *,
+    name: str,
+    path: str,
+    resolve_target,
+    openapi_paths: dict[str, Any] | None = None,
+) -> CheckResult:
+    """Dry OpenAPI tip for a governed L6 modality when frontier can escalate (#1110)."""
+    if not settings.frontier.enabled:
+        return CheckResult(
+            name=name,
+            ok=True,
+            detail=f"skipped (frontier disabled — POST {path} returns 501)",
+            optional=True,
+        )
+    if not _modality_frontier_key_resolves(settings, resolve_target=resolve_target):
+        return CheckResult(
+            name=name,
+            ok=False,
+            detail=(
+                f"frontier.enabled but no API key — POST {path} "
+                "returns 501; set DAARI_FRONTIER_API_KEY / OPENAI_API_KEY or "
+                "frontier.providers[].keys"
+            ),
+            optional=True,
+        )
+    if openapi_paths is None:
+        from daari.server.app import create_app
+
+        openapi_paths = create_app(settings).openapi().get("paths") or {}
+    entry = openapi_paths.get(path) if isinstance(openapi_paths, dict) else None
+    if isinstance(entry, dict) and "post" in entry:
+        return CheckResult(
+            name=name,
+            ok=True,
+            detail=f"OpenAPI lists POST {path}",
+            optional=True,
+        )
+    return CheckResult(
+        name=name,
+        ok=False,
+        detail=f"OpenAPI missing POST {path} — clients will get 501",
+        optional=True,
+    )
+
+
+def _check_moderations(
+    settings: Settings,
+    *,
+    openapi_paths: dict[str, Any] | None = None,
+) -> CheckResult:
+    from daari.gateway.moderations import resolve_moderations_target
+
+    return _check_l6_modality_route(
+        settings,
+        name="moderations",
+        path="/v1/moderations",
+        resolve_target=resolve_moderations_target,
+        openapi_paths=openapi_paths,
+    )
+
+
+def _check_rerank(
+    settings: Settings,
+    *,
+    openapi_paths: dict[str, Any] | None = None,
+) -> CheckResult:
+    from daari.gateway.rerank import resolve_rerank_target
+
+    return _check_l6_modality_route(
+        settings,
+        name="rerank",
+        path="/v1/rerank",
+        resolve_target=resolve_rerank_target,
+        openapi_paths=openapi_paths,
     )
 
 
