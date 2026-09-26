@@ -95,3 +95,105 @@ def reject_disallowed_model(
         {"model": name, "key_id": key_id, "path": path},
     )
     return JSONResponse(status_code=403, content=denial_body(name))
+
+
+def reject_model_group_budget(
+    request: Any,
+    model: str,
+    settings: Any,
+) -> JSONResponse | None:
+    """402 when a named model_group shared USD window is exceeded (#1109).
+
+    Soft band sets ``request.state.budget_soft`` and budget headers for the
+    tightest model_group window; hard reject happens before L6 escalation.
+    """
+    claims = getattr(getattr(request, "state", None), "auth_claims", None)
+    if claims is None or getattr(claims, "kind", None) != "virtual":
+        return None
+    key = getattr(claims, "virtual_key", None)
+    if key is None:
+        return None
+    from daari.auth.budgets import (
+        budget_error,
+        model_group_budget_status,
+        model_group_budgets_of,
+        tightest_window,
+    )
+    from daari.auth.model_access import groups_for_model
+    from daari.gateway.budget_headers import budget_headers, retry_after_seconds
+
+    # Fast path: no attached group budgets and model outside catalog → skip.
+    store = getattr(getattr(request, "app", None).state if getattr(request, "app", None) else None, "virtual_key_store", None)
+    team = None
+    if store is not None and getattr(key, "team_id", None):
+        team = store.get_team(key.team_id)
+    if claims is not None and getattr(claims, "selected_team_id", None) and store is not None:
+        team = store.get_team(claims.selected_team_id) or team
+    if not model_group_budgets_of(key) and not model_group_budgets_of(team):
+        return None
+    catalog = getattr(settings, "model_groups", None) or {}
+    if not groups_for_model(model, catalog):
+        return None
+    ctx = getattr(getattr(request, "app", None), "state", None)
+    router = getattr(getattr(ctx, "ctx", None), "router", None) if ctx is not None else None
+    ledger = getattr(router, "usage_ledger", None) if router is not None else None
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return None
+    client = (
+        getattr(claims, "client_id", None)
+        or getattr(key, "client_id", None)
+        or getattr(claims, "key_id", None)
+        or ""
+    )
+    pricing = getattr(settings, "pricing", None)
+    fallback = float(getattr(getattr(settings, "usage", None), "frontier_price_per_1k_tokens", 0.002) or 0.002)
+    statuses = model_group_budget_status(
+        model,
+        key,
+        team,
+        ledger,
+        catalog=catalog,
+        client_id=str(client),
+        pricing=pricing,
+        fallback_per_1k=fallback,
+    )
+    if not statuses:
+        return None
+    exceeded = next((status for status in statuses if status.exceeded), None)
+    if exceeded is not None:
+        headers = budget_headers(exceeded)
+        headers["Retry-After"] = str(retry_after_seconds(exceeded))
+        metrics = getattr(getattr(ctx, "ctx", None), "metrics", None) if ctx is not None else None
+        if metrics is not None and hasattr(metrics, "record_reject"):
+            metrics.record_reject("budget")
+        log_gateway_event(
+            "model_group_budget_exceeded",
+            {
+                "model": (model or "").strip(),
+                "model_group": exceeded.model_group,
+                "client_id": client,
+            },
+        )
+        return JSONResponse(
+            status_code=402,
+            content={
+                "error": budget_error(
+                    client_id=str(client),
+                    window=exceeded.window,
+                    spend=exceeded.spend,
+                    scope=exceeded.scope,
+                    limit_usd=exceeded.limit,
+                    model_group=exceeded.model_group,
+                )
+            },
+            headers=headers,
+        )
+    soft_ratio = float(getattr(getattr(settings, "frontier", None), "soft_budget_ratio", 0.8) or 0.0)
+    tightest = tightest_window(statuses)
+    if tightest is not None and tightest.in_soft_band(soft_ratio):
+        request.state.budget_soft = True
+        # Overlay model_group budget headers so soft warning is visible.
+        existing = getattr(request.state, "budget_response_headers", None) or {}
+        merged = {**existing, **budget_headers(tightest, soft=True)}
+        request.state.budget_response_headers = merged
+    return None

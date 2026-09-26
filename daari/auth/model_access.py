@@ -85,6 +85,24 @@ def pattern_matches(model: str, pattern: str) -> bool:
     return fnmatch.fnmatchcase(name, expr)
 
 
+def groups_for_model(
+    model: str,
+    catalog: dict[str, list[str]] | None,
+) -> tuple[str, ...]:
+    """Catalog group names whose patterns match ``model`` (#1109)."""
+    if not catalog:
+        return ()
+    name = (model or "").strip()
+    if not name:
+        return ()
+    matched: list[str] = []
+    for group_name, members in catalog.items():
+        patterns = [members] if isinstance(members, str) else list(members or [])
+        if any(pattern_matches(name, str(p)) for p in patterns if str(p).strip()):
+            matched.append(str(group_name))
+    return tuple(matched)
+
+
 def model_permitted(
     model: str,
     *,

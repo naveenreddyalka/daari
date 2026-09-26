@@ -4725,6 +4725,15 @@ pinned keys require `metadata.allow_team_override`; non-members get 403 +
 audit. SSO mint/refresh re-syncs entitlements; CLI
 `daari keys team-members`. Covered by `tests/unit/test_team_selection.py`.
 
+### Shared USD budget per named model_group ([#1109](https://github.com/naveenreddyalka/daari/issues/1109))
+
+<!-- tracking:#1109 -->
+**Status:** Done (2026-09-26). Keys/teams attach `model_group_budgets` (metadata)
+keyed by `settings.model_groups`; org-wide L6 spend for matching models shares
+one window; gateway 402 / soft `budget_warning` before escalate; report
+`model_group_spend` + spend export `model_group` column. Covered by
+`tests/unit/test_model_group_budgets.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -541,6 +541,7 @@ class PostgresVirtualKeyStore:
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
         priority: str = "normal",
+        model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -562,10 +563,11 @@ class PostgresVirtualKeyStore:
                 model_groups=model_groups,
                 cache_scope=cache_scope,
                 priority=priority,
+                model_group_budgets=model_group_budgets,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        from daari.auth.budgets import coalesce_windows, windows_from_flat
+        from daari.auth.budgets import coalesce_windows, encode_model_group_budgets, windows_from_flat
 
         expires_at = expiry_from(expires_at)
         plaintext = f"dk_{secrets.token_urlsafe(32)}"
@@ -578,6 +580,8 @@ class PostgresVirtualKeyStore:
             + list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
         )
         meta = dict(metadata or {})
+        if model_group_budgets:
+            meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
         pin = (region_pin or "").strip() or None
         if pin:
             meta["region_pin"] = pin

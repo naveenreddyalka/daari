@@ -479,10 +479,12 @@ class VirtualKeyStore:
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
         priority: str = "normal",
+        model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        from daari.auth.budgets import coalesce_windows, windows_from_flat
+        from daari.auth.budgets import coalesce_windows, encode_model_group_budgets, windows_from_flat
 
         windows = coalesce_windows(
             list(budget_windows or ())
@@ -496,12 +498,16 @@ class VirtualKeyStore:
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
         prio = coerce_priority(priority)
+        meta = dict(metadata or {})
+        if model_group_budgets:
+            meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             existing = conn.execute(
                 "SELECT team_id, budget_windows_json, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                " metadata_json"
                 " FROM teams WHERE name = ?",
                 (name,),
             ).fetchone()
@@ -518,12 +524,13 @@ class VirtualKeyStore:
                     rpd=int(existing[7] or 0) if len(existing) > 7 else 0,
                     cache_scope=coerce_cache_scope(existing[8]) if len(existing) > 8 else "global",
                     priority=coerce_priority(existing[9]) if len(existing) > 9 else "normal",
+                    metadata=_parse_metadata(existing[10]) if len(existing) > 10 else {},
                 )
             conn.execute(
                 "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
                 " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
-                " cache_scope, priority)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " cache_scope, priority, metadata_json)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     team_id,
                     name,
@@ -537,6 +544,7 @@ class VirtualKeyStore:
                     team_rpd,
                     scope,
                     prio,
+                    json.dumps(meta),
                 ),
             )
         return Team(
@@ -551,6 +559,7 @@ class VirtualKeyStore:
             rpd=team_rpd,
             cache_scope=scope,
             priority=prio,
+            metadata=meta,
         )
 
     def update_team(
@@ -782,10 +791,11 @@ class VirtualKeyStore:
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
         priority: str = "normal",
+        model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        from daari.auth.budgets import windows_from_flat
+        from daari.auth.budgets import encode_model_group_budgets, windows_from_flat
 
         # Normalise whatever the caller passed (relative or ISO) once, here.
         expires_at = expiry_from(expires_at)
@@ -801,6 +811,8 @@ class VirtualKeyStore:
             + list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
         )
         meta = dict(metadata or {})
+        if model_group_budgets:
+            meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
         pin = (region_pin or "").strip() or None
         if pin:
             meta["region_pin"] = pin
