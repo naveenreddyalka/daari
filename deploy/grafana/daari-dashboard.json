@@ -417,6 +417,34 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 28,
+      "title": "Tokens by modality",
+      "description": "Per-modality input/output tokens (`daari_tokens_total`) for chat, embed, tts, asr, images, moderations, rerank (#1106).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 104 },
+      "targets": [
+        {
+          "expr": "sum by (modality, direction) (rate(daari_tokens_total[5m]))",
+          "legendFormat": "{{modality}} {{direction}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Requests by modality",
+      "description": "Request rate with the additive modality label on `daari_requests_total` (#1106).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 104 },
+      "targets": [
+        {
+          "expr": "sum by (modality) (rate(daari_requests_total{modality=~\".+\"}[5m]))",
+          "legendFormat": "{{modality}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

@@ -189,7 +189,14 @@ def _record_request(
 ) -> None:
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None and hasattr(metrics, "record"):
-        metrics.record("tts", cache_hit=False, latency_ms=latency_ms)
+        metrics.record(
+            "tts",
+            cache_hit=False,
+            latency_ms=latency_ms,
+            modality="tts",
+            input_tokens=max(0, len(input_text) // 4),
+            output_tokens=max(0, audio_bytes // 4),
+        )
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
         return

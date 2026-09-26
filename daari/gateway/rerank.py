@@ -168,10 +168,19 @@ def _record_request(
     documents: list[str],
 ) -> None:
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
-    if ledger is None:
-        return
     search_units = len(documents)
     prompt_chars = len(query) + sum(len(doc) for doc in documents)
+    metrics = getattr(ctx, "metrics", None)
+    if metrics is not None:
+        metrics.record(
+            "rerank",
+            cache_hit=False,
+            modality="rerank",
+            input_tokens=search_units,
+            output_tokens=0,
+        )
+    if ledger is None:
+        return
     ledger.record(
         tier="rerank",
         cache_hit=False,

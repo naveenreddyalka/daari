@@ -4706,6 +4706,16 @@ persist both dims (sqlite+postgres migrate); spend export includes
 `cache_write_tokens`. Covered by `tests/unit/test_cache_token_dimensions.py`,
 `tests/unit/test_otel_genai.py::test_cache_read_and_creation_token_dims`.
 
+### Per-modality token/spend metrics ([#1106](https://github.com/naveenreddyalka/daari/issues/1106))
+
+<!-- tracking:#1106 -->
+**Status:** Done (2026-09-26). `daari_tokens_total{modality,tier,direction}`
+plus additive modality labels on `daari_requests_total`; images /
+moderations / rerank call `metrics.record`; OTel
+`gen_ai.operation.name` follows modality; Grafana panels for tokens and
+requests by modality. Covered by `tests/unit/test_modality_metrics.py`,
+`tests/unit/test_otel_genai.py::test_operation_name_reflects_non_chat_modality`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

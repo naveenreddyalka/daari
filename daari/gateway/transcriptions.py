@@ -333,7 +333,14 @@ def _record_request(
     provider = "frontier" if via == "frontier" else local_tier
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None and hasattr(metrics, "record"):
-        metrics.record(tier, cache_hit=False, latency_ms=latency_ms)
+        metrics.record(
+            tier,
+            cache_hit=False,
+            latency_ms=latency_ms,
+            modality="asr",
+            input_tokens=0,
+            output_tokens=max(0, len(text) // 4),
+        )
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
         return

@@ -192,6 +192,16 @@ def _record_request(
     prompt: str,
     n: int,
 ) -> None:
+    input_tokens = max(1, n)
+    metrics = getattr(ctx, "metrics", None)
+    if metrics is not None:
+        metrics.record(
+            "images",
+            cache_hit=False,
+            modality="images",
+            input_tokens=input_tokens,
+            output_tokens=0,
+        )
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
         return
@@ -203,7 +213,7 @@ def _record_request(
         client_id=client_id,
         model=model,
         provider="images",
-        input_tokens=max(1, n),
+        input_tokens=input_tokens,
         output_tokens=0,
         reported_cost=0.0,
     )

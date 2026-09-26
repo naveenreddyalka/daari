@@ -363,13 +363,20 @@ def export_trace(
         cache_usage: tuple[int | None, int | None] = (None, None)
         metric_attrs: dict[str, Any] = {}
         if request_model:
-            span_name = f"chat {request_model}"
-            root_attrs["gen_ai.operation.name"] = "chat"
+            from daari.observability.metrics import genai_operation_name, infer_modality
+
+            meta_op = getattr(meta, "operation_name", None) if meta is not None else None
+            tier = getattr(meta, "tier", "") if meta is not None else ""
+            operation = str(meta_op) if meta_op else genai_operation_name(tier=str(tier or ""))
+            span_name = f"{operation} {request_model}"
+            root_attrs["gen_ai.operation.name"] = operation
             root_attrs["gen_ai.request.model"] = str(request_model)
             metric_attrs = {
-                "gen_ai.operation.name": "chat",
+                "gen_ai.operation.name": operation,
                 "gen_ai.request.model": str(request_model),
             }
+            if meta is not None and getattr(meta, "tier", None):
+                root_attrs["daari.modality"] = infer_modality(str(meta.tier))
             provider = _provider_name(response)
             if provider:
                 root_attrs["gen_ai.provider.name"] = provider
