@@ -5072,6 +5072,9 @@ class Router:
             cache_hit=response.daari_meta.cache_hit,
             latency_ms=latency_ms,
             backend_id=response.daari_meta.backend_id,
+            modality="chat",
+            input_tokens=int(response.daari_meta.input_tokens or 0),
+            output_tokens=int(response.daari_meta.output_tokens or 0),
         )
 
     def _emit_org_feedback(self, last_user: str, response: InternalResponse) -> None:

@@ -190,6 +190,8 @@ class DaariMeta(BaseModel):
     service_tier: str | None = None
     # True when tools / tool history make this an agent turn (ADR-0004 / #604).
     agent_turn: bool | None = None
+    # GenAI operation.name override for non-chat modalities (#1106).
+    operation_name: str | None = None
 
 
 class InternalResponse(BaseModel):

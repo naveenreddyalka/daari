@@ -250,6 +250,53 @@ def test_cache_read_and_creation_token_dims():
     assert by_type["cache_creation"].sum >= 100
 
 
+def test_operation_name_reflects_non_chat_modality():
+    """OTel gen_ai.operation.name follows modality (#1106)."""
+    response = InternalResponse(
+        content="",
+        model="text-embedding-3-small",
+        daari_meta=DaariMeta(
+            tier="embed",
+            executor="ollama",
+            provider_id="ollama",
+            model="text-embedding-3-small",
+            latency_ms=10,
+            input_tokens=4,
+            output_tokens=0,
+            usage_estimated=False,
+            operation_name="embeddings",
+        ),
+    )
+    assert export_trace(
+        RequestTrace(),
+        request=_request(model="text-embedding-3-small"),
+        response=response,
+    )
+    root = _root_span()
+    assert root.name == "embeddings text-embedding-3-small"
+    assert dict(root.attributes)["gen_ai.operation.name"] == "embeddings"
+
+    _EXPORTER.clear()
+    response = InternalResponse(
+        content="ok",
+        model="dall-e-3",
+        daari_meta=DaariMeta(
+            tier="images",
+            executor="frontier",
+            provider_id="openai",
+            model="dall-e-3",
+            latency_ms=10,
+            input_tokens=1,
+            output_tokens=0,
+            usage_estimated=False,
+        ),
+    )
+    assert export_trace(
+        RequestTrace(), request=_request(model="dall-e-3"), response=response
+    )
+    assert dict(_root_span().attributes)["gen_ai.operation.name"] == "image_generation"
+
+
 def test_stream_timing_metrics():
     trace = RequestTrace()
     export_trace(

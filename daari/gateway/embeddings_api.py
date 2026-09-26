@@ -195,6 +195,9 @@ async def compute_embeddings(
         "embed",
         cache_hit=cache_hit,
         latency_ms=latency_ms,
+        modality="embed",
+        input_tokens=estimate_tokens(prompt_chars),
+        output_tokens=0,
     )
     client_id = _caller_client_id(request)
     if request is not None:

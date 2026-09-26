@@ -157,6 +157,16 @@ def _record_request(
     model: str,
     input_text: str,
 ) -> None:
+    input_tokens = max(0, len(input_text) // 4)
+    metrics = getattr(ctx, "metrics", None)
+    if metrics is not None:
+        metrics.record(
+            "moderations",
+            cache_hit=False,
+            modality="moderations",
+            input_tokens=input_tokens,
+            output_tokens=0,
+        )
     ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
     if ledger is None:
         return
@@ -168,7 +178,7 @@ def _record_request(
         client_id=client_id,
         model=model,
         provider="moderations",
-        input_tokens=max(0, len(input_text) // 4),
+        input_tokens=input_tokens,
         output_tokens=0,
         reported_cost=0.0,
     )

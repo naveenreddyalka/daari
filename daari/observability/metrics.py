@@ -9,6 +9,46 @@ LATENCY_BUCKETS_MS: tuple[float, ...] = (5, 25, 50, 100, 250, 500, 1000, 2500, 5
 # TTFT tends to be shorter than full request latency; reuse the same bounds.
 TTFT_BUCKETS_MS: tuple[float, ...] = LATENCY_BUCKETS_MS
 
+# Prometheus modality label values (#1106).
+MODALITIES = frozenset(
+    {"chat", "embed", "tts", "asr", "images", "moderations", "rerank"}
+)
+
+# GenAI semantic-convention operation.name per modality.
+GENAI_OPERATION_NAMES: dict[str, str] = {
+    "chat": "chat",
+    "embed": "embeddings",
+    "tts": "text_to_speech",
+    "asr": "transcription",
+    "images": "image_generation",
+    "moderations": "moderation",
+    "rerank": "rerank",
+}
+
+
+def infer_modality(tier: str, modality: str | None = None) -> str:
+    """Map a metrics tier (or explicit tag) to a stable modality label."""
+    if modality and modality in MODALITIES:
+        return modality
+    t = (tier or "").strip().lower()
+    if t == "embed":
+        return "embed"
+    if t == "tts":
+        return "tts"
+    if t.startswith("asr"):
+        return "asr"
+    if t == "images":
+        return "images"
+    if t == "moderations":
+        return "moderations"
+    if t == "rerank":
+        return "rerank"
+    return "chat"
+
+
+def genai_operation_name(modality: str | None = None, *, tier: str = "") -> str:
+    return GENAI_OPERATION_NAMES.get(infer_modality(tier, modality), "chat")
+
 
 def histogram_percentile_ms(
     buckets: dict[float | str, int],
@@ -83,6 +123,10 @@ class TtftStats:
 class Metrics:
     tiers: dict[str, TierStats] = field(default_factory=dict)
     ttft: dict[str, TtftStats] = field(default_factory=dict)
+    # (modality, tier) → request count for additive modality-labeled series (#1106).
+    modality_requests: dict[tuple[str, str], int] = field(default_factory=dict)
+    # (modality, tier, direction) → token count; direction is input|output.
+    tokens: dict[tuple[str, str, str], int] = field(default_factory=dict)
     errors: int = 0
     escalations: int = 0
     guardrails: dict[str, int] = field(default_factory=dict)
@@ -107,7 +151,11 @@ class Metrics:
         cache_hit: bool = False,
         latency_ms: int = 0,
         backend_id: str | None = None,
+        modality: str | None = None,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
     ) -> None:
+        mod = infer_modality(tier, modality)
         with self._lock:
             stats = self.tiers.setdefault(tier, TierStats())
             stats.count += 1
@@ -118,6 +166,14 @@ class Metrics:
                 stats.observe_latency(latency_ms)
             if backend_id:
                 self.backends[backend_id] = self.backends.get(backend_id, 0) + 1
+            key = (mod, tier)
+            self.modality_requests[key] = self.modality_requests.get(key, 0) + 1
+            if input_tokens:
+                tok_key = (mod, tier, "input")
+                self.tokens[tok_key] = self.tokens.get(tok_key, 0) + max(0, int(input_tokens))
+            if output_tokens:
+                tok_key = (mod, tier, "output")
+                self.tokens[tok_key] = self.tokens.get(tok_key, 0) + max(0, int(output_tokens))
 
     def record_ttft(self, tier: str, *, ttft_ms: int) -> None:
         """Record stream time-to-first-token. Non-stream requests omit TTFT (#508)."""
@@ -240,4 +296,12 @@ class Metrics:
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
+                "modality_requests": {
+                    f"{mod}:{tier}": count
+                    for (mod, tier), count in sorted(self.modality_requests.items())
+                },
+                "tokens": {
+                    f"{mod}:{tier}:{direction}": count
+                    for (mod, tier, direction), count in sorted(self.tokens.items())
+                },
             }

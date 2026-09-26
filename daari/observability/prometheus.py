@@ -44,11 +44,36 @@ def render_prometheus(
     else:
         for tier, stats in snap["tiers"].items():
             lines.append(f"daari_requests_total{_labels(tier=tier)} {stats['count']}")
+        # Additive modality label — existing {tier} series stay intact (#1106).
+        for key, count in (snap.get("modality_requests") or {}).items():
+            modality, _, tier = str(key).partition(":")
+            if modality and tier:
+                lines.append(
+                    f"daari_requests_total{_labels(tier=tier, modality=modality)} {int(count)}"
+                )
 
     lines.append("# HELP daari_cache_hits_total Cache hits recorded, by tier.")
     lines.append("# TYPE daari_cache_hits_total counter")
     for tier, stats in snap["tiers"].items():
         lines.append(f"daari_cache_hits_total{_labels(tier=tier)} {stats['cache_hits']}")
+
+    tokens = snap.get("tokens") or {}
+    lines.append(
+        "# HELP daari_tokens_total Tokens handled by modality, tier, and direction."
+    )
+    lines.append("# TYPE daari_tokens_total counter")
+    if not tokens:
+        lines.append("daari_tokens_total 0")
+    else:
+        for key, count in tokens.items():
+            parts = str(key).split(":")
+            if len(parts) != 3:
+                continue
+            modality, tier, direction = parts
+            lines.append(
+                f"daari_tokens_total"
+                f"{_labels(modality=modality, tier=tier, direction=direction)} {int(count)}"
+            )
 
     lines.append("# HELP daari_errors_total Gateway/router errors.")
     lines.append("# TYPE daari_errors_total counter")
