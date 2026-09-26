@@ -749,6 +749,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(MCPGatewayAdapter().router())
     app.include_router(OllamaCompatGatewayAdapter().router())
     app.include_router(ResponsesGatewayAdapter().router())
+    # Outside auth: screen headers before require_api_key (#1112).
+    from daari.server.header_policy import install_header_policy
+
+    install_header_policy(app, resolved)
     # Outermost: reject oversized bodies before rate-limit buffering (#933).
     from daari.server.body_limit import install_body_size_limit
 

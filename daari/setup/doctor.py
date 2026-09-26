@@ -57,6 +57,7 @@ def run_doctor(
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
     results.append(_check_cors_origins(cfg))
+    results.append(_check_header_policy(cfg))
     results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
@@ -1592,6 +1593,73 @@ def _check_asr(settings: Settings, client: httpx.Client | None) -> CheckResult:
 
 
 _DEFAULT_WEB_UI_ORIGIN = "http://127.0.0.1:11437"
+
+
+def _check_header_policy(settings: Settings) -> CheckResult:
+    """Warn when server.header_policy is enabled but empty or malformed (#1112)."""
+    policy = getattr(settings.server, "header_policy", None)
+    if policy is None or not bool(getattr(policy, "enabled", False)):
+        return CheckResult(
+            name="header_policy",
+            ok=True,
+            detail="server.header_policy disabled (default)",
+            optional=True,
+        )
+    required = [str(name).strip() for name in (getattr(policy, "required", None) or []) if str(name).strip()]
+    deny = list(getattr(policy, "deny", None) or [])
+    allow = getattr(policy, "allow", None) or {}
+    allow_keys = [str(name).strip() for name in allow if str(name).strip()]
+
+    bad_regex: list[str] = []
+    for rule in deny:
+        pattern = getattr(rule, "regex", None)
+        if not pattern:
+            continue
+        try:
+            import re
+
+            re.compile(str(pattern))
+        except re.error as exc:
+            header = str(getattr(rule, "header", "") or "?")
+            bad_regex.append(f"{header}: {exc}")
+
+    if bad_regex:
+        shown = "; ".join(bad_regex[:3])
+        return CheckResult(
+            name="header_policy",
+            ok=False,
+            detail=f"server.header_policy has malformed deny regex: {shown}",
+            optional=True,
+        )
+
+    usable_deny = False
+    for rule in deny:
+        header = str(getattr(rule, "header", "") or "").strip()
+        if not header:
+            continue
+        if getattr(rule, "exact", None) not in (None, "") or getattr(rule, "regex", None):
+            usable_deny = True
+            break
+
+    if not required and not usable_deny and not allow_keys:
+        return CheckResult(
+            name="header_policy",
+            ok=False,
+            detail=(
+                "server.header_policy.enabled is true but required/deny/allow "
+                "are empty — enable at least one rule or set enabled: false"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="header_policy",
+        ok=True,
+        detail=(
+            f"header_policy on "
+            f"(required={len(required)}, deny={len(deny)}, allow={len(allow_keys)})"
+        ),
+        optional=True,
+    )
 
 
 def _check_cors_origins(settings: Settings) -> CheckResult:

@@ -94,6 +94,47 @@ class TlsSettings(BaseModel):
     )
 
 
+class HeaderDenyRule(BaseModel):
+    """One denylist entry: exact value and/or regex against a named header (#1112)."""
+
+    header: str = Field(description="Header name (matched case-insensitively).")
+    exact: str | None = Field(
+        default=None,
+        description="When set, deny when the header value equals this string.",
+    )
+    regex: str | None = Field(
+        default=None,
+        description="When set, deny when re.search(regex, value) matches.",
+    )
+
+
+class HeaderPolicySettings(BaseModel):
+    """Pre-auth request-header allow/block policy (#1112). Default off."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, evaluate required/deny/allow before require_api_key. "
+            "Env: DAARI_SERVER__HEADER_POLICY__ENABLED."
+        ),
+    )
+    required: list[str] = Field(
+        default_factory=list,
+        description="Header names that must be present and non-empty.",
+    )
+    deny: list[HeaderDenyRule] = Field(
+        default_factory=list,
+        description="Denylist rules (exact and/or regex) evaluated against headers.",
+    )
+    allow: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description=(
+            "Optional allowlists keyed by header name. When the header is "
+            "present, its value must be one of the listed strings."
+        ),
+    )
+
+
 class ServerSettings(BaseModel):
     host: str = "127.0.0.1"
     port: int = 11435
@@ -111,6 +152,13 @@ class ServerSettings(BaseModel):
             "return 413 before the body is buffered. 0 disables the cap. "
             "File/audio upload routes may use a higher floor so "
             "files.max_total_bytes still applies. Env: DAARI_SERVER__MAX_BODY_BYTES."
+        ),
+    )
+    header_policy: HeaderPolicySettings = Field(
+        default_factory=HeaderPolicySettings,
+        description=(
+            "Pre-auth header screen (#1112): required headers, denylist "
+            "exact/regex rules, optional allowlists. Default disabled."
         ),
     )
     tls: TlsSettings = Field(default_factory=TlsSettings)

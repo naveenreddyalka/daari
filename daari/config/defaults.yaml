@@ -5,6 +5,12 @@ server:
   sse_keepalive_seconds: 10
   # uvicorn timeout_graceful_shutdown after SIGTERM (#1104).
   graceful_timeout_seconds: 30
+  # Pre-auth header screen (#1112). Default off — no behavior change.
+  header_policy:
+    enabled: false
+    required: []
+    deny: []
+    allow: {}
 
 models:
   l3: llama3.2:3b

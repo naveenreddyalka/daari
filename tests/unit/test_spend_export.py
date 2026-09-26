@@ -119,7 +119,12 @@ def test_spend_export_cli_tier_help_and_filter(tmp_path, monkeypatch):
     settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
     monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
     ledger = spend_ledger_from_settings(settings)
-    recent = "2026-09-19T12:00:00+00:00"
+    # Relative so --since 7d does not age out on calendar rollover.
+    from datetime import datetime, timedelta, timezone
+
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).strftime(
+        "%Y-%m-%dT%H:%M:%S+00:00"
+    )
     _row(ledger, ts=recent, request_id="req-asr", tier="asr")
     _row(ledger, ts=recent, request_id="req-l3", tier="L3")
 
