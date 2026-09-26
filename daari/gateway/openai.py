@@ -1871,46 +1871,26 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/daari/config")
         async def daari_config_get(request: Request) -> dict[str, Any]:
-            """Safe config subset for the web UI editor (issue #115)."""
+            """Safe config subset for the web UI editor (issue #115, #1111)."""
             ctx: AppContext = request.app.state.ctx
             _require_config_editor(ctx)
             _require_role(request, ctx, "analyst")
-            s = ctx.settings
-            return {
-                "routing": {
-                    "prefer": s.routing.prefer,
-                    "confidence_threshold": s.routing.confidence_threshold,
-                    "latency_budget_ms": s.routing.latency_budget_ms,
-                    "max_tier_for_chat": s.routing.max_tier_for_chat,
-                },
-                "frontier": {
-                    "daily_budget_usd": s.frontier.daily_budget_usd,
-                    "monthly_budget_usd": s.frontier.monthly_budget_usd,
-                    "soft_budget_ratio": s.frontier.soft_budget_ratio,
-                },
-                "cache": {
-                    "l0_ttl_seconds": s.cache.l0.ttl_seconds,
-                    "l1_ttl_seconds": s.cache.l1.ttl_seconds,
-                    "l1_similarity_threshold": s.cache.l1.similarity_threshold,
-                },
-                "boundaries": {
-                    "enabled": s.boundaries.enabled,
-                    "mode": s.boundaries.mode,
-                    "product_name": s.boundaries.product_name,
-                    "product_description": s.boundaries.product_description,
-                    "allow_topics": list(s.boundaries.allow_topics),
-                    "deny_topics": list(s.boundaries.deny_topics),
-                    "examples_in": list(s.boundaries.examples_in),
-                    "examples_out": list(s.boundaries.examples_out),
-                    "refuse_message": s.boundaries.refuse_message,
-                    "clear_out_threshold": s.boundaries.clear_out_threshold,
-                    "clear_in_threshold": s.boundaries.clear_in_threshold,
-                    "stages_b0": s.boundaries.stages_b0,
-                    "stages_b1": s.boundaries.stages_b1,
-                    "stages_b2": s.boundaries.stages_b2,
-                    "stages_b3": s.boundaries.stages_b3,
-                },
-            }
+            from daari.config.ownership import (
+                config_file_path,
+                live_config_payload,
+                load_file_document,
+                ownership_fields,
+            )
+
+            payload = live_config_payload(ctx.settings)
+            overrides = getattr(request.app.state, "config_runtime_overrides", None) or set()
+            path = config_file_path(ctx.settings)
+            payload["ownership"] = ownership_fields(
+                payload,
+                file_doc=load_file_document(path),
+                runtime_overrides=overrides,
+            )
+            return payload
 
         @router.patch("/v1/daari/config")
         async def daari_config_patch(request: Request) -> dict[str, Any]:
@@ -1920,6 +1900,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             role = _require_admin_role(request, ctx)
             body = await request.json()
             persist = bool(body.pop("persist", False)) if isinstance(body, dict) else False
+            ephemeral = bool(body.pop("ephemeral", False)) if isinstance(body, dict) else False
             from daari.config.validate import (
                 ConfigValidationError,
                 merged_boundaries,
@@ -1980,6 +1961,23 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     ctx.settings, judge=default_local_judge
                 )
                 copy_runtime_hooks(ctx.router.boundaries, prev)
+            from daari.config.ownership import (
+                EPHEMERAL_WARNING,
+                patch_field_keys,
+            )
+
+            touched = patch_field_keys(
+                {
+                    "routing": routing,
+                    "frontier": frontier,
+                    "cache": cache,
+                    "boundaries": boundaries,
+                }
+            )
+            overrides = getattr(request.app.state, "config_runtime_overrides", None)
+            if overrides is None:
+                overrides = set()
+                request.app.state.config_runtime_overrides = overrides
             persisted_path = None
             if persist:
                 from daari.config.persist import persist_safe_config
@@ -1994,17 +1992,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         }
                     )
                 )
+                overrides.difference_update(touched)
+            else:
+                overrides.update(touched)
             from daari.enterprise.postgres_audit import audit_log_from_settings
 
+            audit_detail: dict[str, Any] = {
+                "keys": sorted(body.keys()),
+                "persist": persist,
+                "ephemeral": (not persist) or ephemeral,
+            }
+            if not persist:
+                audit_detail["runtime_only"] = sorted(touched)
             audit_log_from_settings(ctx.settings).record(
                 actor=request.headers.get("x-daari-actor", "api"),
                 role=role,
                 action="config.patch",
-                detail={"keys": sorted(body.keys()), "persist": persist},
+                detail=audit_detail,
             )
             result = await daari_config_get(request)
             if persisted_path:
                 result["persisted_to"] = persisted_path
+            elif not persist:
+                result["warning"] = EPHEMERAL_WARNING
             return result
 
         @router.get("/v1/daari/audit")

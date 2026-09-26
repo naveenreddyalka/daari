@@ -4742,6 +4742,14 @@ one window; gateway 402 / soft `budget_warning` before escalate; report
 (skip/501 tip when disabled or missing key), mirroring images. Covered by
 `tests/unit/test_doctor_moderations_rerank.py`.
 
+### Config live-vs-file ownership honesty ([#1111](https://github.com/naveenreddyalka/daari/issues/1111))
+
+<!-- tracking:#1111 -->
+**Status:** Done (2026-09-26). `GET /v1/daari/config` returns per-field
+`ownership` (`source`/`editable`/`diverged`/`file_value`); PATCH without
+`persist` returns a runtime-only warning + audit `runtime_only`; persist
+still returns `persisted_to`. Covered by `tests/unit/test_config_ownership.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -38,6 +38,9 @@ async def test_config_editor_get_and_patch(settings):
         assert patched.status_code == 200
         assert patched.json()["routing"]["confidence_threshold"] == 0.55
         assert patched.json()["routing"]["prefer"] == "latency"
+        assert "warning" in patched.json()
+        assert "persist" in patched.json()["warning"]
+        assert patched.json()["ownership"]["routing.confidence_threshold"]["source"] == "runtime"
         assert app.state.ctx.router.confidence_threshold == 0.55
         assert app.state.ctx.router.model_preference == "latency"
 
