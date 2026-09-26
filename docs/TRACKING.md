@@ -4768,6 +4768,14 @@ Covered by `tests/unit/test_header_policy.py` and
 pre-check before L6 soft/hard via `soft_budget_ratio`; report exposes
 `team_model_spend`. Covered by `tests/unit/test_model_max_budget.py`.
 
+### Anthropic-native moderations ingress ([#1100](https://github.com/naveenreddyalka/daari/issues/1100))
+
+<!-- tracking:#1100 -->
+**Status:** Done (2026-09-26). `POST /v1/messages/moderations` accepts OpenAI
+`input` or Anthropic `messages` bodies and reuses L6 moderations governance
+(501 when frontier off / no key). Rate family maps to `moderations`. Covered by
+`tests/unit/test_anthropic_moderations.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

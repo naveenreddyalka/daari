@@ -528,6 +528,33 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 chars += len(json.dumps(body.tools))
             return {"input_tokens": max(1, estimate_tokens(chars))}
 
+        @router.post("/v1/messages/moderations", response_model=None)
+        async def messages_moderations(body: dict[str, Any], request: Request) -> Any:
+            """Anthropic-native moderations ingress — same L6 slot as OpenAI (#1100).
+
+            Accepts OpenAI-shaped ``input`` or Anthropic ``messages`` (text
+            extracted). Frontier off / no key → 501 via handle_moderations.
+            """
+            from daari.gateway.moderations import ModerationsRequest, handle_moderations
+
+            raw_input = body.get("input")
+            if raw_input is None and isinstance(body.get("messages"), list):
+                parts: list[str] = []
+                for message in body["messages"]:
+                    if not isinstance(message, dict):
+                        continue
+                    text = content_to_text(message.get("content"))
+                    if text:
+                        parts.append(text)
+                raw_input = "\n".join(parts) if parts else ""
+            if raw_input is None:
+                raw_input = ""
+            parsed = ModerationsRequest(
+                input=raw_input,
+                model=body.get("model"),
+            )
+            return await handle_moderations(request, parsed)
+
         @router.get("/v1/messages/health")
         async def health() -> dict[str, str]:
             return {"status": "ok", "adapter": "anthropic", "time": str(int(time.time()))}
