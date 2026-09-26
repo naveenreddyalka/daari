@@ -3,6 +3,8 @@ server:
   port: 11435
   # Idle seconds before streaming routes emit a keepalive frame. 0 disables.
   sse_keepalive_seconds: 10
+  # uvicorn timeout_graceful_shutdown after SIGTERM (#1104).
+  graceful_timeout_seconds: 30
 
 models:
   l3: llama3.2:3b

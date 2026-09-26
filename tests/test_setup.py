@@ -647,10 +647,11 @@ class TestSetupCLI:
             captured["settings"] = settings
             return object()
 
-        def fake_run(_app, host, port, log_level):
+        def fake_run(_app, host, port, log_level, **kwargs):
             captured["host"] = host
             captured["port"] = port
             captured["log_level"] = log_level
+            captured["uvicorn_kwargs"] = kwargs
 
         monkeypatch.setattr("daari.cli.app.Settings.load", fake_load)
         monkeypatch.setattr("daari.cli.app.create_app", fake_create_app)
@@ -662,6 +663,7 @@ class TestSetupCLI:
         assert captured["settings"].enterprise.enabled is True
         assert captured["settings"].enterprise.org_id == "acme"
         assert captured["port"] == 11501
+        assert captured["uvicorn_kwargs"].get("timeout_graceful_shutdown") == 30.0
 
     def test_org_cache_serve_uses_org_and_port(self, monkeypatch):
         captured = {}

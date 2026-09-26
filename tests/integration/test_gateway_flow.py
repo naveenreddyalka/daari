@@ -3841,3 +3841,62 @@ async def test_invalid_key_throttle_returns_429(settings):
         )
         assert ok.status_code == 200
 
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drain_ready_flip_inflight_and_reject(app, monkeypatch):
+    """SIGTERM drain: /ready 503, in-flight completes, new arrival 503 (#1104)."""
+    from daari.server.shutdown import begin_shutdown
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_execute(request: InternalRequest) -> InternalResponse:
+        started.set()
+        await release.wait()
+        return InternalResponse(
+            content="drained",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3",
+                executor="ollama",
+                provider_id="ollama",
+                latency_ms=1,
+            ),
+        )
+
+    monkeypatch.setattr(app.state.ctx.router.ollama, "execute", slow_execute)
+
+    async def backend_ok(probe_url: str, timeout: float = 2.0) -> str:
+        return "ok"
+
+    monkeypatch.setattr("daari.gateway.openai.check_model_backend", backend_ok)
+
+    payload = {
+        "model": "daari",
+        "messages": [{"role": "user", "content": "hold during drain"}],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        inflight = asyncio.create_task(
+            client.post("/v1/chat/completions", json=payload, headers=META_HEADERS)
+        )
+        await asyncio.wait_for(started.wait(), timeout=2.0)
+        begin_shutdown(app)
+        ready = await client.get("/ready")
+        health = await client.get("/health")
+        rejected = await client.post(
+            "/v1/chat/completions",
+            json={"model": "daari", "messages": [{"role": "user", "content": "new"}]},
+            headers=META_HEADERS,
+        )
+        release.set()
+        done = await asyncio.wait_for(inflight, timeout=2.0)
+
+    assert ready.status_code == 503
+    assert ready.json() == {"status": "shutting_down"}
+    assert health.status_code == 200
+    assert rejected.status_code == 503
+    assert rejected.headers.get("retry-after")
+    assert done.status_code == 200
+    assert done.json()["choices"][0]["message"]["content"] == "drained"

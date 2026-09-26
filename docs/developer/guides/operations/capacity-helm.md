@@ -70,13 +70,22 @@ Keep them equal to `pyproject.toml` / `daari.__version__`. `tests/unit/test_helm
 ### Graceful rollouts / drains
 
 Defaults leave interactive SSE streams (chat, Responses, MCP) and in-flight
-batch drains a window to finish before kubelet SIGTERMs the pod:
+batch drains a window to finish before kubelet SIGKILLs the pod. On SIGTERM
+the app flips `GET /ready` to `503 {"status":"shutting_down"}` immediately
+(liveness `/health` stays 200), stops admitting new in-flight work, and lets
+queued waiters plus already-admitted requests finish (#1104):
 
 | Value | Default | Role |
 |-------|---------|------|
-| `terminationGracePeriodSeconds` | `60` | Total time after SIGTERM before SIGKILL. Size above the longest stream you expect (and `sse_keepalive_seconds`). |
+| `gracefulTimeoutSeconds` | `30` | Sets `DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS` → uvicorn `timeout_graceful_shutdown`. Size for the longest stream you expect (and `sse_keepalive_seconds`). |
+| `terminationGracePeriodSeconds` | `60` | Total time after SIGTERM before SIGKILL. **Must be** greater than `gracefulTimeoutSeconds + lifecycle.preStopSleepSeconds`. |
 | `lifecycle.preStopSleepSeconds` | `5` | `preStop` sleep so Service endpoint removal propagates before SIGTERM. Set `0` to omit the lifecycle block. |
 | `strategy.rollingUpdate` | `maxUnavailable: 0` / `maxSurge: 1` | Never drop capacity during upgrades. |
+
+Non-Helm (systemd, docker-compose, bare `daari serve`): send SIGTERM/SIGINT;
+`/ready` flips the same way. Override with `daari serve --graceful-timeout N`
+or `DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS`. See
+[Upgrade and migrate](upgrade.md#connection-drain).
 
 ### Pod security and disruption budget
 

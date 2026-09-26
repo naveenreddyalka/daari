@@ -46,9 +46,11 @@ probes:
   readinessPath: /ready
   livenessPath: /health
 
-# Graceful rollout / drain (#545). Size terminationGracePeriodSeconds above the
-# longest SSE stream you expect (and sse_keepalive_seconds). preStop sleeps so
-# Service endpoint removal propagates before SIGTERM; 0 omits the lifecycle block.
+# Graceful rollout / drain (#545 / #1104). App-level drain flips /ready to
+# shutting_down and stops new admission on SIGTERM; uvicorn
+# timeout_graceful_shutdown uses gracefulTimeoutSeconds. Keep
+# terminationGracePeriodSeconds > gracefulTimeoutSeconds + preStopSleepSeconds.
+gracefulTimeoutSeconds: 30
 terminationGracePeriodSeconds: 60
 lifecycle:
   preStopSleepSeconds: 5

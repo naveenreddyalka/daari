@@ -4683,6 +4683,18 @@ headers). Docs: clients-and-gateways.md + regenerated http-api.md. Covered by
 images cannot starve chat on a shared key. Docs: auth-and-keys + config.md.
 Covered by `tests/unit/test_rate_families.py`.
 
+### Coordinated graceful shutdown ([#1104](https://github.com/naveenreddyalka/daari/issues/1104))
+
+<!-- tracking:#1104 -->
+**Status:** Done (2026-09-25). SIGTERM/SIGINT flips `/ready` to
+`503 shutting_down` (liveness `/health` stays 200), admission drain rejects
+new in-flight arrivals with 503 + Retry-After while queued/admitted work
+finishes, `daari serve --graceful-timeout` / Helm `gracefulTimeoutSeconds`
+wire uvicorn `timeout_graceful_shutdown`, and lifespan awaits budget-alert
+tasks before closing pools. Docs: upgrade.md + capacity-helm.md. Covered by
+`tests/unit/test_graceful_shutdown.py`,
+`tests/integration/test_gateway_flow.py::test_shutdown_drain_ready_flip_inflight_and_reject`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

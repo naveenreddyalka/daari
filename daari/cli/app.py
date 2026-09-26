@@ -1259,6 +1259,14 @@ def serve(
         "--tls-client-ca",
         help="Client CA path for mTLS (overrides server.tls.client_ca).",
     ),
+    graceful_timeout: float | None = typer.Option(
+        None,
+        "--graceful-timeout",
+        help=(
+            "Seconds to finish in-flight requests after SIGTERM "
+            "(overrides server.graceful_timeout_seconds; default 30)."
+        ),
+    ),
 ) -> None:
     """Start the daari HTTP daemon."""
     settings = (Settings.load(strict=True) if strict else Settings.load()).model_copy(deep=True)
@@ -1274,6 +1282,8 @@ def serve(
         settings.server.tls.key_file = tls_key
     if tls_client_ca is not None:
         settings.server.tls.client_ca = tls_client_ca
+    if graceful_timeout is not None:
+        settings.server.graceful_timeout_seconds = float(graceful_timeout)
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
     from daari.security.secret_refs import SecretRefError
@@ -1299,13 +1309,28 @@ def serve(
         typer.echo(f"  ✗ secret_refs: {exc}", err=True)
         typer.echo("Fix the ref (see: daari doctor) and retry.", err=True)
         raise typer.Exit(code=1) from None
-    uvicorn.run(
-        app_instance,
-        host=bind_host,
-        port=bind_port,
-        log_level="info",
-        **ssl_kwargs,
-    )
+    grace = float(getattr(settings.server, "graceful_timeout_seconds", 30.0) or 0.0)
+    from daari.server.shutdown import begin_shutdown
+
+    _server_cls = uvicorn.Server
+
+    class _ShutdownServer(_server_cls):
+        def handle_exit(self, sig: int, frame) -> None:  # type: ignore[no-untyped-def]
+            begin_shutdown(app_instance)
+            super().handle_exit(sig, frame)
+
+    uvicorn.Server = _ShutdownServer  # type: ignore[misc]
+    try:
+        uvicorn.run(
+            app_instance,
+            host=bind_host,
+            port=bind_port,
+            log_level="info",
+            timeout_graceful_shutdown=grace if grace > 0 else None,
+            **ssl_kwargs,
+        )
+    finally:
+        uvicorn.Server = _server_cls  # type: ignore[misc]
 
 
 @org_cache_app.command("serve")

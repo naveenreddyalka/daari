@@ -152,6 +152,17 @@ class ServerSettings(BaseModel):
             "0 disables (default)."
         ),
     )
+    graceful_timeout_seconds: float = Field(
+        default=30.0,
+        ge=0.0,
+        description=(
+            "Seconds uvicorn waits for in-flight requests (including SSE) after "
+            "SIGTERM/SIGINT before force-closing (#1104). Wire via "
+            "`daari serve --graceful-timeout` or "
+            "DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS. Size "
+            "terminationGracePeriodSeconds above this plus preStop sleep."
+        ),
+    )
 
     def master_keys(self) -> list[str]:
         from daari.server.auth import normalize_master_keys
