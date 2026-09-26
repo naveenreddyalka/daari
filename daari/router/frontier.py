@@ -23,6 +23,10 @@ from daari.router.anthropic_messages import (
     text_from_anthropic_content,
     to_anthropic_payload,
 )
+from daari.router.param_compat import (
+    FrontierParamCompatResult,
+    apply_frontier_param_compat,
+)
 from daari.router.retry import RetryPolicy, run_upstream
 
 
@@ -70,6 +74,9 @@ class FrontierExecutor:
     metrics: Any = None
     pool_limits: Any = None
     _http: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
+    last_param_compat: FrontierParamCompatResult | None = field(
+        default=None, init=False, repr=False
+    )
 
     def _client(self) -> httpx.AsyncClient:
         if self._http is None or getattr(self._http, "is_closed", False):
@@ -129,7 +136,40 @@ class FrontierExecutor:
             self.provider == "openrouter" or is_openrouter_base(self.base_url)
         ):
             payload["provider"] = as_openrouter_payload(request.provider)
+        # Model-aware sanitation for frontier ids that reject sampler knobs (#1129).
+        compat = apply_frontier_param_compat(
+            payload,
+            self.default_model,
+            has_tools=bool(request.tools),
+        )
+        self.last_param_compat = compat
+        if compat.tools_transport_warned:
+            from daari.gateway.request_log import log_gateway_event
+
+            log_gateway_event(
+                "frontier.tools_transport",
+                {
+                    "model": self.default_model,
+                    "transport": "responses",
+                    "path": "/chat/completions",
+                },
+            )
         return payload
+
+    def _apply_param_compat_meta(self, meta: DaariMeta) -> None:
+        """Attach dropped/coerced frontier param notes to daari_meta (#1129)."""
+        compat = self.last_param_compat
+        if compat is None:
+            return
+        if compat.dropped_params:
+            existing = list(meta.dropped_params or [])
+            for name in compat.dropped_params:
+                if name not in existing:
+                    existing.append(name)
+            meta.dropped_params = existing
+        if compat.warnings:
+            notes = "; ".join(compat.warnings)
+            meta.warning = f"{meta.warning}; {notes}" if meta.warning else notes
 
     def _openai_headers(self) -> dict[str, str]:
         from daari.observability.otel import inject_trace_headers
@@ -297,27 +337,29 @@ class FrontierExecutor:
         provider_prefs = (
             as_openrouter_payload(request.provider) if request.provider is not None else None
         )
+        meta = DaariMeta(
+            tier="L6",
+            cache_hit=False,
+            executor="frontier",
+            provider_id=self.provider,
+            latency_ms=latency_ms,
+            model=model,
+            confidence=local_confidence,
+            escalated_from=escalated_from,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            usage_estimated=estimated,
+            cost_usd=cost_usd,
+            cached_tokens=cached_tokens,
+            cache_write_tokens=cache_write_tokens or None,
+            provider_prefs=provider_prefs,
+            daari_cost_usd=0.0,
+            service_tier=request.sampling.service_tier,
+        )
+        self._apply_param_compat_meta(meta)
         return InternalResponse(
             content=content or "",
             model=model,
             tool_calls=tool_calls if tool_calls else None,
-            daari_meta=DaariMeta(
-                tier="L6",
-                cache_hit=False,
-                executor="frontier",
-                provider_id=self.provider,
-                latency_ms=latency_ms,
-                model=model,
-                confidence=local_confidence,
-                escalated_from=escalated_from,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                usage_estimated=estimated,
-                cost_usd=cost_usd,
-                cached_tokens=cached_tokens,
-                cache_write_tokens=cache_write_tokens or None,
-                provider_prefs=provider_prefs,
-                daari_cost_usd=0.0,
-                service_tier=request.sampling.service_tier,
-            ),
+            daari_meta=meta,
         )

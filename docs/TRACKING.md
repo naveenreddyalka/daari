@@ -4783,6 +4783,15 @@ pre-check before L6 soft/hard via `soft_budget_ratio`; report exposes
 OpenAPI path, auth middleware (401 without key / 200 mocked), frontier-disabled
 → 501. Covered by `tests/integration/test_images_edits.py`.
 
+### Frontier model-aware parameter compatibility ([#1129](https://github.com/naveenreddyalka/daari/issues/1129))
+
+<!-- tracking:#1129 -->
+**Status:** Done (2026-09-26). Per-model frontier param-compat table (longest-prefix
+lookup) strips unsupported sampler knobs for `gpt-6-astra`, floors
+`reasoning_effort=none` → `minimal`, and warns + logs `frontier.tools_transport`
+when tools hit chat completions. Covered by
+`tests/unit/test_frontier_param_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
