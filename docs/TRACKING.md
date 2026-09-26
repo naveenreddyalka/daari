@@ -4750,6 +4750,16 @@ one window; gateway 402 / soft `budget_warning` before escalate; report
 `persist` returns a runtime-only warning + audit `runtime_only`; persist
 still returns `persisted_to`. Covered by `tests/unit/test_config_ownership.py`.
 
+### Pre-auth request-header allow/block policy ([#1112](https://github.com/naveenreddyalka/daari/issues/1112))
+
+<!-- tracking:#1112 -->
+**Status:** Done (2026-09-26). `server.header_policy` (default off) screens
+required headers, deny exact/regex rules, and optional allowlists before
+`require_api_key`; open probes stay exempt; denies emit `header_policy_error`
++ `log_gateway_event` / audit. Doctor warns when enabled but empty/malformed.
+Covered by `tests/unit/test_header_policy.py` and
+`tests/unit/test_doctor_header_policy.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
