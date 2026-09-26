@@ -112,9 +112,7 @@ _PG_SPEND_CACHE_WRITE_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
     "cache_write_tokens INTEGER NOT NULL DEFAULT 0"
 )
-_SPEND_USER_ID_MIGRATE = (
-    "ALTER TABLE spend_requests ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"
-)
+_SPEND_USER_ID_MIGRATE = "ALTER TABLE spend_requests ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"
 _PG_SPEND_USER_ID_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''"
 )
@@ -282,9 +280,7 @@ class SpendLedger:
 
     @staticmethod
     def _migrate(conn: sqlite3.Connection) -> None:
-        columns = {
-            row[1] for row in conn.execute("PRAGMA table_info(spend_requests)").fetchall()
-        }
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(spend_requests)").fetchall()}
         if columns and "cache_write_tokens" not in columns:
             conn.execute(_SPEND_CACHE_WRITE_MIGRATE)
         if columns and "user_id" not in columns:

@@ -17,7 +17,6 @@ from daari.observability.spend import (
     bind_spend_context,
     export_dict,
     install_spend_hook,
-    spend_ledger_from_settings,
 )
 from daari.observability.usage import UsageLedger
 from daari.router.router import Router
@@ -175,9 +174,7 @@ def test_export_cli_includes_user_column_and_user_filter(tmp_path, monkeypatch):
     ledger = SpendLedger(path, enabled=True)
     _frontier_row(ledger, request_id="req-alice", user_id="alice", cost_usd=0.10)
     _frontier_row(ledger, request_id="req-bob", user_id="bob", cost_usd=0.05)
-    settings = Settings.model_validate(
-        {"usage": {"spend": {"enabled": True, "path": str(path)}}}
-    )
+    settings = Settings.model_validate({"usage": {"spend": {"enabled": True, "path": str(path)}}})
     monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
     runner = CliRunner()
 
@@ -233,9 +230,7 @@ def test_spend_report_by_user_for_team(tmp_path, monkeypatch):
         user_id="carol",
         cost_usd=0.99,
     )
-    settings = Settings.model_validate(
-        {"usage": {"spend": {"enabled": True, "path": str(path)}}}
-    )
+    settings = Settings.model_validate({"usage": {"spend": {"enabled": True, "path": str(path)}}})
     monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
     runner = CliRunner()
 
@@ -257,9 +252,7 @@ def test_export_without_user_flag_still_streams_all_rows(tmp_path, monkeypatch):
     ledger = SpendLedger(path, enabled=True)
     _frontier_row(ledger, request_id="req-1", user_id="")
     _frontier_row(ledger, request_id="req-2", user_id="alice")
-    settings = Settings.model_validate(
-        {"usage": {"spend": {"enabled": True, "path": str(path)}}}
-    )
+    settings = Settings.model_validate({"usage": {"spend": {"enabled": True, "path": str(path)}}})
     monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
     result = CliRunner().invoke(
         cli_app,

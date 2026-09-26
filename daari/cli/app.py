@@ -111,9 +111,7 @@ def parse_rate_family_flag(raw: str) -> tuple[str, dict[str, int]]:
     text = str(raw or "").strip()
     parts = text.split(":")
     if len(parts) not in (2, 3) or not parts[0].strip():
-        raise ValueError(
-            f"invalid --rate-family {raw!r}; expected name:rpm or name:rpm:tpm"
-        )
+        raise ValueError(f"invalid --rate-family {raw!r}; expected name:rpm or name:rpm:tpm")
     name = parts[0].strip().lower()
     from daari.auth.rate_families import RATE_FAMILIES
 
@@ -125,9 +123,7 @@ def parse_rate_family_flag(raw: str) -> tuple[str, dict[str, int]]:
         rpm = max(0, int(parts[1]))
         tpm = max(0, int(parts[2])) if len(parts) == 3 else 0
     except ValueError as exc:
-        raise ValueError(
-            f"invalid --rate-family {raw!r}; rpm/tpm must be integers"
-        ) from exc
+        raise ValueError(f"invalid --rate-family {raw!r}; rpm/tpm must be integers") from exc
     entry: dict[str, int] = {}
     if rpm:
         entry["rpm"] = rpm
@@ -1659,9 +1655,7 @@ def spend_report(
     ),
     team: str | None = typer.Option(None, "--team", help="Exact team id."),
     key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
-    by_user: bool = typer.Option(
-        False, "--by-user", help="Roll spend up per end-user / user_id."
-    ),
+    by_user: bool = typer.Option(False, "--by-user", help="Roll spend up per end-user / user_id."),
 ) -> None:
     """Member×spend rollup for chargeback (#1132)."""
     from daari.enterprise.audit import parse_since
@@ -1803,9 +1797,7 @@ def backup_restore(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"restored {archive}")
-    typer.echo(
-        f"daari={manifest.daari_version} schema={manifest.archive_schema_version}"
-    )
+    typer.echo(f"daari={manifest.daari_version} schema={manifest.archive_schema_version}")
 
 
 @app.command("usage")
