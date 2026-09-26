@@ -4810,6 +4810,15 @@ sqlite/JSONL/dir stores with a versioned manifest; postgres backends listed with
 `docs/developer/guides/operations/backup-restore.md`. Covered by
 `tests/unit/test_backup_restore.py`.
 
+### Spend user_id + team-member chargeback ([#1132](https://github.com/naveenreddyalka/daari/issues/1132))
+
+<!-- tracking:#1132 -->
+**Status:** Done (2026-09-26). Spend rows gain nullable `user_id` (sqlite +
+postgres migrate); `daari spend export --user` filters; `daari spend report
+--team T --by-user` rolls member×spend. Guide:
+`docs/developer/guides/observability/chargeback.md`. Covered by
+`tests/unit/test_spend_user_attribution.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

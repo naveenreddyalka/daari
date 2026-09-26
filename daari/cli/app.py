@@ -1591,6 +1591,7 @@ def spend_export(
     output_format: str = typer.Option("csv", "--format", help="csv or jsonl."),
     key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
     team: str | None = typer.Option(None, "--team", help="Exact team id."),
+    user: str | None = typer.Option(None, "--user", help="Exact end-user / user_id."),
     tier: str | None = typer.Option(
         None,
         "--tier",
@@ -1624,10 +1625,17 @@ def spend_export(
         typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
         raise typer.Exit(code=1)
     tier_filter = (tier or "").strip() or None
+    user_filter = (user or "").strip() or None
     catalog = getattr(settings, "model_groups", None) or {}
     rows = (
         annotate_model_group(row, catalog)
-        for row in ledger.iter_rows(since=cutoff, key_id=key, team_id=team, tier=tier_filter)
+        for row in ledger.iter_rows(
+            since=cutoff,
+            key_id=key,
+            team_id=team,
+            user_id=user_filter,
+            tier=tier_filter,
+        )
     )
     if fmt == "jsonl":
         for row in rows:
@@ -1642,6 +1650,47 @@ def spend_export(
         buffer.truncate()
         writer.writerow(export_dict(row))
         typer.echo(buffer.getvalue().rstrip("\n"))
+
+
+@spend_app.command("report")
+def spend_report(
+    since: str = typer.Option(
+        ..., "--since", help="ISO-8601 timestamp or relative window (7d, 12h)."
+    ),
+    team: str | None = typer.Option(None, "--team", help="Exact team id."),
+    key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
+    by_user: bool = typer.Option(
+        False, "--by-user", help="Roll spend up per end-user / user_id."
+    ),
+) -> None:
+    """Member×spend rollup for chargeback (#1132)."""
+    from daari.enterprise.audit import parse_since
+    from daari.observability.spend import spend_ledger_from_settings
+
+    if not by_user:
+        typer.echo("Pass --by-user (member rollup). Other rollups are not supported yet.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        cutoff = parse_since(since)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    settings = get_settings()
+    ledger = spend_ledger_from_settings(settings)
+    if not ledger.enabled:
+        typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
+        raise typer.Exit(code=1)
+    entries = ledger.by_user(since=cutoff, team_id=team, key_id=key)
+    if not entries:
+        typer.echo("No spend rows matched.")
+        return
+    typer.echo(f"{'user':<16} {'team':<14} {'requests':>9} {'cost $':>10} {'avoided $':>10}")
+    for entry in entries:
+        typer.echo(
+            f"{entry['user_id'] or '(none)':<16} {entry['team_id']:<14} "
+            f"{entry['requests']:>9} {entry['cost_usd']:>10.4f} "
+            f"{entry['cost_avoided_usd']:>10.4f}"
+        )
 
 
 @app.command()

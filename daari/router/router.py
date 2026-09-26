@@ -1006,6 +1006,7 @@ class Router:
                 key_id=getattr(meta, "key_id", None) or "",
                 team_id=getattr(meta, "team_id", None) or "",
                 client_id=meta.client_id or "",
+                user_id=getattr(meta, "user", None) or "",
                 request_id=request_id or "",
                 requested_model=request.model or "",
                 service_tier=getattr(request.sampling, "service_tier", None),

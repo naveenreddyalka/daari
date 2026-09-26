@@ -26,6 +26,7 @@ _COLUMNS = (
     "key_id",
     "team_id",
     "client_id",
+    "user_id",
     "model",
     "tier",
     "input_tokens",
@@ -43,6 +44,7 @@ EXPORT_FIELDS = (
     "key_id",
     "team_id",
     "client_id",
+    "user_id",
     "model",
     "model_group",
     "tier",
@@ -63,6 +65,7 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     key_id TEXT NOT NULL DEFAULT '',
     team_id TEXT NOT NULL DEFAULT '',
     client_id TEXT NOT NULL DEFAULT '',
+    user_id TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
     tier TEXT NOT NULL DEFAULT '',
     input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -86,6 +89,7 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     key_id TEXT NOT NULL DEFAULT '',
     team_id TEXT NOT NULL DEFAULT '',
     client_id TEXT NOT NULL DEFAULT '',
+    user_id TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
     tier TEXT NOT NULL DEFAULT '',
     input_tokens INTEGER NOT NULL DEFAULT 0,
@@ -108,6 +112,12 @@ _PG_SPEND_CACHE_WRITE_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
     "cache_write_tokens INTEGER NOT NULL DEFAULT 0"
 )
+_SPEND_USER_ID_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"
+)
+_PG_SPEND_USER_ID_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''"
+)
 
 
 @dataclass
@@ -115,6 +125,7 @@ class SpendContext:
     key_id: str = ""
     team_id: str = ""
     client_id: str = ""
+    user_id: str = ""
     request_id: str = ""
     requested_model: str = ""
     service_tier: str | None = None
@@ -194,6 +205,7 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "key_id": row["key_id"],
         "team_id": row["team_id"],
         "client_id": row["client_id"],
+        "user_id": row.get("user_id") or "",
         "model": row["model"],
         "model_group": row.get("model_group") or "",
         "tier": row["tier"],
@@ -228,6 +240,7 @@ def _where(
     team_id: str | None,
     ph: str,
     tier: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[str, list[Any]]:
     clauses = [f"ts >= {ph}"]
     params: list[Any] = [since]
@@ -237,6 +250,9 @@ def _where(
     if team_id:
         clauses.append(f"team_id = {ph}")
         params.append(team_id)
+    if user_id:
+        clauses.append(f"user_id = {ph}")
+        params.append(user_id)
     if tier:
         clauses.append(f"tier = {ph}")
         params.append(tier)
@@ -271,6 +287,12 @@ class SpendLedger:
         }
         if columns and "cache_write_tokens" not in columns:
             conn.execute(_SPEND_CACHE_WRITE_MIGRATE)
+        if columns and "user_id" not in columns:
+            conn.execute(_SPEND_USER_ID_MIGRATE)
+        if columns:
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_spend_requests_user ON spend_requests (user_id)"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=5.0)
@@ -283,6 +305,7 @@ class SpendLedger:
         key_id: str = "",
         team_id: str = "",
         client_id: str = "",
+        user_id: str = "",
         model: str = "",
         tier: str = "",
         input_tokens: int = 0,
@@ -300,10 +323,10 @@ class SpendLedger:
                 conn.execute(
                     """
                     INSERT INTO spend_requests (
-                        ts, request_id, key_id, team_id, client_id, model, tier,
+                        ts, request_id, key_id, team_id, client_id, user_id, model, tier,
                         input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                         cost_usd, cost_avoided_usd, cache_hit
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ts or _now_iso(),
@@ -311,6 +334,7 @@ class SpendLedger:
                         key_id or "",
                         team_id or "",
                         client_id or "",
+                        user_id or "",
                         model or "",
                         tier or "",
                         max(0, int(input_tokens)),
@@ -358,12 +382,16 @@ class SpendLedger:
             service_tier=bound.service_tier,
         )
         client = kwargs.get("client_id") or bound.client_id or ""
+        user = kwargs.get("user_id")
+        if user is None:
+            user = bound.user_id
         self.record(
             ts=kwargs.get("ts"),
             request_id=bound.request_id or str(kwargs.get("request_id") or ""),
             key_id=bound.key_id or str(kwargs.get("key_id") or ""),
             team_id=bound.team_id or str(kwargs.get("team_id") or ""),
             client_id=str(client),
+            user_id=str(user or ""),
             model=str(served),
             tier=str(kwargs.get("tier") or ""),
             input_tokens=tokens_in,
@@ -381,13 +409,14 @@ class SpendLedger:
         since: str,
         key_id: str | None = None,
         team_id: str | None = None,
+        user_id: str | None = None,
         tier: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
-        where, params = _where(since, key_id, team_id, "?", tier=tier)
+        where, params = _where(since, key_id, team_id, "?", tier=tier, user_id=user_id)
         sql = (
-            "SELECT ts, request_id, key_id, team_id, client_id, model, tier,"
+            "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
             " cost_usd, cost_avoided_usd, cache_hit"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
@@ -403,6 +432,38 @@ class SpendLedger:
                         yield _tuple_to_row(values)
         except Exception:
             return
+
+    def by_user(
+        self,
+        *,
+        since: str,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Member×spend rollup for a window (#1132)."""
+        if not self.enabled:
+            return []
+        where, params = _where(since, key_id, team_id, "?")
+        sql = (
+            "SELECT user_id, team_id, COUNT(*), SUM(cost_usd), SUM(cost_avoided_usd)"
+            f" FROM spend_requests WHERE {where}"
+            " GROUP BY user_id, team_id ORDER BY SUM(cost_usd) DESC, user_id"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "user_id": user or "",
+                "team_id": team or "",
+                "requests": int(requests or 0),
+                "cost_usd": float(cost or 0.0),
+                "cost_avoided_usd": float(avoided or 0.0),
+            }
+            for user, team, requests, cost, avoided in rows
+        ]
 
     def prune_before(self, cutoff_iso: str, *, dry_run: bool = False) -> int:
         if not self.enabled:
@@ -474,6 +535,11 @@ class PostgresSpendLedger(SpendLedger):
                         if sql:
                             cur.execute(sql)
                     cur.execute(_PG_SPEND_CACHE_WRITE_MIGRATE)
+                    cur.execute(_PG_SPEND_USER_ID_MIGRATE)
+                    cur.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_spend_requests_user "
+                        "ON spend_requests (user_id)"
+                    )
                 conn.commit()
         except Exception:
             self.enabled = False
@@ -491,6 +557,7 @@ class PostgresSpendLedger(SpendLedger):
         key_id: str = "",
         team_id: str = "",
         client_id: str = "",
+        user_id: str = "",
         model: str = "",
         tier: str = "",
         input_tokens: int = 0,
@@ -509,10 +576,10 @@ class PostgresSpendLedger(SpendLedger):
                     cur.execute(
                         """
                         INSERT INTO spend_requests (
-                            ts, request_id, key_id, team_id, client_id, model, tier,
+                            ts, request_id, key_id, team_id, client_id, user_id, model, tier,
                             input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                             cost_usd, cost_avoided_usd, cache_hit
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             ts or _now_iso(),
@@ -520,6 +587,7 @@ class PostgresSpendLedger(SpendLedger):
                             key_id or "",
                             team_id or "",
                             client_id or "",
+                            user_id or "",
                             model or "",
                             tier or "",
                             max(0, int(input_tokens)),
@@ -541,13 +609,14 @@ class PostgresSpendLedger(SpendLedger):
         since: str,
         key_id: str | None = None,
         team_id: str | None = None,
+        user_id: str | None = None,
         tier: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
             return
-        where, params = _where(since, key_id, team_id, "%s", tier=tier)
+        where, params = _where(since, key_id, team_id, "%s", tier=tier, user_id=user_id)
         sql = (
-            "SELECT ts, request_id, key_id, team_id, client_id, model, tier,"
+            "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
             " cost_usd, cost_avoided_usd, cache_hit"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
@@ -564,6 +633,39 @@ class PostgresSpendLedger(SpendLedger):
                             yield _tuple_to_row(values)
         except Exception:
             return
+
+    def by_user(
+        self,
+        *,
+        since: str,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        where, params = _where(since, key_id, team_id, "%s")
+        sql = (
+            "SELECT user_id, team_id, COUNT(*), SUM(cost_usd), SUM(cost_avoided_usd)"
+            f" FROM spend_requests WHERE {where}"
+            " GROUP BY user_id, team_id ORDER BY SUM(cost_usd) DESC, user_id"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "user_id": user or "",
+                "team_id": team or "",
+                "requests": int(requests or 0),
+                "cost_usd": float(cost or 0.0),
+                "cost_avoided_usd": float(avoided or 0.0),
+            }
+            for user, team, requests, cost, avoided in rows
+        ]
 
     def prune_before(self, cutoff_iso: str, *, dry_run: bool = False) -> int:
         if not self.enabled:
