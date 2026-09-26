@@ -12,7 +12,7 @@ from daari.auth.budgets import (
     parse_model_max_budget,
     team_model_spend_report_rows,
 )
-from daari.auth.virtual_keys import BudgetWindow, VirtualKeyStore
+from daari.auth.virtual_keys import VirtualKeyStore
 from daari.gateway.budget_headers import BUDGET_SCOPE_HEADER, BUDGET_WARNING_HEADER
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
 from daari.observability.usage import UsageLedger
