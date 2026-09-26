@@ -129,3 +129,23 @@ class IdempotencyStore:
                 (cutoff,),
             )
             return count
+
+    def erase_principals(self, principals: list[str], *, dry_run: bool = False) -> int:
+        """Delete idempotency rows for any of ``principals`` (#1130)."""
+        ids = [str(p).strip() for p in principals if str(p).strip()]
+        if not ids:
+            return 0
+        placeholders = ",".join("?" for _ in ids)
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM idempotency WHERE principal IN ({placeholders})",
+                ids,
+            ).fetchone()
+            count = int(row[0] if row else 0)
+            if dry_run or count == 0:
+                return count
+            conn.execute(
+                f"DELETE FROM idempotency WHERE principal IN ({placeholders})",
+                ids,
+            )
+            return count

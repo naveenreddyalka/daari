@@ -285,6 +285,22 @@ class FileStore:
         self._persist_index()
         return True
 
+    def erase_owner_keys(self, owner_key_ids: list[str], *, dry_run: bool = False) -> int:
+        """Delete files owned by any of ``owner_key_ids`` (#1130)."""
+        wanted = {str(i).strip() for i in owner_key_ids if str(i).strip()}
+        if not wanted:
+            return 0
+        doomed = [
+            file_id
+            for file_id, stored in list(self._files.items())
+            if (stored.owner_key_id or "") in wanted
+        ]
+        if dry_run:
+            return len(doomed)
+        for file_id in doomed:
+            self.delete(file_id)
+        return len(doomed)
+
     def prune_expired(self, *, now: int | None = None, dry_run: bool = False) -> int:
         """Delete expired files from index + disk. Returns count removed."""
         stamp = int(now if now is not None else time.time())

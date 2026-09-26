@@ -781,6 +781,54 @@ class UsageLedger:
         except Exception:
             return 0
 
+    def erase_subject(
+        self,
+        *,
+        client_ids: list[str] | None = None,
+        user_id: str | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        """Delete client_usage / user_usage rows for a subject (#1130).
+
+        Aggregate ``usage`` has no tenant column and is left untouched.
+        """
+        if not self.enabled:
+            return 0
+        ids = [str(c).strip() for c in (client_ids or ()) if str(c).strip()]
+        uid = (user_id or "").strip() or None
+        if not ids and not uid:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                total = 0
+                if ids:
+                    placeholders = ",".join("?" for _ in ids)
+                    for table in ("client_usage", "user_usage"):
+                        count = conn.execute(
+                            f"SELECT COUNT(*) FROM {table} WHERE client_id IN ({placeholders})",
+                            ids,
+                        ).fetchone()[0]
+                        total += int(count)
+                        if not dry_run and count:
+                            conn.execute(
+                                f"DELETE FROM {table} WHERE client_id IN ({placeholders})",
+                                ids,
+                            )
+                if uid:
+                    count = conn.execute(
+                        "SELECT COUNT(*) FROM user_usage WHERE user_id = ?",
+                        (uid,),
+                    ).fetchone()[0]
+                    total += int(count)
+                    if not dry_run and count:
+                        conn.execute(
+                            "DELETE FROM user_usage WHERE user_id = ?",
+                            (uid,),
+                        )
+                return total
+        except Exception:
+            return 0
+
     def report(self, days: int = 7, *, frontier_price_per_1k_tokens: float = 0.002) -> dict[str, Any]:
         if not self.enabled:
             return {"enabled": False, "days": [], "totals": _empty_totals()}
