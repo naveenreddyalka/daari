@@ -76,6 +76,7 @@ def run_doctor(
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
     results.append(_check_store_migrate(cfg, strict=strict))
+    results.append(_check_recent_backup(cfg))
     daemon = _check_daemon(cfg, httpx_client)
     results.append(daemon)
     results.append(_check_ready(cfg, httpx_client, daemon_ok=daemon.ok))
@@ -1272,6 +1273,29 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
         ok=False,
         detail=detail,
         optional=not strict,
+    )
+
+
+def _check_recent_backup(settings: Settings) -> CheckResult:
+    """Informational hint when no recent full-state backup archive is found (#1131)."""
+    from daari.ops.backup import recent_backup_manifests
+
+    found = recent_backup_manifests()
+    if found:
+        return CheckResult(
+            name="backup",
+            ok=True,
+            detail=f"recent backup: {found[-1].name}",
+            optional=True,
+        )
+    return CheckResult(
+        name="backup",
+        ok=False,
+        detail=(
+            "no recent backup under ~/.daari/backups — "
+            "run: daari backup create ~/.daari/backups/daari.tar.gz"
+        ),
+        optional=True,
     )
 
 

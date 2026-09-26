@@ -24,6 +24,7 @@ Entry point: `daari` (Typer).
 | `config` | Validate `config.yaml` (`validate`) |
 | `prune` | Retention prune (traces / usage / feedback) |
 | `erase` | Subject erasure (`--key` / `--team` / `--user`, `--dry-run` / `--yes`) |
+| `backup` | Full-state archive (`create` / `restore`) |
 
 ## `setup`
 

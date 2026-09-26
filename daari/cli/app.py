@@ -85,6 +85,7 @@ project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
 spend_app = typer.Typer(help="Per-request spend rows for finance chargeback.")
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
+backup_app = typer.Typer(help="Full-state backup and restore of durable stores.")
 config_app = typer.Typer(help="Validate daari.yaml before restart.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
@@ -99,6 +100,7 @@ app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
 app.add_typer(audit_app, name="audit")
+app.add_typer(backup_app, name="backup")
 app.add_typer(config_app, name="config")
 app.add_typer(spend_app, name="spend")
 app.add_typer(route_app, name="route")
@@ -1705,6 +1707,56 @@ def erase(
     for row in result.stores:
         count = row.matched if dry_run else row.deleted
         typer.echo(f"  {row.store:<12} {count} row(s)")
+
+
+@backup_app.command("create")
+def backup_create(
+    archive: Path = typer.Argument(..., help="Destination .tar.gz archive path."),
+) -> None:
+    """Snapshot durable sqlite/JSONL/dir stores into one versioned archive."""
+    from daari.ops.backup import BackupError, create_backup
+
+    settings = get_settings()
+    try:
+        manifest = create_backup(settings, archive)
+    except BackupError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"wrote {archive}")
+    typer.echo(
+        f"daari={manifest.daari_version} schema={manifest.archive_schema_version} "
+        f"stores={len(manifest.stores)}"
+    )
+    for row in manifest.stores:
+        if row.get("backend") == "postgres":
+            typer.echo(f"  {row['name']:<14} external  {row.get('pg_dump')}")
+        else:
+            status = "included" if row.get("present") else "missing"
+            typer.echo(f"  {row['name']:<14} {status}")
+
+
+@backup_app.command("restore")
+def backup_restore(
+    archive: Path = typer.Argument(..., help="Source .tar.gz archive path."),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing same-version store files at restore targets.",
+    ),
+) -> None:
+    """Restore durable stores from an archive onto the configured data paths."""
+    from daari.ops.backup import BackupError, restore_backup
+
+    settings = get_settings()
+    try:
+        manifest = restore_backup(settings, archive, force=force)
+    except BackupError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"restored {archive}")
+    typer.echo(
+        f"daari={manifest.daari_version} schema={manifest.archive_schema_version}"
+    )
 
 
 @app.command("usage")
