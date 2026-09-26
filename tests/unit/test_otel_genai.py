@@ -216,6 +216,40 @@ def test_token_usage_and_duration_metrics():
     assert any(p.sum >= 0.25 for p in duration_points)
 
 
+def test_cache_read_and_creation_token_dims():
+    """Kong-parity cache_read / cache_creation on spans + metrics (#1105)."""
+    response = InternalResponse(
+        content="hello",
+        model="claude-haiku-4-5",
+        finish_reason="stop",
+        daari_meta=DaariMeta(
+            tier="L6",
+            executor="frontier",
+            provider_id="anthropic",
+            model="claude-haiku-4-5",
+            latency_ms=100,
+            input_tokens=1000,
+            output_tokens=20,
+            usage_estimated=False,
+            cached_tokens=700,
+            cache_write_tokens=100,
+        ),
+    )
+    assert export_trace(
+        RequestTrace(),
+        request=_request(model="claude-haiku-4-5"),
+        response=response,
+    )
+    attrs = dict(_root_span().attributes)
+    assert attrs["gen_ai.usage.cache_read.input_tokens"] == 700
+    assert attrs["gen_ai.usage.cache_creation.input_tokens"] == 100
+
+    usage_points = _metric_points("gen_ai.client.token.usage")
+    by_type = {p.attributes["gen_ai.token.type"]: p for p in usage_points}
+    assert by_type["cache_read"].sum >= 700
+    assert by_type["cache_creation"].sum >= 100
+
+
 def test_stream_timing_metrics():
     trace = RequestTrace()
     export_trace(

@@ -297,6 +297,7 @@ def _record_metrics(
     usage: tuple[int | None, int | None],
     time_to_first_chunk: float | None,
     time_per_output_chunk: float | None,
+    cache_usage: tuple[int | None, int | None] = (None, None),
 ) -> None:
     instruments = _instruments()
     if instruments is None:
@@ -309,6 +310,16 @@ def _record_metrics(
     if output_tokens is not None:
         instruments["token_usage"].record(
             output_tokens, attributes={**metric_attrs, "gen_ai.token.type": "output"}
+        )
+    cache_read, cache_creation = cache_usage
+    if cache_read:
+        instruments["token_usage"].record(
+            cache_read, attributes={**metric_attrs, "gen_ai.token.type": "cache_read"}
+        )
+    if cache_creation:
+        instruments["token_usage"].record(
+            cache_creation,
+            attributes={**metric_attrs, "gen_ai.token.type": "cache_creation"},
         )
     duration = _duration_seconds(trace, response)
     if duration is not None:
@@ -349,6 +360,7 @@ def export_trace(
 
         root_attrs: dict[str, Any] = {"daari.trace_id": getattr(trace, "trace_id", "")}
         usage: tuple[int | None, int | None] = (None, None)
+        cache_usage: tuple[int | None, int | None] = (None, None)
         metric_attrs: dict[str, Any] = {}
         if request_model:
             span_name = f"chat {request_model}"
@@ -385,6 +397,18 @@ def export_trace(
                         root_attrs["gen_ai.usage.input_tokens"] = usage[0]
                     if usage[1] is not None:
                         root_attrs["gen_ai.usage.output_tokens"] = usage[1]
+                    cached = getattr(meta, "cached_tokens", None)
+                    write = getattr(meta, "cache_write_tokens", None)
+                    cache_usage = (
+                        int(cached) if cached else None,
+                        int(write) if write else None,
+                    )
+                    if cache_usage[0]:
+                        root_attrs["gen_ai.usage.cache_read.input_tokens"] = cache_usage[0]
+                    if cache_usage[1]:
+                        root_attrs["gen_ai.usage.cache_creation.input_tokens"] = (
+                            cache_usage[1]
+                        )
                 for fact in (
                     "tier",
                     "cache_hit",
@@ -426,6 +450,7 @@ def export_trace(
                 usage=usage,
                 time_to_first_chunk=time_to_first_chunk,
                 time_per_output_chunk=time_per_output_chunk,
+                cache_usage=cache_usage,
             )
         return True
     except Exception:

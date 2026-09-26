@@ -119,12 +119,25 @@ def _slot_satisfies_region(slot: Any, pin: str) -> bool:
     return openrouter_can_satisfy_region(pin, base)
 
 
-def usage_cost_and_cache(data: dict[str, Any]) -> tuple[float | None, int | None]:
+def usage_cost_and_cache(
+    data: dict[str, Any],
+) -> tuple[float | None, int | None, int]:
+    """Return (reported_cost, cache_read_tokens, cache_write_tokens).
+
+    OpenAI/OpenRouter: ``prompt_tokens_details.cached_tokens`` is cache read.
+    Anthropic: ``cache_read_input_tokens`` / ``cache_creation_input_tokens``.
+    """
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     cost_raw = usage.get("cost")
     cost = float(cost_raw) if isinstance(cost_raw, (int, float)) else None
     details = usage.get("prompt_tokens_details")
     details = details if isinstance(details, dict) else {}
-    cached_raw = details.get("cached_tokens") or usage.get("cached_tokens")
+    cached_raw = (
+        details.get("cached_tokens")
+        or usage.get("cached_tokens")
+        or usage.get("cache_read_input_tokens")
+    )
     cached = int(cached_raw) if isinstance(cached_raw, (int, float)) and cached_raw >= 0 else None
-    return cost, cached
+    write_raw = usage.get("cache_creation_input_tokens") or usage.get("cache_write_tokens")
+    write = int(write_raw) if isinstance(write_raw, (int, float)) and write_raw >= 0 else 0
+    return cost, cached, write

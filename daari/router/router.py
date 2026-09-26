@@ -1040,6 +1040,7 @@ class Router:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_tokens=response.daari_meta.cached_tokens,
+            cache_write_tokens=response.daari_meta.cache_write_tokens,
             reported_cost=response.daari_meta.cost_usd,
         )
 
