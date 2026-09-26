@@ -4801,6 +4801,15 @@ scoped caches; audit appends `compliance.erase` (hash chain intact). Guide:
 `docs/developer/guides/operations/erasure.md`. Covered by
 `tests/unit/test_erasure.py`.
 
+### Full-state backup/restore CLI ([#1131](https://github.com/naveenreddyalka/daari/issues/1131))
+
+<!-- tracking:#1131 -->
+**Status:** Done (2026-09-26). `daari backup create|restore` archives durable
+sqlite/JSONL/dir stores with a versioned manifest; postgres backends listed with
+`pg_dump` commands; doctor hints when no recent backup; guide
+`docs/developer/guides/operations/backup-restore.md`. Covered by
+`tests/unit/test_backup_restore.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
