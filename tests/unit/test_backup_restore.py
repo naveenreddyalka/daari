@@ -14,7 +14,6 @@ from daari.cli.app import app as cli_app
 from daari.config.settings import Settings
 from daari.enterprise.audit import AuditLog
 from daari.observability.spend import SpendLedger
-from daari.ops import backup as backup_mod
 from daari.ops.backup import (
     ARCHIVE_SCHEMA_VERSION,
     BackupError,
