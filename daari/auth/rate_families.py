@@ -19,6 +19,8 @@ RATE_FAMILIES = frozenset(
 def rate_limit_family(path: str) -> str:
     """Map a request path to a modality family."""
     p = (path or "").split("?", 1)[0]
+    if p == "/v1/moderations" or p.startswith("/v1/moderations/") or p == "/v1/messages/moderations":
+        return "moderations"
     if p.startswith("/v1/chat/") or p in {"/v1/responses", "/v1/messages"} or p.startswith(
         "/v1/messages/"
     ):
@@ -29,8 +31,6 @@ def rate_limit_family(path: str) -> str:
         return "images"
     if p.startswith("/v1/audio/"):
         return "audio"
-    if p.startswith("/v1/moderations"):
-        return "moderations"
     if p.startswith("/v1/rerank"):
         return "rerank"
     return "other"
