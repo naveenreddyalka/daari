@@ -152,6 +152,11 @@ CREATE TABLE IF NOT EXISTS teams (
     cache_scope TEXT NOT NULL DEFAULT 'global',
     priority TEXT NOT NULL DEFAULT 'normal'
 );
+CREATE TABLE IF NOT EXISTS team_members (
+    subject TEXT NOT NULL,
+    team_id TEXT NOT NULL,
+    PRIMARY KEY (subject, team_id)
+);
 CREATE TABLE IF NOT EXISTS virtual_keys (
     key_hash TEXT PRIMARY KEY,
     key_id TEXT NOT NULL UNIQUE,
@@ -428,6 +433,15 @@ class VirtualKeyStore:
             conn.execute(
                 "ALTER TABLE teams ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
             )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS team_members (
+                subject TEXT NOT NULL,
+                team_id TEXT NOT NULL,
+                PRIMARY KEY (subject, team_id)
+            )
+            """
+        )
         rows = conn.execute(
             "SELECT key_id, daily_budget_usd, monthly_budget_usd, budget_windows_json"
             " FROM virtual_keys"
@@ -690,6 +704,62 @@ class VirtualKeyStore:
                 (team_id,),
             ).fetchall()
         return [row[1] or row[0] for row in rows]
+
+    def set_team_memberships(self, subject: str, team_ids: list[str] | tuple[str, ...]) -> None:
+        """Replace entitlement rows for ``subject`` (#1107)."""
+        if not self.enabled:
+            return
+        sub = (subject or "").strip()
+        if not sub:
+            return
+        wanted = [str(t).strip() for t in team_ids if str(t).strip()]
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM team_members WHERE subject = ?", (sub,))
+            for team_id in wanted:
+                conn.execute(
+                    "INSERT OR IGNORE INTO team_members (subject, team_id) VALUES (?, ?)",
+                    (sub, team_id),
+                )
+
+    def add_team_membership(self, subject: str, team_id: str) -> None:
+        if not self.enabled:
+            return
+        sub = (subject or "").strip()
+        tid = (team_id or "").strip()
+        if not sub or not tid:
+            return
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO team_members (subject, team_id) VALUES (?, ?)",
+                (sub, tid),
+            )
+
+    def list_team_memberships(self, subject: str) -> list[str]:
+        if not self.enabled:
+            return []
+        sub = (subject or "").strip()
+        if not sub:
+            return []
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT team_id FROM team_members WHERE subject = ? ORDER BY team_id",
+                (sub,),
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def is_team_member(self, subject: str, team_id: str) -> bool:
+        if not self.enabled:
+            return False
+        sub = (subject or "").strip()
+        tid = (team_id or "").strip()
+        if not sub or not tid:
+            return False
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM team_members WHERE subject = ? AND team_id = ?",
+                (sub, tid),
+            ).fetchone()
+        return row is not None
 
     def create(
         self,

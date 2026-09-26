@@ -28,6 +28,8 @@ class AuthClaims:
     team_model_groups: tuple[str, ...] | None = None
     # Effective cache isolation for this token (#768). global | team | key.
     cache_scope: str = "global"
+    # Request-time team selection (#1107). None = key-pinned / default.
+    selected_team_id: str | None = None
 
 
 def extract_api_key(headers: Any) -> str:
@@ -96,11 +98,98 @@ def apply_auth_claims_to_meta(
     if not getattr(meta, "key_id", None) and claims.key_id:
         meta.key_id = claims.key_id
     team_id = getattr(getattr(claims, "virtual_key", None), "team_id", None)
+    selected = getattr(claims, "selected_team_id", None)
+    if selected:
+        team_id = selected
     if not getattr(meta, "team_id", None) and team_id:
         meta.team_id = team_id
     scope = getattr(claims, "cache_scope", None) or "global"
     if scope in {"team", "key"}:
         meta.cache_scope = scope
+
+
+TEAM_HEADER = "x-daari-team"
+
+
+def membership_subject(key: VirtualKey) -> str:
+    """Stable subject for team entitlements: SSO sub, else client_id, else key_id."""
+    meta = key.metadata or {}
+    for field in ("sso_sub", "sub", "subject"):
+        raw = meta.get(field)
+        if raw:
+            return str(raw).strip()
+    return (key.client_id or key.key_id or "").strip()
+
+
+def key_allows_team_override(key: VirtualKey) -> bool:
+    meta = key.metadata or {}
+    return bool(meta.get("allow_team_override"))
+
+
+def resolve_team_header(
+    headers: Any,
+    claims: AuthClaims,
+    store: VirtualKeyStore | None,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Apply optional ``X-Daari-Team`` selection (#1107).
+
+    Returns ``(selected_team_id, error_payload)``. ``error_payload`` is set on
+    403 cases (non-member or pinned-team override refused).
+    """
+    if claims.kind != "virtual" or claims.virtual_key is None or store is None:
+        return None, None
+    raw = ""
+    if headers is not None:
+        raw = str(headers.get(TEAM_HEADER) or headers.get("X-Daari-Team") or "").strip()
+    if not raw:
+        return None, None
+    key = claims.virtual_key
+    pinned = (key.team_id or "").strip()
+    # Resolve name or id.
+    team = store.get_team(raw) or store.get_team(name=raw)
+    if team is None:
+        return None, {
+            "type": "permission_error",
+            "code": "team_not_found",
+            "message": f"Unknown team {raw!r}.",
+        }
+    wanted = team.team_id
+    if pinned and wanted != pinned and not key_allows_team_override(key):
+        return None, {
+            "type": "permission_error",
+            "code": "team_override_denied",
+            "message": (
+                "Virtual key is pinned to a team; set metadata.allow_team_override "
+                "to select another."
+            ),
+        }
+    subject = membership_subject(key)
+    if not store.is_team_member(subject, wanted):
+        return None, {
+            "type": "permission_error",
+            "code": "team_membership_required",
+            "message": "Authenticated identity is not a member of the requested team.",
+        }
+    return wanted, None
+
+
+def apply_selected_team(
+    claims: AuthClaims,
+    team_id: str,
+    store: VirtualKeyStore,
+) -> None:
+    """Stamp ``selected_team_id`` and refresh team allowlist fields on claims."""
+    claims.selected_team_id = team_id
+    team = store.get_team(team_id)
+    if team is None:
+        return
+    claims.team_allowed_models = team.allowed_models
+    claims.team_model_groups = team.model_groups
+    team_scope = team.cache_scope
+    key_scope = getattr(claims.virtual_key, "cache_scope", "global") if claims.virtual_key else "global"
+    claims.cache_scope = effective_cache_scope(key_scope, team_scope)
+    if not claims.region_pin and team.region_pin:
+        claims.region_pin = team.region_pin
 
 
 def resolve_auth(

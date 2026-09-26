@@ -381,6 +381,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             budget_response_headers: dict[str, str] = {}
+            # Optional X-Daari-Team selection with membership enforcement (#1107).
+            if claims.kind == "virtual" and claims.virtual_key is not None and store is not None:
+                from daari.server.auth import (
+                    apply_selected_team,
+                    resolve_team_header,
+                )
+
+                selected, team_err = resolve_team_header(request.headers, claims, store)
+                if team_err is not None:
+                    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                    audit_log_from_settings(resolved).record(
+                        actor=claims.client_id or claims.key_id or "unknown",
+                        role="key",
+                        action="auth.team_selection_denied",
+                        detail={
+                            "key_id": claims.key_id,
+                            "code": team_err.get("code"),
+                            "header": request.headers.get("x-daari-team"),
+                        },
+                    )
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": team_err},
+                    )
+                if selected:
+                    apply_selected_team(claims, selected, store)
             ledger = None
             statuses: list = []
             team = None
@@ -442,6 +469,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                 key = refreshed
                                 claims.virtual_key = refreshed
                     team = store.get_team(key.team_id) if key is not None else None
+                    if claims.selected_team_id:
+                        team = store.get_team(claims.selected_team_id) or team
                     team_ids = store.team_client_ids(team.team_id) if team is not None else []
                     statuses = budget_status(
                         key,
@@ -612,6 +641,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         family = rate_limit_family(request.url.path)
         fam_rpm, fam_tpm = family_limits_from_key(virtual, family)
         team_id = getattr(virtual, "team_id", None) if virtual is not None else None
+        selected = getattr(claims, "selected_team_id", None) if claims is not None else None
+        if selected:
+            team_id = selected
         team_rpm = None
         team_tpm = None
         team_rpd = None

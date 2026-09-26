@@ -78,6 +78,11 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     cache_scope TEXT NOT NULL DEFAULT 'global',
     priority TEXT NOT NULL DEFAULT 'normal'
 );
+CREATE TABLE IF NOT EXISTS team_members (
+    subject TEXT NOT NULL,
+    team_id TEXT NOT NULL,
+    PRIMARY KEY (subject, team_id)
+);
 """
 
 _PG_TEAM_MIGRATIONS = (
@@ -432,7 +437,7 @@ class PostgresVirtualKeyStore:
             return self._inner.team_client_ids(team_id)
         if not self.enabled:
             return []
-        with self._lock, self._connect() as conn:
+        with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT key_id, client_id FROM virtual_keys"
@@ -441,6 +446,79 @@ class PostgresVirtualKeyStore:
                 )
                 rows = cur.fetchall()
         return [row[1] or row[0] for row in rows]
+
+    def set_team_memberships(self, subject: str, team_ids: list[str] | tuple[str, ...]) -> None:
+        if self._inner is not None:
+            return self._inner.set_team_memberships(subject, team_ids)
+        if not self.enabled:
+            return
+        sub = (subject or "").strip()
+        if not sub:
+            return
+        wanted = [str(t).strip() for t in team_ids if str(t).strip()]
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM team_members WHERE subject = %s", (sub,))
+                for team_id in wanted:
+                    cur.execute(
+                        "INSERT INTO team_members (subject, team_id) VALUES (%s, %s)"
+                        " ON CONFLICT DO NOTHING",
+                        (sub, team_id),
+                    )
+            conn.commit()
+
+    def add_team_membership(self, subject: str, team_id: str) -> None:
+        if self._inner is not None:
+            return self._inner.add_team_membership(subject, team_id)
+        if not self.enabled:
+            return
+        sub = (subject or "").strip()
+        tid = (team_id or "").strip()
+        if not sub or not tid:
+            return
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO team_members (subject, team_id) VALUES (%s, %s)"
+                    " ON CONFLICT DO NOTHING",
+                    (sub, tid),
+                )
+            conn.commit()
+
+    def list_team_memberships(self, subject: str) -> list[str]:
+        if self._inner is not None:
+            return self._inner.list_team_memberships(subject)
+        if not self.enabled:
+            return []
+        sub = (subject or "").strip()
+        if not sub:
+            return []
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT team_id FROM team_members WHERE subject = %s ORDER BY team_id",
+                    (sub,),
+                )
+                rows = cur.fetchall()
+        return [row[0] for row in rows]
+
+    def is_team_member(self, subject: str, team_id: str) -> bool:
+        if self._inner is not None:
+            return self._inner.is_team_member(subject, team_id)
+        if not self.enabled:
+            return False
+        sub = (subject or "").strip()
+        tid = (team_id or "").strip()
+        if not sub or not tid:
+            return False
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM team_members WHERE subject = %s AND team_id = %s",
+                    (sub, tid),
+                )
+                row = cur.fetchone()
+        return row is not None
 
     def create(
         self,

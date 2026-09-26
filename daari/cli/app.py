@@ -834,6 +834,39 @@ def keys_team_update(
     )
 
 
+@keys_app.command("team-members")
+def keys_team_members(
+    subject: str = typer.Argument(..., help="Membership subject (client_id or SSO sub)"),
+    team: list[str] = typer.Option(
+        [],
+        "--team",
+        help="Team id or name to entitle. Repeatable. Omitting clears memberships.",
+    ),
+    list_only: bool = typer.Option(False, "--list", help="List current memberships only."),
+) -> None:
+    """Set or list team entitlements for a subject (#1107)."""
+    from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+    store = virtual_key_store_from_settings(get_settings())
+    if list_only or not team:
+        rows = store.list_team_memberships(subject)
+        if not rows:
+            typer.echo("(none)")
+            return
+        for team_id in rows:
+            typer.echo(team_id)
+        return
+    resolved: list[str] = []
+    for raw in team:
+        row = store.get_team(raw) or store.get_team(name=raw)
+        if row is None:
+            typer.echo(f"unknown team: {raw}", err=True)
+            raise typer.Exit(1)
+        resolved.append(row.team_id)
+    store.set_team_memberships(subject, resolved)
+    typer.echo(f"subject={subject} teams={','.join(resolved)}")
+
+
 @keys_app.command("export")
 def keys_export(
     as_json: bool = typer.Option(True, "--json", help="Emit the versioned JSON document."),
