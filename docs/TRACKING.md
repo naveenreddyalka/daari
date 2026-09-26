@@ -4695,6 +4695,17 @@ tasks before closing pools. Docs: upgrade.md + capacity-helm.md. Covered by
 `tests/unit/test_graceful_shutdown.py`,
 `tests/integration/test_gateway_flow.py::test_shutdown_drain_ready_flip_inflight_and_reject`.
 
+### Cache-read/cache-write token dimensions ([#1105](https://github.com/naveenreddyalka/daari/issues/1105))
+
+<!-- tracking:#1105 -->
+**Status:** Done (2026-09-26). Anthropic `cache_read_input_tokens` /
+`cache_creation_input_tokens` land on `DaariMeta` and feed
+`cost_usd(cache_write_tokens=…)`. OTel emits `gen_ai.token.type`
+`cache_read` / `cache_creation` plus span attrs. Usage + spend ledgers
+persist both dims (sqlite+postgres migrate); spend export includes
+`cache_write_tokens`. Covered by `tests/unit/test_cache_token_dimensions.py`,
+`tests/unit/test_otel_genai.py::test_cache_read_and_creation_token_dims`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

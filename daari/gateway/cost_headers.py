@@ -228,6 +228,7 @@ def response_cost_headers(
                 getattr(settings, "pricing", None),
                 fallback_per_1k=price_per_1k,
                 cached_input_tokens=int(meta.cached_tokens or 0),
+                cache_write_tokens=int(meta.cache_write_tokens or 0),
                 service_tier=meta.service_tier,
             )
     else:

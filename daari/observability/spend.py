@@ -31,6 +31,7 @@ _COLUMNS = (
     "input_tokens",
     "output_tokens",
     "cached_tokens",
+    "cache_write_tokens",
     "cost_usd",
     "cost_avoided_usd",
     "cache_hit",
@@ -47,6 +48,7 @@ EXPORT_FIELDS = (
     "input_tokens",
     "output_tokens",
     "cached_tokens",
+    "cache_write_tokens",
     "cost_usd",
     "cost_avoided_usd",
     "cache_hit",
@@ -65,6 +67,7 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
     cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd REAL NOT NULL DEFAULT 0,
     cost_avoided_usd REAL NOT NULL DEFAULT 0,
     cache_hit INTEGER NOT NULL DEFAULT 0
@@ -87,6 +90,7 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
     cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
     cost_avoided_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
     cache_hit INTEGER NOT NULL DEFAULT 0
@@ -95,6 +99,14 @@ CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_team ON spend_requests (team_id);
 """
+
+_SPEND_CACHE_WRITE_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0"
+)
+_PG_SPEND_CACHE_WRITE_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS "
+    "cache_write_tokens INTEGER NOT NULL DEFAULT 0"
+)
 
 
 @dataclass
@@ -109,6 +121,8 @@ class SpendContext:
     fallback_per_1k: float = 0.002
     reported_cost: float | None = None
     cached_tokens: int = 0
+    cache_write_tokens: int = 0
+    cache_ttl: str | None = None
 
 
 _spend_ctx: ContextVar[SpendContext | None] = ContextVar("daari_spend_ctx", default=None)
@@ -138,6 +152,8 @@ def compute_request_usd(
     reported_cost: float | None = None,
     service_tier: str | None = None,
     avoided_model: str | None = None,
+    cache_write_tokens: int = 0,
+    cache_ttl: str | None = None,
 ) -> tuple[float, float]:
     """Return (cost_usd, cost_avoided_usd). Local tiers cost $0."""
     if (tier or "").upper() == FRONTIER_TIER:
@@ -151,6 +167,8 @@ def compute_request_usd(
                 pricing,
                 fallback_per_1k=fallback_per_1k,
                 cached_input_tokens=int(cached_tokens),
+                cache_write_tokens=int(cache_write_tokens),
+                cache_ttl=cache_ttl,
                 service_tier=service_tier,
             )
         return round(max(0.0, spent), 8), 0.0
@@ -161,6 +179,8 @@ def compute_request_usd(
         pricing,
         fallback_per_1k=fallback_per_1k,
         cached_input_tokens=int(cached_tokens),
+        cache_write_tokens=int(cache_write_tokens),
+        cache_ttl=cache_ttl,
         service_tier=service_tier,
     )
     return 0.0, round(max(0.0, avoided), 8)
@@ -178,6 +198,7 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "input_tokens": int(row["input_tokens"]),
         "output_tokens": int(row["output_tokens"]),
         "cached_tokens": int(row["cached_tokens"]),
+        "cache_write_tokens": int(row.get("cache_write_tokens") or 0),
         "cost_usd": float(row["cost_usd"]),
         "cost_avoided_usd": float(row["cost_avoided_usd"]),
         "cache_hit": bool(row["cache_hit"]),
@@ -222,8 +243,17 @@ class SpendLedger:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self._connect() as conn:
                 conn.executescript(_SQLITE_SCHEMA)
+                self._migrate(conn)
         except Exception:
             self.enabled = False
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(spend_requests)").fetchall()
+        }
+        if columns and "cache_write_tokens" not in columns:
+            conn.execute(_SPEND_CACHE_WRITE_MIGRATE)
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=5.0)
@@ -241,6 +271,7 @@ class SpendLedger:
         input_tokens: int = 0,
         output_tokens: int = 0,
         cached_tokens: int = 0,
+        cache_write_tokens: int = 0,
         cost_usd: float = 0.0,
         cost_avoided_usd: float = 0.0,
         cache_hit: bool = False,
@@ -253,9 +284,9 @@ class SpendLedger:
                     """
                     INSERT INTO spend_requests (
                         ts, request_id, key_id, team_id, client_id, model, tier,
-                        input_tokens, output_tokens, cached_tokens,
+                        input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                         cost_usd, cost_avoided_usd, cache_hit
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ts or _now_iso(),
@@ -268,6 +299,7 @@ class SpendLedger:
                         max(0, int(input_tokens)),
                         max(0, int(output_tokens)),
                         max(0, int(cached_tokens)),
+                        max(0, int(cache_write_tokens)),
                         float(cost_usd),
                         float(cost_avoided_usd),
                         1 if cache_hit else 0,
@@ -288,6 +320,9 @@ class SpendLedger:
         cached = kwargs.get("cached_tokens")
         if cached is None:
             cached = bound.cached_tokens
+        write = kwargs.get("cache_write_tokens")
+        if write is None:
+            write = bound.cache_write_tokens
         reported = kwargs.get("reported_cost")
         if reported is None:
             reported = bound.reported_cost
@@ -298,6 +333,8 @@ class SpendLedger:
             input_tokens=tokens_in,
             output_tokens=tokens_out,
             cached_tokens=int(cached or 0),
+            cache_write_tokens=int(write or 0),
+            cache_ttl=bound.cache_ttl,
             pricing=bound.pricing,
             fallback_per_1k=float(bound.fallback_per_1k or 0.002),
             reported_cost=reported,
@@ -315,6 +352,7 @@ class SpendLedger:
             input_tokens=tokens_in,
             output_tokens=tokens_out,
             cached_tokens=int(cached or 0),
+            cache_write_tokens=int(write or 0),
             cost_usd=cost,
             cost_avoided_usd=avoided,
             cache_hit=bool(kwargs.get("cache_hit")),
@@ -333,7 +371,8 @@ class SpendLedger:
         where, params = _where(since, key_id, team_id, "?", tier=tier)
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, model, tier,"
-            " input_tokens, output_tokens, cached_tokens, cost_usd, cost_avoided_usd, cache_hit"
+            " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
+            " cost_usd, cost_avoided_usd, cache_hit"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         try:
@@ -381,6 +420,7 @@ class PostgresSpendLedger(SpendLedger):
                         sql = statement.strip()
                         if sql:
                             cur.execute(sql)
+                    cur.execute(_PG_SPEND_CACHE_WRITE_MIGRATE)
                 conn.commit()
         except Exception:
             self.enabled = False
@@ -403,6 +443,7 @@ class PostgresSpendLedger(SpendLedger):
         input_tokens: int = 0,
         output_tokens: int = 0,
         cached_tokens: int = 0,
+        cache_write_tokens: int = 0,
         cost_usd: float = 0.0,
         cost_avoided_usd: float = 0.0,
         cache_hit: bool = False,
@@ -416,9 +457,9 @@ class PostgresSpendLedger(SpendLedger):
                         """
                         INSERT INTO spend_requests (
                             ts, request_id, key_id, team_id, client_id, model, tier,
-                            input_tokens, output_tokens, cached_tokens,
+                            input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                             cost_usd, cost_avoided_usd, cache_hit
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             ts or _now_iso(),
@@ -431,6 +472,7 @@ class PostgresSpendLedger(SpendLedger):
                             max(0, int(input_tokens)),
                             max(0, int(output_tokens)),
                             max(0, int(cached_tokens)),
+                            max(0, int(cache_write_tokens)),
                             float(cost_usd),
                             float(cost_avoided_usd),
                             1 if cache_hit else 0,
@@ -453,7 +495,8 @@ class PostgresSpendLedger(SpendLedger):
         where, params = _where(since, key_id, team_id, "%s", tier=tier)
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, model, tier,"
-            " input_tokens, output_tokens, cached_tokens, cost_usd, cost_avoided_usd, cache_hit"
+            " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
+            " cost_usd, cost_avoided_usd, cache_hit"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         try:

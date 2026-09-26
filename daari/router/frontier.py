@@ -293,7 +293,7 @@ class FrontierExecutor:
         input_tokens, output_tokens, estimated = openai_token_usage(
             data, prompt_chars, content
         )
-        cost_usd, cached_tokens = usage_cost_and_cache(data)
+        cost_usd, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
         provider_prefs = (
             as_openrouter_payload(request.provider) if request.provider is not None else None
         )
@@ -315,6 +315,7 @@ class FrontierExecutor:
                 usage_estimated=estimated,
                 cost_usd=cost_usd,
                 cached_tokens=cached_tokens,
+                cache_write_tokens=cache_write_tokens or None,
                 provider_prefs=provider_prefs,
                 daari_cost_usd=0.0,
                 service_tier=request.sampling.service_tier,

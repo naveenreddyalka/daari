@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS usage (
     completion_chars INTEGER NOT NULL DEFAULT 0,
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, tier, model)
 );
 CREATE TABLE IF NOT EXISTS client_usage (
@@ -43,6 +45,8 @@ CREATE TABLE IF NOT EXISTS client_usage (
     completion_chars INTEGER NOT NULL DEFAULT 0,
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, client_id, tier, model)
 );
 CREATE TABLE IF NOT EXISTS user_usage (
@@ -57,6 +61,8 @@ CREATE TABLE IF NOT EXISTS user_usage (
     completion_chars INTEGER NOT NULL DEFAULT 0,
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, client_id, user_id, tier, model)
 );
 CREATE TABLE IF NOT EXISTS budget_window_state (
@@ -163,10 +169,28 @@ class UsageLedger:
                 completion_chars INTEGER NOT NULL DEFAULT 0,
                 input_tokens INTEGER NOT NULL DEFAULT 0,
                 output_tokens INTEGER NOT NULL DEFAULT 0,
+                cached_tokens INTEGER NOT NULL DEFAULT 0,
+                cache_write_tokens INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (day, client_id, user_id, tier, model)
             )
             """
         )
+        # Additive cache-token dims (#1105). Safe on existing DBs that already
+        # have the post-#156 token/model columns.
+        for table in _SPEND_TABLES:
+            columns = {
+                row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if not columns:
+                continue
+            if "cached_tokens" not in columns:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0"
+                )
+            if "cache_write_tokens" not in columns:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0"
+                )
 
     def record(
         self,
@@ -183,6 +207,7 @@ class UsageLedger:
         input_tokens: int | None = None,
         output_tokens: int | None = None,
         cached_tokens: int | None = None,
+        cache_write_tokens: int | None = None,
         reported_cost: float | None = None,
     ) -> None:
         # Fall back to the chars/4 estimate only when the provider reported
@@ -191,6 +216,8 @@ class UsageLedger:
         tokens_out = max(
             0, output_tokens if output_tokens is not None else completion_chars // 4
         )
+        cached = max(0, int(cached_tokens or 0))
+        cache_write = max(0, int(cache_write_tokens or 0))
         notify_recorded(
             self,
             tier=tier,
@@ -203,7 +230,8 @@ class UsageLedger:
             provider=provider,
             input_tokens=tokens_in,
             output_tokens=tokens_out,
-            cached_tokens=max(0, int(cached_tokens or 0)),
+            cached_tokens=cached,
+            cache_write_tokens=cache_write,
             reported_cost=reported_cost,
         )
         if not self.enabled:
@@ -213,8 +241,9 @@ class UsageLedger:
                 conn.execute(
                     """
                     INSERT INTO usage (day, tier, model, provider, requests, cache_hits,
-                                       prompt_chars, completion_chars, input_tokens, output_tokens)
-                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                                       prompt_chars, completion_chars, input_tokens, output_tokens,
+                                       cached_tokens, cache_write_tokens)
+                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(day, tier, model) DO UPDATE SET
                         requests = requests + 1,
                         cache_hits = cache_hits + excluded.cache_hits,
@@ -222,6 +251,8 @@ class UsageLedger:
                         completion_chars = completion_chars + excluded.completion_chars,
                         input_tokens = input_tokens + excluded.input_tokens,
                         output_tokens = output_tokens + excluded.output_tokens,
+                        cached_tokens = cached_tokens + excluded.cached_tokens,
+                        cache_write_tokens = cache_write_tokens + excluded.cache_write_tokens,
                         provider = excluded.provider
                     """,
                     (
@@ -234,20 +265,25 @@ class UsageLedger:
                         max(0, completion_chars),
                         tokens_in,
                         tokens_out,
+                        cached,
+                        cache_write,
                     ),
                 )
                 conn.execute(
                     """
                     INSERT INTO client_usage (day, client_id, tier, model, requests, cache_hits,
-                                              prompt_chars, completion_chars, input_tokens, output_tokens)
-                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                                              prompt_chars, completion_chars, input_tokens, output_tokens,
+                                              cached_tokens, cache_write_tokens)
+                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(day, client_id, tier, model) DO UPDATE SET
                         requests = requests + 1,
                         cache_hits = cache_hits + excluded.cache_hits,
                         prompt_chars = prompt_chars + excluded.prompt_chars,
                         completion_chars = completion_chars + excluded.completion_chars,
                         input_tokens = input_tokens + excluded.input_tokens,
-                        output_tokens = output_tokens + excluded.output_tokens
+                        output_tokens = output_tokens + excluded.output_tokens,
+                        cached_tokens = cached_tokens + excluded.cached_tokens,
+                        cache_write_tokens = cache_write_tokens + excluded.cache_write_tokens
                     """,
                     (
                         day or _today(),
@@ -259,20 +295,25 @@ class UsageLedger:
                         max(0, completion_chars),
                         tokens_in,
                         tokens_out,
+                        cached,
+                        cache_write,
                     ),
                 )
                 conn.execute(
                     """
                     INSERT INTO user_usage (day, client_id, user_id, tier, model, requests, cache_hits,
-                                            prompt_chars, completion_chars, input_tokens, output_tokens)
-                    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                                            prompt_chars, completion_chars, input_tokens, output_tokens,
+                                            cached_tokens, cache_write_tokens)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(day, client_id, user_id, tier, model) DO UPDATE SET
                         requests = requests + 1,
                         cache_hits = cache_hits + excluded.cache_hits,
                         prompt_chars = prompt_chars + excluded.prompt_chars,
                         completion_chars = completion_chars + excluded.completion_chars,
                         input_tokens = input_tokens + excluded.input_tokens,
-                        output_tokens = output_tokens + excluded.output_tokens
+                        output_tokens = output_tokens + excluded.output_tokens,
+                        cached_tokens = cached_tokens + excluded.cached_tokens,
+                        cache_write_tokens = cache_write_tokens + excluded.cache_write_tokens
                     """,
                     (
                         day or _today(),
@@ -285,6 +326,8 @@ class UsageLedger:
                         max(0, completion_chars),
                         tokens_in,
                         tokens_out,
+                        cached,
+                        cache_write,
                     ),
                 )
         except Exception:

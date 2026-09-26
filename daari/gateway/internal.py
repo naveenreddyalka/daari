@@ -178,7 +178,10 @@ class DaariMeta(BaseModel):
     # `provider` constraint that was honored or refused.
     cost_usd: float | None = None
     cached_tokens: int | None = None
+    # Anthropic cache_creation_input_tokens / cache writes for cost_usd (#1105).
+    cache_write_tokens: int | None = None
     provider_prefs: dict | None = None
+
     # G3: local path is always $0; L6 rows keep upstream cost in cost_usd.
     daari_cost_usd: float | None = None
     # Client reasoning_effort when present (#297).

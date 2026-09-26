@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS usage (
     cache_hits INTEGER NOT NULL DEFAULT 0,
     prompt_chars INTEGER NOT NULL DEFAULT 0,
     completion_chars INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, tier)
 );
 CREATE TABLE IF NOT EXISTS client_usage (
@@ -29,6 +31,8 @@ CREATE TABLE IF NOT EXISTS client_usage (
     cache_hits INTEGER NOT NULL DEFAULT 0,
     prompt_chars INTEGER NOT NULL DEFAULT 0,
     completion_chars INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, client_id, tier)
 );
 CREATE TABLE IF NOT EXISTS user_usage (
@@ -40,6 +44,8 @@ CREATE TABLE IF NOT EXISTS user_usage (
     cache_hits INTEGER NOT NULL DEFAULT 0,
     prompt_chars INTEGER NOT NULL DEFAULT 0,
     completion_chars INTEGER NOT NULL DEFAULT 0,
+    cached_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, client_id, user_id, tier)
 );
 CREATE TABLE IF NOT EXISTS budget_window_state (
@@ -51,6 +57,15 @@ CREATE TABLE IF NOT EXISTS budget_window_state (
     PRIMARY KEY (scope, scope_id, duration)
 );
 """
+
+_CACHE_COLUMN_MIGRATIONS = (
+    "ALTER TABLE usage ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE usage ADD COLUMN IF NOT EXISTS cache_write_tokens INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE client_usage ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE client_usage ADD COLUMN IF NOT EXISTS cache_write_tokens INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE user_usage ADD COLUMN IF NOT EXISTS cached_tokens INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE user_usage ADD COLUMN IF NOT EXISTS cache_write_tokens INTEGER NOT NULL DEFAULT 0",
+)
 
 
 def _today() -> str:
@@ -68,6 +83,8 @@ class PostgresUsageLedger:
                 with self._connect() as conn:
                     with conn.cursor() as cur:
                         cur.execute(_SCHEMA)
+                        for statement in _CACHE_COLUMN_MIGRATIONS:
+                            cur.execute(statement)
                     conn.commit()
             except Exception:
                 self.enabled = False
@@ -97,12 +114,15 @@ class PostgresUsageLedger:
         input_tokens: int | None = None,
         output_tokens: int | None = None,
         cached_tokens: int | None = None,
+        cache_write_tokens: int | None = None,
         reported_cost: float | None = None,
     ) -> None:
         tokens_in = max(0, input_tokens if input_tokens is not None else prompt_chars // 4)
         tokens_out = max(
             0, output_tokens if output_tokens is not None else completion_chars // 4
         )
+        cached = max(0, int(cached_tokens or 0))
+        cache_write = max(0, int(cache_write_tokens or 0))
         notify_recorded(
             self,
             tier=tier,
@@ -115,7 +135,8 @@ class PostgresUsageLedger:
             provider=provider,
             input_tokens=tokens_in,
             output_tokens=tokens_out,
-            cached_tokens=max(0, int(cached_tokens or 0)),
+            cached_tokens=cached,
+            cache_write_tokens=cache_write,
             reported_cost=reported_cost,
         )
         if not self.enabled:
@@ -126,13 +147,17 @@ class PostgresUsageLedger:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        INSERT INTO usage (day, tier, requests, cache_hits, prompt_chars, completion_chars)
-                        VALUES (%s, %s, 1, %s, %s, %s)
+                        INSERT INTO usage (day, tier, requests, cache_hits, prompt_chars,
+                                           completion_chars, cached_tokens, cache_write_tokens)
+                        VALUES (%s, %s, 1, %s, %s, %s, %s, %s)
                         ON CONFLICT (day, tier) DO UPDATE SET
                             requests = usage.requests + 1,
                             cache_hits = usage.cache_hits + EXCLUDED.cache_hits,
                             prompt_chars = usage.prompt_chars + EXCLUDED.prompt_chars,
-                            completion_chars = usage.completion_chars + EXCLUDED.completion_chars
+                            completion_chars = usage.completion_chars + EXCLUDED.completion_chars,
+                            cached_tokens = usage.cached_tokens + EXCLUDED.cached_tokens,
+                            cache_write_tokens = usage.cache_write_tokens
+                              + EXCLUDED.cache_write_tokens
                         """,
                         (
                             day or _today(),
@@ -140,19 +165,25 @@ class PostgresUsageLedger:
                             1 if cache_hit else 0,
                             max(0, prompt_chars),
                             max(0, completion_chars),
+                            cached,
+                            cache_write,
                         ),
                     )
                     cur.execute(
                         """
                         INSERT INTO client_usage
-                          (day, client_id, tier, requests, cache_hits, prompt_chars, completion_chars)
-                        VALUES (%s, %s, %s, 1, %s, %s, %s)
+                          (day, client_id, tier, requests, cache_hits, prompt_chars,
+                           completion_chars, cached_tokens, cache_write_tokens)
+                        VALUES (%s, %s, %s, 1, %s, %s, %s, %s, %s)
                         ON CONFLICT (day, client_id, tier) DO UPDATE SET
                             requests = client_usage.requests + 1,
                             cache_hits = client_usage.cache_hits + EXCLUDED.cache_hits,
                             prompt_chars = client_usage.prompt_chars + EXCLUDED.prompt_chars,
                             completion_chars = client_usage.completion_chars
-                              + EXCLUDED.completion_chars
+                              + EXCLUDED.completion_chars,
+                            cached_tokens = client_usage.cached_tokens + EXCLUDED.cached_tokens,
+                            cache_write_tokens = client_usage.cache_write_tokens
+                              + EXCLUDED.cache_write_tokens
                         """,
                         (
                             day or _today(),
@@ -161,20 +192,25 @@ class PostgresUsageLedger:
                             1 if cache_hit else 0,
                             max(0, prompt_chars),
                             max(0, completion_chars),
+                            cached,
+                            cache_write,
                         ),
                     )
                     cur.execute(
                         """
                         INSERT INTO user_usage
                           (day, client_id, user_id, tier, requests, cache_hits,
-                           prompt_chars, completion_chars)
-                        VALUES (%s, %s, %s, %s, 1, %s, %s, %s)
+                           prompt_chars, completion_chars, cached_tokens, cache_write_tokens)
+                        VALUES (%s, %s, %s, %s, 1, %s, %s, %s, %s, %s)
                         ON CONFLICT (day, client_id, user_id, tier) DO UPDATE SET
                             requests = user_usage.requests + 1,
                             cache_hits = user_usage.cache_hits + EXCLUDED.cache_hits,
                             prompt_chars = user_usage.prompt_chars + EXCLUDED.prompt_chars,
                             completion_chars = user_usage.completion_chars
-                              + EXCLUDED.completion_chars
+                              + EXCLUDED.completion_chars,
+                            cached_tokens = user_usage.cached_tokens + EXCLUDED.cached_tokens,
+                            cache_write_tokens = user_usage.cache_write_tokens
+                              + EXCLUDED.cache_write_tokens
                         """,
                         (
                             day or _today(),
@@ -184,6 +220,8 @@ class PostgresUsageLedger:
                             1 if cache_hit else 0,
                             max(0, prompt_chars),
                             max(0, completion_chars),
+                            cached,
+                            cache_write,
                         ),
                     )
                 conn.commit()
