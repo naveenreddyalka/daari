@@ -850,7 +850,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 getattr(request.state, "auth_claims", None),
                 model_groups=getattr(ctx.settings, "model_groups", None),
             )
-            from daari.gateway.model_access import reject_disallowed_model, reject_model_group_budget
+            from daari.gateway.model_access import (
+                reject_disallowed_model,
+                reject_model_group_budget,
+                reject_model_max_budget,
+            )
 
             denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
             if denied is not None:
@@ -858,6 +862,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             group_denied = reject_model_group_budget(request, body.model, ctx.settings)
             if group_denied is not None:
                 return group_denied
+            model_denied = reject_model_max_budget(request, body.model, ctx.settings)
+            if model_denied is not None:
+                return model_denied
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             # Per-end-user daily cap on shared virtual keys (#410). Checked here
@@ -1613,12 +1620,21 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
             )
-            from daari.auth.budgets import model_group_spend_report_rows
+            from daari.auth.budgets import model_group_spend_report_rows, team_model_spend_report_rows
 
             payload["model_group_spend"] = model_group_spend_report_rows(
                 store,
                 ledger,
                 catalog=getattr(ctx.settings, "model_groups", None) or {},
+                soft_ratio=float(ctx.settings.frontier.soft_budget_ratio or 0.0),
+                pricing=getattr(ctx.settings, "pricing", None),
+                fallback_per_1k=float(
+                    getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                ),
+            )
+            payload["team_model_spend"] = team_model_spend_report_rows(
+                store,
+                ledger,
                 soft_ratio=float(ctx.settings.frontier.soft_budget_ratio or 0.0),
                 pricing=getattr(ctx.settings, "pricing", None),
                 fallback_per_1k=float(

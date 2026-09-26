@@ -606,13 +606,20 @@ class UsageLedger:
         fallback_per_1k: float = 0.002,
         day: str | None = None,
         month: str | None = None,
+        client_ids: list[str] | tuple[str, ...] | None = None,
     ) -> float:
-        """Org-wide L6 spend for models matching any ``fnmatch`` pattern (#1109)."""
+        """L6 spend for models matching any ``fnmatch`` pattern (#1109, #1113).
+
+        When ``client_ids`` is set, sums ``client_usage`` for those clients
+        (team-scoped model_max_budget). Otherwise uses org-wide ``usage``.
+        """
         import fnmatch
 
         exprs = [str(p).strip() for p in patterns if str(p).strip()]
         if not self.enabled or not exprs:
             return 0.0
+        ids = [str(c).strip() for c in (client_ids or ()) if str(c).strip()]
+        table = "client_usage" if ids else "usage"
         if window in {"lifetime", "total", "all"}:
             where, params = "1 = 1", ()
         elif window == "month":
@@ -631,11 +638,15 @@ class UsageLedger:
             raise ValueError(
                 f"window must be 'day', 'month', 'days', or 'lifetime', got {window!r}"
             )
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            where = f"({where}) AND client_id IN ({placeholders})"
+            params = (*params, *ids)
         try:
             with self._lock, self._connect() as conn:
                 rows = conn.execute(
                     "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
-                    " FROM usage WHERE "
+                    f" FROM {table} WHERE "
                     + where
                     + " AND tier = ? GROUP BY model",
                     (*params, FRONTIER_TIER),

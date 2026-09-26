@@ -180,6 +180,9 @@ class PostgresVirtualKeyStore:
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
         priority: str = "normal",
+        model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
+        model_max_budget: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Team:
         if self._inner is not None:
             return self._inner.create_team(
@@ -195,6 +198,9 @@ class PostgresVirtualKeyStore:
                 model_groups=model_groups,
                 cache_scope=cache_scope,
                 priority=priority,
+                model_group_budgets=model_group_budgets,
+                model_max_budget=model_max_budget,
+                metadata=metadata,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
@@ -542,6 +548,7 @@ class PostgresVirtualKeyStore:
         cache_scope: str = "global",
         priority: str = "normal",
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
+        model_max_budget: dict[str, Any] | None = None,
     ) -> CreatedKey:
         if self._inner is not None:
             return self._inner.create(
@@ -564,10 +571,16 @@ class PostgresVirtualKeyStore:
                 cache_scope=cache_scope,
                 priority=priority,
                 model_group_budgets=model_group_budgets,
+                model_max_budget=model_max_budget,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        from daari.auth.budgets import coalesce_windows, encode_model_group_budgets, windows_from_flat
+        from daari.auth.budgets import (
+            coalesce_windows,
+            encode_model_group_budgets,
+            encode_model_max_budget,
+            windows_from_flat,
+        )
 
         expires_at = expiry_from(expires_at)
         plaintext = f"dk_{secrets.token_urlsafe(32)}"
@@ -582,6 +595,8 @@ class PostgresVirtualKeyStore:
         meta = dict(metadata or {})
         if model_group_budgets:
             meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
+        if model_max_budget:
+            meta["model_max_budget"] = encode_model_max_budget(model_max_budget)
         pin = (region_pin or "").strip() or None
         if pin:
             meta["region_pin"] = pin
