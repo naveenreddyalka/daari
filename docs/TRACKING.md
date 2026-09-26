@@ -4776,6 +4776,13 @@ pre-check before L6 soft/hard via `soft_budget_ratio`; report exposes
 (501 when frontier off / no key). Rate family maps to `moderations`. Covered by
 `tests/unit/test_anthropic_moderations.py`.
 
+### Integration pins for images edits ([#1101](https://github.com/naveenreddyalka/daari/issues/1101))
+
+<!-- tracking:#1101 -->
+**Status:** Done (2026-09-26). Hermetic ASGI pins for `POST /v1/images/edits`:
+OpenAPI path, auth middleware (401 without key / 200 mocked), frontier-disabled
+→ 501. Covered by `tests/integration/test_images_edits.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
