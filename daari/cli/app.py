@@ -1666,6 +1666,47 @@ def prune(
         typer.echo(f"  {row.store:<8} {status}{extra}")
 
 
+@app.command()
+def erase(
+    key: str | None = typer.Option(None, "--key", help="Virtual key id to erase."),
+    team: str | None = typer.Option(None, "--team", help="Team id to erase."),
+    user: str | None = typer.Option(None, "--user", help="End-user / user_id to erase."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print per-store match counts without deleting."
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", help="Confirm destructive apply (required without --dry-run)."
+    ),
+) -> None:
+    """Erase subject-scoped data across spend, ledger, logs, files, and caches.
+
+    Audit log rows are never rewritten; apply appends a compliance.erase event.
+    See docs/developer/guides/operations/erasure.md.
+    """
+    from daari.compliance.erasure import ErasureSubject, erase_subject
+
+    chosen = [("key", key), ("team", team), ("user", user)]
+    active = [(kind, value) for kind, value in chosen if value]
+    if len(active) != 1:
+        typer.echo("Provide exactly one of --key, --team, or --user.", err=True)
+        raise typer.Exit(code=1)
+    if not dry_run and not yes:
+        typer.echo("Refusing to erase without --yes (or pass --dry-run).", err=True)
+        raise typer.Exit(code=1)
+    kind, value = active[0]
+    settings = get_settings()
+    try:
+        subject = ErasureSubject(kind=kind, value=value)  # type: ignore[arg-type]
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    result = erase_subject(settings, subject, dry_run=dry_run, actor="cli")
+    typer.echo(("dry-run " if dry_run else "") + f"erase {kind}={subject.value}")
+    for row in result.stores:
+        count = row.matched if dry_run else row.deleted
+        typer.echo(f"  {row.store:<12} {count} row(s)")
+
+
 @app.command("usage")
 @app.command()
 def report(

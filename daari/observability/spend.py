@@ -419,6 +419,42 @@ class SpendLedger:
         except Exception:
             return 0
 
+    def erase_subject(
+        self,
+        *,
+        key_id: str | None = None,
+        team_id: str | None = None,
+        client_id: str | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        """Delete spend rows for a subject. Exactly one of key/team/client (#1130)."""
+        if not self.enabled:
+            return 0
+        column: str | None = None
+        value: str | None = None
+        if key_id:
+            column, value = "key_id", key_id
+        elif team_id:
+            column, value = "team_id", team_id
+        elif client_id:
+            column, value = "client_id", client_id
+        if not column or not value:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                count = conn.execute(
+                    f"SELECT COUNT(*) FROM spend_requests WHERE {column} = ?",
+                    (value,),
+                ).fetchone()[0]
+                if not dry_run and count:
+                    conn.execute(
+                        f"DELETE FROM spend_requests WHERE {column} = ?",
+                        (value,),
+                    )
+                return int(count)
+        except Exception:
+            return 0
+
 
 class PostgresSpendLedger(SpendLedger):
     """Duck-types SpendLedger against observability.postgres_url."""
@@ -544,6 +580,44 @@ class PostgresSpendLedger(SpendLedger):
                         cur.execute(
                             "DELETE FROM spend_requests WHERE ts < %s",
                             (cutoff_iso,),
+                        )
+                conn.commit()
+                return count
+        except Exception:
+            return 0
+
+    def erase_subject(
+        self,
+        *,
+        key_id: str | None = None,
+        team_id: str | None = None,
+        client_id: str | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        if not self.enabled:
+            return 0
+        column: str | None = None
+        value: str | None = None
+        if key_id:
+            column, value = "key_id", key_id
+        elif team_id:
+            column, value = "team_id", team_id
+        elif client_id:
+            column, value = "client_id", client_id
+        if not column or not value:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM spend_requests WHERE {column} = %s",
+                        (value,),
+                    )
+                    count = int(cur.fetchone()[0])
+                    if not dry_run and count:
+                        cur.execute(
+                            f"DELETE FROM spend_requests WHERE {column} = %s",
+                            (value,),
                         )
                 conn.commit()
                 return count

@@ -4792,6 +4792,15 @@ lookup) strips unsupported sampler knobs for `gpt-6-astra`, floors
 when tools hit chat completions. Covered by
 `tests/unit/test_frontier_param_compat.py`.
 
+### Subject erasure across stores ([#1130](https://github.com/naveenreddyalka/daari/issues/1130))
+
+<!-- tracking:#1130 -->
+**Status:** Done (2026-09-26). `daari erase --key|--team|--user [--dry-run|--yes]`
+sweeps spend, usage, request log, responses, files, batches, idempotency, and
+scoped caches; audit appends `compliance.erase` (hash chain intact). Guide:
+`docs/developer/guides/operations/erasure.md`. Covered by
+`tests/unit/test_erasure.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

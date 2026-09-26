@@ -177,3 +177,78 @@ def _prune_one(path: Path, cutoff: datetime, *, dry_run: bool, delete_when_empty
     except OSError:
         return 0
     return removed
+
+
+def erase_subject_from_logs(
+    path: Path | str,
+    *,
+    kind: str,
+    value: str,
+    dry_run: bool = False,
+) -> int:
+    """Remove JSONL request-log lines whose payload mentions the subject (#1130)."""
+    target = Path(path).expanduser()
+    needle = (value or "").strip()
+    kind_norm = (kind or "").strip().lower()
+    if not needle or kind_norm not in {"key", "team", "user"}:
+        return 0
+    removed = 0
+    with _lock:
+        for backup in _rotated_logs(target):
+            removed += _erase_one_log(backup, kind_norm, needle, dry_run=dry_run)
+        if target.exists():
+            removed += _erase_one_log(target, kind_norm, needle, dry_run=dry_run)
+    return removed
+
+
+def _line_matches_subject(line: str, kind: str, value: str) -> bool:
+    text = line.strip()
+    if not text:
+        return False
+    try:
+        record = json.loads(text)
+    except ValueError:
+        return False
+    if not isinstance(record, dict):
+        return False
+    if kind == "key":
+        for field in ("key_id", "owner_key_id"):
+            if str(record.get(field) or "") == value:
+                return True
+        principal = record.get("principal")
+        if isinstance(principal, str) and (
+            principal == value or principal == f"vk:{value}"
+        ):
+            return True
+        return False
+    if kind == "team":
+        return str(record.get("team_id") or "") == value
+    for field in ("user", "user_id", "client_id", "client"):
+        if str(record.get(field) or "") == value:
+            return True
+    return False
+
+
+def _erase_one_log(path: Path, kind: str, value: str, *, dry_run: bool) -> int:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    lines = text.splitlines(keepends=True)
+    kept: list[str] = []
+    removed = 0
+    for line in lines:
+        check = line.rstrip("\r\n")
+        if _line_matches_subject(check, kind, value):
+            removed += 1
+        else:
+            kept.append(line)
+    if removed == 0:
+        return 0
+    if dry_run:
+        return removed
+    try:
+        path.write_text("".join(kept), encoding="utf-8")
+    except OSError:
+        return 0
+    return removed

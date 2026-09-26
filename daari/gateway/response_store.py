@@ -132,6 +132,26 @@ class ResponseStore:
             )
             return cursor.rowcount > 0
 
+    def erase_owner_keys(self, owner_key_ids: list[str], *, dry_run: bool = False) -> int:
+        """Delete responses owned by any of ``owner_key_ids`` (#1130)."""
+        ids = [str(i).strip() for i in owner_key_ids if str(i).strip()]
+        if not ids:
+            return 0
+        placeholders = ",".join("?" for _ in ids)
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM responses WHERE owner_key_id IN ({placeholders})",
+                ids,
+            ).fetchone()
+            count = int(row[0] if row else 0)
+            if dry_run or count == 0:
+                return count
+            conn.execute(
+                f"DELETE FROM responses WHERE owner_key_id IN ({placeholders})",
+                ids,
+            )
+            return count
+
     def prune_older_than(self, cutoff_epoch: float, *, dry_run: bool = False) -> int:
         """Delete (or count) responses with created_at <= cutoff (#497)."""
         cutoff = int(cutoff_epoch)

@@ -724,3 +724,51 @@ class PostgresUsageLedger:
                 return int(usage) + int(clients) + int(users)
         except Exception:
             return 0
+
+    def erase_subject(
+        self,
+        *,
+        client_ids: list[str] | None = None,
+        user_id: str | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        if not self.enabled:
+            return 0
+        ids = [str(c).strip() for c in (client_ids or ()) if str(c).strip()]
+        uid = (user_id or "").strip() or None
+        if not ids and not uid:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    total = 0
+                    if ids:
+                        placeholders = ",".join("%s" for _ in ids)
+                        for table in ("client_usage", "user_usage"):
+                            cur.execute(
+                                f"SELECT COUNT(*) FROM {table} WHERE client_id IN ({placeholders})",
+                                ids,
+                            )
+                            count = int(cur.fetchone()[0])
+                            total += count
+                            if not dry_run and count:
+                                cur.execute(
+                                    f"DELETE FROM {table} WHERE client_id IN ({placeholders})",
+                                    ids,
+                                )
+                    if uid:
+                        cur.execute(
+                            "SELECT COUNT(*) FROM user_usage WHERE user_id = %s",
+                            (uid,),
+                        )
+                        count = int(cur.fetchone()[0])
+                        total += count
+                        if not dry_run and count:
+                            cur.execute(
+                                "DELETE FROM user_usage WHERE user_id = %s",
+                                (uid,),
+                            )
+                conn.commit()
+                return total
+        except Exception:
+            return 0

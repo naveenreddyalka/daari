@@ -429,6 +429,50 @@ class BatchStore:
                 break
         return out
 
+    def erase_subject(
+        self,
+        *,
+        key_id: str | None = None,
+        team_id: str | None = None,
+        user: str | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        """Remove batches whose governance matches the subject (#1130)."""
+        key_id = (key_id or "").strip() or None
+        team_id = (team_id or "").strip() or None
+        user = (user or "").strip() or None
+        if not key_id and not team_id and not user:
+            return 0
+
+        def matches(job: BatchJob) -> bool:
+            gov = job.governance
+            if gov is None:
+                return False
+            if key_id and gov.key_id == key_id:
+                return True
+            if team_id and gov.team_id == team_id:
+                return True
+            if user and gov.user == user:
+                return True
+            return False
+
+        doomed = [job.id for job in list(self._batches.values()) if matches(job)]
+        if dry_run:
+            return len(doomed)
+        for batch_id in doomed:
+            self._batches.pop(batch_id, None)
+            self._order = [item for item in self._order if item != batch_id]
+            if self.path is not None:
+                try:
+                    with self._db_lock, self._connect() as conn:
+                        conn.execute("DELETE FROM batch_jobs WHERE id = ?", (batch_id,))
+                        conn.execute(
+                            "DELETE FROM batch_order WHERE batch_id = ?", (batch_id,)
+                        )
+                except Exception:
+                    pass
+        return len(doomed)
+
     def cancel(self, batch_id: str) -> BatchJob | None:
         job = self.get(batch_id)
         if job is None:

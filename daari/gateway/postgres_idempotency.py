@@ -241,3 +241,39 @@ class PostgresIdempotencyStore:
                 )
             conn.commit()
             return count
+
+    def erase_principals(self, principals: list[str], *, dry_run: bool = False) -> int:
+        ids = [str(p).strip() for p in principals if str(p).strip()]
+        if not ids:
+            return 0
+        if self._memory:
+            bucket, lock = _memory_bucket(self.dsn)
+            with lock:
+                doomed = [
+                    key
+                    for key in bucket
+                    if (key[0] if isinstance(key, tuple) else "") in ids
+                ]
+                if dry_run:
+                    return len(doomed)
+                for key in doomed:
+                    del bucket[key]
+                return len(doomed)
+        if not self.enabled:
+            return 0
+        placeholders = ",".join("%s" for _ in ids)
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM daari_idempotency WHERE principal IN ({placeholders})",
+                    ids,
+                )
+                count = int(cur.fetchone()[0] or 0)
+                if dry_run or count == 0:
+                    return count
+                cur.execute(
+                    f"DELETE FROM daari_idempotency WHERE principal IN ({placeholders})",
+                    ids,
+                )
+            conn.commit()
+            return count

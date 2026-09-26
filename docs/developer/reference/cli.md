@@ -23,6 +23,7 @@ Entry point: `daari` (Typer).
 | `configure` | Interactive config helpers |
 | `config` | Validate `config.yaml` (`validate`) |
 | `prune` | Retention prune (traces / usage / feedback) |
+| `erase` | Subject erasure (`--key` / `--team` / `--user`, `--dry-run` / `--yes`) |
 
 ## `setup`
 

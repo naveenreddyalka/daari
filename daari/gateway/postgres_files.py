@@ -342,6 +342,43 @@ class PostgresFileStore:
         except Exception:
             return False
 
+    def erase_owner_keys(self, owner_key_ids: list[str], *, dry_run: bool = False) -> int:
+        ids = [str(i).strip() for i in owner_key_ids if str(i).strip()]
+        if not ids:
+            return 0
+        wanted = set(ids)
+        if self._memory:
+            bucket, lock = _memory_bucket(self.dsn)
+            with lock:
+                doomed = [
+                    fid
+                    for fid, row in list(bucket.items())
+                    if (row.get("owner_key_id") or "") in wanted
+                ]
+            if dry_run:
+                return len(doomed)
+            for fid in doomed:
+                self.delete(fid)
+            return len(doomed)
+        if not self.enabled:
+            return 0
+        placeholders = ",".join("%s" for _ in ids)
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SELECT id FROM daari_files WHERE owner_key_id IN ({placeholders})",
+                        ids,
+                    )
+                    doomed = [row[0] for row in cur.fetchall()]
+            if dry_run:
+                return len(doomed)
+            for fid in doomed:
+                self.delete(fid)
+            return len(doomed)
+        except Exception:
+            return 0
+
     def prune_expired(self, *, now: int | None = None, dry_run: bool = False) -> int:
         stamp = int(now if now is not None else time.time())
         if self._memory:
