@@ -193,15 +193,27 @@ class TestHelmGracefulRollout:
         assert "sleep 5" in rendered
         assert "maxUnavailable: 0" in rendered
         assert "maxSurge: 1" in rendered
+        assert "DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS" in rendered
+        assert re.search(
+            r"name: DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS\s+value: \"30\"",
+            rendered,
+        )
         values = _load_yaml(VALUES)
         assert values["terminationGracePeriodSeconds"] == 60
+        assert values["gracefulTimeoutSeconds"] == 30
         assert values["lifecycle"]["preStopSleepSeconds"] == 5
         assert values["strategy"]["rollingUpdate"]["maxUnavailable"] == 0
+        # Keep kubelet kill window above app grace + preStop.
+        assert (
+            values["terminationGracePeriodSeconds"]
+            > values["gracefulTimeoutSeconds"] + values["lifecycle"]["preStopSleepSeconds"]
+        )
 
     def test_prestop_omitted_when_sleep_zero(self, helm_available: None) -> None:
         rendered = _helm_template("--set", "lifecycle.preStopSleepSeconds=0")
         assert "preStop:" not in rendered
         assert "terminationGracePeriodSeconds: 60" in rendered
+        assert "DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS" in rendered
 
 
 class TestHelmSecurityAndPdb:

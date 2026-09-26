@@ -82,6 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             redis_url=redis_url,
             redis_timeout_seconds=redis_timeout,
         )
+        app.state.shutting_down = False
+        app.state.budget_alert_tasks = set()
         # Wire interactive load probe, then resume unfinished batches (#443/#444).
         batch_store = getattr(app.state.ctx, "batch_store", None)
         limiter = getattr(app.state, "rate_limiter", None)
@@ -122,6 +124,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            from daari.server.shutdown import (
+                BUDGET_ALERT_DRAIN_TIMEOUT_SECONDS,
+                await_budget_alert_tasks,
+                begin_shutdown,
+            )
+
+            begin_shutdown(app)
+            await await_budget_alert_tasks(
+                app, timeout=BUDGET_ALERT_DRAIN_TIMEOUT_SECONDS
+            )
             if metrics_stop is not None:
                 await metrics_stop()
             await app.state.ctx.stop_backend_health()
@@ -524,14 +536,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 import asyncio
 
-                asyncio.create_task(
-                    asyncio.to_thread(
-                        alerter.notify,
-                        statuses,
-                        after,
-                        key=claims.virtual_key,
-                        team=team,
-                    )
+                from daari.server.shutdown import track_budget_alert_task
+
+                track_budget_alert_task(
+                    request.app,
+                    asyncio.create_task(
+                        asyncio.to_thread(
+                            alerter.notify,
+                            statuses,
+                            after,
+                            key=claims.virtual_key,
+                            team=team,
+                        )
+                    ),
                 )
             return response
 

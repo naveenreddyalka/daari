@@ -84,6 +84,31 @@ helm upgrade daari deploy/helm/daari \
 keeps serving throughout; the L0/L1 stores are shared, so the new pods see the
 same cache the old ones filled.
 
+### Connection drain
+
+App-level drain (#1104) makes zero-dropped-request rollouts a property of the
+binary, not only of Helm:
+
+1. **SIGTERM / SIGINT** (or Helm `preStop` sleep then SIGTERM) flips
+   `GET /ready` to `503 {"status":"shutting_down"}` immediately so the load
+   balancer / kube endpoints stop new traffic. `GET /health` stays `200` for
+   liveness.
+2. **Admission drain** — new arrivals at the in-flight gate get `503` +
+   `Retry-After` (same shape as queue-full). Already-admitted requests and
+   queued waiters complete.
+3. **uvicorn** waits up to `server.graceful_timeout_seconds` (default `30`,
+   CLI `--graceful-timeout`, Helm `gracefulTimeoutSeconds`) for connections
+   (including SSE) to finish, then lifespan awaits outstanding budget-alert
+   webhook tasks (bounded) before closing pools.
+4. **Kubernetes** — keep
+   `terminationGracePeriodSeconds > gracefulTimeoutSeconds + preStopSleepSeconds`
+   (chart defaults: `60 > 30 + 5`). Details:
+   [Capacity and Helm](capacity-helm.md#graceful-rollouts--drains).
+
+Non-K8s (systemd, docker-compose, bare `daari serve` behind an LB): point the
+LB health check at `/ready` and send SIGTERM on stop/reload — the same
+sequence applies without a `preStop` hook.
+
 ## Config compatibility policy
 
 `~/.daari/config.yaml` is merged over the packaged `defaults.yaml`, then the

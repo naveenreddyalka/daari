@@ -1380,7 +1380,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             """Readiness probe (issue #105 / #170): cache handles plus local
             pool health. Degraded (some hosts down) is 200; no serving host
             is 503. When ``cache.backend=redis``, also probe Redis — down with
-            rate-limit fallback active is degraded-but-200 (#463)."""
+            rate-limit fallback active is degraded-but-200 (#463). During
+            coordinated shutdown, returns 503 ``shutting_down`` immediately
+            so load balancers stop sending traffic (#1104)."""
+            if getattr(request.app.state, "shutting_down", False):
+                return JSONResponse(
+                    status_code=503, content={"status": "shutting_down"}
+                )
             ctx: AppContext = request.app.state.ctx
             cache_ok = ctx.cache is not None
             pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)

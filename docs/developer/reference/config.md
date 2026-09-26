@@ -22,6 +22,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.tls.client_ca` | str | `''` | Optional client CA path/ref; when set, require a valid client cert (mTLS). Env: `DAARI_SERVER__TLS__CLIENT_CA`. |
 | `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds between streamed chunks before emitting a keepalive for the entire stream lifetime (#972). SSE comment `: keepalive` on OpenAI/Anthropic/Responses; blank line on NDJSON Ollama. 0 disables. |
 | `server.stream_idle_timeout_seconds` | float | `0` | If upstream produces no chunk for this many seconds, end with an in-band `stream_idle_timeout` error (#972). 0 disables. |
+| `server.graceful_timeout_seconds` | float | `30` | uvicorn `timeout_graceful_shutdown` after SIGTERM/SIGINT (#1104). Also `daari serve --graceful-timeout`. Helm: `gracefulTimeoutSeconds` → `DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS`. Keep `terminationGracePeriodSeconds` above this plus preStop. |
 | `auth.throttle_enabled` | bool | `True` | When false, invalid-key attempts are never rate-limited. |
 | `auth.max_failures` | int | `10` | Invalid-key failures per client IP within `window_seconds` before 429. 0 disables the counter. Env: `DAARI_AUTH__MAX_FAILURES`. |
 | `auth.window_seconds` | float | `60.0` | Sliding window for `auth.max_failures`. Env: `DAARI_AUTH__WINDOW_SECONDS`. |

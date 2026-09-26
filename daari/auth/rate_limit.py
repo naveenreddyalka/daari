@@ -212,6 +212,7 @@ class RateLimiter:
         self.in_flight = 0
         self.interactive_in_flight = 0
         self.queued = 0
+        self.draining = False
         self._lock = asyncio.Lock()
         # (rank, seq, Future) — lower rank wakes first; seq is FIFO within class (#848).
         self._waiters: list[tuple[int, int, asyncio.Future[bool]]] = []
@@ -223,6 +224,22 @@ class RateLimiter:
         self._degrade_mode: str | None = None
         self._last_probe = 0.0
         self._probe_interval = max(0.0, float(probe_interval_seconds))
+
+    def begin_drain(self) -> None:
+        """Stop admitting new arrivals; queued waiters still wake on release (#1104)."""
+        self.draining = True
+
+    def _deny_concurrency(self) -> RateLimitDecision:
+        return RateLimitDecision(
+            allowed=False,
+            limit=self.max_in_flight,
+            remaining=0,
+            reset_epoch=int(time.time()) + self.retry_after_seconds,
+            retry_after=self.retry_after_seconds,
+            scope="concurrency",
+            backend=self.backend.name,
+            bucket="concurrency",
+        )
 
     @property
     def degraded(self) -> bool:
@@ -465,6 +482,8 @@ class RateLimiter:
 
     async def acquire(self, priority: str = "normal") -> RateLimitDecision:
         if self.max_in_flight <= 0:
+            if self.draining:
+                return self._deny_concurrency()
             return RateLimitDecision(
                 allowed=True,
                 limit=0,
@@ -476,6 +495,8 @@ class RateLimiter:
             )
         rank = PRIORITY_RANK[normalize_priority(priority)]
         async with self._lock:
+            if self.draining:
+                return self._deny_concurrency()
             # Free slots go to the highest-priority waiter before a new arrival.
             self._wake_next_locked()
             can_take = self.in_flight < self.max_in_flight and (
@@ -493,16 +514,7 @@ class RateLimiter:
                     bucket="concurrency",
                 )
             if self.queued >= self.queue_size:
-                return RateLimitDecision(
-                    allowed=False,
-                    limit=self.max_in_flight,
-                    remaining=0,
-                    reset_epoch=int(time.time()) + self.retry_after_seconds,
-                    retry_after=self.retry_after_seconds,
-                    scope="concurrency",
-                    backend=self.backend.name,
-                    bucket="concurrency",
-                )
+                return self._deny_concurrency()
             loop = asyncio.get_running_loop()
             fut: asyncio.Future[bool] = loop.create_future()
             seq = self._waiter_seq

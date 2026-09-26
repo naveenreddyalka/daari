@@ -50,6 +50,8 @@ spec:
           env:
             - name: DAARI_FLEET_REPLICAS
               value: {{ include "daari.fleetReplicas" . | quote }}
+            - name: DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS
+              value: {{ (.Values.gracefulTimeoutSeconds | default 30) | quote }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
