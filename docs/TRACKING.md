@@ -4829,6 +4829,13 @@ reasoning when `InternalResponse.reasoning_content` is set;
 `tests/unit/test_responses_reasoning.py` and
 `tests/integration/test_responses_api.py`.
 
+### Responses reject hosted tool types ([#1135](https://github.com/naveenreddyalka/daari/issues/1135))
+
+<!-- tracking:#1135 -->
+**Status:** Done (2026-09-26). `POST /v1/responses` returns 400 for non-`function`
+tools (`web_search`, `mcp`, …) with an explicit allowlist; docs note in
+`clients-and-gateways.md`. Covered by `tests/unit/test_responses_hosted_tools.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -48,6 +48,25 @@ SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
 _BACKGROUND_JOBS: dict[str, asyncio.Task[None]] = {}
 # Clients feature-detect via the 400 detail allowlist (#1133).
 _SUPPORTED_INCLUDES: frozenset[str] = frozenset({"reasoning.encrypted_content"})
+# Hosted OpenAI tool types are rejected at ingress (#1135).
+_SUPPORTED_TOOL_TYPES: frozenset[str] = frozenset({"function"})
+
+
+def unsupported_responses_tools(tools: list[dict[str, Any]] | None) -> list[str]:
+    """Return unsupported tool type names (stable order, unique)."""
+    if not tools:
+        return []
+    seen: set[str] = set()
+    bad: list[str] = []
+    for tool in tools:
+        kind = str(tool.get("type") or "") or "(missing)"
+        if kind in _SUPPORTED_TOOL_TYPES:
+            continue
+        if kind in seen:
+            continue
+        seen.add(kind)
+        bad.append(kind)
+    return bad
 
 
 def _reasoning_summary_text(item: dict[str, Any]) -> str:
@@ -498,6 +517,15 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 )
             include_encrypted = "reasoning.encrypted_content" in requested_includes
             include_daari_meta = (x_daari_meta or "").strip().lower() in {"1", "true", "yes"}
+            bad_tools = unsupported_responses_tools(body.tools)
+            if bad_tools:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"tools type not supported: {bad_tools}. "
+                        f"supported: {sorted(_SUPPORTED_TOOL_TYPES)}"
+                    ),
+                )
             try:
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
             except ValueError:

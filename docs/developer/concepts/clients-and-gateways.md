@@ -101,6 +101,9 @@ terminal object returns 200 with its current body. `DELETE /v1/responses/{id}`
 removes the row so a later GET is 404. Tenancy matches GET (other virtual keys
 see 404, not 403; the master key can cancel or delete any row). `include` is
 rejected with 400 rather than ignored; `metadata` is echoed.
+Only `type: function` tools are accepted — hosted types (`web_search`, `mcp`,
+`file_search`, …) return **400** naming the unsupported type(s) and the
+supported allowlist.
 Responses-native sampling maps onto the same `SamplingParams` as chat:
 `reasoning.effort` → `reasoning_effort`, `text.format` → JSON / `json_schema`
 (including `name`/`strict`), plus `tool_choice`, `parallel_tool_calls`, and
