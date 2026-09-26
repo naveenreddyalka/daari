@@ -4734,6 +4734,14 @@ one window; gateway 402 / soft `budget_warning` before escalate; report
 `model_group_spend` + spend export `model_group` column. Covered by
 `tests/unit/test_model_group_budgets.py`.
 
+### Doctor probes for moderations and rerank ([#1110](https://github.com/naveenreddyalka/daari/issues/1110))
+
+<!-- tracking:#1110 -->
+**Status:** Done (2026-09-26). `daari doctor` dry-checks OpenAPI for
+`POST /v1/moderations` and `POST /v1/rerank` when frontier can escalate
+(skip/501 tip when disabled or missing key), mirroring images. Covered by
+`tests/unit/test_doctor_moderations_rerank.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
