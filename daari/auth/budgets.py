@@ -9,7 +9,7 @@ from typing import Any, Iterable, Literal
 
 from daari.auth.virtual_keys import BudgetWindow, Team, VirtualKey
 
-Scope = Literal["key", "team", "user", "model_group"]
+Scope = Literal["key", "team", "user", "model_group", "model"]
 
 _DAY_ALIASES = {"day", "daily", "24h"}
 _MONTH_ALIASES = {"month", "monthly", "30d"}
@@ -381,6 +381,7 @@ def budget_error(
     spend_requests: int | None = None,
     limit_requests: int | None = None,
     model_group: str | None = None,
+    model_pattern: str | None = None,
 ) -> dict[str, Any]:
     label = window_label(window.duration)
     reset = reset_at(window.duration)
@@ -437,6 +438,8 @@ def budget_error(
         payload["user_id"] = user_id
     if model_group is not None:
         payload["model_group"] = model_group
+    if model_pattern is not None:
+        payload["model_pattern"] = model_pattern
     return payload
 
 
@@ -842,6 +845,7 @@ class WindowStatus:
     boost_usd: float = 0.0
     boost_requests: int = 0
     model_group: str | None = None
+    model_pattern: str | None = None
 
     @property
     def limit(self) -> float:
@@ -1411,4 +1415,256 @@ def model_group_spend_report_rows(
                 "exceeded": False,
             }
         )
+    return rows
+
+
+def parse_model_max_budget(
+    raw: Any,
+) -> dict[str, tuple[BudgetWindow, ...]]:
+    """Parse ``{model_or_pattern: usd|window|list}`` — bare float = daily (#1113)."""
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, tuple[BudgetWindow, ...]] = {}
+    for name, value in raw.items():
+        pattern = str(name).strip()
+        if not pattern:
+            continue
+        parsed: list[BudgetWindow] = []
+        if isinstance(value, (int, float)):
+            amount = float(value)
+            if amount > 0:
+                parsed.append(BudgetWindow("day", amount))
+        elif isinstance(value, BudgetWindow):
+            if float(value.max_usd or 0) > 0:
+                parsed.append(
+                    BudgetWindow(
+                        normalize_duration(value.duration),
+                        float(value.max_usd),
+                        rollover=bool(value.rollover),
+                        rollover_cap_multiple=float(value.rollover_cap_multiple or 2.0),
+                    )
+                )
+        elif isinstance(value, dict):
+            max_usd = float(value.get("max_usd") or 0.0)
+            if max_usd > 0:
+                parsed.append(
+                    BudgetWindow(
+                        normalize_duration(str(value.get("duration") or "day")),
+                        max_usd,
+                        rollover=bool(value.get("rollover")),
+                        rollover_cap_multiple=float(value.get("rollover_cap_multiple") or 2.0),
+                    )
+                )
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, BudgetWindow):
+                    if float(item.max_usd or 0) > 0:
+                        parsed.append(
+                            BudgetWindow(
+                                normalize_duration(item.duration),
+                                float(item.max_usd),
+                                rollover=bool(item.rollover),
+                                rollover_cap_multiple=float(item.rollover_cap_multiple or 2.0),
+                            )
+                        )
+                elif isinstance(item, dict):
+                    max_usd = float(item.get("max_usd") or 0.0)
+                    if max_usd > 0:
+                        parsed.append(
+                            BudgetWindow(
+                                normalize_duration(str(item.get("duration") or "day")),
+                                max_usd,
+                                rollover=bool(item.get("rollover")),
+                                rollover_cap_multiple=float(
+                                    item.get("rollover_cap_multiple") or 2.0
+                                ),
+                            )
+                        )
+                elif isinstance(item, (int, float)) and float(item) > 0:
+                    parsed.append(BudgetWindow("day", float(item)))
+        if parsed:
+            out[pattern] = coalesce_windows(parsed)
+    return out
+
+
+def encode_model_max_budget(
+    budgets: dict[str, tuple[BudgetWindow, ...] | list[BudgetWindow] | float | int],
+) -> dict[str, list[dict[str, Any]]]:
+    encoded: dict[str, list[dict[str, Any]]] = {}
+    for name, windows in budgets.items():
+        if isinstance(windows, (int, float)):
+            amount = float(windows)
+            if amount > 0:
+                encoded[str(name)] = [BudgetWindow("day", amount).as_dict()]
+            continue
+        encoded[str(name)] = [w.as_dict() for w in windows if float(w.max_usd or 0) > 0]
+    return {k: v for k, v in encoded.items() if v}
+
+
+def model_max_budget_of(entity: VirtualKey | Team | None) -> dict[str, tuple[BudgetWindow, ...]]:
+    if entity is None:
+        return {}
+    direct = getattr(entity, "model_max_budget", None)
+    if isinstance(direct, dict) and direct:
+        return parse_model_max_budget(direct)
+    meta = getattr(entity, "metadata", None) or {}
+    if isinstance(meta, dict):
+        return parse_model_max_budget(meta.get("model_max_budget"))
+    return {}
+
+
+def effective_model_max_budget(
+    key: VirtualKey,
+    team: Team | None,
+) -> dict[str, tuple[BudgetWindow, ...]]:
+    """Team map as base; key overrides individual patterns (#1113)."""
+    merged = dict(model_max_budget_of(team))
+    for pattern, windows in model_max_budget_of(key).items():
+        merged[pattern] = windows
+    return merged
+
+
+def spend_for_model_pattern_window(
+    ledger: Any,
+    pattern: str,
+    duration: str,
+    *,
+    client_ids: list[str] | None = None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> float:
+    if not pattern or not hasattr(ledger, "frontier_spend_usd_for_model_patterns"):
+        return 0.0
+    kind, days = ledger_window(duration)
+    kwargs: dict[str, Any] = {
+        "pricing": pricing,
+        "fallback_per_1k": fallback_per_1k,
+    }
+    if client_ids is not None:
+        kwargs["client_ids"] = client_ids
+    if kind == "lifetime":
+        return float(
+            ledger.frontier_spend_usd_for_model_patterns(
+                [pattern], window="lifetime", **kwargs
+            )
+            or 0.0
+        )
+    if kind == "days":
+        return float(
+            ledger.frontier_spend_usd_for_model_patterns(
+                [pattern], window="days", days=days or 1, **kwargs
+            )
+            or 0.0
+        )
+    return float(
+        ledger.frontier_spend_usd_for_model_patterns(
+            [pattern],
+            window="month" if kind == "month" else "day",
+            **kwargs,
+        )
+        or 0.0
+    )
+
+
+def model_max_budget_status(
+    model: str,
+    key: VirtualKey,
+    team: Team | None,
+    ledger: Any,
+    *,
+    client_id: str,
+    team_client_ids: list[str] | None = None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+    now: datetime | None = None,
+) -> list[WindowStatus]:
+    """Statuses for patterns that match ``model`` under the effective map (#1113)."""
+    from daari.auth.model_access import pattern_matches
+
+    attached = effective_model_max_budget(key, team)
+    if not attached:
+        return []
+    name = (model or "").strip()
+    if not name:
+        return []
+    ids = list(team_client_ids) if team is not None and team_client_ids else [client_id]
+    statuses: list[WindowStatus] = []
+    for pattern, windows in attached.items():
+        if not pattern_matches(name, pattern):
+            continue
+        for window in windows:
+            spend = spend_for_model_pattern_window(
+                ledger,
+                pattern,
+                window.duration,
+                client_ids=ids,
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            statuses.append(
+                WindowStatus(
+                    window=window,
+                    scope="model",
+                    spend=spend,
+                    now=now,
+                    quota="usd",
+                    model_pattern=pattern,
+                )
+            )
+    return statuses
+
+
+def team_model_spend_report_rows(
+    store: Any,
+    ledger: Any,
+    *,
+    soft_ratio: float,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> list[dict[str, Any]]:
+    """Per-team USD spend broken down by model_max_budget pattern (#1113)."""
+    rows: list[dict[str, Any]] = []
+    if store is None or not getattr(ledger, "enabled", False):
+        return rows
+    try:
+        teams = store.list_teams() if hasattr(store, "list_teams") else []
+    except Exception:
+        return rows
+    for team in teams:
+        budgets = model_max_budget_of(team)
+        if not budgets:
+            continue
+        client_ids = (
+            store.team_client_ids(team.team_id) if hasattr(store, "team_client_ids") else []
+        )
+        for pattern, windows in budgets.items():
+            window = windows[0]
+            spend = spend_for_model_pattern_window(
+                ledger,
+                pattern,
+                window.duration,
+                client_ids=client_ids or None,
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+            status = WindowStatus(
+                window=window,
+                scope="model",
+                spend=spend,
+                quota="usd",
+                model_pattern=pattern,
+            )
+            rows.append(
+                {
+                    "team_id": team.team_id,
+                    "team_name": team.name,
+                    "model_pattern": pattern,
+                    "window": window_header_label(window.duration),
+                    "spend_usd": round(float(spend), 6),
+                    "budget_usd": round(float(status.limit), 6),
+                    "remaining_usd": round(float(status.remaining), 6),
+                    "soft": status.in_soft_band(soft_ratio),
+                    "exceeded": status.exceeded,
+                }
+            )
     return rows

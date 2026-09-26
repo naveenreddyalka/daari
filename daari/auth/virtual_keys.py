@@ -480,11 +480,17 @@ class VirtualKeyStore:
         cache_scope: str = "global",
         priority: str = "normal",
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
+        model_max_budget: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> Team:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        from daari.auth.budgets import coalesce_windows, encode_model_group_budgets, windows_from_flat
+        from daari.auth.budgets import (
+            coalesce_windows,
+            encode_model_group_budgets,
+            encode_model_max_budget,
+            windows_from_flat,
+        )
 
         windows = coalesce_windows(
             list(budget_windows or ())
@@ -501,6 +507,8 @@ class VirtualKeyStore:
         meta = dict(metadata or {})
         if model_group_budgets:
             meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
+        if model_max_budget:
+            meta["model_max_budget"] = encode_model_max_budget(model_max_budget)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
@@ -792,10 +800,15 @@ class VirtualKeyStore:
         cache_scope: str = "global",
         priority: str = "normal",
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
+        model_max_budget: dict[str, Any] | None = None,
     ) -> CreatedKey:
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        from daari.auth.budgets import encode_model_group_budgets, windows_from_flat
+        from daari.auth.budgets import (
+            encode_model_group_budgets,
+            encode_model_max_budget,
+            windows_from_flat,
+        )
 
         # Normalise whatever the caller passed (relative or ISO) once, here.
         expires_at = expiry_from(expires_at)
@@ -813,6 +826,8 @@ class VirtualKeyStore:
         meta = dict(metadata or {})
         if model_group_budgets:
             meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
+        if model_max_budget:
+            meta["model_max_budget"] = encode_model_max_budget(model_max_budget)
         pin = (region_pin or "").strip() or None
         if pin:
             meta["region_pin"] = pin

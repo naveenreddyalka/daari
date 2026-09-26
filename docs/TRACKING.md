@@ -4760,6 +4760,14 @@ required headers, deny exact/regex rules, and optional allowlists before
 Covered by `tests/unit/test_header_policy.py` and
 `tests/unit/test_doctor_header_policy.py`.
 
+### Team-level model_max_budget with key overrides ([#1113](https://github.com/naveenreddyalka/daari/issues/1113))
+
+<!-- tracking:#1113 -->
+**Status:** Done (2026-09-26). Teams/keys accept `model_max_budget`
+`{model_or_pattern: usd|window}` (bare float = daily); key overlays team map;
+pre-check before L6 soft/hard via `soft_budget_ratio`; report exposes
+`team_model_spend`. Covered by `tests/unit/test_model_max_budget.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

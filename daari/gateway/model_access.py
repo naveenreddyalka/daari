@@ -197,3 +197,104 @@ def reject_model_group_budget(
         merged = {**existing, **budget_headers(tightest, soft=True)}
         request.state.budget_response_headers = merged
     return None
+
+
+def reject_model_max_budget(
+    request: Any,
+    model: str,
+    settings: Any,
+) -> JSONResponse | None:
+    """402 when a team/key model_max_budget pattern window is exceeded (#1113)."""
+    claims = getattr(getattr(request, "state", None), "auth_claims", None)
+    if claims is None or getattr(claims, "kind", None) != "virtual":
+        return None
+    key = getattr(claims, "virtual_key", None)
+    if key is None:
+        return None
+    from daari.auth.budgets import (
+        budget_error,
+        effective_model_max_budget,
+        model_max_budget_status,
+        tightest_window,
+    )
+    from daari.gateway.budget_headers import budget_headers, retry_after_seconds
+
+    store = getattr(
+        getattr(request, "app", None).state if getattr(request, "app", None) else None,
+        "virtual_key_store",
+        None,
+    )
+    team = None
+    team_ids: list[str] = []
+    if store is not None and getattr(key, "team_id", None):
+        team = store.get_team(key.team_id)
+    if claims is not None and getattr(claims, "selected_team_id", None) and store is not None:
+        team = store.get_team(claims.selected_team_id) or team
+    if team is not None and store is not None and hasattr(store, "team_client_ids"):
+        team_ids = store.team_client_ids(team.team_id)
+    if not effective_model_max_budget(key, team):
+        return None
+    ctx = getattr(getattr(request, "app", None), "state", None)
+    router = getattr(getattr(ctx, "ctx", None), "router", None) if ctx is not None else None
+    ledger = getattr(router, "usage_ledger", None) if router is not None else None
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return None
+    client = (
+        getattr(claims, "client_id", None)
+        or getattr(key, "client_id", None)
+        or getattr(claims, "key_id", None)
+        or ""
+    )
+    pricing = getattr(settings, "pricing", None)
+    fallback = float(
+        getattr(getattr(settings, "usage", None), "frontier_price_per_1k_tokens", 0.002) or 0.002
+    )
+    statuses = model_max_budget_status(
+        model,
+        key,
+        team,
+        ledger,
+        client_id=str(client),
+        team_client_ids=team_ids,
+        pricing=pricing,
+        fallback_per_1k=fallback,
+    )
+    if not statuses:
+        return None
+    exceeded = next((status for status in statuses if status.exceeded), None)
+    if exceeded is not None:
+        headers = budget_headers(exceeded)
+        headers["Retry-After"] = str(retry_after_seconds(exceeded))
+        metrics = getattr(getattr(ctx, "ctx", None), "metrics", None) if ctx is not None else None
+        if metrics is not None and hasattr(metrics, "record_reject"):
+            metrics.record_reject("budget")
+        log_gateway_event(
+            "model_max_budget_exceeded",
+            {
+                "model": (model or "").strip(),
+                "model_pattern": exceeded.model_pattern,
+                "client_id": client,
+            },
+        )
+        return JSONResponse(
+            status_code=402,
+            content={
+                "error": budget_error(
+                    client_id=str(client),
+                    window=exceeded.window,
+                    spend=exceeded.spend,
+                    scope=exceeded.scope,
+                    limit_usd=exceeded.limit,
+                    model_pattern=exceeded.model_pattern,
+                )
+            },
+            headers=headers,
+        )
+    soft_ratio = float(getattr(getattr(settings, "frontier", None), "soft_budget_ratio", 0.8) or 0.0)
+    tightest = tightest_window(statuses)
+    if tightest is not None and tightest.in_soft_band(soft_ratio):
+        request.state.budget_soft = True
+        existing = getattr(request.state, "budget_response_headers", None) or {}
+        merged = {**existing, **budget_headers(tightest, soft=True)}
+        request.state.budget_response_headers = merged
+    return None
