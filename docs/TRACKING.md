@@ -4902,6 +4902,14 @@ gateway into `OllamaExecutor._payload` so Anthropic/frontier egress preserves
 mid-conversation system turns. Covered by
 `tests/unit/test_anthropic_hoist.py`.
 
+### Responses stream resume http-api docs ([#1155](https://github.com/naveenreddyalka/daari/issues/1155))
+
+<!-- tracking:#1155 -->
+**Status:** Done (2026-09-27). `http-api.md` documents `GET
+/v1/responses/{id}` query params `stream` / `starting_after` and 409 for
+non-terminal status. Covered by
+`tests/unit/test_responses_stream_resume_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -55,6 +55,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/messages` | Messages |
 | `POST` | `/v1/messages/count_tokens` | Count Tokens |
 | `GET` | `/v1/messages/health` | Health |
+| `POST` | `/v1/messages/moderations` | Messages Moderations |
 | `GET` | `/v1/models` | List Models |
 | `GET` | `/v1/models/{model_id}` | Retrieve Model |
 | `POST` | `/v1/moderations` | Moderations |
@@ -66,3 +67,12 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `DELETE` | `/v1/responses/{response_id}` | Delete Response |
 | `GET` | `/v1/responses/{response_id}` | Get Response |
 | `POST` | `/v1/responses/{response_id}/cancel` | Cancel Response |
+
+## Responses stream resume
+
+`GET /v1/responses/{response_id}` accepts query parameters:
+
+- `stream` — when `true`, replay stored terminal output as Responses SSE
+- `starting_after` — skip events with sequence ≤ this value (past-the-end resume is an empty stream)
+
+Non-terminal (in-flight / `queued`) responses return **409** when `stream=true`. Plain GET (no `stream`) remains JSON.
