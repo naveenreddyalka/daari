@@ -1832,13 +1832,26 @@ def backup_restore(
         "--force",
         help="Overwrite existing same-version store files at restore targets.",
     ),
+    i_know_server_is_stopped: bool = typer.Option(
+        False,
+        "--i-know-server-is-stopped",
+        help=(
+            "Allow restore when GET /health succeeds. Prefer stopping daari first "
+            "to avoid SQLite WAL corruption."
+        ),
+    ),
 ) -> None:
     """Restore durable stores from an archive onto the configured data paths."""
     from daari.ops.backup import BackupError, restore_backup
 
     settings = get_settings()
     try:
-        manifest = restore_backup(settings, archive, force=force)
+        manifest = restore_backup(
+            settings,
+            archive,
+            force=force,
+            allow_running_server=i_know_server_is_stopped,
+        )
     except BackupError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc

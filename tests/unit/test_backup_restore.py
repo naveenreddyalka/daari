@@ -142,3 +142,69 @@ def test_doctor_backup_hint(tmp_path, monkeypatch):
     assert result.optional is True
     assert result.ok is False
     assert "daari backup create" in result.detail
+
+
+def test_catalog_postgres_batches_and_files(tmp_path):
+    from daari.ops.backup import catalog_stores
+
+    settings = _settings(tmp_path)
+    settings.batches.backend = "postgres"
+    settings.files.backend = "postgres"
+    settings.observability.postgres_url = "postgresql://localhost/daari"
+    by_name = {e.name: e for e in catalog_stores(settings)}
+    assert by_name["batches"].backend == "postgres"
+    assert "daari_batch_jobs" in (by_name["batches"].pg_dump or "")
+    assert by_name["files"].backend == "postgres"
+    assert "daari_files" in (by_name["files"].pg_dump or "")
+
+
+def test_rotated_request_logs_round_trip(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    src.mkdir()
+    log = src / "requests.log"
+    log.write_text('{"event":"active"}\n', encoding="utf-8")
+    rotated = src / "requests.log.1"
+    rotated.write_text('{"event":"old"}\n', encoding="utf-8")
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", log)
+    settings = _settings(src)
+    _seed(settings)
+    archive = tmp_path / "with-rotated.tar.gz"
+    manifest = create_backup(settings, archive)
+    assert any(s["name"] == "request-log.1" and s["present"] for s in manifest.stores)
+
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    dst_log = dst / "requests.log"
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", dst_log)
+    restore_backup(_settings(dst), archive, allow_running_server=True)
+    assert dst_log.is_file()
+    assert (dst / "requests.log.1").read_text(encoding="utf-8") == '{"event":"old"}\n'
+
+
+def test_restore_refuses_when_server_healthy(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    src.mkdir()
+    log = src / "requests.log"
+    log.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", log)
+    settings = _settings(src)
+    _seed(settings)
+    archive = tmp_path / "hot.tar.gz"
+    create_backup(settings, archive)
+    monkeypatch.setattr("daari.ops.backup.server_appears_running", lambda _s: True)
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", dst / "requests.log")
+    with pytest.raises(BackupError, match="server appears to be running"):
+        restore_backup(_settings(dst), archive)
+    restore_backup(_settings(dst), archive, allow_running_server=True)
+
+
+def test_docs_mention_pg_batches_files_and_interlock():
+    doc = Path("docs/developer/guides/operations/backup-restore.md").read_text(
+        encoding="utf-8"
+    )
+    assert "daari_batch_jobs" in doc
+    assert "daari_files" in doc
+    assert "i-know-server-is-stopped" in doc
+    assert "request-log" in doc.lower() or "rotated" in doc.lower()
