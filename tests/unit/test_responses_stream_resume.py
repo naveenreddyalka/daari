@@ -8,7 +8,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from daari.gateway.internal import InternalRequest
-from daari.gateway.responses import _replay_events_from_stored, _sse_with_sequence
+from daari.gateway.responses import (
+    _replay_events_from_stored,
+    _resolve_starting_after,
+    _sse_with_sequence,
+)
 from daari.gateway.response_store import ResponseStore
 from daari.router.router import AppContext
 from daari.server.app import create_app
@@ -34,10 +38,24 @@ def _parse_sse(text: str) -> list[tuple[str, dict]]:
 
 def test_sse_with_sequence_embeds_sequence_number():
     frame = _sse_with_sequence(3, "response.created", {"type": "response.created"})
+    assert frame.startswith("id: 3\n")
     assert "event: response.created\n" in frame
     payload = json.loads(frame.split("data: ", 1)[1].strip())
     assert payload["sequence_number"] == 3
     assert payload["type"] == "response.created"
+
+
+class _FakeRequest:
+    def __init__(self, headers: dict[str, str] | None = None):
+        self.headers = headers or {}
+
+
+def test_resolve_starting_after_query_wins_and_header_fallback():
+    assert _resolve_starting_after(_FakeRequest({"last-event-id": "9"}), 2) == 2
+    assert _resolve_starting_after(_FakeRequest({"last-event-id": "9"}), None) == 9
+    assert _resolve_starting_after(_FakeRequest({"last-event-id": "nope"}), None) is None
+    assert _resolve_starting_after(_FakeRequest({"last-event-id": "-1"}), None) is None
+    assert _resolve_starting_after(_FakeRequest(), None) is None
 
 
 def test_replay_events_from_stored_message_and_tool():
@@ -163,6 +181,51 @@ async def test_get_stream_resume_from_store(settings):
     assert plain.json()["id"] == "resp_resume"
     assert plain.headers["content-type"].startswith("application/json")
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_stream_honors_last_event_id_header(settings):
+    app = _app(settings)
+    body = {
+        "id": "resp_leid",
+        "object": "response",
+        "model": "m",
+        "status": "completed",
+        "output": [
+            {
+                "type": "message",
+                "id": "msg_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{"type": "output_text", "text": "hi", "annotations": []}],
+            }
+        ],
+    }
+    _store(settings).put("resp_leid", body, conversation=[], stored=True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        by_header = await client.get(
+            "/v1/responses/resp_leid",
+            params={"stream": "true"},
+            headers={"Last-Event-ID": "2"},
+        )
+        overridden = await client.get(
+            "/v1/responses/resp_leid",
+            params={"stream": "true", "starting_after": "1"},
+            headers={"Last-Event-ID": "99"},
+        )
+        bad_header = await client.get(
+            "/v1/responses/resp_leid",
+            params={"stream": "true"},
+            headers={"Last-Event-ID": "not-a-number"},
+        )
+    header_events = _parse_sse(by_header.text)
+    assert header_events
+    assert all(p["sequence_number"] > 2 for _, p in header_events)
+    assert by_header.text.split("id: ", 1)[1].split("\n", 1)[0].isdigit()
+    override_events = _parse_sse(overridden.text)
+    assert override_events[0][1]["sequence_number"] == 2
+    full_from_bad = _parse_sse(bad_header.text)
+    assert full_from_bad[0][1]["sequence_number"] == 0
 
 
 @pytest.mark.asyncio

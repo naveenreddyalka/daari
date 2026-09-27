@@ -398,9 +398,28 @@ def _sse(event: str, payload: dict[str, Any]) -> str:
 
 
 def _sse_with_sequence(sequence: int, event: str, payload: dict[str, Any]) -> str:
-    """SSE frame with OpenAI Responses `sequence_number` for stream resume."""
+    """SSE frame with `sequence_number` and `id:` for EventSource resume."""
     body = {**payload, "sequence_number": sequence}
-    return _sse(event, body)
+    return f"id: {sequence}\nevent: {event}\ndata: {json.dumps(body)}\n\n"
+
+
+def _resolve_starting_after(request: Request, starting_after: int | None) -> int | None:
+    """Query `starting_after` wins; else valid non-negative Last-Event-ID; else None."""
+    if starting_after is not None:
+        return starting_after
+    raw = request.headers.get("last-event-id")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        value = int(text)
+    except ValueError:
+        return None
+    if value < 0:
+        return None
+    return value
 
 
 def _replay_events_from_stored(
@@ -607,7 +626,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         f"responses only; current status is {status!r}"
                     ),
                 )
-            frames = _replay_events_from_stored(stored, starting_after=starting_after)
+            cursor = _resolve_starting_after(request, starting_after)
+            frames = _replay_events_from_stored(stored, starting_after=cursor)
 
             async def _resume() -> AsyncIterator[str]:
                 for frame in frames:
