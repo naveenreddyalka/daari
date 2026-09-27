@@ -4894,6 +4894,14 @@ the router from `previous_response_id` / `input`, stores a shorter
 conversation, and documents the route. Covered by
 `tests/unit/test_responses_compact.py`.
 
+### Anthropic hoist only on local Ollama ([#1154](https://github.com/naveenreddyalka/daari/issues/1154))
+
+<!-- tracking:#1154 -->
+**Status:** Done (2026-09-27). Trailing system hoist moved from the Anthropic
+gateway into `OllamaExecutor._payload` so Anthropic/frontier egress preserves
+mid-conversation system turns. Covered by
+`tests/unit/test_anthropic_hoist.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

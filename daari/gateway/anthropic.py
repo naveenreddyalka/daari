@@ -307,7 +307,9 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             internal_messages.extend(system_blocks_to_messages(body.system))
             for message in body.messages:
                 internal_messages.extend(anthropic_message_to_internal(message))
-            internal_messages = hoist_system_messages(internal_messages)
+            # Trailing system turns are preserved here so Anthropic-native /
+            # frontier egress keeps mid-conversation system layout (#1154).
+            # Local Ollama tiers hoist in OllamaExecutor._payload instead.
 
             # Tool passthrough (issue #84): Claude Code agent turns carry tools;
             # X-Daari-Tools: strip forces plain-chat handling for parity with
