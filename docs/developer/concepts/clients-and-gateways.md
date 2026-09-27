@@ -84,7 +84,10 @@ messages + tools), not an L6 round-trip. When L6 itself is Anthropic (`provider`
 `anthropic`/`claude`, or `anthropic.com` in `base_url`), the frontier executor POSTs
 native `/v1/messages` with `x-api-key` / `anthropic-version` headers, not an OpenAI
 body at `/chat/completions`. Prompt-cache hints land on the last system block as
-`cache_control: ephemeral`.
+`cache_control: ephemeral`. Mid-conversation system turns stay in place on that
+Anthropic egress path; trailing system messages are still **hoisted** only when
+the request hits a local Ollama tier (llama chat templates otherwise emit empty
+streams for Claude Code SessionStart hooks).
 
 `POST /mcp` is a JSON-RPC 2.0 MCP server (streamable HTTP): `initialize`,
 `tools/list`, `tools/call`. Tools are `route`, `stats`, and whatever integration

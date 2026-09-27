@@ -275,8 +275,14 @@ class OllamaExecutor:
         self._http = None
 
     def _payload(self, request: InternalRequest, model: str, *, stream: bool) -> dict[str, Any]:
+        # Claude Code trailing system messages must lead for llama templates
+        # (#94); hoist only on the local Ollama path so Anthropic egress keeps
+        # mid-conversation system turns (#1154).
+        from daari.gateway.anthropic import hoist_system_messages
+
+        ordered = hoist_system_messages(list(request.messages))
         messages: list[dict[str, Any]] = []
-        for m in request.messages:
+        for m in ordered:
             data = m.model_dump(exclude_none=True, exclude={"images", "audio"})
             tool_calls = data.get("tool_calls")
             image_b64 = [img.as_base64() for img in m.images if img.as_base64()]
@@ -325,7 +331,17 @@ class OllamaExecutor:
             payload["response_compaction"] = request.sampling.response_compaction
         return payload
 
+    @staticmethod
+    def _with_hoisted_system(request: InternalRequest) -> InternalRequest:
+        from daari.gateway.anthropic import hoist_system_messages
+
+        hoisted = hoist_system_messages(list(request.messages))
+        if hoisted is request.messages or hoisted == request.messages:
+            return request
+        return request.model_copy(update={"messages": hoisted})
+
     async def execute(self, request: InternalRequest) -> InternalResponse:
+        request = self._with_hoisted_system(request)
         model = request.model or self.default_model
         started = time.perf_counter()
         payload = self._payload(request, model, stream=False)
@@ -379,6 +395,7 @@ class OllamaExecutor:
         )
 
     async def stream(self, request: InternalRequest) -> AsyncIterator[dict]:
+        request = self._with_hoisted_system(request)
         model = request.model or self.default_model
         payload = self._payload(request, model, stream=True)
         from daari.observability.otel import inject_trace_headers
@@ -2296,10 +2313,18 @@ class Router:
                     pre_token_failover = False
                     attempt_failed = False
                     try:
+                        from daari.gateway.anthropic import hoist_system_messages
                         from daari.router.deadline import guard_upstream
 
                         guard_upstream(tier)
-                        async for event in stream_executor.stream(stream_request):
+                        ollama_request = stream_request.model_copy(
+                            update={
+                                "messages": hoist_system_messages(
+                                    list(stream_request.messages)
+                                )
+                            }
+                        )
+                        async for event in stream_executor.stream(ollama_request):
                             if event.get("prompt_eval_count") is not None:
                                 # Ollama reports real counts on the terminal event (#156).
                                 reported_usage = (
@@ -3185,10 +3210,17 @@ class Router:
                 pre_token_failover = False
                 attempt_failed = False
                 try:
+                    from daari.gateway.anthropic import hoist_system_messages
                     from daari.router.deadline import guard_upstream
 
                     guard_upstream(tier)
-                    async for event in stream_executor.stream(stream_request):
+                    # Local llama templates need leading system turns (#94/#1154).
+                    ollama_request = stream_request.model_copy(
+                        update={
+                            "messages": hoist_system_messages(list(stream_request.messages))
+                        }
+                    )
+                    async for event in stream_executor.stream(ollama_request):
                         if event.get("prompt_eval_count") is not None:
                             # Last report wins: cumulative-usage providers would
                             # otherwise be summed into a many-fold overcount (#320).
@@ -3840,12 +3872,16 @@ class Router:
         return response
 
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
+        from daari.gateway.anthropic import hoist_system_messages
         from daari.router.deadline import guard_upstream
 
         guard_upstream(tier)
         add_step("tier_attempt", tier=tier)
         request = await self._compact_context(request)
         request = self._optimize_context(request)
+        request = request.model_copy(
+            update={"messages": hoist_system_messages(list(request.messages))}
+        )
         executor = self._executor_for_tier(tier)
         req = request.model_copy(deep=True)
         req.model = executor.default_model
