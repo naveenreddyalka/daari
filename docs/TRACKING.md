@@ -4910,6 +4910,13 @@ mid-conversation system turns. Covered by
 non-terminal status. Covered by
 `tests/unit/test_responses_stream_resume_docs.py`.
 
+### OpenAPI + doctor for Responses stream resume ([#1161](https://github.com/naveenreddyalka/daari/issues/1161))
+
+<!-- tracking:#1161 -->
+**Status:** Done (2026-09-27). OpenAPI documents `stream` /
+`starting_after` descriptions and 409 on GET responses; doctor dry-check
+pins them. Covered by `tests/unit/test_doctor_responses_stream_resume.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

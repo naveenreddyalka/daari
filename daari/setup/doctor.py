@@ -54,6 +54,7 @@ def run_doctor(
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_images_generations(cfg))
+    results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
     results.append(_check_cors_origins(cfg))
@@ -411,6 +412,68 @@ def _images_frontier_key_resolves(settings: Settings) -> bool:
         return resolve_images_target(settings) is not None
     except Exception:
         return False
+
+
+def _check_responses_stream_resume(
+    settings: Settings,
+    *,
+    openapi_paths: dict[str, Any] | None = None,
+) -> CheckResult:
+    """Dry OpenAPI tip for Responses GET stream resume (#1161)."""
+    path = "/v1/responses/{response_id}"
+    if openapi_paths is None:
+        from daari.server.app import create_app
+
+        # Defaults only: route OpenAPI is static, and create_app(settings)
+        # would raise on unresolvable secret:// refs before secret_refs reports.
+        _ = settings
+        openapi_paths = create_app(Settings()).openapi().get("paths") or {}
+    entry = openapi_paths.get(path) if isinstance(openapi_paths, dict) else None
+    get_op = entry.get("get") if isinstance(entry, dict) else None
+    if not isinstance(get_op, dict):
+        return CheckResult(
+            name="responses_stream_resume",
+            ok=False,
+            detail=f"OpenAPI missing GET {path} stream resume (stream/starting_after/409)",
+            optional=True,
+        )
+    params = {
+        p.get("name"): p
+        for p in (get_op.get("parameters") or [])
+        if isinstance(p, dict) and p.get("in") == "query"
+    }
+    stream = params.get("stream")
+    starting = params.get("starting_after")
+    responses = get_op.get("responses") or {}
+    has_stream = isinstance(stream, dict) and bool(stream.get("description"))
+    has_starting = isinstance(starting, dict) and bool(starting.get("description"))
+    has_409 = "409" in responses
+    if has_stream and has_starting and has_409:
+        return CheckResult(
+            name="responses_stream_resume",
+            ok=True,
+            detail=(
+                f"OpenAPI GET {path} documents stream, starting_after, and 409 "
+                "for non-terminal resume"
+            ),
+            optional=True,
+        )
+    missing = []
+    if not has_stream:
+        missing.append("stream")
+    if not has_starting:
+        missing.append("starting_after")
+    if not has_409:
+        missing.append("409")
+    return CheckResult(
+        name="responses_stream_resume",
+        ok=False,
+        detail=(
+            f"OpenAPI GET {path} incomplete stream resume docs "
+            f"(missing {', '.join(missing)})"
+        ),
+        optional=True,
+    )
 
 
 def _check_images_generations(
