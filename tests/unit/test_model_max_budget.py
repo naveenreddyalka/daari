@@ -202,6 +202,35 @@ async def test_gateway_team_default_key_override_exceed(settings, tmp_path):
         assert err["model_pattern"] == "gpt-4*"
 
 
+RESPONSES_GPT = {"model": "gpt-4-custom", "input": "hi"}
+
+
+@pytest.mark.asyncio
+async def test_responses_enforces_model_max_budget(settings, tmp_path):
+    """POST /v1/responses uses the same 402 model_max_budget fence as chat (#1169)."""
+    app, store, ledger = _app_with_keys(settings, tmp_path)
+    store.create_team("eng", model_max_budget={"gpt-4*": 1.0})
+    key = store.create(
+        "a",
+        client_id="key-a",
+        team="eng",
+        model_max_budget={"gpt-4*": 1.0},
+    )
+    _record_model_spend(ledger, model="gpt-4-custom", usd=1.05, client_id="key-a")
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        hard = await client.post(
+            "/v1/responses",
+            json=RESPONSES_GPT,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert hard.status_code == 402
+    err = hard.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "model"
+    assert err["model_pattern"] == "gpt-4*"
+
+
 @pytest.mark.asyncio
 async def test_report_exposes_team_model_spend(settings, tmp_path):
     app, store, ledger = _app_with_keys(settings, tmp_path)

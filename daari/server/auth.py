@@ -86,6 +86,11 @@ def apply_auth_claims_to_meta(
         meta.client_id = claims.client_id
     if not meta.tier_cap and claims.tier_cap:
         meta.tier_cap = claims.tier_cap
+    # Key metadata no_frontier fences L6; header True already set wins.
+    if not getattr(meta, "no_frontier", False):
+        vk_meta = getattr(getattr(claims, "virtual_key", None), "metadata", None) or {}
+        if isinstance(vk_meta, dict) and vk_meta.get("no_frontier") is True:
+            meta.no_frontier = True
     if not getattr(meta, "boundary_profile", None) and claims.boundary_profile:
         meta.boundary_profile = claims.boundary_profile
     if not getattr(meta, "region_pin", None) and claims.region_pin:

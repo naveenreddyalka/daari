@@ -14,6 +14,10 @@ from daari.server.app import create_app
 
 def test_rate_limit_family_maps_paths():
     assert rate_limit_family("/v1/chat/completions") == "chat"
+    assert rate_limit_family("/v1/responses") == "chat"
+    assert rate_limit_family("/v1/responses/compact") == "chat"
+    assert rate_limit_family("/v1/responses/resp_abc") == "chat"
+    assert rate_limit_family("/v1/responses/resp_abc?stream=true") == "chat"
     assert rate_limit_family("/v1/embeddings") == "embeddings"
     assert rate_limit_family("/v1/images/generations") == "images"
     assert rate_limit_family("/v1/images/variations") == "images"
