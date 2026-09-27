@@ -619,6 +619,55 @@ def _owner_key_id_from_request(request: Request) -> str | None:
     return None
 
 
+def _governed_responses_meta(
+    request: Request,
+    ctx: AppContext,
+    *,
+    no_cache: bool = False,
+    tier_override: str | None = None,
+    tier_cap: str | None = None,
+    latency_budget_ms: int | None = None,
+    deadline_ms: int | None = None,
+    client_id: str | None = None,
+    no_frontier: bool = False,
+) -> RequestMeta:
+    """Build RequestMeta with virtual-key claims — shared by create and compact (#1169)."""
+    from daari.gateway.request_id import request_id_from_request
+    from daari.server.auth import apply_auth_claims_to_meta
+
+    meta = RequestMeta(
+        no_cache=no_cache,
+        tier_override=tier_override,
+        tier_cap=tier_cap,
+        latency_budget_ms=latency_budget_ms,
+        deadline_ms=deadline_ms,
+        client_id=client_id,
+        no_frontier=no_frontier,
+        request_id=request_id_from_request(request),
+    )
+    apply_auth_claims_to_meta(
+        meta,
+        getattr(request.state, "auth_claims", None),
+        model_groups=getattr(ctx.settings, "model_groups", None),
+    )
+    return meta
+
+
+def _reject_responses_model(
+    request: Request,
+    ctx: AppContext,
+    model: str,
+    meta: RequestMeta,
+) -> JSONResponse | None:
+    """Allowlist + model_max_budget (same 402 as chat) for Responses surfaces (#1169)."""
+    from daari.gateway.model_access import reject_disallowed_model, reject_model_max_budget
+
+    denied = reject_disallowed_model(request, model, ctx.settings, meta)
+    if denied is not None:
+        return denied
+    return reject_model_max_budget(request, model, ctx.settings)
+
+
 class ResponsesGatewayAdapter(GatewayAdapter):
     id = "responses"
 
@@ -724,8 +773,8 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 chars += len(json.dumps(body.tools))
             return {"input_tokens": max(1, estimate_tokens(chars))}
 
-        @router.post("/v1/responses/compact")
-        async def compact_response(body: CompactRequest, request: Request) -> dict[str, Any]:
+        @router.post("/v1/responses/compact", response_model=None)
+        async def compact_response(body: CompactRequest, request: Request) -> Any:
             """Summarize a prior Responses conversation with a local model (#1153)."""
             ctx: AppContext = request.app.state.ctx
             if not body.previous_response_id and body.input is None:
@@ -753,6 +802,11 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     status_code=400,
                     detail="compact found no conversation to summarize",
                 )
+            model = body.model or "daari"
+            meta = _governed_responses_meta(request, ctx)
+            denied = _reject_responses_model(request, ctx, model, meta)
+            if denied is not None:
+                return denied
             history_text = "\n".join(
                 f"{row.get('role', '')}: {row.get('content') or ''}"
                 for row in conversation
@@ -765,8 +819,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         content=_COMPACT_PROMPT.format(history=history_text),
                     )
                 ],
-                model=body.model or "daari",
+                model=model,
                 temperature=0.0,
+                meta=meta,
             )
             try:
                 result = await ctx.router.route(internal)
@@ -901,10 +956,9 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 messages = prior_messages + messages
             if not messages:
                 raise HTTPException(status_code=400, detail="input produced no messages")
-            from daari.gateway.request_id import request_id_from_request
-
-            request_id = request_id_from_request(request)
-            meta = RequestMeta(
+            meta = _governed_responses_meta(
+                request,
+                ctx,
                 no_cache=x_daari_no_cache == "true",
                 tier_override=x_daari_tier_override,
                 tier_cap=x_daari_tier_cap,
@@ -912,27 +966,16 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 deadline_ms=deadline_ms,
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
-                request_id=request_id,
             )
             apply_cost_tier(body, meta)
-            from daari.server.auth import apply_auth_claims_to_meta
-
-            apply_auth_claims_to_meta(
-                meta,
-                claims,
-                model_groups=getattr(ctx.settings, "model_groups", None),
-            )
-            from daari.gateway.model_access import reject_disallowed_model
-
-            denied = reject_disallowed_model(
-                request, body.model or ctx.settings.models.l3, ctx.settings, meta
-            )
+            model = body.model or ctx.settings.models.l3
+            denied = _reject_responses_model(request, ctx, model, meta)
             if denied is not None:
                 return denied
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             internal = InternalRequest(
                 messages=messages,
-                model=body.model or ctx.settings.models.l3,
+                model=model,
                 temperature=body.temperature if body.temperature is not None else 0.7,
                 tools=responses_tools_to_openai(body.tools) if body.tools else None,
                 stream=body.stream and not body.background,
@@ -997,7 +1040,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 return StreamingResponse(
                     _idempotent_event_stream(),
                     media_type="text/event-stream",
-                    headers={**SSE_HEADERS, "X-Request-ID": request_id},
+                    headers={**SSE_HEADERS, "X-Request-ID": meta.request_id or ""},
                 )
 
             if body.background:

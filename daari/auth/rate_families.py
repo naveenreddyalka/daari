@@ -21,8 +21,12 @@ def rate_limit_family(path: str) -> str:
     p = (path or "").split("?", 1)[0]
     if p == "/v1/moderations" or p.startswith("/v1/moderations/") or p == "/v1/messages/moderations":
         return "moderations"
-    if p.startswith("/v1/chat/") or p in {"/v1/responses", "/v1/messages"} or p.startswith(
-        "/v1/messages/"
+    if (
+        p.startswith("/v1/chat/")
+        or p == "/v1/responses"
+        or p.startswith("/v1/responses/")
+        or p == "/v1/messages"
+        or p.startswith("/v1/messages/")
     ):
         return "chat"
     if p.startswith("/v1/embeddings") or p in {"/api/embed", "/api/embeddings"}:

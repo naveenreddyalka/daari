@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -455,3 +456,44 @@ async def test_openai_sdk_responses_client(settings):
     fetched = await client.responses.retrieve(created.id)
     assert fetched.id == created.id
     await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_compact_applies_auth_fence_like_create(settings, tmp_path):
+    """Compact inherits key tier_cap / attribution like POST /v1/responses (#1169)."""
+    from daari.auth.virtual_keys import VirtualKeyStore
+    from daari.gateway.response_store import ResponseStore
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.trace.path = str(tmp_path / "trace.jsonl")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create(
+        "capped",
+        client_id="capped-client",
+        tier_cap="L5",
+        metadata={"no_frontier": True},
+    )
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    fake = _mock_route(app, content="compact summary")
+    path = Path(settings.trace.path).expanduser().parent / "responses.sqlite3"
+    ResponseStore(path).put(
+        "resp_prior",
+        {"id": "resp_prior", "status": "completed", "output": [], "model": "m"},
+        conversation=[{"role": "user", "content": f"turn {i} " + ("x" * 40)} for i in range(12)],
+        stored=True,
+        owner_key_id=created.key.key_id,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses/compact",
+            json={"model": "daari", "previous_response_id": "resp_prior"},
+            headers={"Authorization": f"Bearer {created.plaintext}"},
+        )
+    assert response.status_code == 200, response.text
+    assert fake.last_request.meta.tier_cap == "L5"
+    assert fake.last_request.meta.no_frontier is True
+    assert fake.last_request.meta.key_id == created.key.key_id
+    assert fake.last_request.meta.client_id == "capped-client"

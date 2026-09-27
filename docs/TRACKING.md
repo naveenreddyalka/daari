@@ -4931,6 +4931,16 @@ when `policy_sync_url` is set but never applied; docs mention it. Covered by
 `Last-Event-ID` and `sequence_number`. Covered by
 `tests/unit/test_responses_stream_resume_docs.py`.
 
+### Responses compact/create govern like chat ([#1169](https://github.com/naveenreddyalka/daari/issues/1169))
+
+<!-- tracking:#1169 -->
+**Status:** Done (2026-09-27). Compact and `POST /v1/responses` share
+`RequestMeta` auth claims, `model_max_budget` 402, and rate-family `chat`
+bucketing for `/v1/responses/...` subpaths. Covered by
+`tests/unit/test_responses_compact.py`, `tests/unit/test_model_max_budget.py`,
+`tests/unit/test_rate_families.py`, and
+`tests/integration/test_responses_api.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
