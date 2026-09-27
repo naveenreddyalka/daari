@@ -235,6 +235,30 @@ def prune_all(
     else:
         results.append(PruneResult("request_log", 0, True))
 
+    batches_days = int(getattr(retention, "batches_days", 0) or 0)
+    batches_cfg = getattr(settings, "batches", None)
+    if batches_days and batches_cfg is not None and getattr(batches_cfg, "enabled", False):
+        cutoff_epoch = (current - timedelta(days=batches_days)).timestamp()
+        store = _batch_store(settings)
+        deleted = store.prune_older_than(cutoff_epoch, dry_run=dry_run)
+        results.append(
+            PruneResult(
+                "batches",
+                deleted,
+                False,
+                datetime.fromtimestamp(cutoff_epoch, timezone.utc).isoformat(),
+            )
+        )
+    else:
+        results.append(PruneResult("batches", 0, True))
+
+    cache_prune = bool(getattr(retention, "cache_prune", False))
+    if cache_prune:
+        deleted = _prune_caches(settings, dry_run=dry_run)
+        results.append(PruneResult("cache", deleted, False, current.isoformat()))
+    else:
+        results.append(PruneResult("cache", 0, True))
+
     from daari.enterprise.postgres_audit import audit_log_from_settings
 
     audit = audit_log_from_settings(settings)
@@ -256,6 +280,53 @@ def prune_all(
         results.append(PruneResult("audit", 0, True))
 
     return results
+
+
+def _batch_store(settings: Any):
+    batches_cfg = settings.batches
+    pg_url = (getattr(settings.observability, "postgres_url", "") or "").strip()
+    if getattr(batches_cfg, "backend", "sqlite") == "postgres" and pg_url:
+        from daari.gateway.postgres_batches import PostgresBatchStore
+
+        return PostgresBatchStore(
+            pg_url,
+            yield_to_interactive=getattr(batches_cfg, "yield_to_interactive", True),
+            idle_poll_seconds=float(getattr(batches_cfg, "idle_poll_seconds", 0.25) or 0.25),
+            claim_ttl_seconds=int(getattr(batches_cfg, "claim_ttl_seconds", 90) or 90),
+        )
+    from daari.gateway.batches import BatchStore
+
+    return BatchStore(path=settings.batches_store_path)
+
+
+def _prune_caches(settings: Any, *, dry_run: bool) -> int:
+    from pathlib import Path
+
+    from daari.cache.exact import ExactCache
+    from daari.cache.semantic import OllamaEmbedder, SemanticCache
+    from daari.router.router import _build_l0_cache
+
+    deleted = 0
+    if getattr(settings.cache, "backend", "disk") == "redis":
+        l0 = _build_l0_cache(settings, Path(settings.l0_cache_path))
+        deleted += int(l0.prune(dry_run=dry_run))
+        return deleted
+
+    l0 = ExactCache(
+        str(settings.l0_cache_path),
+        enabled=settings.cache.l0.enabled,
+        ttl_seconds=settings.cache.l0.ttl_seconds,
+    )
+    deleted += int(l0.prune(dry_run=dry_run))
+    if settings.cache.l1.enabled:
+        l1 = SemanticCache(
+            str(settings.l1_cache_path),
+            OllamaEmbedder(settings.ollama.base_url, settings.cache.l1.embedding_model),
+            enabled=True,
+            ttl_seconds=settings.cache.l1.ttl_seconds,
+        )
+        deleted += int(l1.prune(dry_run=dry_run))
+    return deleted
 
 
 def run_sweep(

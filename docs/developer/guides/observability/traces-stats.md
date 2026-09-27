@@ -28,8 +28,9 @@ latency histogram (absent when that tier has no samples).
 
 ## Retention
 
-Traces, the usage ledger, per-request spend rows, the audit log, shadow-check tables, and MCP task
-handles grow without bound unless you set a window. Defaults are **0 days
+Traces, the usage ledger, per-request spend rows, the audit log, shadow-check tables, MCP task
+handles, batch jobs, and (when enabled) expired L0/L1 cache entries
+grow without bound unless you set a window. Defaults are **0 days
 (keep forever)** so an upgrade never deletes data.
 
 ```yaml
@@ -41,6 +42,9 @@ observability:
     audit_days: 365
     shadow_days: 30
     tasks_days: 7
+    batches_days: 30
+    cache_prune: true   # reclaim L0/L1 entries past each cache's ttl_seconds
+    request_log_days: 14
 ```
 
 `daari serve` sweeps once a day in the background; failures are logged
@@ -50,7 +54,7 @@ windows. When `audit_days > 0`, a prune writes a `retention.prune` audit row
 summarizing what was removed (after the old rows are gone, so the summary stays).
 
 Postgres (`observability.backend: postgres`) uses the same cutoffs on `traces`
-and the ledger.
+and the ledger. `batches_days` also covers the postgres/memory batch backends.
 
 ## Verify
 

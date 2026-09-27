@@ -1695,7 +1695,8 @@ def prune(
 ) -> None:
     """Apply observability.retention windows.
 
-    Covers traces, ledger, spend, audit, shadow checks, tasks, and the request log.
+    Covers traces, ledger, spend, audit, shadow checks, tasks, batches, L0/L1
+    cache (when cache_prune is set), and the request log.
     """
     from daari.observability.retention import run_sweep
 

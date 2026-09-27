@@ -1099,6 +1099,21 @@ class RetentionSettings(BaseModel):
             "this many days (#772). 0 keeps size-only rotation."
         ),
     )
+    batches_days: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Delete batch jobs older than this many days (#1136). "
+            "0 keeps them forever."
+        ),
+    )
+    cache_prune: bool = Field(
+        default=False,
+        description=(
+            "When true, daari prune / daily sweep invoke L0 and L1 prune() "
+            "using each cache's ttl_seconds (#1136)."
+        ),
+    )
 
     @property
     def enabled(self) -> bool:
@@ -1111,6 +1126,8 @@ class RetentionSettings(BaseModel):
                 self.tasks_days,
                 self.spend_days,
                 self.request_log_days,
+                self.batches_days,
+                self.cache_prune,
             )
         )
 

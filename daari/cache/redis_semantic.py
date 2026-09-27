@@ -161,9 +161,12 @@ class RedisSemanticCache(SemanticCache):
 
         self._mutate_entries(append)
 
-    def prune(self) -> int:
+    def prune(self, *, dry_run: bool = False) -> int:
         if self.ttl_seconds <= 0:
             return 0
+        if dry_run:
+            entries = self._load_entries()
+            return sum(1 for entry in entries if self._entry_expired(entry))
         removed = 0
 
         def drop_expired(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:

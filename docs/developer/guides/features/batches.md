@@ -74,3 +74,5 @@ responses:
 Stored Responses (`store: true`) keep `created_at` at first write. When
 `responses.retention_days` is greater than zero, `daari prune` and the daily
 retention sweep delete older rows on both SQLite and Postgres backends.
+Set `observability.retention.batches_days` (>0) so the same sweep deletes
+batch jobs older than the window (sqlite and postgres backends).

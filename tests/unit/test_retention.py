@@ -61,6 +61,8 @@ class TestSettings:
         assert retention.audit_days == 0
         assert retention.shadow_days == 0
         assert retention.tasks_days == 0
+        assert retention.batches_days == 0
+        assert retention.cache_prune is False
         assert retention.enabled is False
         assert RETENTION_SWEEP_SECONDS == 86400
 
@@ -69,6 +71,14 @@ class TestSettings:
 
         with pytest.raises(ValidationError):
             Settings.model_validate({"observability": {"retention": {"traces_days": -1}}})
+
+    def test_batches_days_and_cache_prune_enable_retention(self):
+        assert Settings.model_validate(
+            {"observability": {"retention": {"batches_days": 7}}}
+        ).observability.retention.enabled
+        assert Settings.model_validate(
+            {"observability": {"retention": {"cache_prune": True}}}
+        ).observability.retention.enabled
 
 
 def _seed_trace(store: TraceStore, trace_id: str, ts: str) -> None:
@@ -358,4 +368,181 @@ class TestRequestLogRetention:
         kept = log.read_text()
         assert "stale" not in kept
         assert "retention.sweep" in kept
+
+
+class TestBatchesRetention:
+    def _seed(self, path, *, created_at: int):
+        from daari.gateway.batches import BatchStore
+
+        store = BatchStore(path=path)
+        job = store.create(
+            requests=[
+                {
+                    "custom_id": "r1",
+                    "method": "POST",
+                    "url": "/v1/chat/completions",
+                    "body": {"model": "m", "messages": [{"role": "user", "content": "x"}]},
+                }
+            ]
+        )
+        job.created_at = created_at
+        store._persist(job)
+        return job.id
+
+    def test_zero_days_leaves_batches(self, tmp_path):
+        from daari.gateway.batches import BatchStore
+
+        settings = _settings(tmp_path)
+        settings.batches.path = str(tmp_path / "batches.sqlite3")
+        settings.idempotency.ttl_seconds = 0
+        old_id = self._seed(
+            settings.batches_store_path,
+            created_at=int((NOW - timedelta(days=40)).timestamp()),
+        )
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["batches"].skipped is True
+        assert by_store["batches"].deleted == 0
+        assert BatchStore(path=settings.batches_store_path).get(old_id) is not None
+
+    def test_old_batches_are_removed(self, tmp_path):
+        from daari.gateway.batches import BatchStore
+
+        settings = _settings(tmp_path)
+        settings.batches.path = str(tmp_path / "batches.sqlite3")
+        settings.observability.retention.batches_days = 30
+        old_id = self._seed(
+            settings.batches_store_path,
+            created_at=int((NOW - timedelta(days=40)).timestamp()),
+        )
+        new_id = self._seed(
+            settings.batches_store_path,
+            created_at=int((NOW - timedelta(days=2)).timestamp()),
+        )
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["batches"].deleted == 1
+        assert by_store["batches"].skipped is False
+        reopened = BatchStore(path=settings.batches_store_path)
+        assert reopened.get(old_id) is None
+        assert reopened.get(new_id) is not None
+
+    def test_dry_run_counts_without_deleting(self, tmp_path):
+        from daari.gateway.batches import BatchStore
+
+        settings = _settings(tmp_path)
+        settings.batches.path = str(tmp_path / "batches.sqlite3")
+        settings.observability.retention.batches_days = 7
+        old_id = self._seed(
+            settings.batches_store_path,
+            created_at=int((NOW - timedelta(days=10)).timestamp()),
+        )
+        results = prune_all(settings, now=NOW, dry_run=True)
+        by_store = {row.store: row for row in results}
+        assert by_store["batches"].deleted == 1
+        assert BatchStore(path=settings.batches_store_path).get(old_id) is not None
+
+    def test_postgres_memory_backend_prunes(self, tmp_path):
+        from daari.gateway.postgres_batches import PostgresBatchStore
+
+        settings = _settings(tmp_path)
+        settings.batches.backend = "postgres"
+        settings.observability.postgres_url = "memory:retention-batches"
+        settings.observability.retention.batches_days = 7
+        store = PostgresBatchStore(settings.observability.postgres_url, worker_id="w1")
+        old = store.create(
+            requests=[{"model": "m", "messages": [{"role": "user", "content": "old"}]}]
+        )
+        new = store.create(
+            requests=[{"model": "m", "messages": [{"role": "user", "content": "new"}]}]
+        )
+        old.created_at = int((NOW - timedelta(days=10)).timestamp())
+        store._persist(old)
+        new.created_at = int(NOW.timestamp())
+        store._persist(new)
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["batches"].deleted == 1
+        reopened = PostgresBatchStore(settings.observability.postgres_url, worker_id="w2")
+        assert reopened.get(old.id) is None
+        assert reopened.get(new.id) is not None
+
+
+class TestCacheRetention:
+    def _request(self, content: str = "hi"):
+        from daari.gateway.internal import InternalRequest, Message
+
+        return InternalRequest(
+            messages=[Message(role="user", content=content)],
+            model="llama3.2:3b",
+        )
+
+    def _response(self, text: str = "ok"):
+        from daari.gateway.internal import DaariMeta, InternalResponse
+
+        return InternalResponse(
+            content=text,
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    def test_cache_prune_false_skips(self, tmp_path):
+        settings = _settings(tmp_path)
+        settings.cache.l0.path = str(tmp_path / "l0")
+        settings.cache.l0.ttl_seconds = 60
+        settings.idempotency.ttl_seconds = 0
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["cache"].skipped is True
+        assert by_store["cache"].deleted == 0
+
+    def test_expired_l0_entries_are_removed(self, tmp_path):
+        from daari.cache.exact import ExactCache
+
+        settings = _settings(tmp_path)
+        settings.cache.l0.path = str(tmp_path / "l0")
+        settings.cache.l0.ttl_seconds = 3600
+        settings.cache.l1.path = str(tmp_path / "l1")
+        settings.cache.l1.enabled = False
+        settings.observability.retention.cache_prune = True
+        clock = {"t": float(int(NOW.timestamp()) - 7200)}
+        cache = ExactCache(
+            str(settings.l0_cache_path),
+            enabled=True,
+            ttl_seconds=3600,
+            clock=lambda: clock["t"],
+        )
+        cache.put(self._request("old"), self._response("stale"))
+        clock["t"] = float(int(NOW.timestamp()))
+        results = prune_all(settings, now=NOW)
+        by_store = {row.store: row for row in results}
+        assert by_store["cache"].deleted >= 1
+        assert by_store["cache"].skipped is False
+        assert ExactCache(str(settings.l0_cache_path), ttl_seconds=3600).get(
+            self._request("old")
+        ) is None
+
+    def test_dry_run_does_not_delete_cache(self, tmp_path):
+        from daari.cache.exact import ExactCache
+
+        settings = _settings(tmp_path)
+        settings.cache.l0.path = str(tmp_path / "l0")
+        settings.cache.l0.ttl_seconds = 3600
+        settings.cache.l1.enabled = False
+        settings.observability.retention.cache_prune = True
+        clock = {"t": float(int(NOW.timestamp()) - 7200)}
+        cache = ExactCache(
+            str(settings.l0_cache_path),
+            enabled=True,
+            ttl_seconds=3600,
+            clock=lambda: clock["t"],
+        )
+        cache.put(self._request("keep"), self._response("x"))
+        clock["t"] = float(int(NOW.timestamp()))
+        results = prune_all(settings, now=NOW, dry_run=True)
+        by_store = {row.store: row for row in results}
+        assert by_store["cache"].deleted >= 1
+        # Entry still present on disk (raw get bypasses TTL via store).
+        store = ExactCache(str(settings.l0_cache_path), ttl_seconds=0)._store()
+        assert any(True for _ in store.iterkeys())
 
