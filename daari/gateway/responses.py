@@ -397,6 +397,154 @@ def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
+def _sse_with_sequence(sequence: int, event: str, payload: dict[str, Any]) -> str:
+    """SSE frame with OpenAI Responses `sequence_number` for stream resume."""
+    body = {**payload, "sequence_number": sequence}
+    return _sse(event, body)
+
+
+def _replay_events_from_stored(
+    stored: dict[str, Any],
+    *,
+    starting_after: int | None,
+) -> list[str]:
+    """Synthesize Responses SSE from a completed stored body (no model call)."""
+    public = _public_body(stored)
+    response_id = str(public.get("id") or "")
+    base = {
+        "id": response_id,
+        "object": "response",
+        "model": public.get("model"),
+    }
+    frames: list[str] = []
+    seq = 0
+
+    def emit(event: str, payload: dict[str, Any]) -> None:
+        nonlocal seq
+        if starting_after is None or seq > starting_after:
+            frames.append(_sse_with_sequence(seq, event, payload))
+        seq += 1
+
+    emit(
+        "response.created",
+        {"type": "response.created", "response": {**base, "status": "in_progress"}},
+    )
+    output = public.get("output") or []
+    if not isinstance(output, list):
+        output = []
+    for output_index, item in enumerate(output):
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        item_id = str(item.get("id") or f"item_{output_index}")
+        if item_type == "message":
+            text = _content_to_text(item.get("content"))
+            added = {
+                "type": "message",
+                "id": item_id,
+                "role": item.get("role") or "assistant",
+                "status": "in_progress",
+            }
+            emit(
+                "response.output_item.added",
+                {
+                    "type": "response.output_item.added",
+                    "output_index": output_index,
+                    "item": added,
+                },
+            )
+            emit(
+                "response.content_part.added",
+                {
+                    "type": "response.content_part.added",
+                    "item_id": item_id,
+                    "output_index": output_index,
+                    "content_index": 0,
+                    "part": {"type": "output_text", "text": "", "annotations": []},
+                },
+            )
+            emit(
+                "response.output_text.done",
+                {
+                    "type": "response.output_text.done",
+                    "item_id": item_id,
+                    "output_index": output_index,
+                    "content_index": 0,
+                    "text": text,
+                },
+            )
+            done_item = {
+                "type": "message",
+                "id": item_id,
+                "role": item.get("role") or "assistant",
+                "status": "completed",
+                "content": item.get("content")
+                or [{"type": "output_text", "text": text, "annotations": []}],
+            }
+            emit(
+                "response.output_item.done",
+                {
+                    "type": "response.output_item.done",
+                    "output_index": output_index,
+                    "item": done_item,
+                },
+            )
+        elif item_type == "function_call":
+            emit(
+                "response.output_item.added",
+                {
+                    "type": "response.output_item.added",
+                    "output_index": output_index,
+                    "item": {
+                        "type": "function_call",
+                        "id": item_id,
+                        "call_id": item.get("call_id") or "",
+                        "name": item.get("name") or "",
+                        "arguments": "",
+                        "status": "in_progress",
+                    },
+                },
+            )
+            emit(
+                "response.function_call_arguments.done",
+                {
+                    "type": "response.function_call_arguments.done",
+                    "item_id": item_id,
+                    "output_index": output_index,
+                    "arguments": item.get("arguments") or "{}",
+                },
+            )
+            emit(
+                "response.output_item.done",
+                {
+                    "type": "response.output_item.done",
+                    "output_index": output_index,
+                    "item": {**item, "status": item.get("status") or "completed"},
+                },
+            )
+        else:
+            emit(
+                "response.output_item.done",
+                {
+                    "type": "response.output_item.done",
+                    "output_index": output_index,
+                    "item": item,
+                },
+            )
+    completed = {
+        **base,
+        "status": public.get("status") or "completed",
+        "output": output,
+    }
+    if "usage" in public:
+        completed["usage"] = public["usage"]
+    if "metadata" in public:
+        completed["metadata"] = public["metadata"]
+    emit("response.completed", {"type": "response.completed", "response": completed})
+    return frames
+
+
+
 def _parse_chat_delta(raw: str) -> dict[str, Any] | None:
     line = raw.strip()
     if not line.startswith("data:"):
@@ -440,10 +588,32 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         router = APIRouter()
 
         @router.get("/v1/responses/{response_id}")
-        async def get_response(response_id: str, request: Request) -> dict[str, Any]:
+        async def get_response(
+            response_id: str,
+            request: Request,
+            stream: bool = False,
+            starting_after: int | None = None,
+        ) -> Any:
             ctx: AppContext = request.app.state.ctx
             _store, stored = _visible_stored_response(ctx, response_id, request)
-            return _public_body(stored)
+            if not stream:
+                return _public_body(stored)
+            status = str(stored.get("status") or "")
+            if status not in _TERMINAL_STATUSES:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "stream resume is available for completed (terminal) "
+                        f"responses only; current status is {status!r}"
+                    ),
+                )
+            frames = _replay_events_from_stored(stored, starting_after=starting_after)
+
+            async def _resume() -> AsyncIterator[str]:
+                for frame in frames:
+                    yield frame
+
+            return StreamingResponse(_resume(), media_type="text/event-stream", headers=SSE_HEADERS)
 
         @router.post("/v1/responses/{response_id}/cancel")
         async def cancel_response(response_id: str, request: Request) -> dict[str, Any]:

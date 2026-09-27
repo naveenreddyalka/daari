@@ -95,6 +95,11 @@ the same Bearer / `x-api-key` middleware as the rest of the daemon.
 The Responses surface round-trips `function_call` / `function_call_output` items,
 chains turns with `previous_response_id`, honors `store: false`, and returns
 `queued` for `background: true` (poll `GET /v1/responses/{id}`).
+`GET /v1/responses/{id}?stream=true` replays stored terminal output as
+Responses SSE (`sequence_number` on each event); `starting_after` skips events
+with sequence ≤ that value (past-the-end resume is an empty stream). In-flight
+background rows (`queued` / non-terminal) return **409** — resume is
+completed-only. Plain GET (no `stream`) remains JSON.
 `POST /v1/responses/{id}/cancel` is idempotent: an in-flight background job
 stops writing tokens and the stored status becomes `cancelled`; an already
 terminal object returns 200 with its current body. `DELETE /v1/responses/{id}`
