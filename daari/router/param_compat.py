@@ -1,14 +1,17 @@
-"""Per-model frontier OpenAI parameter compatibility (#1129).
+"""Per-model frontier OpenAI parameter compatibility (#1129, #1173).
 
 Some frontier ids reject sampler knobs or require a different tool transport.
 Lookup uses the same longest-prefix ``matching_model_key`` as pricing/capabilities.
 Unknown models are a no-op so behavior stays identical to today.
+
+``frontier.param_compat`` settings merge over the builtin table so operators can
+hotfix provider deprecations without a code release.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
@@ -41,14 +44,52 @@ _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
 }
 
 
-def lookup_frontier_param_compat(model: str) -> FrontierParamCompat | None:
+def compat_from_mapping(raw: Mapping[str, Any] | Any) -> FrontierParamCompat:
+    """Build a ``FrontierParamCompat`` from a settings entry or plain mapping."""
+    get = raw.get if isinstance(raw, Mapping) else lambda k, d=None: getattr(raw, k, d)
+    params = get("unsupported_params") or []
+    efforts = get("unsupported_reasoning_efforts") or []
+    return FrontierParamCompat(
+        unsupported_params=frozenset(str(p) for p in params),
+        unsupported_reasoning_efforts=frozenset(str(e).lower() for e in efforts),
+        reasoning_effort_floor=(
+            str(get("reasoning_effort_floor")).strip()
+            if get("reasoning_effort_floor")
+            else None
+        ),
+        tools_transport=(
+            str(get("tools_transport")).strip() if get("tools_transport") else None
+        ),
+    )
+
+
+def merged_frontier_param_compat_table(
+    overrides: Mapping[str, Any] | None = None,
+) -> dict[str, FrontierParamCompat]:
+    """Builtin table with operator ``frontier.param_compat`` keys merged on top."""
+    table = dict(_FRONTIER_PARAM_COMPAT)
+    if not overrides:
+        return table
+    for key, entry in overrides.items():
+        if not key:
+            continue
+        table[str(key)] = compat_from_mapping(entry)
+    return table
+
+
+def lookup_frontier_param_compat(
+    model: str,
+    *,
+    table: Mapping[str, FrontierParamCompat] | None = None,
+) -> FrontierParamCompat | None:
     """Return the compatibility entry for ``model``, or None if unknown."""
     from daari.pricing import matching_model_key
 
-    key = matching_model_key(model, _FRONTIER_PARAM_COMPAT)
+    source = table if table is not None else _FRONTIER_PARAM_COMPAT
+    key = matching_model_key(model, source)
     if key is None:
         return None
-    return _FRONTIER_PARAM_COMPAT[key]
+    return source[key]
 
 
 def apply_frontier_param_compat(
@@ -56,13 +97,14 @@ def apply_frontier_param_compat(
     model: str,
     *,
     has_tools: bool = False,
+    table: Mapping[str, FrontierParamCompat] | None = None,
 ) -> FrontierParamCompatResult:
     """Mutate ``payload`` to honor the model's declared constraints.
 
     Returns dropped param names and human-readable warnings for ``daari_meta``.
     Models with no table entry leave the payload untouched.
     """
-    entry = lookup_frontier_param_compat(model)
+    entry = lookup_frontier_param_compat(model, table=table)
     result = FrontierParamCompatResult()
     if entry is None:
         return result

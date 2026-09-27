@@ -425,6 +425,15 @@ class FrontierProviderConfig(BaseModel):
     )
 
 
+class FrontierParamCompatSettings(BaseModel):
+    """Per-model frontier param strip/coerce override (#1173)."""
+
+    unsupported_params: list[str] = Field(default_factory=list)
+    unsupported_reasoning_efforts: list[str] = Field(default_factory=list)
+    reasoning_effort_floor: str | None = None
+    tools_transport: str | None = None
+
+
 class FrontierSettings(RuntimeSettings):
     enabled: bool = False
     provider: str = "openai"
@@ -440,6 +449,14 @@ class FrontierSettings(RuntimeSettings):
             "Ordered L6 failover chain. Optional per-entry `timeout_s`, "
             "`retry_attempts`, and `retry_backoff_s` fall back to "
             "`upstream.frontier_timeout_seconds` / `upstream.retry` when unset."
+        ),
+    )
+    # Operator overrides merged over the builtin gpt-6-astra table (#1173).
+    param_compat: dict[str, FrontierParamCompatSettings] = Field(
+        default_factory=dict,
+        description=(
+            "Per-model frontier parameter compatibility overrides. Merged over "
+            "the builtin table (e.g. gpt-6-astra); empty keeps defaults."
         ),
     )
     # 0 = unlimited. When today's estimated spend reaches the cap, daari stops

@@ -70,6 +70,15 @@ class FrontierPool:
     api_key: str | None = None
     provider: str = "pool"
     prompt_cache: bool = True
+    _last_executor: FrontierExecutor | None = field(default=None, init=False, repr=False)
+
+    @property
+    def last_param_compat(self) -> Any:
+        """Param-compat result from the most recent stream/execute winner (#1173)."""
+        exe = self._last_executor
+        if exe is None and self.slots:
+            exe = self.slots[0].executor
+        return getattr(exe, "last_param_compat", None) if exe is not None else None
 
     @classmethod
     def from_single(cls, executor: FrontierExecutor) -> FrontierPool:
@@ -185,6 +194,7 @@ class FrontierPool:
                 )
                 if served_region:
                     response.daari_meta.region = served_region
+                self._last_executor = slot.executor
                 return response
             except RequestDeadlineExceeded:
                 raise
@@ -208,6 +218,70 @@ class FrontierPool:
             finally:
                 if regional_base != original_base and hasattr(slot.executor, "base_url"):
                     slot.executor.base_url = original_base
+
+        raise RuntimeError(
+            "all frontier providers failed or open: " + (", ".join(errors) or "none tried")
+        )
+
+    async def stream(
+        self,
+        request: InternalRequest,
+        *,
+        escalated_from: str | None = None,
+        local_confidence: float | None = None,
+    ):
+        """Relay SSE from the first healthy slot (same pick rules as execute)."""
+        if not self.slots:
+            raise RuntimeError("no frontier providers configured")
+
+        require_zdr_slot(request.provider, self.slots)
+        slots = list(self.slots)
+        if request.provider is not None and request.provider.zdr:
+            slots = [slot for slot in slots if slot.zdr]
+        region_pin = getattr(request.meta, "region_pin", None)
+        require_region_slot(region_pin, slots)
+        slots = filter_slots_for_region(region_pin, slots)
+
+        errors: list[str] = []
+        for slot in slots:
+            if not slot.breaker.allow():
+                continue
+            try:
+                key = slot.pick_key()
+            except SecretRefError as exc:
+                slot.breaker.record_failure()
+                errors.append(f"{slot.id}:SecretRefError")
+                add_step(
+                    "frontier_fail",
+                    provider=slot.id,
+                    error_type="SecretRefError",
+                    error=str(exc)[:200],
+                )
+                continue
+            if not key:
+                errors.append(f"{slot.id}:no_key")
+                continue
+            slot.executor.api_key = key
+            try:
+                self._last_executor = slot.executor
+                async for event in slot.executor.stream(
+                    request,
+                    escalated_from=escalated_from,
+                    local_confidence=local_confidence,
+                ):
+                    yield event
+                slot.breaker.record_success()
+                return
+            except Exception as exc:  # noqa: BLE001 — try next provider
+                slot.breaker.record_failure()
+                errors.append(f"{slot.id}:{type(exc).__name__}")
+                add_step(
+                    "frontier_fail",
+                    provider=slot.id,
+                    error_type=type(exc).__name__,
+                    error=str(exc)[:200],
+                )
+                continue
 
         raise RuntimeError(
             "all frontier providers failed or open: " + (", ".join(errors) or "none tried")
@@ -242,8 +316,13 @@ def _entry_frontier_policy(settings: Any, entry: Any) -> tuple[float, RetryPolic
 
 def build_frontier_pool(settings: Any) -> FrontierPool:
     """Build a pool from FrontierSettings.providers, falling back to scalars."""
+    from daari.router.param_compat import merged_frontier_param_compat_table
+
     frontier = settings.frontier
     timeout, retry = _global_frontier_policy(settings)
+    compat_table = merged_frontier_param_compat_table(
+        getattr(frontier, "param_compat", None) or None
+    )
     providers = list(getattr(frontier, "providers", None) or [])
     if not providers:
         # Single-provider shorthand (pre-#109 config).
@@ -257,6 +336,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             timeout=timeout,
             retry=retry,
             pool_limits=pool_limits_from_settings(settings),
+            param_compat_table=compat_table,
         )
         return FrontierPool.from_single(executor)
 
@@ -282,6 +362,7 @@ def build_frontier_pool(settings: Any) -> FrontierPool:
             timeout=entry_timeout,
             retry=entry_retry,
             pool_limits=pool_limits_from_settings(settings),
+            param_compat_table=compat_table,
         )
         slots.append(
             ProviderSlot(

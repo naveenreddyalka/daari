@@ -360,6 +360,10 @@ class StreamOutcome:
         if tier:
             self.tier = tier
             self.cache = _cache_state(cache_hit=cache_hit, draft=draft)
+            # Sampling drops are not meaningful on L6 (frontier receives them);
+            # clear so frontier param-compat can own the header (#1173).
+            if (tier or "").upper() == "L6":
+                self.dropped_params = None
             if cache_hit and self._ollama_034_knobs:
                 merged = list(self.dropped_params or [])
                 for name in self._ollama_034_knobs:
@@ -372,7 +376,9 @@ class StreamOutcome:
         if not self.tier:
             return {}
         out = {TIER_HEADER: self.tier, CACHE_HEADER: self.cache or "miss"}
-        if self.dropped_params and (self.tier or "").upper() != "L6":
+        # Emit whenever set: local sampling drops (non-L6) or frontier
+        # param-compat drops after L6 note() (#1013 / #1173).
+        if self.dropped_params:
             out[DROPPED_PARAMS_HEADER] = ",".join(self.dropped_params)
         return out
 

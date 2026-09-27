@@ -132,3 +132,110 @@ def test_apply_frontier_param_compat_no_entry_is_noop():
     assert payload == {"model": "x", "temperature": 0.7, "top_p": 0.9}
     assert result.dropped_params == []
     assert result.warnings == []
+
+
+def test_settings_param_compat_merges_over_builtin():
+    """frontier.param_compat overrides merge; builtin astra stays by default (#1173)."""
+    from daari.config.settings import Settings
+    from daari.router.param_compat import (
+        merged_frontier_param_compat_table,
+        lookup_frontier_param_compat,
+    )
+
+    # Empty override keeps builtin astra.
+    default = Settings()
+    table = merged_frontier_param_compat_table(default.frontier.param_compat)
+    assert lookup_frontier_param_compat("gpt-6-astra", table=table) is not None
+    assert "temperature" in lookup_frontier_param_compat("gpt-6-astra", table=table).unsupported_params
+
+    settings = Settings.model_validate(
+        {
+            "frontier": {
+                "param_compat": {
+                    "claude-opus-custom": {
+                        "unsupported_params": ["temperature", "top_p"],
+                    },
+                    "gpt-6-astra": {
+                        "unsupported_params": ["temperature"],
+                        "unsupported_reasoning_efforts": ["none"],
+                        "reasoning_effort_floor": "minimal",
+                        "tools_transport": "responses",
+                    },
+                }
+            }
+        }
+    )
+    merged = merged_frontier_param_compat_table(settings.frontier.param_compat)
+    custom = lookup_frontier_param_compat("claude-opus-custom", table=merged)
+    assert custom is not None
+    assert custom.unsupported_params == frozenset({"temperature", "top_p"})
+    # Operator override replaces the astra entry (narrower strip list).
+    astra = lookup_frontier_param_compat("gpt-6-astra", table=merged)
+    assert astra is not None
+    assert astra.unsupported_params == frozenset({"temperature"})
+    assert "top_p" not in astra.unsupported_params
+
+
+def test_config_validate_accepts_frontier_param_compat(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from daari.cli.app import app as cli_app
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "frontier:\n"
+        "  param_compat:\n"
+        "    my-model:\n"
+        "      unsupported_params: [temperature]\n",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(cli_app, ["config", "validate", str(cfg)])
+    assert result.exit_code == 0, result.output
+    assert "config ok" in result.stdout
+    assert "unknown key" not in (result.stdout + result.stderr).lower()
+
+
+def test_anthropic_egress_applies_param_compat_table():
+    """Anthropic stream/non-stream payloads go through the compat strip (#1173)."""
+    from daari.router.anthropic_messages import to_anthropic_payload
+    from daari.router.param_compat import merged_frontier_param_compat_table
+
+    table = merged_frontier_param_compat_table(
+        {
+            "claude-test": {
+                "unsupported_params": ["temperature", "top_p"],
+            }
+        }
+    )
+    executor = FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model="claude-test",
+        api_key="sk-ant",
+        provider="anthropic",
+        param_compat_table=table,
+    )
+    request = _request(temperature=0.9, top_p=0.5, logprobs=None)
+    payload = to_anthropic_payload(request, model="claude-test", stream=False)
+    assert "temperature" in payload
+    assert "top_p" in payload
+    executor._run_param_compat(payload, has_tools=False)
+    assert "temperature" not in payload
+    assert "top_p" not in payload
+    assert executor.last_param_compat is not None
+    assert "temperature" in executor.last_param_compat.dropped_params
+    assert "top_p" in executor.last_param_compat.dropped_params
+
+
+def test_stream_path_attaches_param_compat_to_daari_meta():
+    """Stream OpenAI payload sets last_param_compat for daari_meta parity (#1173)."""
+    from daari.gateway.internal import DaariMeta
+
+    executor = _openai_executor("gpt-6-astra")
+    executor._openai_payload(_request(), stream=True)
+    meta = DaariMeta(tier="L6", executor="frontier", provider_id="openai")
+    executor._apply_param_compat_meta(meta)
+    assert meta.dropped_params is not None
+    assert "temperature" in meta.dropped_params
+    assert meta.warning is not None
+    assert "temperature" in meta.warning
