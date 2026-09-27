@@ -61,6 +61,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/org-learning/sync` | Org Learning Sync |
 | `POST` | `/v1/rerank` | Rerank |
 | `POST` | `/v1/responses` | Responses |
+| `POST` | `/v1/responses/compact` | Compact Response |
 | `POST` | `/v1/responses/input_tokens` | Input Tokens |
 | `DELETE` | `/v1/responses/{response_id}` | Delete Response |
 | `GET` | `/v1/responses/{response_id}` | Get Response |

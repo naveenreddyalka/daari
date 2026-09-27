@@ -126,6 +126,11 @@ in `daari_meta.dropped_params` / `x-daari-dropped-params`. Unsupported
 `POST /v1/responses/input_tokens` is a local estimate (`estimate_tokens` on
 instructions + input messages + tools), matching Anthropic
 `/v1/messages/count_tokens` — not an L6 round-trip.
+`POST /v1/responses/compact` summarizes a prior stored conversation (via
+`previous_response_id` and/or `input`) through the router (typically a local
+tier), stores a new response whose conversation is a summary system turn plus
+the most recent messages, and returns that Responses object — $0 context
+maintenance when routed locally.
 
 ## Auth
 

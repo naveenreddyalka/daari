@@ -133,6 +133,25 @@ class ResponsesRequest(BaseModel):
     prompt_cache_options: dict[str, Any] | None = None
 
 
+class CompactRequest(BaseModel):
+    """Body for POST /v1/responses/compact (#1153)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    model: str = ""
+    input: str | list[dict[str, Any]] | None = None
+    previous_response_id: str | None = None
+    store: bool = True
+    instructions: str | None = None
+
+
+_COMPACT_KEEP_RECENT = 4
+_COMPACT_PROMPT = (
+    "Summarize the following conversation for later turns. Keep facts, "
+    "decisions, and open questions. Be concise.\n\n{history}"
+)
+
+
 def _content_to_text(content: Any) -> str:
     """Responses items carry content as a string or typed part list."""
     if isinstance(content, str):
@@ -682,6 +701,109 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             if body.tools:
                 chars += len(json.dumps(body.tools))
             return {"input_tokens": max(1, estimate_tokens(chars))}
+
+        @router.post("/v1/responses/compact")
+        async def compact_response(body: CompactRequest, request: Request) -> dict[str, Any]:
+            """Summarize a prior Responses conversation with a local model (#1153)."""
+            ctx: AppContext = request.app.state.ctx
+            if not body.previous_response_id and body.input is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="compact requires previous_response_id or input",
+                )
+            store = _store_for(ctx)
+            conversation: list[dict[str, Any]] = []
+            if body.previous_response_id:
+                _store, prior = _visible_stored_response(ctx, body.previous_response_id, request)
+                conversation = list(prior.get("_conversation") or [])
+            if body.input is not None:
+                mapped = ResponsesRequest(
+                    model=body.model or "daari",
+                    input=body.input,
+                    instructions=body.instructions,
+                )
+                conversation.extend(
+                    message.model_dump(exclude_none=True)
+                    for message in responses_input_to_messages(mapped)
+                )
+            if not conversation:
+                raise HTTPException(
+                    status_code=400,
+                    detail="compact found no conversation to summarize",
+                )
+            history_text = "\n".join(
+                f"{row.get('role', '')}: {row.get('content') or ''}"
+                for row in conversation
+                if isinstance(row, dict)
+            )
+            internal = InternalRequest(
+                messages=[
+                    Message(
+                        role="user",
+                        content=_COMPACT_PROMPT.format(history=history_text),
+                    )
+                ],
+                model=body.model or "daari",
+                temperature=0.0,
+            )
+            try:
+                result = await ctx.router.route(internal)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=safe_detail(exc)[:300],
+                ) from exc
+            summary = (result.content or "").strip() or "(empty summary)"
+            recent = conversation[-_COMPACT_KEEP_RECENT:]
+            compacted_conv: list[dict[str, Any]] = [
+                {
+                    "role": "system",
+                    "content": f"[Compacted conversation summary] {summary}",
+                },
+                *recent,
+            ]
+            response_id = f"resp_{uuid.uuid4().hex[:12]}"
+            message_id = f"msg_{uuid.uuid4().hex[:12]}"
+            payload: dict[str, Any] = {
+                "id": response_id,
+                "object": "response",
+                "created_at": int(time.time()),
+                "status": "completed",
+                "model": result.model,
+                "output": [
+                    {
+                        "type": "message",
+                        "id": message_id,
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {"type": "output_text", "text": summary, "annotations": []}
+                        ],
+                    }
+                ],
+                "usage": {
+                    "input_tokens": _estimate_tokens(history_text),
+                    "output_tokens": _estimate_tokens(summary),
+                    "total_tokens": _estimate_tokens(history_text) + _estimate_tokens(summary),
+                },
+            }
+            if body.store:
+                store.put(
+                    response_id,
+                    payload,
+                    conversation=compacted_conv,
+                    stored=True,
+                    owner_key_id=_owner_key_id_from_request(request),
+                )
+            log_gateway_event(
+                "responses_compact_done",
+                {
+                    "previous_response_id": body.previous_response_id,
+                    "turns_before": len(conversation),
+                    "turns_after": len(compacted_conv),
+                },
+            )
+            return payload
 
         @router.post("/v1/responses", response_model=None)
         async def responses(
