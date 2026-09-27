@@ -1040,16 +1040,24 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         """Re-emit the routed chat-completions stream as Responses events."""
         message_id = f"msg_{uuid.uuid4().hex[:12]}"
         base = {"id": response_id, "object": "response", "model": internal.model}
-        yield _sse(
+        seq = 0
+
+        def emit(event: str, payload: dict[str, Any]) -> str:
+            nonlocal seq
+            frame = _sse_with_sequence(seq, event, payload)
+            seq += 1
+            return frame
+
+        yield emit(
             "response.created",
             {"type": "response.created", "response": {**base, "status": "in_progress"}},
         )
         item = {"type": "message", "id": message_id, "role": "assistant", "status": "in_progress"}
-        yield _sse(
+        yield emit(
             "response.output_item.added",
             {"type": "response.output_item.added", "output_index": 0, "item": item},
         )
-        yield _sse(
+        yield emit(
             "response.content_part.added",
             {
                 "type": "response.content_part.added",
@@ -1081,7 +1089,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 text_delta = delta.get("content")
                 if text_delta:
                     collected.append(text_delta)
-                    yield _sse(
+                    yield emit(
                         "response.output_text.delta",
                         {
                             "type": "response.output_text.delta",
@@ -1108,7 +1116,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     if index not in tool_item_ids:
                         item_id = f"fc_{uuid.uuid4().hex[:12]}"
                         tool_item_ids[index] = item_id
-                        yield _sse(
+                        yield emit(
                             "response.output_item.added",
                             {
                                 "type": "response.output_item.added",
@@ -1123,7 +1131,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                                 },
                             },
                         )
-                    yield _sse(
+                    yield emit(
                         "response.function_call_arguments.delta",
                         {
                             "type": "response.function_call_arguments.delta",
@@ -1133,7 +1141,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                         },
                     )
         except Exception as exc:
-            yield _sse(
+            yield emit(
                 "response.failed",
                 {
                     "type": "response.failed",
@@ -1147,7 +1155,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             return
         text = "".join(collected)
         output: list[dict[str, Any]] = []
-        yield _sse(
+        yield emit(
             "response.output_text.done",
             {
                 "type": "response.output_text.done",
@@ -1164,14 +1172,14 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             "status": "completed",
             "content": [{"type": "output_text", "text": text, "annotations": []}],
         }
-        yield _sse(
+        yield emit(
             "response.output_item.done",
             {"type": "response.output_item.done", "output_index": 0, "item": completed_item},
         )
         output.append(completed_item)
         for index, slot in sorted(tool_acc.items()):
             item_id = tool_item_ids.get(index, f"fc_{uuid.uuid4().hex[:12]}")
-            yield _sse(
+            yield emit(
                 "response.function_call_arguments.done",
                 {
                     "type": "response.function_call_arguments.done",
@@ -1188,7 +1196,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 "arguments": slot["arguments"],
                 "status": "completed",
             }
-            yield _sse(
+            yield emit(
                 "response.output_item.done",
                 {"type": "response.output_item.done", "output_index": index + 1, "item": done_item},
             )
@@ -1205,7 +1213,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
         }
         if metadata is not None:
             completed["metadata"] = metadata
-        yield _sse("response.completed", {"type": "response.completed", "response": completed})
+        yield emit("response.completed", {"type": "response.completed", "response": completed})
         if store is not None:
             store.put(
                 response_id,

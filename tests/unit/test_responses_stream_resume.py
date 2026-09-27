@@ -1,4 +1,4 @@
-"""Resume stored Responses SSE via GET ?stream=true&starting_after= (#1139)."""
+"""Responses SSE sequence_number + stream resume (#1139, #1151)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from daari.gateway.internal import InternalRequest
 from daari.gateway.responses import _replay_events_from_stored, _sse_with_sequence
 from daari.gateway.response_store import ResponseStore
 from daari.router.router import AppContext
@@ -162,6 +163,31 @@ async def test_get_stream_resume_from_store(settings):
     assert plain.json()["id"] == "resp_resume"
     assert plain.headers["content-type"].startswith("application/json")
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_stream_emits_contiguous_sequence_numbers(settings):
+    app = _app(settings)
+
+    async def fake_chunks(request: InternalRequest):
+        for piece in ("Hello", " world"):
+            chunk = {"choices": [{"delta": {"content": piece}}]}
+            yield f"data: {json.dumps(chunk)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    app.state.ctx.router.stream_openai_chunks = fake_chunks
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/responses", json={"model": "daari", "input": "say hi", "stream": True}
+        )
+    assert response.status_code == 200
+    events = _parse_sse(response.text)
+    assert events[0][0] == "response.created"
+    assert events[-1][0] == "response.completed"
+    seqs = [payload["sequence_number"] for _, payload in events]
+    assert seqs == list(range(len(seqs)))
+    assert events[-1][1]["sequence_number"] == len(seqs) - 1
+    assert all("sequence_number" in payload for _, payload in events)
 
 
 @pytest.mark.asyncio
