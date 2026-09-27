@@ -1156,6 +1156,48 @@ def enterprise_policy_sync(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"Synced org policy into {path}")
+    from daari.enterprise.policy_sync import record_policy_apply
+
+    status = record_policy_apply(data, url=url)
+    typer.echo(f"policy_hash={status.policy_hash} applied_at={status.applied_at}")
+
+
+@enterprise_app.command("policy-status")
+def enterprise_policy_status() -> None:
+    """Show last successful policy-sync hash / age / source host (#1138)."""
+    from datetime import datetime, timezone
+
+    from daari.enterprise.policy_sync import load_policy_status
+
+    settings = get_settings()
+    status = load_policy_status(settings=settings)
+    if not status.applied:
+        if status.configured:
+            typer.echo(
+                "policy-sync configured but never successfully applied "
+                f"(url={settings.enterprise.policy_sync_url!r}).",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        typer.echo("No policy-sync apply recorded (and none configured).")
+        raise typer.Exit(code=0)
+    age = ""
+    try:
+        applied = datetime.fromisoformat(status.applied_at or "")
+        if applied.tzinfo is None:
+            applied = applied.replace(tzinfo=timezone.utc)
+        seconds = max(0, int((datetime.now(timezone.utc) - applied).total_seconds()))
+        if seconds < 60:
+            age = f"{seconds}s"
+        elif seconds < 3600:
+            age = f"{seconds // 60}m"
+        else:
+            age = f"{seconds // 3600}h"
+    except ValueError:
+        age = "?"
+    typer.echo(f"policy_hash={status.policy_hash}")
+    typer.echo(f"applied_at={status.applied_at} age={age}")
+    typer.echo(f"source_url={status.source_url or '-'}")
 
 
 @project_app.command("init")
