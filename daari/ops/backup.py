@@ -178,20 +178,42 @@ def catalog_stores(settings: Any, *, request_log_path: Path | None = None) -> li
     else:
         entries.append(sqlite_entry("idempotency", idem_path))
 
+    batches_backend = getattr(settings.batches, "backend", "sqlite") or "sqlite"
     batches_path = Path(settings.batches.path).expanduser()
-    entries.append(sqlite_entry("batches", batches_path))
-
-    files_path = Path(settings.files.path).expanduser()
-    entries.append(
-        StoreEntry(
-            name="files",
-            backend="directory",
-            schema_version=STORE_SCHEMA_VERSIONS["files"],
-            archive_path="stores/files",
-            source_path=str(files_path),
-            present=files_path.exists(),
+    if batches_backend == "postgres" and pg:
+        entries.append(
+            StoreEntry(
+                name="batches",
+                backend="postgres",
+                schema_version=STORE_SCHEMA_VERSIONS["batches"],
+                pg_dump=f'pg_dump --dbname="{pg}" --table=daari_batch_jobs',
+            )
         )
-    )
+    else:
+        entries.append(sqlite_entry("batches", batches_path))
+
+    files_backend = getattr(settings.files, "backend", "sqlite") or "sqlite"
+    files_path = Path(settings.files.path).expanduser()
+    if files_backend == "postgres" and pg:
+        entries.append(
+            StoreEntry(
+                name="files",
+                backend="postgres",
+                schema_version=STORE_SCHEMA_VERSIONS["files"],
+                pg_dump=f'pg_dump --dbname="{pg}" --table=daari_files',
+            )
+        )
+    else:
+        entries.append(
+            StoreEntry(
+                name="files",
+                backend="directory",
+                schema_version=STORE_SCHEMA_VERSIONS["files"],
+                archive_path="stores/files",
+                source_path=str(files_path),
+                present=files_path.exists(),
+            )
+        )
 
     log_path = Path(request_log_path or rl.LOG_PATH).expanduser()
     entries.append(
@@ -204,6 +226,25 @@ def catalog_stores(settings: Any, *, request_log_path: Path | None = None) -> li
             present=log_path.is_file(),
         )
     )
+    # Include every rotation slot so restore can write siblings onto a cold dest
+    # even when the target host has no rotated files yet (#1171).
+    backups = max(0, int(getattr(rl, "_backups", 0) or 0))
+    existing = {p.name: p for p in rl._rotated_logs(log_path)}
+    for index in range(1, backups + 1):
+        rotated = log_path.with_name(f"{log_path.name}.{index}")
+        if rotated.name in existing:
+            rotated = existing[rotated.name]
+        name = f"request-log.{index}"
+        entries.append(
+            StoreEntry(
+                name=name,
+                backend="jsonl",
+                schema_version=STORE_SCHEMA_VERSIONS["request-log"],
+                archive_path=f"stores/{name.replace('/', '-')}",
+                source_path=str(rotated),
+                present=rotated.is_file(),
+            )
+        )
     return entries
 
 
@@ -284,16 +325,36 @@ def _read_manifest(archive: Path) -> BackupManifest:
     )
 
 
+def server_appears_running(settings: Any) -> bool:
+    """Best-effort probe: local /health returns 200 (#1171)."""
+    try:
+        import httpx
+
+        host = getattr(settings.server, "host", "127.0.0.1")
+        port = int(getattr(settings.server, "port", 11435) or 11435)
+        response = httpx.get(f"http://{host}:{port}/health", timeout=1.0)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
 def restore_backup(
     settings: Any,
     archive: Path,
     *,
     force: bool = False,
+    allow_running_server: bool = False,
 ) -> BackupManifest:
     """Restore stores from ``archive`` onto paths from ``settings``."""
     archive = Path(archive).expanduser()
     if not archive.is_file():
         raise BackupError(f"archive not found: {archive}")
+    if not allow_running_server and server_appears_running(settings):
+        raise BackupError(
+            "daari server appears to be running (GET /health succeeded); "
+            "stop it before restore, or pass --i-know-server-is-stopped "
+            "if you are certain no process holds the target stores"
+        )
     manifest = _read_manifest(archive)
     if manifest.archive_schema_version > ARCHIVE_SCHEMA_VERSION:
         raise BackupError(

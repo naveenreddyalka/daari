@@ -4957,6 +4957,14 @@ dry-run reports candidates or `unknown`. Covered by
 when set; never synthesizes. Covered by `tests/unit/test_otel_genai.py` and
 `tests/unit/test_otel_docs.py`.
 
+### Backup catalog honesty + restore interlock ([#1171](https://github.com/naveenreddyalka/daari/issues/1171))
+
+<!-- tracking:#1171 -->
+**Status:** Done (2026-09-27). PG batches/files catalogued as external with
+`pg_dump` hints; rotated request logs archived; restore refuses when
+`/health` succeeds unless `--i-know-server-is-stopped`. Covered by
+`tests/unit/test_backup_restore.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
