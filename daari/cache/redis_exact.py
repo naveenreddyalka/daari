@@ -82,7 +82,7 @@ class RedisExactCache(ExactCache):
         else:
             client.set(key, payload)
 
-    def prune(self) -> int:
+    def prune(self, *, dry_run: bool = False) -> int:
         """Drop aged L0 rows when Redis TTL is off; TTL fleets stay no-scan (#806)."""
         if not self.enabled:
             return 0
@@ -94,8 +94,11 @@ class RedisExactCache(ExactCache):
         for key in self._prefixed_keys(client):
             entry = self._redis_entry_dict(client.get(key))
             if self._entry_expired(entry, REDIS_UNBOUNDED_PRUNE_MAX_AGE_SECONDS):
-                deleted = client.delete(key)
-                if deleted is None or deleted:
+                if not dry_run:
+                    deleted = client.delete(key)
+                    if deleted is None or deleted:
+                        removed += 1
+                else:
                     removed += 1
         return removed
 

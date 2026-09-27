@@ -591,14 +591,14 @@ class SemanticCache:
             self.metrics.record_false_hit_avoided()
         log_gateway_event("l1_verification_rejected", {"reason": reason})
 
-    def prune(self) -> int:
+    def prune(self, *, dry_run: bool = False) -> int:
         """Remove expired entries; returns how many were removed."""
         if self.ttl_seconds <= 0:
             return 0
         entries = self._load_entries()
         kept = [entry for entry in entries if not self._entry_expired(entry)]
         removed = len(entries) - len(kept)
-        if removed:
+        if removed and not dry_run:
             self._save_entries(kept)
         return removed
 

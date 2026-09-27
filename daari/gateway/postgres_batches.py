@@ -192,6 +192,30 @@ class PostgresBatchStore(BatchStore):
                 {"batch_id": job.id, "error": str(exc)[:200]},
             )
 
+    def prune_older_than(self, cutoff_epoch: float, *, dry_run: bool = False) -> int:
+        self._load_from_db()
+        return super().prune_older_than(cutoff_epoch, dry_run=dry_run)
+
+    def _delete_job(self, batch_id: str) -> None:
+        self._batches.pop(batch_id, None)
+        self._order = [item for item in self._order if item != batch_id]
+        if self._memory:
+            bucket, order, lock = _memory_bucket(self.dsn)
+            with lock:
+                bucket.pop(batch_id, None)
+                if batch_id in order:
+                    order.remove(batch_id)
+            return
+        if not self.enabled:
+            return
+        try:
+            with self._pg_lock, self._pg_connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM daari_batch_jobs WHERE id = %s", (batch_id,))
+                conn.commit()
+        except Exception:
+            pass
+
     def list_batches(
         self, *, limit: int = 100, owner_key_id: str | None = None
     ) -> list[Any]:

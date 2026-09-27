@@ -460,18 +460,35 @@ class BatchStore:
         if dry_run:
             return len(doomed)
         for batch_id in doomed:
-            self._batches.pop(batch_id, None)
-            self._order = [item for item in self._order if item != batch_id]
-            if self.path is not None:
-                try:
-                    with self._db_lock, self._connect() as conn:
-                        conn.execute("DELETE FROM batch_jobs WHERE id = ?", (batch_id,))
-                        conn.execute(
-                            "DELETE FROM batch_order WHERE batch_id = ?", (batch_id,)
-                        )
-                except Exception:
-                    pass
+            self._delete_job(batch_id)
         return len(doomed)
+
+    def prune_older_than(self, cutoff_epoch: float, *, dry_run: bool = False) -> int:
+        """Delete batch jobs with created_at older than cutoff (#1136)."""
+        cutoff = int(cutoff_epoch)
+        doomed = [
+            job.id
+            for job in list(self._batches.values())
+            if int(job.created_at) < cutoff
+        ]
+        if dry_run:
+            return len(doomed)
+        for batch_id in doomed:
+            self._delete_job(batch_id)
+        return len(doomed)
+
+    def _delete_job(self, batch_id: str) -> None:
+        self._batches.pop(batch_id, None)
+        self._order = [item for item in self._order if item != batch_id]
+        if self.path is not None:
+            try:
+                with self._db_lock, self._connect() as conn:
+                    conn.execute("DELETE FROM batch_jobs WHERE id = ?", (batch_id,))
+                    conn.execute(
+                        "DELETE FROM batch_order WHERE batch_id = ?", (batch_id,)
+                    )
+            except Exception:
+                pass
 
     def cancel(self, batch_id: str) -> BatchJob | None:
         job = self.get(batch_id)

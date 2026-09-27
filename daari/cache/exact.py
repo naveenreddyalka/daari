@@ -151,7 +151,7 @@ class ExactCache:
             entry["scope"] = segment
         self._store().set(cache_key(request), entry)
 
-    def prune(self) -> int:
+    def prune(self, *, dry_run: bool = False) -> int:
         """Remove expired entries; returns how many were removed."""
         if self.ttl_seconds <= 0:
             return 0
@@ -160,7 +160,8 @@ class ExactCache:
         for key in list(store.iterkeys()):
             entry = store.get(key)
             if self._entry_expired(entry, None):
-                store.delete(key)
+                if not dry_run:
+                    store.delete(key)
                 removed += 1
         return removed
 

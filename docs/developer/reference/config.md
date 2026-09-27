@@ -191,6 +191,8 @@ Unset families keep global key rpm/tpm only (#1099).
 | `observability.retention.tasks_days` | int | `0` |  |
 | `observability.retention.spend_days` | int | `0` | Delete per-request spend rows older than this many days (#709). 0 keeps them forever. |
 | `observability.retention.request_log_days` | int | `0` | Delete gateway request-log lines and rotated backups older than this many days (#772). 0 keeps size-only rotation. |
+| `observability.retention.batches_days` | int | `0` | Delete batch jobs older than this many days (#1136). 0 keeps them forever. |
+| `observability.retention.cache_prune` | bool | `false` | When true, prune invokes L0/L1 `prune()` using each cache's `ttl_seconds` (#1136). |
 | `learning.enabled` | bool | `True` |  |
 | `learning.path` | str | `'~/.daari/feedback/feedback.sqlite3'` |  |
 | `learning.max_rows` | int | `20000` |  |

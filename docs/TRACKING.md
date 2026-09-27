@@ -4836,6 +4836,15 @@ reasoning when `InternalResponse.reasoning_content` is set;
 tools (`web_search`, `mcp`, …) with an explicit allowlist; docs note in
 `clients-and-gateways.md`. Covered by `tests/unit/test_responses_hosted_tools.py`.
 
+### Batches + L0/L1 cache in prune_all ([#1136](https://github.com/naveenreddyalka/daari/issues/1136))
+
+<!-- tracking:#1136 -->
+**Status:** Done (2026-09-27). `observability.retention.batches_days` (default 0)
+and `cache_prune` fold BatchStore / PostgresBatchStore and L0/L1 `prune()` into
+`prune_all`. Dry-run counts without deleting. Guide:
+`docs/developer/guides/observability/traces-stats.md`. Covered by
+`tests/unit/test_retention.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
