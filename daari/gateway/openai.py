@@ -96,6 +96,8 @@ class ChatMessage(BaseModel):
 class EmbeddingsRequest(BaseModel):
     model: str = ""
     input: str | list[str]
+    # Stable end-user id for spend attribution / chargeback (#1172).
+    user: str | None = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -1085,6 +1087,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             language: str | None = Form(default=None),
             prompt: str | None = Form(default=None),
             response_format: str = Form(default="json"),
+            user: str | None = Form(default=None),
         ) -> Any:
             from daari.gateway.transcriptions import handle_transcription
 
@@ -1095,6 +1098,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 language=language,
                 prompt=prompt,
                 response_format=response_format,
+                user=user,
             )
 
         @router.post("/v1/audio/translations", response_model=None)
@@ -1104,6 +1108,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             model: str = Form(default=""),
             prompt: str | None = Form(default=None),
             response_format: str = Form(default="json"),
+            user: str | None = Form(default=None),
         ) -> Any:
             from daari.gateway.transcriptions import handle_translation
 
@@ -1113,6 +1118,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 model=model,
                 prompt=prompt,
                 response_format=response_format,
+                user=user,
             )
 
         @router.post("/v1/audio/speech", response_model=None)
@@ -1153,12 +1159,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
             try:
+                raw_user = body.get("user")
                 return await handle_speech(
                     request,
                     model=str(body.get("model") or ""),
                     input_text=str(body.get("input") or ""),
                     voice=(str(body["voice"]) if body.get("voice") is not None else None),
                     response_format=str(body.get("response_format") or "mp3"),
+                    user=(str(raw_user).strip() if raw_user is not None else None) or None,
                     idem_slot=idem_slot,
                 )
             except Exception:
@@ -1191,6 +1199,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             n: int | None = Form(default=None),
             size: str | None = Form(default=None),
             response_format: str | None = Form(default=None),
+            user: str | None = Form(default=None),
         ) -> Any:
             """OpenAI-shaped image edits via configured L6 (#1097)."""
             from daari.gateway.images import handle_images_edits
@@ -1204,6 +1213,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 n=n,
                 size=size,
                 response_format=response_format,
+                user=user,
             )
 
         @router.post("/v1/images/variations", response_model=None)
@@ -1214,6 +1224,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             n: int | None = Form(default=None),
             size: str | None = Form(default=None),
             response_format: str | None = Form(default=None),
+            user: str | None = Form(default=None),
         ) -> Any:
             """OpenAI-shaped image variations via configured L6 (#1098)."""
             from daari.gateway.images import handle_images_variations
@@ -1225,6 +1236,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 n=n,
                 size=size,
                 response_format=response_format,
+                user=user,
             )
 
         @router.post("/v1/moderations", response_model=None)
@@ -1281,7 +1293,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 try:
                     vectors = await await_unless_disconnected(
                         request,
-                        compute_embeddings(ctx, texts, model=model, request=request),
+                        compute_embeddings(
+                            ctx,
+                            texts,
+                            model=model,
+                            request=request,
+                            user_id=(body.user or "").strip() or None,
+                        ),
                         metrics=ctx.metrics,
                         phase="embed",
                         model=model,

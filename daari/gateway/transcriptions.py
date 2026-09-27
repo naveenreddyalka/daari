@@ -276,6 +276,7 @@ def _bind_spend_context(
     *,
     model: str,
     client_id: str | None,
+    user_id: str | None = None,
 ) -> None:
     """Copy virtual-key identity onto the chargeback row before the usage hook fires."""
     router = getattr(ctx, "router", None)
@@ -303,6 +304,7 @@ def _bind_spend_context(
             key_id=key_id,
             team_id=team_id,
             client_id=client_id or "",
+            user_id=(user_id or "").strip(),
             request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
             pricing=pricing,
@@ -371,6 +373,7 @@ async def handle_transcription(
     language: str | None,
     prompt: str | None,
     response_format: str,
+    user: str | None = None,
     upstream_path: str = "audio/transcriptions",
     event: str = "audio_transcription",
 ) -> JSONResponse | dict[str, Any]:
@@ -393,6 +396,7 @@ async def handle_transcription(
                     language=language,
                     prompt=prompt,
                     response_format=response_format,
+                    user=user,
                     upstream_path=upstream_path,
                     event=event,
                 )
@@ -601,7 +605,9 @@ async def handle_transcription(
         },
     )
     caller = _caller_client_id(request)
-    _bind_spend_context(request, ctx, model=model_name, client_id=caller)
+    _bind_spend_context(
+        request, ctx, model=model_name, client_id=caller, user_id=user
+    )
     _record_request(
         ctx,
         client_id=caller,
@@ -641,6 +647,7 @@ async def handle_translation(
     model: str,
     prompt: str | None,
     response_format: str,
+    user: str | None = None,
 ) -> JSONResponse | dict[str, Any]:
     """POST /v1/audio/translations — same local ASR target, translations path (#758)."""
     return await handle_transcription(
@@ -650,6 +657,7 @@ async def handle_translation(
         language=None,
         prompt=prompt,
         response_format=response_format,
+        user=user,
         upstream_path="audio/translations",
         event="audio_translation",
     )

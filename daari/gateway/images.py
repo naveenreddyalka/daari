@@ -149,6 +149,7 @@ def _bind_spend_context(
     *,
     model: str,
     client_id: str | None,
+    user_id: str | None = None,
 ) -> None:
     router = getattr(ctx, "router", None)
     ledger = getattr(router, "spend_ledger", None)
@@ -175,6 +176,7 @@ def _bind_spend_context(
             key_id=key_id,
             team_id=team_id,
             client_id=client_id or "",
+            user_id=(user_id or "").strip(),
             request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
             pricing=pricing,
@@ -366,7 +368,7 @@ async def handle_images_generations(
             return _error(502, "bad_gateway", "Images upstream returned non-JSON.")
         log_gateway_event("images_ok", {"model": model, "n": n, "slot": target.slot_id})
         caller = _caller_client_id(request)
-        _bind_spend_context(request, ctx, model=model, client_id=caller)
+        _bind_spend_context(request, ctx, model=model, client_id=caller, user_id=body.user)
         _record_request(ctx, client_id=caller, model=model, prompt=prompt, n=n)
         from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
 
@@ -419,6 +421,7 @@ async def handle_images_edits(
     n: int | None = None,
     size: str | None = None,
     response_format: str | None = None,
+    user: str | None = None,
 ) -> Any:
     """POST /v1/images/edits — multipart L6 passthrough (#1097)."""
     from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
@@ -571,7 +574,9 @@ async def handle_images_edits(
             {"model": resolved_model, "n": count, "slot": target.slot_id},
         )
         caller = _caller_client_id(request)
-        _bind_spend_context(request, ctx, model=resolved_model, client_id=caller)
+        _bind_spend_context(
+            request, ctx, model=resolved_model, client_id=caller, user_id=user
+        )
         _record_request(
             ctx, client_id=caller, model=resolved_model, prompt=prompt_text, n=count
         )
@@ -621,6 +626,7 @@ async def handle_images_variations(
     n: int | None = None,
     size: str | None = None,
     response_format: str | None = None,
+    user: str | None = None,
 ) -> Any:
     """POST /v1/images/variations — multipart L6 passthrough (#1098)."""
     from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
@@ -748,7 +754,9 @@ async def handle_images_variations(
             {"model": resolved_model, "n": count, "slot": target.slot_id},
         )
         caller = _caller_client_id(request)
-        _bind_spend_context(request, ctx, model=resolved_model, client_id=caller)
+        _bind_spend_context(
+            request, ctx, model=resolved_model, client_id=caller, user_id=user
+        )
         _record_request(
             ctx, client_id=caller, model=resolved_model, prompt="", n=count
         )

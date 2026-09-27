@@ -4965,6 +4965,14 @@ when set; never synthesizes. Covered by `tests/unit/test_otel_genai.py` and
 `/health` succeeds unless `--i-know-server-is-stopped`. Covered by
 `tests/unit/test_backup_restore.py`.
 
+### Spend user_id on modalities + Responses ([#1172](https://github.com/naveenreddyalka/daari/issues/1172))
+
+<!-- tracking:#1172 -->
+**Status:** Done (2026-09-27). Images/embeddings/moderations/speech/
+transcriptions/rerank binders pass request `user` into spend `user_id`;
+`ResponsesRequest`/`CompactRequest` accept `user` on RequestMeta. Covered by
+`tests/unit/test_spend_user_attribution.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
