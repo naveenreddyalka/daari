@@ -262,3 +262,102 @@ def test_export_without_user_flag_still_streams_all_rows(tmp_path, monkeypatch):
     rows = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
     assert len(rows) == 2
     assert {row["request_id"] for row in rows} == {"req-1", "req-2"}
+
+
+def _modality_bind_fixture(tmp_path):
+    from types import SimpleNamespace
+
+    spend = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
+    settings = Settings()
+    router = SimpleNamespace(spend_ledger=spend, pricing=settings.pricing)
+    ctx = SimpleNamespace(router=router, settings=settings)
+    request = SimpleNamespace(
+        state=SimpleNamespace(auth_claims=None, request_id="req-modality")
+    )
+    return request, ctx
+
+
+@pytest.mark.parametrize(
+    "module_path",
+    [
+        "daari.gateway.images",
+        "daari.gateway.embeddings_api",
+        "daari.gateway.moderations",
+        "daari.gateway.speech",
+        "daari.gateway.transcriptions",
+        "daari.gateway.rerank",
+    ],
+)
+def test_modality_bind_spend_context_sets_user_id(tmp_path, module_path):
+    """Every metered modality binder forwards request user into SpendContext (#1172)."""
+    import importlib
+
+    from daari.observability.spend import current_spend_context
+
+    mod = importlib.import_module(module_path)
+    request, ctx = _modality_bind_fixture(tmp_path)
+    mod._bind_spend_context(
+        request, ctx, model="test-model", client_id="client-a", user_id="modality-user"
+    )
+    bound = current_spend_context()
+    assert bound is not None
+    assert bound.user_id == "modality-user"
+
+
+def test_responses_request_accepts_user_and_meta_attributes_it():
+    """Responses API `user` lands on RequestMeta for spend attribution (#1172)."""
+    from daari.gateway.responses import ResponsesRequest, _governed_responses_meta
+
+    body = ResponsesRequest(model="gpt-4o-mini", input="hi", user="frank")
+    assert body.user == "frank"
+
+    from types import SimpleNamespace
+
+    from daari.config.settings import Settings
+    from daari.router.router import AppContext
+
+    request = SimpleNamespace(state=SimpleNamespace(auth_claims=None, request_id="r1"))
+    ctx = AppContext.from_settings(Settings())
+    meta = _governed_responses_meta(request, ctx, user=body.user)
+    assert meta.user == "frank"
+
+
+def test_modality_user_id_appears_in_spend_export(tmp_path, monkeypatch):
+    """Chargeback export/by-user sees modality-attributed user_id rows (#1172)."""
+    path = tmp_path / "spend.sqlite3"
+    ledger = SpendLedger(path, enabled=True)
+    _frontier_row(
+        ledger,
+        request_id="req-embed-user",
+        user_id="embed-alice",
+        tier="embed",
+        cost_usd=0.02,
+    )
+    settings = Settings.model_validate({"usage": {"spend": {"enabled": True, "path": str(path)}}})
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    runner = CliRunner()
+    exported = runner.invoke(
+        cli_app,
+        [
+            "spend",
+            "export",
+            "--since",
+            SINCE,
+            "--format",
+            "jsonl",
+            "--user",
+            "embed-alice",
+        ],
+    )
+    assert exported.exit_code == 0, exported.output
+    rows = [json.loads(line) for line in exported.stdout.splitlines() if line.strip()]
+    assert len(rows) == 1
+    assert rows[0]["user_id"] == "embed-alice"
+    assert rows[0]["tier"] == "embed"
+
+    report = runner.invoke(
+        cli_app,
+        ["spend", "report", "--since", SINCE, "--by-user"],
+    )
+    assert report.exit_code == 0, report.output
+    assert "embed-alice" in report.stdout

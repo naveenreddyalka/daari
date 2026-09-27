@@ -131,6 +131,8 @@ class ResponsesRequest(BaseModel):
     prompt_cache_key: str | None = None
     prompt_cache_retention: str | None = None
     prompt_cache_options: dict[str, Any] | None = None
+    # Stable end-user id for spend attribution / chargeback (#1172).
+    user: str | None = None
 
 
 class CompactRequest(BaseModel):
@@ -143,6 +145,8 @@ class CompactRequest(BaseModel):
     previous_response_id: str | None = None
     store: bool = True
     instructions: str | None = None
+    # End-user id for spend attribution on compact (#1172).
+    user: str | None = None
 
 
 _COMPACT_KEEP_RECENT = 4
@@ -630,6 +634,7 @@ def _governed_responses_meta(
     deadline_ms: int | None = None,
     client_id: str | None = None,
     no_frontier: bool = False,
+    user: str | None = None,
 ) -> RequestMeta:
     """Build RequestMeta with virtual-key claims — shared by create and compact (#1169)."""
     from daari.gateway.request_id import request_id_from_request
@@ -643,6 +648,7 @@ def _governed_responses_meta(
         deadline_ms=deadline_ms,
         client_id=client_id,
         no_frontier=no_frontier,
+        user=(user or "").strip() or None,
         request_id=request_id_from_request(request),
     )
     apply_auth_claims_to_meta(
@@ -803,7 +809,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     detail="compact found no conversation to summarize",
                 )
             model = body.model or "daari"
-            meta = _governed_responses_meta(request, ctx)
+            meta = _governed_responses_meta(request, ctx, user=body.user)
             denied = _reject_responses_model(request, ctx, model, meta)
             if denied is not None:
                 return denied
@@ -966,6 +972,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 deadline_ms=deadline_ms,
                 client_id=x_daari_client_id,
                 no_frontier=x_daari_no_frontier == "true",
+                user=body.user,
             )
             apply_cost_tier(body, meta)
             model = body.model or ctx.settings.models.l3

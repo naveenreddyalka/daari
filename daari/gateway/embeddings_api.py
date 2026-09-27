@@ -68,6 +68,7 @@ def _bind_spend_context(
     *,
     model: str,
     client_id: str | None,
+    user_id: str | None = None,
 ) -> None:
     """Copy virtual-key identity onto the chargeback row before the usage hook fires."""
     router = ctx.router
@@ -92,6 +93,7 @@ def _bind_spend_context(
             key_id=key_id,
             team_id=team_id,
             client_id=client_id or "",
+            user_id=(user_id or "").strip(),
             request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
             pricing=pricing,
@@ -115,6 +117,7 @@ async def compute_embeddings(
     *,
     model: str,
     request: Any | None = None,
+    user_id: str | None = None,
 ) -> list[list[float]]:
     """Embed texts via L0 + semantic embedder; records metrics and ledger."""
     from daari.gateway.guardrails import (
@@ -201,7 +204,9 @@ async def compute_embeddings(
     )
     client_id = _caller_client_id(request)
     if request is not None:
-        _bind_spend_context(request, ctx, model=model, client_id=client_id)
+        _bind_spend_context(
+            request, ctx, model=model, client_id=client_id, user_id=user_id
+        )
         request.state.daari_embed_cache_hit = cache_hit
         request.state.daari_embed_prompt_chars = prompt_chars
     if ctx.router.usage_ledger is not None:
@@ -210,6 +215,7 @@ async def compute_embeddings(
             cache_hit=cache_hit,
             prompt_chars=prompt_chars,
             client_id=client_id,
+            user_id=(user_id or "").strip() or None,
             model=model,
             provider="ollama",
             input_tokens=estimate_tokens(prompt_chars),

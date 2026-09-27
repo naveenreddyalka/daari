@@ -51,6 +51,8 @@ async def aclose_http() -> None:
 class ModerationsRequest(BaseModel):
     input: str | list[str]
     model: str | None = Field(default=None)
+    # Optional end-user id (LiteLLM / OpenAI-shaped clients). Attributed on spend.
+    user: str | None = Field(default=None)
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -115,6 +117,7 @@ def _bind_spend_context(
     *,
     model: str,
     client_id: str | None,
+    user_id: str | None = None,
 ) -> None:
     router = getattr(ctx, "router", None)
     ledger = getattr(router, "spend_ledger", None)
@@ -141,6 +144,7 @@ def _bind_spend_context(
             key_id=key_id,
             team_id=team_id,
             client_id=client_id or "",
+            user_id=(user_id or "").strip(),
             request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
             pricing=pricing,
@@ -310,7 +314,7 @@ async def handle_moderations(request: Request, body: ModerationsRequest) -> Any:
             return _error(502, "bad_gateway", "Moderations upstream returned non-JSON.")
         log_gateway_event("moderations_ok", {"model": model, "slot": target.slot_id})
         caller = _caller_client_id(request)
-        _bind_spend_context(request, ctx, model=model, client_id=caller)
+        _bind_spend_context(request, ctx, model=model, client_id=caller, user_id=body.user)
         metered = _input_text(body.input)
         _record_request(ctx, client_id=caller, model=model, input_text=metered)
         from daari.gateway.cost_headers import modality_response_headers, session_id_from_request

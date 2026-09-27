@@ -136,6 +136,7 @@ def _bind_spend_context(
     *,
     model: str,
     client_id: str | None,
+    user_id: str | None = None,
 ) -> None:
     router = getattr(ctx, "router", None)
     ledger = getattr(router, "spend_ledger", None)
@@ -162,6 +163,7 @@ def _bind_spend_context(
             key_id=key_id,
             team_id=team_id,
             client_id=client_id or "",
+            user_id=(user_id or "").strip(),
             request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
             pricing=pricing,
@@ -227,6 +229,7 @@ async def handle_speech(
     input_text: str,
     voice: str | None,
     response_format: str,
+    user: str | None = None,
     idem_slot: Any | None = None,
 ) -> Response | JSONResponse:
     from daari.gateway.idempotency import abandon_slot, complete_binary_slot
@@ -250,6 +253,7 @@ async def handle_speech(
                     input_text=input_text,
                     voice=voice,
                     response_format=response_format,
+                    user=user,
                     idem_slot=idem_slot,
                 )
         except RequestDeadlineExceeded as exc:
@@ -362,7 +366,9 @@ async def handle_speech(
         },
     )
     caller = _caller_client_id(request)
-    _bind_spend_context(request, ctx, model=model_name, client_id=caller)
+    _bind_spend_context(
+        request, ctx, model=model_name, client_id=caller, user_id=user
+    )
     _record_request(
         ctx,
         client_id=caller,
