@@ -122,9 +122,14 @@ def render_api_reference() -> str:
             "",
             "`GET /v1/responses/{response_id}` accepts query parameters:",
             "",
-            "- `stream` — when `true`, replay stored terminal output as Responses SSE",
+            "- `stream` — when `true`, replay stored terminal output as Responses SSE "
+            "with contiguous `sequence_number` (from 0) on every non-keepalive event",
             "- `starting_after` — skip events with sequence ≤ this value "
             "(past-the-end resume is an empty stream)",
+            "",
+            "When `starting_after` is omitted, a non-negative integer `Last-Event-ID` "
+            "header is treated the same way (invalid/negative values are ignored → "
+            "resume from 0); an explicit query param wins over the header.",
             "",
             "Non-terminal (in-flight / `queued`) responses return **409** when "
             "`stream=true`. Plain GET (no `stream`) remains JSON.",

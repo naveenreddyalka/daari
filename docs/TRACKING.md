@@ -4924,6 +4924,13 @@ pins them. Covered by `tests/unit/test_doctor_responses_stream_resume.py`.
 when `policy_sync_url` is set but never applied; docs mention it. Covered by
 `tests/unit/test_doctor_policy_status.py`.
 
+### Responses stream resume Last-Event-ID in http-api ([#1162](https://github.com/naveenreddyalka/daari/issues/1162))
+
+<!-- tracking:#1162 -->
+**Status:** Done (2026-09-27). `http-api.md` resume section documents
+`Last-Event-ID` and `sequence_number`. Covered by
+`tests/unit/test_responses_stream_resume_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
