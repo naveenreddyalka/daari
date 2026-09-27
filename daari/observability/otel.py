@@ -362,6 +362,13 @@ def export_trace(
         usage: tuple[int | None, int | None] = (None, None)
         cache_usage: tuple[int | None, int | None] = (None, None)
         metric_attrs: dict[str, Any] = {}
+        req_meta = getattr(request, "meta", None) if request is not None else None
+        session_id = (
+            str(getattr(req_meta, "session_id", None) or "").strip() if req_meta else ""
+        )
+        if session_id:
+            # Spec: only when a stable id is readily available — never synthesize (#1175).
+            root_attrs["gen_ai.conversation.id"] = session_id
         if request_model:
             from daari.observability.metrics import genai_operation_name, infer_modality
 
