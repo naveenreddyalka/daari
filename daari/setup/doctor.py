@@ -68,6 +68,7 @@ def run_doctor(
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
+    results.append(_check_policy_status(cfg))
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
     results.append(_check_scoped_cache_fleet(cfg))
@@ -1435,6 +1436,45 @@ def _check_org(settings: Settings) -> CheckResult:
         name="org",
         ok=True,
         detail=f"enabled for {org_id} (cache root: {cache_root})",
+        optional=True,
+    )
+
+
+def _check_policy_status(
+    settings: Settings,
+    *,
+    state_path: str | Path | None = None,
+) -> CheckResult:
+    """Optional tip when enterprise.policy_sync_url is set (#1163)."""
+    from daari.enterprise.policy_sync import load_policy_status
+
+    url = getattr(settings.enterprise, "policy_sync_url", None) or ""
+    if not url:
+        return CheckResult(
+            name="policy_status",
+            ok=True,
+            detail="skipped (enterprise.policy_sync_url not configured)",
+            optional=True,
+        )
+    status = load_policy_status(settings=settings, state_path=state_path)
+    if not status.applied:
+        return CheckResult(
+            name="policy_status",
+            ok=False,
+            detail=(
+                "policy-sync configured but never successfully applied — "
+                "run `daari enterprise policy-status` (or policy-sync) "
+                f"(url={url!r})"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="policy_status",
+        ok=True,
+        detail=(
+            f"policy-status ok hash={status.policy_hash} "
+            f"applied_at={status.applied_at} source={status.source_url or '-'}"
+        ),
         optional=True,
     )
 
