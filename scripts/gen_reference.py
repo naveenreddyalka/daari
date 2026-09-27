@@ -115,7 +115,22 @@ def render_api_reference() -> str:
         for method, operation in sorted(methods.items()):
             summary = operation.get("summary") or operation.get("operationId", "")
             lines.append(f"| `{method.upper()}` | `{path}` | {summary} |")
-    lines.append("")
+    lines.extend(
+        [
+            "",
+            "## Responses stream resume",
+            "",
+            "`GET /v1/responses/{response_id}` accepts query parameters:",
+            "",
+            "- `stream` — when `true`, replay stored terminal output as Responses SSE",
+            "- `starting_after` — skip events with sequence ≤ this value "
+            "(past-the-end resume is an empty stream)",
+            "",
+            "Non-terminal (in-flight / `queued`) responses return **409** when "
+            "`stream=true`. Plain GET (no `stream`) remains JSON.",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
