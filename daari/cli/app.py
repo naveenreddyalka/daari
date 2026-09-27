@@ -1801,17 +1801,44 @@ def erase(
 @backup_app.command("create")
 def backup_create(
     archive: Path = typer.Argument(..., help="Destination .tar.gz archive path."),
+    encrypt: str | None = typer.Option(
+        None,
+        "--encrypt",
+        help="Encrypt archive with openssl or age (default: plaintext).",
+    ),
+    passphrase_env: str = typer.Option(
+        "DAARI_BACKUP_PASS",
+        "--passphrase-env",
+        help="Env var holding the openssl passphrase when --encrypt openssl.",
+    ),
+    age_recipient: str | None = typer.Option(
+        None,
+        "--age-recipient",
+        help="age recipient (age1…) when --encrypt age; else DAARI_BACKUP_AGE_RECIPIENT.",
+    ),
 ) -> None:
     """Snapshot durable sqlite/JSONL/dir stores into one versioned archive."""
-    from daari.ops.backup import BackupError, create_backup
+    from daari.ops.backup import BackupError, create_backup, encrypt_backup_archive
 
     settings = get_settings()
+    method = (encrypt or "").strip().lower() or None
+    if method is not None and method not in {"openssl", "age"}:
+        typer.echo("--encrypt must be openssl or age", err=True)
+        raise typer.Exit(code=1)
     try:
         manifest = create_backup(settings, archive)
+        written: Path = archive
+        if method is not None:
+            written = encrypt_backup_archive(
+                archive,
+                method,  # type: ignore[arg-type]
+                passphrase_env=passphrase_env,
+                age_recipient=age_recipient,
+            )
     except BackupError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
-    typer.echo(f"wrote {archive}")
+    typer.echo(f"wrote {written}")
     typer.echo(
         f"daari={manifest.daari_version} schema={manifest.archive_schema_version} "
         f"stores={len(manifest.stores)}"
@@ -1826,7 +1853,9 @@ def backup_create(
 
 @backup_app.command("restore")
 def backup_restore(
-    archive: Path = typer.Argument(..., help="Source .tar.gz archive path."),
+    archive: Path = typer.Argument(
+        ..., help="Source .tar.gz / .tar.gz.enc / .tar.gz.age archive path."
+    ),
     force: bool = typer.Option(
         False,
         "--force",
@@ -1840,6 +1869,16 @@ def backup_restore(
             "to avoid SQLite WAL corruption."
         ),
     ),
+    passphrase_env: str = typer.Option(
+        "DAARI_BACKUP_PASS",
+        "--passphrase-env",
+        help="Env var holding the openssl passphrase for .tar.gz.enc archives.",
+    ),
+    age_identity: str | None = typer.Option(
+        None,
+        "--age-identity",
+        help="age identity file for .tar.gz.age; else DAARI_BACKUP_AGE_IDENTITY.",
+    ),
 ) -> None:
     """Restore durable stores from an archive onto the configured data paths."""
     from daari.ops.backup import BackupError, restore_backup
@@ -1851,6 +1890,8 @@ def backup_restore(
             archive,
             force=force,
             allow_running_server=i_know_server_is_stopped,
+            passphrase_env=passphrase_env,
+            age_identity=age_identity,
         )
     except BackupError as exc:
         typer.echo(str(exc), err=True)

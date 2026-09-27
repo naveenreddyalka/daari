@@ -1342,14 +1342,19 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
 
 def _check_recent_backup(settings: Settings) -> CheckResult:
     """Informational hint when no recent full-state backup archive is found (#1131)."""
-    from daari.ops.backup import recent_backup_manifests
+    from daari.ops.backup import recent_backup_manifests, recent_backups_all_plaintext
 
     found = recent_backup_manifests()
     if found:
+        detail = f"recent backup: {found[-1].name}"
+        if recent_backups_all_plaintext(found):
+            detail += (
+                " (all plaintext — consider: daari backup create … --encrypt openssl)"
+            )
         return CheckResult(
             name="backup",
             ok=True,
-            detail=f"recent backup: {found[-1].name}",
+            detail=detail,
             optional=True,
         )
     return CheckResult(
