@@ -59,8 +59,13 @@ def _clear_spans():
     reset_inbound_context(extract_inbound_context({}))
 
 
-def _request(model: str = "llama3.2:3b") -> InternalRequest:
-    return InternalRequest(messages=[Message(role="user", content="hi")], model=model)
+def _request(model: str = "llama3.2:3b", *, session_id: str | None = None) -> InternalRequest:
+    from daari.gateway.internal import RequestMeta
+
+    meta = RequestMeta(session_id=session_id) if session_id else RequestMeta()
+    return InternalRequest(
+        messages=[Message(role="user", content="hi")], model=model, meta=meta
+    )
 
 
 def _response(
@@ -127,6 +132,21 @@ def test_chat_span_name_and_genai_attributes():
     assert attrs["gen_ai.usage.input_tokens"] == 120
     assert isinstance(attrs["gen_ai.usage.input_tokens"], int)
     assert attrs["gen_ai.usage.output_tokens"] == 45
+
+
+def test_conversation_id_from_session_id():
+    """X-Daari-Session → RequestMeta.session_id → gen_ai.conversation.id (#1175)."""
+    trace = RequestTrace()
+    export_trace(
+        trace,
+        request=_request(session_id="agent-loop-42"),
+        response=_response(),
+    )
+    assert dict(_root_span().attributes)["gen_ai.conversation.id"] == "agent-loop-42"
+
+    _EXPORTER.clear()
+    export_trace(trace, request=_request(), response=_response())
+    assert "gen_ai.conversation.id" not in dict(_root_span().attributes)
 
 
 def test_estimated_usage_is_not_reported_as_genai():

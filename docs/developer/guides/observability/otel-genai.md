@@ -40,9 +40,15 @@ Each routed request becomes a root span named `chat {model}` carrying:
 | `gen_ai.operation.name` | `chat` |
 | `gen_ai.provider.name` | `ollama`, `openai`, `anthropic` |
 | `gen_ai.request.model` / `gen_ai.response.model` | `llama3.2:3b` |
+| `gen_ai.conversation.id` | value of `X-Daari-Session` when set (never synthesized) |
 | `gen_ai.response.finish_reasons` | `["stop"]` |
 | `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` | `120` / `45` |
 | `error.type` | `BackendUnavailable` (failures only) |
+
+When the client sends `X-Daari-Session`, daari stamps that stable id onto the
+root GenAI span as `gen_ai.conversation.id` so multi-turn agent loops join in
+Grafana/Tempo. The attribute is omitted when the header is absent — the GenAI
+spec forbids fabricating conversation ids.
 
 Token usage attributes appear **only when the provider reported real counts**
 (`daari.usage_estimated` is `false`); estimated counts are never passed off

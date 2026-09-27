@@ -4949,6 +4949,14 @@ legacy `client_id`), Redis L0/L1, Postgres batches, and traces; cache
 dry-run reports candidates or `unknown`. Covered by
 `tests/unit/test_erasure.py` and `docs/developer/guides/operations/erasure.md`.
 
+### OTel gen_ai.conversation.id from session ([#1175](https://github.com/naveenreddyalka/daari/issues/1175))
+
+<!-- tracking:#1175 -->
+**Status:** Done (2026-09-27). `export_trace` stamps
+`gen_ai.conversation.id` from `RequestMeta.session_id` (`X-Daari-Session`)
+when set; never synthesizes. Covered by `tests/unit/test_otel_genai.py` and
+`tests/unit/test_otel_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
