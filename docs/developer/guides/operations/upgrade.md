@@ -243,6 +243,11 @@ developer laptops that pull policy from it.
    before laptops upgrade. Gateway-first still means new policy is live the
    moment laptops upgrade; a laptop that sees `schema` ahead of its
    `POLICY_SCHEMA` fails closed instead of applying a half-understood bundle.
+   After a successful sync, daari records a content hash of the verified
+   payload (plus `applied_at` and a redacted source host) under
+   `~/.daari/policy-sync-state.json`. Run `daari enterprise policy-status` on
+   each replica to confirm the hash matches what you expect; exit code 1 means
+   `policy_sync_url` is set but nothing has applied yet.
 2. **Shared Redis/Postgres tolerate mixed versions.** L0/L1 entries are
    version-agnostic (see the table); Postgres tables are create-if-missing.
    Run mixed replicas during a rolling update without draining the cache.

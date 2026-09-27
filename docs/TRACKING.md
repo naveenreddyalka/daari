@@ -4854,6 +4854,14 @@ and `cache_prune` fold BatchStore / PostgresBatchStore and L0/L1 `prune()` into
 tiers. Docs note in `clients-and-gateways.md`. Covered by
 `tests/unit/test_responses_prompt_cache.py`.
 
+### Policy-sync drift hash and policy-status ([#1138](https://github.com/naveenreddyalka/daari/issues/1138))
+
+<!-- tracking:#1138 -->
+**Status:** Done (2026-09-27). Successful policy apply records `policy_hash`,
+`applied_at`, and redacted `source_url` (in-memory + `~/.daari/policy-sync-state.json`).
+`daari enterprise policy-status` prints them and exits 1 when configured but
+never applied. Covered by `tests/unit/test_policy_status.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

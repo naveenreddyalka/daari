@@ -11,6 +11,12 @@ secret. `insecure=True` is the single, explicit opt-out for local testing.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import threading
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -25,6 +31,7 @@ from daari.gateway.request_log import log_gateway_event
 
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+DEFAULT_POLICY_STATE_PATH = Path("~/.daari/policy-sync-state.json")
 
 SAFE_ROUTING_KEYS = {
     "prefer",
@@ -59,6 +66,112 @@ _FRONTIER_COERCE: dict[str, Any] = {
 }
 
 _UNSET = object()
+_STATE_LOCK = threading.Lock()
+_RUNTIME_STATUS: PolicyStatus | None = None
+
+
+@dataclass
+class PolicyStatus:
+    """Last successful policy apply (#1138)."""
+
+    policy_hash: str | None = None
+    applied_at: str | None = None
+    source_url: str | None = None
+    configured: bool = False
+
+    @property
+    def applied(self) -> bool:
+        return bool(self.policy_hash and self.applied_at)
+
+
+def redact_policy_url(url: str) -> str:
+    """Keep scheme + host only (no path/query/token)."""
+    parsed = urlparse((url or "").strip())
+    if not parsed.scheme or not parsed.hostname:
+        return ""
+    return f"{parsed.scheme}://{parsed.hostname}"
+
+
+def policy_content_hash(config: dict[str, Any]) -> str:
+    """Stable SHA-256 of the verified policy payload."""
+    blob = json.dumps(config, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def policy_state_path(path: str | Path | None = None) -> Path:
+    return Path(path or DEFAULT_POLICY_STATE_PATH).expanduser()
+
+
+def record_policy_apply(
+    config: dict[str, Any],
+    *,
+    url: str = "",
+    applied_at: datetime | None = None,
+    state_path: str | Path | None = None,
+    configured: bool = True,
+) -> PolicyStatus:
+    """Persist last-applied hash/URL for doctor / policy-status (#1138)."""
+    global _RUNTIME_STATUS
+    when = applied_at or datetime.now(timezone.utc)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    status = PolicyStatus(
+        policy_hash=policy_content_hash(config),
+        applied_at=when.astimezone(timezone.utc).isoformat(),
+        source_url=redact_policy_url(url) or None,
+        configured=configured,
+    )
+    path = policy_state_path(state_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "policy_hash": status.policy_hash,
+        "applied_at": status.applied_at,
+        "source_url": status.source_url,
+    }
+    with _STATE_LOCK:
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        _RUNTIME_STATUS = status
+    return status
+
+
+def load_policy_status(
+    *,
+    settings: Any | None = None,
+    state_path: str | Path | None = None,
+) -> PolicyStatus:
+    """Return in-memory status if set, else disk, else never-applied."""
+    configured = False
+    if settings is not None:
+        configured = bool(getattr(settings.enterprise, "policy_sync_url", None) or "")
+    with _STATE_LOCK:
+        if _RUNTIME_STATUS is not None:
+            return PolicyStatus(
+                policy_hash=_RUNTIME_STATUS.policy_hash,
+                applied_at=_RUNTIME_STATUS.applied_at,
+                source_url=_RUNTIME_STATUS.source_url,
+                configured=configured or _RUNTIME_STATUS.configured,
+            )
+    path = policy_state_path(state_path)
+    if path.is_file():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+        if isinstance(raw, dict) and raw.get("policy_hash"):
+            return PolicyStatus(
+                policy_hash=str(raw.get("policy_hash") or "") or None,
+                applied_at=str(raw.get("applied_at") or "") or None,
+                source_url=str(raw.get("source_url") or "") or None,
+                configured=configured,
+            )
+    return PolicyStatus(configured=configured)
+
+
+def clear_policy_status_for_tests() -> None:
+    """Reset module runtime state between unit tests."""
+    global _RUNTIME_STATUS
+    with _STATE_LOCK:
+        _RUNTIME_STATUS = None
 
 
 def _coerce(value: Any, caster: Any, *, section: str, key: str) -> Any:
@@ -87,6 +200,10 @@ def apply_policy_to_runtime(
     settings: Any,
     router: Any,
     config: dict[str, Any],
+    *,
+    source_url: str = "",
+    state_path: str | Path | None = None,
+    record: bool = False,
 ) -> dict[str, Any]:
     """Apply a safe subset of org config to live settings + router. Returns applied keys."""
     validate_policy_schema(config)
@@ -175,6 +292,18 @@ def apply_policy_to_runtime(
             router.boundaries = engine_from_settings(settings, judge=default_local_judge)
             copy_runtime_hooks(router.boundaries, prev)
 
+    if record:
+        url = (
+            source_url
+            or getattr(getattr(settings, "enterprise", None), "policy_sync_url", "")
+            or ""
+        )
+        record_policy_apply(
+            config,
+            url=str(url),
+            state_path=state_path,
+            configured=bool(url),
+        )
     return applied
 
 
@@ -184,6 +313,7 @@ def sync_policy_once(
     *,
     persist: bool = False,
     insecure: bool = False,
+    state_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Fetch + verify + apply. Returns a status dict."""
     url = settings.enterprise.policy_sync_url or ""
@@ -205,8 +335,24 @@ def sync_policy_once(
         return {"ok": False, "reason": "unknown_schema", "error": str(exc)}
     applied: dict[str, Any] = {}
     if router is not None:
-        applied = apply_policy_to_runtime(settings, router, data)
+        applied = apply_policy_to_runtime(
+            settings,
+            router,
+            data,
+            source_url=url,
+            state_path=state_path,
+            record=True,
+        )
+    else:
+        record_policy_apply(data, url=url, state_path=state_path, configured=True)
     if persist:
         apply_org_config(data, device_id=settings.enterprise.device_id)
         applied["persisted"] = True
-    return {"ok": True, "applied": applied}
+    status = load_policy_status(settings=settings, state_path=state_path)
+    return {
+        "ok": True,
+        "applied": applied,
+        "policy_hash": status.policy_hash,
+        "applied_at": status.applied_at,
+        "source_url": status.source_url,
+    }
