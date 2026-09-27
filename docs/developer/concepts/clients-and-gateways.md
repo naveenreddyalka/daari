@@ -107,8 +107,10 @@ supported allowlist.
 Responses-native sampling maps onto the same `SamplingParams` as chat:
 `reasoning.effort` → `reasoning_effort`, `text.format` → JSON / `json_schema`
 (including `name`/`strict`), plus `tool_choice`, `parallel_tool_calls`, and
-`service_tier`. Unsupported `truncation` is logged (`responses_truncation_ignored`)
-rather than 422'd.
+`service_tier`. `prompt_cache_key`, `prompt_cache_retention`, and
+`prompt_cache_options` forward on OpenAI-compatible L6; local tiers name them
+in `daari_meta.dropped_params` / `x-daari-dropped-params`. Unsupported
+`truncation` is logged (`responses_truncation_ignored`) rather than 422'd.
 `POST /v1/responses/input_tokens` is a local estimate (`estimate_tokens` on
 instructions + input messages + tools), matching Anthropic
 `/v1/messages/count_tokens` — not an L6 round-trip.
