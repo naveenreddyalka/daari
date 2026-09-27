@@ -609,6 +609,7 @@ class SemanticCache:
         entry_hash: str | None = None,
         team_id: str | None = None,
         key_id: str | None = None,
+        dry_run: bool = False,
     ) -> int:
         """Drop L1 rows by context_key model prefix, answer hash, tenant, or all."""
         if not self.enabled:
@@ -627,7 +628,7 @@ class SemanticCache:
                 removed += 1
             else:
                 kept.append(entry)
-        if removed:
+        if removed and not dry_run:
             self._save_entries(kept)
         return removed
 

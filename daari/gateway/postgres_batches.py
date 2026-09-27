@@ -192,6 +192,19 @@ class PostgresBatchStore(BatchStore):
                 {"batch_id": job.id, "error": str(exc)[:200]},
             )
 
+    def erase_subject(
+        self,
+        *,
+        key_id: str | None = None,
+        team_id: str | None = None,
+        user: str | None = None,
+        dry_run: bool = False,
+    ) -> int:
+        self._load_from_db()
+        return super().erase_subject(
+            key_id=key_id, team_id=team_id, user=user, dry_run=dry_run
+        )
+
     def prune_older_than(self, cutoff_epoch: float, *, dry_run: bool = False) -> int:
         self._load_from_db()
         return super().prune_older_than(cutoff_epoch, dry_run=dry_run)

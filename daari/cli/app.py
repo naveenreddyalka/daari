@@ -1791,6 +1791,9 @@ def erase(
     result = erase_subject(settings, subject, dry_run=dry_run, actor="cli")
     typer.echo(("dry-run " if dry_run else "") + f"erase {kind}={subject.value}")
     for row in result.stores:
+        if dry_run and row.matched < 0:
+            typer.echo(f"  {row.store}: unknown")
+            continue
         count = row.matched if dry_run else row.deleted
         typer.echo(f"  {row.store:<12} {count} row(s)")
 

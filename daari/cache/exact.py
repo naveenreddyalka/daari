@@ -172,6 +172,7 @@ class ExactCache:
         entry_hash: str | None = None,
         team_id: str | None = None,
         key_id: str | None = None,
+        dry_run: bool = False,
     ) -> int:
         """Drop entries by served model, cache key, tenant scope, or everything."""
         if not self.enabled:
@@ -187,7 +188,8 @@ class ExactCache:
                 continue
             if not self._entry_matches_scope(entry, team_id=team_id, key_id=key_id):
                 continue
-            store.delete(key)
+            if not dry_run:
+                store.delete(key)
             removed += 1
         return removed
 

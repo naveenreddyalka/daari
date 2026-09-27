@@ -145,3 +145,33 @@ class PostgresTraceStore:
                 return int(count)
         except Exception:
             return 0
+
+    def erase_subject(
+        self,
+        *,
+        kind: str,
+        value: str,
+        dry_run: bool = False,
+    ) -> int:
+        """Delete traces whose steps JSON mention the subject id (#1170)."""
+        needle = (value or "").strip()
+        if not self.enabled or not needle:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT seq FROM traces WHERE steps LIKE %s",
+                        (f"%{needle}%",),
+                    )
+                    doomed = [row[0] for row in cur.fetchall()]
+                    if dry_run or not doomed:
+                        return len(doomed)
+                    cur.executemany(
+                        "DELETE FROM traces WHERE seq = %s",
+                        [(seq,) for seq in doomed],
+                    )
+                conn.commit()
+                return len(doomed)
+        except Exception:
+            return 0
