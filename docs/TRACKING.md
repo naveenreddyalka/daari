@@ -4870,6 +4870,14 @@ terminal stored output as Responses SSE with `sequence_number`;
 `starting_after` skips earlier events; non-terminal background returns 409;
 plain GET stays JSON. Covered by `tests/unit/test_responses_stream_resume.py`.
 
+### Responses create-stream sequence_number ([#1151](https://github.com/naveenreddyalka/daari/issues/1151))
+
+<!-- tracking:#1151 -->
+**Status:** Done (2026-09-27). `POST /v1/responses` stream events include
+contiguous `sequence_number` (keepalives excluded); resume remains a
+synthesized 0-based replay. Covered by
+`tests/unit/test_responses_stream_resume.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
