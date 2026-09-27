@@ -58,6 +58,7 @@ def erase_subject(
     result.stores.append(_erase_batches(settings, subject, dry_run=dry_run))
     result.stores.append(_erase_idempotency(settings, subject, dry_run=dry_run))
     result.stores.append(_erase_cache(settings, subject, dry_run=dry_run))
+    result.stores.append(_erase_traces(settings, subject, dry_run=dry_run))
 
     if not dry_run:
         _record_audit(settings, subject, result, actor=actor)
@@ -103,11 +104,13 @@ def _erase_spend(settings: Any, subject: ErasureSubject, *, dry_run: bool) -> Er
     erase = getattr(spend, "erase_subject", None)
     if erase is None:
         return ErasureStoreResult("spend", 0, 0)
+    # --user matches user_id and legacy client_id attribution (#1170).
     matched = int(
         erase(
             key_id=subject.value if subject.kind == "key" else None,
             team_id=subject.value if subject.kind == "team" else None,
             client_id=subject.value if subject.kind == "user" else None,
+            user_id=subject.value if subject.kind == "user" else None,
             dry_run=dry_run,
         )
     )
@@ -293,10 +296,9 @@ def _erase_batches(settings: Any, subject: ErasureSubject, *, dry_run: bool) -> 
     batches_cfg = getattr(settings, "batches", None)
     if batches_cfg is None or not getattr(batches_cfg, "enabled", True):
         return ErasureStoreResult("batches", 0, 0)
-    from daari.gateway.batches import BatchStore
+    from daari.observability.retention import _batch_store
 
-    path = getattr(settings, "batches_store_path", None)
-    store = BatchStore(path=path)
+    store = _batch_store(settings)
     erase = getattr(store, "erase_subject", None)
     if erase is None:
         return ErasureStoreResult("batches", 0, 0)
@@ -347,44 +349,58 @@ def _idem_store(settings: Any) -> Any | None:
 def _erase_cache(settings: Any, subject: ErasureSubject, *, dry_run: bool) -> ErasureStoreResult:
     if subject.kind == "user":
         return ErasureStoreResult("cache", 0, 0)
-    if dry_run:
-        return ErasureStoreResult("cache", 0, 0)
     removed = 0
+    kw = {"key_id": subject.value} if subject.kind == "key" else {"team_id": subject.value}
     try:
-        from daari.cache.exact import ExactCache
+        from pathlib import Path
 
-        l0 = ExactCache(
-            settings.cache.l0.path,
-            enabled=settings.cache.l0.enabled,
-            ttl_seconds=settings.cache.l0.ttl_seconds,
+        from daari.router.router import _build_l0_cache, _build_l1_cache
+
+        l0 = _build_l0_cache(settings, Path(settings.l0_cache_path))
+        removed += int(l0.invalidate(**kw, dry_run=dry_run))
+        if settings.cache.l1.enabled:
+
+            class _NullEmbedder:
+                model = "null"
+
+                def embed(self, texts: list[str]) -> list[list[float]]:
+                    return [[0.0] for _ in texts]
+
+            l1 = _build_l1_cache(
+                settings, Path(settings.l1_cache_path), _NullEmbedder()  # type: ignore[arg-type]
+            )
+            removed += int(l1.invalidate(**kw, dry_run=dry_run))
+    except Exception as exc:
+        from daari.gateway.request_log import log_gateway_event
+
+        log_gateway_event(
+            "erasure.cache_failed",
+            {
+                "subject_kind": subject.kind,
+                "subject_id": subject.value,
+                "error": f"{type(exc).__name__}: {exc}"[:300],
+                "backend": getattr(settings.cache, "backend", "disk"),
+            },
         )
-        if subject.kind == "key":
-            removed += int(l0.invalidate(key_id=subject.value))
-        else:
-            removed += int(l0.invalidate(team_id=subject.value))
-    except Exception:
-        pass
-    try:
-        from daari.cache.semantic import SemanticCache
+        # Never pretend zero when the backend could not be scanned (#1170).
+        return ErasureStoreResult("cache", -1 if dry_run else 0, 0)
+    return ErasureStoreResult("cache", removed, 0 if dry_run else removed)
 
-        class _NullEmbedder:
-            model = "null"
 
-            def embed(self, texts: list[str]) -> list[list[float]]:
-                return [[0.0] for _ in texts]
+def _erase_traces(settings: Any, subject: ErasureSubject, *, dry_run: bool) -> ErasureStoreResult:
+    from daari.observability.retention import _trace_store
 
-        l1 = SemanticCache(
-            settings.cache.l1.path,
-            _NullEmbedder(),
-            enabled=settings.cache.l1.enabled,
-            similarity_threshold=settings.cache.l1.similarity_threshold,
-            max_entries=settings.cache.l1.max_entries,
-            ttl_seconds=settings.cache.l1.ttl_seconds,
+    store = _trace_store(settings)
+    if store is None or not getattr(store, "enabled", False):
+        return ErasureStoreResult("traces", 0, 0)
+    erase = getattr(store, "erase_subject", None)
+    if erase is None:
+        return ErasureStoreResult("traces", 0, 0)
+    matched = int(
+        erase(
+            kind=subject.kind,
+            value=subject.value,
+            dry_run=dry_run,
         )
-        if subject.kind == "key":
-            removed += int(l1.invalidate(key_id=subject.value))
-        else:
-            removed += int(l1.invalidate(team_id=subject.value))
-    except Exception:
-        pass
-    return ErasureStoreResult("cache", removed, removed)
+    )
+    return ErasureStoreResult("traces", matched, 0 if dry_run else matched)

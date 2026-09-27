@@ -4941,6 +4941,14 @@ bucketing for `/v1/responses/...` subpaths. Covered by
 `tests/unit/test_rate_families.py`, and
 `tests/integration/test_responses_api.py`.
 
+### Erasure reaches Redis/Postgres/user_id/traces ([#1170](https://github.com/naveenreddyalka/daari/issues/1170))
+
+<!-- tracking:#1170 -->
+**Status:** Done (2026-09-27). Subject erase covers spend `user_id` (and
+legacy `client_id`), Redis L0/L1, Postgres batches, and traces; cache
+dry-run reports candidates or `unknown`. Covered by
+`tests/unit/test_erasure.py` and `docs/developer/guides/operations/erasure.md`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

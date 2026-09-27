@@ -109,6 +109,7 @@ class RedisExactCache(ExactCache):
         entry_hash: str | None = None,
         team_id: str | None = None,
         key_id: str | None = None,
+        dry_run: bool = False,
     ) -> int:
         if not self.enabled:
             return 0
@@ -123,6 +124,9 @@ class RedisExactCache(ExactCache):
                 continue
             entry = self._redis_entry_dict(raw)
             if not self._entry_matches_scope(entry, team_id=team_id, key_id=key_id):
+                continue
+            if dry_run:
+                removed += 1
                 continue
             deleted = client.delete(key)
             if deleted is None or deleted:

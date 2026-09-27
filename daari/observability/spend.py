@@ -482,31 +482,45 @@ class SpendLedger:
         key_id: str | None = None,
         team_id: str | None = None,
         client_id: str | None = None,
+        user_id: str | None = None,
         dry_run: bool = False,
     ) -> int:
-        """Delete spend rows for a subject. Exactly one of key/team/client (#1130)."""
+        """Delete spend rows for a subject (#1130, #1170).
+
+        Prefer a single column when ``key_id`` / ``team_id`` is set. For
+        ``--user``, pass ``user_id`` and optionally ``client_id`` so rows
+        attributed either way are cleared (OR).
+        """
         if not self.enabled:
             return 0
-        column: str | None = None
-        value: str | None = None
+        clauses: list[str] = []
+        params: list[str] = []
         if key_id:
-            column, value = "key_id", key_id
+            clauses.append("key_id = ?")
+            params.append(key_id)
         elif team_id:
-            column, value = "team_id", team_id
-        elif client_id:
-            column, value = "client_id", client_id
-        if not column or not value:
+            clauses.append("team_id = ?")
+            params.append(team_id)
+        else:
+            if user_id:
+                clauses.append("user_id = ?")
+                params.append(user_id)
+            if client_id:
+                clauses.append("client_id = ?")
+                params.append(client_id)
+        if not clauses:
             return 0
+        where = " OR ".join(clauses)
         try:
             with self._lock, self._connect() as conn:
                 count = conn.execute(
-                    f"SELECT COUNT(*) FROM spend_requests WHERE {column} = ?",
-                    (value,),
+                    f"SELECT COUNT(*) FROM spend_requests WHERE {where}",
+                    params,
                 ).fetchone()[0]
                 if not dry_run and count:
                     conn.execute(
-                        f"DELETE FROM spend_requests WHERE {column} = ?",
-                        (value,),
+                        f"DELETE FROM spend_requests WHERE {where}",
+                        params,
                     )
                 return int(count)
         except Exception:
@@ -690,32 +704,41 @@ class PostgresSpendLedger(SpendLedger):
         key_id: str | None = None,
         team_id: str | None = None,
         client_id: str | None = None,
+        user_id: str | None = None,
         dry_run: bool = False,
     ) -> int:
         if not self.enabled:
             return 0
-        column: str | None = None
-        value: str | None = None
+        clauses: list[str] = []
+        params: list[str] = []
         if key_id:
-            column, value = "key_id", key_id
+            clauses.append("key_id = %s")
+            params.append(key_id)
         elif team_id:
-            column, value = "team_id", team_id
-        elif client_id:
-            column, value = "client_id", client_id
-        if not column or not value:
+            clauses.append("team_id = %s")
+            params.append(team_id)
+        else:
+            if user_id:
+                clauses.append("user_id = %s")
+                params.append(user_id)
+            if client_id:
+                clauses.append("client_id = %s")
+                params.append(client_id)
+        if not clauses:
             return 0
+        where = " OR ".join(clauses)
         try:
             with self._lock, self._connect() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
-                        f"SELECT COUNT(*) FROM spend_requests WHERE {column} = %s",
-                        (value,),
+                        f"SELECT COUNT(*) FROM spend_requests WHERE {where}",
+                        params,
                     )
                     count = int(cur.fetchone()[0])
                     if not dry_run and count:
                         cur.execute(
-                            f"DELETE FROM spend_requests WHERE {column} = %s",
-                            (value,),
+                            f"DELETE FROM spend_requests WHERE {where}",
+                            params,
                         )
                 conn.commit()
                 return count
