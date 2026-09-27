@@ -1,17 +1,25 @@
-"""Full-state backup / restore for durable daari stores (#1131)."""
+"""Full-state backup / restore for durable daari stores (#1131, #1176)."""
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import subprocess
 import tarfile
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from daari import __version__
+
+EncryptMethod = Literal["openssl", "age"]
+_ENCRYPT_SUFFIX: dict[str, str] = {"openssl": ".enc", "age": ".age"}
+DEFAULT_PASSPHRASE_ENV = "DAARI_BACKUP_PASS"
+DEFAULT_AGE_RECIPIENT_ENV = "DAARI_BACKUP_AGE_RECIPIENT"
+DEFAULT_AGE_IDENTITY_ENV = "DAARI_BACKUP_AGE_IDENTITY"
 
 # Bump when archive layout or per-store expectations change incompatibly.
 ARCHIVE_SCHEMA_VERSION = 1
@@ -248,6 +256,167 @@ def catalog_stores(settings: Any, *, request_log_path: Path | None = None) -> li
     return entries
 
 
+def detect_encrypt_method(path: Path) -> EncryptMethod | None:
+    """Return openssl/age when ``path`` uses a known encrypted suffix."""
+    name = path.name
+    if name.endswith(".tar.gz.enc"):
+        return "openssl"
+    if name.endswith(".tar.gz.age"):
+        return "age"
+    return None
+
+
+def encrypted_archive_path(archive: Path, method: EncryptMethod) -> Path:
+    archive = Path(archive)
+    plain = str(archive)
+    if not plain.endswith(".tar.gz"):
+        raise BackupError("archive path must end with .tar.gz before encryption")
+    return Path(plain + _ENCRYPT_SUFFIX[method])
+
+
+def _require_binary(name: str) -> str:
+    path = shutil.which(name)
+    if not path:
+        raise BackupError(f"{name} not found on PATH; install it to use --encrypt {name}")
+    return path
+
+
+def _passphrase_from_env(env_name: str) -> str:
+    value = (os.environ.get(env_name) or "").strip()
+    if not value:
+        raise BackupError(
+            f"encrypted backup requires passphrase in ${env_name} "
+            f"(or pass --passphrase-env)"
+        )
+    return value
+
+
+def encrypt_backup_archive(
+    archive: Path,
+    method: EncryptMethod,
+    *,
+    passphrase_env: str = DEFAULT_PASSPHRASE_ENV,
+    age_recipient: str | None = None,
+    remove_plaintext: bool = True,
+) -> Path:
+    """Encrypt a plaintext ``.tar.gz`` to ``.tar.gz.enc`` / ``.tar.gz.age`` (#1176)."""
+    archive = Path(archive).expanduser()
+    if not archive.is_file():
+        raise BackupError(f"archive not found: {archive}")
+    out = encrypted_archive_path(archive, method)
+    if method == "openssl":
+        binary = _require_binary("openssl")
+        passphrase = _passphrase_from_env(passphrase_env)
+        proc = subprocess.run(
+            [
+                binary,
+                "enc",
+                "-aes-256-cbc",
+                "-salt",
+                "-pbkdf2",
+                "-in",
+                str(archive),
+                "-out",
+                str(out),
+                "-pass",
+                f"env:{passphrase_env}",
+            ],
+            env={**os.environ, passphrase_env: passphrase},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise BackupError(f"openssl encrypt failed: {(proc.stderr or proc.stdout).strip()}")
+    else:
+        binary = _require_binary("age")
+        recipient = (age_recipient or os.environ.get(DEFAULT_AGE_RECIPIENT_ENV) or "").strip()
+        if not recipient:
+            raise BackupError(
+                f"age encrypt requires --age-recipient or ${DEFAULT_AGE_RECIPIENT_ENV}"
+            )
+        proc = subprocess.run(
+            [binary, "-r", recipient, "-o", str(out), str(archive)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise BackupError(f"age encrypt failed: {(proc.stderr or proc.stdout).strip()}")
+    if remove_plaintext:
+        try:
+            archive.unlink()
+        except OSError:
+            pass
+    return out
+
+
+def decrypt_backup_archive(
+    archive: Path,
+    *,
+    passphrase_env: str = DEFAULT_PASSPHRASE_ENV,
+    age_identity: str | None = None,
+    dest: Path | None = None,
+) -> Path:
+    """Decrypt an encrypted archive to a plaintext ``.tar.gz`` path (#1176)."""
+    archive = Path(archive).expanduser()
+    method = detect_encrypt_method(archive)
+    if method is None:
+        raise BackupError(f"not an encrypted daari backup archive: {archive}")
+    if dest is None:
+        # Strip .enc / .age → .tar.gz beside the encrypted file (or temp).
+        plain_name = archive.name
+        if plain_name.endswith(".enc"):
+            plain_name = plain_name[: -len(".enc")]
+        elif plain_name.endswith(".age"):
+            plain_name = plain_name[: -len(".age")]
+        dest = archive.with_name(plain_name)
+    dest = Path(dest)
+    if method == "openssl":
+        binary = _require_binary("openssl")
+        passphrase = _passphrase_from_env(passphrase_env)
+        proc = subprocess.run(
+            [
+                binary,
+                "enc",
+                "-d",
+                "-aes-256-cbc",
+                "-pbkdf2",
+                "-in",
+                str(archive),
+                "-out",
+                str(dest),
+                "-pass",
+                f"env:{passphrase_env}",
+            ],
+            env={**os.environ, passphrase_env: passphrase},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise BackupError(f"openssl decrypt failed: {(proc.stderr or proc.stdout).strip()}")
+    else:
+        binary = _require_binary("age")
+        identity = (age_identity or os.environ.get(DEFAULT_AGE_IDENTITY_ENV) or "").strip()
+        if not identity:
+            raise BackupError(
+                f"age decrypt requires --age-identity or ${DEFAULT_AGE_IDENTITY_ENV}"
+            )
+        id_path = Path(identity).expanduser()
+        if not id_path.is_file():
+            raise BackupError(f"age identity file not found: {id_path}")
+        proc = subprocess.run(
+            [binary, "-d", "-i", str(id_path), "-o", str(dest), str(archive)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise BackupError(f"age decrypt failed: {(proc.stderr or proc.stdout).strip()}")
+    return dest
+
+
 def create_backup(settings: Any, archive: Path) -> BackupManifest:
     """Write ``archive`` (.tar.gz) with manifest + durable sqlite/JSONL/dir stores."""
     archive = Path(archive).expanduser()
@@ -344,6 +513,8 @@ def restore_backup(
     *,
     force: bool = False,
     allow_running_server: bool = False,
+    passphrase_env: str = DEFAULT_PASSPHRASE_ENV,
+    age_identity: str | None = None,
 ) -> BackupManifest:
     """Restore stores from ``archive`` onto paths from ``settings``."""
     archive = Path(archive).expanduser()
@@ -355,6 +526,22 @@ def restore_backup(
             "stop it before restore, or pass --i-know-server-is-stopped "
             "if you are certain no process holds the target stores"
         )
+    method = detect_encrypt_method(archive)
+    if method is not None:
+        with tempfile.TemporaryDirectory(prefix="daari-decrypt-") as tmp:
+            plain = Path(tmp) / "archive.tar.gz"
+            decrypt_backup_archive(
+                archive,
+                passphrase_env=passphrase_env,
+                age_identity=age_identity,
+                dest=plain,
+            )
+            return restore_backup(
+                settings,
+                plain,
+                force=force,
+                allow_running_server=True,  # already checked above
+            )
     manifest = _read_manifest(archive)
     if manifest.archive_schema_version > ARCHIVE_SCHEMA_VERSION:
         raise BackupError(
@@ -401,16 +588,32 @@ def restore_backup(
 
 
 def recent_backup_manifests(*, root: Path | None = None, max_age_days: int = 7) -> list[Path]:
-    """Find recent ``*.tar.gz`` archives under ~/.daari/backups (best-effort)."""
+    """Find recent ``*.tar.gz`` / encrypted archives under ~/.daari/backups."""
     base = (root or Path.home() / ".daari" / "backups").expanduser()
     if not base.is_dir():
         return []
     cutoff = datetime.now(UTC).timestamp() - max_age_days * 86400
     found: list[Path] = []
-    for path in base.rglob("*.tar.gz"):
+    for path in base.rglob("*"):
+        if not path.is_file():
+            continue
+        name = path.name
+        if not (
+            name.endswith(".tar.gz")
+            or name.endswith(".tar.gz.enc")
+            or name.endswith(".tar.gz.age")
+        ):
+            continue
         try:
             if path.stat().st_mtime >= cutoff:
                 found.append(path)
         except OSError:
             continue
     return sorted(found)
+
+
+def recent_backups_all_plaintext(paths: list[Path]) -> bool:
+    """True when every recent archive is unencrypted (#1176 doctor hint)."""
+    if not paths:
+        return False
+    return all(detect_encrypt_method(path) is None for path in paths)

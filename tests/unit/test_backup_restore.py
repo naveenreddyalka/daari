@@ -1,8 +1,9 @@
-"""Full-state backup/restore (#1131)."""
+"""Full-state backup/restore (#1131, #1176)."""
 
 from __future__ import annotations
 
 import json
+import shutil
 import tarfile
 from pathlib import Path
 
@@ -208,3 +209,83 @@ def test_docs_mention_pg_batches_files_and_interlock():
     assert "daari_files" in doc
     assert "i-know-server-is-stopped" in doc
     assert "request-log" in doc.lower() or "rotated" in doc.lower()
+    assert "--encrypt openssl" in doc
+    assert "DAARI_BACKUP_PASS" in doc
+
+
+@pytest.mark.skipif(shutil.which("openssl") is None, reason="openssl not on PATH")
+def test_openssl_encrypt_restore_round_trip(tmp_path, monkeypatch):
+    from daari.ops.backup import encrypt_backup_archive
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _settings(src)
+    _seed(settings)
+    archive = tmp_path / "secret.tar.gz"
+    create_backup(settings, archive)
+    monkeypatch.setenv("DAARI_BACKUP_PASS", "unit-test-passphrase-1176")
+    enc = encrypt_backup_archive(archive, "openssl")
+    assert enc.name.endswith(".tar.gz.enc")
+    assert enc.is_file()
+    assert not archive.exists()
+
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", dst / "requests.log")
+    restore_backup(_settings(dst), enc, allow_running_server=True)
+    keys = VirtualKeyStore(_settings(dst).server.virtual_keys.path, enabled=True)
+    assert any(k.name == "alpha" for k in keys.list())
+
+
+@pytest.mark.skipif(shutil.which("openssl") is None, reason="openssl not on PATH")
+def test_encrypted_restore_refuses_without_passphrase(tmp_path, monkeypatch):
+    from daari.ops.backup import encrypt_backup_archive
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _settings(src)
+    _seed(settings)
+    archive = tmp_path / "locked.tar.gz"
+    create_backup(settings, archive)
+    monkeypatch.setenv("DAARI_BACKUP_PASS", "unit-test-passphrase-1176")
+    enc = encrypt_backup_archive(archive, "openssl")
+    monkeypatch.delenv("DAARI_BACKUP_PASS", raising=False)
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    with pytest.raises(BackupError, match="passphrase"):
+        restore_backup(_settings(dst), enc, allow_running_server=True)
+
+
+def test_doctor_hints_plaintext_when_encrypt_available(tmp_path, monkeypatch):
+    plain = tmp_path / "daari.tar.gz"
+    plain.write_bytes(b"not-a-real-archive")
+    monkeypatch.setattr(
+        "daari.ops.backup.recent_backup_manifests",
+        lambda **kwargs: [plain],
+    )
+    result = _check_recent_backup(_settings(tmp_path))
+    assert result.ok is True
+    assert "--encrypt openssl" in result.detail
+
+
+def test_cli_backup_create_encrypt_openssl(tmp_path, monkeypatch):
+    import shutil
+
+    if shutil.which("openssl") is None:
+        pytest.skip("openssl not on PATH")
+    settings = _settings(tmp_path)
+    _seed(settings)
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    monkeypatch.setenv("DAARI_BACKUP_PASS", "cli-pass-1176")
+    archive = tmp_path / "cli.tar.gz"
+    result = CliRunner().invoke(
+        cli_app,
+        ["backup", "create", str(archive), "--encrypt", "openssl"],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "cli.tar.gz.enc").is_file()
+    assert not archive.exists()

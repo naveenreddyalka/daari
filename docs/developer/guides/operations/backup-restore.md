@@ -11,6 +11,26 @@ mkdir -p ~/.daari/backups
 daari backup create ~/.daari/backups/daari-$(date -u +%Y%m%d).tar.gz
 ```
 
+### Optional encryption (#1176)
+
+Default archives are plaintext `.tar.gz` (backward compatible). Opt in with
+`--encrypt openssl` or `--encrypt age` (subprocess to the host binary; no new
+Python crypto dependency):
+
+```bash
+# openssl AES-256-CBC (passphrase in env; plaintext .tar.gz is removed after encrypt)
+export DAARI_BACKUP_PASS='use-a-long-secret'
+daari backup create ~/.daari/backups/daari.tar.gz --encrypt openssl
+# writes ~/.daari/backups/daari.tar.gz.enc
+
+# age recipient (identity file used on restore)
+export DAARI_BACKUP_AGE_RECIPIENT='age1…'
+daari backup create ~/.daari/backups/daari.tar.gz --encrypt age --age-recipient "$DAARI_BACKUP_AGE_RECIPIENT"
+# writes ~/.daari/backups/daari.tar.gz.age
+```
+
+Use `--passphrase-env OTHER_VAR` if the passphrase lives under a different name.
+
 The archive contains:
 
 - `manifest.json` — daari version, archive schema version, per-store backends
@@ -29,6 +49,19 @@ tarball).
 daari backup restore ~/.daari/backups/daari-YYYYMMDD.tar.gz
 daari backup restore ~/.daari/backups/daari-YYYYMMDD.tar.gz --force
 ```
+
+Encrypted archives decrypt in a temp directory before restore:
+
+```bash
+export DAARI_BACKUP_PASS='use-a-long-secret'
+daari backup restore ~/.daari/backups/daari.tar.gz.enc --force
+
+export DAARI_BACKUP_AGE_IDENTITY=~/.age/daari-backup.txt
+daari backup restore ~/.daari/backups/daari.tar.gz.age --force --age-identity "$DAARI_BACKUP_AGE_IDENTITY"
+```
+
+If the archive is encrypted and no passphrase/identity is supplied, restore
+exits with a clear error (it never silently skips decryption).
 
 If you are certain no process holds the target stores but `/health` still
 answers (stale proxy, wrong port), pass both overwrite and the interlock override:
@@ -71,5 +104,7 @@ dump you took alongside the archive.
 
 ## Doctor
 
-`daari doctor` emits an optional hint when no `*.tar.gz` newer than 7 days is
-found under `~/.daari/backups/`.
+`daari doctor` emits an optional hint when no `*.tar.gz` (or encrypted
+`.tar.gz.enc` / `.tar.gz.age`) newer than 7 days is found under
+`~/.daari/backups/`. When recent backups exist but are all plaintext, doctor
+suggests `--encrypt openssl`.

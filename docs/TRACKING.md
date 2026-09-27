@@ -4981,6 +4981,14 @@ table; Anthropic egress applies the strip; streamed L6 attaches dropped-param
 warnings to daari_meta / stream headers. Covered by
 `tests/unit/test_frontier_param_compat.py`.
 
+### Optional encrypted backup archives ([#1176](https://github.com/naveenreddyalka/daari/issues/1176))
+
+<!-- tracking:#1176 -->
+**Status:** Done (2026-09-27). `backup create --encrypt openssl|age` wraps the
+tarball via host CLI; restore decrypts with passphrase/identity env or flags;
+doctor hints when recent backups are all plaintext. Covered by
+`tests/unit/test_backup_restore.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
