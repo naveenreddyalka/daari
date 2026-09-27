@@ -2635,15 +2635,32 @@ class Router:
                             user_id=request.meta.user,
                         )
                     add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+                    flight_meta = DaariMeta(
+                        tier="L6",
+                        cache_hit=False,
+                        executor="frontier",
+                        provider_id="frontier",
+                    )
+                    # Attach frontier param-compat drops/warnings for stream
+                    # parity with non-stream execute (#1173).
+                    apply_meta = getattr(
+                        self.frontier, "_apply_param_compat_meta", None
+                    )
+                    if callable(apply_meta):
+                        apply_meta(flight_meta)
+                    else:
+                        compat = getattr(self.frontier, "last_param_compat", None)
+                        if compat is not None and getattr(compat, "dropped_params", None):
+                            flight_meta.dropped_params = list(compat.dropped_params)
+                            if getattr(compat, "warnings", None):
+                                notes = "; ".join(compat.warnings)
+                                flight_meta.warning = notes
+                    if flight_meta.dropped_params:
+                        outcome.dropped_params = list(flight_meta.dropped_params)
                     stream_flight_result = InternalResponse(
                         content=relayed_text,
                         model=served.model,
-                        daari_meta=DaariMeta(
-                            tier="L6",
-                            cache_hit=False,
-                            executor="frontier",
-                            provider_id="frontier",
-                        ),
+                        daari_meta=flight_meta,
                     )
                     finish_trace("L6")
                     return

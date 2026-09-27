@@ -24,6 +24,7 @@ from daari.router.anthropic_messages import (
     to_anthropic_payload,
 )
 from daari.router.param_compat import (
+    FrontierParamCompat,
     FrontierParamCompatResult,
     apply_frontier_param_compat,
 )
@@ -73,6 +74,8 @@ class FrontierExecutor:
     retry: RetryPolicy | None = None
     metrics: Any = None
     pool_limits: Any = None
+    # Effective table (builtin ∪ frontier.param_compat); None → builtin only.
+    param_compat_table: dict[str, FrontierParamCompat] | None = None
     _http: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
     last_param_compat: FrontierParamCompatResult | None = field(
         default=None, init=False, repr=False
@@ -136,11 +139,18 @@ class FrontierExecutor:
             self.provider == "openrouter" or is_openrouter_base(self.base_url)
         ):
             payload["provider"] = as_openrouter_payload(request.provider)
-        # Model-aware sanitation for frontier ids that reject sampler knobs (#1129).
+        self._run_param_compat(payload, has_tools=bool(request.tools))
+        return payload
+
+    def _run_param_compat(
+        self, payload: dict[str, Any], *, has_tools: bool
+    ) -> FrontierParamCompatResult:
+        """Strip/coerce unsupported knobs; stash result for daari_meta (#1129/#1173)."""
         compat = apply_frontier_param_compat(
             payload,
             self.default_model,
-            has_tools=bool(request.tools),
+            has_tools=has_tools,
+            table=self.param_compat_table,
         )
         self.last_param_compat = compat
         if compat.tools_transport_warned:
@@ -154,7 +164,7 @@ class FrontierExecutor:
                     "path": "/chat/completions",
                 },
             )
-        return payload
+        return compat
 
     def _apply_param_compat_meta(self, meta: DaariMeta) -> None:
         """Attach dropped/coerced frontier param notes to daari_meta (#1129)."""
@@ -203,6 +213,7 @@ class FrontierExecutor:
                 stream=True,
                 prompt_cache=self.prompt_cache,
             )
+            self._run_param_compat(payload, has_tools=bool(request.tools))
             from daari.observability.otel import inject_trace_headers
 
             headers = inject_trace_headers(
@@ -292,6 +303,7 @@ class FrontierExecutor:
                 stream=False,
                 prompt_cache=self.prompt_cache,
             )
+            self._run_param_compat(payload, has_tools=bool(request.tools))
             from daari.observability.otel import inject_trace_headers
 
             headers = inject_trace_headers(

@@ -4973,6 +4973,14 @@ transcriptions/rerank binders pass request `user` into spend `user_id`;
 `ResponsesRequest`/`CompactRequest` accept `user` on RequestMeta. Covered by
 `tests/unit/test_spend_user_attribution.py`.
 
+### Config-driven frontier param compat + stream warnings ([#1173](https://github.com/naveenreddyalka/daari/issues/1173))
+
+<!-- tracking:#1173 -->
+**Status:** Done (2026-09-27). `frontier.param_compat` merges over the builtin
+table; Anthropic egress applies the strip; streamed L6 attaches dropped-param
+warnings to daari_meta / stream headers. Covered by
+`tests/unit/test_frontier_param_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
