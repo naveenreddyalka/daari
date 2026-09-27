@@ -4886,6 +4886,14 @@ synthesized 0-based replay. Covered by
 wins; invalid/negative ignored). Covered by
 `tests/unit/test_responses_stream_resume.py`.
 
+### Responses compact endpoint ([#1153](https://github.com/naveenreddyalka/daari/issues/1153))
+
+<!-- tracking:#1153 -->
+**Status:** Done (2026-09-27). `POST /v1/responses/compact` summarizes via
+the router from `previous_response_id` / `input`, stores a shorter
+conversation, and documents the route. Covered by
+`tests/unit/test_responses_compact.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
