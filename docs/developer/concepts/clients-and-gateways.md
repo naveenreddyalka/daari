@@ -99,10 +99,13 @@ Create-time `POST /v1/responses` streams also stamp contiguous
 `sequence_number` (from 0) on every non-keepalive event so clients can
 reconnect with `starting_after`.
 `GET /v1/responses/{id}?stream=true` replays stored terminal output as
-Responses SSE with its own 0-based `sequence_number`s synthesized from the
-stored output (not a byte-identical replay of the original create stream);
-`starting_after` skips events with sequence ≤ that value (past-the-end resume
-is an empty stream). In-flight background rows (`queued` / non-terminal)
+Responses SSE with its own 0-based `sequence_number`s (and matching SSE `id:`
+lines) synthesized from the stored output (not a byte-identical replay of the
+original create stream); `starting_after` skips events with sequence ≤ that
+value (past-the-end resume is an empty stream). When `starting_after` is
+omitted, a non-negative integer `Last-Event-ID` header is treated the same
+way (invalid/negative values are ignored → resume from 0); an explicit query
+param wins over the header. In-flight background rows (`queued` / non-terminal)
 return **409** — resume is completed-only. Plain GET (no `stream`) remains JSON.
 `POST /v1/responses/{id}/cancel` is idempotent: an in-flight background job
 stops writing tokens and the stored status becomes `cancelled`; an already

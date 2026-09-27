@@ -4878,6 +4878,14 @@ contiguous `sequence_number` (keepalives excluded); resume remains a
 synthesized 0-based replay. Covered by
 `tests/unit/test_responses_stream_resume.py`.
 
+### Responses Last-Event-ID stream resume ([#1152](https://github.com/naveenreddyalka/daari/issues/1152))
+
+<!-- tracking:#1152 -->
+**Status:** Done (2026-09-27). Resume SSE frames emit `id: <seq>`;
+`Last-Event-ID` acts as `starting_after` when the query is omitted (query
+wins; invalid/negative ignored). Covered by
+`tests/unit/test_responses_stream_resume.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
