@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -625,12 +625,34 @@ class ResponsesGatewayAdapter(GatewayAdapter):
     def router(self) -> APIRouter:
         router = APIRouter()
 
-        @router.get("/v1/responses/{response_id}")
+        @router.get(
+            "/v1/responses/{response_id}",
+            responses={
+                409: {
+                    "description": (
+                        "stream=true requested for a non-terminal (in-flight) "
+                        "response; resume is completed-only"
+                    )
+                }
+            },
+        )
         async def get_response(
             response_id: str,
             request: Request,
-            stream: bool = False,
-            starting_after: int | None = None,
+            stream: bool = Query(
+                False,
+                description=(
+                    "When true, replay stored terminal output as Responses SSE "
+                    "with sequence_number / id for reconnect"
+                ),
+            ),
+            starting_after: int | None = Query(
+                None,
+                description=(
+                    "Skip SSE events with sequence_number ≤ this value "
+                    "(past-the-end resume is an empty stream)"
+                ),
+            ),
         ) -> Any:
             ctx: AppContext = request.app.state.ctx
             _store, stored = _visible_stored_response(ctx, response_id, request)
