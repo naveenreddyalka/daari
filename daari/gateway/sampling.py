@@ -273,6 +273,10 @@ class SamplingParams(BaseModel):
     # Ollama hops; declared via dropped_params on cache / non-Ollama tiers.
     tool_search: Any | None = None
     response_compaction: Any | None = None
+    # OpenAI prompt-caching (#1137). Forwarded on openai-kind L6; dropped locally.
+    prompt_cache_key: str | None = None
+    prompt_cache_retention: str | None = None
+    prompt_cache_options: dict[str, Any] | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -350,6 +354,9 @@ class SamplingParams(BaseModel):
             audio=_normalize_dict(body.get("audio")),
             verbosity=_normalize_str(body.get("verbosity")),
             web_search_options=_normalize_dict(body.get("web_search_options")),
+            prompt_cache_key=_normalize_str(body.get("prompt_cache_key")),
+            prompt_cache_retention=_normalize_str(body.get("prompt_cache_retention")),
+            prompt_cache_options=_normalize_dict(body.get("prompt_cache_options")),
         )
 
     @classmethod
@@ -599,6 +606,12 @@ class SamplingParams(BaseModel):
             payload["audio"] = dict(self.audio)
         if self.web_search_options:
             payload["web_search_options"] = dict(self.web_search_options)
+        if self.prompt_cache_key is not None:
+            payload["prompt_cache_key"] = self.prompt_cache_key
+        if self.prompt_cache_retention is not None:
+            payload["prompt_cache_retention"] = self.prompt_cache_retention
+        if self.prompt_cache_options:
+            payload["prompt_cache_options"] = dict(self.prompt_cache_options)
         if self.json_schema:
             wrapper: dict[str, Any] = {
                 "name": self.json_schema_name or "daari",
@@ -656,6 +669,12 @@ class SamplingParams(BaseModel):
             notes.append("verbosity is not available from local models")
         if self.web_search_options:
             notes.append("web_search_options are not available from local models")
+        if self.prompt_cache_key is not None:
+            notes.append("prompt_cache_key is not available from local models")
+        if self.prompt_cache_retention is not None:
+            notes.append("prompt_cache_retention is not available from local models")
+        if self.prompt_cache_options:
+            notes.append("prompt_cache_options are not available from local models")
         return notes
 
     def unsupported_non_ollama(self) -> list[str]:
@@ -698,6 +717,12 @@ class SamplingParams(BaseModel):
             names.append("verbosity")
         if self.web_search_options:
             names.append("web_search_options")
+        if self.prompt_cache_key is not None:
+            names.append("prompt_cache_key")
+        if self.prompt_cache_retention is not None:
+            names.append("prompt_cache_retention")
+        if self.prompt_cache_options:
+            names.append("prompt_cache_options")
         return names
 
     def honored_fields(self) -> dict[str, Any]:

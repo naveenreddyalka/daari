@@ -4845,6 +4845,15 @@ and `cache_prune` fold BatchStore / PostgresBatchStore and L0/L1 `prune()` into
 `docs/developer/guides/observability/traces-stats.md`. Covered by
 `tests/unit/test_retention.py`.
 
+### Responses prompt_cache_key / retention on L6 ([#1137](https://github.com/naveenreddyalka/daari/issues/1137))
+
+<!-- tracking:#1137 -->
+**Status:** Done (2026-09-27). `ResponsesRequest` declares `prompt_cache_key`,
+`prompt_cache_retention`, and `prompt_cache_options`; they reach L6 via
+`SamplingParams.openai_payload()` and are named in `dropped_params` on local
+tiers. Docs note in `clients-and-gateways.md`. Covered by
+`tests/unit/test_responses_prompt_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -126,6 +126,11 @@ class ResponsesRequest(BaseModel):
     parallel_tool_calls: bool | None = None
     truncation: str | None = None
     service_tier: str | None = None
+    # OpenAI prompt-caching routing / retention (#1137). Forwarded on L6;
+    # declared via dropped_params on local tiers.
+    prompt_cache_key: str | None = None
+    prompt_cache_retention: str | None = None
+    prompt_cache_options: dict[str, Any] | None = None
 
 
 def _content_to_text(content: Any) -> str:
