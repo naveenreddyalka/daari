@@ -4862,6 +4862,14 @@ tiers. Docs note in `clients-and-gateways.md`. Covered by
 `daari enterprise policy-status` prints them and exits 1 when configured but
 never applied. Covered by `tests/unit/test_policy_status.py`.
 
+### Responses stream resume via starting_after ([#1139](https://github.com/naveenreddyalka/daari/issues/1139))
+
+<!-- tracking:#1139 -->
+**Status:** Done (2026-09-27). `GET /v1/responses/{id}?stream=true` replays
+terminal stored output as Responses SSE with `sequence_number`;
+`starting_after` skips earlier events; non-terminal background returns 409;
+plain GET stays JSON. Covered by `tests/unit/test_responses_stream_resume.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
