@@ -11,33 +11,36 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-26 late)
+## Where daari stands (verified in-tree, 2026-09-27)
 
-**Loop velocity.** Morning refresh already filed five issues (astra param compat,
-subject erasure, backup/restore, spend `user_id`, Responses reasoning replay)
-and merged the companion PRD PR. This late run promotes the next Responses /
-retention / fleet-honesty watch rows so the backlog stays stocked while those
-ship.
+**Loop velocity.** The entire 2026-09-26 scored table drained in under 24h:
+astra param compat, subject erasure, full-state backup/restore, spend
+`user_id` + team chargeback, reasoning-item replay, hosted-tool 400s,
+batches+cache in `prune_all`, Responses prompt-cache fields, policy-sync
+drift hash + `policy-status` (+ doctor tip), streaming resume
+(`starting_after` + `Last-Event-ID` + `sequence_number`), and
+`/v1/responses/compact` — plus the Anthropic mid-conversation fix (hoist now
+happens only in the local Ollama executor, so Anthropic/frontier egress keeps
+system-turn layout).
 
-**Outward movers (re-checked).** LiteLLM stable still **v1.102.1**; **v1.104.0-dev.2**
-keeps the native-Rust / OCR / streaming-guardrail trajectory (no new stable).
-Portkey enterprise changelog tops at **v2.20.0** (prior scan's v2.25.0 pin was
-stale — corrected here). Kong AI Gateway **2.0 GA** (2026-09-01) unchanged at
-scan depth. vLLM **0.30.0**, Ollama **0.34.4** stable / **0.40.0-rc0** (Apple
-Silicon MLX-by-default) watch. OpenAI surface still drives the agent gap:
-`/v1/responses/compact`, `GET …?stream=true&starting_after=`, `prompt_cache_key`
-/ retention, hosted tools (`web_search`, `mcp`).
+**Outward (re-checked, flat).** LiteLLM stable bar **v1.102.1**
+(v1.104.0-dev.2 = prices/fixes; notable dev signal: `gen_ai.conversation.id`
+on OTel v2 spans). Portkey enterprise gateway tops at **v2.25.0**
+(2026-09-24 — correcting the prior refresh's v2.20.0 note, which read a stale
+page). Kong AI Gateway **2.1.0** (09-22). vLLM **0.30.0**, Ollama **0.34.4**
+stable / **0.40.0-rc0** (MLX-on-Apple-Silicon) watch. OpenRouter changelog
+last 08-19; MCP blog last 08-22.
 
-**Inward theme: Responses honesty + retention completeness + fleet visibility.**
-Verified: `GET /v1/responses/{id}` ignores `stream`/`starting_after`
-(`responses.py` ~L337–341); `responses_tools_to_openai` passes non-function
-tool types through (~L139–156) so hosted tools are accepted silently;
-`ResponsesRequest` has no `prompt_cache_key`/`prompt_cache_retention` fields
-(~L46–68); `prune_all` covers traces/ledger/spend/shadow/tasks/files/responses/
-idempotency/request_log/audit but **not** batches or L0/L1 cache
-(`retention.py` ~L66–236; `RetentionSettings` has no batches/cache days);
-policy sync applies overrides with no last-applied hash or doctor/`policy-status`
-probe (`enterprise/policy_sync.py`, CLI `enterprise policy-sync` only).
+**Inward theme: fleet-backend completeness + governance consistency of the
+new primitives.** A code audit of the 24h wave found the features are
+single-node/SQLite-complete but leak on the backends daari itself recommends
+for fleets, and the new surfaces don't all govern like chat. Verified with
+file:line evidence: compact routes with an **empty `RequestMeta`** (no tenant
+fences, no attribution); `model_max_budget` enforced on chat only; erasure
+misses Redis L0/L1, Postgres batches, `user_id` spend rows, and traces;
+backup's catalog misreports Postgres-backed batches/files and skips rotated
+request logs; param-compat is astra-hardcoded, skips Anthropic egress, and
+drops its honesty warnings on streams.
 
 ---
 
@@ -45,40 +48,42 @@ probe (`enterprise/policy_sync.py`, CLI `enterprise policy-sync` only).
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **Hosted Responses tools honesty** — `web_search` / `mcp` / non-function types accepted and forwarded; no 400 | 4 | 2 | LiteLLM passthrough / OpenAI direct | Match existing `include` 400 honesty; fail closed locally | Filed — P2 |
-| 2 | **Batches + cache absent from `prune_all`** — no `batches_days` / cache prune window; BatchStore has no prune API | 3 | 1 | — | One retention dial for every on-box store | Filed — P2 |
-| 3 | **Responses `prompt_cache_key` / retention** — fields ignored (`extra=allow` keeps them off the declared model) | 4 | 2 | OpenAI direct | Forward on L6; surface `dropped_params` on local tiers | Filed — P2 |
-| 4 | **Policy-sync drift detection** — no last-applied hash, no `policy-status` / doctor probe | 3 | 2 | Kong CP/DP version gating | Fleet operators see drift without scraping logs | Filed — P2 |
-| 5 | **Responses streaming resume** — `GET ?stream=true&starting_after=` unsupported | 3 | 3 | OpenAI direct | Store already holds output; reconnect agents without re-run | Filed — P3 |
-| 6 | Frontier param compat for gpt-6-astra (temperature/tools transport) | 5 | 2 | LiteLLM supported_params | Model-aware strip + `daari_meta` | Open (morning) |
-| 7 | Subject erasure / full-state backup / spend `user_id` / reasoning replay | 4–5 | 2–3 | (mixed) | Local-first compliance + chargeback + agent fidelity | Open (morning) |
-| 8 | `/v1/responses/compact` (local model compaction) | 3 | 3 | OpenAI direct | Compact with a **local** model — $0 context maintenance | Watch |
-| 9 | Anthropic mid-conversation system fidelity — `hoist_system_messages` (~L310) vs Fable 5.1 cache-preserving system turns | 3 | 3 | Anthropic direct | Skip hoist for anthropic egress | Watch — beta still hardening |
-| 10 | Org above teams; per-member caps on shared team keys | 3 | 4 | LiteLLM org→team→member | Flat teams fine until multi-BU | Watch |
-| 11 | Native `/v1/ocr` (LiteLLM 1.102 OCR layer) | 3 | 4 | LiteLLM | Local OCR tier before frontier | Watch — demand |
-| 12 | WS agent controls, Agents API, WIF, A2A, MCP live sessions, SOC 2, admin UI | 2–4 | 3–5 | OpenAI / Portkey / LiteLLM | Demand-triggered | Watch |
+| 1 | **Compact/Responses governance parity** — compact has empty meta (frontier-escape for capped keys); `model_max_budget` chat-only; rate families mis-bucket subpaths | 5 | 2 | LiteLLM (meters Responses like chat) | Same per-key fences on every surface, incl. $0 local compaction | Filed — P1 ([#1169](https://github.com/naveenreddyalka/daari/issues/1169)) |
+| 2 | **Erasure fleet completeness** — Redis L0/L1, PG batches, `user_id` spend rows, traces all survive erase | 5 | 2 | — (nobody does local-first erasure) | Provable erasure across every store daari recommends | Filed — P1 ([#1170](https://github.com/naveenreddyalka/daari/issues/1170)) |
+| 3 | **Backup catalog honesty** — PG batches/files misreported as local; rotated logs skipped; no hot-restore interlock | 4 | 2 | Postgres-native tooling | Honest manifest is the point of self-hosted DR | Filed — P2 ([#1171](https://github.com/naveenreddyalka/daari/issues/1171)) |
+| 4 | **Spend `user_id` beyond chat** — all modality binders + `ResponsesRequest.user` missing | 4 | 2 | LiteLLM end-user tracking | One chargeback dimension across every metered dollar | Filed — P2 ([#1172](https://github.com/naveenreddyalka/daari/issues/1172)) |
+| 5 | **Param-compat depth** — config-driven table, Anthropic egress, streamed dropped-param warnings | 3 | 2 | LiteLLM supported_params | Operator hotfix without a release train; honesty on streams | Filed — P2 ([#1173](https://github.com/naveenreddyalka/daari/issues/1173)) |
+| 6 | Backup embeds Postgres data (run `pg_dump` when client tools present) + archive encryption | 4 | 3 | pgBackRest et al. | One-command DR incl. fleet DBs | Watch — runbook covers today |
+| 7 | Org construct above teams; per-member caps on shared team keys | 3 | 4 | LiteLLM org→team→member | Flat teams fine until multi-BU | Watch — demand |
+| 8 | Anthropic beta fidelity (per-message `output_config.effort`, inline `tool_addition`) | 3 | 3 | Anthropic direct | Hoist fix landed; betas still hardening | Watch |
+| 9 | Native `/v1/ocr` (LiteLLM 1.102 OCR layer) | 3 | 4 | LiteLLM | Local OCR tier before frontier | Watch — demand |
+| 10 | WS agent controls, Agents API, WIF, A2A, MCP live sessions, `/v1/decisions` typed judgments, SOC 2, admin UI | 2–4 | 3–5 | OpenAI / Portkey / LiteLLM | Demand-triggered | Watch |
 
-Pruned this run: none newly shipped since morning refresh. Morning-filed rows
-kept as "Open (morning)" so the table stays the single gap source of truth.
-Verified-fine, do not re-file: Responses background + cancel + `store=false` +
-`previous_response_id` + `/v1/responses/input_tokens`; end-user usage caps;
-keys export/import; request-log retention in `prune_all`.
+Pruned this run (shipped since 2026-09-26 late): hosted-tool 400s, batches +
+cache in `prune_all`, prompt-cache fields, policy drift/`policy-status`,
+streaming resume, `/v1/responses/compact`, Anthropic hoist scope, astra param
+compat, erasure/backup/spend-`user_id` v1 slices, reasoning replay.
+Verified-fine this audit, do not re-file: resume is tenancy-scoped +
+Postgres-aware + terminal-only (409); header policy is pre-auth with
+health/ready/metrics bypass; team `model_max_budget` merges team→key and
+402s at request time on chat; shared `/v1/*` middleware (auth, budgets, rate
+limits, admission) covers responses + compact; VK backup rows carry hashes,
+not plaintext; erasure keeps audit (hash chain) and logs `compliance.erase`.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Ship model-aware frontier compatibility** — never send a payload the
-   provider documents as unsupported (astra), with dropped-params honesty.
-2. **Comply-and-operate primitives** — subject erasure and full-state
-   backup/restore turn local-first into auditable wins.
-3. **Close the chargeback loop** — `user_id` on spend joins the end-user
-   usage ledger to teams.
-4. **Responses as the agent surface** — reasoning replay (open); then hosted
-   tool honesty, prompt-cache fields, streaming resume, and compact
-   (this run + watch).
-5. **Fleet policy honesty** — drift hash + `policy-status` so org sync is
-   observable; Anthropic mid-conversation fidelity once betas harden.
+1. **Every surface governs like chat** — compact/Responses meta, model
+   budgets, and rate families converge on one enforcement path.
+2. **Fleet-true compliance** — erasure and backup that are honest about
+   Redis/Postgres, not just single-node SQLite.
+3. **Chargeback closes end-to-end** — `user_id` on every metered modality so
+   team×member spend is complete.
+4. **Provider-drift resilience** — config-driven param compat with honesty
+   warnings on streams; Anthropic egress included.
+5. **Then depth on demand** — Postgres-embedding backup, org hierarchy,
+   Anthropic betas, OCR, decisions API as buyers surface.
 
 Compliance non-goals (WIF, A2A, SOC 2 program, admin UI, Realtime/WS) stay
 deferred until buyer demand.
@@ -87,19 +92,17 @@ deferred until buyer demand.
 
 ## Changelog
 
-- **2026-09-26 late (Responses honesty + retention + fleet visibility)** —
-  Re-checked outward: LiteLLM bar v1.102.1 (+ v1.104.0-dev.2), Portkey
-  enterprise **v2.20.0** (corrected), Kong 2.0 GA, vLLM 0.30.0, Ollama
-  0.34.4 / 0.40.0-rc0. Promoted five watch rows into filings: hosted-tool
-  400s, batches+cache in `prune_all`, Responses prompt-cache fields,
-  policy-sync drift/`policy-status`, streaming resume (`starting_after`).
-  Compact, Anthropic hoist, OCR, org hierarchy remain watch.
+- **2026-09-27 (fleet-backend completeness + governance consistency)** —
+  Whole 09-26 table drained overnight (11 feature PRs + docs). Outward flat;
+  Portkey pin corrected back to v2.25.0. Audited the new primitives at
+  fleet grade: filed compact/Responses governance parity (P1), erasure
+  fleet completeness (P1), backup catalog honesty, spend `user_id` across
+  modalities, param-compat depth (P2s). Baseline suite 2827 passed.
 
-- **2026-09-26 (agent-surface fidelity + operate-and-comply)** — Provider-side
-  movers (astra param rejections, tools-require-Responses, compact, WS
-  steering). Filed five: astra frontier param compat (P1), subject erasure,
-  backup/restore + DR runbook, spend user_id + team rollup, Responses
-  reasoning replay.
+- **2026-09-26 (two runs: agent-surface fidelity; Responses honesty +
+  retention + fleet visibility)** — Filed ten across astra compat, erasure,
+  backup, chargeback, reasoning replay, hosted-tool 400s, prune_all,
+  prompt-cache fields, drift hash, streaming resume. All merged by 09-27.
 
 - **2026-09-25 (three runs)** — Fifteen issues across images / identity /
   FinOps; all merged by 2026-09-26 14:08.
