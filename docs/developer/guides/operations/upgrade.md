@@ -247,7 +247,8 @@ developer laptops that pull policy from it.
    payload (plus `applied_at` and a redacted source host) under
    `~/.daari/policy-sync-state.json`. Run `daari enterprise policy-status` on
    each replica to confirm the hash matches what you expect; exit code 1 means
-   `policy_sync_url` is set but nothing has applied yet.
+   `policy_sync_url` is set but nothing has applied yet. `daari doctor` surfaces
+   the same never-applied case on the optional `policy_status` check.
 2. **Shared Redis/Postgres tolerate mixed versions.** L0/L1 entries are
    version-agnostic (see the table); Postgres tables are create-if-missing.
    Run mixed replicas during a rolling update without draining the cache.

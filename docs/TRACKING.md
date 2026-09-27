@@ -4917,6 +4917,13 @@ non-terminal status. Covered by
 `starting_after` descriptions and 409 on GET responses; doctor dry-check
 pins them. Covered by `tests/unit/test_doctor_responses_stream_resume.py`.
 
+### Doctor tip for enterprise policy-status ([#1163](https://github.com/naveenreddyalka/daari/issues/1163))
+
+<!-- tracking:#1163 -->
+**Status:** Done (2026-09-27). Optional `policy_status` doctor check warns
+when `policy_sync_url` is set but never applied; docs mention it. Covered by
+`tests/unit/test_doctor_policy_status.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
