@@ -26,6 +26,21 @@ Entry point: `daari` (Typer).
 | `erase` | Subject erasure (`--key` / `--team` / `--user`, `--dry-run` / `--yes`) |
 | `backup` | Full-state archive (`create` / `restore`) |
 
+## `backup`
+
+| Command | Purpose |
+|---------|---------|
+| `backup create PATH` | Snapshot durable stores to a `.tar.gz` |
+| `backup create PATH --encrypt openssl\|age` | Encrypt after create (host `openssl` / `age`; no new Python crypto dep) |
+| `backup create PATH --require-pg-dump` | Fail if Postgres-backed stores cannot be embedded via `pg_dump` |
+| `backup restore PATH` | Restore archive (decrypts `.enc` / `.age` when credentials are set) |
+| `backup restore PATH --restore-pg` | Also apply embedded `stores/pg/*.sql` dumps via `psql` |
+
+Encryption env / flags: `DAARI_BACKUP_PASS` (or `--passphrase-env`),
+`DAARI_BACKUP_AGE_RECIPIENT` / `--age-recipient` on create,
+`DAARI_BACKUP_AGE_IDENTITY` / `--age-identity` on restore. Full examples:
+[backup and restore](../guides/operations/backup-restore.md).
+
 ## `setup`
 
 | Command | Purpose |
