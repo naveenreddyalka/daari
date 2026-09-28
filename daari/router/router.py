@@ -5620,7 +5620,7 @@ class AppContext:
             providers.register(live_provider)
         from daari.enterprise.postgres_audit import audit_log_from_settings
         from daari.gateway.mcp_guardrails import McpGuardrails
-        from daari.gateway.mcp_policy import McpToolPolicy
+        from daari.gateway.mcp_policy import McpServerPolicy, McpToolPolicy
         from daari.providers.mcp_egress import build_mcp_providers
 
         egress_guardrails = McpGuardrails.from_settings(
@@ -5632,6 +5632,9 @@ class AppContext:
             tool_search=settings.integrations.mcp_tool_search,
             embedder=embedder,
             tool_policy=McpToolPolicy.from_mapping(settings.integrations.mcp_policy),
+            server_policy=McpServerPolicy.from_mapping(
+                getattr(settings.integrations.mcp_policy, "servers", None)
+            ),
         )
         mcp_triggers: dict[str, list[str]] = {}
         for mcp_provider in mcp_providers:

@@ -107,6 +107,37 @@ Per-key policy is set at creation and stored in the key's metadata:
 daari keys create ci-bot --team eng --mcp-allow route --mcp-allow 'mcp_*' --mcp-deny mcp_prod
 ```
 
+### Server allowlists
+
+Tool-name globs cannot express *which egress MCP server* a key may reach —
+`get_forecast` on `weather` and `get_forecast` on `shell` collide. Nested
+`servers.allow` / `servers.deny` lists grant server ids (same merge rules:
+deny wins, empty allow = all, key over team over global):
+
+```yaml
+integrations:
+  mcp_policy:
+    servers:
+      deny: ["shell"]
+  mcp_team_policies:
+    finance:
+      servers:
+        allow: ["weather", "github"]
+```
+
+```bash
+daari keys create finance-bot --team finance \
+  --mcp-server-allow weather \
+  --mcp-server-deny github
+daari keys show <key_id>   # prints mcp servers: allow=… deny=…
+daari doctor               # mcp_server_policy row summarises global/team grants
+```
+
+A denied server never leaves the machine: `tools/list` hides that server's
+`mcp_<id>` catalog entry, a `tools/call` targeting it returns the same policy
+denial as a denied tool (`-32003` / `MCP_ERR_TOOL_DENIED`, with `data.server`
+set), and the egress client refuses to POST. Audit rows include the server id.
+
 What the caller sees:
 
 - `tools/list` (JSON-RPC and `/v1/mcp/query`) only returns allowed tools.

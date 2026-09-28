@@ -244,6 +244,39 @@ class TestCLI:
         plain_key = next(k for k in store.list() if k.name == "plain")
         assert "mcp" not in plain_key.metadata
 
+    def test_create_with_mcp_server_policy(self, tmp_path, monkeypatch):
+        from daari.config.settings import Settings
+
+        settings = Settings()
+        settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+        monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+        runner = CliRunner()
+        created = runner.invoke(
+            cli_app,
+            [
+                "keys",
+                "create",
+                "bot",
+                "--mcp-server-allow",
+                "weather",
+                "--mcp-server-deny",
+                "shell",
+            ],
+        )
+        assert created.exit_code == 0, created.output
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        store = VirtualKeyStore(settings.virtual_keys_path)
+        key = store.list()[0]
+        assert key.metadata["mcp"] == {
+            "servers": {"allow": ["weather"], "deny": ["shell"]},
+        }
+        shown = runner.invoke(cli_app, ["keys", "show", key.key_id])
+        assert shown.exit_code == 0, shown.output
+        assert "mcp servers:" in shown.output
+        assert "weather" in shown.output
+        assert "shell" in shown.output
+
     def test_report_by_team_rolls_up_clients(self, tmp_path):
         from daari.auth.virtual_keys import VirtualKeyStore
 

@@ -1,11 +1,17 @@
-"""MCP tool policy resolution (issue #277)."""
+"""MCP tool policy resolution (issue #277) and server allowlists (#1201)."""
 
 from __future__ import annotations
 
 from daari.auth.virtual_keys import VirtualKey
 from daari.config.settings import Settings
 from daari.enterprise.audit import AuditLog
-from daari.gateway.mcp_policy import McpToolPolicy, audit_tool_call, resolve_policy
+from daari.gateway.mcp_policy import (
+    McpServerPolicy,
+    McpToolPolicy,
+    audit_tool_call,
+    resolve_policy,
+    resolve_server_policy,
+)
 from daari.server.auth import AuthClaims
 
 
@@ -60,6 +66,43 @@ class TestMcpToolPolicy:
         assert base.merged_with(McpToolPolicy(deny=("x",))).allow == ("route", "stats")
 
 
+class TestMcpServerPolicy:
+    def test_empty_policy_allows_every_server(self):
+        assert McpServerPolicy().allows("weather")
+        assert McpServerPolicy().allows("github")
+
+    def test_allow_only_is_exclusive(self):
+        policy = McpServerPolicy(allow=("weather", "finance-*"))
+        assert policy.allows("weather")
+        assert policy.allows("finance-prod")
+        assert not policy.allows("github")
+        assert not policy.allows("shell")
+
+    def test_deny_wins_over_allow(self):
+        policy = McpServerPolicy(allow=("*",), deny=("shell",))
+        assert policy.allows("weather")
+        assert not policy.allows("shell")
+
+    def test_merge_key_over_team(self):
+        team = McpServerPolicy(allow=("weather", "github"), deny=("shell",))
+        key = McpServerPolicy(allow=("weather",), deny=("github",))
+        merged = team.merged_with(key)
+        assert merged.allow == ("weather",)
+        assert set(merged.deny) == {"shell", "github"}
+        assert merged.allows("weather")
+        assert not merged.allows("github")
+        assert not merged.allows("shell")
+
+    def test_from_mapping_reads_servers_block(self):
+        assert McpServerPolicy.from_mapping(None) == McpServerPolicy()
+        assert McpServerPolicy.from_mapping({"allow": "weather"}) == McpServerPolicy(
+            allow=("weather",)
+        )
+        assert McpServerPolicy.from_mapping({"deny": ["shell", 3, ""]}) == McpServerPolicy(
+            deny=("shell",)
+        )
+
+
 class TestResolvePolicy:
     def test_master_key_gets_global_policy_only(self):
         settings = Settings.model_validate({"integrations": {"mcp_policy": {"deny": ["stats"]}}})
@@ -92,6 +135,28 @@ class TestResolvePolicy:
         assert not policy.allows("sourcegraph")  # not in key allow list
 
 
+class TestResolveServerPolicy:
+    def test_key_over_team_merge(self):
+        settings = Settings.model_validate(
+            {
+                "integrations": {
+                    "mcp_policy": {"servers": {"deny": ["shell"]}},
+                    "mcp_team_policies": {
+                        "finance": {"servers": {"allow": ["weather", "github"], "deny": []}}
+                    },
+                }
+            }
+        )
+        policy = resolve_server_policy(
+            _claims({"mcp": {"servers": {"allow": ["weather"], "deny": ["github"]}}}, "finance"),
+            settings,
+        )
+        assert policy.allows("weather")
+        assert not policy.allows("github")  # key deny
+        assert not policy.allows("shell")  # global deny
+        assert not policy.allows("slack")  # not in key allow
+
+
 def test_audit_tool_call_records_decision_without_arguments(tmp_path):
     audit = AuditLog(tmp_path / "audit.sqlite3")
     audit_tool_call(
@@ -113,6 +178,23 @@ def test_audit_tool_call_records_decision_without_arguments(tmp_path):
     assert row["detail"]["decision"] == "deny"
     assert "secret repo contents" not in str(row)
     assert "arguments" not in row["detail"]
+
+
+def test_audit_tool_call_records_server_id(tmp_path):
+    audit = AuditLog(tmp_path / "audit.sqlite3")
+    audit_tool_call(
+        audit,
+        _claims(team="eng"),
+        tool="mcp_shell",
+        decision="deny",
+        method="tools/call",
+        transport="jsonrpc",
+        server="shell",
+    )
+    row = audit.list()[0]
+    assert row["detail"]["server"] == "shell"
+    assert row["detail"]["tool"] == "mcp_shell"
+    assert row["detail"]["decision"] == "deny"
 
 
 def test_audit_tool_call_master_and_anonymous_actors(tmp_path):

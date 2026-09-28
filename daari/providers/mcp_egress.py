@@ -40,6 +40,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         tool_search: Any = None,
         embedder: Any = None,
         tool_policy: Any = None,
+        server_policy: Any = None,
     ) -> None:
         super().__init__(
             id=f"mcp:{server.id}",
@@ -57,6 +58,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.tool_search = settings_from_block(tool_search)
         self.embedder = embedder
         self.tool_policy = tool_policy
+        self.server_policy = server_policy
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
 
@@ -87,6 +89,18 @@ class McpEgressProvider(HttpIntegrationProvider):
         return True
 
     async def execute(self, request: InternalRequest) -> InternalResponse:
+        if self.server_policy is not None and not self.server_policy.allows(self.server.id):
+            return InternalResponse(
+                content=f"MCP server '{self.server.id}' denied by policy.",
+                model=request.model,
+                daari_meta=DaariMeta(
+                    tier=self.tier,
+                    executor="integration",
+                    provider_id=self.id,
+                    task_type="tool",
+                    warning="mcp_server_denied",
+                ),
+            )
         text = next((m.content or "" for m in reversed(request.messages) if m.role == "user"), "")
         # "@mcp weather get_forecast Paris" or "@mcp:weather get_forecast Paris"
         match = re.match(
@@ -215,6 +229,7 @@ def build_mcp_providers(
     tool_search: Any = None,
     embedder: Any = None,
     tool_policy: Any = None,
+    server_policy: Any = None,
 ) -> list[McpEgressProvider]:
     providers: list[McpEgressProvider] = []
     for entry in servers or []:
@@ -238,6 +253,7 @@ def build_mcp_providers(
                 tool_search=tool_search,
                 embedder=embedder,
                 tool_policy=tool_policy,
+                server_policy=server_policy,
             )
         )
     return providers

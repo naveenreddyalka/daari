@@ -5070,6 +5070,19 @@ repo files outside `docs/` (`SECURITY.md`, `LICENSE`, workflows, web-ui
 README) and to bare directories now use GitHub URLs or a concrete page.
 `mkdocs build --strict` passes with zero warnings.
 
+### Per-key/team MCP server allowlists ([#1201](https://github.com/naveenreddyalka/daari/issues/1201))
+
+<!-- tracking:#1201 -->
+**Status:** Done (2026-09-28). `McpServerPolicy` layers
+`integrations.mcp_policy.servers` → team → `metadata.mcp.servers` (deny wins,
+key over team). Denied egress servers are filtered from `tools/list`, blocked
+on `tools/call` with `data.server` in the existing denial shape, audited with
+the server id, and never POSTed by the egress client. CLI
+`--mcp-server-allow`/`--mcp-server-deny`, `keys show`, and `daari doctor`
+(`mcp_server_policy`) surface the grants. Covered by
+`tests/unit/test_mcp_policy.py`, `tests/unit/test_mcp_egress.py`,
+`tests/integration/test_mcp_governance.py`, `tests/unit/test_virtual_keys.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

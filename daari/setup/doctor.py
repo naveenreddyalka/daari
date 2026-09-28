@@ -60,6 +60,7 @@ def run_doctor(
     results.append(_check_cors_origins(cfg))
     results.append(_check_header_policy(cfg))
     results.extend(_check_mcp_servers(cfg, httpx_client))
+    results.append(_check_mcp_server_policy(cfg))
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -1947,6 +1948,41 @@ def _check_mcp_servers(
         if own_client:
             http.close()
     return rows
+
+
+def _check_mcp_server_policy(settings: Settings) -> CheckResult:
+    """Surface configured MCP egress server allow/deny (#1201)."""
+    policy = getattr(settings.integrations, "mcp_policy", None)
+    servers = getattr(policy, "servers", None) if policy is not None else None
+    allow = list(getattr(servers, "allow", None) or [])
+    deny = list(getattr(servers, "deny", None) or [])
+    team_policies = getattr(settings.integrations, "mcp_team_policies", None) or {}
+    team_bits: list[str] = []
+    for name, block in team_policies.items():
+        t_servers = getattr(block, "servers", None) if not isinstance(block, dict) else block.get("servers")
+        if isinstance(t_servers, dict):
+            t_allow, t_deny = t_servers.get("allow") or [], t_servers.get("deny") or []
+        else:
+            t_allow = list(getattr(t_servers, "allow", None) or [])
+            t_deny = list(getattr(t_servers, "deny", None) or [])
+        if t_allow or t_deny:
+            team_bits.append(f"{name}:allow={t_allow or '-'} deny={t_deny or '-'}")
+    if not allow and not deny and not team_bits:
+        return CheckResult(
+            name="mcp_server_policy",
+            ok=True,
+            detail="open (no server allow/deny configured)",
+            optional=True,
+        )
+    parts = [f"allow={allow or '-'} deny={deny or '-'}"]
+    if team_bits:
+        parts.append("teams=" + "; ".join(team_bits))
+    return CheckResult(
+        name="mcp_server_policy",
+        ok=True,
+        detail="; ".join(parts),
+        optional=True,
+    )
 
 
 def _check_org_cache(

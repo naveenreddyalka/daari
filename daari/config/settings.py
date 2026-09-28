@@ -1308,6 +1308,21 @@ class McpServerSettings(BaseModel):
     triggers: list[str] = Field(default_factory=list)
 
 
+class McpServerPolicySettings(BaseModel):
+    """Allow/deny MCP egress server ids (issue #1201). Deny wins; empty allow = all."""
+
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "MCP egress server ids (glob) the caller may reach. Empty = every server not denied."
+        ),
+    )
+    deny: list[str] = Field(
+        default_factory=list,
+        description="MCP egress server ids (glob) the caller may never reach. Deny beats allow.",
+    )
+
+
 class McpToolPolicySettings(BaseModel):
     """Glob-style MCP tool allow/deny lists (issue #277). Deny wins; empty allow = all."""
 
@@ -1318,6 +1333,13 @@ class McpToolPolicySettings(BaseModel):
     deny: list[str] = Field(
         default_factory=list,
         description="MCP tool names (glob) the caller may never call. Deny beats allow.",
+    )
+    servers: McpServerPolicySettings = Field(
+        default_factory=McpServerPolicySettings,
+        description=(
+            "Per-scope MCP egress server allow/deny (issue #1201). Nested under "
+            "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.servers."
+        ),
     )
 
 
