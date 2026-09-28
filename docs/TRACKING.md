@@ -5037,6 +5037,14 @@ table. Covered by `tests/unit/test_gen_reference.py`.
 `header_policy_error` and `/health` stays exempt when policy is enabled.
 Covered by `tests/integration/test_header_policy_gateway.py`.
 
+### CLI docs for backup --encrypt and --restore-pg ([#1193](https://github.com/naveenreddyalka/daari/issues/1193))
+
+<!-- tracking:#1193 -->
+**Status:** Done (2026-09-28). `cli.md` documents `backup create --encrypt`
+openssl/age, `--require-pg-dump`, restore decrypt env, and `--restore-pg`,
+with a pointer to the backup-restore guide. Covered by
+`tests/unit/test_backup_cli_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
