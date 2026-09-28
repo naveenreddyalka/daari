@@ -45,3 +45,12 @@ def test_capacity_helm_documents_otlp_logs() -> None:
     assert "otlpLogs" in text or "observability.otlpLogs" in text
     assert "OTEL_EXPORTER_OTLP_ENDPOINT" in text
     assert "DAARI_OBSERVABILITY__OTLP_LOGS" in text
+
+
+def test_capacity_helm_documents_session_affinity_and_policy_sync() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "routing.sessionAffinity" in text
+    assert "DAARI_ROUTING__SESSION_AFFINITY" in text
+    assert "enterprise.policySync" in text
+    assert "DAARI_ENTERPRISE__POLICY_SYNC_URL" in text
+    assert "DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET" in text

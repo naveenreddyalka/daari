@@ -398,6 +398,72 @@ class TestHelmOrgPool:
         )
 
 
+class TestHelmSessionAffinityAndPolicySync:
+    def test_affinity_and_policy_sync_absent_by_default(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template()
+        assert "DAARI_ROUTING__SESSION_AFFINITY" not in rendered
+        assert "DAARI_ROUTING__SESSION_AFFINITY_TTL_SECONDS" not in rendered
+        assert "DAARI_ENTERPRISE__POLICY_SYNC_URL" not in rendered
+        assert "DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["routing"]["sessionAffinity"] is False
+        assert values["routing"]["sessionAffinityTtlSeconds"] == 1800
+        assert values["enterprise"]["policySync"]["url"] == ""
+        assert values["enterprise"]["policySync"]["signingSecret"] == {}
+
+    def test_session_affinity_env_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "routing.sessionAffinity=true",
+            "--set",
+            "routing.sessionAffinityTtlSeconds=900",
+        )
+        assert re.search(
+            r'name: DAARI_ROUTING__SESSION_AFFINITY\s+value: "true"', rendered
+        )
+        assert re.search(
+            r'name: DAARI_ROUTING__SESSION_AFFINITY_TTL_SECONDS\s+value: "900"',
+            rendered,
+        )
+
+    def test_policy_sync_url_and_signing_secret(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "enterprise.policySync.url=https://policy.example.com/org",
+            "--set",
+            "enterprise.policySync.signingSecret.name=daari-policy",
+            "--set",
+            "enterprise.policySync.signingSecret.key=hmac",
+        )
+        assert re.search(
+            r'name: DAARI_ENTERPRISE__POLICY_SYNC_URL\s+value: "https://policy.example.com/org"',
+            rendered,
+        )
+        assert "DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET" in rendered
+        assert 'name: "daari-policy"' in rendered
+        assert 'key: "hmac"' in rendered
+
+    def test_notes_document_affinity_and_policy_sync(self, helm_available: None) -> None:
+        text = NOTES.read_text(encoding="utf-8")
+        assert "routing.sessionAffinity" in text or "SESSION_AFFINITY" in text
+        assert "policySync" in text or "POLICY_SYNC" in text
+        notes = _helm_notes(
+            "--set",
+            "routing.sessionAffinity=true",
+            "--set",
+            "enterprise.policySync.url=https://policy.example.com/org",
+            "--set",
+            "enterprise.policySync.signingSecret.name=daari-policy",
+        )
+        assert "Session affinity enabled" in notes
+        assert "DAARI_ROUTING__SESSION_AFFINITY" in notes
+        assert "Policy sync" in notes
+        assert "https://policy.example.com/org" in notes
+        assert "daari-policy" in notes
+
+
 class TestHelmOllamaBaseUrl:
     def test_ollama_base_url_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()

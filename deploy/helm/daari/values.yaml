@@ -139,6 +139,23 @@ orgPool:
   enabled: false
   baseUrl: ""
 
+# Sticky sessions across tool continuations (#1178). Pins are per-process
+# unless redis.enabled (cache.backend=redis). Doctor warns when affinity is
+# on without Redis. Default false omits the env vars.
+routing:
+  sessionAffinity: false
+  # Pin / cost-rollup TTL in seconds (Settings session_affinity_ttl_seconds).
+  # Only emitted when sessionAffinity is true.
+  sessionAffinityTtlSeconds: 1800
+
+# Periodic signed org-config refresh (#1178). Empty url omits env.
+# signingSecret mounts DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET for HMAC
+# verification of X-Daari-Signature (enterprise.config_signing_secret).
+enterprise:
+  policySync:
+    url: ""
+    signingSecret: {}
+
 # Master API key from an existing Secret (multi-replica auth). Empty = unset
 # (open local install). Example: { name: daari-master, key: api-key }
 server:

@@ -88,6 +88,27 @@ spec:
             - name: DAARI_ROUTING__ORG_POOL__BASE_URL
               value: {{ .Values.orgPool.baseUrl | quote }}
             {{- end }}
+            {{- $routing := .Values.routing | default dict }}
+            {{- if $routing.sessionAffinity }}
+            - name: DAARI_ROUTING__SESSION_AFFINITY
+              value: "true"
+            - name: DAARI_ROUTING__SESSION_AFFINITY_TTL_SECONDS
+              value: {{ $routing.sessionAffinityTtlSeconds | default 1800 | quote }}
+            {{- end }}
+            {{- $policySync := ((.Values.enterprise).policySync | default dict) }}
+            {{- if $policySync.url }}
+            - name: DAARI_ENTERPRISE__POLICY_SYNC_URL
+              value: {{ $policySync.url | quote }}
+            {{- end }}
+            {{- with $policySync.signingSecret }}
+            {{- if .name }}
+            - name: DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name | quote }}
+                  key: {{ .key | default "signing-secret" | quote }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.server.apiKeySecret }}
             {{- if .name }}
             - name: DAARI_SERVER__API_KEY

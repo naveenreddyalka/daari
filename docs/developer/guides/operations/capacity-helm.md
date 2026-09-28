@@ -216,6 +216,34 @@ orgPool:
   baseUrl: http://gpu-pool.internal:11434
 ```
 
+### Session affinity and policy sync
+
+`routing.sessionAffinity` (default `false`) mounts
+`DAARI_ROUTING__SESSION_AFFINITY` and
+`DAARI_ROUTING__SESSION_AFFINITY_TTL_SECONDS` so sticky sessions survive tool
+continuations across replicas when Redis backs the cache. Pair with
+`redis.enabled` — doctor warns when affinity is on without Redis.
+
+`enterprise.policySync.url` mounts `DAARI_ENTERPRISE__POLICY_SYNC_URL` for
+periodic signed org-config refresh. `enterprise.policySync.signingSecret`
+mounts `DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET` (HMAC for
+`X-Daari-Signature`). Empty url / empty secret omit those env vars.
+
+```yaml
+routing:
+  sessionAffinity: true
+  sessionAffinityTtlSeconds: 1800
+redis:
+  enabled: true
+  url: redis://redis:6379/0
+enterprise:
+  policySync:
+    url: https://policy.example.com/daari/org-config
+    signingSecret:
+      name: daari-policy
+      key: signing-secret
+```
+
 ### Embedder base URL
 
 `ollama.baseUrl` defaults to empty, so the image keeps its localhost Ollama
