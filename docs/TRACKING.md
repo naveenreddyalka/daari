@@ -5007,6 +5007,13 @@ Restore documents extract paths and applies dumps with `--restore-pg` +
 `CONFIG_SIGNING_SECRET`. NOTES + capacity-helm document them. Covered by
 `tests/unit/test_helm_chart.py` and `tests/unit/test_capacity_helm_docs.py`.
 
+### Hermetic ceilings for Responses compact + stream resume ([#1179](https://github.com/naveenreddyalka/daari/issues/1179))
+
+<!-- tracking:#1179 -->
+**Status:** Done (2026-09-28). Benchmark suite pins SQLite ResponseStore
+compact put+get and stream append + `starting_after` resume ceilings in
+`tests/benchmark/test_hermetic_paths.py` (still skipped by default CI).
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

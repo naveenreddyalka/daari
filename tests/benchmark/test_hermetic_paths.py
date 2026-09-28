@@ -74,6 +74,12 @@ SOFT_USD_BUDGET_PREFILL = 0.8  # soft line at 0.8 * 1.0 = 0.8
 # Pre-first-token stream host failover (#1015). Single stream collect, mocked hosts.
 STREAM_FAILOVER_CEILING_S = 0.500
 STREAM_HAPPY_PATH_CEILING_S = 0.200
+# Responses compact-style SQLite put+get cycles (#1179). ~1ms local median.
+RESPONSES_COMPACT_PUT_GET_CEILING_S = 0.050
+RESPONSES_COMPACT_PUT_GET_CYCLES = 40
+# Stream event synthesize + starting_after resume read (#1179). M output items.
+RESPONSES_STREAM_RESUME_CEILING_S = 0.100
+RESPONSES_STREAM_RESUME_ITEMS = 64
 
 
 class FakeLedger:
@@ -1012,4 +1018,129 @@ async def test_stream_happy_path_under_tighter_ceiling(tmp_path):
     assert "ok-from-gpu-a" in body
     assert elapsed < STREAM_HAPPY_PATH_CEILING_S, (
         f"stream happy path {elapsed:.4f}s exceeds ceiling {STREAM_HAPPY_PATH_CEILING_S}s"
+    )
+
+
+def _compact_style_body(response_id: str) -> dict:
+    return {
+        "id": response_id,
+        "object": "response",
+        "model": "llama3.2:3b",
+        "status": "completed",
+        "output": [
+            {
+                "type": "message",
+                "id": "msg_compact",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "compacted summary of prior turns",
+                        "annotations": [],
+                    }
+                ],
+            }
+        ],
+        "usage": {"input_tokens": 40, "output_tokens": 12, "total_tokens": 52},
+    }
+
+
+@pytest.mark.benchmark
+def test_responses_compact_put_get_under_ceiling(tmp_path):
+    """Compact-style ResponseStore put+get — SQLite hot path, no network (#1179)."""
+    from daari.gateway.response_store import ResponseStore
+
+    store = ResponseStore(tmp_path / "responses.sqlite3")
+    warm = _compact_style_body("resp_warm")
+    store.put(
+        "resp_warm",
+        warm,
+        conversation=[
+            {"role": "user", "content": "prior"},
+            {"role": "assistant", "content": "reply"},
+        ],
+        stored=True,
+    )
+    assert store.get("resp_warm") is not None
+
+    samples: list[float] = []
+    for i in range(RESPONSES_COMPACT_PUT_GET_CYCLES):
+        rid = f"resp_compact_{i}"
+        body = _compact_style_body(rid)
+        conversation = [
+            {"role": "user", "content": f"turn-{i}"},
+            {"role": "assistant", "content": "x" * 200},
+        ]
+        start = time.perf_counter()
+        store.put(rid, body, conversation=conversation, stored=True)
+        got = store.get(rid)
+        samples.append(time.perf_counter() - start)
+        assert got is not None
+        assert got["id"] == rid
+        assert got["_conversation"] == conversation
+
+    median = _median(samples)
+    assert median < RESPONSES_COMPACT_PUT_GET_CEILING_S, (
+        f"ResponseStore compact put+get median {median:.4f}s exceeds ceiling "
+        f"{RESPONSES_COMPACT_PUT_GET_CEILING_S}s (10×-regression guard)"
+    )
+
+
+@pytest.mark.benchmark
+def test_responses_stream_resume_under_ceiling(tmp_path):
+    """Append M output items then resume-from-offset SSE synthesize (#1179)."""
+    from daari.gateway.response_store import ResponseStore
+    from daari.gateway.responses import _replay_events_from_stored
+
+    store = ResponseStore(tmp_path / "responses-stream.sqlite3")
+    output = [
+        {
+            "type": "message",
+            "id": f"msg_{i}",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": f"frame-{i}",
+                    "annotations": [],
+                }
+            ],
+        }
+        for i in range(RESPONSES_STREAM_RESUME_ITEMS)
+    ]
+    stored = {
+        "id": "resp_stream_bench",
+        "object": "response",
+        "model": "llama3.2:3b",
+        "status": "completed",
+        "output": output,
+        "usage": {
+            "input_tokens": 1,
+            "output_tokens": RESPONSES_STREAM_RESUME_ITEMS,
+            "total_tokens": 1 + RESPONSES_STREAM_RESUME_ITEMS,
+        },
+    }
+    # Warm schema + full replay to size the mid offset.
+    store.put("resp_stream_bench", stored, conversation=[], stored=True)
+    full = list(_replay_events_from_stored(stored, starting_after=None))
+    assert len(full) > 10
+    mid = len(full) // 2
+
+    samples: list[float] = []
+    for _ in range(30):
+        start = time.perf_counter()
+        store.put("resp_stream_bench", stored, conversation=[], stored=True)
+        row = store.get("resp_stream_bench")
+        assert row is not None
+        resumed = list(_replay_events_from_stored(row, starting_after=mid))
+        samples.append(time.perf_counter() - start)
+        assert resumed
+        assert len(resumed) < len(full)
+
+    median = _median(samples)
+    assert median < RESPONSES_STREAM_RESUME_CEILING_S, (
+        f"stream append+resume median {median:.4f}s exceeds ceiling "
+        f"{RESPONSES_STREAM_RESUME_CEILING_S}s (10×-regression guard)"
     )
