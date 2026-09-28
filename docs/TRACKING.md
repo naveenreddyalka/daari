@@ -5052,6 +5052,15 @@ with a pointer to the backup-restore guide. Covered by
 `server.header_policy` knobs, `header_policy_error` deny shape, and open-probe
 exemptions. Covered by `tests/unit/test_header_policy_docs.py`.
 
+### Stall-watch survives issue write failures ([#1207](https://github.com/naveenreddyalka/daari/issues/1207))
+
+<!-- tracking:#1207 -->
+**Status:** Done (2026-09-28). `apply_resolved_stalls` and `apply_sweep` route
+every `gh issue` side effect through `_issue_write`, which logs a `warning:`
+and continues when the token lacks Issues write instead of aborting the
+`stall-watch` job. `AUTOMATION.md` lists Issues among the `AUTODEV_GH_TOKEN`
+permissions. Covered by `tests/unit/test_autodev_pr_watch.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

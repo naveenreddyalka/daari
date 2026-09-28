@@ -331,6 +331,31 @@ def test_apply_sweep_survives_label_edit_failure(watch):
     assert swept == []
 
 
+def test_apply_sweep_survives_comment_failure(watch):
+    """PAT without Issues write must not abort the sweep (#1207)."""
+    import subprocess
+
+    removed: list[int] = []
+    attempted: list[int] = []
+
+    def failing_comment(number: int, _body: str) -> None:
+        attempted.append(number)
+        raise subprocess.CalledProcessError(1, ["gh", "issue", "comment", str(number)])
+
+    swept = watch.apply_sweep(
+        [_issue(), _issue(number=177)],
+        open_prs=[],
+        now=NOW,
+        ttl_hours=24,
+        remove_label=lambda n: removed.append(n),
+        comment=failing_comment,
+        list_comments=lambda _n: [],
+    )
+    assert removed == [176, 177]
+    assert attempted == [176, 177]
+    assert swept == [176, 177]
+
+
 def test_apply_alerts_once(watch):
     commented: list[tuple[int, str]] = []
     issues: list[tuple[str, str]] = []
@@ -706,3 +731,45 @@ def test_apply_resolved_stalls_leaves_open_pr(watch):
     )
     assert result == []
     assert closed == []
+
+
+def test_apply_resolved_stalls_survives_comment_failure(watch, capsys):
+    """A PAT without Issues write fails `gh issue comment`; keep closing (#1207)."""
+    import subprocess
+
+    closed: list[int] = []
+
+    def failing_comment(number: int, _body: str) -> None:
+        raise subprocess.CalledProcessError(1, ["gh", "issue", "comment", str(number)])
+
+    result = watch.apply_resolved_stalls(
+        [_stall_issue(), _stall_issue(number=409, pr_number=405)],
+        get_pr=lambda n: {"number": n, "state": "MERGED"},
+        close_issue=lambda n: closed.append(n),
+        comment=failing_comment,
+    )
+    assert closed == [408, 409]
+    assert result == [408, 409]
+    assert "warning:" in capsys.readouterr().err
+
+
+def test_apply_resolved_stalls_survives_close_failure(watch, capsys):
+    """A failed close on one issue must not abort the rest of the sweep (#1207)."""
+    import subprocess
+
+    attempted: list[int] = []
+
+    def failing_close(number: int) -> None:
+        attempted.append(number)
+        if number == 408:
+            raise subprocess.CalledProcessError(1, ["gh", "issue", "close", str(number)])
+
+    result = watch.apply_resolved_stalls(
+        [_stall_issue(), _stall_issue(number=409, pr_number=405)],
+        get_pr=lambda n: {"number": n, "state": "MERGED"},
+        close_issue=failing_close,
+        comment=lambda _n, _body: None,
+    )
+    assert attempted == [408, 409]
+    assert result == [409]
+    assert "#408" in capsys.readouterr().err
