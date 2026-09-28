@@ -458,6 +458,83 @@ async def test_openai_sdk_responses_client(settings):
     await http.aclose()
 
 
+def _parse_sse_events(text: str) -> list[tuple[str, dict]]:
+    events: list[tuple[str, dict]] = []
+    event_name: str | None = None
+    for line in text.splitlines():
+        if line.startswith("event: "):
+            event_name = line.split(" ", 1)[1]
+        elif line.startswith("data: ") and event_name:
+            events.append((event_name, json.loads(line.split(" ", 1)[1])))
+            event_name = None
+    return events
+
+
+@pytest.mark.asyncio
+async def test_get_stream_resume_starting_after_and_nonterminal_409(settings):
+    """Gateway pin: completed stream resume skips ≤ N; non-terminal returns 409 (#1164)."""
+    from daari.gateway.response_store import ResponseStore
+
+    app = _app(settings)
+    path = Path(settings.trace.path).expanduser().parent / "responses.sqlite3"
+    store = ResponseStore(path)
+    store.put(
+        "resp_resume_int",
+        {
+            "id": "resp_resume_int",
+            "object": "response",
+            "model": "llama3.2:3b",
+            "status": "completed",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_1",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [
+                        {"type": "output_text", "text": "hello", "annotations": []}
+                    ],
+                }
+            ],
+            "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2},
+        },
+        conversation=[],
+        stored=True,
+    )
+    store.put(
+        "resp_inflight_int",
+        {
+            "id": "resp_inflight_int",
+            "object": "response",
+            "model": "llama3.2:3b",
+            "status": "in_progress",
+            "output": [],
+        },
+        conversation=[],
+        stored=True,
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        mid = await client.get(
+            "/v1/responses/resp_resume_int",
+            params={"stream": "true", "starting_after": "2"},
+        )
+        blocked = await client.get(
+            "/v1/responses/resp_inflight_int",
+            params={"stream": "true", "starting_after": "0"},
+        )
+
+    assert mid.status_code == 200, mid.text
+    assert mid.headers["content-type"].startswith("text/event-stream")
+    events = _parse_sse_events(mid.text)
+    assert events
+    assert all(payload["sequence_number"] > 2 for _, payload in events)
+
+    assert blocked.status_code == 409
+    detail = str(blocked.json().get("detail", "")).lower()
+    assert "completed" in detail or "terminal" in detail
+
+
 @pytest.mark.asyncio
 async def test_compact_applies_auth_fence_like_create(settings, tmp_path):
     """Compact inherits key tier_cap / attribution like POST /v1/responses (#1169)."""
