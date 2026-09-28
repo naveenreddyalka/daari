@@ -1,6 +1,6 @@
 # GitHub Discussions templates
 
-> Community surface for daari. License is [Apache 2.0](../../../LICENSE) — say **open source / local-first**.
+> Community surface for daari. License is [Apache 2.0](https://github.com/naveenreddyalka/daari/blob/main/LICENSE) — say **open source / local-first**.
 > Docs: https://naveenreddyalka.github.io/daari/  
 > Repo: https://github.com/naveenreddyalka/daari
 
