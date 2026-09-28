@@ -269,7 +269,7 @@ The open rows below moved to the `auto-dev` backlog worked by the autonomous dev
 | AGENTS.md agent contract | [x] | repo root |
 | Repo public + auto-merge + branch protection on main (CI `test` required) | [x] | via `gh api` |
 | Local watchdog (`scripts/autodev-local.sh` + launchd) | [x] | validated live: filed issue #9 on first cycle (caught real live-test regression), Cursor smoke PASS |
-| Cloud automation drafts (dev-cycle / pr-review / scout) | [x] | [docs/automations/](automations/) — create in Agents Window or enable Bugbot |
+| Cloud automation drafts (dev-cycle / pr-review / scout) | [x] | [docs/automations/](https://github.com/naveenreddyalka/daari/tree/main/docs/automations) — create in Agents Window or enable Bugbot |
 | CI fallback dev-cycle workflow | [x] | `.github/workflows/autodev.yml`; activates when `CURSOR_API_KEY` secret is set |
 | Runbook | [x] | [AUTOMATION.md](AUTOMATION.md) |
 
@@ -1082,7 +1082,7 @@ by `tests/unit/test_oidc_jwks.py`.
 
 ### Discussions welcome GTM-6 ([#233](https://github.com/naveenreddyalka/daari/issues/233))
 
-Templates under [gtm/discussions/](gtm/discussions/) (welcome, show-report,
+Templates under [gtm/discussions/](gtm/discussions/README.md) (welcome, show-report,
 setup-help) plus `gh discussion create` instructions. Welcome thread is
 [#238](https://github.com/naveenreddyalka/daari/discussions/238). README and
 CONTRIBUTING link Discussions. Do not post a second welcome. Covered by
@@ -2845,7 +2845,7 @@ Covered by `tests/benchmark/test_hermetic_paths.py`.
 **Status:** Done (2026-09-17). `GET /v1/daari/stats` returns `soft_warnings`
 and `rejects` maps (empty `{}` when zero); web-ui tables render both by kind.
 Docs: [metrics-prometheus.md](developer/guides/observability/metrics-prometheus.md),
-[web-ui README](../packages/web-ui/README.md). Covered by
+[web-ui README](https://github.com/naveenreddyalka/daari/blob/main/packages/web-ui/README.md). Covered by
 `tests/unit/test_stats_cliff_counters.py` and web-ui DOM tests.
 
 ### Optional Prometheus metrics scrape port ([#594](https://github.com/naveenreddyalka/daari/issues/594))
@@ -3023,7 +3023,7 @@ Covered by `tests/unit/test_grafana_dashboard.py`.
 **Status:** Done (2026-09-17). `GET /v1/daari/stats` tier objects include
 `p50_ms` / `p95_ms` from latency histogram buckets (same helper as TTFT).
 Web-ui tier table already rendered these fields; DOM test pins non-dash
-values. Docs: [web-ui README](../packages/web-ui/README.md). Covered by
+values. Docs: [web-ui README](https://github.com/naveenreddyalka/daari/blob/main/packages/web-ui/README.md). Covered by
 `tests/unit/test_stats_cliff_counters.py` and web-ui DOM tests.
 
 ### Web-ui local pool backends ([#629](https://github.com/naveenreddyalka/daari/issues/629))
@@ -3031,7 +3031,7 @@ values. Docs: [web-ui README](../packages/web-ui/README.md). Covered by
 <!-- tracking:#629 -->
 **Status:** Done (2026-09-17). Dashboard **Local pool backends** table renders
 `stats.backends` (`id`, healthy, circuit, outstanding) with an empty-state
-row when the pool is empty. Docs: [web-ui README](../packages/web-ui/README.md).
+row when the pool is empty. Docs: [web-ui README](https://github.com/naveenreddyalka/daari/blob/main/packages/web-ui/README.md).
 Covered by web-ui DOM tests.
 
 ### OTel daari.agent_turn on GenAI root spans ([#630](https://github.com/naveenreddyalka/daari/issues/630))
@@ -3074,7 +3074,7 @@ band. Docs: [budgets-frontier.md](developer/guides/configuration/budgets-frontie
 **Status:** Done (2026-09-17). `GET /v1/daari/stats` adds `backend_summary`
 (`total` / `healthy` / `unhealthy` / `open_circuit`) derived from
 `backends`. Docs: [traces-stats.md](developer/guides/observability/traces-stats.md),
-[web-ui README](../packages/web-ui/README.md). Covered by
+[web-ui README](https://github.com/naveenreddyalka/daari/blob/main/packages/web-ui/README.md). Covered by
 `tests/unit/test_local_pool.py`.
 
 ### Assert backend_summary on empty stats cliff maps ([#647](https://github.com/naveenreddyalka/daari/issues/647))
@@ -5051,6 +5051,15 @@ with a pointer to the backup-restore guide. Covered by
 **Status:** Done (2026-09-28). Auth-and-keys guide documents
 `server.header_policy` knobs, `header_policy_error` deny shape, and open-probe
 exemptions. Covered by `tests/unit/test_header_policy_docs.py`.
+
+### Docs-site strict build green ([#1208](https://github.com/naveenreddyalka/daari/issues/1208))
+
+<!-- tracking:#1208 -->
+**Status:** Done (2026-09-28). `mkdocs.yml` uses `pymdownx.slugs.slugify` so
+GitHub-style anchors (`#providers--fallback`) resolve on the site; links to
+repo files outside `docs/` (`SECURITY.md`, `LICENSE`, workflows, web-ui
+README) and to bare directories now use GitHub URLs or a concrete page.
+`mkdocs build --strict` passes with zero warnings.
 
 ## How to update
 

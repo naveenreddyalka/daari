@@ -1,7 +1,7 @@
 # Automation: daari prd-cycle (enterprise gap scan)
 
 Cursor Automation draft **and** GitHub Actions fallback
-([`.github/workflows/prd-cycle.yml`](../../.github/workflows/prd-cycle.yml)).
+([`.github/workflows/prd-cycle.yml`](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/prd-cycle.yml)).
 Supersedes [scout.md](scout.md): the weekly competitive survey is folded into
 this deeper, daily product cycle.
 

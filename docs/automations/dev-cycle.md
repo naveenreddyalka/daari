@@ -63,6 +63,6 @@ Runs drain several issues back-to-back. Without a stopping rule the agent runs
 until `timeout-minutes` kills the job — usually while waiting on the last
 auto-merge — which shows as `cancelled` and can strand an `agent:working`
 label or unpushed branch until `scripts/autodev_pr_watch.py` sweeps it. The
-GitHub Actions fallback ([`.github/workflows/autodev.yml`](../../.github/workflows/autodev.yml))
+GitHub Actions fallback ([`.github/workflows/autodev.yml`](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/autodev.yml))
 sets `timeout-minutes: 60` and a 50-minute pick deadline so the final PR always
 has room to settle.

@@ -39,6 +39,11 @@ markdown_extensions:
   - pymdownx.highlight
   - toc:
       permalink: true
+      # GitHub-style slugs so `#phase-a1--install--frontier-fallback` resolves
+      # the same on github.com and on the site (#1208).
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
 
 nav:
   - Home: developer/index.md
