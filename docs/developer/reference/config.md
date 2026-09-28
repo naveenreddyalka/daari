@@ -11,22 +11,26 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.host` | str | `'127.0.0.1'` |  |
 | `server.port` | int | `11435` |  |
 | `server.api_key` | str | list[str] | `''` |  |
-| `server.cors_origins` | list[str] | `[]` | Browser Origin allowlist for CORS (#938). Empty disables CORS middleware. When set, enables ACAO for listed origins, Authorization, and OPTIONS preflight. Env: `DAARI_SERVER__CORS_ORIGINS` (JSON list). |
-| `server.security_headers` | bool | `True` | Attach baseline security headers on every response (#938): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`. Env: `DAARI_SERVER__SECURITY_HEADERS`. |
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |
-| `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File/audio upload routes may use a higher floor so `files.max_total_bytes` still applies. Env: `DAARI_SERVER__MAX_BODY_BYTES`. |
-| `server.tls.cert_file` | str | `''` | PEM certificate path (or `secret://` ref). Env: `DAARI_SERVER__TLS__CERT_FILE`. |
-| `server.tls.key_file` | str | `''` | PEM private key path or `secret://` ref. Env: `DAARI_SERVER__TLS__KEY_FILE`. |
-| `server.tls.client_ca` | str | `''` | Optional client CA path/ref; when set, require a valid client cert (mTLS). Env: `DAARI_SERVER__TLS__CLIENT_CA`. |
-| `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds between streamed chunks before emitting a keepalive for the entire stream lifetime (#972). SSE comment `: keepalive` on OpenAI/Anthropic/Responses; blank line on NDJSON Ollama. 0 disables. |
-| `server.stream_idle_timeout_seconds` | float | `0` | If upstream produces no chunk for this many seconds, end with an in-band `stream_idle_timeout` error (#972). 0 disables. |
-| `server.graceful_timeout_seconds` | float | `30` | uvicorn `timeout_graceful_shutdown` after SIGTERM/SIGINT (#1104). Also `daari serve --graceful-timeout`. Helm: `gracefulTimeoutSeconds` → `DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS`. Keep `terminationGracePeriodSeconds` above this plus preStop. |
+| `server.max_body_bytes` | int | `10485760` | Hard cap on inbound request body size (#933). Oversized requests return 413 before the body is buffered. 0 disables the cap. File/audio upload routes may use a higher floor so files.max_total_bytes still applies. Env: DAARI_SERVER__MAX_BODY_BYTES. |
+| `server.header_policy.enabled` | bool | `False` | When true, evaluate required/deny/allow before require_api_key. Env: DAARI_SERVER__HEADER_POLICY__ENABLED. |
+| `server.header_policy.required` | list | `[]` | Header names that must be present and non-empty. |
+| `server.header_policy.deny` | list | `[]` | Denylist rules (exact and/or regex) evaluated against headers. |
+| `server.header_policy.allow` | dict | `{}` | Optional allowlists keyed by header name. When the header is present, its value must be one of the listed strings. |
+| `server.tls.cert_file` | str | `''` | PEM certificate path (or secret:// ref). Env: DAARI_SERVER__TLS__CERT_FILE. |
+| `server.tls.key_file` | str | `''` | PEM private key path or secret:// ref. Env: DAARI_SERVER__TLS__KEY_FILE. |
+| `server.tls.client_ca` | str | `''` | Optional client CA path/ref; when set, require a valid client cert (mTLS). Env: DAARI_SERVER__TLS__CLIENT_CA. |
+| `server.cors_origins` | list | `[]` | Browser Origin allowlist for CORS (#938). Empty disables CORS middleware. When set, enables ACAO for listed origins, Authorization header, and OPTIONS preflight. Env: DAARI_SERVER__CORS_ORIGINS (JSON list, e.g. '["http://127.0.0.1:11437"]'). |
+| `server.security_headers` | bool | `True` | Attach baseline security headers on every response (#938): X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: no-referrer. Env: DAARI_SERVER__SECURITY_HEADERS. |
+| `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds between streamed chunks before emitting a keepalive frame for the entire stream lifetime (#972) (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow streams (including mid-generation pauses). 0 disables. |
+| `server.stream_idle_timeout_seconds` | float | `0.0` | If upstream produces no chunk for this many seconds mid-stream, end with an in-band error event instead of hanging (#972). 0 disables (default). |
+| `server.graceful_timeout_seconds` | float | `30.0` | Seconds uvicorn waits for in-flight requests (including SSE) after SIGTERM/SIGINT before force-closing (#1104). Wire via `daari serve --graceful-timeout` or DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS. Size terminationGracePeriodSeconds above this plus preStop sleep. |
 | `auth.throttle_enabled` | bool | `True` | When false, invalid-key attempts are never rate-limited. |
-| `auth.max_failures` | int | `10` | Invalid-key failures per client IP within `window_seconds` before 429. 0 disables the counter. Env: `DAARI_AUTH__MAX_FAILURES`. |
-| `auth.window_seconds` | float | `60.0` | Sliding window for `auth.max_failures`. Env: `DAARI_AUTH__WINDOW_SECONDS`. |
-| `auth.exempt_loopback` | bool | `True` | Skip throttling for `127.0.0.1` / `::1` / `localhost`. |
+| `auth.max_failures` | int | `10` | Invalid-key failures per client IP within window_seconds before 429. 0 disables the counter. Env: DAARI_AUTH__MAX_FAILURES. |
+| `auth.window_seconds` | float | `60.0` | Sliding window for auth.max_failures. Env: DAARI_AUTH__WINDOW_SECONDS. |
+| `auth.exempt_loopback` | bool | `True` | Skip throttling for 127.0.0.1 / ::1 / localhost. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |
@@ -35,13 +39,6 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `rate_limit.queue_size` | int | `32` | Waiters allowed when in-flight is full; overflow is 503 + Retry-After. |
 | `rate_limit.retry_after_seconds` | int | `1` | Retry-After value on 429/503. |
 | `rate_limit.fail_open` | bool | `False` | When Redis counters are unreachable, allow requests without counting instead of degrading to the per-replica SQLite backend. Default false (prefer SQLite fallback so limits still apply locally). |
-
-Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rate_limit.*` setting. Set it on the key or team (`daari keys create/update --rpd`, `daari keys team-create/update --rpd`). See [auth and keys](../guides/configuration/auth-and-keys.md).
-
-Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` /
-`moderations` / `rerank` / `other`) is also not a `rate_limit.*` setting —
-store it on the virtual key as metadata `rate_families` (see auth-and-keys).
-Unset families keep global key rpm/tpm only (#1099).
 | `models.l3` | str | `'llama3.2:3b'` |  |
 | `models.l4` | str | `'llama3.1:8b'` |  |
 | `models.l5` | str | `'llama3.1:70b'` |  |
@@ -121,6 +118,7 @@ Unset families keep global key rpm/tpm only (#1099).
 | `frontier.confidence_threshold` | float | `0.7` |  |
 | `frontier.base_url` | str | `'https://api.openai.com/v1'` |  |
 | `frontier.providers` | list | `[]` | Ordered L6 failover chain. Optional per-entry `timeout_s`, `retry_attempts`, and `retry_backoff_s` fall back to `upstream.frontier_timeout_seconds` / `upstream.retry` when unset. |
+| `frontier.param_compat` | dict | `{}` | Per-model frontier parameter compatibility overrides. Merged over the builtin table (e.g. gpt-6-astra); empty keeps defaults. |
 | `frontier.daily_budget_usd` | float | `0.0` |  |
 | `frontier.monthly_budget_usd` | float | `0.0` |  |
 | `frontier.soft_budget_ratio` | float | `0.8` |  |
@@ -156,10 +154,10 @@ Unset families keep global key rpm/tpm only (#1099).
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
 | `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) so store:true / previous_response_id / background polling work across replicas (#481). |
 | `responses.retention_days` | int | `0` | Delete stored responses older than this many days (#497). 0 keeps them forever. |
-| `idempotency.enabled` | bool | `true` | Honor `Idempotency-Key` on chat completions, Responses, embeddings, audio (speech / transcriptions / translations), moderations, rerank, and images/generations (#714, #1065, #1082). Missing header is always a no-op. |
-| `idempotency.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (`observability.postgres_url`). |
-| `idempotency.ttl_seconds` | int | `86400` | How long completed idempotency records are kept (default 24h). Swept by `daari prune`. |
-| `idempotency.wait_seconds` | float | `60` | How long an in-flight duplicate waits for the first request. |
+| `idempotency.enabled` | bool | `True` | When true, honor Idempotency-Key on chat completions and Responses. A missing header is always a no-op. |
+| `idempotency.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) for multi-replica fleets. |
+| `idempotency.ttl_seconds` | int | `86400` | How long completed idempotency records are kept (default 24h). |
+| `idempotency.wait_seconds` | float | `60.0` | How long an in-flight duplicate waits for the first request. |
 | `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
 | `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |
@@ -178,11 +176,13 @@ Unset families keep global key rpm/tpm only (#1099).
 | `observability.prometheus` | bool | `True` |  |
 | `observability.metrics_port` | int | `0` |  |
 | `observability.otel` | bool | `False` |  |
-| `observability.otlp_logs` | bool | `False` | Opt-in OTLP logs export of gateway events (#849). Requires `OTEL_EXPORTER_OTLP_ENDPOINT` and `daari[otel]`. |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |
 | `observability.postgres_url` | str | `''` |  |
+| `observability.postgres_pool_min` | int | `1` |  |
+| `observability.postgres_pool_max` | int | `4` |  |
 | `observability.structured_json_logs` | bool | `False` |  |
+| `observability.otlp_logs` | bool | `False` |  |
 | `observability.stateless` | bool | `False` |  |
 | `observability.retention.traces_days` | int | `0` |  |
 | `observability.retention.ledger_days` | int | `0` |  |
@@ -192,7 +192,7 @@ Unset families keep global key rpm/tpm only (#1099).
 | `observability.retention.spend_days` | int | `0` | Delete per-request spend rows older than this many days (#709). 0 keeps them forever. |
 | `observability.retention.request_log_days` | int | `0` | Delete gateway request-log lines and rotated backups older than this many days (#772). 0 keeps size-only rotation. |
 | `observability.retention.batches_days` | int | `0` | Delete batch jobs older than this many days (#1136). 0 keeps them forever. |
-| `observability.retention.cache_prune` | bool | `false` | When true, prune invokes L0/L1 `prune()` using each cache's `ttl_seconds` (#1136). |
+| `observability.retention.cache_prune` | bool | `False` | When true, daari prune / daily sweep invoke L0 and L1 prune() using each cache's ttl_seconds (#1136). |
 | `learning.enabled` | bool | `True` |  |
 | `learning.path` | str | `'~/.daari/feedback/feedback.sqlite3'` |  |
 | `learning.max_rows` | int | `20000` |  |
@@ -317,3 +317,7 @@ Unset families keep global key rpm/tpm only (#1099).
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
 | `skills_system_prefix` | str | `''` |  |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |
+
+Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rate_limit.*` setting. Set it on the key or team (`daari keys create/update --rpd`, `daari keys team-create/update --rpd`). See [auth and keys](../guides/configuration/auth-and-keys.md).
+
+Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / `moderations` / `rerank` / `other`) is also not a `rate_limit.*` setting — store it on the virtual key as metadata `rate_families` (see auth-and-keys). Unset families keep global key rpm/tpm only (#1099).

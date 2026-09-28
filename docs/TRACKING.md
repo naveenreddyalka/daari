@@ -5022,6 +5022,14 @@ compact put+get and stream append + `starting_after` resume ceilings in
 `GET ?stream=true&starting_after=` skip semantics and 409 on non-terminal;
 unit coverage also asserts 409 with a cursor. Covered by those tests.
 
+### Keep committed config.md in sync with Settings ([#1165](https://github.com/naveenreddyalka/daari/issues/1165))
+
+<!-- tracking:#1165 -->
+**Status:** Done (2026-09-28). Regenerated `docs/developer/reference/config.md`
+from `render_config_reference()`; hermetic equality test fails on drift.
+Non-Settings rpd / rate_families footnotes live in the generator after the
+table. Covered by `tests/unit/test_gen_reference.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

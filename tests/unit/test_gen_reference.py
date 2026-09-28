@@ -108,6 +108,28 @@ def test_committed_http_api_md_includes_introspect():
     assert "| `POST` | `/v1/daari/cache/invalidate` |" in committed
 
 
+def test_committed_config_md_matches_generator():
+    """On-disk config.md must not drift from Settings (#1165)."""
+    module = _load_module()
+    committed = (REPO_ROOT / "docs/developer/reference/config.md").read_text(
+        encoding="utf-8"
+    )
+    generated = module.render_config_reference()
+    assert committed == generated, (
+        "docs/developer/reference/config.md drifted from render_config_reference(); "
+        "run: python scripts/gen_reference.py"
+    )
+    # Spot-check keys that previously drifted (order / new sections).
+    for key in (
+        "server.header_policy.enabled",
+        "server.cors_origins",
+        "server.security_headers",
+        "frontier.param_compat",
+        "observability.postgres_pool_min",
+    ):
+        assert f"`{key}`" in committed, f"missing config key {key}"
+
+
 def test_org_cache_docs_mention_team_key_invalidate():
     text = (REPO_ROOT / "docs/developer/guides/features/org-cache.md").read_text(
         encoding="utf-8"
