@@ -167,6 +167,16 @@ def keys_create(
         "--mcp-deny",
         help="MCP tool the key may never call (glob). Repeatable; deny wins.",
     ),
+    mcp_server_allow: list[str] = typer.Option(
+        [],
+        "--mcp-server-allow",
+        help="MCP egress server id the key may reach (glob). Repeatable; empty = all.",
+    ),
+    mcp_server_deny: list[str] = typer.Option(
+        [],
+        "--mcp-server-deny",
+        help="MCP egress server id the key may never reach. Repeatable; deny wins.",
+    ),
     expires: str | None = typer.Option(
         None,
         "--expires",
@@ -224,8 +234,17 @@ def keys_create(
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     metadata: dict | None = None
-    if mcp_allow or mcp_deny:
-        metadata = {"mcp": {"allow": list(mcp_allow), "deny": list(mcp_deny)}}
+    if mcp_allow or mcp_deny or mcp_server_allow or mcp_server_deny:
+        mcp_meta: dict = {}
+        if mcp_allow or mcp_deny:
+            mcp_meta["allow"] = list(mcp_allow)
+            mcp_meta["deny"] = list(mcp_deny)
+        if mcp_server_allow or mcp_server_deny:
+            mcp_meta["servers"] = {
+                "allow": list(mcp_server_allow),
+                "deny": list(mcp_server_deny),
+            }
+        metadata = {"mcp": mcp_meta}
     if rate_family:
         families: dict[str, dict[str, int]] = {}
         try:
@@ -443,6 +462,17 @@ def keys_show(key_id: str = typer.Argument(..., help="key_id from `daari keys li
     typer.echo(f"prefix:  {key.prefix}…")
     typer.echo(f"status:  {key.status()}")
     typer.echo(f"team:    {key.team_name or key.team_id or '-'}")
+    mcp_meta = (key.metadata or {}).get("mcp") if isinstance(key.metadata, dict) else None
+    if isinstance(mcp_meta, dict):
+        allow = mcp_meta.get("allow") or []
+        deny = mcp_meta.get("deny") or []
+        if allow or deny:
+            typer.echo(f"mcp tools: allow={allow or '-'} deny={deny or '-'}")
+        servers = mcp_meta.get("servers") if isinstance(mcp_meta.get("servers"), dict) else {}
+        s_allow = (servers or {}).get("allow") or []
+        s_deny = (servers or {}).get("deny") or []
+        if s_allow or s_deny:
+            typer.echo(f"mcp servers: allow={s_allow or '-'} deny={s_deny or '-'}")
     windows = key.budget_windows or ()
     if windows:
         parts = []

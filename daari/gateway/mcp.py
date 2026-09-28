@@ -19,7 +19,15 @@ from daari.gateway.mcp_guardrails import (
     McpGuardrails,
     first_rule,
 )
-from daari.gateway.mcp_policy import TOOL_DENIED, McpToolPolicy, audit_tool_call, resolve_policy
+from daari.gateway.mcp_policy import (
+    TOOL_DENIED,
+    McpServerPolicy,
+    McpToolPolicy,
+    audit_tool_call,
+    resolve_policy,
+    resolve_server_policy,
+    server_id_from_provider,
+)
 from daari.gateway.mcp_tasks import (
     client_opted_into_tasks,
     create_task_result,
@@ -216,16 +224,38 @@ def _provider_catalog(ctx: AppContext) -> list[dict[str, Any]]:
     return tools
 
 
-def _tool_catalog(ctx: AppContext, policy: McpToolPolicy | None = None) -> list[dict[str, Any]]:
+def _catalog_item_allowed(
+    item: dict[str, Any],
+    policy: McpToolPolicy | None,
+    server_policy: McpServerPolicy | None,
+) -> bool:
+    if policy is not None and not policy.allows(item["name"]):
+        return False
+    if server_policy is not None:
+        sid = server_id_from_provider(item.get("provider_id"))
+        if sid is not None and not server_policy.allows(sid):
+            return False
+    return True
+
+
+def _tool_catalog(
+    ctx: AppContext,
+    policy: McpToolPolicy | None = None,
+    server_policy: McpServerPolicy | None = None,
+) -> list[dict[str, Any]]:
     catalog = [*_core_catalog(), *_provider_catalog(ctx)]
-    if policy is None:
+    if policy is None and server_policy is None:
         return catalog
-    return [item for item in catalog if policy.allows(item["name"])]
+    return [item for item in catalog if _catalog_item_allowed(item, policy, server_policy)]
 
 
-def _mcp_list_tools(ctx: AppContext, policy: McpToolPolicy | None = None) -> list[dict[str, Any]]:
+def _mcp_list_tools(
+    ctx: AppContext,
+    policy: McpToolPolicy | None = None,
+    server_policy: McpServerPolicy | None = None,
+) -> list[dict[str, Any]]:
     listed: list[dict[str, Any]] = []
-    for item in _tool_catalog(ctx, policy):
+    for item in _tool_catalog(ctx, policy, server_policy):
         if item["name"] == "health":
             continue
         listed.append(
@@ -238,11 +268,14 @@ def _mcp_list_tools(ctx: AppContext, policy: McpToolPolicy | None = None) -> lis
     return listed
 
 
-def _list_cache_scope(policy: McpToolPolicy | None) -> str:
+def _list_cache_scope(
+    policy: McpToolPolicy | None,
+    server_policy: McpServerPolicy | None = None,
+) -> str:
     """Kong-style: public only when no ACL allow/deny filters the catalog (#979)."""
-    if policy is None:
-        return "public"
-    if policy.allow or policy.deny:
+    if policy is not None and (policy.allow or policy.deny):
+        return "private"
+    if server_policy is not None and server_policy.is_restrictive():
         return "private"
     return "public"
 
@@ -250,18 +283,23 @@ def _list_cache_scope(policy: McpToolPolicy | None) -> str:
 def _tools_list_payload(
     ctx: AppContext,
     policy: McpToolPolicy | None = None,
+    server_policy: McpServerPolicy | None = None,
     *,
     legacy: bool = False,
 ) -> dict[str, Any]:
     """tools/list body with MCP 2026-07-28 _meta cache hints (#979)."""
-    tools = _tool_catalog(ctx, policy) if legacy else _mcp_list_tools(ctx, policy)
+    tools = (
+        _tool_catalog(ctx, policy, server_policy)
+        if legacy
+        else _mcp_list_tools(ctx, policy, server_policy)
+    )
     cache = getattr(getattr(ctx.settings, "integrations", None), "mcp_list_cache", None)
     ttl_ms = int(getattr(cache, "ttl_ms", 60_000) or 0)
     return {
         "tools": tools,
         "_meta": {
             "ttlMs": ttl_ms,
-            "cacheScope": _list_cache_scope(policy),
+            "cacheScope": _list_cache_scope(policy, server_policy),
         },
     }
 
@@ -298,11 +336,13 @@ def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
 
 
 class _Governance:
-    """Per-request policy, guardrails and audit sink for the MCP ingress (#277, #317)."""
+    """Per-request policy, guardrails and audit sink for the MCP ingress (#277, #317, #1201)."""
 
     def __init__(self, request: Request, ctx: AppContext, *, transport: str) -> None:
         self.claims = getattr(request.state, "auth_claims", None)
         self.policy = resolve_policy(self.claims, ctx.settings)
+        self.server_policy = resolve_server_policy(self.claims, ctx.settings)
+        self._ctx = ctx
         self._audit = audit_log_from_settings(ctx.settings)
         self.guardrails = McpGuardrails.from_settings(
             ctx.settings, audit=self._audit, claims=self.claims, transport=transport
@@ -312,16 +352,29 @@ class _Governance:
         self.header_method = (request.headers.get("mcp-method") or "").strip()
         self.header_name = (request.headers.get("mcp-name") or "").strip()
 
-    def denied_tool(self, name: str) -> str | None:
-        """Return the first tool name the caller may not call, else None."""
+    def _server_for_tool(self, name: str) -> str | None:
+        catalog = {item["name"]: item for item in _tool_catalog(self._ctx)}
+        item = catalog.get(name.strip().lower()) or {}
+        return server_id_from_provider(item.get("provider_id"))
+
+    def denied_tool(self, name: str) -> tuple[str, str | None] | None:
+        """Return (tool, server_id|None) the caller may not call, else None."""
         candidates = [self.header_name] if self.header_method in ("", "tools/call") else []
         candidates.append(name)
         for candidate in candidates:
-            if candidate and not self.policy.allows(candidate):
-                return candidate.strip().lower()
+            if not candidate:
+                continue
+            tool = candidate.strip().lower()
+            if not self.policy.allows(tool):
+                return tool, self._server_for_tool(tool)
+            server = self._server_for_tool(tool)
+            if server is not None and not self.server_policy.allows(server):
+                return tool, server
         return None
 
-    def audit(self, *, tool: str, decision: str, transport: str) -> None:
+    def audit(
+        self, *, tool: str, decision: str, transport: str, server: str | None = None
+    ) -> None:
         audit_tool_call(
             self._audit,
             self.claims,
@@ -329,15 +382,18 @@ class _Governance:
             decision=decision,
             method="tools/call",
             transport=transport,
+            server=server,
         )
 
-    def check(self, name: str, *, transport: str) -> str | None:
-        """Audit the call and return the denied tool name, if any."""
+    def check(self, name: str, *, transport: str) -> tuple[str, str | None] | None:
+        """Audit the call and return (denied tool, server_id) if any."""
         denied = self.denied_tool(name)
         if denied is not None:
-            self.audit(tool=denied, decision="deny", transport=transport)
+            tool, server = denied
+            self.audit(tool=tool, decision="deny", transport=transport, server=server)
             return denied
-        self.audit(tool=name, decision="allow", transport=transport)
+        server = self._server_for_tool(name)
+        self.audit(tool=name, decision="allow", transport=transport, server=server)
         return None
 
     def tripped_rule(self, name: str, arguments: Any) -> str | None:
@@ -373,16 +429,28 @@ def _legacy_guardrail_blocked(name: str, rule: str) -> JSONResponse:
     return JSONResponse(payload, status_code=403, headers=LEGACY_HEADERS)
 
 
-def _legacy_denied(name: str) -> JSONResponse:
+def _legacy_denied(name: str, server: str | None = None) -> JSONResponse:
+    details: dict[str, Any] = {"tool": name}
+    if server:
+        details["server"] = server
     payload = MCPQueryResponse(
         ok=False,
         tool="tools/call",
         result={
             "name": name,
-            "error": _error("MCP_ERR_TOOL_DENIED", f"Tool denied by policy: {name}", details={"tool": name}),
+            "error": _error(
+                "MCP_ERR_TOOL_DENIED", f"Tool denied by policy: {name}", details=details
+            ),
         },
     ).model_dump()
     return JSONResponse(payload, status_code=403, headers=LEGACY_HEADERS)
+
+
+def _denial_data(tool: str, server: str | None = None) -> dict[str, Any]:
+    data: dict[str, Any] = {"tool": tool}
+    if server:
+        data["server"] = server
+    return data
 
 
 def _negotiate_protocol(params: Any) -> str:
@@ -652,7 +720,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                 return _legacy(
                     MCPQueryResponse(
                         tool="tools/list",
-                        result=_tools_list_payload(ctx, governance.policy, legacy=True),
+                        result=_tools_list_payload(
+                            ctx, governance.policy, governance.server_policy, legacy=True
+                        ),
                     ).model_dump()
                 )
 
@@ -683,8 +753,9 @@ class MCPGatewayAdapter(GatewayAdapter):
                 normalized_name = name.strip().lower()
                 denied = governance.check(normalized_name, transport="rest")
                 if denied is not None:
-                    _record_mcp_tool(ctx, denied, "deny")
-                    return _legacy_denied(denied)
+                    denied_tool, denied_server = denied
+                    _record_mcp_tool(ctx, denied_tool, "deny")
+                    return _legacy_denied(denied_tool, denied_server)
                 schema = (catalog_by_name.get(normalized_name) or {}).get("input_schema")
                 if schema is not None:
                     validation_errors = _validate_input(schema, arguments)
@@ -742,8 +813,9 @@ class MCPGatewayAdapter(GatewayAdapter):
 
             denied = governance.check(tool, transport="rest")
             if denied is not None:
-                _record_mcp_tool(ctx, denied, "deny")
-                return _legacy_denied(denied)
+                denied_tool, denied_server = denied
+                _record_mcp_tool(ctx, denied_tool, "deny")
+                return _legacy_denied(denied_tool, denied_server)
             rule = governance.tripped_rule(tool, {"input": body.input, **body.args})
             if rule is not None:
                 _record_mcp_tool(ctx, tool, "guardrail")
@@ -812,7 +884,10 @@ class MCPGatewayAdapter(GatewayAdapter):
                     return _rpc_response(
                         request,
                         _jsonrpc_result(
-                            rpc_id, _tools_list_payload(ctx, governance.policy)
+                            rpc_id,
+                            _tools_list_payload(
+                                ctx, governance.policy, governance.server_policy
+                            ),
                         ),
                     )
                 if method == "resources/list":
@@ -844,14 +919,15 @@ class MCPGatewayAdapter(GatewayAdapter):
                         )
                     denied = governance.check(name, transport="jsonrpc")
                     if denied is not None:
-                        _record_mcp_tool(ctx, denied, "deny")
+                        denied_tool, denied_server = denied
+                        _record_mcp_tool(ctx, denied_tool, "deny")
                         return _rpc_response(
                             request,
                             _jsonrpc_error(
                                 rpc_id,
                                 TOOL_DENIED,
-                                f"Tool denied by policy: {denied}",
-                                data={"tool": denied},
+                                f"Tool denied by policy: {denied_tool}",
+                                data=_denial_data(denied_tool, denied_server),
                             ),
                         )
                     catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}

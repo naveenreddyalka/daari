@@ -248,6 +248,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_servers` | list | `[]` |  |
 | `integrations.mcp_policy.allow` | list | `[]` | MCP tool names (glob) the caller may call. Empty = every tool not denied. |
 | `integrations.mcp_policy.deny` | list | `[]` | MCP tool names (glob) the caller may never call. Deny beats allow. |
+| `integrations.mcp_policy.servers.allow` | list | `[]` | MCP egress server ids (glob) the caller may reach. Empty = every server not denied. |
+| `integrations.mcp_policy.servers.deny` | list | `[]` | MCP egress server ids (glob) the caller may never reach. Deny beats allow. |
 | `integrations.mcp_team_policies` | dict | `{}` | Per-team MCP tool policy keyed by team name; layered on mcp_policy. |
 | `integrations.mcp_tasks.enabled` | bool | `True` |  |
 | `integrations.mcp_tasks.long_running_tools` | list | `['route']` |  |

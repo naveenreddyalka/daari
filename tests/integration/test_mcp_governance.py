@@ -150,3 +150,41 @@ async def test_mcp_name_header_is_honoured_for_policy(settings, monkeypatch):
             headers={**headers, "Mcp-Method": "tools/call", "Mcp-Name": "stats"},
         )
     assert response.json()["error"]["code"] == TOOL_DENIED
+
+
+async def test_server_policy_filters_catalog_and_denies_call(settings, monkeypatch):
+    """Per-key mcp.servers allowlist hides denied egress tools (#1201)."""
+    settings.integrations.mcp_servers = [
+        {"id": "weather", "url": "http://mcp.test/weather"},
+        {"id": "shell", "url": "http://mcp.test/shell"},
+    ]
+    app, headers, key_id = _app_with_key(
+        settings,
+        monkeypatch,
+        metadata={"mcp": {"servers": {"allow": ["weather"]}}},
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        denied = await _rpc(
+            client,
+            "tools/call",
+            {"name": "mcp_shell", "arguments": {"input": "whoami"}},
+            headers=headers,
+        )
+
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert "mcp_weather" in names
+    assert "mcp_shell" not in names
+    assert "route" in names
+    error = denied.json()["error"]
+    assert error["code"] == TOOL_DENIED
+    assert error["data"]["tool"] == "mcp_shell"
+    assert error["data"].get("server") == "shell"
+    rows = [
+        row
+        for row in AuditLog(settings.enterprise.audit_path).list()
+        if row["action"] == "mcp.tools/call" and row["detail"].get("decision") == "deny"
+    ]
+    assert len(rows) == 1
+    assert rows[0]["detail"]["server"] == "shell"
+    assert rows[0]["actor"] == key_id

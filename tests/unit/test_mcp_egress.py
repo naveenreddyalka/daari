@@ -379,3 +379,30 @@ async def test_egress_list_applies_tool_search(monkeypatch):
     assert "get_forecast" in result.content
     # top_k=3 — most generic tools should be absent from the truncated catalog string
     assert "tool_40" not in result.content
+
+
+@pytest.mark.asyncio
+async def test_denied_server_never_posts(monkeypatch):
+    """Server allowlist blocks egress before any upstream POST (#1201)."""
+    from daari.gateway.mcp_policy import McpServerPolicy
+
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}})
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(
+        McpServerConfig(id="shell", url="http://mcp.test/rpc"),
+        server_policy=McpServerPolicy(deny=("shell",)),
+    )
+    result = await provider.execute(
+        InternalRequest(
+            messages=[Message(role="user", content="@mcp:shell run_cmd ls")],
+            model="daari",
+        )
+    )
+    assert seen == []
+    assert result.daari_meta.warning == "mcp_server_denied"
+    assert "shell" in result.content
