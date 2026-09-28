@@ -49,9 +49,10 @@ Defaults apply to every key (including the master key). A virtual key's `--rpm` 
 Optional **modality-family** ceilings on a virtual key live in key metadata
 (`rate_families`) so chat cannot starve images (or the reverse) on a shared
 key (#1099). Families: `chat`, `embeddings`, `images`, `audio`, `moderations`,
-`rerank`, `other`. Each entry may set `rpm` and/or `tpm` (0 / omitted =
+`rerank`, `mcp`, `other`. Each entry may set `rpm` and/or `tpm` (0 / omitted =
 no family ceiling). Counters are `rpm:{key_id}:family:{name}` /
-`tpm:{key_id}:family:{name}` — exhausting `images` leaves `chat` open.
+`tpm:{key_id}:family:{name}` — exhausting `images` leaves `chat` open;
+exhausting `mcp` (`POST /mcp`, `/v1/mcp/*`) leaves `chat` open (#1202).
 Unset `rate_families` preserves today's global key rpm/tpm only.
 
 ```bash

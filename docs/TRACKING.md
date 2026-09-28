@@ -5083,6 +5083,15 @@ the server id, and never POSTed by the egress client. CLI
 `tests/unit/test_mcp_policy.py`, `tests/unit/test_mcp_egress.py`,
 `tests/integration/test_mcp_governance.py`, `tests/unit/test_virtual_keys.py`.
 
+### MCP tools/call metering + mcp rate family ([#1202](https://github.com/naveenreddyalka/daari/issues/1202))
+
+<!-- tracking:#1202 -->
+**Status:** Done (2026-09-28). Non-`route` MCP `tools/call` (provider/egress
+included) writes usage + spend rows attributed to key/team; `/mcp` maps to a
+dedicated `mcp` rate-limit family so ceilings do not consume `chat`. Docs:
+MCP guide metering section + auth-and-keys family list. Covered by
+`tests/unit/test_mcp_vk_governance.py`, `tests/unit/test_rate_families.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

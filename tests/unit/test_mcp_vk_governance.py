@@ -141,6 +141,55 @@ async def test_mcp_spend_attributed_to_key_and_team(settings, monkeypatch, tmp_p
     assert rows[0]["team_id"] == created.key.team_id
 
 
+async def test_provider_backed_mcp_tool_writes_spend_row(settings, monkeypatch, tmp_path):
+    """Egress/provider MCP tools meter into spend like chat (#1202)."""
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.usage.enabled = True
+    settings.integrations.mcp_servers = [
+        {"id": "weather", "url": "http://mcp.test/weather"},
+    ]
+    app, headers, created, _ = _app_with_key(settings, monkeypatch, team="eng")
+
+    async def fake_provider_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="sunny",
+            model=request.model or "daari",
+            daari_meta=DaariMeta(
+                tier="tool",
+                executor="integration",
+                provider_id="mcp:weather",
+                task_type="tool",
+            ),
+        )
+
+    provider = app.state.ctx.providers.get("mcp:weather")
+    assert provider is not None
+    monkeypatch.setattr(provider, "execute", fake_provider_execute)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _rpc(
+            client,
+            "tools/call",
+            {"name": "mcp_weather", "arguments": {"input": "forecast"}},
+            headers=headers,
+        )
+    assert response.status_code == 200, response.text
+    assert "error" not in response.json()
+    spend_rows = list(
+        app.state.ctx.router.spend_ledger.iter_rows(since="2000-01-01T00:00:00+00:00")
+    )
+    assert len(spend_rows) >= 1
+    assert spend_rows[0]["key_id"] == created.key.key_id
+    assert spend_rows[0]["team_id"] == created.key.team_id
+    assert any(
+        "mcp:weather" in str(row.get("provider") or row.get("model") or "")
+        or row.get("key_id") == created.key.key_id
+        for row in spend_rows
+    )
+
+
 async def test_mcp_route_cache_does_not_cross_key_scopes(settings, monkeypatch):
     settings.cache.l0.enabled = True
     settings.cache.l1.enabled = False

@@ -322,4 +322,4 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 
 Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rate_limit.*` setting. Set it on the key or team (`daari keys create/update --rpd`, `daari keys team-create/update --rpd`). See [auth and keys](../guides/configuration/auth-and-keys.md).
 
-Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / `moderations` / `rerank` / `other`) is also not a `rate_limit.*` setting — store it on the virtual key as metadata `rate_families` (see auth-and-keys). Unset families keep global key rpm/tpm only (#1099).
+Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / `moderations` / `rerank` / `mcp` / `other`) is also not a `rate_limit.*` setting — store it on the virtual key as metadata `rate_families` (see auth-and-keys). Unset families keep global key rpm/tpm only (#1099).

@@ -508,6 +508,97 @@ def _enforce_mcp_model(request: Request | None, ctx: AppContext, meta: RequestMe
         raise ModelNotAllowed(denied)
 
 
+def _meter_mcp_tool_call(
+    ctx: AppContext,
+    request: Request | None,
+    *,
+    tool: str,
+    call_input: str | None,
+    model: str,
+    provider_id: str | None = None,
+    daari_meta: dict[str, Any] | None = None,
+) -> None:
+    """Write usage (and spend when hooked) for non-route MCP tools/call (#1202).
+
+    The `route` tool already meters via ``router.route`` → ``_ledger_record``.
+    """
+    name = tool.strip().lower()
+    if name == "route":
+        return
+    router = getattr(ctx, "router", None)
+    usage = getattr(router, "usage_ledger", None) if router is not None else None
+    if usage is None:
+        return
+    prompt = call_input or ""
+    prompt_chars = len(prompt)
+    input_tokens = max(0, prompt_chars // 4)
+    completion_chars = 0
+    output_tokens = 0
+    reported_cost = 0.0
+    tier = "mcp"
+    provider = provider_id or f"mcp:{name}"
+    meta = daari_meta or {}
+    if meta.get("tier"):
+        tier = str(meta["tier"])
+    if meta.get("provider_id"):
+        provider = str(meta["provider_id"])
+    if meta.get("cost_usd") is not None:
+        try:
+            reported_cost = float(meta["cost_usd"] or 0.0)
+        except (TypeError, ValueError):
+            reported_cost = 0.0
+    client_id = None
+    user_id = None
+    key_id = ""
+    team_id = ""
+    if request is not None:
+        claims = getattr(request.state, "auth_claims", None)
+        if claims is not None and getattr(claims, "kind", None) == "virtual":
+            client_id = getattr(claims, "client_id", None) or getattr(claims, "key_id", None)
+            key_id = str(getattr(claims, "key_id", None) or "")
+            virtual_key = getattr(claims, "virtual_key", None)
+            if virtual_key is not None:
+                team_id = str(getattr(virtual_key, "team_id", None) or "")
+                if not client_id:
+                    client_id = getattr(virtual_key, "client_id", None) or key_id
+    spend_ledger = getattr(router, "spend_ledger", None)
+    if spend_ledger is not None and getattr(spend_ledger, "enabled", False):
+        from daari.observability.spend import SpendContext, bind_spend_context
+
+        settings = getattr(ctx, "settings", None)
+        usage_settings = getattr(settings, "usage", None)
+        fallback = float(getattr(usage_settings, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+        pricing = getattr(router, "pricing", None)
+        if pricing is None and settings is not None:
+            pricing = getattr(settings, "pricing", None)
+        bind_spend_context(
+            SpendContext(
+                key_id=key_id,
+                team_id=team_id,
+                client_id=str(client_id or ""),
+                user_id=str(user_id or "").strip(),
+                request_id=str(getattr(request.state, "request_id", None) or "") if request else "",
+                requested_model=model,
+                pricing=pricing,
+                fallback_per_1k=fallback,
+                reported_cost=reported_cost,
+            )
+        )
+    usage.record(
+        tier=tier,
+        cache_hit=False,
+        prompt_chars=prompt_chars,
+        completion_chars=completion_chars,
+        client_id=client_id,
+        user_id=user_id,
+        model=model,
+        provider=provider,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        reported_cost=reported_cost,
+    )
+
+
 async def _run_tool(
     ctx: AppContext,
     name: str,
@@ -519,10 +610,26 @@ async def _run_tool(
 ) -> MCPQueryResponse:
     normalized = name.strip().lower()
     if normalized == "health":
-        return MCPQueryResponse(tool=normalized, result={"status": "ok", "adapter": "mcp"})
+        response = MCPQueryResponse(tool=normalized, result={"status": "ok", "adapter": "mcp"})
+        _meter_mcp_tool_call(
+            ctx,
+            request,
+            tool=normalized,
+            call_input=call_input,
+            model=_resolve_tool_model(ctx, model, call_args),
+        )
+        return response
 
     if normalized == "stats":
-        return MCPQueryResponse(tool=normalized, result=ctx.metrics.snapshot())
+        response = MCPQueryResponse(tool=normalized, result=ctx.metrics.snapshot())
+        _meter_mcp_tool_call(
+            ctx,
+            request,
+            tool=normalized,
+            call_input=call_input,
+            model=_resolve_tool_model(ctx, model, call_args),
+        )
+        return response
 
     catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
     provider_id = (catalog_by_name.get(normalized) or {}).get("provider_id")
@@ -559,12 +666,22 @@ async def _run_tool(
             meta=meta,
         )
         provider_result = await _await_work(provider.execute(internal))
-        return MCPQueryResponse(
+        response = MCPQueryResponse(
             ok=provider_result.daari_meta.warning is None,
             tool=normalized,
             result={"content": provider_result.content},
             daari_meta=provider_result.daari_meta.model_dump(),
         )
+        _meter_mcp_tool_call(
+            ctx,
+            request,
+            tool=normalized,
+            call_input=call_input,
+            model=resolved_model,
+            provider_id=provider_id,
+            daari_meta=response.daari_meta,
+        )
+        return response
 
     if normalized != "route":
         return MCPQueryResponse(

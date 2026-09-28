@@ -24,6 +24,9 @@ def test_rate_limit_family_maps_paths():
     assert rate_limit_family("/v1/audio/speech") == "audio"
     assert rate_limit_family("/v1/moderations") == "moderations"
     assert rate_limit_family("/v1/rerank") == "rerank"
+    assert rate_limit_family("/mcp") == "mcp"
+    assert rate_limit_family("/mcp/") == "mcp"
+    assert rate_limit_family("/v1/mcp/query") == "mcp"
     assert rate_limit_family("/health") == "other"
 
 
@@ -105,4 +108,66 @@ async def test_gateway_family_quota_429_leaves_other_family(settings, tmp_path):
     assert "family:images" in second.json()["error"]["message"]
     assert second.headers.get("X-RateLimit-Scope") == "family:images"
     # Chat is a different family — not blocked by the images ceiling.
+    assert chat.status_code != 429
+
+
+@pytest.mark.asyncio
+async def test_mcp_family_quota_does_not_consume_chat(settings, monkeypatch, tmp_path):
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.rate_limit.rpm = 0
+    settings.rate_limit.tpm = 0
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create(
+        "scoped",
+        metadata={"rate_families": {"mcp": {"rpm": 1}, "chat": {"rpm": 5}}},
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    headers = {"Authorization": f"Bearer {created.plaintext}"}
+
+    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+    from tests.conftest import mock_all_ollama_executors
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "stats", "arguments": {}},
+            },
+            headers=headers,
+        )
+        second = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "stats", "arguments": {}},
+            },
+            headers=headers,
+        )
+        chat = await client.post(
+            "/v1/chat/completions",
+            json={"model": "llama3.2:3b", "messages": [{"role": "user", "content": "hi"}]},
+            headers=headers,
+        )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 429
+    assert "family:mcp" in second.json()["error"]["message"]
     assert chat.status_code != 429
