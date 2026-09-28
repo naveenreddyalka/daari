@@ -293,7 +293,6 @@ def test_cli_backup_create_encrypt_openssl(tmp_path, monkeypatch):
 
 def _install_pg_dump_shim(tmp_path: Path, monkeypatch, *, fail: bool = False) -> Path:
     """Put a fake ``pg_dump`` on PATH that writes a deterministic SQL payload."""
-    import hashlib
     import os
     import stat
 
@@ -349,8 +348,6 @@ def test_create_embeds_pg_dump_when_on_path(tmp_path, monkeypatch):
 
 
 def test_create_falls_back_external_without_pg_dump(tmp_path, monkeypatch):
-    import os
-
     # Ensure no real pg_dump is visible.
     empty = tmp_path / "empty-bin"
     empty.mkdir()
