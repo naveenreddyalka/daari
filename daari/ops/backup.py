@@ -1,9 +1,11 @@
-"""Full-state backup / restore for durable daari stores (#1131, #1176)."""
+"""Full-state backup / restore for durable daari stores (#1131, #1176, #1177)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tarfile
@@ -417,7 +419,55 @@ def decrypt_backup_archive(
     return dest
 
 
-def create_backup(settings: Any, archive: Path) -> BackupManifest:
+def _embed_pg_dump(entry: StoreEntry, root: Path) -> dict[str, Any] | None:
+    """Run catalogued ``pg_dump`` into ``stores/pg/<name>.sql`` when the binary exists.
+
+    Returns an embedded manifest row on success, or ``None`` to fall back to external.
+    """
+    if not entry.pg_dump:
+        return None
+    if shutil.which("pg_dump") is None:
+        return None
+    rel = f"stores/pg/{entry.name.replace('/', '-')}.sql"
+    dest = root / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        argv = shlex.split(entry.pg_dump)
+    except ValueError:
+        return None
+    if not argv:
+        return None
+    # Prefer the PATH binary so tests can inject a shim ahead of a system install.
+    argv[0] = shutil.which("pg_dump") or argv[0]
+    proc = subprocess.run(
+        argv,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    dest.write_bytes(proc.stdout or b"")
+    digest = hashlib.sha256(dest.read_bytes()).hexdigest()
+    return {
+        "name": entry.name,
+        "backend": "embedded",
+        "schema_version": entry.schema_version,
+        "source_path": entry.source_path,
+        "archive_path": rel,
+        "present": True,
+        "pg_dump": entry.pg_dump,
+        "external": False,
+        "size_bytes": dest.stat().st_size,
+        "sha256": digest,
+    }
+
+
+def create_backup(
+    settings: Any,
+    archive: Path,
+    *,
+    require_pg_dump: bool = False,
+) -> BackupManifest:
     """Write ``archive`` (.tar.gz) with manifest + durable sqlite/JSONL/dir stores."""
     archive = Path(archive).expanduser()
     if archive.suffixes[-2:] != [".tar", ".gz"] and not str(archive).endswith(".tar.gz"):
@@ -430,6 +480,8 @@ def create_backup(settings: Any, archive: Path) -> BackupManifest:
         archive_schema_version=ARCHIVE_SCHEMA_VERSION,
         created_at=datetime.now(UTC).isoformat(),
     )
+    embedded_paths: list[str] = []
+    pg_failures: list[str] = []
 
     with tempfile.TemporaryDirectory(prefix="daari-backup-") as tmp:
         root = Path(tmp)
@@ -445,8 +497,14 @@ def create_backup(settings: Any, archive: Path) -> BackupManifest:
                 "present": entry.present,
             }
             if entry.backend == "postgres":
+                embedded = _embed_pg_dump(entry, root)
+                if embedded is not None:
+                    embedded_paths.append(str(embedded["archive_path"]))
+                    manifest.stores.append(embedded)
+                    continue
                 row["pg_dump"] = entry.pg_dump
                 row["external"] = True
+                pg_failures.append(entry.name)
                 manifest.stores.append(row)
                 continue
             src = Path(entry.source_path) if entry.source_path else None
@@ -465,6 +523,18 @@ def create_backup(settings: Any, archive: Path) -> BackupManifest:
             row["present"] = True
             manifest.stores.append(row)
 
+        if require_pg_dump and pg_failures:
+            missing = shutil.which("pg_dump") is None
+            detail = (
+                "pg_dump not found on PATH"
+                if missing
+                else f"pg_dump failed for: {', '.join(pg_failures)}"
+            )
+            raise BackupError(
+                f"{detail}; cannot satisfy --require-pg-dump "
+                f"(stores left external: {', '.join(pg_failures)})"
+            )
+
         (root / "manifest.json").write_text(
             json.dumps(manifest.to_dict(), indent=2) + "\n", encoding="utf-8"
         )
@@ -476,8 +546,11 @@ def create_backup(settings: Any, archive: Path) -> BackupManifest:
                 path = root / entry.archive_path
                 if path.exists():
                     tar.add(path, arcname=entry.archive_path)
+            for rel in embedded_paths:
+                path = root / rel
+                if path.exists():
+                    tar.add(path, arcname=rel)
     return manifest
-
 
 def _read_manifest(archive: Path) -> BackupManifest:
     with tarfile.open(archive, "r:gz") as tar:
@@ -507,6 +580,59 @@ def server_appears_running(settings: Any) -> bool:
         return False
 
 
+def _restore_embedded_pg(
+    settings: Any,
+    root: Path,
+    stores: list[dict[str, Any]],
+    *,
+    restore_pg: bool,
+) -> list[str]:
+    """Apply or document embedded ``stores/pg/*.sql`` dumps.
+
+    When ``restore_pg`` is True and a Postgres DSN + ``psql`` are available, run
+    each dump. Otherwise return operator hints (extract paths / psql commands).
+    """
+    hints: list[str] = []
+    embedded = [
+        row
+        for row in stores
+        if row.get("backend") == "embedded" and row.get("present") and row.get("archive_path")
+    ]
+    if not embedded:
+        return hints
+    pg = _pg_url(settings)
+    psql = shutil.which("psql")
+    if restore_pg and pg and psql:
+        for row in embedded:
+            rel = str(row["archive_path"])
+            sql_path = root / rel
+            if not sql_path.is_file():
+                continue
+            proc = subprocess.run(
+                [psql, f"--dbname={pg}", "-v", "ON_ERROR_STOP=1", "-f", str(sql_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise BackupError(
+                    f"psql restore failed for {row.get('name')}: "
+                    f"{(proc.stderr or proc.stdout or '').strip()}"
+                )
+            hints.append(f"restored embedded {rel} via psql")
+        return hints
+    for row in embedded:
+        rel = str(row["archive_path"])
+        if pg:
+            hints.append(f'psql --dbname="{pg}" -f <extract>/{rel}')
+        else:
+            hints.append(
+                f"embedded dump at {rel} — extract the archive and load with psql/pg_restore "
+                "(configure observability.postgres_url and pass --restore-pg to apply)"
+            )
+    return hints
+
+
 def restore_backup(
     settings: Any,
     archive: Path,
@@ -515,6 +641,7 @@ def restore_backup(
     allow_running_server: bool = False,
     passphrase_env: str = DEFAULT_PASSPHRASE_ENV,
     age_identity: str | None = None,
+    restore_pg: bool = False,
 ) -> BackupManifest:
     """Restore stores from ``archive`` onto paths from ``settings``."""
     archive = Path(archive).expanduser()
@@ -541,6 +668,7 @@ def restore_backup(
                 plain,
                 force=force,
                 allow_running_server=True,  # already checked above
+                restore_pg=restore_pg,
             )
     manifest = _read_manifest(archive)
     if manifest.archive_schema_version > ARCHIVE_SCHEMA_VERSION:
@@ -559,7 +687,7 @@ def restore_backup(
                 tar.extractall(root)
         for row in manifest.stores:
             name = str(row.get("name") or "")
-            if row.get("backend") == "postgres" or row.get("external"):
+            if row.get("backend") in {"postgres", "embedded"} or row.get("external"):
                 continue
             if not row.get("present"):
                 continue
@@ -584,6 +712,9 @@ def restore_backup(
                 shutil.copytree(src, dest)
             else:
                 shutil.copy2(src, dest)
+        _restore_embedded_pg(
+            settings, root, manifest.stores, restore_pg=restore_pg
+        )
     return manifest
 
 

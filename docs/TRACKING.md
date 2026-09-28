@@ -4989,6 +4989,15 @@ tarball via host CLI; restore decrypts with passphrase/identity env or flags;
 doctor hints when recent backups are all plaintext. Covered by
 `tests/unit/test_backup_restore.py`.
 
+### Embed Postgres dumps into backup archive ([#1177](https://github.com/naveenreddyalka/daari/issues/1177))
+
+<!-- tracking:#1177 -->
+**Status:** Done (2026-09-28). When `pg_dump` is on PATH, postgres-backed
+stores are dumped into `stores/pg/*.sql` and marked `backend=embedded` with
+size/hash; missing/failed dumps stay `external` unless `--require-pg-dump`.
+Restore documents extract paths and applies dumps with `--restore-pg` +
+`psql`. Covered by `tests/unit/test_backup_restore.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

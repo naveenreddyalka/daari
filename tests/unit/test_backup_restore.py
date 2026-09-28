@@ -289,3 +289,153 @@ def test_cli_backup_create_encrypt_openssl(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert (tmp_path / "cli.tar.gz.enc").is_file()
     assert not archive.exists()
+
+
+def _install_pg_dump_shim(tmp_path: Path, monkeypatch, *, fail: bool = False) -> Path:
+    """Put a fake ``pg_dump`` on PATH that writes a deterministic SQL payload."""
+    import os
+    import stat
+
+    bin_dir = tmp_path / "fake-bin"
+    bin_dir.mkdir(exist_ok=True)
+    shim = bin_dir / "pg_dump"
+    if fail:
+        shim.write_text("#!/bin/sh\necho boom >&2\nexit 1\n", encoding="utf-8")
+    else:
+        shim.write_text(
+            "#!/bin/sh\nprintf '%s\\n' '-- fake pg_dump for unit test'\n",
+            encoding="utf-8",
+        )
+    shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    return shim
+
+
+def _pg_settings(tmp_path: Path) -> Settings:
+    settings = _settings(tmp_path)
+    settings.batches.backend = "postgres"
+    settings.files.backend = "postgres"
+    settings.observability.postgres_url = "postgresql://localhost/daari"
+    return settings
+
+
+def test_create_embeds_pg_dump_when_on_path(tmp_path, monkeypatch):
+    import hashlib
+
+    _install_pg_dump_shim(tmp_path, monkeypatch)
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _pg_settings(src)
+    _seed(settings)
+    archive = tmp_path / "with-pg.tar.gz"
+    manifest = create_backup(settings, archive)
+    by_name = {s["name"]: s for s in manifest.stores}
+    batches = by_name["batches"]
+    assert batches["backend"] == "embedded"
+    assert batches.get("external") is not True
+    assert batches["archive_path"] == "stores/pg/batches.sql"
+    assert batches["present"] is True
+    assert batches["size_bytes"] > 0
+    expected = hashlib.sha256(b"-- fake pg_dump for unit test\n").hexdigest()
+    assert batches["sha256"] == expected
+
+    with tarfile.open(archive, "r:gz") as tar:
+        raw = tar.extractfile("stores/pg/batches.sql")
+        assert raw is not None
+        assert raw.read() == b"-- fake pg_dump for unit test\n"
+
+
+def test_create_falls_back_external_without_pg_dump(tmp_path, monkeypatch):
+    # Ensure no real pg_dump is visible.
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _pg_settings(src)
+    archive = tmp_path / "hint-only.tar.gz"
+    manifest = create_backup(settings, archive)
+    batches = next(s for s in manifest.stores if s["name"] == "batches")
+    assert batches["backend"] == "postgres"
+    assert batches.get("external") is True
+    assert "pg_dump" in (batches.get("pg_dump") or "")
+    with tarfile.open(archive, "r:gz") as tar:
+        names = tar.getnames()
+    assert not any(n.startswith("stores/pg/") for n in names)
+
+
+def test_create_require_pg_dump_fails_when_missing(tmp_path, monkeypatch):
+    empty = tmp_path / "empty-bin"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _pg_settings(src)
+    with pytest.raises(BackupError, match="pg_dump"):
+        create_backup(settings, tmp_path / "req.tar.gz", require_pg_dump=True)
+
+
+def test_create_require_pg_dump_fails_on_dump_error(tmp_path, monkeypatch):
+    _install_pg_dump_shim(tmp_path, monkeypatch, fail=True)
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _pg_settings(src)
+    with pytest.raises(BackupError, match="pg_dump"):
+        create_backup(settings, tmp_path / "fail.tar.gz", require_pg_dump=True)
+
+
+def test_restore_embedded_pg_offers_psql(tmp_path, monkeypatch):
+    _install_pg_dump_shim(tmp_path, monkeypatch)
+    # Fake psql that records the -f path.
+    import os
+    import stat
+
+    bin_dir = tmp_path / "fake-bin"
+    psql = bin_dir / "psql"
+    record = tmp_path / "psql-invocations.txt"
+    psql.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{record}"\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    psql.chmod(psql.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _pg_settings(src)
+    archive = tmp_path / "embed.tar.gz"
+    create_backup(settings, archive)
+
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", dst / "requests.log")
+    restored = restore_backup(
+        _pg_settings(dst),
+        archive,
+        allow_running_server=True,
+        restore_pg=True,
+    )
+    assert any(s.get("backend") == "embedded" for s in restored.stores)
+    text = record.read_text(encoding="utf-8")
+    assert "stores/pg/batches.sql" in text or "batches.sql" in text
+
+
+def test_docs_mention_embedded_pg_dump():
+    doc = Path("docs/developer/guides/operations/backup-restore.md").read_text(
+        encoding="utf-8"
+    )
+    assert "embedded" in doc.lower()
+    assert "--require-pg-dump" in doc
+    assert "stores/pg/" in doc

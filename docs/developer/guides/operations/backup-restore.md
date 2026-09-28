@@ -2,7 +2,8 @@
 
 Full-state snapshot of durable daari stores
 ([#1131](https://github.com/naveenreddyalka/daari/issues/1131),
-[#1171](https://github.com/naveenreddyalka/daari/issues/1171)).
+[#1171](https://github.com/naveenreddyalka/daari/issues/1171),
+[#1177](https://github.com/naveenreddyalka/daari/issues/1177)).
 
 ## Create
 
@@ -36,11 +37,18 @@ The archive contains:
 - `manifest.json` — daari version, archive schema version, per-store backends
 - `stores/*` — every sqlite / JSONL / files directory daari owns on this host
 - Rotated request-log siblings (`cursor-requests.log.1`, `.2`, …) when present
+- `stores/pg/*.sql` — embedded Postgres dumps when `pg_dump` is on PATH (#1177)
 
 Stores configured with a **postgres** backend — including batches
-(`daari_batch_jobs`) and files (`daari_files`) — are listed in the manifest as
-`external` with the exact `pg_dump` command to run (not embedded in the
-tarball).
+(`daari_batch_jobs`) and files (`daari_files`) — are embedded into
+`stores/pg/<name>.sql` when `pg_dump` is available. The manifest marks those
+rows `backend=embedded` with `size_bytes` and `sha256`. If `pg_dump` is missing
+or a dump fails, the row stays `external` with the exact `pg_dump` hint (create
+still exits 0). Pass `--require-pg-dump` to fail instead:
+
+```bash
+daari backup create ~/.daari/backups/daari.tar.gz --require-pg-dump
+```
 
 ## Restore
 
@@ -73,8 +81,17 @@ daari backup restore ARCHIVE.tar.gz --force --i-know-server-is-stopped
 Archives whose `archive_schema_version` is **newer** than the running binary
 are refused — upgrade daari first.
 
-Postgres tables are not restored by this command; use `pg_restore` with the
-dump you took alongside the archive.
+Embedded Postgres dumps are listed on restore with their `stores/pg/*.sql`
+paths. To load them into the configured DSN (`observability.postgres_url`)
+when `psql` is on PATH:
+
+```bash
+daari backup restore ARCHIVE.tar.gz --force --restore-pg
+```
+
+Without `--restore-pg`, extract the archive (or `tar -tzf ARCHIVE | grep stores/pg`)
+and run `psql --dbname="$DSN" -f stores/pg/<name>.sql` yourself. External
+(hint-only) stores still need a manual `pg_dump` taken at backup time.
 
 ## Cold vs live (SQLite WAL)
 
@@ -87,18 +104,20 @@ dump you took alongside the archive.
 
 ## Postgres runbook
 
-1. Note `pg_dump` lines printed by `daari backup create` (also in the
-   manifest). Batches and files appear here when their backends are postgres.
-2. Run each dump into `~/.daari/backups/pg-*.sql`.
-3. On restore: restore the tarball (sqlite/jsonl), then `pg_restore` / `psql`
-   the SQL dumps into the target DSN.
+1. Prefer `pg_dump` on PATH so `daari backup create` embeds dumps under
+   `stores/pg/` (use `--require-pg-dump` in CI/cron if you need a hard fail).
+2. If create printed `external` lines, run those `pg_dump` commands into
+   `~/.daari/backups/pg-*.sql` beside the tarball.
+3. On restore: restore the tarball (sqlite/jsonl), then either
+   `daari backup restore … --restore-pg` for embedded dumps, or
+   `psql` / `pg_restore` any external SQL dumps into the target DSN.
 
 ## Restore drill checklist
 
 1. Spin up an empty data dir / fresh Postgres schema.
 2. Stop daari (or confirm `/health` fails).
-3. `daari backup restore <archive.tar.gz>`
-4. Restore any postgres dumps.
+3. `daari backup restore <archive.tar.gz> --restore-pg` (when dumps are embedded).
+4. Restore any remaining external postgres dumps.
 5. `daari doctor` and `daari keys list` / `daari audit list --limit 5`.
 6. Confirm spend / usage counts match the pre-backup baseline.
 

@@ -1816,6 +1816,14 @@ def backup_create(
         "--age-recipient",
         help="age recipient (age1…) when --encrypt age; else DAARI_BACKUP_AGE_RECIPIENT.",
     ),
+    require_pg_dump: bool = typer.Option(
+        False,
+        "--require-pg-dump",
+        help=(
+            "Fail if any Postgres-backed store could not be embedded "
+            "(pg_dump missing or dump error). Default: leave those stores external."
+        ),
+    ),
 ) -> None:
     """Snapshot durable sqlite/JSONL/dir stores into one versioned archive."""
     from daari.ops.backup import BackupError, create_backup, encrypt_backup_archive
@@ -1826,7 +1834,7 @@ def backup_create(
         typer.echo("--encrypt must be openssl or age", err=True)
         raise typer.Exit(code=1)
     try:
-        manifest = create_backup(settings, archive)
+        manifest = create_backup(settings, archive, require_pg_dump=require_pg_dump)
         written: Path = archive
         if method is not None:
             written = encrypt_backup_archive(
@@ -1844,7 +1852,12 @@ def backup_create(
         f"stores={len(manifest.stores)}"
     )
     for row in manifest.stores:
-        if row.get("backend") == "postgres":
+        if row.get("backend") == "embedded":
+            typer.echo(
+                f"  {row['name']:<14} embedded  {row.get('archive_path')} "
+                f"({row.get('size_bytes')} bytes)"
+            )
+        elif row.get("backend") == "postgres" or row.get("external"):
             typer.echo(f"  {row['name']:<14} external  {row.get('pg_dump')}")
         else:
             status = "included" if row.get("present") else "missing"
@@ -1879,6 +1892,14 @@ def backup_restore(
         "--age-identity",
         help="age identity file for .tar.gz.age; else DAARI_BACKUP_AGE_IDENTITY.",
     ),
+    restore_pg: bool = typer.Option(
+        False,
+        "--restore-pg",
+        help=(
+            "Load embedded stores/pg/*.sql dumps via psql into observability.postgres_url "
+            "when psql is on PATH."
+        ),
+    ),
 ) -> None:
     """Restore durable stores from an archive onto the configured data paths."""
     from daari.ops.backup import BackupError, restore_backup
@@ -1892,12 +1913,24 @@ def backup_restore(
             allow_running_server=i_know_server_is_stopped,
             passphrase_env=passphrase_env,
             age_identity=age_identity,
+            restore_pg=restore_pg,
         )
     except BackupError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"restored {archive}")
     typer.echo(f"daari={manifest.daari_version} schema={manifest.archive_schema_version}")
+    for row in manifest.stores:
+        if row.get("backend") != "embedded" or not row.get("present"):
+            continue
+        rel = row.get("archive_path")
+        if restore_pg:
+            typer.echo(f"  {row['name']:<14} pg-restored  {rel}")
+        else:
+            typer.echo(
+                f"  {row['name']:<14} embedded   extract {rel} then "
+                f"psql --dbname=$DSN -f … (or re-run with --restore-pg)"
+            )
 
 
 @app.command("usage")
