@@ -150,6 +150,18 @@ Every `tools/call` — allowed or denied — appends a row to the enterprise aud
 log (`enterprise.audit_path`) with the key id or `master`, the team, the tool
 name, the decision and the transport. Tool arguments are never written.
 
+## Metering and rate limits
+
+Every successful `tools/call` writes a usage-ledger row (and a spend row when
+`usage.spend` is enabled), attributed to the virtual key / team like chat.
+The `route` tool meters through the normal router path; provider-backed and
+egress `mcp_*` tools write a zero-cost count row when no model cost is known
+(#1202).
+
+`POST /mcp` and `/v1/mcp/*` use the dedicated `mcp` rate-limit family, so a
+key can set `--rate-family mcp:30` without starving `chat`. Unset families
+keep the global key rpm/tpm only.
+
 daari's MCP egress client sends the MCP 2026-07-28 routing headers
 `Mcp-Method` and `Mcp-Name` on outbound requests, and the ingress honours the
 same headers for policy when a client supplies them.

@@ -12,7 +12,7 @@ from typing import Any
 
 # Stable family names used in counter keys and docs.
 RATE_FAMILIES = frozenset(
-    {"chat", "embeddings", "images", "audio", "moderations", "rerank", "other"}
+    {"chat", "embeddings", "images", "audio", "moderations", "rerank", "mcp", "other"}
 )
 
 
@@ -37,6 +37,8 @@ def rate_limit_family(path: str) -> str:
         return "audio"
     if p.startswith("/v1/rerank"):
         return "rerank"
+    if p == "/mcp" or p.startswith("/mcp/") or p.startswith("/v1/mcp"):
+        return "mcp"
     return "other"
 
 
