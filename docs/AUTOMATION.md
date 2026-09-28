@@ -60,7 +60,7 @@ tail -f ~/.daari/autodev/watchdog.out.log
 1. **Cloud dev cycle** — either:
    - Add repo secret: `gh secret set CURSOR_API_KEY` (key from cursor.com/settings) → the scheduled workflow starts working, or
    - Create the Cursor Automation from [automations/dev-cycle.md](automations/dev-cycle.md) in the Agents Window.
-   - Also `gh secret set AUTODEV_GH_TOKEN` (fine-grained PAT, this repo, contents/PRs/actions write) so bot-opened PRs are not held for Actions approval.
+   - Also `gh secret set AUTODEV_GH_TOKEN` (fine-grained PAT, this repo, contents/PRs/issues/actions write) so bot-opened PRs are not held for Actions approval. Without Issues write the stall-watch cannot close resolved `regression` issues or sweep `agent:working`; it logs a `warning:` per issue and keeps going (#983, #1207).
 2. **PR review** — enable Bugbot for the repo on cursor.com/dashboard, or create the automation from [automations/pr-review.md](automations/pr-review.md).
 3. **PRD cycle** — the scheduled workflow `.github/workflows/prd-cycle.yml` runs daily at 14:00 UTC once `CURSOR_API_KEY` is set (same secret as autodev). Optional: also create the Cursor Automation from [automations/prd-cycle.md](automations/prd-cycle.md). A run that files zero issues is a failed run.
 
