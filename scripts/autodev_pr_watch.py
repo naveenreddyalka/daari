@@ -322,11 +322,21 @@ def apply_resolved_stalls(
         number = int(issue["number"])
         state = (pr.get("state") or "").lower()
         if comment:
-            comment(number, f"Closing: PR #{pr_number} is {state}.")
-        if close_issue:
-            close_issue(number)
-        closed.append(number)
+            _issue_write(comment, number, f"Closing: PR #{pr_number} is {state}.", what="comment on")
+        if close_issue and _issue_write(close_issue, number, what="close"):
+            closed.append(number)
     return closed
+
+
+def _issue_write(fn: Any, number: int, *args: Any, what: str) -> bool:
+    """Run an issue side effect; a token without Issues write must not abort the
+    watcher (#983, #1207). Returns False when the call failed."""
+    try:
+        fn(number, *args)
+    except subprocess.CalledProcessError as exc:
+        print(f"warning: could not {what} issue #{number}: {exc}", file=sys.stderr)
+        return False
+    return True
 
 
 def render_issue_title(pr: dict[str, Any]) -> str:
@@ -434,18 +444,11 @@ def apply_sweep(
             continue
         removed = True
         if remove_label:
-            try:
-                remove_label(number)
-            except subprocess.CalledProcessError as exc:
-                # A PAT without label permissions must not abort the rest of
-                # the watcher (#983); the comment still marks the sweep.
-                removed = False
-                print(
-                    f"warning: could not remove {WORKING_LABEL!r} from issue #{number}: {exc}",
-                    file=sys.stderr,
-                )
+            removed = _issue_write(
+                remove_label, number, what=f"remove {WORKING_LABEL!r} from"
+            )
         if comment:
-            comment(number, render_sweep_comment(issue, ttl_hours))
+            _issue_write(comment, number, render_sweep_comment(issue, ttl_hours), what="comment on")
         if removed:
             swept.append(number)
     return swept
