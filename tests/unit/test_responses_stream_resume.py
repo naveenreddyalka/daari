@@ -270,6 +270,11 @@ async def test_get_stream_in_flight_background_returns_409(settings):
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/v1/responses/resp_bg", params={"stream": "true"})
+        with_cursor = await client.get(
+            "/v1/responses/resp_bg",
+            params={"stream": "true", "starting_after": "3"},
+        )
     assert response.status_code == 409
     detail = response.json()["detail"]
     assert "completed" in str(detail).lower() or "terminal" in str(detail).lower()
+    assert with_cursor.status_code == 409

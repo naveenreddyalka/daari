@@ -5014,6 +5014,14 @@ Restore documents extract paths and applies dumps with `--restore-pg` +
 compact put+get and stream append + `starting_after` resume ceilings in
 `tests/benchmark/test_hermetic_paths.py` (still skipped by default CI).
 
+### Responses stream resume starting_after gateway pin ([#1164](https://github.com/naveenreddyalka/daari/issues/1164))
+
+<!-- tracking:#1164 -->
+**Status:** Done (2026-09-28). Hermetic gateway ASGI pin in
+`tests/integration/test_responses_api.py` for
+`GET ?stream=true&starting_after=` skip semantics and 409 on non-terminal;
+unit coverage also asserts 409 with a cursor. Covered by those tests.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
