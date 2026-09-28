@@ -5045,6 +5045,13 @@ openssl/age, `--require-pg-dump`, restore decrypt env, and `--restore-pg`,
 with a pointer to the backup-restore guide. Covered by
 `tests/unit/test_backup_cli_docs.py`.
 
+### Docs: operator guide for server.header_policy ([#1194](https://github.com/naveenreddyalka/daari/issues/1194))
+
+<!-- tracking:#1194 -->
+**Status:** Done (2026-09-28). Auth-and-keys guide documents
+`server.header_policy` knobs, `header_policy_error` deny shape, and open-probe
+exemptions. Covered by `tests/unit/test_header_policy_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

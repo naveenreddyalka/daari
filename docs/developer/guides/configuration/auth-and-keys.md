@@ -273,6 +273,38 @@ network error) raises with the endpoint in the message — never the secret or
 token — and the L6 attempt fails over to the next provider rather than sending
 an expired credential.
 
+## Header policy (pre-auth)
+
+`server.header_policy` (default **off**) screens request headers **before**
+`require_api_key` — useful for blocking known-bad User-Agents, requiring a
+custom client header, or allowlisting `X-*` values (Portkey-style start hooks).
+
+```yaml
+server:
+  header_policy:
+    enabled: true
+    required: ["X-Client-Id"]
+    deny:
+      - header: user-agent
+        exact: "BadBot/1.0"
+      - header: user-agent
+        regex: "(?i)scrapy"
+    allow:
+      x-daari-env: ["prod", "staging"]
+```
+
+| Knob | Behavior |
+|------|----------|
+| `required` | Header must be present and non-empty → **400** `header_required` |
+| `deny` | Exact and/or regex match → **403** `header_denied` |
+| `allow` | When the header is present, value must be one of the listed strings → **403** `header_not_allowed` |
+
+Deny bodies use `"type": "header_policy_error"` with the `code` above. Open
+probes stay exempt: `/health`, `/ready`, `/v1/messages/health`, `/metrics`.
+
+Env: `DAARI_SERVER__HEADER_POLICY__ENABLED` (and nested keys). See
+[config reference](../../reference/config.md).
+
 ## Verify
 
 ```bash
