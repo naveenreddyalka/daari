@@ -43,6 +43,34 @@ Org pool enabled: Deployment wires DAARI_ROUTING__ORG_POOL__ENABLED and
   Local tiers can fall through to this shared Ollama/vLLM pool before frontier.
 {{- end }}
 
+{{- $routing := .Values.routing | default dict }}
+{{- if $routing.sessionAffinity }}
+
+Session affinity enabled: DAARI_ROUTING__SESSION_AFFINITY=true
+  (ttl={{ $routing.sessionAffinityTtlSeconds | default 1800 }}s).
+{{- if .Values.redis.enabled }}
+  Pins share redis.url via cache.backend=redis.
+{{- else }}
+  No redis.enabled: pins stay per-process — enable redis for multi-replica fleets.
+{{- end }}
+{{- end }}
+
+{{- $policySync := ((.Values.enterprise).policySync | default dict) }}
+{{- if $policySync.url }}
+
+Policy sync: DAARI_ENTERPRISE__POLICY_SYNC_URL={{ $policySync.url }}.
+{{- with $policySync.signingSecret }}
+{{- if .name }}
+  HMAC secret DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET from Secret {{ .name }}
+  (key {{ .key | default "signing-secret" }}).
+{{- else }}
+  Set enterprise.policySync.signingSecret (name + key) for X-Daari-Signature verify.
+{{- end }}
+{{- else }}
+  Set enterprise.policySync.signingSecret (name + key) for X-Daari-Signature verify.
+{{- end }}
+{{- end }}
+
 {{- with .Values.server.apiKeySecret }}
 {{- if .name }}
 

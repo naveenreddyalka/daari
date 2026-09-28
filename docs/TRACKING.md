@@ -4998,6 +4998,15 @@ size/hash; missing/failed dumps stay `external` unless `--require-pg-dump`.
 Restore documents extract paths and applies dumps with `--restore-pg` +
 `psql`. Covered by `tests/unit/test_backup_restore.py`.
 
+### Helm sessionAffinity + policySync knobs ([#1178](https://github.com/naveenreddyalka/daari/issues/1178))
+
+<!-- tracking:#1178 -->
+**Status:** Done (2026-09-28). Chart values expose `routing.sessionAffinity`
+(+ TTL) and `enterprise.policySync` (url + signingSecret); Deployment emits
+`DAARI_ROUTING__SESSION_AFFINITY*` / `DAARI_ENTERPRISE__POLICY_SYNC_URL` /
+`CONFIG_SIGNING_SECRET`. NOTES + capacity-helm document them. Covered by
+`tests/unit/test_helm_chart.py` and `tests/unit/test_capacity_helm_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
