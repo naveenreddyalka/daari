@@ -5030,6 +5030,13 @@ from `render_config_reference()`; hermetic equality test fails on drift.
 Non-Settings rpd / rate_families footnotes live in the generator after the
 table. Covered by `tests/unit/test_gen_reference.py`.
 
+### Gateway ASGI pin for header_policy deny ([#1197](https://github.com/naveenreddyalka/daari/issues/1197))
+
+<!-- tracking:#1197 -->
+**Status:** Done (2026-09-28). Hermetic gateway pin asserts denied chat returns
+`header_policy_error` and `/health` stays exempt when policy is enabled.
+Covered by `tests/integration/test_header_policy_gateway.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
