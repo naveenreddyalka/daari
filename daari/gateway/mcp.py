@@ -51,8 +51,11 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
+# MCP 2026-07-28 reserved range (-32020..-32099); see SEP-2575.
+UNSUPPORTED_PROTOCOL_VERSION = -32022
 
 DEFAULT_PROTOCOL_VERSION = "2025-03-26"
+MODERN_PROTOCOL_VERSION = "2026-07-28"
 SUPPORTED_PROTOCOL_VERSIONS = {
     "2024-11-05",
     "2025-03-26",
@@ -60,6 +63,8 @@ SUPPORTED_PROTOCOL_VERSIONS = {
     "2025-11-25",
     "2026-07-28",
 }
+PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion"
+SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo"
 
 LEGACY_HEADERS = {
     "Deprecation": "true",
@@ -460,6 +465,58 @@ def _negotiate_protocol(params: Any) -> str:
     if requested in SUPPORTED_PROTOCOL_VERSIONS:
         return requested
     return DEFAULT_PROTOCOL_VERSION
+
+
+def _sorted_supported_versions() -> list[str]:
+    return sorted(SUPPORTED_PROTOCOL_VERSIONS)
+
+
+def _server_info() -> dict[str, str]:
+    return {"name": "daari", "version": __version__}
+
+
+def _per_request_protocol_version(params: dict[str, Any] | None) -> str | None:
+    """Read modern per-request protocol from params._meta (MCP 2026-07-28)."""
+    if not isinstance(params, dict):
+        return None
+    meta = params.get("_meta")
+    if not isinstance(meta, dict):
+        return None
+    raw = meta.get(PROTOCOL_VERSION_META_KEY)
+    if raw is None or raw == "":
+        return None
+    return str(raw)
+
+
+def _unsupported_protocol_error(rpc_id: Any, requested: str) -> dict[str, Any]:
+    return _jsonrpc_error(
+        rpc_id,
+        UNSUPPORTED_PROTOCOL_VERSION,
+        "Unsupported protocol version",
+        data={
+            "supported": _sorted_supported_versions(),
+            "requested": requested,
+        },
+    )
+
+
+def _discover_result(protocol: str | None = None) -> dict[str, Any]:
+    """Build server/discover DiscoverResult (MCP 2026-07-28 / #1213)."""
+    version = (
+        protocol
+        if protocol in SUPPORTED_PROTOCOL_VERSIONS
+        else MODERN_PROTOCOL_VERSION
+    )
+    info = _server_info()
+    return {
+        "resultType": "complete",
+        "supportedVersions": _sorted_supported_versions(),
+        "capabilities": initialize_capabilities(version),
+        "serverInfo": info,
+        "_meta": {SERVER_INFO_META_KEY: info},
+        "ttlMs": 3_600_000,
+        "cacheScope": "public",
+    }
 
 
 class ModelNotAllowed(Exception):
@@ -979,9 +1036,25 @@ class MCPGatewayAdapter(GatewayAdapter):
             if "id" not in message:
                 return Response(status_code=202)
 
+            # Modern clients declare version per request in _meta; reject unknown
+            # revisions with UnsupportedProtocolVersion before method dispatch.
+            requested_meta = _per_request_protocol_version(params)
+            if (
+                requested_meta is not None
+                and requested_meta not in SUPPORTED_PROTOCOL_VERSIONS
+            ):
+                return _rpc_response(
+                    request, _unsupported_protocol_error(rpc_id, requested_meta)
+                )
+
             ctx: AppContext = request.app.state.ctx
             governance = _Governance(request, ctx, transport="jsonrpc")
             try:
+                if method == "server/discover":
+                    return _rpc_response(
+                        request,
+                        _jsonrpc_result(rpc_id, _discover_result(requested_meta)),
+                    )
                 if method == "initialize":
                     protocol = _negotiate_protocol(params)
                     return _rpc_response(
@@ -991,7 +1064,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                             {
                                 "protocolVersion": protocol,
                                 "capabilities": initialize_capabilities(protocol),
-                                "serverInfo": {"name": "daari", "version": __version__},
+                                "serverInfo": _server_info(),
                             },
                         ),
                     )

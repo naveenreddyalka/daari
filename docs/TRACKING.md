@@ -5092,6 +5092,16 @@ dedicated `mcp` rate-limit family so ceilings do not consume `chat`. Docs:
 MCP guide metering section + auth-and-keys family list. Covered by
 `tests/unit/test_mcp_vk_governance.py`, `tests/unit/test_rate_families.py`.
 
+### MCP server/discover + per-request protocol _meta ([#1213](https://github.com/naveenreddyalka/daari/issues/1213))
+
+<!-- tracking:#1213 -->
+**Status:** Done (2026-09-29). `POST /mcp` implements `server/discover`
+(`supportedVersions`, capabilities, `serverInfo`) and honors
+`params._meta["io.modelcontextprotocol/protocolVersion"]` without a prior
+`initialize`. Unsupported versions return JSON-RPC `-32022` with
+`data.supported` / `data.requested`. Legacy `initialize` unchanged. Covered by
+`tests/unit/test_mcp_server.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
