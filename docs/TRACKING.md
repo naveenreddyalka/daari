@@ -5122,6 +5122,16 @@ Doctor fails closed without probing blocked URLs. Covered by
 `tests/unit/test_egress_url.py`, `tests/unit/test_mcp_egress.py`,
 `tests/unit/test_doctor_mcp_servers.py`.
 
+### GTM measure on a schedule ([#1223](https://github.com/naveenreddyalka/daari/issues/1223))
+
+<!-- tracking:#1223 -->
+**Status:** Done (2026-09-29). `.github/workflows/gtm-scoreboard.yml` runs
+weekly (Mon 14:00 UTC): refreshes `docs/gtm/SCOREBOARD.md` + `REPORT.md`,
+opens an auto-merging `docs(gtm): scoreboard <date>` PR when they changed, and
+files a `gtm,regression` issue on a 14-day viewer drought (deduped by title).
+Shell only, `AUTODEV_GH_TOKEN` fallback to `GITHUB_TOKEN`. PLAN.md Measure row
+and AUTOMATION.md components table point at it.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
