@@ -244,6 +244,27 @@ enterprise:
       key: signing-secret
 ```
 
+### Header policy (pre-auth)
+
+`server.headerPolicy` (default `enabled: false`) mounts
+`DAARI_SERVER__HEADER_POLICY__ENABLED` plus JSON env for `required` / `deny` /
+`allow` when turned on — the Helm knobs for
+[`server.header_policy`](../configuration/auth-and-keys.md#header-policy-pre-auth).
+Disabled by default (env vars omitted). Covers `/mcp` as well as chat routes;
+open probes stay exempt.
+
+```yaml
+server:
+  headerPolicy:
+    enabled: true
+    required: ["X-Client-Id"]
+    deny:
+      - header: user-agent
+        exact: "BadBot/1.0"
+    allow:
+      x-daari-env: ["prod", "staging"]
+```
+
 ### Embedder base URL
 
 `ollama.baseUrl` defaults to empty, so the image keeps its localhost Ollama

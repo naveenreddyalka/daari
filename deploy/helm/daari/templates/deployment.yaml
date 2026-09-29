@@ -128,6 +128,23 @@ spec:
               value: "false"
             {{- end }}
             {{- end }}
+            {{- $hp := ((.Values.server).headerPolicy | default dict) }}
+            {{- if $hp.enabled }}
+            - name: DAARI_SERVER__HEADER_POLICY__ENABLED
+              value: "true"
+            {{- with $hp.required }}
+            - name: DAARI_SERVER__HEADER_POLICY__REQUIRED
+              value: {{ . | toJson | quote }}
+            {{- end }}
+            {{- with $hp.deny }}
+            - name: DAARI_SERVER__HEADER_POLICY__DENY
+              value: {{ . | toJson | quote }}
+            {{- end }}
+            {{- with $hp.allow }}
+            - name: DAARI_SERVER__HEADER_POLICY__ALLOW
+              value: {{ . | toJson | quote }}
+            {{- end }}
+            {{- end }}
             {{- if $tls.enabled }}
             - name: DAARI_SERVER__TLS__CERT_FILE
               value: {{ $tls.certFile | default "/etc/daari/tls/tls.crt" | quote }}

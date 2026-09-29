@@ -336,7 +336,11 @@ Deny bodies use `"type": "header_policy_error"` with the `code` above. Open
 probes stay exempt: `/health`, `/ready`, `/v1/messages/health`, `/metrics`.
 
 Env: `DAARI_SERVER__HEADER_POLICY__ENABLED` (and nested keys). See
-[config reference](../../reference/config.md).
+[config reference](../../reference/config.md). Fleet installs turn the same
+knobs on via Helm `server.headerPolicy` in
+[capacity-helm](../operations/capacity-helm.md#header-policy-pre-auth)
+(`DAARI_SERVER__HEADER_POLICY__*` env). `/mcp` is screened the same as chat;
+open probes stay exempt.
 
 ## Verify
 

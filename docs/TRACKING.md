@@ -5162,6 +5162,15 @@ fatal. Doctor hints when refresh is disabled without oauth refs. Docs:
 auth-and-keys rotation runbook. Covered by
 `tests/unit/test_secret_refs_refresh.py`, `tests/test_doctor.py`.
 
+### Helm header_policy knobs + MCP deny pin ([#1205](https://github.com/naveenreddyalka/daari/issues/1205))
+
+<!-- tracking:#1205 -->
+**Status:** Done (2026-09-29). Chart `server.headerPolicy` (disabled by
+default) mounts `DAARI_SERVER__HEADER_POLICY__*` env; ASGI pin proves `/mcp`
+is denied pre-auth while health/ready stay open. Docs cross-link capacity-helm
+and auth-and-keys. Covered by `tests/unit/test_helm_chart.py`,
+`tests/integration/test_header_policy_gateway.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

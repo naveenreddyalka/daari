@@ -166,6 +166,17 @@ server:
   # Baseline X-Content-Type-Options / X-Frame-Options / Referrer-Policy.
   securityHeaders:
     enabled: true
+  # Pre-auth header screen (#1205 / server.header_policy). Default disabled
+  # omits the env vars. When enabled, mounts DAARI_SERVER__HEADER_POLICY__*
+  # (required / deny / allow as JSON) so fleet installs can turn on Portkey-
+  # style startHooks screening from values.
+  headerPolicy:
+    enabled: false
+    required: []
+    # deny entries: { header, exact? , regex? }
+    deny: []
+    # allow: map of header name → list of permitted values
+    allow: {}
 
 # Native TLS / optional mTLS for the container (#932). When enabled, mounts
 # tls.existingSecret at /etc/daari/tls (expects tls.crt + tls.key; optional
