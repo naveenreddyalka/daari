@@ -330,6 +330,6 @@ def test_postgres_spend_round_trip_mocked(monkeypatch):
         cost_usd=0.1,
     )
     assert stored, "expected INSERT"
-    assert stored[0][10] == 4  # cached_tokens
-    assert stored[0][11] == 3  # cache_write_tokens
+    assert stored[0][11] == 4  # cached_tokens (after provider column #1217)
+    assert stored[0][12] == 3  # cache_write_tokens
 

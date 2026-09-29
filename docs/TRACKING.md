@@ -5200,6 +5200,14 @@ prune + PVC; values document schedule/encrypt/retain/secret keys. Docs add
 systemd user-timer equivalent. Covered by `tests/unit/test_helm_chart.py`,
 [backup-restore.md](developer/guides/operations/backup-restore.md#scheduled-backups-1216).
 
+### Spend report --by-tool ([#1217](https://github.com/naveenreddyalka/daari/issues/1217))
+
+<!-- tracking:#1217 -->
+**Status:** Done (2026-09-29). Spend rows keep `provider` (MCP metering ids);
+`daari spend report --by-tool` rolls USD/requests by provider-or-model.
+`--by-user` unchanged. Docs: chargeback.md. Covered by
+`tests/unit/test_spend_report_by_tool.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

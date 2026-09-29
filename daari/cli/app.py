@@ -1755,13 +1755,18 @@ def spend_report(
     team: str | None = typer.Option(None, "--team", help="Exact team id."),
     key: str | None = typer.Option(None, "--key", help="Exact virtual-key id."),
     by_user: bool = typer.Option(False, "--by-user", help="Roll spend up per end-user / user_id."),
+    by_tool: bool = typer.Option(
+        False,
+        "--by-tool",
+        help="Roll spend up per MCP tool / provider id (falls back to model).",
+    ),
 ) -> None:
-    """Member×spend rollup for chargeback (#1132)."""
+    """Member or tool×spend rollup for chargeback (#1132, #1217)."""
     from daari.enterprise.audit import parse_since
     from daari.observability.spend import spend_ledger_from_settings
 
-    if not by_user:
-        typer.echo("Pass --by-user (member rollup). Other rollups are not supported yet.", err=True)
+    if by_user == by_tool:
+        typer.echo("Pass exactly one of --by-user or --by-tool.", err=True)
         raise typer.Exit(code=1)
     try:
         cutoff = parse_since(since)
@@ -1773,6 +1778,19 @@ def spend_report(
     if not ledger.enabled:
         typer.echo("Spend log is disabled (settings: usage.spend.enabled).", err=True)
         raise typer.Exit(code=1)
+    if by_tool:
+        entries = ledger.by_tool(since=cutoff, team_id=team, key_id=key)
+        if not entries:
+            typer.echo("No spend rows matched.")
+            return
+        typer.echo(f"{'tool':<24} {'requests':>9} {'cost $':>10} {'avoided $':>10}")
+        for entry in entries:
+            typer.echo(
+                f"{entry['tool'] or '(none)':<24} "
+                f"{entry['requests']:>9} {entry['cost_usd']:>10.4f} "
+                f"{entry['cost_avoided_usd']:>10.4f}"
+            )
+        return
     entries = ledger.by_user(since=cutoff, team_id=team, key_id=key)
     if not entries:
         typer.echo("No spend rows matched.")
