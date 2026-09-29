@@ -53,6 +53,84 @@ async def test_initialize_handshake(settings):
 
 
 @pytest.mark.asyncio
+async def test_server_discover_returns_versions_capabilities_and_server_info(settings):
+    """MCP 2026-07-28 server/discover advertises versions + identity (#1213)."""
+    from daari.gateway.mcp import SUPPORTED_PROTOCOL_VERSIONS
+
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await _rpc(
+            client,
+            "server/discover",
+            {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "0"},
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                }
+            },
+        )
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert set(result["supportedVersions"]) == SUPPORTED_PROTOCOL_VERSIONS
+    assert "2026-07-28" in result["supportedVersions"]
+    assert "tools" in result["capabilities"]
+    assert result["capabilities"]["resources"] == {"listChanged": False}
+    assert result["capabilities"]["prompts"] == {"listChanged": False}
+    assert result["serverInfo"]["name"] == "daari"
+    assert isinstance(result["serverInfo"]["version"], str)
+    assert result["serverInfo"]["version"]
+    meta_info = result.get("_meta", {}).get("io.modelcontextprotocol/serverInfo")
+    assert meta_info == result["serverInfo"]
+
+
+@pytest.mark.asyncio
+async def test_per_request_meta_protocol_honored_without_initialize(settings):
+    """Modern _meta protocolVersion is honored with no prior initialize (#1213)."""
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await _rpc(
+            client,
+            "tools/list",
+            {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                }
+            },
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert "error" not in payload
+    assert "tools" in payload["result"]
+    assert payload["result"]["_meta"]["ttlMs"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_unsupported_per_request_protocol_version_errors(settings):
+    """Unsupported _meta protocolVersion returns UnsupportedProtocolVersion (#1213)."""
+    from daari.gateway.mcp import SUPPORTED_PROTOCOL_VERSIONS, UNSUPPORTED_PROTOCOL_VERSION
+
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await _rpc(
+            client,
+            "tools/list",
+            {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "1900-01-01",
+                }
+            },
+        )
+    assert response.status_code == 200
+    error = response.json()["error"]
+    assert error["code"] == UNSUPPORTED_PROTOCOL_VERSION
+    assert "Unsupported" in error["message"] or "unsupported" in error["message"].lower()
+    assert set(error["data"]["supported"]) == SUPPORTED_PROTOCOL_VERSIONS
+    assert error["data"]["requested"] == "1900-01-01"
+
+
+@pytest.mark.asyncio
 async def test_resources_and_prompts_list_return_empty(settings):
     """Explorer clients probe these; empty lists beat Method not found (#1014)."""
     transport = ASGITransport(app=_app(settings))

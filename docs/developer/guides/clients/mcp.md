@@ -209,10 +209,22 @@ Every trip, input or output, appends an `mcp.guardrail` row to the audit log
 next to the `mcp.tools/call` decision rows: key id / team, tool, rule name,
 direction, action, transport. The payload itself is never written.
 
+## Protocol bootstrap (`server/discover` and legacy `initialize`)
+
+MCP **2026-07-28** clients call `server/discover` (no session) to learn
+`supportedVersions`, capabilities, and `serverInfo`. Every subsequent request
+MAY declare the version in
+`params._meta["io.modelcontextprotocol/protocolVersion"]`; daari honors it
+without a prior handshake. Unsupported versions return JSON-RPC
+`-32022` (`Unsupported protocol version`) with `data.supported` /
+`data.requested`. Legacy clients keep using `initialize` for
+pre-2026-07-28 revisions.
+
 ## Tasks (long-running tools/call)
 
-When the negotiated protocol is `2026-07-28` or newer, `initialize` advertises
-the `io.modelcontextprotocol/tasks` capability. Clients opt in per call:
+When the negotiated protocol is `2026-07-28` or newer, `initialize` (and
+`server/discover`) advertises the `io.modelcontextprotocol/tasks` capability.
+Clients opt in per call:
 
 ```json
 {
