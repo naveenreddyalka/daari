@@ -28,6 +28,7 @@ _COLUMNS = (
     "client_id",
     "user_id",
     "model",
+    "provider",
     "tier",
     "input_tokens",
     "output_tokens",
@@ -47,6 +48,7 @@ EXPORT_FIELDS = (
     "user_id",
     "model",
     "model_group",
+    "provider",
     "tier",
     "input_tokens",
     "output_tokens",
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     client_id TEXT NOT NULL DEFAULT '',
     user_id TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
     tier TEXT NOT NULL DEFAULT '',
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
@@ -91,6 +94,7 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     client_id TEXT NOT NULL DEFAULT '',
     user_id TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
+    provider TEXT NOT NULL DEFAULT '',
     tier TEXT NOT NULL DEFAULT '',
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
@@ -115,6 +119,12 @@ _PG_SPEND_CACHE_WRITE_MIGRATE = (
 _SPEND_USER_ID_MIGRATE = "ALTER TABLE spend_requests ADD COLUMN user_id TEXT NOT NULL DEFAULT ''"
 _PG_SPEND_USER_ID_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT ''"
+)
+_SPEND_PROVIDER_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN provider TEXT NOT NULL DEFAULT ''"
+)
+_PG_SPEND_PROVIDER_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT ''"
 )
 
 
@@ -206,6 +216,7 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "user_id": row.get("user_id") or "",
         "model": row["model"],
         "model_group": row.get("model_group") or "",
+        "provider": row.get("provider") or "",
         "tier": row["tier"],
         "input_tokens": int(row["input_tokens"]),
         "output_tokens": int(row["output_tokens"]),
@@ -285,9 +296,15 @@ class SpendLedger:
             conn.execute(_SPEND_CACHE_WRITE_MIGRATE)
         if columns and "user_id" not in columns:
             conn.execute(_SPEND_USER_ID_MIGRATE)
+        if columns and "provider" not in columns:
+            conn.execute(_SPEND_PROVIDER_MIGRATE)
         if columns:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_spend_requests_user ON spend_requests (user_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_spend_requests_provider "
+                "ON spend_requests (provider)"
             )
 
     def _connect(self) -> sqlite3.Connection:
@@ -303,6 +320,7 @@ class SpendLedger:
         client_id: str = "",
         user_id: str = "",
         model: str = "",
+        provider: str = "",
         tier: str = "",
         input_tokens: int = 0,
         output_tokens: int = 0,
@@ -319,10 +337,10 @@ class SpendLedger:
                 conn.execute(
                     """
                     INSERT INTO spend_requests (
-                        ts, request_id, key_id, team_id, client_id, user_id, model, tier,
+                        ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                         input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                         cost_usd, cost_avoided_usd, cache_hit
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ts or _now_iso(),
@@ -332,6 +350,7 @@ class SpendLedger:
                         client_id or "",
                         user_id or "",
                         model or "",
+                        provider or "",
                         tier or "",
                         max(0, int(input_tokens)),
                         max(0, int(output_tokens)),
@@ -389,6 +408,7 @@ class SpendLedger:
             client_id=str(client),
             user_id=str(user or ""),
             model=str(served),
+            provider=str(kwargs.get("provider") or ""),
             tier=str(kwargs.get("tier") or ""),
             input_tokens=tokens_in,
             output_tokens=tokens_out,
@@ -412,7 +432,7 @@ class SpendLedger:
             return
         where, params = _where(since, key_id, team_id, "?", tier=tier, user_id=user_id)
         sql = (
-            "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, tier,"
+            "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
             " cost_usd, cost_avoided_usd, cache_hit"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
@@ -459,6 +479,42 @@ class SpendLedger:
                 "cost_avoided_usd": float(avoided or 0.0),
             }
             for user, team, requests, cost, avoided in rows
+        ]
+
+    def by_tool(
+        self,
+        *,
+        since: str,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Tool/provider×spend rollup for a window (#1217).
+
+        Groups by ``provider`` when set (MCP metering ids like ``mcp:weather``),
+        otherwise by ``model`` so chat rows stay attributable.
+        """
+        if not self.enabled:
+            return []
+        where, params = _where(since, key_id, team_id, "?")
+        tool_expr = "CASE WHEN provider != '' THEN provider ELSE model END"
+        sql = (
+            f"SELECT {tool_expr} AS tool, COUNT(*), SUM(cost_usd), SUM(cost_avoided_usd)"
+            f" FROM spend_requests WHERE {where}"
+            f" GROUP BY {tool_expr} ORDER BY SUM(cost_usd) DESC, tool"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "tool": tool or "",
+                "requests": int(requests or 0),
+                "cost_usd": float(cost or 0.0),
+                "cost_avoided_usd": float(avoided or 0.0),
+            }
+            for tool, requests, cost, avoided in rows
         ]
 
     def prune_before(self, cutoff_iso: str, *, dry_run: bool = False) -> int:
@@ -546,9 +602,14 @@ class PostgresSpendLedger(SpendLedger):
                             cur.execute(sql)
                     cur.execute(_PG_SPEND_CACHE_WRITE_MIGRATE)
                     cur.execute(_PG_SPEND_USER_ID_MIGRATE)
+                    cur.execute(_PG_SPEND_PROVIDER_MIGRATE)
                     cur.execute(
                         "CREATE INDEX IF NOT EXISTS idx_spend_requests_user "
                         "ON spend_requests (user_id)"
+                    )
+                    cur.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_spend_requests_provider "
+                        "ON spend_requests (provider)"
                     )
                 conn.commit()
         except Exception:
@@ -569,6 +630,7 @@ class PostgresSpendLedger(SpendLedger):
         client_id: str = "",
         user_id: str = "",
         model: str = "",
+        provider: str = "",
         tier: str = "",
         input_tokens: int = 0,
         output_tokens: int = 0,
@@ -586,10 +648,10 @@ class PostgresSpendLedger(SpendLedger):
                     cur.execute(
                         """
                         INSERT INTO spend_requests (
-                            ts, request_id, key_id, team_id, client_id, user_id, model, tier,
+                            ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                             input_tokens, output_tokens, cached_tokens, cache_write_tokens,
                             cost_usd, cost_avoided_usd, cache_hit
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             ts or _now_iso(),
@@ -599,6 +661,7 @@ class PostgresSpendLedger(SpendLedger):
                             client_id or "",
                             user_id or "",
                             model or "",
+                            provider or "",
                             tier or "",
                             max(0, int(input_tokens)),
                             max(0, int(output_tokens)),
@@ -626,7 +689,7 @@ class PostgresSpendLedger(SpendLedger):
             return
         where, params = _where(since, key_id, team_id, "%s", tier=tier, user_id=user_id)
         sql = (
-            "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, tier,"
+            "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
             " cost_usd, cost_avoided_usd, cache_hit"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
@@ -675,6 +738,39 @@ class PostgresSpendLedger(SpendLedger):
                 "cost_avoided_usd": float(avoided or 0.0),
             }
             for user, team, requests, cost, avoided in rows
+        ]
+
+    def by_tool(
+        self,
+        *,
+        since: str,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if not self.enabled:
+            return []
+        where, params = _where(since, key_id, team_id, "%s")
+        tool_expr = "CASE WHEN provider != '' THEN provider ELSE model END"
+        sql = (
+            f"SELECT {tool_expr} AS tool, COUNT(*), SUM(cost_usd), SUM(cost_avoided_usd)"
+            f" FROM spend_requests WHERE {where}"
+            f" GROUP BY {tool_expr} ORDER BY SUM(cost_usd) DESC, tool"
+        )
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
+        except Exception:
+            return []
+        return [
+            {
+                "tool": tool or "",
+                "requests": int(requests or 0),
+                "cost_usd": float(cost or 0.0),
+                "cost_avoided_usd": float(avoided or 0.0),
+            }
+            for tool, requests, cost, avoided in rows
         ]
 
     def prune_before(self, cutoff_iso: str, *, dry_run: bool = False) -> int:

@@ -34,6 +34,11 @@ Each row has: timestamp, request id, key id, team id, client id, **user id** (Op
 
 `daari spend report --team T --by-user` answers "which member of team T spent what" for the window: one line per `user_id` with request count, `cost_usd`, and `cost_avoided_usd`. Rollup sums match the team total from `spend export --team T`.
 
+`daari spend report --since 7d --by-tool` rolls the same window by MCP tool /
+provider id (the `provider` column written by MCP metering, e.g. `mcp:weather`).
+Chat rows without a provider fall back to `model`. Pass exactly one of
+`--by-user` or `--by-tool`.
+
 `cost_avoided_usd` uses `pricing.models` for the model the client asked for. Models missing from that table use `usage.frontier_price_per_1k_tokens`. Frontier (`L6`) rows keep the real cost and record $0 avoided. A successful transcription exports as `tier` `asr` (local) or `L6` (frontier fallback). A successful translation exports as `tier` `translation` (local) or `L6` (frontier fallback). Speech synthesis exports as `tier` `tts`. Embedding calls export as `tier` `embed` with the caller's key and team. An unknown embedding model returns 400 and writes no row. Allowlist 403 and unconfigured transcription/translation/speech 501 write no row.
 
 `daari prune` applies `observability.retention.spend_days` the same way it prunes traces and the day ledger. Postgres replicas share the table when `observability.backend` is `postgres`.
