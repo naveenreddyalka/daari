@@ -43,6 +43,20 @@ def _servers_block(raw: Any) -> Any:
     return getattr(raw, "servers", None)
 
 
+def _clients_block(raw: Any) -> Any:
+    """Pull the nested `clients` mapping from mcp_policy / metadata.mcp (#1215)."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw.get("clients")
+    return getattr(raw, "clients", None)
+
+
+CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo"
+CLIENT_DENIED = -32004
+AUDIT_CLIENT_ACTION = "mcp.client"
+
+
 @dataclass(frozen=True)
 class McpToolPolicy:
     allow: tuple[str, ...] = ()
@@ -101,6 +115,42 @@ class McpServerPolicy:
         return bool(self.allow or self.deny)
 
 
+@dataclass(frozen=True)
+class McpClientPolicy:
+    """Allow/deny MCP *ingress client identities* (issue #1215). Same merge rules."""
+
+    allow: tuple[str, ...] = ()
+    deny: tuple[str, ...] = ()
+
+    @classmethod
+    def from_mapping(cls, raw: Any) -> McpClientPolicy:
+        if raw is None:
+            return cls()
+        if not isinstance(raw, dict):
+            raw = {"allow": getattr(raw, "allow", None), "deny": getattr(raw, "deny", None)}
+        return cls(allow=_patterns(raw.get("allow")), deny=_patterns(raw.get("deny")))
+
+    def allows(self, client: str | None) -> bool:
+        """Empty allow+deny = passthrough. Empty allow with deny = deny-only."""
+        if not self.allow and not self.deny:
+            return True
+        name = (client or "").strip().lower()
+        if not name:
+            return not bool(self.allow)
+        if any(fnmatchcase(name, pattern.lower()) for pattern in self.deny):
+            return False
+        if not self.allow:
+            return True
+        return any(fnmatchcase(name, pattern.lower()) for pattern in self.allow)
+
+    def merged_with(self, specific: McpClientPolicy) -> McpClientPolicy:
+        deny = self.deny + tuple(item for item in specific.deny if item not in self.deny)
+        return McpClientPolicy(allow=specific.allow or self.allow, deny=deny)
+
+    def is_restrictive(self) -> bool:
+        return bool(self.allow or self.deny)
+
+
 def resolve_policy(claims: Any, settings: Any) -> McpToolPolicy:
     integrations = getattr(settings, "integrations", None)
     policy = McpToolPolicy.from_mapping(getattr(integrations, "mcp_policy", None))
@@ -128,6 +178,61 @@ def resolve_server_policy(claims: Any, settings: Any) -> McpServerPolicy:
         )
     key_policy = (key.metadata or {}).get(KEY_METADATA_FIELD)
     return policy.merged_with(McpServerPolicy.from_mapping(_servers_block(key_policy)))
+
+
+def resolve_client_policy(claims: Any, settings: Any) -> McpClientPolicy:
+    """Global → team → key layers for MCP ingress client identities (#1215)."""
+    integrations = getattr(settings, "integrations", None)
+    policy = McpClientPolicy.from_mapping(_clients_block(getattr(integrations, "mcp_policy", None)))
+    key = getattr(claims, "virtual_key", None) if claims is not None else None
+    if key is None:
+        return policy
+    team_policies = getattr(integrations, "mcp_team_policies", None) or {}
+    if key.team_name and key.team_name in team_policies:
+        policy = policy.merged_with(
+            McpClientPolicy.from_mapping(_clients_block(team_policies[key.team_name]))
+        )
+    key_policy = (key.metadata or {}).get(KEY_METADATA_FIELD)
+    return policy.merged_with(McpClientPolicy.from_mapping(_clients_block(key_policy)))
+
+
+def _client_info_name(raw: Any) -> str | None:
+    if not isinstance(raw, dict):
+        return None
+    name = raw.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+def resolve_client_identity(
+    params: dict[str, Any] | None,
+    *,
+    claims: Any = None,
+    user_agent: str | None = None,
+) -> str | None:
+    """Prefer ``_meta`` clientInfo.name, then OAuth/VK ``client_id``, then User-Agent (#1215)."""
+    if isinstance(params, dict):
+        meta = params.get("_meta")
+        if isinstance(meta, dict):
+            from_meta = _client_info_name(meta.get(CLIENT_INFO_META_KEY))
+            if from_meta:
+                return from_meta
+        from_params = _client_info_name(params.get("clientInfo"))
+        if from_params:
+            return from_params
+    if claims is not None:
+        claim_id = getattr(claims, "client_id", None)
+        if isinstance(claim_id, str) and claim_id.strip():
+            return claim_id.strip()
+        key = getattr(claims, "virtual_key", None)
+        if key is not None:
+            key_client = getattr(key, "client_id", None)
+            if isinstance(key_client, str) and key_client.strip():
+                return key_client.strip()
+    if isinstance(user_agent, str) and user_agent.strip():
+        return user_agent.strip()
+    return None
 
 
 def server_id_from_provider(provider_id: str | None) -> str | None:
@@ -178,4 +283,28 @@ def audit_tool_call(
         role=role,
         action=AUDIT_ACTION,
         detail=detail,
+    )
+
+
+def audit_client_decision(
+    audit: AuditLog,
+    claims: Any,
+    *,
+    client: str | None,
+    decision: str,
+    method: str,
+    transport: str,
+) -> None:
+    """Record an MCP client allow/deny decision (#1215)."""
+    actor, role = _actor(claims)
+    audit.record(
+        actor=actor,
+        role=role,
+        action=AUDIT_CLIENT_ACTION,
+        detail={
+            "client": (client or "").strip() or None,
+            "decision": decision,
+            "method": method,
+            "transport": transport,
+        },
     )

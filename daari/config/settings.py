@@ -1323,6 +1323,24 @@ class McpServerPolicySettings(BaseModel):
     )
 
 
+class McpClientPolicySettings(BaseModel):
+    """Allow/deny MCP ingress client identities (issue #1215). Deny wins; empty = all."""
+
+    allow: list[str] = Field(
+        default_factory=list,
+        description=(
+            "MCP client identities (glob) allowed to open the gateway. Empty = every "
+            "client not denied. Match on clientInfo.name / OAuth client_id / User-Agent."
+        ),
+    )
+    deny: list[str] = Field(
+        default_factory=list,
+        description=(
+            "MCP client identities (glob) that may never open the gateway. Deny beats allow."
+        ),
+    )
+
+
 class McpToolPolicySettings(BaseModel):
     """Glob-style MCP tool allow/deny lists (issue #277). Deny wins; empty allow = all."""
 
@@ -1339,6 +1357,13 @@ class McpToolPolicySettings(BaseModel):
         description=(
             "Per-scope MCP egress server allow/deny (issue #1201). Nested under "
             "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.servers."
+        ),
+    )
+    clients: McpClientPolicySettings = Field(
+        default_factory=McpClientPolicySettings,
+        description=(
+            "Per-scope MCP ingress client allow/deny (issue #1215). Nested under "
+            "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.clients."
         ),
     )
 

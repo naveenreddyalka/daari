@@ -5181,6 +5181,16 @@ and auth-and-keys. Covered by `tests/unit/test_helm_chart.py`,
 [claude-code.md](developer/guides/clients/claude-code.md#effort-output_config).
 Covered by `tests/unit/test_anthropic_output_config.py`.
 
+### Per-key/team MCP client allowlists ([#1215](https://github.com/naveenreddyalka/daari/issues/1215))
+
+<!-- tracking:#1215 -->
+**Status:** Done (2026-09-29). Nested `mcp.clients` allow/deny (global/team/key)
+gates `initialize` / `server/discover` / `tools/list` / `tools/call` by
+clientInfo / OAuth client_id / User-Agent; unset = passthrough. CLI
+`--mcp-client-allow/deny`. Docs: [mcp.md](developer/guides/clients/mcp.md#client-allowlists).
+Covered by `tests/unit/test_mcp_policy.py`,
+`tests/integration/test_mcp_governance.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -141,6 +141,37 @@ A denied server never leaves the machine: `tools/list` hides that server's
 denial as a denied tool (`-32003` / `MCP_ERR_TOOL_DENIED`, with `data.server`
 set), and the egress client refuses to POST. Audit rows include the server id.
 
+### Client allowlists
+
+A second gate matches the *client identity* that opens `/mcp` — not which tools
+it may call. Nested `clients.allow` / `clients.deny` use the same merge rules
+(deny wins, empty allow+deny = passthrough, key over team over global). Identity
+prefers `_meta.io.modelcontextprotocol/clientInfo.name`, then OAuth/VK
+`client_id`, then `User-Agent`.
+
+```yaml
+integrations:
+  mcp_policy:
+    clients:
+      deny: ["evil-*"]
+  mcp_team_policies:
+    eng:
+      clients:
+        allow: ["claude-*", "cursor"]
+```
+
+```bash
+daari keys create ci-bot --team eng \
+  --mcp-client-allow 'claude-*' \
+  --mcp-client-deny 'evil-*'
+daari keys show <key_id>   # prints mcp clients: allow=… deny=…
+```
+
+When configured, `initialize`, `server/discover`, `tools/list`, and `tools/call`
+reject non-matching clients with JSON-RPC `-32004` (`MCP client denied by
+policy`) and an `mcp.client` audit row. Unset lists leave every authenticated
+caller through (backward compatible).
+
 What the caller sees:
 
 - `tools/list` (JSON-RPC and `/v1/mcp/query`) only returns allowed tools.
