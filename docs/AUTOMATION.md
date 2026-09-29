@@ -41,6 +41,7 @@ flowchart LR
 | PRD cycle (backlog replenishment) | [automations/prd-cycle.md](automations/prd-cycle.md); CI fallback: [.github/workflows/prd-cycle.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/prd-cycle.yml) — daily scan + never-empty 3–5 issue refill (features or tech debt) | fallback committed; same `CURSOR_API_KEY` as autodev |
 | Issue labeler | [.github/workflows/issue-labeler.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/issue-labeler.yml) + `scripts/apply_intended_labels.py` — applies the `**Intended labels:**` first line of new/edited issues (#330) | active |
 | Local watchdog | `scripts/autodev-local.sh` + launchd (`com.daari.serve`, `com.daari.autodev`) | installed and validated |
+| GTM measure | [.github/workflows/gtm-scoreboard.yml](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/gtm-scoreboard.yml) — weekly `scripts/gtm_scoreboard.py --report --check-drought`, auto-merging PR for `docs/gtm/SCOREBOARD.md` + `REPORT.md`, `gtm,regression` issue on 0 unique viewers / 14d (#1223). Never posts outside the repo; see [gtm/PLAN.md](gtm/PLAN.md) | active |
 
 ## Local watchdog (Mac)
 

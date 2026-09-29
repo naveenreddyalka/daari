@@ -1,0 +1,87 @@
+name: gtm-scoreboard
+
+# Weekly GTM "Measure" step (docs/gtm/PLAN.md, #1223). Refreshes
+# docs/gtm/SCOREBOARD.md + REPORT.md from GitHub traffic and pypistats, opens
+# an auto-merging PR when they changed, and files a `gtm,regression` issue on
+# a viewer drought. Shell only; never posts anywhere outside this repo.
+
+on:
+  schedule:
+    # Monday 14:00 UTC / 7:00 PT — the week's numbers before the week starts.
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: gtm-scoreboard
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.AUTODEV_GH_TOKEN || secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.AUTODEV_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Refresh scoreboard and report
+        id: refresh
+        run: |
+          set +e
+          python scripts/gtm_scoreboard.py --report --check-drought
+          code=$?
+          set -e
+          if [ "$code" = "2" ]; then
+            echo "drought=true" >> "$GITHUB_OUTPUT"
+          elif [ "$code" != "0" ]; then
+            exit "$code"
+          fi
+          if git diff --quiet -- docs/gtm/SCOREBOARD.md docs/gtm/REPORT.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open scoreboard PR
+        if: steps.refresh.outputs.changed == 'true'
+        run: |
+          day=$(date -u +%F)
+          branch="gtm/scoreboard-$day"
+          git config user.name "Naveen Reddy Alka"
+          git config user.email "naveenreddy.alka@gmail.com"
+          git checkout -b "$branch"
+          git add docs/gtm/SCOREBOARD.md docs/gtm/REPORT.md
+          git commit -m "docs(gtm): scoreboard $day"
+          git push -u origin "$branch"
+          gh pr create --title "docs(gtm): scoreboard $day" \
+            --body "Weekly GTM Measure refresh from \`.github/workflows/gtm-scoreboard.yml\`. Numbers from GitHub traffic (14d) and pypistats. Read \`docs/gtm/REPORT.md\` for the verdict."
+          gh pr merge --auto --squash
+
+      - name: File drought issue
+        if: steps.refresh.outputs.drought == 'true'
+        run: |
+          title="[gtm] viewer drought: 0 unique viewers in 14d"
+          if gh issue list --state open --search "in:title \"$title\"" --json title --jq '.[].title' | grep -Fxq "$title"; then
+            echo "drought issue already open"
+            exit 0
+          fi
+          gh issue create --title "$title" --label "gtm,regression" --body "$(printf '%s\n' \
+            '**Intended labels: `gtm`, `regression`**' \
+            '' \
+            'GitHub traffic reports 0 unique viewers over the last 14 days. Nobody is arriving at the repo.' \
+            '' \
+            'Per `docs/gtm/PLAN.md`, unique viewers is the launch KPI. The fix is a human publishing one of the drafts in `docs/gtm/launches/`; the machine does not post.' \
+            '' \
+            'Filed by `.github/workflows/gtm-scoreboard.yml`.')"

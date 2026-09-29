@@ -14,7 +14,7 @@ Mirrors the auto-dev loop. The machine never sleeps on **measure** and **draft**
 
 | Loop | Cadence | Machine | Human |
 |------|---------|---------|-------|
-| Measure | Daily | `python scripts/gtm_scoreboard.py` → `docs/gtm/SCOREBOARD.md` ([#229](https://github.com/naveenreddyalka/daari/issues/229)) | Read the week |
+| Measure | Weekly (Mon 14:00 UTC) | [`gtm-scoreboard.yml`](https://github.com/naveenreddyalka/daari/blob/main/.github/workflows/gtm-scoreboard.yml) runs `python scripts/gtm_scoreboard.py --report --check-drought` → auto-merging PR with `SCOREBOARD.md` + `REPORT.md`; files a `gtm,regression` issue on a viewer drought ([#229](https://github.com/naveenreddyalka/daari/issues/229), [#1223](https://github.com/naveenreddyalka/daari/issues/1223)) | Read the week |
 | Draft | On each release / notable merge | [#232](https://github.com/naveenreddyalka/daari/issues/232) shipping note | Edit tone |
 | Publish (owned) | When a draft is ready | Open a PR | Merge |
 | Publish (HN / Reddit / PH / X) | Calendar below | Drafts in [launches/](https://github.com/naveenreddyalka/daari/tree/main/docs/gtm/launches) | You post. Stay in comments 6 hours. |
