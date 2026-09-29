@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 
 import httpx
 import pytest
@@ -10,6 +11,18 @@ import pytest
 from daari.config.settings import McpServerSettings
 from daari.gateway.internal import InternalRequest, Message
 from daari.providers.mcp_egress import McpEgressProvider, McpServerConfig, build_mcp_providers
+
+
+@pytest.fixture(autouse=True)
+def _public_dns_for_fake_mcp_hosts(monkeypatch):
+    """Hostname fixtures like mcp.test are not real; resolve them to a public IP."""
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 0))
+        ]
+
+    monkeypatch.setattr("daari.security.egress_url.socket.getaddrinfo", fake_getaddrinfo)
 
 
 @pytest.mark.asyncio
@@ -406,3 +419,49 @@ async def test_denied_server_never_posts(monkeypatch):
     assert seen == []
     assert result.daari_meta.warning == "mcp_server_denied"
     assert "shell" in result.content
+
+
+@pytest.mark.asyncio
+async def test_private_url_blocked_before_post(monkeypatch):
+    """SSRF guard rejects private MCP URLs before any upstream POST (#1214)."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}})
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(
+        McpServerConfig(id="meta", url="http://169.254.169.254/latest")
+    )
+    result = await provider.execute(
+        InternalRequest(
+            messages=[Message(role="user", content="@mcp:meta tools/list")],
+            model="daari",
+        )
+    )
+    assert seen == []
+    assert result.daari_meta.warning
+    assert "blocked" in result.content.lower() or "169.254" in result.content
+
+
+@pytest.mark.asyncio
+async def test_private_url_allowed_when_opted_in(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"jsonrpc": "2.0", "id": 1, "result": {"tools": [{"name": "ping"}]}}
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    provider = McpEgressProvider(
+        McpServerConfig(id="lab", url="http://10.0.0.1/mcp"),
+        allow_private_networks=True,
+    )
+    result = await provider.execute(
+        InternalRequest(
+            messages=[Message(role="user", content="@mcp:lab tools/list")],
+            model="daari",
+        )
+    )
+    assert "ping" in result.content
+    assert result.daari_meta.warning is None

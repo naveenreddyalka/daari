@@ -5102,6 +5102,16 @@ MCP guide metering section + auth-and-keys family list. Covered by
 `data.supported` / `data.requested`. Legacy `initialize` unchanged. Covered by
 `tests/unit/test_mcp_server.py`.
 
+### MCP egress SSRF / private-network guards ([#1214](https://github.com/naveenreddyalka/daari/issues/1214))
+
+<!-- tracking:#1214 -->
+**Status:** Done (2026-09-29). Before MCP egress POST, URLs are resolved and
+checked (`http`/`https` only; deny loopback, RFC1918, link-local, metadata).
+`integrations.mcp_egress.allow_private_networks` opts in for lab/docker.
+Doctor fails closed without probing blocked URLs. Covered by
+`tests/unit/test_egress_url.py`, `tests/unit/test_mcp_egress.py`,
+`tests/unit/test_doctor_mcp_servers.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
