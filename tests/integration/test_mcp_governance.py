@@ -188,3 +188,47 @@ async def test_server_policy_filters_catalog_and_denies_call(settings, monkeypat
     assert len(rows) == 1
     assert rows[0]["detail"]["server"] == "shell"
     assert rows[0]["actor"] == key_id
+
+
+async def test_client_allowlist_hit_and_deny_miss(settings, monkeypatch):
+    """Per-key mcp.clients allow/deny gates initialize / tools/list (#1215)."""
+    from daari.gateway.mcp_policy import CLIENT_DENIED
+
+    app, headers, key_id = _app_with_key(
+        settings,
+        monkeypatch,
+        metadata={"mcp": {"clients": {"allow": ["claude-code"], "deny": []}}},
+    )
+    meta_ok = {
+        "_meta": {
+            "io.modelcontextprotocol/clientInfo": {"name": "claude-code", "version": "0"},
+        }
+    }
+    meta_bad = {
+        "_meta": {
+            "io.modelcontextprotocol/clientInfo": {"name": "evil-bot", "version": "0"},
+        }
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        allowed = await _rpc(client, "initialize", {**meta_ok, "protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "claude-code", "version": "0"}}, headers=headers)
+        denied = await _rpc(client, "tools/list", meta_bad, headers=headers)
+        unset_passthrough_app, unset_headers, _ = _app_with_key(settings, monkeypatch)
+    assert "result" in allowed.json()
+    assert "error" not in allowed.json()
+    error = denied.json()["error"]
+    assert error["code"] == CLIENT_DENIED
+    assert error["data"]["client"] == "evil-bot"
+    rows = [
+        row
+        for row in AuditLog(settings.enterprise.audit_path).list()
+        if row["action"] == "mcp.client" and row["detail"].get("decision") == "deny"
+    ]
+    assert len(rows) == 1
+    assert rows[0]["actor"] == key_id
+    assert rows[0]["detail"]["method"] == "tools/list"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=unset_passthrough_app), base_url="http://test"
+    ) as client:
+        open_list = await _rpc(client, "tools/list", meta_bad, headers=unset_headers)
+    assert "tools" in open_list.json()["result"]

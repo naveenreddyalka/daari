@@ -20,10 +20,14 @@ from daari.gateway.mcp_guardrails import (
     first_rule,
 )
 from daari.gateway.mcp_policy import (
+    CLIENT_DENIED,
     TOOL_DENIED,
     McpServerPolicy,
     McpToolPolicy,
+    audit_client_decision,
     audit_tool_call,
+    resolve_client_identity,
+    resolve_client_policy,
     resolve_policy,
     resolve_server_policy,
     server_id_from_provider,
@@ -341,12 +345,14 @@ def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
 
 
 class _Governance:
-    """Per-request policy, guardrails and audit sink for the MCP ingress (#277, #317, #1201)."""
+    """Per-request policy, guardrails and audit sink for the MCP ingress (#277, #317, #1201, #1215)."""
 
     def __init__(self, request: Request, ctx: AppContext, *, transport: str) -> None:
         self.claims = getattr(request.state, "auth_claims", None)
         self.policy = resolve_policy(self.claims, ctx.settings)
         self.server_policy = resolve_server_policy(self.claims, ctx.settings)
+        self.client_policy = resolve_client_policy(self.claims, ctx.settings)
+        self._request = request
         self._ctx = ctx
         self._audit = audit_log_from_settings(ctx.settings)
         self.guardrails = McpGuardrails.from_settings(
@@ -356,6 +362,7 @@ class _Governance:
         # parsing JSON-RPC; when a client sends them they govern too.
         self.header_method = (request.headers.get("mcp-method") or "").strip()
         self.header_name = (request.headers.get("mcp-name") or "").strip()
+        self.transport = transport
 
     def _server_for_tool(self, name: str) -> str | None:
         catalog = {item["name"]: item for item in _tool_catalog(self._ctx)}
@@ -376,6 +383,27 @@ class _Governance:
             if server is not None and not self.server_policy.allows(server):
                 return tool, server
         return None
+
+    def check_client(self, params: dict[str, Any] | None, *, method: str) -> str | None:
+        """Return denied client identity when client policy rejects the caller (#1215)."""
+        if not self.client_policy.is_restrictive():
+            return None
+        identity = resolve_client_identity(
+            params,
+            claims=self.claims,
+            user_agent=self._request.headers.get("user-agent"),
+        )
+        if self.client_policy.allows(identity):
+            return None
+        audit_client_decision(
+            self._audit,
+            self.claims,
+            client=identity,
+            decision="deny",
+            method=method,
+            transport=self.transport,
+        )
+        return identity or ""
 
     def audit(
         self, *, tool: str, decision: str, transport: str, server: str | None = None
@@ -456,6 +484,21 @@ def _denial_data(tool: str, server: str | None = None) -> dict[str, Any]:
     if server:
         data["server"] = server
     return data
+
+
+def _client_denied_response(
+    request: Request, rpc_id: Any, client: str, *, method: str
+) -> Response:
+    label = client or "(unknown)"
+    return _rpc_response(
+        request,
+        _jsonrpc_error(
+            rpc_id,
+            CLIENT_DENIED,
+            f"MCP client denied by policy: {label}",
+            data={"client": client or None, "method": method},
+        ),
+    )
 
 
 def _negotiate_protocol(params: Any) -> str:
@@ -1050,6 +1093,18 @@ class MCPGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             governance = _Governance(request, ctx, transport="jsonrpc")
             try:
+                governed_methods = {
+                    "server/discover",
+                    "initialize",
+                    "tools/list",
+                    "tools/call",
+                }
+                if method in governed_methods:
+                    denied_client = governance.check_client(params, method=method)
+                    if denied_client is not None:
+                        return _client_denied_response(
+                            request, rpc_id, denied_client, method=method
+                        )
                 if method == "server/discover":
                     return _rpc_response(
                         request,

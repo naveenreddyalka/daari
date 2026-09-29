@@ -251,6 +251,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_policy.deny` | list | `[]` | MCP tool names (glob) the caller may never call. Deny beats allow. |
 | `integrations.mcp_policy.servers.allow` | list | `[]` | MCP egress server ids (glob) the caller may reach. Empty = every server not denied. |
 | `integrations.mcp_policy.servers.deny` | list | `[]` | MCP egress server ids (glob) the caller may never reach. Deny beats allow. |
+| `integrations.mcp_policy.clients.allow` | list | `[]` | MCP client identities (glob) allowed to open the gateway. Empty = every client not denied. Match on clientInfo.name / OAuth client_id / User-Agent. |
+| `integrations.mcp_policy.clients.deny` | list | `[]` | MCP client identities (glob) that may never open the gateway. Deny beats allow. |
 | `integrations.mcp_team_policies` | dict | `{}` | Per-team MCP tool policy keyed by team name; layered on mcp_policy. |
 | `integrations.mcp_tasks.enabled` | bool | `True` |  |
 | `integrations.mcp_tasks.long_running_tools` | list | `['route']` |  |

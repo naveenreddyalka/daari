@@ -6,9 +6,13 @@ from daari.auth.virtual_keys import VirtualKey
 from daari.config.settings import Settings
 from daari.enterprise.audit import AuditLog
 from daari.gateway.mcp_policy import (
+    McpClientPolicy,
     McpServerPolicy,
     McpToolPolicy,
+    audit_client_decision,
     audit_tool_call,
+    resolve_client_identity,
+    resolve_client_policy,
     resolve_policy,
     resolve_server_policy,
 )
@@ -155,6 +159,86 @@ class TestResolveServerPolicy:
         assert not policy.allows("github")  # key deny
         assert not policy.allows("shell")  # global deny
         assert not policy.allows("slack")  # not in key allow
+
+
+class TestMcpClientPolicy:
+    def test_empty_policy_allows_every_client(self):
+        assert McpClientPolicy().allows("claude-code")
+        assert McpClientPolicy().allows(None)
+
+    def test_allow_hit_and_deny_miss(self):
+        policy = McpClientPolicy(allow=("claude-*", "cursor"))
+        assert policy.allows("claude-code")
+        assert policy.allows("cursor")
+        assert not policy.allows("evil-bot")
+
+    def test_deny_wins(self):
+        policy = McpClientPolicy(allow=("*",), deny=("evil-*",))
+        assert policy.allows("claude-code")
+        assert not policy.allows("evil-bot")
+
+    def test_unset_passthrough_when_not_restrictive(self):
+        assert not McpClientPolicy().is_restrictive()
+        assert McpClientPolicy(allow=("x",)).is_restrictive()
+
+
+class TestResolveClientPolicy:
+    def test_key_over_team_merge(self):
+        settings = Settings.model_validate(
+            {
+                "integrations": {
+                    "mcp_policy": {"clients": {"deny": ["evil-*"]}},
+                    "mcp_team_policies": {
+                        "eng": {"clients": {"allow": ["claude-*", "cursor"], "deny": []}}
+                    },
+                }
+            }
+        )
+        policy = resolve_client_policy(
+            _claims({"mcp": {"clients": {"allow": ["claude-code"], "deny": []}}}, "eng"),
+            settings,
+        )
+        assert policy.allows("claude-code")
+        assert not policy.allows("cursor")  # key allow narrows
+        assert not policy.allows("evil-bot")  # global deny
+
+
+class TestResolveClientIdentity:
+    def test_prefers_meta_client_info(self):
+        identity = resolve_client_identity(
+            {
+                "clientInfo": {"name": "params-client"},
+                "_meta": {
+                    "io.modelcontextprotocol/clientInfo": {"name": "meta-client", "version": "1"}
+                },
+            },
+            claims=_claims(),
+            user_agent="ua/1.0",
+        )
+        assert identity == "meta-client"
+
+    def test_falls_back_to_claim_then_ua(self):
+        assert (
+            resolve_client_identity({}, claims=_claims(), user_agent="ua/1.0") == "agent"
+        )
+        assert resolve_client_identity({}, claims=None, user_agent="ua/1.0") == "ua/1.0"
+
+
+def test_audit_client_decision_records_row(tmp_path):
+    audit = AuditLog(tmp_path / "audit.sqlite3")
+    audit_client_decision(
+        audit,
+        _claims(team="eng"),
+        client="evil-bot",
+        decision="deny",
+        method="initialize",
+        transport="jsonrpc",
+    )
+    row = audit.list()[0]
+    assert row["action"] == "mcp.client"
+    assert row["detail"]["client"] == "evil-bot"
+    assert row["detail"]["decision"] == "deny"
+    assert row["detail"]["method"] == "initialize"
 
 
 def test_audit_tool_call_records_decision_without_arguments(tmp_path):
