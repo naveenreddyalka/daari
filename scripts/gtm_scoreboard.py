@@ -25,13 +25,16 @@ OUT = ROOT / "docs" / "gtm" / "SCOREBOARD.md"
 REPORT = ROOT / "docs" / "gtm" / "REPORT.md"
 DEFAULT_SHIPPED = (
     "Repo listing live (description, topics, docs homepage, Discussions)",
-    "Honest public copy merged (#234)",
-    "Welcome discussion #238",
+    "Relicensed to Apache 2.0 (#293, ADR-0016); public copy says open source",
+    "v1.4.0 on PyPI and Homebrew (2026-09-03); v1.3.0 stays PolyForm NC as tagged",
+    "Docs site builds and deploys green (#1210)",
+    "Launch drafts ready: Show HN, r/LocalLLaMA, r/cursor, Product Hunt (docs/gtm/launches/)",
 )
 DEFAULT_WAITING = (
-    "First public post (LocalLLaMA / r/cursor / Show HN)",
-    "CURSOR_API_KEY so autodev-cycle is not a 6s no-op (#226)",
-    "Show HN Tue morning ET (draft in docs/gtm/launches/show-hn.md)",
+    "First public post: r/LocalLLaMA and r/cursor (docs/gtm/launches/)",
+    "Show HN Tue-Thu morning ET (docs/gtm/launches/show-hn.md)",
+    "Product Hunt after the HN thread settles (docs/gtm/launches/product-hunt.md)",
+    "v1.4.0 shipping note published (docs/gtm/drafts/shipping-note.md)",
 )
 
 
