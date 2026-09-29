@@ -1,4 +1,4 @@
-"""secret:// reference resolution (issue #288).
+"""secret:// reference resolution (issue #288, refresh #1204).
 
 Secrets in config (frontier keys, org tokens, Redis/Postgres URLs) may be
 written as `secret://` URIs instead of plaintext:
@@ -16,20 +16,22 @@ written as `secret://` URIs instead of plaintext:
                                           until expiry minus a margin and
                                           re-minted lazily on the next read
 
-Resolution happens once at daemon startup and shells out — deliberately no
-`keyring` dependency (AGENTS.md hard limit on new runtime deps). Failures are
-fatal and name the ref, never the value. Resolved values are registered so
-gateway logs can redact any accidental echo.
+Boot resolution shells out — deliberately no `keyring` dependency (AGENTS.md
+hard limit on new runtime deps). Failures at startup are fatal and name the
+ref, never the value. Resolved values are registered so gateway logs can
+redact any accidental echo.
 
-OAuth tokens expire, so they resolve to a `RefreshableSecret` — a `str` that
-remembers its ref. Call sites that hold a credential across requests (frontier
-key rotation, org clients) pass it through `current_secret()` right before use
-to pick up a fresh token once the cached one nears expiry.
+Non-oauth refs refresh when ``secrets.refresh_ttl_seconds`` > 0 (default 300):
+they resolve to a `RefreshableSecret` cached until the TTL elapses (env-file
+also invalidates on source mtime change). TTL 0 keeps boot-only plain strings.
+OAuth tokens always refresh near expiry. Call sites that hold a credential
+across requests pass it through `current_secret()` right before use.
 """
 
 from __future__ import annotations
 
 import base64
+import os
 import shlex
 import subprocess
 import sys
@@ -51,6 +53,8 @@ OAUTH_DEFAULT_REFRESH_MARGIN_SECONDS = 60.0
 # a conservative lifetime rather than a token we would never refresh.
 OAUTH_DEFAULT_EXPIRES_IN_SECONDS = 3600.0
 OAUTH_TIMEOUT_SECONDS = 15.0
+# Non-oauth refresh default (#1204); 0 = boot-only plain strings.
+DEFAULT_STATIC_REFRESH_TTL_SECONDS = 300.0
 
 Runner = Callable[[list[str]], str]
 Clock = Callable[[], float]
@@ -62,6 +66,18 @@ _RESOLVED_SECRETS: set[str] = set()
 # without threading parameters through every call site.
 _default_transport: httpx.BaseTransport | None = None
 _now: Clock = time.time
+_static_refresh_ttl: float = DEFAULT_STATIC_REFRESH_TTL_SECONDS
+
+
+@dataclass
+class _CachedStaticSecret:
+    value: RefreshableSecret
+    expires_at: float
+    source_mtime: float | None = None
+
+
+_STATIC_SECRETS: dict[str, _CachedStaticSecret] = {}
+_STATIC_LOCK = threading.Lock()
 
 
 class SecretRefError(RuntimeError):
@@ -93,9 +109,25 @@ def register_secret(value: str) -> None:
         _RESOLVED_SECRETS.add(value)
 
 
+def set_static_refresh_ttl(seconds: float) -> None:
+    """Configure non-oauth refresh TTL. 0 disables (boot-only plain strings)."""
+    global _static_refresh_ttl
+    _static_refresh_ttl = max(0.0, float(seconds))
+
+
+def get_static_refresh_ttl() -> float:
+    return _static_refresh_ttl
+
+
+def clear_static_cache() -> None:
+    with _STATIC_LOCK:
+        _STATIC_SECRETS.clear()
+
+
 def clear_registered_secrets() -> None:
     _RESOLVED_SECRETS.clear()
     clear_oauth_cache()
+    clear_static_cache()
 
 
 def redact_secrets(text: str) -> str:
@@ -357,10 +389,93 @@ def _resolve_oauth(
         return minted.value
 
 
+def _env_file_mtime(remainder: str) -> float | None:
+    path_part, _, _key = remainder.partition("#")
+    if not path_part:
+        return None
+    try:
+        return os.path.getmtime(path_part)
+    except OSError:
+        return None
+
+
+def _static_cache_valid(
+    ref: str, cached: _CachedStaticSecret, clock: Clock, scheme: str, remainder: str
+) -> bool:
+    if clock() >= cached.expires_at:
+        return False
+    if scheme == "env-file" and cached.source_mtime is not None:
+        current = _env_file_mtime(remainder)
+        if current is None or current != cached.source_mtime:
+            return False
+    return True
+
+
+def _resolve_static_ref(
+    scheme: str,
+    remainder: str,
+    ref: str,
+    *,
+    runner: Runner,
+    platform: str | None,
+    register: bool,
+    clock: Clock,
+) -> str:
+    """Resolve env-file/exec/keychain, optionally caching as RefreshableSecret."""
+    ttl = _static_refresh_ttl
+    if ttl > 0:
+        with _STATIC_LOCK:
+            cached = _STATIC_SECRETS.get(ref)
+            if cached is not None and _static_cache_valid(
+                ref, cached, clock, scheme, remainder
+            ):
+                if register:
+                    register_secret(cached.value)
+                return cached.value
+
+    if scheme == "env-file":
+        value = _resolve_env_file(remainder, ref)
+        mtime = _env_file_mtime(remainder)
+    elif scheme == "exec":
+        value = _resolve_exec(remainder, ref, runner)
+        mtime = None
+    else:
+        value = _resolve_keychain(remainder, ref, runner, platform or sys.platform)
+        mtime = None
+
+    value = value.strip()
+    if not value:
+        raise SecretRefError(f"{ref!r} resolved to an empty value")
+
+    if ttl <= 0:
+        if register:
+            register_secret(value)
+        return value
+
+    wrapped = RefreshableSecret(value, ref)
+    with _STATIC_LOCK:
+        # Re-check after resolving so concurrent refreshers share one value.
+        cached = _STATIC_SECRETS.get(ref)
+        if cached is not None and _static_cache_valid(
+            ref, cached, clock, scheme, remainder
+        ):
+            if register:
+                register_secret(cached.value)
+            return cached.value
+        _STATIC_SECRETS[ref] = _CachedStaticSecret(
+            value=wrapped,
+            expires_at=clock() + ttl,
+            source_mtime=mtime,
+        )
+    if register:
+        register_secret(wrapped)
+    return wrapped
+
+
 def resolve_secret_ref(
     ref: str,
     *,
-    runner: Runner = _default_runner,
+    runner: Runner | None = None,
     platform: str | None = None,
     register: bool = True,
     transport: httpx.BaseTransport | None = None,
@@ -371,47 +486,46 @@ def resolve_secret_ref(
     `register=False` is for verification passes (doctor) that must not add
     values to the process-wide redaction registry.
     """
+    active_runner = runner if runner is not None else _default_runner
     remainder = ref[len(SECRET_SCHEME) :]
     scheme, _, rest = remainder.partition("/")
-    value: str
-    if scheme == "env-file":
-        value = _resolve_env_file(rest, ref)
-    elif scheme == "exec":
-        value = _resolve_exec(rest, ref, runner)
-    elif scheme == "keychain":
-        value = _resolve_keychain(rest, ref, runner, platform or sys.platform)
-    elif scheme == OAUTH_SCHEME:
+    tick = clock or _now
+    if scheme in {"env-file", "exec", "keychain"}:
+        return _resolve_static_ref(
+            scheme,
+            rest,
+            ref,
+            runner=active_runner,
+            platform=platform,
+            register=register,
+            clock=tick,
+        )
+    if scheme == OAUTH_SCHEME:
         token = _resolve_oauth(
             rest,
             ref,
-            runner=runner,
+            runner=active_runner,
             platform=platform,
             transport=transport if transport is not None else _default_transport,
-            clock=clock or _now,
+            clock=tick,
         )
         if register:
             register_secret(token)
         return token
-    else:
-        raise SecretRefError(
-            f"unknown secret ref scheme in {ref!r} — "
-            "supported: env-file, exec, keychain, oauth"
-        )
-    value = value.strip()
-    if not value:
-        raise SecretRefError(f"{ref!r} resolved to an empty value")
-    if register:
-        register_secret(value)
-    return value
+    raise SecretRefError(
+        f"unknown secret ref scheme in {ref!r} — "
+        "supported: env-file, exec, keychain, oauth"
+    )
 
 
 def current_secret(value: str | None) -> str | None:
     """Return the up-to-date value for a resolved secret.
 
-    Plain strings pass through untouched. A `RefreshableSecret` (oauth) is
-    re-resolved through the token cache, which only hits the network once the
-    cached token is within its refresh margin. Raises SecretRefError if the
-    refresh fails — a stale token must not be sent as if it were valid.
+    Plain strings pass through untouched. A `RefreshableSecret` (oauth or
+    TTL-cached static ref) is re-resolved through its cache — network/exec only
+    when the cached entry is stale (oauth near expiry; static past TTL or
+    env-file mtime change). Raises SecretRefError if the refresh fails — a
+    stale credential must not be sent as if it were valid.
     """
     if not isinstance(value, RefreshableSecret) or not value.ref:
         return value
@@ -442,19 +556,26 @@ def iter_secret_refs(model: BaseModel) -> list[tuple[str, str]]:
 def resolve_settings_secrets(
     settings: BaseModel,
     *,
-    runner: Runner = _default_runner,
+    runner: Runner | None = None,
     platform: str | None = None,
 ) -> list[str]:
-    """Resolve every secret:// value in `settings` in place, once, at startup.
+    """Resolve every secret:// value in `settings` in place at startup.
 
-    Returns the list of resolved refs. Raises SecretRefError naming the config
-    path and ref on the first failure — a daemon must not start half-keyed.
+    Applies ``settings.secrets.refresh_ttl_seconds`` when present (default
+    300s). Returns the list of resolved refs. Raises SecretRefError naming the
+    config path and ref on the first failure — a daemon must not start
+    half-keyed.
     """
+    secrets_cfg = getattr(settings, "secrets", None)
+    ttl = getattr(secrets_cfg, "refresh_ttl_seconds", DEFAULT_STATIC_REFRESH_TTL_SECONDS)
+    set_static_refresh_ttl(float(ttl))
+    active_runner = runner if runner is not None else _default_runner
+
     resolved: list[str] = []
 
     def resolve(ref: str, path: str) -> str:
         try:
-            value = resolve_secret_ref(ref, runner=runner, platform=platform)
+            value = resolve_secret_ref(ref, runner=active_runner, platform=platform)
         except SecretRefError as exc:
             raise SecretRefError(f"config {path}: {exc}") from None
         resolved.append(ref)

@@ -12,7 +12,8 @@ Summary of [SECURITY.md](https://github.com/naveenreddyalka/daari/blob/main/SECU
 ## Keys at rest
 
 Config secrets accept [`secret://` references](../guides/configuration/auth-and-keys.md#secret-references-secret)
-(env-file, exec command, OS keychain) resolved once at startup, so API keys
+(env-file, exec command, OS keychain) resolved at startup and refreshed on a
+TTL / env-file mtime by default (#1204), so API keys
 and tokens need not live as plaintext in `config.yaml` or env vars. Failed
 refs are fatal, and resolved values are redacted from gateway logs.
 

@@ -5151,6 +5151,17 @@ and AUTOMATION.md components table point at it.
 (Administration: read on the fine-grained PAT). AUTOMATION.md lists it next to
 Issues write. Covered by `tests/unit/test_gtm_scoreboard.py`.
 
+### Refreshable secret:// resolution ([#1204](https://github.com/naveenreddyalka/daari/issues/1204))
+
+<!-- tracking:#1204 -->
+**Status:** Done (2026-09-29). Non-oauth `secret://` refs
+(env-file/exec/keychain) resolve to `RefreshableSecret` when
+`secrets.refresh_ttl_seconds` > 0 (default 300); env-file also re-resolves on
+source mtime change. TTL 0 keeps boot-only plain strings. Boot failures stay
+fatal. Doctor hints when refresh is disabled without oauth refs. Docs:
+auth-and-keys rotation runbook. Covered by
+`tests/unit/test_secret_refs_refresh.py`, `tests/test_doctor.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
