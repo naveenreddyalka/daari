@@ -1900,6 +1900,22 @@ def _check_mcp_servers(
                     )
                 )
                 continue
+            from daari.security.egress_url import EgressUrlBlocked, validate_egress_url
+
+            egress = getattr(settings.integrations, "mcp_egress", None)
+            allow_private = bool(getattr(egress, "allow_private_networks", False))
+            try:
+                validate_egress_url(base, allow_private_networks=allow_private)
+            except EgressUrlBlocked as exc:
+                rows.append(
+                    CheckResult(
+                        name=name,
+                        ok=False,
+                        detail=f"blocked by egress URL policy: {exc}",
+                        optional=True,
+                    )
+                )
+                continue
             headers = {"Content-Type": "application/json", "Mcp-Method": "initialize"}
             token = str(server.token or "").strip()
             if token:

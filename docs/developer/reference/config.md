@@ -259,6 +259,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_tool_search.min_catalog_size` | int | `40` | Catalogs at or under this size are returned unranked. |
 | `integrations.mcp_tool_search.top_k` | int | `40` | Maximum tools returned after ranking. |
 | `integrations.mcp_list_cache.ttl_ms` | int | `60000` | Client-hint TTL in milliseconds for tools/list _meta.ttlMs. 0 still emits the field; clients may treat it as uncacheable. |
+| `integrations.mcp_egress.allow_private_networks` | bool | `False` | When true, MCP egress may POST to loopback, RFC1918, and link-local hosts (docker-compose / lab). Default false rejects those addresses after DNS resolution. |
 | `integrations.mcp_guardrails.enabled` | bool | `False` |  |
 | `integrations.mcp_guardrails.max_prompt_chars` | int | `0` |  |
 | `integrations.mcp_guardrails.injection_action` | str | `'block'` |  |

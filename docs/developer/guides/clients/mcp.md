@@ -12,6 +12,9 @@ explorer probes succeed instead of `Method not found`).
 counts and an `mcp_tasks` status summary for local ops without Prometheus.
 `daari doctor` probes each configured `integrations.mcp_servers` URL (optional
 `mcp:<id>` rows) so a typo'd egress host fails before the first `@mcp` call.
+Egress URLs are SSRF-checked (http/https only; loopback, RFC1918, link-local,
+and cloud metadata denied after DNS resolution). Lab/docker targets need
+`integrations.mcp_egress.allow_private_networks: true`.
 
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with

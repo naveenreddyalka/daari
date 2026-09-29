@@ -41,6 +41,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         embedder: Any = None,
         tool_policy: Any = None,
         server_policy: Any = None,
+        allow_private_networks: bool = False,
     ) -> None:
         super().__init__(
             id=f"mcp:{server.id}",
@@ -59,8 +60,16 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.embedder = embedder
         self.tool_policy = tool_policy
         self.server_policy = server_policy
+        self.allow_private_networks = allow_private_networks
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
+
+    def _ensure_egress_url_allowed(self) -> None:
+        from daari.security.egress_url import validate_egress_url
+
+        validate_egress_url(
+            self.base_url, allow_private_networks=self.allow_private_networks
+        )
 
     def _client(self) -> httpx.AsyncClient:
         if self._http is None or self._http.is_closed:
@@ -124,6 +133,11 @@ class McpEgressProvider(HttpIntegrationProvider):
         headers = inject_trace_headers(
             headers, request_id=getattr(request.meta, "request_id", None)
         )
+
+        try:
+            self._ensure_egress_url_allowed()
+        except Exception as exc:  # noqa: BLE001 — surface as tool failure
+            return self._failure(request, exc)
 
         if tool in {"tools/list", "list"}:
             headers["Mcp-Method"] = "tools/list"
@@ -230,6 +244,7 @@ def build_mcp_providers(
     embedder: Any = None,
     tool_policy: Any = None,
     server_policy: Any = None,
+    allow_private_networks: bool = False,
 ) -> list[McpEgressProvider]:
     providers: list[McpEgressProvider] = []
     for entry in servers or []:
@@ -254,6 +269,7 @@ def build_mcp_providers(
                 embedder=embedder,
                 tool_policy=tool_policy,
                 server_policy=server_policy,
+                allow_private_networks=allow_private_networks,
             )
         )
     return providers

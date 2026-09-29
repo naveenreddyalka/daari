@@ -1387,6 +1387,19 @@ class McpListCacheSettings(BaseModel):
     )
 
 
+class McpEgressSettings(BaseModel):
+    """Outbound MCP URL SSRF / private-network policy (#1214)."""
+
+    allow_private_networks: bool = Field(
+        default=False,
+        description=(
+            "When true, MCP egress may POST to loopback, RFC1918, and link-local "
+            "hosts (docker-compose / lab). Default false rejects those addresses "
+            "after DNS resolution."
+        ),
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -1431,6 +1444,13 @@ class IntegrationsSettings(BaseModel):
         description=(
             "tools/list _meta cache hints (ttlMs, cacheScope) for MCP 2026-07-28 (#979). "
             "cacheScope is public when the catalog is not ACL-filtered; private otherwise."
+        ),
+    )
+    mcp_egress: McpEgressSettings = Field(
+        default_factory=McpEgressSettings,
+        description=(
+            "SSRF / private-network guards for integrations.mcp_servers URLs (#1214). "
+            "Default denies loopback, RFC1918, link-local, and metadata addresses."
         ),
     )
     mcp_guardrails: GuardrailSettings = Field(

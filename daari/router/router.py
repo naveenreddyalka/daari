@@ -5626,6 +5626,7 @@ class AppContext:
         egress_guardrails = McpGuardrails.from_settings(
             settings, audit=audit_log_from_settings(settings), transport="egress"
         )
+        mcp_egress = getattr(settings.integrations, "mcp_egress", None)
         mcp_providers = build_mcp_providers(
             settings.integrations.mcp_servers,
             egress_guardrails,
@@ -5634,6 +5635,9 @@ class AppContext:
             tool_policy=McpToolPolicy.from_mapping(settings.integrations.mcp_policy),
             server_policy=McpServerPolicy.from_mapping(
                 getattr(settings.integrations.mcp_policy, "servers", None)
+            ),
+            allow_private_networks=bool(
+                getattr(mcp_egress, "allow_private_networks", False)
             ),
         )
         mcp_triggers: dict[str, list[str]] = {}

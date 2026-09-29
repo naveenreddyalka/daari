@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import socket
+
 import httpx
 import pytest
 
@@ -16,6 +18,16 @@ from daari.gateway.mcp_guardrails import (
 from daari.providers.mcp_egress import McpEgressProvider, McpServerConfig, build_mcp_providers
 
 AWS_KEY = "AKIAABCDEFGHIJKLMNOP"
+
+
+@pytest.fixture(autouse=True)
+def _public_dns_for_fake_mcp_hosts(monkeypatch):
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port or 0))
+        ]
+
+    monkeypatch.setattr("daari.security.egress_url.socket.getaddrinfo", fake_getaddrinfo)
 
 
 def _settings(tmp_path, **overrides) -> Settings:
