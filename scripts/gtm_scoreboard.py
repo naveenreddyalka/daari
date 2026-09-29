@@ -74,7 +74,17 @@ def main(argv: list[str] | None = None) -> int:
     if "--help" in argv or "-h" in argv:
         print("Usage: python scripts/gtm_scoreboard.py [--report] [--check-drought]")
         return 0
-    snap = collect()
+    try:
+        snap = collect()
+    except subprocess.CalledProcessError as exc:
+        endpoint = exc.cmd[-1] if isinstance(exc.cmd, (list, tuple)) else str(exc.cmd)
+        print(
+            f"gtm_scoreboard: `gh api {endpoint}` failed. GitHub traffic endpoints need "
+            "push access; a fine-grained PAT also needs Administration: Read-only "
+            "(classic: `repo`). Add it to the token behind AUTODEV_GH_TOKEN (#1226).",
+            file=sys.stderr,
+        )
+        return 1
     write_scoreboard(OUT, snap)
     print(f"wrote {OUT}")
     if "--report" in argv:

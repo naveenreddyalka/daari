@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
 from daari.gtm.scoreboard import (
     GtmSnapshot,
     render_scoreboard,
@@ -61,3 +66,31 @@ def test_weekly_report_names_verdict_and_next_action():
     assert "CURSOR_API_KEY" in md
     assert "automation, not humans" in md.lower() or "not humans" in md.lower()
     assert "Next" in md
+
+
+def _script():
+    path = Path(__file__).resolve().parents[2] / "scripts" / "gtm_scoreboard.py"
+    spec = importlib.util.spec_from_file_location("gtm_scoreboard_script", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules["gtm_scoreboard_script"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_main_explains_token_permission_on_gh_403(monkeypatch, capsys):
+    """A PAT without Administration:read must produce a one-line fix, not a traceback (#1226)."""
+    mod = _script()
+
+    def failing_gh(path: str) -> dict:
+        raise subprocess.CalledProcessError(1, ["gh", "api", path])
+
+    monkeypatch.setattr(mod, "_gh_json", failing_gh)
+    monkeypatch.setattr(mod, "_pypi_recent", lambda: {"last_month": 0, "last_week": 0})
+
+    assert mod.main([]) == 1
+    err = capsys.readouterr().err
+    assert "repos/naveenreddyalka/daari" in err
+    assert "Administration" in err
+    assert "AUTODEV_GH_TOKEN" in err
+    assert "Traceback" not in err

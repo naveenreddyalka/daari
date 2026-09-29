@@ -5143,6 +5143,14 @@ files a `gtm,regression` issue on a 14-day viewer drought (deduped by title).
 Shell only, `AUTODEV_GH_TOKEN` fallback to `GITHUB_TOKEN`. PLAN.md Measure row
 and AUTOMATION.md components table point at it.
 
+### Scoreboard names the PAT permission on 403 ([#1226](https://github.com/naveenreddyalka/daari/issues/1226))
+
+<!-- tracking:#1226 -->
+**Status:** Done (2026-09-29). `scripts/gtm_scoreboard.py` catches a failed
+`gh api` call and exits 1 with one line naming the endpoint and the fix
+(Administration: read on the fine-grained PAT). AUTOMATION.md lists it next to
+Issues write. Covered by `tests/unit/test_gtm_scoreboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
