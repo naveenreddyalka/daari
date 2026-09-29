@@ -11,29 +11,29 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-28 evening)
+## Where daari stands (verified in-tree, 2026-09-29)
 
-**Loop velocity.** Morning’s MCP server allowlists + tools/call metering already
-merged; resilience / refreshable secrets / Helm header_policy still in flight.
-P3 docs hermetic pins remain. Backlog had room for the next protocol and
-ops slice.
+**Loop velocity.** Overnight P1s (`server/discover` + `_meta`, MCP egress SSRF)
+and morning P2s (egress resilience, refreshable `secret://`, Helm
+`header_policy`) all merged. Evening P2s still open: MCP client allowlists,
+scheduled encrypted backups, spend `--by-tool`. P3 docs hermetic pins remain.
 
-**Outward.** LiteLLM docs: **v1.102.0** stable (strict MCP grants, `/mcp/proxy`
-schema discovery, OCR default, OTel HTTP/JSON); **v1.103.0-rc.1** (config-file
-ownership, MCP client allowlisting, live session force-close, RFC 8693). Portkey
-enterprise changelog leads with **v2.20.0** Unified Gateway + MCP Server Mode
-and continuing MCP SSRF/TLS fetch hardening. Kong AI Gateway **2.1+** maps
-`server/discover` for MCP **2026-07-28** (sessionless). vLLM **0.30.0**; Ollama
-**0.34.4** stable / **0.40.0-rc0** (MLX default on Apple Silicon). OpenRouter /
-MCP SEP-1933 still quiet.
+**Outward.** LiteLLM **v1.103.0-rc.1** (hours-old): MCP client allowlisting,
+live session visibility + admin force-close, RFC 8693 token exchange, Fuse
+routing, OCR Rust path hardening; **v1.102.0** stable still the OCR-default /
+`/mcp/proxy` schema-discovery bar. Portkey **v2.20.0** Unified Gateway + MCP
+Server Mode and **server-side MCP** beta for Responses/Messages. Kong AI
+Gateway **2.1+** 2026-07-28: `server/discover`, per-request version, and
+`Mcp-Method`/`Mcp-Name` body match. Anthropic ships stable
+`output_config.effort` (LiteLLM already maps it). Ollama **0.34.4** stable /
+**0.40.0-rc0** + **0.35.0** pre; vLLM **0.30.0**.
 
-**Inward theme: 2026-07-28 fidelity + egress trust + FinOps usability.** Code
-audit: daari *lists* `2026-07-28` but only bootstraps via `initialize` — no
-`server/discover`, no per-request `_meta` protocolVersion. MCP egress POSTs to
-any configured URL with no private/metadata SSRF guard (Portkey already
-external-fetch-hardens this). Server grants shipped; *client* identity grants
-did not. Encrypted backup CLI exists; Helm has no CronJob scheduler. MCP
-metering landed, but `daari spend report` still only `--by-user`.
+**Inward theme: client-contract honesty + MCP ops + local MCP execution.**
+Claude Code effort knobs are dropped today (`AnthropicRequest` has no
+`output_config`). MCP headers are read for governance but not mismatch-
+rejected. No admin view/abort of in-flight MCP calls (LiteLLM just shipped
+that). Responses still 400s `type:mcp` tools; Portkey executes them in-gateway.
+Safe config PATCH exists; full `config.yaml` still needs restart.
 
 ---
 
@@ -41,39 +41,39 @@ metering landed, but `daari spend report` still only `--by-user`.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **MCP `server/discover` + per-request `_meta` version** — advertises 2026-07-28 but initialize-only | 5 | 2 | Kong 2.1+ / MCP spec MUST | Sessionless local peer; no sticky store | Filed — P1 ([#1213](https://github.com/naveenreddyalka/daari/issues/1213)) |
-| 2 | **MCP egress SSRF / private-network guards** — any URL POSTed | 5 | 2 | Portkey external-fetch SSRF/TLS path | Config-declared servers + local deny-by-default | Filed — P1 ([#1214](https://github.com/naveenreddyalka/daari/issues/1214)) |
-| 3 | **Per-key/team MCP client allowlists** — server/tool grants without client identity gate | 4 | 2 | LiteLLM 1.103-rc (client allowlisting) | Same VK-metadata policy, offline audit | Filed — P2 ([#1215](https://github.com/naveenreddyalka/daari/issues/1215)) |
-| 4 | **Scheduled encrypted backups** — encrypt+restore shipped; scheduling manual | 3 | 2 | pgBackRest / cloud DR schedulers | Reuse `daari backup --encrypt` from CronJob/timer | Filed — P2 ([#1216](https://github.com/naveenreddyalka/daari/issues/1216)) |
-| 5 | **`daari spend report --by-tool`** — MCP metering landed; CLI rollup missing | 3 | 1 | Kong per-RPC MCP analytics | Local ledger → chargeback, no SaaS | Filed — P2 ([#1217](https://github.com/naveenreddyalka/daari/issues/1217)) |
-| 6 | MCP egress resilience (OTel span, retry, per-server breaker) | 4 | 2 | Kong / Portkey | In flight from morning cycle | Open — morning backlog |
-| 7 | Refreshable `secret://` resolution | 4 | 2 | Cloud control planes | In flight | Open — morning backlog |
-| 8 | Helm header_policy knobs + `/mcp` deny pin | 3 | 1 | Portkey startHooks | In flight | Open — morning backlog |
-| 9 | MCP ingress activity visibility + force-close | 4 | 3 | LiteLLM 1.103-rc | Frame as connection/activity ops, not spec sessions | Watch |
-| 10 | MCP inbound OAuth / RFC 9728; full-config SIGHUP; native `/v1/ocr`; Anthropic `output_config.effort`; A2A; admin UI | 2–5 | 3–5 | LiteLLM / Portkey / Anthropic | Demand-triggered | Watch |
+| 1 | **Anthropic `output_config.effort`** — dropped on Messages; Claude Code slider ignored | 5 | 2 | LiteLLM effort mapping | Local think map + honest L6 passthrough | Filed — P1 ([#1230](https://github.com/naveenreddyalka/daari/issues/1230)) |
+| 2 | **MCP ingress activity + admin force-abort** — no list/kill for in-flight tools/call | 4 | 3 | LiteLLM 1.103 live sessions | Request-scoped registry; no sticky sessions | Filed — P2 ([#1231](https://github.com/naveenreddyalka/daari/issues/1231)) |
+| 3 | **Server-side MCP in Responses** — `type:mcp` still 400; Portkey executes in-gateway | 5 | 3 | Portkey v2.20 server-side MCP | Reuse local egress + SSRF + metering | Filed — P2 ([#1232](https://github.com/naveenreddyalka/daari/issues/1232)) |
+| 4 | **`Mcp-Method` / `Mcp-Name` body match** — headers read, mismatches allowed | 3 | 1 | Kong 2.1+ 2026-07-28 | Fail-closed sessionless peer | Filed — P2 ([#1233](https://github.com/naveenreddyalka/daari/issues/1233)) |
+| 5 | **Hot-reload `config.yaml`** — PATCH safe subset only; full file needs restart | 3 | 2 | LiteLLM / cloud CPs | `POST /v1/daari/reload-config` (+ optional SIGHUP) | Filed — P2 ([#1234](https://github.com/naveenreddyalka/daari/issues/1234)) |
+| 6 | Per-key/team MCP client allowlists | 4 | 2 | LiteLLM 1.103-rc | Open — prior cycle | Open |
+| 7 | Scheduled encrypted backups (Helm CronJob / timer) | 3 | 2 | pgBackRest-class schedulers | Open — prior cycle | Open |
+| 8 | `daari spend report --by-tool` | 3 | 1 | Kong per-RPC analytics | Open — prior cycle | Open |
+| 9 | MCP inbound OAuth / RFC 9728; native `/v1/ocr`; `/mcp/proxy` schema discovery; A2A; admin UI | 2–5 | 3–5 | LiteLLM / Portkey / Anthropic | Demand-triggered | Watch |
 
-Shipped since morning audit — do not re-file: per-key/team MCP **server**
-allowlists; MCP tools/call spend/usage metering + `mcp` rate family. Still
-verified fine: tool allow/deny + audit, semantic tool search, tools/list
-ttlMs/cacheScope, tools/list pagination, MCP guardrails, W3C egress trace
-injection, oauth `secret://` re-mint, encrypt↔decrypt restore + `--restore-pg`,
-header_policy on `/mcp`, config ownership metadata for PATCH safe subset,
+Shipped since prior evening audit — do not re-file: `server/discover` + per-request
+`_meta`; MCP egress SSRF/private-network guards; MCP egress OTel/retry/breaker;
+refreshable `secret://`; Helm `header_policy` + `/mcp` deny pin. Still verified
+fine: MCP server allowlists; tools/call metering + `mcp` rate family; tool
+allow/deny + audit; semantic tool search; tools/list ttlMs/cacheScope +
+pagination; MCP guardrails; W3C egress trace injection; oauth `secret://`
+re-mint; encrypt↔decrypt restore + `--restore-pg`; config ownership metadata;
 lifetime + weekly/rpw budgets.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **2026-07-28 protocol honesty** — `server/discover` + per-request `_meta`
-   (row 1) so modern MCP clients treat daari as a correct peer.
-2. **Egress trust boundary** — SSRF/private-network guards (row 2), then finish
-   resilience spans/retry/breaker (row 6).
-3. **Client identity governance** — MCP client allowlists (row 3) on top of
-   server/tool grants.
-4. **Operator DR + FinOps completeness** — scheduled backups (row 4) and
-   `--by-tool` spend (row 5).
-5. **Then identity depth on demand** — inbound OAuth / activity visibility
-   (rows 9–10) when SEP-1933 lands or fleets ask.
+1. **Client-contract honesty** — Anthropic `output_config.effort` (row 1) so
+   Claude Code cost knobs survive the local gateway.
+2. **MCP ops kill-switch** — in-flight activity + force-abort (row 2) matching
+   LiteLLM’s live-session admin bar without inventing sticky sessions.
+3. **Local MCP execution for agents** — server-side Responses MCP (row 3) so
+   Bedrock/Vertex/Ollama paths keep tool creds on-box.
+4. **2026-07-28 header honesty** — Method/Name mismatch reject (row 4), then
+   finish prior-cycle client allowlists / DR / FinOps (rows 6–8).
+5. **Operator live config** — hot-reload (row 5); then inbound OAuth / OCR /
+   schema-proxy (row 9) on buyer demand.
 
 Compliance non-goals (WIF, A2A, SOC 2 program, admin UI, Realtime/WS) stay
 deferred until buyer demand.
@@ -82,33 +82,22 @@ deferred until buyer demand.
 
 ## Changelog
 
+- **2026-09-29 (client honesty + MCP ops + local MCP execution)** — Overnight
+  discover/SSRF and morning resilience/secrets/Helm merged. Outward: LiteLLM
+  1.103.0-rc.1 force-close + client allowlists; Portkey server-side MCP beta;
+  Kong Method/Name match; Anthropic `output_config.effort`. Filed effort
+  passthrough (P1), MCP activity/abort, Responses server-side MCP, header
+  mismatch reject, config hot-reload (P2s). Prior-cycle client allowlists /
+  backups / `--by-tool` remain open. OAuth / OCR / A2A held as watch.
+
 - **2026-09-28 evening (2026-07-28 fidelity + egress trust + FinOps)** —
-  Morning server-allowlist + metering merged. Outward: LiteLLM 1.102.0 stable /
-  1.103.0-rc.1; Portkey v2.20.0 Unified+MCP; Kong discover mapping; Ollama
-  0.40.0-rc0 MLX watch. Filed discover+`_meta` (P1), MCP egress SSRF (P1),
-  MCP client allowlists, scheduled backups, spend `--by-tool` (P2s). Sessions /
-  inbound OAuth / OCR / Anthropic beta held as watch.
+  Filed discover+`_meta`, MCP egress SSRF (P1s), MCP client allowlists,
+  scheduled backups, spend `--by-tool` (P2s). Discover + SSRF merged 09-29.
 
-- **2026-09-28 (MCP gateway enterprise depth)** — LiteLLM MCP bar moved;
-  filed MCP server allowlists (P1), metering + rate family, egress resilience,
-  refreshable secrets, Helm header_policy (P2s). Server allowlists + metering
-  merged same day.
+- **2026-09-28 (MCP gateway enterprise depth)** — Filed MCP server allowlists
+  (P1), metering + rate family, egress resilience, refreshable secrets, Helm
+  header_policy (P2s). All merged by 09-29.
 
-- **2026-09-27 (two runs: fleet-backend completeness + governance consistency;
-  session OTel + DR depth + Helm parity)** — Filed ten across compact
-  governance, erasure completeness, backup honesty/encryption/pg_dump, spend
-  user_id, param compat, OTel conversation id, Helm knobs, hermetic benches.
-  All merged by 09-28.
-
-- **2026-09-26 (two runs: agent-surface fidelity; Responses honesty +
-  retention + operator visibility)** — Filed ten across astra compat, erasure,
-  backup, chargeback, reasoning replay, hosted-tool 400s, prune_all,
-  prompt-cache fields, drift hash, streaming resume. All merged by 09-27.
-
-- **2026-09-25 (three runs)** — Fifteen issues across images / identity /
-  FinOps; all merged by 2026-09-26 14:08.
-
-- **2026-09-24 → 09-15 and earlier** — Condensed: non-chat endpoint parity;
-  modality + client-contract honesty; facade/Responses shapes; data-plane
-  efficiency; governance secondary ingress; fleet-auth; Batch/Files; Apache
-  2.0; this PRD's creation (2026-08-28).
+- **2026-09-27 → 09-15 and earlier** — Condensed: fleet-backend completeness,
+  governance, agent-surface fidelity, Responses honesty, images/identity/
+  FinOps, non-chat endpoint parity, Apache 2.0, this PRD's creation (2026-08-28).
