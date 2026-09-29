@@ -5627,6 +5627,7 @@ class AppContext:
             settings, audit=audit_log_from_settings(settings), transport="egress"
         )
         mcp_egress = getattr(settings.integrations, "mcp_egress", None)
+        metrics = Metrics()
         mcp_providers = build_mcp_providers(
             settings.integrations.mcp_servers,
             egress_guardrails,
@@ -5639,12 +5640,15 @@ class AppContext:
             allow_private_networks=bool(
                 getattr(mcp_egress, "allow_private_networks", False)
             ),
+            retry=RetryPolicy.from_settings(settings.upstream.retry),
+            failure_threshold=int(getattr(mcp_egress, "failure_threshold", 3) or 3),
+            cooldown_seconds=float(getattr(mcp_egress, "cooldown_seconds", 30.0) or 30.0),
+            metrics=metrics,
         )
         mcp_triggers: dict[str, list[str]] = {}
         for mcp_provider in mcp_providers:
             providers.register(mcp_provider)
             mcp_triggers[mcp_provider.id] = list(mcp_provider.server.triggers)
-        metrics = Metrics()
         # The cache is built before metrics exist; it only needs them to count
         # verification vetoes (#168).
         semantic_cache.metrics = metrics

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextvars
 import os
+from contextlib import contextmanager
 from typing import Any, Mapping
 
 _MAX_ATTR_CHARS = 200
@@ -63,6 +64,39 @@ def reset_inbound_context(token: Any) -> None:
         _inbound_context.reset(token)
     except Exception:
         pass
+
+
+@contextmanager
+def mcp_client_span(name: str, *, server_id: str, tool_name: str | None = None):
+    """Client span for an outbound MCP JSON-RPC call (#1203).
+
+    Parent is the inbound W3C context when middleware extracted one. Missing
+    OTel packages yield a no-op so egress stays usable offline.
+    """
+    try:
+        from opentelemetry import trace as otel_trace
+        from opentelemetry.trace import SpanKind
+    except ImportError:
+        yield None
+        return
+    try:
+        tracer = otel_trace.get_tracer("daari")
+        attrs: dict[str, Any] = {"mcp.server.id": str(server_id)}
+        if tool_name:
+            attrs["mcp.tool.name"] = str(tool_name)
+        span_kwargs: dict[str, Any] = {
+            "kind": SpanKind.CLIENT,
+            "attributes": attrs,
+        }
+        inbound = _inbound_context.get()
+        if inbound is not None:
+            parent = otel_trace.get_current_span(inbound)
+            if parent.get_span_context().is_valid:
+                span_kwargs["context"] = inbound
+        with tracer.start_as_current_span(name, **span_kwargs) as span:
+            yield span
+    except Exception:
+        yield None
 
 
 def inject_trace_headers(

@@ -260,6 +260,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_tool_search.top_k` | int | `40` | Maximum tools returned after ranking. |
 | `integrations.mcp_list_cache.ttl_ms` | int | `60000` | Client-hint TTL in milliseconds for tools/list _meta.ttlMs. 0 still emits the field; clients may treat it as uncacheable. |
 | `integrations.mcp_egress.allow_private_networks` | bool | `False` | When true, MCP egress may POST to loopback, RFC1918, and link-local hosts (docker-compose / lab). Default false rejects those addresses after DNS resolution. |
+| `integrations.mcp_egress.failure_threshold` | int | `3` | Consecutive MCP egress failures before the per-server circuit opens (#1203). Matches frontier `failure_threshold`. |
+| `integrations.mcp_egress.cooldown_seconds` | float | `30.0` | Seconds an open MCP egress circuit stays fail-fast before a half-open probe (#1203). |
 | `integrations.mcp_guardrails.enabled` | bool | `False` |  |
 | `integrations.mcp_guardrails.max_prompt_chars` | int | `0` |  |
 | `integrations.mcp_guardrails.injection_action` | str | `'block'` |  |
