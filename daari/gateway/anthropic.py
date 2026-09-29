@@ -235,6 +235,8 @@ class AnthropicRequest(BaseModel):
     # Request-level extended thinking + metadata (#1009).
     thinking: Any | None = None
     metadata: Any | None = None
+    # Claude Code / Anthropic effort knob (#1230).
+    output_config: Any | None = None
 
 
 class AnthropicTextBlock(BaseModel):

@@ -49,6 +49,15 @@ verbatim on L6 Anthropic escalations. Locally it maps onto Ollama `think` via
 | > 8192 | `high` |
 | `type: disabled` | omitted |
 
+## Effort (`output_config`)
+
+Claude Code's `output_config: {effort: low|medium|high|xhigh|max}` is kept on
+`/v1/messages` and forwarded unchanged on L6 Anthropic. Locally, when effort is
+set without `budget_tokens` (or with `thinking.type: adaptive`), it maps to
+`reasoning_effort` / Ollama `think` the same way as OpenAI effort (`xhigh` /
+`max` → `high`). Opus 4.5 L6 hops get `anthropic-beta: effort-2025-11-24` when
+the client did not already send it; 4.6+ needs no beta.
+
 ## Troubleshoot
 
 | Problem | Fix |

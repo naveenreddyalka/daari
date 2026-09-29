@@ -10,6 +10,7 @@ from daari.observability.trace import add_step
 
 ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096
+EFFORT_BETA = "effort-2025-11-24"
 
 
 def infer_frontier_kind(provider: str, base_url: str = "") -> str:
@@ -44,14 +45,48 @@ def anthropic_headers(
     return headers
 
 
-def anthropic_headers_for_request(api_key: str, request: InternalRequest) -> dict[str, str]:
-    """Build L6 Anthropic headers, forwarding client beta/version when set (#455)."""
+def anthropic_headers_for_request(
+    api_key: str,
+    request: InternalRequest,
+    *,
+    model: str | None = None,
+) -> dict[str, str]:
+    """Build L6 Anthropic headers, forwarding client beta/version when set (#455).
+
+    When ``output_config`` is present and the L6 model is Opus 4.5, inject
+    ``effort-2025-11-24`` if the client did not already send it (#1230).
+    Opus 4.6+ does not need the beta.
+    """
     meta = request.meta
+    beta = (meta.anthropic_beta or "").strip() or None
+    effective_model = (model or request.model or "").strip()
+    if request.sampling.output_config and _opus_45_needs_effort_beta(effective_model):
+        beta = _merge_anthropic_beta(beta, EFFORT_BETA)
     return anthropic_headers(
         api_key,
-        anthropic_beta=meta.anthropic_beta,
+        anthropic_beta=beta,
         anthropic_version=meta.anthropic_version,
     )
+
+
+def _opus_45_needs_effort_beta(model: str) -> bool:
+    """True for Opus 4.5 family models that still require the effort beta."""
+    lowered = (model or "").lower().replace("_", "-")
+    if "opus" not in lowered:
+        return False
+    # 4.6+ ships effort without the beta.
+    if "opus-4-6" in lowered or "opus-4.6" in lowered:
+        return False
+    if "opus-4-5" in lowered or "opus-4.5" in lowered:
+        return True
+    return False
+
+
+def _merge_anthropic_beta(existing: str | None, feature: str) -> str:
+    parts = [p.strip() for p in (existing or "").split(",") if p.strip()]
+    if feature not in parts:
+        parts.append(feature)
+    return ",".join(parts)
 
 
 def openai_tools_to_anthropic(tools: list[Any] | None) -> list[dict[str, Any]]:
@@ -224,6 +259,8 @@ def to_anthropic_payload(
         payload["thinking"] = dict(request.sampling.thinking)
     if request.sampling.metadata:
         payload["metadata"] = dict(request.sampling.metadata)
+    if request.sampling.output_config:
+        payload["output_config"] = dict(request.sampling.output_config)
     mapped_choice = openai_tool_choice_to_anthropic(request.sampling.tool_choice)
     if mapped_choice is not None:
         payload["tool_choice"] = mapped_choice
