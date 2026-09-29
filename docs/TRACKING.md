@@ -5122,6 +5122,17 @@ Doctor fails closed without probing blocked URLs. Covered by
 `tests/unit/test_egress_url.py`, `tests/unit/test_mcp_egress.py`,
 `tests/unit/test_doctor_mcp_servers.py`.
 
+### GTM: scoreboard refreshed, v1.4.0 note, honest copy ([#1222](https://github.com/naveenreddyalka/daari/issues/1222))
+
+<!-- tracking:#1222 -->
+**Status:** Done (2026-09-29). First scoreboard refresh since the 2026-08-26
+seed: 3 stars, 4 unique viewers / 14d, PyPI 135 / 30d. `DEFAULT_SHIPPED` /
+`DEFAULT_WAITING` now reflect Apache 2.0, v1.4.0, green docs site, and the
+four launch drafts. `docs/gtm/drafts/shipping-note.md` regenerated for 1.4.0;
+the generator no longer leaves a stray `**` in the headline. Welcome
+Discussion #238 retitled to Apache 2.0 with the Homebrew tap command. Covered
+by `tests/unit/test_gtm_shipping_note.py`, `tests/unit/test_gtm_scoreboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

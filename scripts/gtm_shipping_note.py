@@ -63,7 +63,7 @@ def render_shipping_notes(changelog: str) -> ShippingNotes:
     bullets = _bullets(block)
     bullet_md = "\n".join(f"- {b}" for b in bullets) or "- See CHANGELOG.md"
     headline = next(
-        (ln[2:].strip() for ln in block.splitlines() if ln.startswith("**")),
+        (ln.replace("**", "").strip() for ln in block.splitlines() if ln.startswith("**")),
         f"daari {version}",
     )
     markdown = f"""# Shipping note — daari {version}
