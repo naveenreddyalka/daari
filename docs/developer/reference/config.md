@@ -31,6 +31,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `auth.max_failures` | int | `10` | Invalid-key failures per client IP within window_seconds before 429. 0 disables the counter. Env: DAARI_AUTH__MAX_FAILURES. |
 | `auth.window_seconds` | float | `60.0` | Sliding window for auth.max_failures. Env: DAARI_AUTH__WINDOW_SECONDS. |
 | `auth.exempt_loopback` | bool | `True` | Skip throttling for 127.0.0.1 / ::1 / localhost. |
+| `secrets.refresh_ttl_seconds` | float | `300.0` | TTL for re-resolving env-file/exec/keychain secret:// refs at use time. 0 = resolve once at boot (legacy). Default 300s. Env-file refs also re-resolve when the source file mtime changes. Env: DAARI_SECRETS__REFRESH_TTL_SECONDS. |
 | `rate_limit.rpm` | int | `0` | Default requests per minute per key (0=unlimited). |
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |

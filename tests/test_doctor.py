@@ -420,6 +420,17 @@ class TestDoctorSecretRefs:
         assert "1 ref" in by_name["secret_refs"].detail
         assert "value" != by_name["secret_refs"].detail
 
+    def test_boot_only_ttl_hints_restart_for_rotation(self, tmp_path, settings):
+        env = tmp_path / "daari.env"
+        env.write_text("K=value\n", encoding="utf-8")
+        settings.secrets.refresh_ttl_seconds = 0.0
+        settings.enterprise.shared_cache_token = f"secret://env-file/{env}#K"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["secret_refs"].ok is True
+        assert "boot-only" in by_name["secret_refs"].detail
+        assert "restart" in by_name["secret_refs"].detail
+
     def test_unresolvable_ref_fails_and_names_it(self, tmp_path, settings):
         ref = f"secret://env-file/{tmp_path}/absent.env#K"
         settings.enterprise.shared_cache_token = ref

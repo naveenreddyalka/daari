@@ -206,8 +206,8 @@ when `postgres.enabled` is true.
 
 Any secret-bearing config value (frontier provider keys, org tokens,
 Redis/Postgres URLs, OIDC client secrets) can be a `secret://` URI instead of
-plaintext (issue #288). Resolution happens once at daemon startup by shelling
-out — no vault SDK, no new dependency:
+plaintext (issue #288). Resolution shells out at daemon startup — no vault
+SDK, no new dependency:
 
 ```yaml
 frontier:
@@ -219,6 +219,8 @@ enterprise:
   shared_cache_token: secret://env-file//etc/daari/secrets.env#ORG_TOKEN
 cache:
   redis_url: secret://exec/op read op://infra/daari-redis/url
+secrets:
+  refresh_ttl_seconds: 300   # default; 0 = boot-only (legacy)
 ```
 
 - `secret://env-file/<path>#<KEY>` — `KEY=VALUE` line in a root-only file
@@ -234,6 +236,36 @@ A ref that fails to resolve is fatal at startup with a message naming the ref
 (never the value); `daari doctor` verifies every configured ref resolves.
 Resolved values are redacted from gateway logs. Plain string values keep
 working unchanged.
+
+### Refresh and rotation (#1204)
+
+Non-oauth refs (`env-file`, `exec`, `keychain`) re-resolve at use time when
+`secrets.refresh_ttl_seconds` is greater than zero (default **300**):
+
+| Source | Refresh trigger |
+|--------|-----------------|
+| `env-file` | TTL elapsed **or** source file mtime changed |
+| `exec` / `keychain` | TTL elapsed |
+
+Call sites that already go through `current_secret()` — frontier key pick,
+org cache/learning clients — pick up the new value on the next request without
+a process restart. Set `secrets.refresh_ttl_seconds: 0` (or
+`DAARI_SECRETS__REFRESH_TTL_SECONDS=0`) to keep the legacy boot-only behavior.
+
+**Rotation runbook (env-file / vault CLI):**
+
+1. Write the new value to the env file (or update the vault item the `exec`
+   command reads).
+2. For env-file, touch/save is enough — the next credential read notices the
+   mtime change even inside the TTL window.
+3. For `exec`/`keychain`, wait for the TTL (or temporarily set a short TTL)
+   before the next request; no daemon restart.
+4. Confirm with `daari doctor` (secret_refs row shows the refresh TTL) and a
+   live request that exercises the frontier/org path.
+
+OAuth tokens ignore this TTL — they re-mint near `expires_in` as below.
+`daari doctor` warns when refresh is disabled (`ttl=0`) and no oauth refs are
+configured, so operators know a rotation still needs a restart.
 
 ### OAuth client credentials (`secret://oauth`)
 

@@ -160,7 +160,11 @@ def _check_master_key_overlap(settings: Settings) -> CheckResult:
 
 
 def _check_secret_refs(settings: Settings) -> CheckResult:
-    """Issue #288: every configured secret:// ref must resolve before serve."""
+    """Issue #288: every configured secret:// ref must resolve before serve.
+
+    Issue #1204: hint when static refresh is disabled and no oauth refs are
+    configured — rotated env-file/exec/keychain secrets then need a restart.
+    """
     from daari.security.secret_refs import SecretRefError, iter_secret_refs, resolve_secret_ref
 
     refs = iter_secret_refs(settings)
@@ -183,10 +187,20 @@ def _check_secret_refs(settings: Settings) -> CheckResult:
             ok=False,
             detail="; ".join(failures),
         )
+    ttl = float(settings.secrets.refresh_ttl_seconds)
+    has_oauth = any("/oauth/" in ref or ref.startswith("secret://oauth/") for _, ref in refs)
+    detail = f"{len(refs)} ref(s) resolve"
+    if ttl <= 0 and not has_oauth:
+        detail += (
+            "; secrets.refresh_ttl_seconds=0 (boot-only) — rotate env-file/exec/"
+            "keychain secrets via restart, or set a TTL / use secret://oauth"
+        )
+    elif ttl > 0:
+        detail += f"; refresh TTL {ttl:g}s"
     return CheckResult(
         name="secret_refs",
         ok=True,
-        detail=f"{len(refs)} ref(s) resolve",
+        detail=detail,
         optional=True,
     )
 

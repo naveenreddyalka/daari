@@ -1522,11 +1522,27 @@ class AuthSettings(BaseModel):
     )
 
 
+class SecretsSettings(BaseModel):
+    """Runtime refresh for non-oauth ``secret://`` refs (#1204)."""
+
+    refresh_ttl_seconds: float = Field(
+        default=300.0,
+        ge=0,
+        description=(
+            "TTL for re-resolving env-file/exec/keychain secret:// refs at use "
+            "time. 0 = resolve once at boot (legacy). Default 300s. Env-file "
+            "refs also re-resolve when the source file mtime changes. "
+            "Env: DAARI_SECRETS__REFRESH_TTL_SECONDS."
+        ),
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAARI_", env_nested_delimiter="__")
 
     server: ServerSettings = Field(default_factory=ServerSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    secrets: SecretsSettings = Field(default_factory=SecretsSettings)
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
