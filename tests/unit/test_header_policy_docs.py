@@ -14,3 +14,4 @@ def test_auth_guide_documents_header_policy() -> None:
     assert "header_policy" in text
     assert "header_policy_error" in text
     assert "server.header_policy" in text or "header_policy.enabled" in text
+    assert "server.headerPolicy" in text or "capacity-helm" in text

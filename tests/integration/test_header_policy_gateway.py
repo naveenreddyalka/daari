@@ -66,3 +66,57 @@ async def test_header_policy_deny_and_health_exempt(settings, monkeypatch):
     assert health.status_code == 200
     body = health.json()
     assert body.get("error", {}).get("type") != "header_policy_error"
+
+
+@pytest.mark.asyncio
+async def test_header_policy_denies_mcp_before_auth(settings):
+    """Required-header policy denies /mcp pre-auth; health/ready stay open (#1205)."""
+    settings.server.api_key = "master"
+    settings.server.header_policy = HeaderPolicySettings(
+        enabled=True,
+        required=["X-Client-Id"],
+    )
+    application = _app(settings)
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # No auth header and no required header — policy must win over 401.
+        denied = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "0"},
+                },
+            },
+        )
+        # Auth present but still missing required header — still policy.
+        denied_authed = await client.post(
+            "/mcp",
+            headers={"Authorization": "Bearer master"},
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "ping",
+            },
+        )
+        health = await client.get("/health")
+        ready = await client.get("/ready")
+
+    assert denied.status_code == 400
+    err = denied.json()["error"]
+    assert err["type"] == "header_policy_error"
+    assert err["code"] == "header_required"
+    assert denied.status_code != 401
+
+    assert denied_authed.status_code == 400
+    assert denied_authed.json()["error"]["type"] == "header_policy_error"
+
+    assert health.status_code == 200
+    assert health.json().get("error", {}).get("type") != "header_policy_error"
+    # /ready may 503 without backends; must not be a header_policy deny.
+    assert ready.json().get("error", {}).get("type") != "header_policy_error"
+    assert ready.status_code != 400 or ready.json().get("error", {}).get("code") != "header_required"

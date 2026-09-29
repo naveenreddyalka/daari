@@ -841,3 +841,40 @@ class TestHelmCors:
             r'name: DAARI_SERVER__SECURITY_HEADERS\s+value: "false"',
             rendered,
         )
+
+
+class TestHelmHeaderPolicy:
+    def test_defaults_omit_header_policy_env(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "DAARI_SERVER__HEADER_POLICY__ENABLED" not in rendered
+        assert "DAARI_SERVER__HEADER_POLICY__REQUIRED" not in rendered
+        assert "DAARI_SERVER__HEADER_POLICY__DENY" not in rendered
+        assert "DAARI_SERVER__HEADER_POLICY__ALLOW" not in rendered
+        values = _load_yaml(VALUES)
+        hp = values["server"]["headerPolicy"]
+        assert hp["enabled"] is False
+        assert hp["required"] == []
+        assert hp["deny"] == []
+        assert hp["allow"] == {}
+
+    def test_header_policy_env_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "server.headerPolicy.enabled=true",
+            "--set-json",
+            'server.headerPolicy.required=["X-Client-Id"]',
+            "--set-json",
+            'server.headerPolicy.deny=[{"header":"user-agent","exact":"BadBot/1.0"}]',
+            "--set-json",
+            'server.headerPolicy.allow={"x-daari-env":["prod","staging"]}',
+        )
+        assert re.search(
+            r'name: DAARI_SERVER__HEADER_POLICY__ENABLED\s+value: "true"',
+            rendered,
+        )
+        assert "DAARI_SERVER__HEADER_POLICY__REQUIRED" in rendered
+        assert "X-Client-Id" in rendered
+        assert "DAARI_SERVER__HEADER_POLICY__DENY" in rendered
+        assert "BadBot/1.0" in rendered
+        assert "DAARI_SERVER__HEADER_POLICY__ALLOW" in rendered
+        assert "x-daari-env" in rendered

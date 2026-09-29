@@ -54,3 +54,10 @@ def test_capacity_helm_documents_session_affinity_and_policy_sync() -> None:
     assert "enterprise.policySync" in text
     assert "DAARI_ENTERPRISE__POLICY_SYNC_URL" in text
     assert "DAARI_ENTERPRISE__CONFIG_SIGNING_SECRET" in text
+
+
+def test_capacity_helm_documents_header_policy() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "server.headerPolicy" in text
+    assert "DAARI_SERVER__HEADER_POLICY__ENABLED" in text
+    assert "header_policy" in text
