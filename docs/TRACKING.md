@@ -5191,6 +5191,15 @@ clientInfo / OAuth client_id / User-Agent; unset = passthrough. CLI
 Covered by `tests/unit/test_mcp_policy.py`,
 `tests/integration/test_mcp_governance.py`.
 
+### Scheduled encrypted backups via Helm CronJob ([#1216](https://github.com/naveenreddyalka/daari/issues/1216))
+
+<!-- tracking:#1216 -->
+**Status:** Done (2026-09-29). Optional chart `backup.*` CronJob (off by
+default) runs `daari backup create --encrypt` with encrypt secret + retain
+prune + PVC; values document schedule/encrypt/retain/secret keys. Docs add
+systemd user-timer equivalent. Covered by `tests/unit/test_helm_chart.py`,
+[backup-restore.md](developer/guides/operations/backup-restore.md#scheduled-backups-1216).
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

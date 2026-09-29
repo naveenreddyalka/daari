@@ -1,0 +1,97 @@
+{{- if .Values.backup.enabled }}
+{{- $backup := .Values.backup }}
+{{- $encrypt := $backup.encrypt | default "" | lower }}
+{{- if and $encrypt (ne $encrypt "openssl") (ne $encrypt "age") }}
+{{- fail "backup.encrypt must be empty, openssl, or age" }}
+{{- end }}
+{{- if and $encrypt (not $backup.encryptSecret.name) }}
+{{- fail "backup.encryptSecret.name is required when backup.encrypt is set" }}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "daari.fullname" . }}-backup
+  labels:
+    app.kubernetes.io/name: daari
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ $backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ int ($backup.successfulJobsHistoryLimit | default 3) }}
+  failedJobsHistoryLimit: {{ int ($backup.failedJobsHistoryLimit | default 1) }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: daari
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          {{- with .Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: backup
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              {{- with .Values.securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              env:
+                {{- if eq $encrypt "openssl" }}
+                - name: {{ $backup.passphraseEnv | default "DAARI_BACKUP_PASS" | quote }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $backup.encryptSecret.name | quote }}
+                      key: {{ $backup.encryptSecret.passphraseKey | default "passphrase" | quote }}
+                {{- end }}
+                {{- if eq $encrypt "age" }}
+                - name: DAARI_BACKUP_AGE_RECIPIENT
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $backup.encryptSecret.name | quote }}
+                      key: {{ $backup.encryptSecret.ageRecipientKey | default "ageRecipient" | quote }}
+                {{- end }}
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  set -eu
+                  DEST="/backups/daari-$(date -u +%Y%m%d%H%M%S).tar.gz"
+                  {{- if eq $encrypt "openssl" }}
+                  daari backup create "$DEST" --encrypt openssl --passphrase-env {{ $backup.passphraseEnv | default "DAARI_BACKUP_PASS" }}
+                  {{- else if eq $encrypt "age" }}
+                  daari backup create "$DEST" --encrypt age
+                  {{- else }}
+                  daari backup create "$DEST"
+                  {{- end }}
+                  RETAIN={{ int ($backup.retain | default 0) }}
+                  if [ "$RETAIN" -gt 0 ]; then
+                    # Keep the newest RETAIN archives (encrypted or plaintext).
+                    ls -1t /backups/daari-*.tar.gz* 2>/dev/null | tail -n +"$((RETAIN + 1))" | while read -r old; do
+                      rm -f "$old"
+                    done
+                  fi
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: tmp
+                  mountPath: /tmp
+                - name: daari-home
+                  mountPath: /home/daari/.daari
+          volumes:
+            - name: backups
+              {{- if $backup.persistence.enabled }}
+              persistentVolumeClaim:
+                claimName: {{ if $backup.persistence.existingClaim }}{{ $backup.persistence.existingClaim }}{{ else }}{{ include "daari.fullname" . }}-backups{{ end }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+            - name: tmp
+              emptyDir: {}
+            - name: daari-home
+              emptyDir: {}
+{{- end }}
