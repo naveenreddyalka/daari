@@ -210,6 +210,51 @@ def reasoning_effort_from_thinking(thinking: dict[str, Any] | None) -> str | Non
     return "high"
 
 
+def _thinking_has_budget_tokens(thinking: dict[str, Any] | None) -> bool:
+    if not thinking:
+        return False
+    budget = thinking.get("budget_tokens")
+    return isinstance(budget, int) and not isinstance(budget, bool)
+
+
+def reasoning_effort_from_output_config(
+    output_config: dict[str, Any] | None,
+) -> str | None:
+    """Map Anthropic ``output_config.effort`` onto reasoning_effort (#1230).
+
+    Known Anthropic levels ``xhigh`` / ``max`` floor to ``high`` for local think;
+    other strings pass through so unknown values never crash.
+    """
+    if not output_config:
+        return None
+    effort = normalize_reasoning_effort(output_config.get("effort"))
+    if effort is None:
+        return None
+    if effort in {"xhigh", "max"}:
+        return "high"
+    return effort
+
+
+def reasoning_effort_from_anthropic(
+    thinking: dict[str, Any] | None,
+    output_config: dict[str, Any] | None,
+) -> str | None:
+    """Resolve local reasoning_effort from thinking + output_config (#1009/#1230).
+
+    Budget tokens win when present. Otherwise ``output_config.effort`` applies
+    when thinking is adaptive or when effort is set without a budget.
+    """
+    if _thinking_has_budget_tokens(thinking):
+        return reasoning_effort_from_thinking(thinking)
+    config_effort = reasoning_effort_from_output_config(output_config)
+    if config_effort is not None:
+        kind = (thinking or {}).get("type")
+        adaptive = isinstance(kind, str) and kind.strip().lower() == "adaptive"
+        if adaptive or not _thinking_has_budget_tokens(thinking):
+            return config_effort
+    return reasoning_effort_from_thinking(thinking)
+
+
 def _normalize_modalities(raw: Any) -> list[str] | None:
     if not isinstance(raw, list) or not raw:
         return None
@@ -265,6 +310,8 @@ class SamplingParams(BaseModel):
     web_search_options: dict[str, Any] | None = None
     # Anthropic request-level thinking object (#1009).
     thinking: dict[str, Any] | None = None
+    # Anthropic output_config (effort knob) (#1230).
+    output_config: dict[str, Any] | None = None
     # Facade top-level Ollama `think` (bool or level string) (#1011).
     ollama_think_value: bool | str | None = None
     # Facade top-level Ollama `keep_alive` (duration string or number) (#1011).
@@ -392,7 +439,8 @@ class SamplingParams(BaseModel):
         elif not isinstance(tool_choice, str):
             tool_choice = None
         thinking = _normalize_thinking(body.get("thinking"))
-        effort = reasoning_effort_from_thinking(thinking)
+        output_config = _normalize_dict(body.get("output_config"))
+        effort = reasoning_effort_from_anthropic(thinking, output_config)
         return cls(
             max_tokens=int(raw_max) if isinstance(raw_max, int) and raw_max > 0 else None,
             top_p=body.get("top_p"),
@@ -403,6 +451,7 @@ class SamplingParams(BaseModel):
             tool_choice=tool_choice,
             service_tier=_normalize_service_tier(body.get("service_tier")),
             thinking=thinking,
+            output_config=output_config,
             metadata=_normalize_dict(body.get("metadata")),
             reasoning_effort=effort,
         )

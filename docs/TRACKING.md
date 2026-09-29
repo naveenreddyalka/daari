@@ -5171,6 +5171,16 @@ is denied pre-auth while health/ready stay open. Docs cross-link capacity-helm
 and auth-and-keys. Covered by `tests/unit/test_helm_chart.py`,
 `tests/integration/test_header_policy_gateway.py`.
 
+### Honor Anthropic output_config.effort ([#1230](https://github.com/naveenreddyalka/daari/issues/1230))
+
+<!-- tracking:#1230 -->
+**Status:** Done (2026-09-29). `AnthropicRequest` / `SamplingParams` keep
+`output_config`; L6 `to_anthropic_payload` forwards it; effort maps to local
+`reasoning_effort` / Ollama `think` when adaptive or without `budget_tokens`
+(budget still wins); Opus 4.5 injects `effort-2025-11-24` beta. Docs:
+[claude-code.md](developer/guides/clients/claude-code.md#effort-output_config).
+Covered by `tests/unit/test_anthropic_output_config.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -217,7 +217,9 @@ class FrontierExecutor:
             from daari.observability.otel import inject_trace_headers
 
             headers = inject_trace_headers(
-                anthropic_headers_for_request(self.api_key, request)
+                anthropic_headers_for_request(
+                    self.api_key, request, model=self.default_model
+                )
             )
             path = anthropic_messages_path(self.base_url)
         else:
@@ -307,7 +309,9 @@ class FrontierExecutor:
             from daari.observability.otel import inject_trace_headers
 
             headers = inject_trace_headers(
-                anthropic_headers_for_request(self.api_key, request)
+                anthropic_headers_for_request(
+                    self.api_key, request, model=self.default_model
+                )
             )
             path = anthropic_messages_path(self.base_url)
         else:
