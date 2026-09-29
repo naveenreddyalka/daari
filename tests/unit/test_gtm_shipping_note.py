@@ -40,6 +40,8 @@ def test_render_shipping_notes_from_fixture(tmp_path: Path):
     assert "polyform" in notes.markdown.lower() or "noncommercial" in notes.markdown.lower()
     assert "open-source local" not in notes.markdown.lower()
     assert "Responses API" in notes.markdown
+    assert "Gateway completeness — full agent surface." in notes.markdown
+    assert "**" not in notes.twitter
     assert len(notes.twitter) < 280
     assert "daari" in notes.linkedin.lower()
     out = tmp_path / "shipping-note.md"
