@@ -140,6 +140,8 @@ class Metrics:
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
     mcp_tool_calls: dict[str, int] = field(default_factory=dict)
+    # server:outcome:circuit → count for MCP egress resilience (#1203).
+    mcp_egress: dict[str, int] = field(default_factory=dict)
     cancelled: dict[str, int] = field(default_factory=dict)
     deadline_exhausted: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
@@ -244,6 +246,12 @@ class Metrics:
         with self._lock:
             self.mcp_tool_calls[key] = self.mcp_tool_calls.get(key, 0) + 1
 
+    def record_mcp_egress(self, *, server: str, outcome: str, circuit: str = "closed") -> None:
+        """MCP egress call outcome with circuit-breaker state (#1203)."""
+        key = f"{server}:{outcome}:{circuit}"
+        with self._lock:
+            self.mcp_egress[key] = self.mcp_egress.get(key, 0) + 1
+
     def record_cancelled(self, phase: str) -> None:
         """Client abandoned the request before upstream work finished (#769)."""
         with self._lock:
@@ -294,6 +302,7 @@ class Metrics:
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
+                "mcp_egress": dict(self.mcp_egress),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
                 "modality_requests": {

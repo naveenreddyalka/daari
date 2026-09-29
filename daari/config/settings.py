@@ -1388,7 +1388,7 @@ class McpListCacheSettings(BaseModel):
 
 
 class McpEgressSettings(BaseModel):
-    """Outbound MCP URL SSRF / private-network policy (#1214)."""
+    """Outbound MCP URL SSRF / private-network policy and resilience (#1214, #1203)."""
 
     allow_private_networks: bool = Field(
         default=False,
@@ -1396,6 +1396,22 @@ class McpEgressSettings(BaseModel):
             "When true, MCP egress may POST to loopback, RFC1918, and link-local "
             "hosts (docker-compose / lab). Default false rejects those addresses "
             "after DNS resolution."
+        ),
+    )
+    failure_threshold: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Consecutive MCP egress failures before the per-server circuit opens "
+            "(#1203). Matches frontier `failure_threshold`."
+        ),
+    )
+    cooldown_seconds: float = Field(
+        default=30.0,
+        ge=1.0,
+        description=(
+            "Seconds an open MCP egress circuit stays fail-fast before a half-open "
+            "probe (#1203)."
         ),
     )
 
@@ -1449,8 +1465,10 @@ class IntegrationsSettings(BaseModel):
     mcp_egress: McpEgressSettings = Field(
         default_factory=McpEgressSettings,
         description=(
-            "SSRF / private-network guards for integrations.mcp_servers URLs (#1214). "
-            "Default denies loopback, RFC1918, link-local, and metadata addresses."
+            "SSRF / private-network guards and per-server resilience for "
+            "integrations.mcp_servers (#1214, #1203). Default denies loopback, "
+            "RFC1918, link-local, and metadata addresses; retries use "
+            "`upstream.retry`; circuit opens after `failure_threshold` failures."
         ),
     )
     mcp_guardrails: GuardrailSettings = Field(

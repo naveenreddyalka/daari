@@ -5092,6 +5092,16 @@ dedicated `mcp` rate-limit family so ceilings do not consume `chat`. Docs:
 MCP guide metering section + auth-and-keys family list. Covered by
 `tests/unit/test_mcp_vk_governance.py`, `tests/unit/test_rate_families.py`.
 
+### MCP egress resilience — spans, retry, circuit breaker ([#1203](https://github.com/naveenreddyalka/daari/issues/1203))
+
+<!-- tracking:#1203 -->
+**Status:** Done (2026-09-29). MCP egress POSTs emit an OTel client span
+(`mcp.tools/call` / `mcp.tools/list`) with server id and tool name, retry
+transient failures via `run_upstream`/`RetryPolicy` (`upstream.retry`), and trip
+a per-server `CircuitBreaker` (`integrations.mcp_egress.failure_threshold` /
+`cooldown_seconds`) with fail-fast + `daari_mcp_egress_total` circuit labels.
+Covered by `tests/unit/test_mcp_egress_resilience.py`.
+
 ### MCP server/discover + per-request protocol _meta ([#1213](https://github.com/naveenreddyalka/daari/issues/1213))
 
 <!-- tracking:#1213 -->

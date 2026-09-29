@@ -360,6 +360,22 @@ def render_prometheus(
                 f"daari_mcp_tool_calls_total{_labels(tool=tool, outcome=outcome)} {int(count)}"
             )
 
+    mcp_egress = snap.get("mcp_egress") or {}
+    if mcp_egress:
+        lines.append(
+            "# HELP daari_mcp_egress_total MCP egress outcomes by server, "
+            "outcome, and circuit-breaker state."
+        )
+        lines.append("# TYPE daari_mcp_egress_total counter")
+        for key, count in sorted(mcp_egress.items()):
+            server, _, rest = str(key).partition(":")
+            outcome, _, circuit = rest.partition(":")
+            lines.append(
+                f"daari_mcp_egress_total"
+                f"{_labels(server=server, outcome=outcome, circuit=circuit or 'closed')} "
+                f"{int(count)}"
+            )
+
     cancelled = snap.get("cancelled") or {}
     if cancelled:
         lines.append(
