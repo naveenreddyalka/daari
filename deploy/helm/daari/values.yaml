@@ -247,5 +247,30 @@ env:
   DAARI_SERVER__HOST: "0.0.0.0"
   DAARI_OBSERVABILITY__PROMETHEUS: "true"
 
+# Scheduled encrypted backups (#1216). Off by default. When enabled, a CronJob
+# runs `daari backup create` into a PVC (or emptyDir) on `backup.schedule`.
+# encrypt: "" (plaintext), openssl, or age. openssl/age require encryptSecret:
+#   kubectl create secret generic daari-backup \
+#     --from-literal=passphrase='…'            # openssl → passphraseKey
+#     --from-literal=ageRecipient='age1…'     # age → ageRecipientKey
+# retain: keep the newest N archives (0 = no prune).
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  encrypt: openssl
+  retain: 7
+  passphraseEnv: DAARI_BACKUP_PASS
+  encryptSecret:
+    name: ""
+    passphraseKey: passphrase
+    ageRecipientKey: ageRecipient
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: ""
+    existingClaim: ""
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+
 # Capacity guidance (see docs/setup/capacity.md):
 # ~50–100 req/s per replica for cache-heavy traffic; Redis ~1–2KB/entry.

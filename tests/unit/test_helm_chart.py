@@ -622,6 +622,55 @@ class TestHelmNotesServiceMonitorAndOrgPool:
         assert "http://gpu-pool:11434" in notes
 
 
+class TestHelmBackupCronJob:
+    def test_cronjob_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "kind: CronJob" not in rendered
+        assert "daari-backups" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["backup"]["enabled"] is False
+        assert values["backup"]["schedule"] == "0 2 * * *"
+        assert values["backup"]["encrypt"] == "openssl"
+        assert values["backup"]["retain"] == 7
+
+    def test_cronjob_renders_when_enabled_with_encrypt_secret(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "backup.enabled=true",
+            "--set",
+            "backup.encryptSecret.name=daari-backup",
+            "--set",
+            "backup.encrypt=openssl",
+            "--set",
+            "backup.retain=5",
+        )
+        assert "kind: CronJob" in rendered
+        assert "name: daari-backup" in rendered
+        assert 'schedule: "0 2 * * *"' in rendered
+        assert "daari backup create" in rendered
+        assert "--encrypt openssl" in rendered
+        assert "secretKeyRef" in rendered
+        assert 'name: "daari-backup"' in rendered
+        assert 'key: "passphrase"' in rendered
+        assert "kind: PersistentVolumeClaim" in rendered
+        assert "name: daari-backups" in rendered
+        assert "RETAIN=5" in rendered
+
+    def test_cronjob_refuses_encrypt_without_secret(self, helm_available: None) -> None:
+        with pytest.raises(subprocess.CalledProcessError) as exc:
+            _helm_template("--set", "backup.enabled=true", "--set", "backup.encrypt=openssl")
+        assert "encryptSecret" in exc.value.stderr
+
+    def test_values_document_backup_keys(self) -> None:
+        text = VALUES.read_text(encoding="utf-8")
+        assert "backup.schedule" in text or "schedule:" in text.split("backup:")[1]
+        assert "encryptSecret" in text
+        assert "passphraseKey" in text
+        assert "retain:" in text.split("backup:")[1]
+
+
 class TestHelmKedaRequestRate:
     def test_scaledobject_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
@@ -669,7 +718,6 @@ class TestHelmKedaRequestRate:
         )
         assert "minReplicaCount: 2" in rendered
         assert "kind: HorizontalPodAutoscaler" in rendered
-
 
 
 class TestHelmLocalPoolFrontierFallback:

@@ -127,3 +127,79 @@ and run `psql --dbname="$DSN" -f stores/pg/<name>.sql` yourself. External
 `.tar.gz.enc` / `.tar.gz.age`) newer than 7 days is found under
 `~/.daari/backups/`. When recent backups exist but are all plaintext, doctor
 suggests `--encrypt openssl`.
+
+## Scheduled backups (#1216)
+
+### Helm CronJob
+
+The chart ships an optional CronJob (`backup.enabled`, default off). It runs
+`daari backup create` on `backup.schedule` into a PVC, with `--encrypt openssl`
+or `age` when `backup.encrypt` is set. Create the encrypt secret first:
+
+```bash
+kubectl create secret generic daari-backup \
+  --from-literal=passphrase='use-a-long-secret'
+```
+
+```yaml
+# values override
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  encrypt: openssl
+  retain: 7
+  encryptSecret:
+    name: daari-backup
+    passphraseKey: passphrase
+```
+
+`backup.retain` keeps the newest N archives under `/backups` (0 disables prune).
+See `deploy/helm/daari/values.yaml` for age recipient keys and PVC knobs.
+
+### systemd user timer (non-Kubernetes)
+
+Mirror the CronJob on a laptop / single-node install with a user timer (same
+unit home as `daari service install`):
+
+```bash
+mkdir -p ~/.config/systemd/user ~/.daari/backups
+# passphrase for openssl encrypt
+mkdir -p ~/.config/daari
+umask 077
+printf '%s\n' 'use-a-long-secret' > ~/.config/daari/backup-pass
+```
+
+`~/.config/systemd/user/daari-backup.service`:
+
+```ini
+[Unit]
+Description=daari encrypted backup
+
+[Service]
+Type=oneshot
+Environment=DAARI_BACKUP_PASS_FILE=%h/.config/daari/backup-pass
+ExecStart=/bin/sh -ec 'export DAARI_BACKUP_PASS="$(cat "$DAARI_BACKUP_PASS_FILE")"; daari backup create %h/.daari/backups/daari-$(date -u +%%Y%%m%%d%%H%%M%%S).tar.gz --encrypt openssl'
+```
+
+`~/.config/systemd/user/daari-backup.timer`:
+
+```ini
+[Unit]
+Description=Daily daari backup
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now daari-backup.timer
+systemctl --user list-timers daari-backup.timer
+```
+
+Prune old archives yourself (example: keep 7):
+`ls -1t ~/.daari/backups/daari-*.tar.gz* | tail -n +8 | xargs -r rm -f`.
