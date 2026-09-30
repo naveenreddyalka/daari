@@ -108,6 +108,20 @@ def test_committed_http_api_md_includes_introspect():
     assert "| `POST` | `/v1/daari/cache/invalidate` |" in committed
 
 
+def test_committed_http_api_md_matches_generator(tmp_path, monkeypatch):
+    """On-disk http-api.md must not drift from OpenAPI render (#1195)."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    module = _load_module()
+    committed = (REPO_ROOT / "docs/developer/reference/http-api.md").read_text(
+        encoding="utf-8"
+    )
+    generated = module.render_api_reference()
+    assert committed == generated, (
+        "docs/developer/reference/http-api.md drifted from render_api_reference(); "
+        "run: python scripts/gen_reference.py"
+    )
+
+
 def test_committed_config_md_matches_generator():
     """On-disk config.md must not drift from Settings (#1165)."""
     module = _load_module()

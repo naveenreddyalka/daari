@@ -34,8 +34,8 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `PATCH` | `/v1/daari/config` | Daari Config Patch |
 | `POST` | `/v1/daari/feedback` | Daari Feedback |
 | `GET` | `/v1/daari/learn/stats` | Daari Learn Stats |
-| `GET` | `/v1/daari/mcp/activity` | List in-flight MCP tools/call activity |
-| `POST` | `/v1/daari/mcp/activity/{request_id}/abort` | Admin force-abort in-flight MCP call |
+| `GET` | `/v1/daari/mcp/activity` | Daari Mcp Activity List |
+| `POST` | `/v1/daari/mcp/activity/{request_id}/abort` | Daari Mcp Activity Abort |
 | `POST` | `/v1/daari/reload-caches` | Daari Reload Caches |
 | `GET` | `/v1/daari/report` | Daari Report |
 | `GET` | `/v1/daari/route/preview` | Daari Route Preview Get |
