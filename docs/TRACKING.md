@@ -5265,6 +5265,13 @@ and asserts `output_config`, effort levels, `xhigh`/`max`→`high`, and
 `anthropic-beta: effort-2025-11-24`. Covered by
 `tests/unit/test_claude_code_effort_docs.py`.
 
+### Docs: doctor header_policy empty-rules tip ([#1247](https://github.com/naveenreddyalka/daari/issues/1247))
+
+<!-- tracking:#1247 -->
+**Status:** Done (2026-09-30). `doctor-health.md` troubleshoot row covers
+doctor `header_policy` when enabled with empty required/deny/allow, linking
+auth-and-keys. Covered by `tests/unit/test_doctor_health_header_policy_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
