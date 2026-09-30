@@ -5272,6 +5272,14 @@ and asserts `output_config`, effort levels, `xhigh`/`max`→`high`, and
 doctor `header_policy` when enabled with empty required/deny/allow, linking
 auth-and-keys. Covered by `tests/unit/test_doctor_health_header_policy_docs.py`.
 
+### Hermetic pin for secrets.refresh_ttl_seconds runbook ([#1248](https://github.com/naveenreddyalka/daari/issues/1248))
+
+<!-- tracking:#1248 -->
+**Status:** Done (2026-09-30). Unit tests pin auth-and-keys Refresh/rotation
+(default 300, boot-only `0` / env, mtime vs TTL, doctor `secret_refs`) and the
+`secrets.refresh_ttl_seconds` config.md row. Covered by
+`tests/unit/test_secret_refresh_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
