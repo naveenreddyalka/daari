@@ -5233,6 +5233,13 @@ mcp.md. Covered by `tests/unit/test_mcp_header_match.py`.
 fails if committed `http-api.md` drifts from `render_api_reference()`; regenerated
 to match. Covered by `tests/unit/test_gen_reference.py`.
 
+### Doctor-health plaintext backup encrypt tip ([#1196](https://github.com/naveenreddyalka/daari/issues/1196))
+
+<!-- tracking:#1196 -->
+**Status:** Done (2026-09-30). `doctor-health.md` documents the optional
+`backup` check and plaintext → `--encrypt openssl|age` tip with a link to
+backup-restore. Covered by `tests/unit/test_doctor_health_backup_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
