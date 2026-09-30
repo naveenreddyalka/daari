@@ -5257,6 +5257,14 @@ Default off keeps the #1135 honesty 400. Covered by
 `--by-tool`, and `--by-user` with a link to chargeback.md. Covered by
 `tests/unit/test_chargeback_docs.py`.
 
+### Hermetic pin for Claude Code output_config.effort ([#1246](https://github.com/naveenreddyalka/daari/issues/1246))
+
+<!-- tracking:#1246 -->
+**Status:** Done (2026-09-30). Unit test reads `claude-code.md` Effort section
+and asserts `output_config`, effort levels, `xhigh`/`max`→`high`, and
+`anthropic-beta: effort-2025-11-24`. Covered by
+`tests/unit/test_claude_code_effort_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
