@@ -157,7 +157,7 @@ class McpEgressProvider(HttpIntegrationProvider):
             metrics=self.metrics,
         )
 
-    async def execute(self, request: InternalRequest) -> InternalResponse:
+    def _policy_denied_response(self, request: InternalRequest) -> InternalResponse | None:
         if self.server_policy is not None and not self.server_policy.allows(self.server.id):
             return InternalResponse(
                 content=f"MCP server '{self.server.id}' denied by policy.",
@@ -170,6 +170,91 @@ class McpEgressProvider(HttpIntegrationProvider):
                     warning="mcp_server_denied",
                 ),
             )
+        return None
+
+    def _request_headers(self, request: InternalRequest) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.server.token:
+            headers["Authorization"] = f"Bearer {self.server.token}"
+        from daari.observability.otel import inject_trace_headers
+
+        return inject_trace_headers(
+            headers, request_id=getattr(request.meta, "request_id", None)
+        )
+
+    async def _prepare_egress(
+        self, request: InternalRequest, *, tool: str
+    ) -> tuple[dict[str, str] | None, InternalResponse | None]:
+        denied = self._policy_denied_response(request)
+        if denied is not None:
+            return None, denied
+        headers = self._request_headers(request)
+        try:
+            self._ensure_egress_url_allowed()
+        except Exception as exc:  # noqa: BLE001 — surface as tool failure
+            return None, self._failure(request, exc)
+        if not self.breaker.allow():
+            return None, self._circuit_open(request, tool)
+        return headers, None
+
+    async def list_tools_catalog(
+        self, request: InternalRequest
+    ) -> tuple[list[dict[str, Any]] | None, InternalResponse | None]:
+        """Structured tools/list for Responses server-side MCP (#1232)."""
+        headers, err = await self._prepare_egress(request, tool="tools/list")
+        if err is not None:
+            return None, err
+        assert headers is not None
+        from daari.observability.otel import mcp_client_span
+
+        with mcp_client_span("mcp.tools/list", server_id=self.server.id, tool_name=None):
+            try:
+                tools = await self._list_tools({**headers, "Mcp-Method": "tools/list"})
+            except Exception as exc:  # noqa: BLE001
+                self.breaker.record_failure()
+                self._record_egress("error")
+                return None, self._failure(request, exc)
+            self.breaker.record_success()
+            self._record_egress("ok")
+            from daari.gateway.mcp_tool_search import extract_list_query, maybe_rank_tools
+
+            query = extract_list_query(arg_text="", messages=request.messages)
+            tools = await maybe_rank_tools(
+                tools,
+                query=query,
+                settings=self.tool_search,
+                policy=self.tool_policy,
+                embedder=self.embedder,
+                server_id=self.server.id,
+                cache=self._tool_embed_cache,
+            )
+            return tools, None
+
+    async def call_tool(
+        self,
+        request: InternalRequest,
+        *,
+        tool: str,
+        arguments: dict[str, Any] | None = None,
+    ) -> InternalResponse:
+        """Structured tools/call for Responses server-side MCP (#1232)."""
+        headers, err = await self._prepare_egress(request, tool=tool)
+        if err is not None:
+            return err
+        assert headers is not None
+        from daari.observability.otel import mcp_client_span
+
+        with mcp_client_span(
+            "mcp.tools/call", server_id=self.server.id, tool_name=tool
+        ):
+            return await self._call_tool_under_span(
+                request,
+                tool=tool,
+                arguments=dict(arguments or {}),
+                headers=headers,
+            )
+
+    async def execute(self, request: InternalRequest) -> InternalResponse:
         text = next((m.content or "" for m in reversed(request.messages) if m.role == "user"), "")
         # "@mcp weather get_forecast Paris" or "@mcp:weather get_forecast Paris"
         match = re.match(
@@ -185,22 +270,12 @@ class McpEgressProvider(HttpIntegrationProvider):
             tool = match.group(1)
             arg_text = (match.group(2) or "").strip()
 
-        headers = {"Content-Type": "application/json"}
-        if self.server.token:
-            headers["Authorization"] = f"Bearer {self.server.token}"
-        from daari.observability.otel import inject_trace_headers, mcp_client_span
+        headers, err = await self._prepare_egress(request, tool=tool)
+        if err is not None:
+            return err
+        assert headers is not None
 
-        headers = inject_trace_headers(
-            headers, request_id=getattr(request.meta, "request_id", None)
-        )
-
-        try:
-            self._ensure_egress_url_allowed()
-        except Exception as exc:  # noqa: BLE001 — surface as tool failure
-            return self._failure(request, exc)
-
-        if not self.breaker.allow():
-            return self._circuit_open(request, tool)
+        from daari.observability.otel import mcp_client_span
 
         span_name = "mcp.tools/list" if tool in {"tools/list", "list"} else "mcp.tools/call"
         span_tool = None if tool in {"tools/list", "list"} else tool
@@ -210,6 +285,43 @@ class McpEgressProvider(HttpIntegrationProvider):
             return await self._execute_under_span(
                 request, tool=tool, arg_text=arg_text, headers=headers
             )
+
+    async def _call_tool_under_span(
+        self,
+        request: InternalRequest,
+        *,
+        tool: str,
+        arguments: dict[str, Any],
+        headers: dict[str, str],
+    ) -> InternalResponse:
+        # MCP 2026-07-28 routing headers: let upstream gateways apply
+        # per-tool policy without parsing the JSON-RPC body (issue #277).
+        headers = {**headers, "Mcp-Method": "tools/call", "Mcp-Name": tool}
+        checked = self.guardrails.check_arguments(tool, arguments)
+        if checked.blocked:
+            return self._guardrail_blocked(request, tool, first_rule(checked))
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool, "arguments": arguments},
+        }
+        try:
+            response = await self._post_json(payload, headers)
+            data = response.json()
+            if "error" in data:
+                self.breaker.record_failure()
+                self._record_egress("error")
+                return self._failure(request, RuntimeError(str(data["error"])))
+            result = data.get("result", data)
+            text, _outcome = self.guardrails.check_result_text(tool, str(result)[:4000])
+            self.breaker.record_success()
+            self._record_egress("ok")
+            return self._ok_response(request, self.id, text)
+        except Exception as exc:  # noqa: BLE001
+            self.breaker.record_failure()
+            self._record_egress("error")
+            return self._failure(request, exc)
 
     async def _execute_under_span(
         self,
@@ -245,35 +357,10 @@ class McpEgressProvider(HttpIntegrationProvider):
             text, _outcome = self.guardrails.check_result_text(tool, str(catalog)[:4000])
             return self._ok_response(request, self.id, text)
 
-        # MCP 2026-07-28 routing headers: let upstream gateways apply
-        # per-tool policy without parsing the JSON-RPC body (issue #277).
-        headers = {**headers, "Mcp-Method": "tools/call", "Mcp-Name": tool}
         arguments = {"query": arg_text} if arg_text else {}
-        checked = self.guardrails.check_arguments(tool, arguments)
-        if checked.blocked:
-            return self._guardrail_blocked(request, tool, first_rule(checked))
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": tool, "arguments": arguments},
-        }
-        try:
-            response = await self._post_json(payload, headers)
-            data = response.json()
-            if "error" in data:
-                self.breaker.record_failure()
-                self._record_egress("error")
-                return self._failure(request, RuntimeError(str(data["error"])))
-            result = data.get("result", data)
-            text, _outcome = self.guardrails.check_result_text(tool, str(result)[:4000])
-            self.breaker.record_success()
-            self._record_egress("ok")
-            return self._ok_response(request, self.id, text)
-        except Exception as exc:  # noqa: BLE001
-            self.breaker.record_failure()
-            self._record_egress("error")
-            return self._failure(request, exc)
+        return await self._call_tool_under_span(
+            request, tool=tool, arguments=arguments, headers=headers
+        )
 
     async def _list_tools(self, headers: dict[str, str]) -> list[dict[str, Any]]:
         """Follow tools/list nextCursor until absent, capped so a bad upstream stops."""

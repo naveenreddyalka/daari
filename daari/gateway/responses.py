@@ -917,15 +917,23 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 )
             include_encrypted = "reasoning.encrypted_content" in requested_includes
             include_daari_meta = (x_daari_meta or "").strip().lower() in {"1", "true", "yes"}
-            bad_tools = unsupported_responses_tools(body.tools)
-            if bad_tools:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"tools type not supported: {bad_tools}. "
-                        f"supported: {sorted(_SUPPORTED_TOOL_TYPES)}"
-                    ),
-                )
+            from daari.gateway.responses_mcp import (
+                configured_mcp_server_ids,
+                expand_mcp_tools_for_model,
+                run_server_side_mcp_rounds,
+                server_side_responses_enabled,
+                validate_responses_mcp_tools,
+            )
+
+            mcp_ss_enabled = server_side_responses_enabled(ctx.settings)
+            mcp_configured = configured_mcp_server_ids(ctx.settings)
+            tool_reject = validate_responses_mcp_tools(
+                body.tools,
+                enabled=mcp_ss_enabled,
+                configured_ids=mcp_configured,
+            )
+            if tool_reject:
+                raise HTTPException(status_code=400, detail=tool_reject)
             try:
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
             except ValueError:
@@ -980,11 +988,29 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             if denied is not None:
                 return denied
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
+            mcp_server_ids: frozenset[str] = frozenset()
+            route_tools = body.tools
+            if mcp_ss_enabled and any(
+                isinstance(t, dict) and t.get("type") == "mcp" for t in (body.tools or [])
+            ):
+                # Expand after meta exists so egress spans carry request_id.
+                expand_req = InternalRequest(
+                    messages=messages,
+                    model=body.model or ctx.settings.models.l3,
+                    meta=meta,
+                )
+                try:
+                    expanded, mcp_server_ids = await expand_mcp_tools_for_model(
+                        ctx, expand_req, body.tools
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                route_tools = expanded
             internal = InternalRequest(
                 messages=messages,
                 model=model,
                 temperature=body.temperature if body.temperature is not None else 0.7,
-                tools=responses_tools_to_openai(body.tools) if body.tools else None,
+                tools=responses_tools_to_openai(route_tools) if route_tools else None,
                 stream=body.stream and not body.background,
                 meta=meta,
                 sampling=SamplingParams.from_responses_body(body.model_dump()),
@@ -1139,6 +1165,42 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                     idem_slot.abandon()
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
+            if mcp_server_ids:
+                try:
+                    result = await await_unless_disconnected(
+                        request,
+                        run_server_side_mcp_rounds(
+                            ctx,
+                            internal,
+                            result,
+                            mcp_server_ids=mcp_server_ids,
+                            route_fn=ctx.router.route,
+                        ),
+                        metrics=ctx.metrics,
+                        phase="responses_mcp",
+                        model=internal.model,
+                    )
+                except ClientDisconnected:
+                    if idem_slot is not None:
+                        idem_slot.abandon()
+                    return JSONResponse(
+                        status_code=499,
+                        content={
+                            "error": {
+                                "type": "client_disconnected",
+                                "message": "client disconnected.",
+                            }
+                        },
+                    )
+                except RequestDeadlineExceeded as exc:
+                    if idem_slot is not None:
+                        idem_slot.abandon()
+                    return request_deadline_response(exc)
+                except Exception as exc:
+                    if idem_slot is not None:
+                        idem_slot.abandon()
+                    ctx.metrics.record_error()
+                    raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
             if getattr(request.state, "request_quota_soft", False):
                 result.daari_meta.warning = "request_quota_warning"
             elif getattr(request.state, "budget_soft", False):
