@@ -5304,6 +5304,16 @@ malformed format, and L6 still forwards full `output_config`. Covered by
 `tests/unit/test_anthropic_output_config.py` and
 `tests/unit/test_claude_code_effort_docs.py`.
 
+### Messages server-side MCP mcp_servers + mcp_toolset ([#1261](https://github.com/naveenreddyalka/daari/issues/1261))
+
+<!-- tracking:#1261 -->
+**Status:** Done (2026-09-30). Opt-in `integrations.mcp_egress.server_side_messages`
+accepts Anthropic `mcp_servers` + `mcp_toolset` against configured
+`integrations.mcp_servers` ids; lists/calls via egress; fails closed when
+disabled; unknown labels → 400. Covered by
+`tests/unit/test_messages_server_side_mcp.py` and
+`tests/unit/test_messages_server_side_mcp_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

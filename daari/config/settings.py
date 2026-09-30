@@ -1448,6 +1448,16 @@ class McpEgressSettings(BaseModel):
             "turn (#1232). Default false keeps the #1135 honesty 400 for hosted types."
         ),
     )
+    server_side_messages: bool = Field(
+        default=False,
+        description=(
+            "When true, Messages may include `mcp_servers` + `tools` entries with "
+            "`type: mcp_toolset` whose `mcp_server_name` resolves to a configured "
+            "`integrations.mcp_servers` id; daari lists tools, runs egress "
+            "`tools/call` on model tool rounds, and continues the turn (#1261). "
+            "Default false fails closed with an honesty 400."
+        ),
+    )
 
 
 class IntegrationsSettings(BaseModel):
