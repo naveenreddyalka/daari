@@ -27,6 +27,12 @@ true`) accepts Anthropic `mcp_servers` + `tools: [{type: mcp_toolset, ...}]`
 whose `mcp_server_name` matches a configured server id (client URLs are ignored;
 egress uses the configured entry). Default off fails closed with an honesty 400.
 
+Opt-in MCP OAuth discovery (`integrations.mcp_oauth.protected_resource: true`)
+serves RFC 9728 `GET /.well-known/oauth-protected-resource` (and the `/mcp`
+scoped variant) and adds a `WWW-Authenticate` challenge on unauthenticated
+`/mcp` when API-key auth is on. Default off leaves the existing 401 body
+unchanged. Set `authorization_servers` / `scopes_supported` for your IdP.
+
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with
 a master or virtual key. Active responses include `client_id`, `username`,

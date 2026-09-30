@@ -276,6 +276,10 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_guardrails.stream_mode` | Literal | `'buffered'` | How output guardrails apply to SSE streams. buffered (default) scans the full answer before the first byte; incremental scans with a holdback window and keeps frontier relay eligible. |
 | `integrations.mcp_guardrails.stream_holdback_chars` | int | `256` | Characters held back before emission in incremental stream_mode so a secret spanning two deltas is caught. Ignored when buffered. |
 | `integrations.mcp_guardrails.scan_tool_results` | bool | `False` | When true, scan OpenAI role=tool and Anthropic tool_result message contents with output rules (secrets/PII/deny) before the model hop. System/user/assistant messages are unchanged. Default off. |
+| `integrations.mcp_oauth.protected_resource` | bool | `False` | When true, serve `GET /.well-known/oauth-protected-resource` (and the `/mcp`-scoped variant) and attach a `WWW-Authenticate` challenge on unauthenticated `/mcp` requests when API-key auth is on (#1262). Default false leaves the existing 401 body unchanged. |
+| `integrations.mcp_oauth.resource` | str | `''` | Optional public base URL for the resource metadata `resource` field (defaults to the request base URL). Env: DAARI_INTEGRATIONS__MCP_OAUTH__RESOURCE. |
+| `integrations.mcp_oauth.authorization_servers` | list | `[]` | Authorization server issuer URLs advertised in the metadata document. |
+| `integrations.mcp_oauth.scopes_supported` | list | `['mcp']` | OAuth scopes advertised for the MCP resource. |
 | `enterprise.enabled` | bool | `False` |  |
 | `enterprise.id` | str | None | `None` |  |
 | `enterprise.org_id` | str | None | `None` |  |

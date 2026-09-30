@@ -1460,6 +1460,35 @@ class McpEgressSettings(BaseModel):
     )
 
 
+class McpOauthSettings(BaseModel):
+    """RFC 9728 OAuth protected-resource discovery for `/mcp` (#1262)."""
+
+    protected_resource: bool = Field(
+        default=False,
+        description=(
+            "When true, serve `GET /.well-known/oauth-protected-resource` (and the "
+            "`/mcp`-scoped variant) and attach a `WWW-Authenticate` challenge on "
+            "unauthenticated `/mcp` requests when API-key auth is on (#1262). "
+            "Default false leaves the existing 401 body unchanged."
+        ),
+    )
+    resource: str = Field(
+        default="",
+        description=(
+            "Optional public base URL for the resource metadata `resource` field "
+            "(defaults to the request base URL). Env: DAARI_INTEGRATIONS__MCP_OAUTH__RESOURCE."
+        ),
+    )
+    authorization_servers: list[str] = Field(
+        default_factory=list,
+        description="Authorization server issuer URLs advertised in the metadata document.",
+    )
+    scopes_supported: list[str] = Field(
+        default_factory=lambda: ["mcp"],
+        description="OAuth scopes advertised for the MCP resource.",
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -1522,6 +1551,13 @@ class IntegrationsSettings(BaseModel):
             "execution and to results (output_rules) after, on the /mcp ingress, the "
             "legacy /v1/mcp/query route, and outbound calls to integrations.mcp_servers. "
             "Same shape as top-level `guardrails`; off by default."
+        ),
+    )
+    mcp_oauth: McpOauthSettings = Field(
+        default_factory=McpOauthSettings,
+        description=(
+            "RFC 9728 OAuth protected-resource discovery for MCP clients (#1262). "
+            "Off by default."
         ),
     )
 

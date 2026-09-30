@@ -61,6 +61,7 @@ def run_doctor(
     results.append(_check_header_policy(cfg))
     results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_mcp_server_policy(cfg))
+    results.append(_check_mcp_oauth_protected_resource(cfg))
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2011,6 +2012,38 @@ def _check_mcp_server_policy(settings: Settings) -> CheckResult:
         name="mcp_server_policy",
         ok=True,
         detail="; ".join(parts),
+        optional=True,
+    )
+
+
+def _check_mcp_oauth_protected_resource(settings: Settings) -> CheckResult:
+    """Tip when MCP auth is on but RFC 9728 metadata is off (#1262)."""
+    auth_on = bool(settings.server.primary_master_key()) or bool(
+        settings.server.virtual_keys.enabled
+    )
+    oauth = settings.integrations.mcp_oauth
+    if not auth_on:
+        return CheckResult(
+            name="mcp_oauth",
+            ok=True,
+            detail="skipped (API-key auth unset)",
+            optional=True,
+        )
+    if oauth.protected_resource:
+        return CheckResult(
+            name="mcp_oauth",
+            ok=True,
+            detail="protected-resource metadata enabled",
+            optional=True,
+        )
+    return CheckResult(
+        name="mcp_oauth",
+        ok=False,
+        detail=(
+            "MCP auth is on but integrations.mcp_oauth.protected_resource is false — "
+            "Cursor/Claude Desktop OAuth discovery needs "
+            "GET /.well-known/oauth-protected-resource"
+        ),
         optional=True,
     )
 

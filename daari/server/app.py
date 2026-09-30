@@ -241,7 +241,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # /metrics follows server.api_key (F3): open only when master unset
         # AND no virtual-key enforcement required — keep previous behavior:
         # when master_key set, /metrics needs auth; when only VK store, open.
-        open_paths = {"/health", "/ready", "/v1/messages/health"}
+        open_paths = {
+            "/health",
+            "/ready",
+            "/v1/messages/health",
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-protected-resource/mcp",
+        }
         if not master_keys:
             open_paths.add("/metrics")
         cors_allow = {
@@ -371,6 +377,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     supplied=supplied,
                     path=request.url.path,
                 )
+                if (
+                    request.url.path == "/mcp"
+                    and resolved.integrations.mcp_oauth.protected_resource
+                ):
+                    from daari.gateway.mcp_oauth import mcp_oauth_challenge_response
+
+                    return mcp_oauth_challenge_response(resolved, request=request)
                 return JSONResponse(
                     status_code=401,
                     content={
@@ -747,6 +760,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(create_gateway_router())
     app.include_router(AnthropicGatewayAdapter().router())
     app.include_router(MCPGatewayAdapter().router())
+    if resolved.integrations.mcp_oauth.protected_resource:
+        from daari.gateway.mcp_oauth import build_mcp_oauth_router
+
+        app.include_router(build_mcp_oauth_router(resolved))
     app.include_router(OllamaCompatGatewayAdapter().router())
     app.include_router(ResponsesGatewayAdapter().router())
     # Outside auth: screen headers before require_api_key (#1112).
