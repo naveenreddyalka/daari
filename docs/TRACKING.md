@@ -5250,6 +5250,13 @@ model tool rounds (SSRF/policy/metering unchanged), and continues the turn.
 Default off keeps the #1135 honesty 400. Covered by
 `tests/unit/test_responses_server_side_mcp.py`.
 
+### Docs: cli.md pins spend report --by-tool ([#1245](https://github.com/naveenreddyalka/daari/issues/1245))
+
+<!-- tracking:#1245 -->
+**Status:** Done (2026-09-30). CLI catalog `spend` row mentions `report`,
+`--by-tool`, and `--by-user` with a link to chargeback.md. Covered by
+`tests/unit/test_chargeback_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

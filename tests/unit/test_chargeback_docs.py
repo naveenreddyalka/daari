@@ -50,3 +50,13 @@ def test_cli_reference_mentions_spend_export_tier() -> None:
     text = CLI.read_text(encoding="utf-8")
     spend_line = next(line for line in text.splitlines() if "`spend`" in line)
     assert "--tier" in spend_line
+
+
+def test_cli_reference_mentions_spend_report_by_tool() -> None:
+    """cli.md spend catalog row pins report --by-tool (#1245)."""
+    text = CLI.read_text(encoding="utf-8")
+    spend_line = next(line for line in text.splitlines() if "`spend`" in line)
+    assert "report" in spend_line
+    assert "--by-tool" in spend_line
+    assert "--by-user" in spend_line
+    assert "chargeback.md" in spend_line

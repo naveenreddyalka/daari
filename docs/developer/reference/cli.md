@@ -16,7 +16,7 @@ Entry point: `daari` (Typer).
 | `trace` | Show a request trace |
 | `report` | Savings / usage ledger |
 | `usage` | Alias of `report` |
-| `spend` | Per-request chargeback export (`export`, `--tier`) — see [chargeback](../guides/observability/chargeback.md) |
+| `spend` | Per-request chargeback export (`export`, `--tier`) and rollups (`report`, `--by-tool`, `--by-user`) — see [chargeback](../guides/observability/chargeback.md) |
 | `profile` | Local hardware profile |
 | `route` | Routing helpers (`preview`) |
 | `audit` | Enterprise audit log (`list` / `export` / `verify`) |
