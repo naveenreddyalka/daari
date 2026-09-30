@@ -22,6 +22,10 @@ Opt-in Responses server-side MCP (`integrations.mcp_egress.server_side_responses
 true`) accepts `type: mcp` tools whose `server_label` matches a configured
 server id, lists tools, and runs the same egress `tools/call` path on model
 tool rounds (default off keeps the honesty 400).
+Opt-in Messages server-side MCP (`integrations.mcp_egress.server_side_messages:
+true`) accepts Anthropic `mcp_servers` + `tools: [{type: mcp_toolset, ...}]`
+whose `mcp_server_name` matches a configured server id (client URLs are ignored;
+egress uses the configured entry). Default off fails closed with an honesty 400.
 
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with

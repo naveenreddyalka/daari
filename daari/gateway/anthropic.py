@@ -237,6 +237,8 @@ class AnthropicRequest(BaseModel):
     metadata: Any | None = None
     # Claude Code / Anthropic effort knob (#1230).
     output_config: Any | None = None
+    # Anthropic MCP connector (#1261); resolved against configured mcp_servers.
+    mcp_servers: list[Any] | None = None
 
 
 class AnthropicTextBlock(BaseModel):
@@ -285,6 +287,27 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             user_agent = request.headers.get("user-agent") or ""
             from daari.gateway.agent_ua import sniff_agent_client_id
+            from daari.gateway.messages_mcp import (
+                configured_mcp_server_ids,
+                expand_mcp_tools_for_model,
+                mcp_tools_from_messages,
+                native_anthropic_tools,
+                run_server_side_mcp_rounds,
+                server_side_messages_enabled,
+                validate_messages_mcp,
+            )
+            from daari.gateway.responses import responses_tools_to_openai
+
+            mcp_ss_enabled = server_side_messages_enabled(ctx.settings)
+            mcp_configured = configured_mcp_server_ids(ctx.settings)
+            mcp_reject = validate_messages_mcp(
+                mcp_servers=body.mcp_servers,
+                tools=body.tools,
+                enabled=mcp_ss_enabled,
+                configured_ids=mcp_configured,
+            )
+            if mcp_reject:
+                raise HTTPException(status_code=400, detail=mcp_reject)
 
             client_id = x_daari_client_id or sniff_agent_client_id(user_agent)
             # Request-shape log (issue #88): mirrors chat_completions_request so
@@ -318,8 +341,11 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             # the OpenAI gateway.
             tools_mode = (x_daari_tools or "").strip().lower()
             internal_tools = None
+            mcp_server_ids: frozenset[str] = frozenset()
             if body.tools and tools_mode != "strip":
-                internal_tools = anthropic_tools_to_openai(body.tools) or None
+                native = native_anthropic_tools(body.tools)
+                internal_tools = anthropic_tools_to_openai(native) or None
+            # MCP expand needs meta / request_id; done after meta is built below.
 
             from daari.router.deadline import RequestDeadlineExceeded, parse_deadline_ms
             from daari.gateway.request_id import request_id_from_request
@@ -356,6 +382,45 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 return denied
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
+            if (
+                mcp_ss_enabled
+                and tools_mode != "strip"
+                and (
+                    body.mcp_servers
+                    or any(
+                        isinstance(t, dict) and t.get("type") == "mcp_toolset"
+                        for t in (body.tools or [])
+                    )
+                )
+            ):
+                expand_req = InternalRequest(
+                    messages=internal_messages,
+                    model=body.model or ctx.settings.models.l3,
+                    meta=meta,
+                )
+                try:
+                    expanded, mcp_server_ids = await expand_mcp_tools_for_model(
+                        ctx,
+                        expand_req,
+                        mcp_tools_from_messages(
+                            mcp_servers=body.mcp_servers,
+                            tools=body.tools,
+                        ),
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+                mcp_as_openai = responses_tools_to_openai(expanded)
+                merged = list(internal_tools or [])
+                existing = {
+                    (t.get("function") or {}).get("name")
+                    for t in merged
+                    if isinstance(t, dict)
+                }
+                for tool in mcp_as_openai:
+                    name = (tool.get("function") or {}).get("name")
+                    if name and name not in existing:
+                        merged.append(tool)
+                internal_tools = merged or None
             internal = InternalRequest(
                 messages=internal_messages,
                 tools=internal_tools,
@@ -483,6 +548,39 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             except Exception as exc:
                 ctx.metrics.record_error()
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
+
+            if mcp_server_ids:
+                try:
+                    result = await await_unless_disconnected(
+                        request,
+                        run_server_side_mcp_rounds(
+                            ctx,
+                            internal,
+                            result,
+                            mcp_server_ids=mcp_server_ids,
+                            route_fn=ctx.router.route,
+                        ),
+                        metrics=ctx.metrics,
+                        phase="messages_mcp",
+                        model=body.model,
+                    )
+                except ClientDisconnected:
+                    return JSONResponse(
+                        status_code=499,
+                        content={
+                            "error": {
+                                "type": "client_disconnected",
+                                "message": "client disconnected.",
+                            }
+                        },
+                    )
+                except RequestDeadlineExceeded as exc:
+                    return request_deadline_response(exc)
+                except Exception as exc:
+                    ctx.metrics.record_error()
+                    raise HTTPException(
+                        status_code=503, detail=routing_failure_detail(exc)
+                    ) from exc
 
             if internal.provider and result.daari_meta.provider_prefs is None:
                 result.daari_meta.provider_prefs = as_openrouter_payload(internal.provider)

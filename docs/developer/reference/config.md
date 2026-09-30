@@ -266,6 +266,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_egress.failure_threshold` | int | `3` | Consecutive MCP egress failures before the per-server circuit opens (#1203). Matches frontier `failure_threshold`. |
 | `integrations.mcp_egress.cooldown_seconds` | float | `30.0` | Seconds an open MCP egress circuit stays fail-fast before a half-open probe (#1203). |
 | `integrations.mcp_egress.server_side_responses` | bool | `False` | When true, Responses may include `type: mcp` tools that resolve to a configured `integrations.mcp_servers` id (`server_label`); daari lists tools, runs egress `tools/call` on model tool rounds, and continues the turn (#1232). Default false keeps the #1135 honesty 400 for hosted types. |
+| `integrations.mcp_egress.server_side_messages` | bool | `False` | When true, Messages may include `mcp_servers` + `type: mcp_toolset` tools whose `mcp_server_name` resolves to a configured `integrations.mcp_servers` id; daari lists tools, runs egress `tools/call` on model tool rounds, and continues the turn (#1261). Default false fails closed with an honesty 400. |
 | `integrations.mcp_guardrails.enabled` | bool | `False` |  |
 | `integrations.mcp_guardrails.max_prompt_chars` | int | `0` |  |
 | `integrations.mcp_guardrails.injection_action` | str | `'block'` |  |
