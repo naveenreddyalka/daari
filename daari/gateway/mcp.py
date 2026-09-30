@@ -59,6 +59,8 @@ INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
 # MCP 2026-07-28 reserved range (-32020..-32099); see SEP-2575.
 UNSUPPORTED_PROTOCOL_VERSION = -32022
+# Mcp-Method / Mcp-Name disagree with JSON-RPC body (#1233).
+HEADER_MISMATCH = -32023
 
 DEFAULT_PROTOCOL_VERSION = "2025-03-26"
 MODERN_PROTOCOL_VERSION = "2026-07-28"
@@ -328,6 +330,57 @@ def _jsonrpc_error(rpc_id: Any, code: int, message: str, *, data: Any = None) ->
     if data is not None:
         error["data"] = data
     return {"jsonrpc": JSONRPC_VERSION, "id": rpc_id, "error": error}
+
+
+def _header_body_mismatch(
+    rpc_id: Any,
+    *,
+    header: str,
+    header_value: str,
+    body_value: str,
+) -> dict[str, Any]:
+    return _jsonrpc_error(
+        rpc_id,
+        HEADER_MISMATCH,
+        f"{header} does not match JSON-RPC body",
+        data={
+            "header": header,
+            "header_value": header_value,
+            "body_value": body_value,
+        },
+    )
+
+
+def _check_mcp_routing_headers(
+    request: Request,
+    *,
+    method: str,
+    params: dict[str, Any],
+    rpc_id: Any,
+) -> dict[str, Any] | None:
+    """Reject Mcp-Method / Mcp-Name when they disagree with the body (#1233).
+
+    Absent headers remain allowed (backward compatible).
+    """
+    header_method = (request.headers.get("mcp-method") or "").strip()
+    if header_method and header_method != method:
+        return _header_body_mismatch(
+            rpc_id,
+            header="Mcp-Method",
+            header_value=header_method,
+            body_value=method,
+        )
+    if method == "tools/call":
+        header_name = (request.headers.get("mcp-name") or "").strip()
+        body_name = str(params.get("name") or "").strip()
+        if header_name and header_name != body_name:
+            return _header_body_mismatch(
+                rpc_id,
+                header="Mcp-Name",
+                header_value=header_name,
+                body_value=body_name,
+            )
+    return None
 
 
 def _wants_sse(request: Request) -> bool:
@@ -1103,6 +1156,12 @@ class MCPGatewayAdapter(GatewayAdapter):
             params = message.get("params") if isinstance(message.get("params"), dict) else {}
             if "id" not in message:
                 return Response(status_code=202)
+
+            mismatch = _check_mcp_routing_headers(
+                request, method=method, params=params, rpc_id=rpc_id
+            )
+            if mismatch is not None:
+                return JSONResponse(mismatch, status_code=400)
 
             # Modern clients declare version per request in _meta; reject unknown
             # revisions with UnsupportedProtocolVersion before method dispatch.
