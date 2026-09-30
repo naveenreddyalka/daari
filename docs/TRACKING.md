@@ -5294,6 +5294,16 @@ auth-and-keys. Covered by `tests/unit/test_doctor_health_header_policy_docs.py`.
 `server_side_responses` / `type: mcp` / `server_label` / honesty 400 and the
 config.md knob. Covered by `tests/unit/test_responses_server_side_mcp_docs.py`.
 
+### Anthropic output_config.format structured outputs ([#1260](https://github.com/naveenreddyalka/daari/issues/1260))
+
+<!-- tracking:#1260 -->
+**Status:** Done (2026-09-30). `SamplingParams.from_anthropic_body` honors
+`output_config.format` (`type: json_schema`) for local schema enforcement,
+prefers it over legacy `output_format`, logs `json_schema_ignored` on
+malformed format, and L6 still forwards full `output_config`. Covered by
+`tests/unit/test_anthropic_output_config.py` and
+`tests/unit/test_claude_code_effort_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

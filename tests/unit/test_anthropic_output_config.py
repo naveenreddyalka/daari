@@ -1,4 +1,4 @@
-"""Anthropic output_config.effort on Messages and L6 replay (#1230)."""
+"""Anthropic output_config.effort / format on Messages and L6 replay (#1230 / #1260)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,10 @@ from daari.router.anthropic_messages import (
 OUTPUT_CONFIG = {"effort": "high"}
 OUTPUT_CONFIG_LOW = {"effort": "low"}
 OUTPUT_CONFIG_UNKNOWN = {"effort": "turbo"}
+_SCHEMA = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+_SCHEMA_ALT = {"type": "object", "properties": {"n": {"type": "integer"}}}
+_FORMAT = {"type": "json_schema", "schema": _SCHEMA}
+_FORMAT_ALT = {"type": "json_schema", "schema": _SCHEMA_ALT}
 
 
 class TestHttpRetention:
@@ -139,3 +143,84 @@ class TestPayloadAndBeta:
         )
         betas = [b.strip() for b in headers["anthropic-beta"].split(",")]
         assert betas.count("effort-2025-11-24") == 1
+
+
+class TestOutputConfigFormat:
+    def test_format_only_sets_json_schema(self):
+        params = SamplingParams.from_anthropic_body(
+            {
+                "max_tokens": 50,
+                "output_config": {"format": _FORMAT},
+            }
+        )
+        assert params.json_schema == _SCHEMA
+        assert params.response_format_json is True
+        assert params.output_config == {"format": _FORMAT}
+        assert params.ollama_format() == _SCHEMA
+
+    def test_effort_and_format_keeps_both(self):
+        config = {"effort": "high", "format": _FORMAT}
+        params = SamplingParams.from_anthropic_body(
+            {"max_tokens": 50, "output_config": config}
+        )
+        assert params.json_schema == _SCHEMA
+        assert params.response_format_json is True
+        assert params.output_config == config
+        assert params.reasoning_effort == "high"
+        assert params.ollama_think() == "high"
+
+    def test_legacy_output_format_alone_still_works(self):
+        params = SamplingParams.from_anthropic_body(
+            {
+                "max_tokens": 50,
+                "output_format": _FORMAT,
+            }
+        )
+        assert params.json_schema == _SCHEMA
+        assert params.response_format_json is True
+
+    def test_output_config_format_preferred_over_legacy(self):
+        params = SamplingParams.from_anthropic_body(
+            {
+                "max_tokens": 50,
+                "output_format": _FORMAT_ALT,
+                "output_config": {"format": _FORMAT},
+            }
+        )
+        assert params.json_schema == _SCHEMA
+        assert params.response_format_json is True
+
+    def test_malformed_output_config_format_is_ignored(self, monkeypatch):
+        events: list[str] = []
+        monkeypatch.setattr(
+            "daari.gateway.request_log.log_gateway_event",
+            lambda event, payload: events.append(event),
+        )
+        params = SamplingParams.from_anthropic_body(
+            {
+                "max_tokens": 50,
+                "output_config": {
+                    "format": {"type": "json_schema", "schema": "nope"},
+                },
+            }
+        )
+        assert params.json_schema is None
+        assert params.response_format_json is False
+        assert "json_schema_ignored" in events
+
+    def test_l6_forwards_full_output_config_with_effort_and_format(self):
+        config = {"effort": "high", "format": _FORMAT}
+        params = SamplingParams.from_anthropic_body(
+            {"max_tokens": 50, "output_config": config}
+        )
+        payload = to_anthropic_payload(
+            InternalRequest(
+                messages=[Message(role="user", content="hi")],
+                model="daari",
+                sampling=params,
+            ),
+            model="claude-sonnet-4-0",
+        )
+        assert payload["output_config"] == config
+        assert payload["output_config"]["format"] == _FORMAT
+        assert payload["output_config"]["effort"] == "high"

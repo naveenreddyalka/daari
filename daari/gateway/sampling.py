@@ -422,11 +422,21 @@ class SamplingParams(BaseModel):
             stop = None
 
         raw_max = body.get("max_tokens")
-        output_format = body.get("output_format")
+        thinking = _normalize_thinking(body.get("thinking"))
+        output_config = _normalize_dict(body.get("output_config"))
+        # Prefer modern output_config.format over legacy top-level output_format (#1260).
+        format_candidate: Any = None
+        config_format = output_config.get("format") if output_config else None
+        if isinstance(config_format, dict) and config_format.get("type") == "json_schema":
+            format_candidate = config_format
+        else:
+            output_format = body.get("output_format")
+            if isinstance(output_format, dict) and output_format.get("type") == "json_schema":
+                format_candidate = output_format
         json_schema = None
         wants_json = False
-        if isinstance(output_format, dict) and output_format.get("type") == "json_schema":
-            json_schema = _json_schema_from_output_format(output_format)
+        if format_candidate is not None:
+            json_schema = _json_schema_from_output_format(format_candidate)
             if json_schema is None:
                 from daari.gateway.request_log import log_gateway_event
 
@@ -438,8 +448,6 @@ class SamplingParams(BaseModel):
             pass
         elif not isinstance(tool_choice, str):
             tool_choice = None
-        thinking = _normalize_thinking(body.get("thinking"))
-        output_config = _normalize_dict(body.get("output_config"))
         effort = reasoning_effort_from_anthropic(thinking, output_config)
         return cls(
             max_tokens=int(raw_max) if isinstance(raw_max, int) and raw_max > 0 else None,
