@@ -5226,6 +5226,13 @@ finished; 404 unknown), writes `mcp.activity.abort` audit. Covered by
 400 + JSON-RPC `-32023` (`HEADER_MISMATCH`). Absent headers unchanged. Docs:
 mcp.md. Covered by `tests/unit/test_mcp_header_match.py`.
 
+### Hermetic http-api.md equality ([#1195](https://github.com/naveenreddyalka/daari/issues/1195))
+
+<!-- tracking:#1195 -->
+**Status:** Done (2026-09-30). `test_committed_http_api_md_matches_generator`
+fails if committed `http-api.md` drifts from `render_api_reference()`; regenerated
+to match. Covered by `tests/unit/test_gen_reference.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
