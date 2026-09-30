@@ -1439,6 +1439,15 @@ class McpEgressSettings(BaseModel):
             "probe (#1203)."
         ),
     )
+    server_side_responses: bool = Field(
+        default=False,
+        description=(
+            "When true, Responses may include `type: mcp` tools that resolve to a "
+            "configured `integrations.mcp_servers` id (`server_label`); daari lists "
+            "tools, runs egress `tools/call` on model tool rounds, and continues the "
+            "turn (#1232). Default false keeps the #1135 honesty 400 for hosted types."
+        ),
+    )
 
 
 class IntegrationsSettings(BaseModel):

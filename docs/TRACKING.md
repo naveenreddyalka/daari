@@ -5240,6 +5240,16 @@ to match. Covered by `tests/unit/test_gen_reference.py`.
 `backup` check and plaintext → `--encrypt openssl|age` tip with a link to
 backup-restore. Covered by `tests/unit/test_doctor_health_backup_docs.py`.
 
+### Responses server-side MCP tools ([#1232](https://github.com/naveenreddyalka/daari/issues/1232))
+
+<!-- tracking:#1232 -->
+**Status:** Done (2026-09-30). Opt-in `integrations.mcp_egress.server_side_responses`
+lets Responses accept `type: mcp` tools that resolve to configured
+`mcp_servers` (`server_label`); daari lists tools, runs egress `tools/call` on
+model tool rounds (SSRF/policy/metering unchanged), and continues the turn.
+Default off keeps the #1135 honesty 400. Covered by
+`tests/unit/test_responses_server_side_mcp.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -18,6 +18,10 @@ when finished; 404 when unknown; audit action `mcp.activity.abort`).
 Egress URLs are SSRF-checked (http/https only; loopback, RFC1918, link-local,
 and cloud metadata denied after DNS resolution). Lab/docker targets need
 `integrations.mcp_egress.allow_private_networks: true`.
+Opt-in Responses server-side MCP (`integrations.mcp_egress.server_side_responses:
+true`) accepts `type: mcp` tools whose `server_label` matches a configured
+server id, lists tools, and runs the same egress `tools/call` path on model
+tool rounds (default off keeps the honesty 400).
 
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with
