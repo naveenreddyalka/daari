@@ -58,6 +58,14 @@ set without `budget_tokens` (or with `thinking.type: adaptive`), it maps to
 `max` → `high`). Opus 4.5 L6 hops get `anthropic-beta: effort-2025-11-24` when
 the client did not already send it; 4.6+ needs no beta.
 
+## Structured outputs (`output_config.format`)
+
+Anthropic structured outputs use `output_config.format` with
+`type: json_schema` (not the legacy top-level `output_format`). daari extracts
+that schema for local L3–L5 JSON enforcement and still accepts legacy
+`output_format` alone; when both are present, `output_config.format` wins. L6
+replays the full `output_config` object (effort + format) unchanged.
+
 ## Troubleshoot
 
 | Problem | Fix |
