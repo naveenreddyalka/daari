@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -13,6 +14,7 @@ from daari.gateway.base import GatewayAdapter
 from daari.gateway.client_errors import request_deadline_response, safe_detail
 from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
+from daari.gateway.mcp_activity import principal_from_claims, track_awaitable
 from daari.gateway.mcp_guardrails import (
     GUARDRAIL_BLOCKED,
     LEGACY_ERROR_CODE,
@@ -822,14 +824,37 @@ async def _run_tool_with_deadline(
     request: Request,
 ) -> MCPQueryResponse:
     """Bind wall-clock budget for tools/call, then run the tool (#827)."""
-    seconds = _deadline_seconds_for_request(request, ctx)
-    if seconds is not None and not deadline_active():
-        with bind_request_deadline(seconds, metrics=ctx.metrics):
-            guard_upstream("mcp")
-            return await _run_tool(
-                ctx, name, call_input, call_args, model=model, request=request
-            )
-    return await _run_tool(ctx, name, call_input, call_args, model=model, request=request)
+
+    async def _inner() -> MCPQueryResponse:
+        seconds = _deadline_seconds_for_request(request, ctx)
+        if seconds is not None and not deadline_active():
+            with bind_request_deadline(seconds, metrics=ctx.metrics):
+                guard_upstream("mcp")
+                return await _run_tool(
+                    ctx, name, call_input, call_args, model=model, request=request
+                )
+        return await _run_tool(
+            ctx, name, call_input, call_args, model=model, request=request
+        )
+
+    registry = getattr(ctx, "mcp_activity", None)
+    if registry is None:
+        return await _inner()
+    request_id = str(getattr(request.state, "request_id", None) or "")
+    key_id, principal = principal_from_claims(getattr(request.state, "auth_claims", None))
+    try:
+        return await track_awaitable(
+            registry,
+            _inner(),
+            request_id=request_id,
+            key_id=key_id,
+            principal=principal,
+            method="tools/call",
+            tool_name=name.strip().lower() if name else None,
+        )
+    except asyncio.CancelledError:
+        # Admin force-abort (or ASGI cancel) — same operator-facing 499 as disconnect.
+        raise ClientDisconnected() from None
 
 
 def _client_disconnected_response() -> JSONResponse:

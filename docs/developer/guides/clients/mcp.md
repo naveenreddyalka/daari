@@ -10,6 +10,9 @@ is set, send the same Bearer / `x-api-key` the rest of the daemon expects.
 explorer probes succeed instead of `Method not found`).
 `GET /v1/daari/stats` (and `daari web-ui serve`) expose `mcp_tool_calls` outcome
 counts and an `mcp_tasks` status summary for local ops without Prometheus.
+Admin ops can list in-flight `tools/call` work via `GET /v1/daari/mcp/activity`
+and force-abort with `POST /v1/daari/mcp/activity/{request_id}/abort` (idempotent
+when finished; 404 when unknown; audit action `mcp.activity.abort`).
 `daari doctor` probes each configured `integrations.mcp_servers` URL (optional
 `mcp:<id>` rows) so a typo'd egress host fails before the first `@mcp` call.
 Egress URLs are SSRF-checked (http/https only; loopback, RFC1918, link-local,

@@ -5208,6 +5208,16 @@ systemd user-timer equivalent. Covered by `tests/unit/test_helm_chart.py`,
 `--by-user` unchanged. Docs: chargeback.md. Covered by
 `tests/unit/test_spend_report_by_tool.py`.
 
+### MCP in-flight activity + admin force-abort ([#1231](https://github.com/naveenreddyalka/daari/issues/1231))
+
+<!-- tracking:#1231 -->
+**Status:** Done (2026-09-30). In-process registry tracks `tools/call` with
+`request_id`, key/principal, method, tool, `started_at`; cleared on
+completion/cancel. Admin `GET /v1/daari/mcp/activity` lists in-flight work;
+`POST .../activity/{request_id}/abort` cancels the awaitable (idempotent when
+finished; 404 unknown), writes `mcp.activity.abort` audit. Covered by
+`tests/unit/test_mcp_activity.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

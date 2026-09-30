@@ -5241,6 +5241,7 @@ class AppContext:
     virtual_key_store: Any | None = None
     local_pool: Any | None = None
     mcp_task_store: Any | None = None
+    mcp_activity: Any | None = None
     batch_store: Any | None = None
     file_store: Any | None = None
     org_learning_sync_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
@@ -5836,11 +5837,13 @@ class AppContext:
             )
         from daari.gateway.batches import BatchStore
         from daari.gateway.files import FileStore
+        from daari.gateway.mcp_activity import McpActivityRegistry
         from daari.gateway.mcp_tasks import McpTaskStore
 
         mcp_task_store = None
         if settings.integrations.mcp_tasks.enabled:
             mcp_task_store = McpTaskStore(settings.integrations.mcp_tasks.path)
+        mcp_activity = McpActivityRegistry()
         pg_url = (settings.observability.postgres_url or "").strip()
         file_store = None
         if settings.files.enabled:
@@ -5905,6 +5908,7 @@ class AppContext:
             org_learning_client=org_learning_client,
             local_pool=local_pool,
             mcp_task_store=mcp_task_store,
+            mcp_activity=mcp_activity,
             batch_store=batch_store,
             file_store=file_store,
         )
