@@ -1744,6 +1744,40 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload = ctx.reload_cache_handles()
             return {"status": "ok", **payload}
 
+        @router.get("/v1/daari/mcp/activity")
+        async def daari_mcp_activity_list(request: Request) -> dict[str, Any]:
+            """List in-flight MCP tools/call (and task) activity (#1231)."""
+            ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
+            registry = getattr(ctx, "mcp_activity", None)
+            activity = list(registry.list()) if registry is not None else []
+            return {"activity": activity}
+
+        @router.post("/v1/daari/mcp/activity/{request_id}/abort")
+        async def daari_mcp_activity_abort(request: Request, request_id: str) -> dict[str, Any]:
+            """Force-abort an in-flight MCP call; idempotent when already finished (#1231)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            registry = getattr(ctx, "mcp_activity", None)
+            if registry is None:
+                raise HTTPException(status_code=404, detail="mcp activity unavailable")
+            rid = (request_id or "").strip()
+            was_live = registry.get(rid) is not None
+            result = registry.abort(rid)
+            if result is None:
+                raise HTTPException(status_code=404, detail="unknown request_id")
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.mcp_activity import AUDIT_ABORT_ACTION
+
+            status = "aborted" if was_live else "already_finished"
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action=AUDIT_ABORT_ACTION,
+                detail={"request_id": rid, "status": status},
+            )
+            return {"status": status, "request_id": rid}
+
         @router.post("/v1/daari/cache/invalidate")
         async def daari_cache_invalidate(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx

@@ -42,7 +42,7 @@ Safe config PATCH exists; full `config.yaml` still needs restart.
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
 | 1 | **Anthropic `output_config.effort`** — dropped on Messages; Claude Code slider ignored | 5 | 2 | LiteLLM effort mapping | Local think map + honest L6 passthrough | Filed — P1 ([#1230](https://github.com/naveenreddyalka/daari/issues/1230)) |
-| 2 | **MCP ingress activity + admin force-abort** — no list/kill for in-flight tools/call | 4 | 3 | LiteLLM 1.103 live sessions | Request-scoped registry; no sticky sessions | Filed — P2 ([#1231](https://github.com/naveenreddyalka/daari/issues/1231)) |
+| 2 | **MCP ingress activity + admin force-abort** — no list/kill for in-flight tools/call | 4 | 3 | LiteLLM 1.103 live sessions | Request-scoped registry; no sticky sessions | Shipped — P2 ([#1231](https://github.com/naveenreddyalka/daari/issues/1231)) |
 | 3 | **Server-side MCP in Responses** — `type:mcp` still 400; Portkey executes in-gateway | 5 | 3 | Portkey v2.20 server-side MCP | Reuse local egress + SSRF + metering | Filed — P2 ([#1232](https://github.com/naveenreddyalka/daari/issues/1232)) |
 | 4 | **`Mcp-Method` / `Mcp-Name` body match** — headers read, mismatches allowed | 3 | 1 | Kong 2.1+ 2026-07-28 | Fail-closed sessionless peer | Filed — P2 ([#1233](https://github.com/naveenreddyalka/daari/issues/1233)) |
 | 5 | **Hot-reload `config.yaml`** — PATCH safe subset only; full file needs restart | 3 | 2 | LiteLLM / cloud CPs | `POST /v1/daari/reload-config` (+ optional SIGHUP) | Filed — P2 ([#1234](https://github.com/naveenreddyalka/daari/issues/1234)) |
