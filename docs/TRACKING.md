@@ -5314,6 +5314,15 @@ disabled; unknown labels → 400. Covered by
 `tests/unit/test_messages_server_side_mcp.py` and
 `tests/unit/test_messages_server_side_mcp_docs.py`.
 
+### MCP RFC 9728 oauth-protected-resource discovery ([#1262](https://github.com/naveenreddyalka/daari/issues/1262))
+
+<!-- tracking:#1262 -->
+**Status:** Done (2026-09-30). Opt-in `integrations.mcp_oauth.protected_resource`
+serves `/.well-known/oauth-protected-resource` (+ `/mcp` scoped), shapes
+unauthenticated `/mcp` 401 with `WWW-Authenticate`, doctor tip when auth is on
+without metadata. Covered by `tests/unit/test_mcp_oauth_protected_resource.py`
+and `tests/unit/test_mcp_oauth_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
