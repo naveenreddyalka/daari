@@ -141,15 +141,24 @@ async def test_team_policy_applies_to_team_keys(settings, monkeypatch):
 
 
 async def test_mcp_name_header_is_honoured_for_policy(settings, monkeypatch):
+    """Matching Mcp-Name still participates in policy; mismatches are 400 (#1233)."""
     app, headers, _ = _app_with_key(settings, monkeypatch, metadata={"mcp": {"deny": ["stats"]}})
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await _rpc(
+        denied = await _rpc(
+            client,
+            "tools/call",
+            {"name": "stats", "arguments": {}},
+            headers={**headers, "Mcp-Method": "tools/call", "Mcp-Name": "stats"},
+        )
+        mismatch = await _rpc(
             client,
             "tools/call",
             {"name": "route", "arguments": {"input": "hi"}},
             headers={**headers, "Mcp-Method": "tools/call", "Mcp-Name": "stats"},
         )
-    assert response.json()["error"]["code"] == TOOL_DENIED
+    assert denied.json()["error"]["code"] == TOOL_DENIED
+    assert mismatch.status_code == 400
+    assert mismatch.json()["error"]["code"] == -32023
 
 
 async def test_server_policy_filters_catalog_and_denies_call(settings, monkeypatch):

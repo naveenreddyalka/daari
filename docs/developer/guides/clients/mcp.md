@@ -201,7 +201,11 @@ keep the global key rpm/tpm only.
 
 daari's MCP egress client sends the MCP 2026-07-28 routing headers
 `Mcp-Method` and `Mcp-Name` on outbound requests, and the ingress honours the
-same headers for policy when a client supplies them.
+same headers for policy when a client supplies them. When those headers are
+present they **must** match the JSON-RPC `method` / `params.name` (`tools/call`);
+mismatches return HTTP **400** with JSON-RPC error `-32023`
+(`HEADER_MISMATCH`, `data.header` / `header_value` / `body_value`). Absent
+headers stay allowed.
 
 ## Tool guardrails (arguments and results)
 

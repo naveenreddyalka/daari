@@ -5218,6 +5218,14 @@ completion/cancel. Admin `GET /v1/daari/mcp/activity` lists in-flight work;
 finished; 404 unknown), writes `mcp.activity.abort` audit. Covered by
 `tests/unit/test_mcp_activity.py`.
 
+### Reject Mcp-Method / Mcp-Name body mismatches ([#1233](https://github.com/naveenreddyalka/daari/issues/1233))
+
+<!-- tracking:#1233 -->
+**Status:** Done (2026-09-30). When `Mcp-Method` / `Mcp-Name` are present on
+`POST /mcp` they must match JSON-RPC `method` / `params.name`; mismatch → HTTP
+400 + JSON-RPC `-32023` (`HEADER_MISMATCH`). Absent headers unchanged. Docs:
+mcp.md. Covered by `tests/unit/test_mcp_header_match.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
