@@ -5287,6 +5287,13 @@ auth-and-keys. Covered by `tests/unit/test_doctor_health_header_policy_docs.py`.
 (`/v1/daari/mcp/activity`, `/abort`, 404, `mcp.activity.abort`). Covered by
 `tests/unit/test_mcp_activity_docs.py`.
 
+### Hermetic pin for Responses server_side_responses ([#1254](https://github.com/naveenreddyalka/daari/issues/1254))
+
+<!-- tracking:#1254 -->
+**Status:** Done (2026-09-30). Unit tests pin mcp.md
+`server_side_responses` / `type: mcp` / `server_label` / honesty 400 and the
+config.md knob. Covered by `tests/unit/test_responses_server_side_mcp_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
