@@ -5280,6 +5280,13 @@ auth-and-keys. Covered by `tests/unit/test_doctor_health_header_policy_docs.py`.
 `secrets.refresh_ttl_seconds` config.md row. Covered by
 `tests/unit/test_secret_refresh_docs.py`.
 
+### Hermetic pin for MCP activity + force-abort ([#1253](https://github.com/naveenreddyalka/daari/issues/1253))
+
+<!-- tracking:#1253 -->
+**Status:** Done (2026-09-30). Unit test pins mcp.md activity list/abort
+(`/v1/daari/mcp/activity`, `/abort`, 404, `mcp.activity.abort`). Covered by
+`tests/unit/test_mcp_activity_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
