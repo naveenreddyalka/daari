@@ -41,6 +41,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
 | doctor `budget_webhook_secret` | Optional: `alerts.budget_webhook_url` set without `alerts.budget_webhook_secret` — spoofable pages |
 | doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
+| doctor `backup` | Optional: no recent archive under `~/.daari/backups`, or recent backups are all **plaintext** — tip suggests `daari backup create … --encrypt openssl` (or `age`); see [backup-restore.md](backup-restore.md#optional-encryption-1176) |
 
 ## Next
 
