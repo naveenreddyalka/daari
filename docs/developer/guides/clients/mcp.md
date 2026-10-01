@@ -40,6 +40,12 @@ optional `base_url` / `operations`). Spec fetch and call URLs use the same
 SSRF guards as MCP egress (`mcp_egress.allow_private_networks`). Default off
 returns **503**. The route maps to the `mcp` rate-limit family.
 
+Opt-in MCP Registry (`integrations.mcp_registry.enabled: true`) serves
+`GET /v1/mcp/registry.json` listing the built-in `/mcp` ingress and each
+configured `integrations.mcp_servers` id with its streamable HTTP URL.
+Advertisement-only — `/mcp` still enforces API-key / allowlists. Default off
+returns **404**. Auth-agnostic so IDE/agent discovery can run without a key.
+
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with
 a master or virtual key. Active responses include `client_id`, `username`,
