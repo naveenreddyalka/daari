@@ -98,6 +98,10 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.phase_routing.explore` | int | str | `-1` | Tier adjustment for explore-phase turns. Default -1 (floor L3). |
 | `routing.phase_routing.implement` | int | str | `0` | Tier adjustment for implement-phase turns. Default 0. |
 | `routing.phase_routing.verify` | int | str | `0` | Tier adjustment for verify-phase turns. Default 0. |
+| `routing.decision_classifier.enabled` | bool | `False` | When true, Ask (and optionally Agent) turns call Ollama /v1/systemone before the heuristic tier pick. Default off. |
+| `routing.decision_classifier.model` | str | `'nimble'` | Decision model name proxied to Ollama /v1/systemone. |
+| `routing.decision_classifier.timeout_seconds` | float | `5.0` | Classifier request timeout; on timeout fall back to heuristics. |
+| `routing.decision_classifier.agent_turns` | bool | `False` | When true, also classify agent/tool turns. Default false (Ask only). |
 | `routing.session_affinity` | bool | `False` | When true, a tool-result continuation or an unchanged user-turn prefix reuses the session's prior tier instead of re-running rules. A new human turn re-routes. Default off. |
 | `routing.session_affinity_ttl_seconds` | float | `1800.0` | How long a session pin (and the session cost-avoided rollup) is reused. 0 keeps the pin until process restart (in-process) or without a Redis TTL when cache.backend=redis. Ignored unless session_affinity is true. |
 | `routing.classify_user_turn` | bool | `False` | When true, a tool-result continuation (no new user text) reuses the previous profile's category/complexity. Phase routing and stall escalation still inspect tool history. A new user message re-profiles. Default off. |

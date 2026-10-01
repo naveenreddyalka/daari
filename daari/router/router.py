@@ -533,6 +533,10 @@ class Router:
         context_window_escalation: bool = True,
         context_window_buffer: float = 0.95,
         context_windows: dict[str, int] | None = None,
+        decision_classifier_enabled: bool = False,
+        decision_classifier_model: str = "nimble",
+        decision_classifier_timeout_seconds: float = 5.0,
+        decision_classifier_agent_turns: bool = False,
     ) -> None:
         self.cache = cache
         self._l0_singleflight = SingleFlight()
@@ -650,6 +654,10 @@ class Router:
         self.context_window_escalation = bool(context_window_escalation)
         self.context_window_buffer = float(context_window_buffer)
         self.context_windows = dict(context_windows) if context_windows else {}
+        self.decision_classifier_enabled = bool(decision_classifier_enabled)
+        self.decision_classifier_model = (decision_classifier_model or "nimble").strip() or "nimble"
+        self.decision_classifier_timeout_seconds = float(decision_classifier_timeout_seconds or 5.0)
+        self.decision_classifier_agent_turns = bool(decision_classifier_agent_turns)
         self.local_pool = local_pool
         self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
 
@@ -879,6 +887,7 @@ class Router:
         )
         if not reused:
             profile = await self._apply_learned_route(request, profile)
+            profile = await self._apply_decision_classifier(request, profile)
             self._remember_user_turn_profile(request, profile)
         policy = await self._apply_input_policy(request, profile)
         boundary_meta = policy.boundary_meta
@@ -940,6 +949,8 @@ class Router:
             response.daari_meta.task_type = profile.category
         if response.daari_meta.complexity is None:
             response.daari_meta.complexity = profile.complexity
+        if request.meta.decision_classifier and response.daari_meta.decision is None:
+            response.daari_meta.decision = dict(request.meta.decision_classifier)
         if request.sampling.reasoning_effort and response.daari_meta.reasoning_effort is None:
             response.daari_meta.reasoning_effort = request.sampling.reasoning_effort
         if request.sampling.service_tier and response.daari_meta.service_tier is None:
@@ -1132,6 +1143,64 @@ class Router:
             heuristic=profile.category,
         )
         return profile.model_copy(update={"category": category})
+
+    async def _apply_decision_classifier(
+        self, request: InternalRequest, profile: PromptProfile
+    ) -> PromptProfile:
+        """Optional systemone difficulty hop before heuristic tier pick (#1292)."""
+        if not self.decision_classifier_enabled:
+            return profile
+        agent_turn = bool(request.tools) or request.has_tool_calls_in_history
+        if agent_turn and not self.decision_classifier_agent_turns:
+            return profile
+        # Client override wins; do not spend a classifier hop.
+        if (request.meta.tier_override or "").upper() in {"L3", "L4", "L5"}:
+            return profile
+        text = self._last_user_text(request.messages)
+        if self.harness_aware_profile:
+            text, _ = strip_harness_text(text)
+        if not (text or "").strip():
+            return profile
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.decision_classifier import classify_via_systemone
+
+        base_url = getattr(self.ollama_l3, "base_url", "") or "http://127.0.0.1:11434"
+        try:
+            result = await classify_via_systemone(
+                base_url=base_url,
+                model=self.decision_classifier_model,
+                state=text,
+                timeout_seconds=self.decision_classifier_timeout_seconds,
+            )
+        except Exception as exc:
+            detail = {
+                "error": str(exc),
+                "model": self.decision_classifier_model,
+                "degraded": True,
+            }
+            add_step("decision_classifier", **detail)
+            log_gateway_event("decision_classifier_degraded", detail)
+            return profile
+
+        request.meta.decision_tier = result.tier
+        request.meta.decision_classifier = {
+            "model": result.model,
+            "answer": result.answer,
+            "complexity": result.complexity,
+            "tier": result.tier,
+        }
+        detail = {
+            "model": result.model,
+            "answer": result.answer,
+            "complexity": result.complexity,
+            "tier": result.tier,
+            "heuristic_complexity": profile.complexity,
+        }
+        add_step("decision_classifier", **detail)
+        log_gateway_event("decision_classifier", detail)
+        if result.complexity == profile.complexity:
+            return profile
+        return profile.model_copy(update={"complexity": result.complexity})
 
     async def _refresh_warm_models(self) -> None:
         """Trust PRD T3c: keep the /api/ps warm set fresh (TTL-cached)."""
@@ -1866,6 +1935,7 @@ class Router:
         )
         if not reused:
             profile = await self._apply_learned_route(request, profile)
+            profile = await self._apply_decision_classifier(request, profile)
             self._remember_user_turn_profile(request, profile)
 
         def finish_trace(tier: str | None) -> None:
@@ -2920,6 +2990,7 @@ class Router:
         profile, reused = self._resolve_prompt_profile(request)
         if not reused:
             profile = await self._apply_learned_route(request, profile)
+            profile = await self._apply_decision_classifier(request, profile)
             self._remember_user_turn_profile(request, profile)
         tier_chain = self._stream_tier_chain(request, profile)
         # Agent flows (issue #84: Claude Code tool turns) keep the full tool
@@ -4569,6 +4640,9 @@ class Router:
         policy_tier = getattr(policy, "tier", None) if policy is not None else None
         if policy_tier in {"L3", "L4", "L5"}:
             return policy_tier
+        decision_tier = (request.meta.decision_tier or "").upper()
+        if decision_tier in {"L3", "L4", "L5"}:
+            return decision_tier
         text = self._last_user_text(request.messages)
         if self.harness_aware_profile:
             text, _ = strip_harness_text(text)
@@ -5823,6 +5897,10 @@ class AppContext:
             context_window_escalation=settings.routing.context_window_escalation,
             context_window_buffer=settings.routing.context_window_escalation_buffer,
             context_windows=dict(settings.routing.context_windows or {}),
+            decision_classifier_enabled=settings.routing.decision_classifier.enabled,
+            decision_classifier_model=settings.routing.decision_classifier.model,
+            decision_classifier_timeout_seconds=settings.routing.decision_classifier.timeout_seconds,
+            decision_classifier_agent_turns=settings.routing.decision_classifier.agent_turns,
         )
         from daari.observability.spend import install_spend_hook, spend_ledger_from_settings
 

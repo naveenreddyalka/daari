@@ -596,6 +596,33 @@ class PhaseRoutingSettings(BaseModel):
     )
 
 
+class DecisionClassifierSettings(BaseModel):
+    """Optional Ollama systemone difficulty hop before local tier pick (#1292)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, Ask (and optionally Agent) turns call Ollama "
+            "/v1/systemone before the heuristic tier pick. Default off."
+        ),
+    )
+    model: str = Field(
+        default="nimble",
+        description="Decision model name proxied to Ollama /v1/systemone.",
+    )
+    timeout_seconds: float = Field(
+        default=5.0,
+        ge=0.1,
+        description="Classifier request timeout; on timeout fall back to heuristics.",
+    )
+    agent_turns: bool = Field(
+        default=False,
+        description=(
+            "When true, also classify agent/tool turns. Default false (Ask only)."
+        ),
+    )
+
+
 class OrgPoolSettings(BaseModel):
     """Shared org GPU inference pool between local L5 and frontier L6 (issue #118)."""
 
@@ -687,6 +714,13 @@ class RoutingSettings(RuntimeSettings):
         default_factory=PhaseRoutingSettings,
         description=(
             "Subtask/phase tier adjustment from tool-call names. Off unless enabled."
+        ),
+    )
+    decision_classifier: DecisionClassifierSettings = Field(
+        default_factory=DecisionClassifierSettings,
+        description=(
+            "Optional Ollama /v1/systemone difficulty hop before local tier pick. "
+            "Off by default (#1292)."
         ),
     )
     # Keep an agent session on the model that planned the task across tool
