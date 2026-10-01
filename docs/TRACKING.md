@@ -5420,6 +5420,16 @@ meters usage/metrics; malformed → 400; Ollama down → 503
 `backend_unavailable`; `systemone.enabled=false` → 501. Docs: ollama.md +
 regenerated http-api.md. Covered by `tests/unit/test_systemone.py`.
 
+### Optional decision-model complexity classifier ([#1292](https://github.com/naveenreddyalka/daari/issues/1292))
+
+<!-- tracking:#1292 -->
+**Status:** Done (2026-10-01). Opt-in `routing.decision_classifier`
+(default off) runs an Ollama `/v1/systemone` difficulty hop before the
+heuristic local tier pick; maps choice/score → L3–L5; timeout/failure
+falls back to heuristics with a degraded event; `daari_meta.decision` +
+trace step record model/answer/tier. Covered by
+`tests/unit/test_decision_classifier.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

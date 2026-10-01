@@ -159,6 +159,18 @@ context-window bump is not pinned. Non-agent requests (no tools, no tool
 history) are unchanged. Trace step and event: `phase_route` (phase, signals,
 delta, from, to).
 
+## Decision-model complexity classifier
+
+`routing.decision_classifier.enabled` (default off) calls Ollama
+`/v1/systemone` (model `routing.decision_classifier.model`, default
+`nimble`) with a difficulty choice before the heuristic local tier pick.
+`choice`/`score` answers map onto L3–L5; on timeout or Ollama failure the
+request continues with today's heuristics and logs
+`decision_classifier_degraded`. Ask turns only unless
+`routing.decision_classifier.agent_turns` is true. Trace step
+`decision_classifier` and `daari_meta.decision` record model, answer,
+complexity, and chosen tier.
+
 ## TTFT-aware local preference
 
 Dry-run the initial local pick without calling Ollama or frontier:

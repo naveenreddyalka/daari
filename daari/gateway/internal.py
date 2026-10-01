@@ -114,6 +114,9 @@ class RequestMeta(BaseModel):
     anthropic_version: str | None = None
     # Sanitized X-Request-ID (or generated) for spend/log correlation (#965).
     request_id: str | None = None
+    # Decision-classifier hint (#1292). Not part of the L0/L1 cache key.
+    decision_tier: str | None = None
+    decision_classifier: dict | None = None
 
 
 class InternalRequest(BaseModel):
@@ -172,6 +175,8 @@ class DaariMeta(BaseModel):
     confirmation_header: str | None = None
     # Product boundary decision (F6): {label, stage, confidence, reason, mode}
     boundary: dict | None = None
+    # Decision-classifier hop (#1292): {model, answer, complexity, tier}.
+    decision: dict | None = None
     # Local pool host that served the request (issue #170).
     backend_id: str | None = None
     # G2: OpenRouter usage.cost, cached prompt tokens, and the client
