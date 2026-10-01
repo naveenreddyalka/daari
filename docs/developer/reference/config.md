@@ -283,6 +283,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_oauth.resource` | str | `''` | Optional public base URL for the resource metadata `resource` field (defaults to the request base URL). Env: DAARI_INTEGRATIONS__MCP_OAUTH__RESOURCE. |
 | `integrations.mcp_oauth.authorization_servers` | list | `[]` | Authorization server issuer URLs advertised in the metadata document. |
 | `integrations.mcp_oauth.scopes_supported` | list | `['mcp']` | OAuth scopes advertised for the MCP resource. |
+| `integrations.mcp_openapi_proxy.enabled` | bool | `False` | When true, POST /mcp/proxy lists and calls tools derived from configured OpenAPI specs. Default false. |
+| `integrations.mcp_openapi_proxy.specs` | list | `[]` | Allowlisted OpenAPI sources (id + openapi_url required). |
 | `enterprise.enabled` | bool | `False` |  |
 | `enterprise.id` | str | None | `None` |  |
 | `enterprise.org_id` | str | None | `None` |  |

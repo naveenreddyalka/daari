@@ -33,6 +33,13 @@ scoped variant) and adds a `WWW-Authenticate` challenge on unauthenticated
 `/mcp` when API-key auth is on. Default off leaves the existing 401 body
 unchanged. Set `authorization_servers` / `scopes_supported` for your IdP.
 
+Opt-in OpenAPI → MCP proxy (`integrations.mcp_openapi_proxy.enabled: true`)
+exposes `POST /mcp/proxy` for schema discovery (`action: tools/list`) and
+HTTP-backed `tools/call` against allowlisted `specs[]` (`id`, `openapi_url`,
+optional `base_url` / `operations`). Spec fetch and call URLs use the same
+SSRF guards as MCP egress (`mcp_egress.allow_private_networks`). Default off
+returns **503**. The route maps to the `mcp` rate-limit family.
+
 Edge proxies can validate a virtual key without the signing secret via RFC 7662
 `POST /introspect` (JSON `{"token":"…"}` or form `token=…`), authenticated with
 a master or virtual key. Active responses include `client_id`, `username`,

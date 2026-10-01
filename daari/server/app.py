@@ -760,6 +760,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(create_gateway_router())
     app.include_router(AnthropicGatewayAdapter().router())
     app.include_router(MCPGatewayAdapter().router())
+    from daari.gateway.mcp_proxy import build_mcp_proxy_router
+
+    app.include_router(build_mcp_proxy_router())
     if resolved.integrations.mcp_oauth.protected_resource:
         from daari.gateway.mcp_oauth import build_mcp_oauth_router
 
