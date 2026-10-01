@@ -5375,6 +5375,13 @@ Covered by `tests/unit/test_backup_cronjob_docs.py`.
 serves auth-agnostic `GET /v1/mcp/registry.json` listing built-in `/mcp` and
 configured `mcp_servers` URLs. Covered by `tests/unit/test_mcp_registry.py`.
 
+### Docs pin: POST /v1/ocr modality ([#1274](https://github.com/naveenreddyalka/daari/issues/1274))
+
+<!-- tracking:#1274 -->
+**Status:** Done (2026-10-01). Hermetic clients-and-gateways.md pin for
+`POST /v1/ocr` / `document` / local vision / L6. Covered by
+`tests/unit/test_ocr_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
