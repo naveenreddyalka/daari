@@ -5361,6 +5361,13 @@ Covered by `tests/unit/test_backup_cronjob_docs.py`.
 `mcp_tool_calls`, and `mcp_tasks`. Covered by
 `tests/unit/test_mcp_stats_docs.py`.
 
+### Doctor tip when OCR knobs unset ([#1276](https://github.com/naveenreddyalka/daari/issues/1276))
+
+<!-- tracking:#1276 -->
+**Status:** Done (2026-10-01). Optional doctor `ocr` tip when both
+`ocr.base_url` and `ocr.vision_model` are empty (L6 fallthrough). Covered by
+`tests/unit/test_doctor_ocr.py` and `test_doctor_health_ocr_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
