@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 
 from daari.cache.exact import ExactCache
 from daari.cache.semantic import SemanticCache
-from daari.config.settings import Settings
-from daari.gateway.internal import InternalRequest, InternalResponse, Message, DaariMeta
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
 from daari.observability.trace import TraceStore
 from daari.router.decision_classifier import (
