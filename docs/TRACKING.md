@@ -5403,6 +5403,13 @@ and `POST /mcp/proxy` catalog rows. Covered by
 `/v1/mcp/registry.json`, and `mcp_servers`. Covered by
 `tests/unit/test_mcp_registry_docs.py`.
 
+### Docs pin: http-api MCP registry row ([#1285](https://github.com/naveenreddyalka/daari/issues/1285))
+
+<!-- tracking:#1285 -->
+**Status:** Done (2026-10-01). Hermetic http-api.md pin for
+`GET /v1/mcp/registry.json` catalog row. Covered by
+`tests/unit/test_http_api_mcp_registry_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
