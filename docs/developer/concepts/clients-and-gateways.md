@@ -69,6 +69,14 @@ mask) with the same frontier gate and governance.
 `POST /v1/images/variations` is the multipart variation path (image file, no
 prompt) under the same L6 governance plane.
 
+`POST /v1/ocr` accepts a LiteLLM/Mistral-shaped body (`document` with
+`document_url` or `image_url`, optional `model`) and returns a structured
+`pages[].markdown` payload. Routing prefers `ocr.base_url` (forward to
+`/ocr`), then `ocr.vision_model` on local Ollama multimodal chat for images,
+else L6 frontier passthrough. When none are configured the route returns
+**503**. Virtual-key auth, spend/usage metering, and the `ocr` rate-limit
+family apply like other non-chat modalities.
+
 `POST /v1/audio/transcriptions` accepts the OpenAI multipart form and forwards
 it to `asr.base_url` when that is set. With no local ASR the route returns
 **501**. `asr.frontier_fallback` defaults to false, so the file is never sent

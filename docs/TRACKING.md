@@ -5323,6 +5323,15 @@ unauthenticated `/mcp` 401 with `WWW-Authenticate`, doctor tip when auth is on
 without metadata. Covered by `tests/unit/test_mcp_oauth_protected_resource.py`
 and `tests/unit/test_mcp_oauth_docs.py`.
 
+### OpenAI-compatible POST /v1/ocr ([#1263](https://github.com/naveenreddyalka/daari/issues/1263))
+
+<!-- tracking:#1263 -->
+**Status:** Done (2026-10-01). `POST /v1/ocr` accepts LiteLLM/Mistral-shaped
+`document` bodies (URL or base64), prefers `ocr.base_url` then
+`ocr.vision_model` (Ollama multimodal) else L6 passthrough, returns structured
+`pages` payloads, meters spend/usage, and uses the `ocr` rate-limit family.
+Covered by `tests/unit/test_ocr.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

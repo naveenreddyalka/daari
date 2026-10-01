@@ -101,7 +101,7 @@ def render_config_reference() -> str:
             "[auth and keys](../guides/configuration/auth-and-keys.md).",
             "",
             "Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / "
-            "`moderations` / `rerank` / `mcp` / `other`) is also not a `rate_limit.*` setting — "
+            "`moderations` / `rerank` / `ocr` / `mcp` / `other`) is also not a `rate_limit.*` setting — "
             "store it on the virtual key as metadata `rate_families` (see auth-and-keys). "
             "Unset families keep global key rpm/tpm only (#1099).",
             "",
