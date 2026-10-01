@@ -5354,6 +5354,13 @@ existing SSRF egress guards and the `mcp` rate family. Covered by
 `CronJob` / `backup.enabled` / `backup.schedule` / `--encrypt openssl`.
 Covered by `tests/unit/test_backup_cronjob_docs.py`.
 
+### Docs pin: mcp_tool_calls / mcp_tasks stats ([#1257](https://github.com/naveenreddyalka/daari/issues/1257))
+
+<!-- tracking:#1257 -->
+**Status:** Done (2026-10-01). Hermetic mcp.md pin for `/v1/daari/stats`,
+`mcp_tool_calls`, and `mcp_tasks`. Covered by
+`tests/unit/test_mcp_stats_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
