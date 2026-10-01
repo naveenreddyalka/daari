@@ -5382,6 +5382,13 @@ configured `mcp_servers` URLs. Covered by `tests/unit/test_mcp_registry.py`.
 `POST /v1/ocr` / `document` / local vision / L6. Covered by
 `tests/unit/test_ocr_docs.py`.
 
+### Docs pin: OpenAPI /mcp/proxy cues ([#1275](https://github.com/naveenreddyalka/daari/issues/1275))
+
+<!-- tracking:#1275 -->
+**Status:** Done (2026-10-01). Hermetic mcp.md pin for `/mcp/proxy`,
+`mcp_openapi_proxy`, `tools/list`, and SSRF / `allow_private_networks`.
+Covered by `tests/unit/test_mcp_openapi_proxy_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
