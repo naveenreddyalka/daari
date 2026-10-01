@@ -44,6 +44,30 @@ routing:
 
 `GET /ready` succeeds; chat completions return local tiers. `daari_meta.backend_id` names the host that served.
 
+## Decision models (`POST /v1/systemone`)
+
+Ollama 0.35+ exposes TypeSafe/Jev-style decision models at `/v1/systemone`.
+daari proxies the same shape through the gateway so clients keep API-key auth,
+spend metering, and `daari_meta`:
+
+```bash
+curl -s http://127.0.0.1:11435/v1/systemone -d '{
+  "model": "nimble",
+  "state": "Checkout returns 500 since 9am.",
+  "questions": {
+    "label": {
+      "type": "choice",
+      "instructions": "Which label fits?",
+      "criteria": {"billing": "Payments", "bug": "Errors", "other": "Else"}
+    }
+  }
+}'
+```
+
+Opt out with `systemone.enabled: false` (returns 501). Upstream is
+`ollama.base_url`; when Ollama is down the route returns typed
+`backend_unavailable` (503).
+
 ## Next
 
 → [MLX](mlx.md) · [Docker Compose](../operations/docker-compose.md)

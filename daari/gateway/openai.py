@@ -1247,6 +1247,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             parsed = ModerationsRequest.model_validate(body)
             return await handle_moderations(request, parsed)
 
+        @router.post("/v1/systemone", response_model=None)
+        async def systemone(body: dict[str, Any], request: Request) -> Any:
+            """Ollama decision-model facade (TypeSafe/Jev-shaped) (#1291)."""
+            from daari.gateway.systemone import handle_systemone, parse_systemone_body
+            from fastapi.responses import JSONResponse
+
+            parsed = parse_systemone_body(body)
+            if isinstance(parsed, JSONResponse):
+                return parsed
+            return await handle_systemone(request, parsed)
+
         @router.post("/v1/ocr", response_model=None)
         async def ocr(body: dict[str, Any], request: Request) -> Any:
             """LiteLLM/Mistral-shaped OCR via local multimodal or L6 (#1263)."""

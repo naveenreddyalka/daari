@@ -11,7 +11,7 @@ TTFT_BUCKETS_MS: tuple[float, ...] = LATENCY_BUCKETS_MS
 
 # Prometheus modality label values (#1106).
 MODALITIES = frozenset(
-    {"chat", "embed", "tts", "asr", "images", "moderations", "rerank"}
+    {"chat", "embed", "tts", "asr", "images", "moderations", "rerank", "systemone"}
 )
 
 # GenAI semantic-convention operation.name per modality.
@@ -23,6 +23,7 @@ GENAI_OPERATION_NAMES: dict[str, str] = {
     "images": "image_generation",
     "moderations": "moderation",
     "rerank": "rerank",
+    "systemone": "systemone",
 }
 
 
@@ -43,6 +44,8 @@ def infer_modality(tier: str, modality: str | None = None) -> str:
         return "moderations"
     if t == "rerank":
         return "rerank"
+    if t == "systemone":
+        return "systemone"
     return "chat"
 
 

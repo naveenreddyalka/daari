@@ -5410,6 +5410,16 @@ and `POST /mcp/proxy` catalog rows. Covered by
 `GET /v1/mcp/registry.json` catalog row. Covered by
 `tests/unit/test_http_api_mcp_registry_docs.py`.
 
+### POST /v1/systemone decision-model facade ([#1291](https://github.com/naveenreddyalka/daari/issues/1291))
+
+<!-- tracking:#1291 -->
+**Status:** Done (2026-10-01). Opt-in (default on) `POST /v1/systemone`
+proxies Ollama 0.35+ TypeSafe/Jev decision models via `ollama.base_url`;
+same `/v1/*` auth; preserves `answers`/`usage` and adds `daari_meta`;
+meters usage/metrics; malformed → 400; Ollama down → 503
+`backend_unavailable`; `systemone.enabled=false` → 501. Docs: ollama.md +
+regenerated http-api.md. Covered by `tests/unit/test_systemone.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

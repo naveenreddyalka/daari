@@ -250,6 +250,22 @@ class OllamaSettings(BaseModel):
     base_url: str = "http://127.0.0.1:11434"
 
 
+class SystemOneSettings(BaseModel):
+    """Ollama decision-model facade at POST /v1/systemone (#1291).
+
+    Proxies TypeSafe/Jev-shaped ``{model, state, questions}`` to Ollama 0.35+
+    ``/v1/systemone``. Default on; set ``enabled=false`` to return 501.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "When true, POST /v1/systemone proxies to ollama.base_url. "
+            "When false, the route returns 501 not_implemented."
+        ),
+    )
+
+
 class MLXSettings(BaseModel):
     """Optional MLX backend (issue #97): serve tiers via mlx_lm.server."""
 
@@ -1730,6 +1746,7 @@ class Settings(BaseSettings):
     rate_limit: RateLimitSettings = Field(default_factory=RateLimitSettings)
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    systemone: SystemOneSettings = Field(default_factory=SystemOneSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
     asr: AsrSettings = Field(default_factory=AsrSettings)
     ocr: OcrSettings = Field(default_factory=OcrSettings)
