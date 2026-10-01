@@ -1521,6 +1521,42 @@ class McpOauthSettings(BaseModel):
     )
 
 
+class McpOpenApiSpecSettings(BaseModel):
+    """One allowlisted OpenAPI document for /mcp/proxy (#1264)."""
+
+    id: str = Field(description="Stable id clients pass as spec_id.")
+    openapi_url: str = Field(
+        default="",
+        description="http(s) URL of the OpenAPI 3 JSON/YAML document (SSRF-checked).",
+    )
+    base_url: str = Field(
+        default="",
+        description=(
+            "Optional API root for tools/call. When empty, uses OpenAPI servers[0].url."
+        ),
+    )
+    operations: list[str] = Field(
+        default_factory=list,
+        description="Optional operationId allowlist; empty = all operations.",
+    )
+
+
+class McpOpenApiProxySettings(BaseModel):
+    """Opt-in OpenAPI → MCP tool catalog / call proxy (#1264). Default off."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, POST /mcp/proxy lists and calls tools derived from "
+            "configured OpenAPI specs. Default false."
+        ),
+    )
+    specs: list[McpOpenApiSpecSettings] = Field(
+        default_factory=list,
+        description="Allowlisted OpenAPI sources (id + openapi_url required).",
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -1590,6 +1626,13 @@ class IntegrationsSettings(BaseModel):
         description=(
             "RFC 9728 OAuth protected-resource discovery for MCP clients (#1262). "
             "Off by default."
+        ),
+    )
+    mcp_openapi_proxy: McpOpenApiProxySettings = Field(
+        default_factory=McpOpenApiProxySettings,
+        description=(
+            "Opt-in OpenAPI → MCP tools proxy at POST /mcp/proxy (#1264). "
+            "Off by default; specs are allowlisted and SSRF-checked."
         ),
     )
 

@@ -5332,6 +5332,14 @@ and `tests/unit/test_mcp_oauth_docs.py`.
 `pages` payloads, meters spend/usage, and uses the `ocr` rate-limit family.
 Covered by `tests/unit/test_ocr.py`.
 
+### MCP OpenAPI /mcp/proxy schema discovery ([#1264](https://github.com/naveenreddyalka/daari/issues/1264))
+
+<!-- tracking:#1264 -->
+**Status:** Done (2026-10-01). Opt-in `integrations.mcp_openapi_proxy` exposes
+`POST /mcp/proxy` for OpenAPI→MCP `tools/list` and proxied `tools/call` under
+existing SSRF egress guards and the `mcp` rate family. Covered by
+`tests/unit/test_mcp_openapi_proxy.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

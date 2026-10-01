@@ -17,6 +17,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/health` | Health |
 | `POST` | `/introspect` | Introspect |
 | `POST` | `/mcp` | Mcp Jsonrpc |
+| `POST` | `/mcp/proxy` | Mcp Proxy |
 | `GET` | `/metrics` | Prometheus Metrics |
 | `GET` | `/ready` | Ready |
 | `POST` | `/v1/audio/speech` | Audio Speech |
