@@ -5368,6 +5368,13 @@ Covered by `tests/unit/test_backup_cronjob_docs.py`.
 `ocr.base_url` and `ocr.vision_model` are empty (L6 fallthrough). Covered by
 `tests/unit/test_doctor_ocr.py` and `test_doctor_health_ocr_docs.py`.
 
+### MCP Registry GET /v1/mcp/registry.json ([#1277](https://github.com/naveenreddyalka/daari/issues/1277))
+
+<!-- tracking:#1277 -->
+**Status:** Done (2026-10-01). Opt-in `integrations.mcp_registry.enabled`
+serves auth-agnostic `GET /v1/mcp/registry.json` listing built-in `/mcp` and
+configured `mcp_servers` URLs. Covered by `tests/unit/test_mcp_registry.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

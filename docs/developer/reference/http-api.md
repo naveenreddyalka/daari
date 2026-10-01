@@ -55,6 +55,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/images/generations` | Images Generations |
 | `POST` | `/v1/images/variations` | Images Variations |
 | `POST` | `/v1/mcp/query` | Mcp Query |
+| `GET` | `/v1/mcp/registry.json` | Mcp Registry |
 | `POST` | `/v1/messages` | Messages |
 | `POST` | `/v1/messages/count_tokens` | Count Tokens |
 | `GET` | `/v1/messages/health` | Health |

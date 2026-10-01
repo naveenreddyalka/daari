@@ -247,6 +247,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/v1/messages/health",
             "/.well-known/oauth-protected-resource",
             "/.well-known/oauth-protected-resource/mcp",
+            "/v1/mcp/registry.json",
         }
         if not master_keys:
             open_paths.add("/metrics")
@@ -763,6 +764,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from daari.gateway.mcp_proxy import build_mcp_proxy_router
 
     app.include_router(build_mcp_proxy_router())
+    from daari.gateway.mcp_registry import build_mcp_registry_router
+
+    app.include_router(build_mcp_registry_router(resolved))
     if resolved.integrations.mcp_oauth.protected_resource:
         from daari.gateway.mcp_oauth import build_mcp_oauth_router
 

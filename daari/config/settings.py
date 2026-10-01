@@ -1557,6 +1557,28 @@ class McpOpenApiProxySettings(BaseModel):
     )
 
 
+class McpRegistrySettings(BaseModel):
+    """Opt-in MCP Registry advertisement at GET /v1/mcp/registry.json (#1277)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, serve GET /v1/mcp/registry.json listing the built-in "
+            "`/mcp` ingress and configured integrations.mcp_servers URLs. "
+            "Advertisement-only; /mcp still enforces API-key / allowlists. "
+            "Default false returns 404."
+        ),
+    )
+    public_base_url: str = Field(
+        default="",
+        description=(
+            "Optional public base URL for the built-in daari server entry "
+            "(defaults to the request base URL). "
+            "Env: DAARI_INTEGRATIONS__MCP_REGISTRY__PUBLIC_BASE_URL."
+        ),
+    )
+
+
 class IntegrationsSettings(BaseModel):
     sourcegraph: IntegrationEndpointSettings = Field(
         default_factory=lambda: IntegrationEndpointSettings(
@@ -1633,6 +1655,13 @@ class IntegrationsSettings(BaseModel):
         description=(
             "Opt-in OpenAPI → MCP tools proxy at POST /mcp/proxy (#1264). "
             "Off by default; specs are allowlisted and SSRF-checked."
+        ),
+    )
+    mcp_registry: McpRegistrySettings = Field(
+        default_factory=McpRegistrySettings,
+        description=(
+            "Opt-in MCP Registry advertisement at GET /v1/mcp/registry.json "
+            "(#1277). Off by default."
         ),
     )
 

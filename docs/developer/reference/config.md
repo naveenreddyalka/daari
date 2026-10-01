@@ -285,6 +285,8 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.mcp_oauth.scopes_supported` | list | `['mcp']` | OAuth scopes advertised for the MCP resource. |
 | `integrations.mcp_openapi_proxy.enabled` | bool | `False` | When true, POST /mcp/proxy lists and calls tools derived from configured OpenAPI specs. Default false. |
 | `integrations.mcp_openapi_proxy.specs` | list | `[]` | Allowlisted OpenAPI sources (id + openapi_url required). |
+| `integrations.mcp_registry.enabled` | bool | `False` | When true, serve GET /v1/mcp/registry.json listing the built-in `/mcp` ingress and configured integrations.mcp_servers URLs. Advertisement-only; /mcp still enforces API-key / allowlists. Default false returns 404. |
+| `integrations.mcp_registry.public_base_url` | str | `''` | Optional public base URL for the built-in daari server entry (defaults to the request base URL). Env: DAARI_INTEGRATIONS__MCP_REGISTRY__PUBLIC_BASE_URL. |
 | `enterprise.enabled` | bool | `False` |  |
 | `enterprise.id` | str | None | `None` |  |
 | `enterprise.org_id` | str | None | `None` |  |
