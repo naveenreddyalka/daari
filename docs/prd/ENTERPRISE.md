@@ -11,31 +11,33 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-09-30)
+## Where daari stands (verified in-tree, 2026-10-01)
 
-**Loop velocity.** Yesterday’s P1/P2 wave merged: Anthropic `output_config.effort`,
-MCP activity + force-abort, Responses server-side MCP, Method/Name mismatch
-reject, per-key MCP client allowlists, scheduled encrypted backups, spend
-`--by-tool`. Hot-reload `config.yaml` remains the only mid-priority feature
-still in flight. Tonight’s backlog refill targets client-contract honesty and
-the LiteLLM/Portkey MCP enterprise bar that stayed on watch.
+**Loop velocity.** Yesterday’s P1/P2 wave merged end-to-end: Anthropic
+`output_config.format`, Messages server-side MCP (`mcp_servers` /
+`mcp_toolset`), RFC 9728 protected-resource discovery, native `POST /v1/ocr`,
+OpenAPI `/mcp/proxy`, and opt-in `GET /v1/mcp/registry.json`. Hot-reload
+`config.yaml` remains in flight. Per-key tool-name allowlists for Messages
+`mcp_servers` is parked (needs a longer session). Tonight’s refill targets
+decision-model surfaces (Ollama systemone / Jev) and MCP OAuth depth past
+discovery.
 
-**Outward.** LiteLLM **v1.103.1** stable + **v1.104.0-rc.2** / **v1.105.0-dev.1**:
-MCP OAuth discovery + registry, native OCR default, `/mcp/proxy` schema
-discovery, tool-permission guardrails with param patterns. Portkey **v2.20**
-unified gateway + server-side MCP on Responses *and* Messages. Kong AI Gateway
-**2.1+** still the 2026-07-28 Method/Name / `server/discover` reference (daari
-parity shipped). Anthropic stabilized structured outputs under
-`output_config.format` (effort already mapped). Ollama **0.35.0** adds
-`/v1/systemone` decision models; **0.35.1-rc0** / **0.40.0-rc0** pre. vLLM
-**0.30.0**; llama.cpp **0.5.0** / rolling builds.
+**Outward.** LiteLLM **v1.103.0** (2026-09-27): config-file ownership, Fuse +
+TypeSafe JEV routing, MCP client allowlists, RFC 8693 token exchange, access-
+group / project budget hardening. Portkey: Messages↔Responses routing +
+server-side MCP GA path; Agent Gateway CRUD/RBAC. Kong AI Gateway **2.x /
+3.12+**: MCP OAuth2 resource-server, upstream MCP aggregator, REST→MCP.
+Ollama **0.35.0** GA decision models (`POST /v1/systemone`); **0.40.0-rc0**
+MLX-default on Apple Silicon. OpenRouter **Jev Router** (task-difficulty
+routing). vLLM Semantic Router continues MoM signal routing (watch only).
 
-**Inward theme: structured-output honesty + MCP enterprise depth.**
-`output_config.effort` ships, but `output_config.format` is still ignored for
-local `json_schema` (legacy `output_format` only). Messages has no server-side
-MCP (`mcp_servers` / `mcp_toolset`); Portkey does. No RFC 9728 protected-resource
-metadata for `/mcp`. No native `/v1/ocr`. No OpenAPI→MCP proxy discovery.
-Ollama decision models and A2A/admin UI stay watch.
+**Inward theme: decision-model control plane + MCP OAuth completeness.**
+Discovery advertises protected-resource metadata, but clients still lack a
+local authorize/token mint. `/mcp` tools/list is first-party only — egress
+`mcp_servers` are Responses/Messages/`/mcp/proxy` paths, not a Kong-style
+aggregate ingress catalog. No `/v1/systemone` facade; complexity routing is
+still heuristic. `web_search_options` is noted as unsupported locally and
+forwarded on L6, but local tiers can still answer without searching.
 
 ---
 
@@ -43,38 +45,39 @@ Ollama decision models and A2A/admin UI stay watch.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 1 | **`output_config.format` structured outputs** — local json_schema only reads legacy `output_format` | 5 | 1 | Anthropic stable + LiteLLM mapping | Local L3–L5 schema answers without frontier | Filed — P1 ([#1260](https://github.com/naveenreddyalka/daari/issues/1260)) |
-| 2 | **Messages server-side MCP** — `mcp_servers` + `mcp_toolset` ignored; Responses-only today | 5 | 3 | Portkey Messages + Responses | Reuse egress SSRF + metering on Claude path | Filed — P2 ([#1261](https://github.com/naveenreddyalka/daari/issues/1261)) |
-| 3 | **RFC 9728 protected-resource for `/mcp`** — no OAuth discovery / WWW-Authenticate | 4 | 3 | LiteLLM MCP OAuth | Local IdP metadata; Cursor/Desktop onboarding | Filed — P2 ([#1262](https://github.com/naveenreddyalka/daari/issues/1262)) |
-| 4 | **Native `POST /v1/ocr`** — images exist; no OCR modality | 4 | 3 | LiteLLM OCR default | Local vision first, L6 OCR fallback | Filed — P2 ([#1263](https://github.com/naveenreddyalka/daari/issues/1263)) |
-| 5 | **`/mcp/proxy` OpenAPI schema discovery** — tools only from first-party + egress ids | 3 | 2 | LiteLLM / Kong conversion-listener | Private OpenAPI → MCP under SSRF policy | Filed — P2 ([#1264](https://github.com/naveenreddyalka/daari/issues/1264)) |
-| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM / cloud CPs | Open — prior cycle | Open |
-| 7 | Ollama `/v1/systemone` decision facade; MCP registry.json; A2A; admin UI | 2–4 | 2–5 | Ollama / LiteLLM / Portkey | Demand-triggered | Watch |
+| 1 | **`POST /v1/systemone` facade** — no authenticated decision-model surface | 4 | 2 | Ollama 0.35 + OpenRouter Jev | Metered local typed decisions under daari keys | Filed — P2 ([#1291](https://github.com/naveenreddyalka/daari/issues/1291)) |
+| 2 | **Decision-model complexity classifier** — heuristics only; LiteLLM Fuse/JEV | 5 | 3 | LiteLLM 1.103 Fuse/JEV; OpenRouter Jev | $0 private difficulty hop before L3–L6 | Filed — P2 ([#1292](https://github.com/naveenreddyalka/daari/issues/1292)) |
+| 3 | **MCP OAuth authorize/token mint** — discovery only; no local AS | 4 | 3 | LiteLLM OBO; Kong MCP OAuth2 | IDE MCP onboarding without cloud IdP | Filed — P2 ([#1293](https://github.com/naveenreddyalka/daari/issues/1293)) |
+| 4 | **Aggregate `/mcp` tools/list from `mcp_servers`** — ingress catalog is first-party only | 4 | 2 | Kong MCP aggregator | One local catalog under SSRF + policy | Filed — P2 ([#1294](https://github.com/naveenreddyalka/daari/issues/1294)) |
+| 5 | **`web_search_options` silent local drop** — note only; no escalate/fail-closed | 4 | 2 | OpenAI native + cloud gateways | Client-contract honesty; L6 when search required | Filed — P2 ([#1295](https://github.com/naveenreddyalka/daari/issues/1295)) |
+| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — prior cycle | Open |
+| 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM tool entitlements | Parked (needs ≥60m session) | Parked |
+| 8 | Full OBO/DCR; A2A; admin UI; Realtime/WS | 2–4 | 3–5 | LiteLLM / Portkey / Kong | Demand-triggered | Watch |
 
-Shipped since 2026-09-29 scan — do not re-file: Anthropic `output_config.effort`;
-MCP in-flight activity + admin force-abort; Responses `type:mcp` server-side
-execution; `Mcp-Method`/`Mcp-Name` body mismatch reject; per-key/team MCP client
-allowlists; Helm scheduled encrypted backups; `daari spend report --by-tool`.
-Still verified fine: `server/discover` + `_meta`; MCP egress SSRF / OTel / retry /
-breaker; refreshable `secret://`; Helm `header_policy`; tools/call metering +
-`mcp` rate family; tool allow/deny + audit; semantic tool search; ttlMs/cacheScope;
-MCP guardrails; W3C egress trace; oauth `secret://` re-mint; encrypt↔decrypt
-restore; lifetime + weekly/rpw budgets.
+Shipped since 2026-09-30 scan — do not re-file: Anthropic `output_config.format`;
+Messages server-side MCP; RFC 9728 protected-resource; `POST /v1/ocr`; OpenAPI
+`/mcp/proxy`; `GET /v1/mcp/registry.json`. Still verified fine: effort mapping;
+MCP activity/abort; Responses `type:mcp`; Method/Name mismatch reject; client
+allowlists; Helm encrypted backups; spend `--by-tool`; `server/discover` +
+`_meta`; egress SSRF / OTel / retry / breaker; refreshable `secret://`;
+header_policy; tools/call metering; semantic tool search; ttlMs/cacheScope;
+MCP guardrails; W3C egress trace; model_group budgets; session affinity;
+Prometheus `/metrics`; agent prefix L0 + opt-in L1.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Structured-output honesty** — honor `output_config.format` (row 1) so modern
-   Anthropic SDKs get schema-constrained local answers, not silent drops.
-2. **Messages MCP parity** — server-side `mcp_servers` / `mcp_toolset` (row 2)
-   matching Portkey on the Claude Code path.
-3. **MCP OAuth discovery** — RFC 9728 protected-resource + challenge (row 3)
-   so IDE MCP clients can onboard without inventing API-key UX.
-4. **Document modality** — native `/v1/ocr` (row 4) beside images for local-first
-   doc agents.
-5. **OpenAPI→MCP proxy** (row 5) + finish hot-reload (row 6); then systemone /
-   registry / A2A (row 7) on buyer demand.
+1. **Decision-model control plane** — `/v1/systemone` facade (row 1) then optional
+   classifier for tier pick (row 2), matching Jev/Fuse without leaving the laptop.
+2. **MCP OAuth completeness** — authorize/token mint after RFC 9728 (row 3) so
+   Cursor/Desktop can finish the challenge locally.
+3. **Unified MCP ingress catalog** — aggregate egress tools on `/mcp` (row 4)
+   under existing governance.
+4. **Client-contract honesty** — escalate or fail-closed on `web_search_options`
+   (row 5); finish hot-reload (row 6).
+5. **Governance depth** — unpark per-key tool-name allowlists (row 7); OBO/DCR /
+   A2A only on buyer demand (row 8).
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, admin UI, Realtime/WS) stay
 deferred until buyer demand.
@@ -82,6 +85,14 @@ deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-01 (decision models + MCP OAuth depth)** — Prior-cycle format /
+  Messages MCP / RFC 9728 / OCR / `/mcp/proxy` / registry.json merged;
+  hot-reload still open; tool-name allowlist parked. Outward: LiteLLM 1.103
+  Fuse/JEV + token exchange; Ollama 0.35 systemone GA; OpenRouter Jev Router;
+  Kong MCP aggregator/OAuth. Filed systemone facade, decision classifier, MCP
+  token mint, `/mcp` egress aggregate, web_search escalate (P2s). OBO/DCR /
+  A2A held as watch.
 
 - **2026-09-30 (structured outputs + MCP enterprise depth)** — Prior-cycle
   effort / MCP ops / Responses MCP / Method-Name / allowlists / backups /
@@ -98,6 +109,6 @@ deferred until buyer demand.
   `--by-tool` filed then merged 09-29/09-30.
 
 - **2026-09-28 → 09-15 and earlier** — Condensed: 2026-07-28 fidelity, MCP
-  gateway enterprise depth, fleet-backend completeness, governance,
+  gateway enterprise depth, gateway-backend completeness, governance,
   agent-surface fidelity, Responses honesty, images/identity/FinOps, non-chat
   endpoint parity, Apache 2.0, this PRD's creation (2026-08-28).
