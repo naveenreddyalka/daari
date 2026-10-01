@@ -5347,6 +5347,13 @@ existing SSRF egress guards and the `mcp` rate family. Covered by
 `Mcp-Name` / `HEADER_MISMATCH` / `-32023`. Covered by
 `tests/unit/test_mcp_header_match_docs.py`.
 
+### Docs pin: Helm scheduled encrypted backups ([#1256](https://github.com/naveenreddyalka/daari/issues/1256))
+
+<!-- tracking:#1256 -->
+**Status:** Done (2026-10-01). Hermetic backup-restore.md pin for Helm
+`CronJob` / `backup.enabled` / `backup.schedule` / `--encrypt openssl`.
+Covered by `tests/unit/test_backup_cronjob_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
