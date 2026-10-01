@@ -5340,6 +5340,13 @@ Covered by `tests/unit/test_ocr.py`.
 existing SSRF egress guards and the `mcp` rate family. Covered by
 `tests/unit/test_mcp_openapi_proxy.py`.
 
+### Docs pin: Mcp-Method/Name HEADER_MISMATCH ([#1255](https://github.com/naveenreddyalka/daari/issues/1255))
+
+<!-- tracking:#1255 -->
+**Status:** Done (2026-10-01). Hermetic mcp.md pin for `Mcp-Method` /
+`Mcp-Name` / `HEADER_MISMATCH` / `-32023`. Covered by
+`tests/unit/test_mcp_header_match_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
