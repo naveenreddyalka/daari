@@ -54,6 +54,7 @@ def run_doctor(
     results.append(_check_asr(cfg, httpx_client))
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_images_generations(cfg))
+    results.append(_check_ocr(cfg))
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -488,6 +489,37 @@ def _check_responses_stream_resume(
         detail=(
             f"OpenAPI GET {path} incomplete stream resume docs "
             f"(missing {', '.join(missing)})"
+        ),
+        optional=True,
+    )
+
+
+def _check_ocr(settings: Settings) -> CheckResult:
+    """Tip when local OCR knobs are unset so /v1/ocr falls through to L6 (#1276)."""
+    ocr = settings.ocr
+    base = str(getattr(ocr, "base_url", "") or "").strip()
+    vision = str(getattr(ocr, "vision_model", "") or "").strip()
+    if base:
+        return CheckResult(
+            name="ocr",
+            ok=True,
+            detail=f"ocr.base_url set ({base.rstrip('/')})",
+            optional=True,
+        )
+    if vision:
+        return CheckResult(
+            name="ocr",
+            ok=True,
+            detail=f"ocr.vision_model set ({vision})",
+            optional=True,
+        )
+    return CheckResult(
+        name="ocr",
+        ok=False,
+        detail=(
+            "ocr.base_url and ocr.vision_model unset — POST /v1/ocr falls through "
+            "to frontier L6; set a local OCR root or multimodal vision model "
+            "(see clients-and-gateways.md / config.md)"
         ),
         optional=True,
     )
