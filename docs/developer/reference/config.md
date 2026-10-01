@@ -53,6 +53,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `asr.base_url` | str | `''` | OpenAI-compatible ASR base URL, including /v1 (vLLM, whisper.cpp server, or another local pool member). Empty leaves POST /v1/audio/transcriptions unconfigured. |
 | `asr.model` | str | `''` | Optional model name sent to the ASR server. When set, it replaces the client model so a local server always sees its own id. |
 | `asr.frontier_fallback` | bool | `False` | When true and asr.base_url is empty, forward one transcription to the configured frontier base if frontier.enabled and a key is present. Default false so audio is never uploaded to a cloud endpoint implicitly. |
+| `ocr.base_url` | str | `''` | OpenAI-/Mistral-compatible OCR API root, including /v1. When set, POST /v1/ocr forwards to {base_url}/ocr. Empty falls through to ocr.vision_model or frontier L6. |
+| `ocr.model` | str | `''` | Optional default OCR model id when the client omits model. Used for local base_url and frontier passthrough. |
+| `ocr.vision_model` | str | `''` | When base_url is empty, run OCR via local Ollama multimodal chat at ollama.base_url using this vision model (image_url / image data URIs). Empty skips the local vision path. |
 | `tts.base_url` | str | `''` | OpenAI-compatible TTS base URL, including /v1 (openedai-speech, Kokoro-FastAPI, or similar). Empty leaves POST /v1/audio/speech unconfigured. |
 | `tts.model` | str | `''` | Optional model name sent to the TTS server. When set, it replaces the client model so a local server always sees its own id. |
 | `tts.voice` | str | `''` | Optional default voice when the request omits voice (OpenAI alloy/echo/… or the local server's voice id). |
@@ -334,4 +337,4 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 
 Per-key and per-team `rpd` (requests per UTC day, `0` = unlimited) is not a `rate_limit.*` setting. Set it on the key or team (`daari keys create/update --rpd`, `daari keys team-create/update --rpd`). See [auth and keys](../guides/configuration/auth-and-keys.md).
 
-Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / `moderations` / `rerank` / `mcp` / `other`) is also not a `rate_limit.*` setting — store it on the virtual key as metadata `rate_families` (see auth-and-keys). Unset families keep global key rpm/tpm only (#1099).
+Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / `moderations` / `rerank` / `ocr` / `mcp` / `other`) is also not a `rate_limit.*` setting — store it on the virtual key as metadata `rate_families` (see auth-and-keys). Unset families keep global key rpm/tpm only (#1099).

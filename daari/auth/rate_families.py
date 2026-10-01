@@ -12,13 +12,25 @@ from typing import Any
 
 # Stable family names used in counter keys and docs.
 RATE_FAMILIES = frozenset(
-    {"chat", "embeddings", "images", "audio", "moderations", "rerank", "mcp", "other"}
+    {
+        "chat",
+        "embeddings",
+        "images",
+        "audio",
+        "moderations",
+        "rerank",
+        "ocr",
+        "mcp",
+        "other",
+    }
 )
 
 
 def rate_limit_family(path: str) -> str:
     """Map a request path to a modality family."""
     p = (path or "").split("?", 1)[0]
+    if p == "/v1/ocr" or p.startswith("/v1/ocr/"):
+        return "ocr"
     if p == "/v1/moderations" or p.startswith("/v1/moderations/") or p == "/v1/messages/moderations":
         return "moderations"
     if (

@@ -1247,6 +1247,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             parsed = ModerationsRequest.model_validate(body)
             return await handle_moderations(request, parsed)
 
+        @router.post("/v1/ocr", response_model=None)
+        async def ocr(body: dict[str, Any], request: Request) -> Any:
+            """LiteLLM/Mistral-shaped OCR via local multimodal or L6 (#1263)."""
+            from daari.gateway.ocr import OcrRequest, handle_ocr
+
+            parsed = OcrRequest.model_validate(body)
+            return await handle_ocr(request, parsed)
+
         @router.post("/v1/embeddings")
         async def embeddings(
             body: EmbeddingsRequest,

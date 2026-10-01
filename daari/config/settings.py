@@ -293,6 +293,38 @@ class AsrSettings(BaseModel):
     )
 
 
+class OcrSettings(BaseModel):
+    """Local-first OCR for POST /v1/ocr (#1263).
+
+    Prefer a dedicated OpenAI-/Mistral-compatible OCR root (``base_url``), else
+    an Ollama multimodal ``vision_model``, else L6 frontier passthrough.
+    """
+
+    base_url: str = Field(
+        default="",
+        description=(
+            "OpenAI-/Mistral-compatible OCR API root, including /v1. When set, "
+            "POST /v1/ocr forwards to {base_url}/ocr. Empty falls through to "
+            "ocr.vision_model or frontier L6."
+        ),
+    )
+    model: str = Field(
+        default="",
+        description=(
+            "Optional default OCR model id when the client omits model. Used "
+            "for local base_url and frontier passthrough."
+        ),
+    )
+    vision_model: str = Field(
+        default="",
+        description=(
+            "When base_url is empty, run OCR via local Ollama multimodal chat "
+            "at ollama.base_url using this vision model (image_url / image "
+            "data URIs). Empty skips the local vision path."
+        ),
+    )
+
+
 class TtsSettings(BaseModel):
     """Local OpenAI-compatible text-to-speech (#847).
 
@@ -1628,6 +1660,7 @@ class Settings(BaseSettings):
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
     asr: AsrSettings = Field(default_factory=AsrSettings)
+    ocr: OcrSettings = Field(default_factory=OcrSettings)
     tts: TtsSettings = Field(default_factory=TtsSettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)
     routing: RoutingSettings = Field(default_factory=RoutingSettings)
