@@ -5551,6 +5551,17 @@ auth-and-keys.md, config.md, doctor-health.md. Covered by
 `tests/unit/test_refuse_weak_master_key.py`.
 
 
+### Doctor tip when decision_classifier model missing from Ollama ([#1321](https://github.com/naveenreddyalka/daari/issues/1321))
+
+<!-- tracking:#1321 -->
+**Status:** Done (2026-10-02). When `routing.decision_classifier.enabled` is
+true, doctor probes Ollama `/api/tags` for `routing.decision_classifier.model`
+(default `nimble`); missing → optional tip with `ollama pull <model>`. Quiet
+when the tag is present or Ollama is unreachable (existing `ollama` check).
+Docs: doctor-health.md. Covered by
+`tests/unit/test_doctor_decision_classifier_model.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
