@@ -69,6 +69,9 @@ def run_doctor(
     aggregate_tip = _check_mcp_aggregate_egress(cfg)
     if aggregate_tip is not None:
         results.append(aggregate_tip)
+    local_as_tip = _check_mcp_oauth_local_as(cfg)
+    if local_as_tip is not None:
+        results.append(local_as_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2123,6 +2126,26 @@ def _check_mcp_aggregate_egress(settings: Settings) -> CheckResult | None:
         detail=(
             "integrations.mcp_aggregate_egress.enabled merges mcp_servers into "
             "/mcp tools/list as {server_id}__{tool}; policy and SSRF still apply"
+        ),
+        optional=True,
+    )
+
+
+def _check_mcp_oauth_local_as(settings: Settings) -> CheckResult | None:
+    """Informational tip when local MCP OAuth token mint is enabled (#1312).
+
+    Absent when ``local_as`` is false (default). When enabled, remind operators
+    that ``POST /oauth/token`` mints Bearers for ``/mcp``.
+    """
+    mcp_oauth = getattr(settings.integrations, "mcp_oauth", None)
+    if mcp_oauth is None or not bool(getattr(mcp_oauth, "local_as", False)):
+        return None
+    return CheckResult(
+        name="mcp_oauth_local_as",
+        ok=True,
+        detail=(
+            "integrations.mcp_oauth.local_as mints tokens via POST /oauth/token; "
+            "/mcp still requires a Bearer"
         ),
         optional=True,
     )

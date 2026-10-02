@@ -46,6 +46,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `header_policy` | Optional: `server.header_policy.enabled` is true but `required` / `deny` / `allow` are empty — enable at least one rule or set `enabled: false`; see [auth-and-keys.md](../configuration/auth-and-keys.md#header-policy-pre-auth) |
 | doctor `mcp_registry` | Optional: when `integrations.mcp_registry.enabled` is true — tip that `GET /v1/mcp/registry.json` is advertised (auth-agnostic) while `/mcp` still enforces API-key / allowlists |
 | doctor `mcp_aggregate_egress` | Optional: when `integrations.mcp_aggregate_egress.enabled` is true — tip that egress `mcp_servers` merge into `/mcp` tools/list as `{server_id}__{tool}` with policy/SSRF still enforced |
+| doctor `mcp_oauth_local_as` | Optional: when `integrations.mcp_oauth.local_as` is true — tip that `POST /oauth/token` mints Bearers while `/mcp` still requires auth |
 
 ## Next
 
