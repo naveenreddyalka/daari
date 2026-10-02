@@ -5516,6 +5516,15 @@ and `web_search_unavailable` error type/code. Covered by
 still requires a Bearer; absent when disabled. Docs: doctor-health.md.
 Covered by `tests/unit/test_doctor_mcp_oauth_local_as.py`.
 
+### Doctor tip when decision_classifier.enabled ([#1313](https://github.com/naveenreddyalka/daari/issues/1313))
+
+<!-- tracking:#1313 -->
+**Status:** Done (2026-10-02). Optional doctor tip when
+`routing.decision_classifier.enabled` runs an Ollama `/v1/systemone`
+difficulty hop before heuristic tier pick (fallback on timeout/failure);
+absent when disabled. Docs: doctor-health.md. Covered by
+`tests/unit/test_doctor_decision_classifier.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

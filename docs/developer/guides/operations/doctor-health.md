@@ -47,6 +47,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `mcp_registry` | Optional: when `integrations.mcp_registry.enabled` is true — tip that `GET /v1/mcp/registry.json` is advertised (auth-agnostic) while `/mcp` still enforces API-key / allowlists |
 | doctor `mcp_aggregate_egress` | Optional: when `integrations.mcp_aggregate_egress.enabled` is true — tip that egress `mcp_servers` merge into `/mcp` tools/list as `{server_id}__{tool}` with policy/SSRF still enforced |
 | doctor `mcp_oauth_local_as` | Optional: when `integrations.mcp_oauth.local_as` is true — tip that `POST /oauth/token` mints Bearers while `/mcp` still requires auth |
+| doctor `decision_classifier` | Optional: when `routing.decision_classifier.enabled` is true — tip that an Ollama `/v1/systemone` difficulty hop runs before heuristic tier pick (fallback on timeout/failure) |
 
 ## Next
 
