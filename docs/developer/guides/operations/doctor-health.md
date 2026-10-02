@@ -45,6 +45,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `backup` | Optional: no recent archive under `~/.daari/backups`, or recent backups are all **plaintext** — tip suggests `daari backup create … --encrypt openssl` (or `age`); see [backup-restore.md](backup-restore.md#optional-encryption-1176) |
 | doctor `header_policy` | Optional: `server.header_policy.enabled` is true but `required` / `deny` / `allow` are empty — enable at least one rule or set `enabled: false`; see [auth-and-keys.md](../configuration/auth-and-keys.md#header-policy-pre-auth) |
 | doctor `mcp_registry` | Optional: when `integrations.mcp_registry.enabled` is true — tip that `GET /v1/mcp/registry.json` is advertised (auth-agnostic) while `/mcp` still enforces API-key / allowlists |
+| doctor `mcp_aggregate_egress` | Optional: when `integrations.mcp_aggregate_egress.enabled` is true — tip that egress `mcp_servers` merge into `/mcp` tools/list as `{server_id}__{tool}` with policy/SSRF still enforced |
 
 ## Next
 

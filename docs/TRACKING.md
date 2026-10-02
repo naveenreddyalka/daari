@@ -5490,6 +5490,15 @@ Docs: doctor-health.md. Covered by `tests/unit/test_doctor_mcp_registry.py`.
 Shipped, keeps hot-reload (#6) Open, updates inward theme so web_search is
 no longer a silent local drop, and adds a 2026-10-02 changelog line.
 
+### Doctor tip when mcp_aggregate_egress.enabled ([#1306](https://github.com/naveenreddyalka/daari/issues/1306))
+
+<!-- tracking:#1306 -->
+**Status:** Done (2026-10-02). Optional doctor tip when
+`integrations.mcp_aggregate_egress.enabled` merges egress tools into `/mcp`
+tools/list as `{server_id}__{tool}` with policy/SSRF still enforced; absent
+when disabled. Docs: doctor-health.md. Covered by
+`tests/unit/test_doctor_mcp_aggregate_egress.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

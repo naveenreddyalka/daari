@@ -66,6 +66,9 @@ def run_doctor(
     registry_tip = _check_mcp_registry(cfg)
     if registry_tip is not None:
         results.append(registry_tip)
+    aggregate_tip = _check_mcp_aggregate_egress(cfg)
+    if aggregate_tip is not None:
+        results.append(aggregate_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2099,6 +2102,27 @@ def _check_mcp_registry(settings: Settings) -> CheckResult | None:
         detail=(
             "GET /v1/mcp/registry.json is advertised (auth-agnostic discovery); "
             "/mcp still enforces API-key / allowlists"
+        ),
+        optional=True,
+    )
+
+
+def _check_mcp_aggregate_egress(settings: Settings) -> CheckResult | None:
+    """Informational tip when egress tools merge into /mcp tools/list (#1306).
+
+    Absent when disabled (default). When enabled, remind operators that
+    ``mcp_servers`` tools appear as ``{server_id}__{tool}`` under aggregate
+    ``/mcp`` tools/list with policy and SSRF still enforced.
+    """
+    aggregate = getattr(settings.integrations, "mcp_aggregate_egress", None)
+    if aggregate is None or not bool(getattr(aggregate, "enabled", False)):
+        return None
+    return CheckResult(
+        name="mcp_aggregate_egress",
+        ok=True,
+        detail=(
+            "integrations.mcp_aggregate_egress.enabled merges mcp_servers into "
+            "/mcp tools/list as {server_id}__{tool}; policy and SSRF still apply"
         ),
         optional=True,
     )
