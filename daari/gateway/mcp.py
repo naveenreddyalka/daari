@@ -748,12 +748,16 @@ def _governed_meta(request: Request | None, ctx: AppContext, deadline_ms: int | 
     meta = RequestMeta(deadline_ms=deadline_ms)
     if request is None:
         return meta
+    from daari.providers.mcp_token_exchange import bearer_from_authorization
     from daari.server.auth import apply_auth_claims_to_meta
 
     apply_auth_claims_to_meta(
         meta,
         getattr(request.state, "auth_claims", None),
         model_groups=getattr(ctx.settings, "model_groups", None),
+    )
+    meta.authorization_bearer = bearer_from_authorization(
+        request.headers.get("authorization")
     )
     return meta
 
@@ -1084,6 +1088,34 @@ def _client_disconnected_response() -> JSONResponse:
             }
         },
     )
+
+
+def _token_exchange_error_response(
+    request: Request, rpc_id: Any, tool_response: MCPQueryResponse
+) -> Response | None:
+    """Map OBO exchange failures to HTTP 401/502 (#1319)."""
+    from daari.providers.mcp_token_exchange import (
+        WARNING_EXCHANGE_FAILED,
+        WARNING_MISSING_SUBJECT,
+        WARNING_SSRF,
+    )
+
+    warning = (tool_response.daari_meta or {}).get("warning")
+    if warning == WARNING_MISSING_SUBJECT:
+        return JSONResponse(
+            _jsonrpc_error(
+                rpc_id,
+                INVALID_REQUEST,
+                "MCP token exchange requires an Authorization bearer",
+            ),
+            status_code=401,
+        )
+    if warning in {WARNING_EXCHANGE_FAILED, WARNING_SSRF}:
+        return JSONResponse(
+            _jsonrpc_error(rpc_id, INTERNAL_ERROR, "MCP token exchange failed"),
+            status_code=502,
+        )
+    return None
 
 
 def _tool_call_result_payload(name: str, tool_response: MCPQueryResponse) -> dict[str, Any]:
@@ -1499,6 +1531,12 @@ class MCPGatewayAdapter(GatewayAdapter):
                     tool_response = await _run_tool_with_deadline(
                         ctx, name, arguments.get("input"), arguments, model=None, request=request
                     )
+                    exchange_err = _token_exchange_error_response(
+                        request, rpc_id, tool_response
+                    )
+                    if exchange_err is not None:
+                        _record_mcp_tool(ctx, name, "error")
+                        return exchange_err
                     _record_mcp_tool(
                         ctx, name, "ok" if tool_response.ok else "error"
                     )

@@ -117,6 +117,9 @@ class RequestMeta(BaseModel):
     # Decision-classifier hint (#1292). Not part of the L0/L1 cache key.
     decision_tier: str | None = None
     decision_classifier: dict | None = None
+    # Inbound Authorization bearer for MCP egress OBO token exchange (#1319).
+    # Never logged; excluded from L0/L1 cache keys (explicit field lists).
+    authorization_bearer: str | None = None
 
 
 class InternalRequest(BaseModel):

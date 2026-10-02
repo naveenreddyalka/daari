@@ -640,6 +640,8 @@ def _governed_responses_meta(
     from daari.gateway.request_id import request_id_from_request
     from daari.server.auth import apply_auth_claims_to_meta
 
+    from daari.providers.mcp_token_exchange import bearer_from_authorization
+
     meta = RequestMeta(
         no_cache=no_cache,
         tier_override=tier_override,
@@ -656,6 +658,11 @@ def _governed_responses_meta(
         getattr(request.state, "auth_claims", None),
         model_groups=getattr(ctx.settings, "model_groups", None),
     )
+    headers = getattr(request, "headers", None)
+    if headers is not None:
+        meta.authorization_bearer = bearer_from_authorization(
+            headers.get("authorization")
+        )
     return meta
 
 

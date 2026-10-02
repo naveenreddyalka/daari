@@ -43,6 +43,29 @@ list failures log `mcp_aggregate_egress_list_failed` and skip that server
 without emptying the rest of the catalog. Default off keeps the first-party
 catalog only (core + local ProviderRegistry stubs).
 
+Opt-in OBO token exchange per egress server (`auth_type: oauth2_token_exchange`)
+performs RFC 8693 token exchange before `tools/list` / `tools/call`: daari
+uses the inbound `Authorization` bearer as `subject_token`, posts to
+`token_exchange_endpoint` with `client_id` / `client_secret` (optional
+`audience`, `scopes`, `subject_token_type`), caches the exchanged access
+token until expiry, and sends **only** that token upstream (never the inbound
+subject). The exchange endpoint is SSRF-checked like other egress URLs.
+Missing subject → **401**; exchange error or blocked endpoint → **502**
+(`log_gateway_event`; secrets never logged).
+
+```yaml
+integrations:
+  mcp_servers:
+    - id: corp
+      url: https://mcp.corp.example/rpc
+      auth_type: oauth2_token_exchange
+      token_exchange_endpoint: https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token
+      client_id: daari-mcp
+      client_secret: secret://keychain/daari-mcp/client-secret
+      audience: api://mcp-corp
+      scopes: [mcp.read, mcp.call]
+```
+
 Opt-in local authorization server (`integrations.mcp_oauth.local_as: true`)
 adds `GET /.well-known/oauth-authorization-server` and
 `POST /oauth/token` (`grant_type=client_credentials`). Exchange an existing

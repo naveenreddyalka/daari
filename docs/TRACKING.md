@@ -5525,6 +5525,20 @@ difficulty hop before heuristic tier pick (fallback on timeout/failure);
 absent when disabled. Docs: doctor-health.md. Covered by
 `tests/unit/test_doctor_decision_classifier.py`.
 
+### RFC 8693 OBO token exchange for egress mcp_servers ([#1319](https://github.com/naveenreddyalka/daari/issues/1319))
+
+<!-- tracking:#1319 -->
+**Status:** Done (2026-10-02). Opt-in per `integrations.mcp_servers` entry:
+`auth_type: oauth2_token_exchange` with `token_exchange_endpoint`,
+`client_id`, `client_secret`, optional `audience` / `scopes` /
+`subject_token_type`. On tools/list and tools/call, exchanges the inbound
+Authorization bearer (RFC 8693), caches until expiry, and attaches only the
+exchanged token upstream. Fail closed: missing subject → 401; exchange error
+or SSRF-blocked endpoint → 502 (`log_gateway_event`; secrets never logged).
+Doctor tip `mcp_token_exchange` when any server uses OBO. Docs: mcp.md,
+config.md, doctor-health.md. Covered by
+`tests/unit/test_mcp_token_exchange.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

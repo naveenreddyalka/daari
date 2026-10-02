@@ -1388,6 +1388,41 @@ class McpServerSettings(BaseModel):
     url: str
     token: str = ""
     triggers: list[str] = Field(default_factory=list)
+    # RFC 8693 OBO (#1319). Empty auth_type keeps static ``token`` / no auth.
+    auth_type: str = Field(
+        default="",
+        description=(
+            "Egress auth mode. ``oauth2_token_exchange`` exchanges the inbound "
+            "Authorization bearer (RFC 8693) before tools/list and tools/call."
+        ),
+    )
+    token_exchange_endpoint: str = Field(
+        default="",
+        description="IdP token endpoint for auth_type=oauth2_token_exchange (#1319).",
+    )
+    client_id: str = Field(
+        default="",
+        description="OAuth client_id for token exchange (#1319).",
+    )
+    client_secret: str = Field(
+        default="",
+        description="OAuth client_secret for token exchange (#1319). Prefer secret:// refs.",
+    )
+    audience: str = Field(
+        default="",
+        description="Optional RFC 8693 audience for the exchanged token (#1319).",
+    )
+    scopes: list[str] = Field(
+        default_factory=list,
+        description="Optional OAuth scopes joined into the exchange scope param (#1319).",
+    )
+    subject_token_type: str = Field(
+        default="access_token",
+        description=(
+            "RFC 8693 subject_token_type; bare ``access_token`` expands to the "
+            "standard URN (#1319)."
+        ),
+    )
 
 
 class McpServerPolicySettings(BaseModel):
@@ -1692,7 +1727,15 @@ class IntegrationsSettings(BaseModel):
         )
     )
     # F5 MCP egress: daari → external MCP servers.
-    mcp_servers: list[McpServerSettings] = Field(default_factory=list)
+    mcp_servers: list[McpServerSettings] = Field(
+        default_factory=list,
+        description=(
+            "External MCP servers daari can call. Each entry: id, url, optional "
+            "token/triggers. Opt-in OBO (#1319): auth_type=oauth2_token_exchange "
+            "with token_exchange_endpoint, client_id, client_secret; optional "
+            "audience, scopes, subject_token_type (default access_token)."
+        ),
+    )
     # MCP ingress tool governance: global default, then per-team (by team name);
     # a virtual key's `metadata.mcp` layers on top (issue #277).
     mcp_policy: McpToolPolicySettings = Field(

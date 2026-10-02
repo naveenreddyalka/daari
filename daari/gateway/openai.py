@@ -870,12 +870,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
             apply_cost_tier(body, meta)
             # Virtual-key defaults (issue #111); headers keep precedence.
+            from daari.providers.mcp_token_exchange import bearer_from_authorization
             from daari.server.auth import apply_auth_claims_to_meta
 
             apply_auth_claims_to_meta(
                 meta,
                 getattr(request.state, "auth_claims", None),
                 model_groups=getattr(ctx.settings, "model_groups", None),
+            )
+            meta.authorization_bearer = bearer_from_authorization(
+                request.headers.get("authorization")
             )
             from daari.gateway.model_access import (
                 reject_disallowed_model,
