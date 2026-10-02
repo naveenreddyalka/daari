@@ -47,6 +47,9 @@ def run_doctor(
     results.append(_check_config(cfg))
     results.append(_check_config_keys())
     results.append(_check_master_key_overlap(cfg))
+    weak_key_tip = _check_weak_or_unset_master_key(cfg)
+    if weak_key_tip is not None:
+        results.append(weak_key_tip)
     results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_embedding_endpoint(cfg, httpx_client))
@@ -174,6 +177,53 @@ def _check_master_key_overlap(settings: Settings) -> CheckResult:
         ),
         optional=True,
     )
+
+
+def _check_weak_or_unset_master_key(settings: Settings) -> CheckResult | None:
+    """Optional tip for escape hatch / unset key while auth is implied (#1320)."""
+    server = settings.server
+    hatch = bool(getattr(server, "dangerously_permit_weak_or_unset_api_key", False))
+    keys = server.master_keys()
+    local_as = bool(
+        getattr(getattr(settings.integrations, "mcp_oauth", None), "local_as", False)
+    )
+    vk_path = str(getattr(getattr(server, "virtual_keys", None), "path", "") or "")
+    # Virtual-key store exists on disk when operators have minted keys.
+    vk_implied = False
+    if vk_path:
+        from pathlib import Path
+
+        expanded = Path(vk_path).expanduser()
+        vk_implied = expanded.is_file() and expanded.stat().st_size > 0
+
+    if hatch:
+        detail = (
+            "server.dangerously_permit_weak_or_unset_api_key is true — "
+            "daari serve allows empty/denylisted master keys (sandbox only)"
+        )
+        if not keys and (local_as or vk_implied):
+            detail += (
+                "; master key is unset while virtual keys or mcp_oauth.local_as "
+                "imply auth is expected"
+            )
+        return CheckResult(
+            name="master_key_strength",
+            ok=False,
+            detail=detail,
+            optional=True,
+        )
+
+    if not keys and (local_as or vk_implied):
+        return CheckResult(
+            name="master_key_strength",
+            ok=False,
+            detail=(
+                "server.api_key is unset while virtual keys or mcp_oauth.local_as "
+                "imply auth — set a strong master key before daari serve"
+            ),
+            optional=True,
+        )
+    return None
 
 
 def _check_secret_refs(settings: Settings) -> CheckResult:

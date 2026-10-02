@@ -107,6 +107,7 @@ class TestServeTlsFlags:
                     "server": {
                         "host": "127.0.0.1",
                         "port": 11435,
+                        "dangerously_permit_weak_or_unset_api_key": True,
                         "tls": {
                             "cert_file": str(cert),
                             "key_file": str(key),
@@ -140,7 +141,15 @@ class TestServeTlsFlags:
         captured: dict = {}
 
         def fake_load(*, strict: bool = False):
-            return Settings.model_validate({"server": {"host": "127.0.0.1", "port": 11435}})
+            return Settings.model_validate(
+                {
+                    "server": {
+                        "host": "127.0.0.1",
+                        "port": 11435,
+                        "dangerously_permit_weak_or_unset_api_key": True,
+                    }
+                }
+            )
 
         monkeypatch.setattr("daari.cli.app.Settings.load", fake_load)
         monkeypatch.setattr("daari.cli.app.create_app", lambda settings: object())
@@ -169,7 +178,13 @@ class TestServeTlsFlags:
         monkeypatch.setattr(
             "daari.cli.app.Settings.load",
             lambda *, strict=False: Settings.model_validate(
-                {"server": {"host": "127.0.0.1", "port": 11435}}
+                {
+                    "server": {
+                        "host": "127.0.0.1",
+                        "port": 11435,
+                        "dangerously_permit_weak_or_unset_api_key": True,
+                    }
+                }
             ),
         )
         monkeypatch.setattr("daari.cli.app.create_app", lambda settings: object())

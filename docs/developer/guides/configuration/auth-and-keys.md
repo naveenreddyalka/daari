@@ -6,10 +6,23 @@
 
 ```yaml
 server:
-  api_key: "replace-me"
+  api_key: "replace-me-with-a-unique-secret"
 ```
 
 Clients send `Authorization: Bearer <key>` or `x-api-key`. `/health` stays open.
+
+`daari serve` refuses to bind when `server.api_key` is unset/empty/whitespace or
+matches a small weak denylist (`sk-1234`, `changeme`, `daari-local`, …), and
+prints which source failed (#1320). For hermetic tests and local sandboxes set:
+
+```yaml
+server:
+  dangerously_permit_weak_or_unset_api_key: true
+```
+
+(or `DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY=true`). `daari doctor`
+warns when the escape hatch is on, and when the master key is unset while
+virtual keys or `mcp_oauth.local_as` imply auth is expected.
 
 ### Token introspection (RFC 7662)
 
