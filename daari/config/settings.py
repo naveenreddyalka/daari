@@ -1543,7 +1543,7 @@ class McpEgressSettings(BaseModel):
 
 
 class McpOauthSettings(BaseModel):
-    """RFC 9728 OAuth protected-resource discovery for `/mcp` (#1262)."""
+    """RFC 9728 OAuth protected-resource discovery for `/mcp` (#1262, #1293)."""
 
     protected_resource: bool = Field(
         default=False,
@@ -1552,6 +1552,18 @@ class McpOauthSettings(BaseModel):
             "`/mcp`-scoped variant) and attach a `WWW-Authenticate` challenge on "
             "unauthenticated `/mcp` requests when API-key auth is on (#1262). "
             "Default false leaves the existing 401 body unchanged."
+        ),
+    )
+    local_as: bool = Field(
+        default=False,
+        description=(
+            "When true, expose a minimal on-box OAuth authorization server "
+            "(``GET /.well-known/oauth-authorization-server`` + "
+            "``POST /oauth/token`` client_credentials) that mints short-lived "
+            "Bearer tokens bound to an existing API/virtual key (#1293). "
+            "Advertises the local issuer in ``authorization_servers`` when that "
+            "list is empty. Default false — discovery-only / external IdP stays "
+            "the ``protected_resource`` path."
         ),
     )
     resource: str = Field(
@@ -1568,6 +1580,21 @@ class McpOauthSettings(BaseModel):
     scopes_supported: list[str] = Field(
         default_factory=lambda: ["mcp"],
         description="OAuth scopes advertised for the MCP resource.",
+    )
+    token_ttl_seconds: int = Field(
+        default=900,
+        ge=60,
+        le=86400,
+        description=(
+            "Access-token lifetime in seconds for local AS mint (#1293). Default 900."
+        ),
+    )
+    signing_secret: str = Field(
+        default="",
+        description=(
+            "HS256 secret for minting MCP access tokens (#1293). Empty derives from "
+            "the primary master key. Env: DAARI_INTEGRATIONS__MCP_OAUTH__SIGNING_SECRET."
+        ),
     )
 
 

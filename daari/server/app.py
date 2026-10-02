@@ -247,6 +247,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/v1/messages/health",
             "/.well-known/oauth-protected-resource",
             "/.well-known/oauth-protected-resource/mcp",
+            "/.well-known/oauth-authorization-server",
+            "/oauth/token",
             "/v1/mcp/registry.json",
         }
         if not master_keys:
@@ -275,6 +277,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             supplied = extract_api_key(request.headers)
             claims = resolve_auth(supplied, master_key=master_keys, store=store)
+            if (
+                claims is None
+                and supplied
+                and resolved.integrations.mcp_oauth.local_as
+            ):
+                from daari.gateway.mcp_oauth import verify_access_token
+
+                claims = verify_access_token(
+                    supplied,
+                    resolved,
+                    master_key=master_keys,
+                    store=store,
+                )
             if claims is None and resolved.enterprise.sso.enabled and supplied:
                 # Verified OIDC/HMAC SSO bearers are control-plane only
                 # (/v1/daari/*, /v1/org-learning/*). Inference must use an
@@ -378,9 +393,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     supplied=supplied,
                     path=request.url.path,
                 )
-                if (
-                    request.url.path == "/mcp"
-                    and resolved.integrations.mcp_oauth.protected_resource
+                if request.url.path == "/mcp" and (
+                    resolved.integrations.mcp_oauth.protected_resource
+                    or resolved.integrations.mcp_oauth.local_as
                 ):
                     from daari.gateway.mcp_oauth import mcp_oauth_challenge_response
 
@@ -767,7 +782,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from daari.gateway.mcp_registry import build_mcp_registry_router
 
     app.include_router(build_mcp_registry_router(resolved))
-    if resolved.integrations.mcp_oauth.protected_resource:
+    from daari.gateway.mcp_oauth import mcp_oauth_routes_enabled
+
+    if mcp_oauth_routes_enabled(resolved):
         from daari.gateway.mcp_oauth import build_mcp_oauth_router
 
         app.include_router(build_mcp_oauth_router(resolved))
