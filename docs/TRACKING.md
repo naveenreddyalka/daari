@@ -5476,6 +5476,13 @@ trace reason `web_search_required`. Docs: clients-and-gateways.md. Covered by
 (auth-agnostic) while `/mcp` still enforces keys; absent when disabled.
 Docs: doctor-health.md. Covered by `tests/unit/test_doctor_mcp_registry.py`.
 
+### Docs: hermetic pin for web_search_options escalate note ([#1305](https://github.com/naveenreddyalka/daari/issues/1305))
+
+<!-- tracking:#1305 -->
+**Status:** Done (2026-10-02). Hermetic clients-and-gateways.md pin for
+`web_search_options` escalate / fail-closed wording from #1295. Covered by
+`tests/unit/test_web_search_escalate_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
