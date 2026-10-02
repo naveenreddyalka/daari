@@ -277,7 +277,22 @@ async def spawn_tool_task(
             if current is not None and current.status == STATUS_CANCELLED:
                 return
             store.complete(task.task_id, result)
+        except asyncio.CancelledError:
+            # Spawning request teardown / explicit cancel — keep cancelled status.
+            return
         except Exception as exc:  # noqa: BLE001 — surface as task failure
+            # Background work outlives the tools/call HTTP response. Disconnect
+            # probes on that request must not flip a live task to failed
+            # (flaky test_tasks_cancel under load).
+            from daari.gateway.disconnect import ClientDisconnected
+
+            current = store.get(task.task_id)
+            if (
+                isinstance(exc, ClientDisconnected)
+                or task.cancel_requested
+                or (current is not None and current.status == STATUS_CANCELLED)
+            ):
+                return
             store.fail(task.task_id, str(exc)[:200])
 
     asyncio.create_task(_wrap())

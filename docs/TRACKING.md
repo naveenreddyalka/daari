@@ -5441,6 +5441,16 @@ bad/expired → 401 + existing challenge; discovery lists local issuer when
 Covered by `tests/unit/test_mcp_oauth_token_mint.py` and
 `tests/unit/test_mcp_oauth_docs.py`.
 
+### MCP aggregate egress tools/list on /mcp ([#1294](https://github.com/naveenreddyalka/daari/issues/1294))
+
+<!-- tracking:#1294 -->
+**Status:** Done (2026-10-02). Opt-in `integrations.mcp_aggregate_egress.enabled`
+merges `mcp_servers` tools into `/mcp` `tools/list` as `{server_id}__{tool}`;
+`tools/call` routes via egress; server/tool policy filter; per-server list
+failures degrade with `mcp_aggregate_egress_list_failed`. Docs: mcp.md +
+regenerated config.md. Covered by `tests/unit/test_mcp_aggregate_egress.py`
+and `tests/unit/test_mcp_aggregate_egress_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
