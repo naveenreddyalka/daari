@@ -29,6 +29,13 @@ class McpServerConfig:
     url: str
     token: str = ""
     triggers: list[str] = field(default_factory=list)
+    auth_type: str = ""
+    token_exchange_endpoint: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    audience: str = ""
+    scopes: list[str] = field(default_factory=list)
+    subject_token_type: str = "access_token"
 
 
 # A misbehaving upstream that always returns nextCursor must not hang listing.
@@ -74,6 +81,9 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.metrics = metrics
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
+        from daari.providers.mcp_token_exchange import TokenExchangeCache
+
+        self._token_exchange_cache = TokenExchangeCache()
 
     def _ensure_egress_url_allowed(self) -> None:
         from daari.security.egress_url import validate_egress_url
@@ -172,14 +182,84 @@ class McpEgressProvider(HttpIntegrationProvider):
             )
         return None
 
-    def _request_headers(self, request: InternalRequest) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
+    def _auth_failure(
+        self, request: InternalRequest, warning: str, message: str
+    ) -> InternalResponse:
+        return InternalResponse(
+            content=message,
+            model=request.model,
+            daari_meta=DaariMeta(
+                tier=self.tier,
+                executor="integration",
+                provider_id=self.id,
+                task_type="tool",
+                warning=warning,
+            ),
+        )
+
+    async def _resolve_authorization(
+        self, request: InternalRequest
+    ) -> tuple[str | None, InternalResponse | None]:
+        """Return Bearer token for upstream, or a fail-closed InternalResponse."""
+        from daari.gateway.request_log import log_gateway_event
+        from daari.providers.mcp_token_exchange import (
+            AUTH_TYPE_TOKEN_EXCHANGE,
+            WARNING_MISSING_SUBJECT,
+            TokenExchangeError,
+            exchange_access_token,
+        )
+
+        auth_type = (self.server.auth_type or "").strip().lower()
+        if auth_type == AUTH_TYPE_TOKEN_EXCHANGE:
+            subject = getattr(request.meta, "authorization_bearer", None) or ""
+            subject = str(subject).strip()
+            if not subject:
+                log_gateway_event(
+                    "mcp_token_exchange_missing_subject",
+                    {"server_id": self.server.id},
+                )
+                return None, self._auth_failure(
+                    request,
+                    WARNING_MISSING_SUBJECT,
+                    f"{self.id} token exchange requires an inbound Authorization bearer.",
+                )
+            try:
+                token = await exchange_access_token(
+                    server_id=self.server.id,
+                    endpoint=self.server.token_exchange_endpoint,
+                    client_id=self.server.client_id,
+                    client_secret=self.server.client_secret,
+                    subject_token=subject,
+                    subject_token_type=self.server.subject_token_type,
+                    audience=self.server.audience,
+                    scopes=list(self.server.scopes or []),
+                    allow_private_networks=self.allow_private_networks,
+                    cache=self._token_exchange_cache,
+                    client=self._client(),
+                )
+            except TokenExchangeError as exc:
+                return None, self._auth_failure(request, exc.warning, f"{self.id}: {exc}")
+            return token, None
         if self.server.token:
-            headers["Authorization"] = f"Bearer {self.server.token}"
+            return self.server.token, None
+        return None, None
+
+    async def _request_headers(
+        self, request: InternalRequest
+    ) -> tuple[dict[str, str] | None, InternalResponse | None]:
+        headers = {"Content-Type": "application/json"}
+        token, err = await self._resolve_authorization(request)
+        if err is not None:
+            return None, err
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         from daari.observability.otel import inject_trace_headers
 
-        return inject_trace_headers(
-            headers, request_id=getattr(request.meta, "request_id", None)
+        return (
+            inject_trace_headers(
+                headers, request_id=getattr(request.meta, "request_id", None)
+            ),
+            None,
         )
 
     async def _prepare_egress(
@@ -188,7 +268,10 @@ class McpEgressProvider(HttpIntegrationProvider):
         denied = self._policy_denied_response(request)
         if denied is not None:
             return None, denied
-        headers = self._request_headers(request)
+        headers, auth_err = await self._request_headers(request)
+        if auth_err is not None:
+            return None, auth_err
+        assert headers is not None
         try:
             self._ensure_egress_url_allowed()
         except Exception as exc:  # noqa: BLE001 — surface as tool failure
@@ -433,6 +516,17 @@ def build_mcp_providers(
                 url=str(_entry_get(entry, "url") or ""),
                 token=str(_entry_get(entry, "token") or ""),
                 triggers=list(_entry_get(entry, "triggers") or []),
+                auth_type=str(_entry_get(entry, "auth_type") or ""),
+                token_exchange_endpoint=str(
+                    _entry_get(entry, "token_exchange_endpoint") or ""
+                ),
+                client_id=str(_entry_get(entry, "client_id") or ""),
+                client_secret=str(_entry_get(entry, "client_secret") or ""),
+                audience=str(_entry_get(entry, "audience") or ""),
+                scopes=[str(s) for s in (_entry_get(entry, "scopes") or [])],
+                subject_token_type=str(
+                    _entry_get(entry, "subject_token_type") or "access_token"
+                ),
             )
         if not cfg.id or not cfg.url:
             continue

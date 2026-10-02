@@ -254,7 +254,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.ghe.triggers` | list | `[]` |  |
 | `integrations.gitlab.url` | str | *(required)* |  |
 | `integrations.gitlab.triggers` | list | `[]` |  |
-| `integrations.mcp_servers` | list | `[]` |  |
+| `integrations.mcp_servers` | list | `[]` | External MCP servers daari can call. Each entry: id, url, optional token/triggers. Opt-in OBO (#1319): auth_type=oauth2_token_exchange with token_exchange_endpoint, client_id, client_secret; optional audience, scopes, subject_token_type (default access_token). |
 | `integrations.mcp_policy.allow` | list | `[]` | MCP tool names (glob) the caller may call. Empty = every tool not denied. |
 | `integrations.mcp_policy.deny` | list | `[]` | MCP tool names (glob) the caller may never call. Deny beats allow. |
 | `integrations.mcp_policy.servers.allow` | list | `[]` | MCP egress server ids (glob) the caller may reach. Empty = every server not denied. |

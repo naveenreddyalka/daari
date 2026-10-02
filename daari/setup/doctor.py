@@ -72,6 +72,9 @@ def run_doctor(
     local_as_tip = _check_mcp_oauth_local_as(cfg)
     if local_as_tip is not None:
         results.append(local_as_tip)
+    token_exchange_tip = _check_mcp_token_exchange(cfg)
+    if token_exchange_tip is not None:
+        results.append(token_exchange_tip)
     classifier_tip = _check_decision_classifier(cfg)
     if classifier_tip is not None:
         results.append(classifier_tip)
@@ -2149,6 +2152,33 @@ def _check_mcp_oauth_local_as(settings: Settings) -> CheckResult | None:
         detail=(
             "integrations.mcp_oauth.local_as mints tokens via POST /oauth/token; "
             "/mcp still requires a Bearer"
+        ),
+        optional=True,
+    )
+
+
+def _check_mcp_token_exchange(settings: Settings) -> CheckResult | None:
+    """Informational tip when any mcp_servers entry uses RFC 8693 OBO (#1319).
+
+    Absent when no server sets ``auth_type: oauth2_token_exchange``.
+    """
+    servers = list(getattr(settings.integrations, "mcp_servers", None) or [])
+    obo = [
+        s
+        for s in servers
+        if str(getattr(s, "auth_type", "") or "").strip().lower()
+        == "oauth2_token_exchange"
+    ]
+    if not obo:
+        return None
+    ids = ", ".join(str(getattr(s, "id", "") or "unnamed") for s in obo[:5])
+    return CheckResult(
+        name="mcp_token_exchange",
+        ok=True,
+        detail=(
+            f"integrations.mcp_servers auth_type=oauth2_token_exchange on [{ids}] "
+            "exchanges the inbound Authorization bearer (RFC 8693) before egress; "
+            "exchange endpoint is SSRF-checked; missing subject or exchange errors fail closed"
         ),
         optional=True,
     )
