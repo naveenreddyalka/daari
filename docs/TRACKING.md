@@ -5451,6 +5451,14 @@ failures degrade with `mcp_aggregate_egress_list_failed`. Docs: mcp.md +
 regenerated config.md. Covered by `tests/unit/test_mcp_aggregate_egress.py`
 and `tests/unit/test_mcp_aggregate_egress_docs.py`.
 
+### Docs: hermetic pin for mcp_openapi_proxy and mcp_registry config ([#1286](https://github.com/naveenreddyalka/daari/issues/1286))
+
+<!-- tracking:#1286 -->
+**Status:** Done (2026-10-02). Hermetic config.md pin for
+`integrations.mcp_openapi_proxy.enabled`, `integrations.mcp_registry.enabled`,
+`/mcp/proxy`, and `/v1/mcp/registry.json`. Covered by
+`tests/unit/test_mcp_proxy_registry_config_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
