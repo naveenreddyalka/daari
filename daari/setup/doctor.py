@@ -72,6 +72,9 @@ def run_doctor(
     local_as_tip = _check_mcp_oauth_local_as(cfg)
     if local_as_tip is not None:
         results.append(local_as_tip)
+    classifier_tip = _check_decision_classifier(cfg)
+    if classifier_tip is not None:
+        results.append(classifier_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2146,6 +2149,27 @@ def _check_mcp_oauth_local_as(settings: Settings) -> CheckResult | None:
         detail=(
             "integrations.mcp_oauth.local_as mints tokens via POST /oauth/token; "
             "/mcp still requires a Bearer"
+        ),
+        optional=True,
+    )
+
+
+def _check_decision_classifier(settings: Settings) -> CheckResult | None:
+    """Informational tip when decision-model complexity classifier is on (#1313).
+
+    Absent when disabled (default). When enabled, remind operators of the
+    Ollama ``/v1/systemone`` difficulty hop before heuristic tier pick.
+    """
+    routing = getattr(settings, "routing", None)
+    classifier = getattr(routing, "decision_classifier", None) if routing is not None else None
+    if classifier is None or not bool(getattr(classifier, "enabled", False)):
+        return None
+    return CheckResult(
+        name="decision_classifier",
+        ok=True,
+        detail=(
+            "routing.decision_classifier.enabled runs an Ollama /v1/systemone "
+            "difficulty hop before heuristic tier pick; timeout/failure falls back"
         ),
         optional=True,
     )
