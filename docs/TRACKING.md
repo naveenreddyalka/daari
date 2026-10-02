@@ -5499,6 +5499,15 @@ tools/list as `{server_id}__{tool}` with policy/SSRF still enforced; absent
 when disabled. Docs: doctor-health.md. Covered by
 `tests/unit/test_doctor_mcp_aggregate_egress.py`.
 
+### Unit pin WebSearchUnavailable HTTP status mapping ([#1307](https://github.com/naveenreddyalka/daari/issues/1307))
+
+<!-- tracking:#1307 -->
+**Status:** Done (2026-10-02). Direct unit coverage for
+`_web_search_unavailable_response` status table (`no_frontier`→403,
+`frontier_disabled`→501, `frontier_budget_exceeded`→402, `tier_cap:L3`→403)
+and `web_search_unavailable` error type/code. Covered by
+`tests/unit/test_web_search_unavailable_status.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
