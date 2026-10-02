@@ -5430,6 +5430,17 @@ falls back to heuristics with a degraded event; `daari_meta.decision` +
 trace step record model/answer/tier. Covered by
 `tests/unit/test_decision_classifier.py`.
 
+### MCP local OAuth authorize/token mint ([#1293](https://github.com/naveenreddyalka/daari/issues/1293))
+
+<!-- tracking:#1293 -->
+**Status:** Done (2026-10-02). Opt-in `integrations.mcp_oauth.local_as`
+exposes AS metadata + `POST /oauth/token` (client_credentials), mints
+short-lived HS256 Bearer JWTs bound to API/virtual keys, usable on `/mcp`;
+bad/expired → 401 + existing challenge; discovery lists local issuer when
+`authorization_servers` empty. Docs: mcp.md + regenerated config.md.
+Covered by `tests/unit/test_mcp_oauth_token_mint.py` and
+`tests/unit/test_mcp_oauth_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

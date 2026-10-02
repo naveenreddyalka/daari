@@ -33,6 +33,17 @@ scoped variant) and adds a `WWW-Authenticate` challenge on unauthenticated
 `/mcp` when API-key auth is on. Default off leaves the existing 401 body
 unchanged. Set `authorization_servers` / `scopes_supported` for your IdP.
 
+Opt-in local authorization server (`integrations.mcp_oauth.local_as: true`)
+adds `GET /.well-known/oauth-authorization-server` and
+`POST /oauth/token` (`grant_type=client_credentials`). Exchange an existing
+API key or virtual key as `client_secret` (form body or HTTP Basic) for a
+short-lived Bearer JWT (`token_ttl_seconds`, default 900) that `/mcp` accepts
+like the API-key path. Invalid or expired tokens get the same 401 +
+`WWW-Authenticate` challenge. Tokens are HS256-signed (`signing_secret`, or
+derived from the master key); plaintext secrets are never logged. When
+`authorization_servers` is empty, discovery advertises the local issuer.
+No external IdP required.
+
 Opt-in OpenAPI → MCP proxy (`integrations.mcp_openapi_proxy.enabled: true`)
 exposes `POST /mcp/proxy` for schema discovery (`action: tools/list`) and
 HTTP-backed `tools/call` against allowlisted `specs[]` (`id`, `openapi_url`,
