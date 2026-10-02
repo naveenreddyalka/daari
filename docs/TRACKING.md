@@ -5451,6 +5451,15 @@ failures degrade with `mcp_aggregate_egress_list_failed`. Docs: mcp.md +
 regenerated config.md. Covered by `tests/unit/test_mcp_aggregate_egress.py`
 and `tests/unit/test_mcp_aggregate_egress_docs.py`.
 
+### Escalate web_search_options to L6 (no silent local drop) ([#1295](https://github.com/naveenreddyalka/daari/issues/1295))
+
+<!-- tracking:#1295 -->
+**Status:** Done (2026-10-02). Chat `web_search_options` skips local tiers and
+escalates to L6 (payload forwarded); no-frontier / frontier-off / budget →
+clear 4xx/501 with `web_search_unavailable`; `daari_meta.warning` /
+trace reason `web_search_required`. Docs: clients-and-gateways.md. Covered by
+`tests/unit/test_web_search_escalate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

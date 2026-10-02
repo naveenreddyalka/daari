@@ -53,6 +53,10 @@ OpenAI payload. When `asr.base_url` is set, daari also transcribes each clip and
 injects the text into the local-tier prompt; see
 [local speech-to-text](../guides/backends/asr.md#chat-input_audio-blocks).
 
+`web_search_options` on chat completions escalates to L6 (forwarded on the
+frontier payload) or returns a clear 4xx/501 when frontier is disabled /
+`X-Daari-No-Frontier` / budget-blocked — local tiers never pretend they searched.
+
 `POST /v1/embeddings` is served by the same embedder L1 already uses, so a client
 pointed at daari does not need a second host for vectors.
 
