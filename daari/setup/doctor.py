@@ -81,6 +81,9 @@ def run_doctor(
     classifier_tip = _check_decision_classifier(cfg)
     if classifier_tip is not None:
         results.append(classifier_tip)
+    classifier_model_tip = _check_decision_classifier_model(cfg, httpx_client)
+    if classifier_model_tip is not None:
+        results.append(classifier_model_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2253,6 +2256,60 @@ def _check_decision_classifier(settings: Settings) -> CheckResult | None:
         ),
         optional=True,
     )
+
+
+def _check_decision_classifier_model(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Advisory tip when the configured decision model is not in Ollama tags (#1321).
+
+    Quiet when the classifier is off, when Ollama is unreachable (the existing
+    ``ollama`` check owns that failure), or when the tag is present
+    (``name`` or ``name:tag`` / digest variants).
+    """
+    routing = getattr(settings, "routing", None)
+    classifier = getattr(routing, "decision_classifier", None) if routing is not None else None
+    if classifier is None or not bool(getattr(classifier, "enabled", False)):
+        return None
+    model = str(getattr(classifier, "model", "") or "nimble").strip() or "nimble"
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        names = [
+            str(m.get("name") or "")
+            for m in (data.get("models") or [])
+            if isinstance(m, dict)
+        ]
+        present = any(
+            name == model or name.startswith(f"{model}:") for name in names if name
+        )
+        if present:
+            return None
+        return CheckResult(
+            name="decision_classifier_model",
+            ok=False,
+            detail=(
+                f"routing.decision_classifier.model={model!r} not in Ollama tags at "
+                f"{base} — run `ollama pull {model}` before enabling the systemone "
+                "difficulty hop (see routing / decision_classifier docs)"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
 
 
 def _check_org_cache(
