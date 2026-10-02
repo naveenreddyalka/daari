@@ -63,6 +63,9 @@ def run_doctor(
     results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_mcp_server_policy(cfg))
     results.append(_check_mcp_oauth_protected_resource(cfg))
+    registry_tip = _check_mcp_registry(cfg)
+    if registry_tip is not None:
+        results.append(registry_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2075,6 +2078,27 @@ def _check_mcp_oauth_protected_resource(settings: Settings) -> CheckResult:
             "MCP auth is on but integrations.mcp_oauth.protected_resource is false — "
             "Cursor/Claude Desktop OAuth discovery needs "
             "GET /.well-known/oauth-protected-resource"
+        ),
+        optional=True,
+    )
+
+
+def _check_mcp_registry(settings: Settings) -> CheckResult | None:
+    """Informational tip when MCP registry discovery is advertised (#1287).
+
+    Absent when disabled (default) so doctor stays quiet. When enabled, remind
+    operators that ``/v1/mcp/registry.json`` is auth-agnostic while ``/mcp``
+    still enforces keys / allowlists.
+    """
+    registry = getattr(settings.integrations, "mcp_registry", None)
+    if registry is None or not bool(getattr(registry, "enabled", False)):
+        return None
+    return CheckResult(
+        name="mcp_registry",
+        ok=True,
+        detail=(
+            "GET /v1/mcp/registry.json is advertised (auth-agnostic discovery); "
+            "/mcp still enforces API-key / allowlists"
         ),
         optional=True,
     )

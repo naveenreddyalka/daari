@@ -5468,6 +5468,14 @@ trace reason `web_search_required`. Docs: clients-and-gateways.md. Covered by
 `/mcp/proxy`, and `/v1/mcp/registry.json`. Covered by
 `tests/unit/test_mcp_proxy_registry_config_docs.py`.
 
+### Doctor tip when mcp_registry.enabled ([#1287](https://github.com/naveenreddyalka/daari/issues/1287))
+
+<!-- tracking:#1287 -->
+**Status:** Done (2026-10-02). Optional doctor tip when
+`integrations.mcp_registry.enabled` advertises `GET /v1/mcp/registry.json`
+(auth-agnostic) while `/mcp` still enforces keys; absent when disabled.
+Docs: doctor-health.md. Covered by `tests/unit/test_doctor_mcp_registry.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
