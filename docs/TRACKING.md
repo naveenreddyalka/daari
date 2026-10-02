@@ -5539,6 +5539,18 @@ Doctor tip `mcp_token_exchange` when any server uses OBO. Docs: mcp.md,
 config.md, doctor-health.md. Covered by
 `tests/unit/test_mcp_token_exchange.py`.
 
+### Refuse weak or unset master key at serve ([#1320](https://github.com/naveenreddyalka/daari/issues/1320))
+
+<!-- tracking:#1320 -->
+**Status:** Done (2026-10-02). ``daari serve`` refuses empty/whitespace or
+denylisted master keys (`sk-1234` / `changeme` / `daari-local` / …) before
+bind unless `server.dangerously_permit_weak_or_unset_api_key` is true.
+Doctor tip `master_key_strength` when the escape hatch is on or the key is
+unset while virtual keys / `mcp_oauth.local_as` imply auth. Docs:
+auth-and-keys.md, config.md, doctor-health.md. Covered by
+`tests/unit/test_refuse_weak_master_key.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

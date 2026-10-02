@@ -11,6 +11,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.host` | str | `'127.0.0.1'` |  |
 | `server.port` | int | `11435` |  |
 | `server.api_key` | str | list[str] | `''` |  |
+| `server.dangerously_permit_weak_or_unset_api_key` | bool | `False` | When true, ``daari serve`` allows an empty or denylisted master key (sk-1234 / changeme / daari-local / …) for hermetic tests and local sandboxes (#1320). Default false refuses before bind. Env: DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY. |
 | `server.virtual_keys.enabled` | bool | `True` |  |
 | `server.virtual_keys.path` | str | `'~/.daari/auth/virtual-keys.sqlite3'` |  |
 | `server.virtual_keys.backend` | Literal | `'sqlite'` | sqlite (default) or postgres (observability.postgres_url) so keys and teams resolve across replicas (#544). Env: DAARI_SERVER__VIRTUAL_KEYS__BACKEND. |

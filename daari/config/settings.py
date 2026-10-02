@@ -143,6 +143,15 @@ class ServerSettings(BaseModel):
     # Virtual keys (issue #111) are accepted alongside this master key.
     # A list is an overlap set for rotation (#711): any entry is accepted.
     api_key: str | list[str] = ""
+    dangerously_permit_weak_or_unset_api_key: bool = Field(
+        default=False,
+        description=(
+            "When true, ``daari serve`` allows an empty or denylisted master key "
+            "(sk-1234 / changeme / daari-local / …) for hermetic tests and local "
+            "sandboxes (#1320). Default false refuses before bind. Env: "
+            "DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY."
+        ),
+    )
     virtual_keys: VirtualKeysSettings = Field(default_factory=VirtualKeysSettings)
     max_body_bytes: int = Field(
         default=10 * 1024 * 1024,

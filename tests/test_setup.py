@@ -637,7 +637,11 @@ class TestSetupCLI:
         def fake_load():
             return Settings.model_validate(
                 {
-                    "server": {"host": "127.0.0.1", "port": 11435},
+                    "server": {
+                        "host": "127.0.0.1",
+                        "port": 11435,
+                        "dangerously_permit_weak_or_unset_api_key": True,
+                    },
                     "models": {"l3": "llama3.2:3b"},
                     "ollama": {"base_url": "http://127.0.0.1:11434"},
                 }

@@ -1414,6 +1414,12 @@ def serve(
         settings.server.tls.client_ca = tls_client_ca
     if graceful_timeout is not None:
         settings.server.graceful_timeout_seconds = float(graceful_timeout)
+    from daari.server.master_key_gate import master_key_gate_error
+
+    gate_err = master_key_gate_error(settings)
+    if gate_err is not None:
+        typer.echo(f"  ✗ master_key: {gate_err}", err=True)
+        raise typer.Exit(code=1)
     bind_host = host or settings.server.host
     bind_port = port or settings.server.port
     from daari.security.secret_refs import SecretRefError
