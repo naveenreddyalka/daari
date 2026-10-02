@@ -63,6 +63,7 @@ from daari.router.deadline import RequestDeadlineExceeded
 from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
 from daari.router.capabilities import UnsupportedCapability
+from daari.gateway.sampling import WebSearchUnavailable
 from daari.router.local_pool import BackendUnavailable
 
 OPENAI_SSE_HEADERS = {
@@ -70,6 +71,30 @@ OPENAI_SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+
+
+def _web_search_unavailable_response(exc: WebSearchUnavailable) -> JSONResponse:
+    """Map web_search fail-closed reasons to gateway status codes (#1295)."""
+    reason = exc.reason or "web_search_required"
+    if reason == "no_frontier" or reason.startswith("tier_cap:") or reason == "frontier_not_allowed":
+        status = 403
+    elif reason == "frontier_budget_exceeded":
+        status = 402
+    elif reason == "frontier_disabled":
+        status = 501
+    else:
+        status = 422
+    return JSONResponse(
+        status_code=status,
+        content={
+            "error": {
+                "type": "web_search_unavailable",
+                "code": reason,
+                "message": str(exc),
+            }
+        },
+    )
+
 
 # Leads the message list when tools are stripped (issue #1). Must be the first
 # system instruction so small local models don't mimic tool use described later
@@ -928,6 +953,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     if idem_slot is not None:
                         idem_slot.abandon()
                     raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
+                except WebSearchUnavailable as exc:
+                    if idem_slot is not None:
+                        idem_slot.abandon()
+                    return _web_search_unavailable_response(exc)
 
                 outcome = StreamOutcome()
 
@@ -1015,6 +1044,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 if idem_slot is not None:
                     idem_slot.abandon()
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
+            except WebSearchUnavailable as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
+                return _web_search_unavailable_response(exc)
             except BackendUnavailable as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()
