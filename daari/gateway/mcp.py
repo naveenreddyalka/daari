@@ -1470,13 +1470,17 @@ class MCPGatewayAdapter(GatewayAdapter):
                         task = store.create(tool=name.strip().lower())
 
                         async def _runner() -> dict[str, Any]:
+                            # Do not bind disconnect cancellation to the
+                            # tools/call request — it already completed with
+                            # taskId; await_unless_disconnected would race
+                            # and mark the background task failed.
                             tool_response = await _run_tool(
                                 ctx,
                                 name,
                                 arguments.get("input"),
                                 arguments,
                                 model=None,
-                                request=request,
+                                request=None,
                             )
                             _record_mcp_tool(
                                 ctx,
