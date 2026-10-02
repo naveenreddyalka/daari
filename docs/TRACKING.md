@@ -5483,6 +5483,13 @@ Docs: doctor-health.md. Covered by `tests/unit/test_doctor_mcp_registry.py`.
 `web_search_options` escalate / fail-closed wording from #1295. Covered by
 `tests/unit/test_web_search_escalate_docs.py`.
 
+### Docs: refresh ENTERPRISE.md after web_search escalate + MCP P2 wave ([#1304](https://github.com/naveenreddyalka/daari/issues/1304))
+
+<!-- tracking:#1304 -->
+**Status:** Done (2026-10-02). `docs/prd/ENTERPRISE.md` marks #1291–#1295
+Shipped, keeps hot-reload (#6) Open, updates inward theme so web_search is
+no longer a silent local drop, and adds a 2026-10-02 changelog line.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
