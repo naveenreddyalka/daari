@@ -33,6 +33,16 @@ scoped variant) and adds a `WWW-Authenticate` challenge on unauthenticated
 `/mcp` when API-key auth is on. Default off leaves the existing 401 body
 unchanged. Set `authorization_servers` / `scopes_supported` for your IdP.
 
+Opt-in aggregate egress catalog (`integrations.mcp_aggregate_egress.enabled:
+true`) merges tools from configured `integrations.mcp_servers` into `/mcp`
+`tools/list`, namespaced as `{server_id}__{tool}` (same scheme as Responses
+server-side MCP). `tools/call` on those names routes through the existing
+egress path (SSRF, breaker, guardrails, spend/`--by-tool`). Server/tool/client
+policies still apply — denied servers are omitted from the list. Per-server
+list failures log `mcp_aggregate_egress_list_failed` and skip that server
+without emptying the rest of the catalog. Default off keeps the first-party
+catalog only (core + local ProviderRegistry stubs).
+
 Opt-in local authorization server (`integrations.mcp_oauth.local_as: true`)
 adds `GET /.well-known/oauth-authorization-server` and
 `POST /oauth/token` (`grant_type=client_credentials`). Exchange an existing

@@ -1494,6 +1494,22 @@ class McpListCacheSettings(BaseModel):
     )
 
 
+class McpAggregateEgressSettings(BaseModel):
+    """Merge configured mcp_servers tools into `/mcp` tools/list (#1294)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, `/mcp` `tools/list` includes tools from configured "
+            "`integrations.mcp_servers`, namespaced as `{server_id}__{tool}`; "
+            "`tools/call` on those names routes through the egress path "
+            "(SSRF, breaker, guardrails, metering). Denied servers are omitted; "
+            "per-server list failures degrade without emptying the catalog. "
+            "Default false keeps the first-party-only catalog (#1294)."
+        ),
+    )
+
+
 class McpEgressSettings(BaseModel):
     """Outbound MCP URL SSRF / private-network policy and resilience (#1214, #1203)."""
 
@@ -1709,6 +1725,13 @@ class IntegrationsSettings(BaseModel):
             "integrations.mcp_servers (#1214, #1203). Default denies loopback, "
             "RFC1918, link-local, and metadata addresses; retries use "
             "`upstream.retry`; circuit opens after `failure_threshold` failures."
+        ),
+    )
+    mcp_aggregate_egress: McpAggregateEgressSettings = Field(
+        default_factory=McpAggregateEgressSettings,
+        description=(
+            "Opt-in merge of `integrations.mcp_servers` tools into `/mcp` "
+            "`tools/list` / `tools/call` (#1294). Off by default."
         ),
     )
     mcp_guardrails: GuardrailSettings = Field(

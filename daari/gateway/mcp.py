@@ -41,6 +41,13 @@ from daari.gateway.mcp_tasks import (
     spawn_tool_task,
     tool_should_become_task,
 )
+from daari.gateway.request_log import log_gateway_event
+from daari.gateway.responses_mcp import (
+    configured_mcp_server_ids,
+    function_name_for,
+    parse_mcp_function_name,
+)
+from daari.providers.mcp_egress import McpEgressProvider
 from daari.router.deadline import (
     RequestDeadlineExceeded,
     bind_request_deadline,
@@ -214,10 +221,35 @@ def _core_catalog() -> list[dict[str, Any]]:
     ]
 
 
-def _provider_catalog(ctx: AppContext) -> list[dict[str, Any]]:
+def ingress_aggregate_egress_enabled(settings: Any) -> bool:
+    integrations = getattr(settings, "integrations", None)
+    agg = getattr(integrations, "mcp_aggregate_egress", None)
+    return bool(getattr(agg, "enabled", False))
+
+
+def resolve_aggregated_egress_tool(
+    name: str, settings: Any
+) -> tuple[str, str] | None:
+    """Map `{server_id}__{tool}` to (configured_server_id, upstream_tool)."""
+    known = configured_mcp_server_ids(settings)
+    if not known:
+        return None
+    lower_map = {sid.lower(): sid for sid in known}
+    parsed = parse_mcp_function_name(name.strip().lower(), frozenset(lower_map))
+    if parsed is None:
+        return None
+    sid_lower, tool = parsed
+    return lower_map[sid_lower], tool
+
+
+def _provider_catalog(
+    ctx: AppContext, *, skip_mcp_providers: bool = False
+) -> list[dict[str, Any]]:
     tools: list[dict[str, Any]] = []
     seen: set[str] = set()
     for provider_id in ctx.providers.list_ids():
+        if skip_mcp_providers and provider_id.startswith("mcp:"):
+            continue
         name = _tool_name_for_provider(provider_id)
         if not name or name in seen:
             continue
@@ -255,20 +287,91 @@ def _tool_catalog(
     ctx: AppContext,
     policy: McpToolPolicy | None = None,
     server_policy: McpServerPolicy | None = None,
+    *,
+    skip_mcp_providers: bool | None = None,
 ) -> list[dict[str, Any]]:
-    catalog = [*_core_catalog(), *_provider_catalog(ctx)]
+    if skip_mcp_providers is None:
+        skip_mcp_providers = ingress_aggregate_egress_enabled(ctx.settings)
+    catalog = [
+        *_core_catalog(),
+        *_provider_catalog(ctx, skip_mcp_providers=skip_mcp_providers),
+    ]
     if policy is None and server_policy is None:
         return catalog
     return [item for item in catalog if _catalog_item_allowed(item, policy, server_policy)]
 
 
-def _mcp_list_tools(
+async def _aggregated_egress_catalog(
     ctx: AppContext,
-    policy: McpToolPolicy | None = None,
-    server_policy: McpServerPolicy | None = None,
+    request: Request | None,
+    policy: McpToolPolicy | None,
+    server_policy: McpServerPolicy | None,
 ) -> list[dict[str, Any]]:
+    """Fetch per-server egress tools; degrade on failure (#1294)."""
+    if not ingress_aggregate_egress_enabled(ctx.settings):
+        return []
+    known = configured_mcp_server_ids(ctx.settings)
+    if not known:
+        return []
+    meta = _governed_meta(request, ctx, None)
+    internal = InternalRequest(
+        messages=[Message(role="user", content="")],
+        model="",
+        meta=meta,
+    )
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for sid in sorted(known):
+        if server_policy is not None and not server_policy.allows(sid):
+            continue
+        provider = ctx.providers.get(f"mcp:{sid}")
+        if not isinstance(provider, McpEgressProvider):
+            continue
+        catalog, err = await provider.list_tools_catalog(internal)
+        if err is not None:
+            warning = getattr(err.daari_meta, "warning", None) or err.content or "list failed"
+            log_gateway_event(
+                "mcp_aggregate_egress_list_failed",
+                {"server_id": sid, "warning": str(warning)[:500]},
+            )
+            continue
+        assert catalog is not None
+        for entry in catalog:
+            upstream = str(entry.get("name") or "").strip()
+            if not upstream:
+                continue
+            namespaced = function_name_for(sid, upstream).lower()
+            if namespaced in seen:
+                continue
+            schema = entry.get("inputSchema") or entry.get("parameters") or _basic_input_schema()
+            if not isinstance(schema, dict):
+                schema = _basic_input_schema()
+            item = {
+                "name": namespaced,
+                "description": str(
+                    entry.get("description") or f"MCP {sid}/{upstream}"
+                ),
+                "input_schema": schema,
+                "output_schema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "daari_meta": {"type": "object"},
+                    },
+                },
+                "provider_id": f"mcp:{sid}",
+                "egress_tool": upstream,
+            }
+            if not _catalog_item_allowed(item, policy, server_policy):
+                continue
+            seen.add(namespaced)
+            items.append(item)
+    return items
+
+
+def _mcp_list_tools_from_catalog(catalog: list[dict[str, Any]]) -> list[dict[str, Any]]:
     listed: list[dict[str, Any]] = []
-    for item in _tool_catalog(ctx, policy, server_policy):
+    for item in catalog:
         if item["name"] == "health":
             continue
         listed.append(
@@ -279,6 +382,14 @@ def _mcp_list_tools(
             }
         )
     return listed
+
+
+def _mcp_list_tools(
+    ctx: AppContext,
+    policy: McpToolPolicy | None = None,
+    server_policy: McpServerPolicy | None = None,
+) -> list[dict[str, Any]]:
+    return _mcp_list_tools_from_catalog(_tool_catalog(ctx, policy, server_policy))
 
 
 def _list_cache_scope(
@@ -293,19 +404,19 @@ def _list_cache_scope(
     return "public"
 
 
-def _tools_list_payload(
+async def _tools_list_payload(
     ctx: AppContext,
     policy: McpToolPolicy | None = None,
     server_policy: McpServerPolicy | None = None,
     *,
     legacy: bool = False,
+    request: Request | None = None,
 ) -> dict[str, Any]:
-    """tools/list body with MCP 2026-07-28 _meta cache hints (#979)."""
-    tools = (
-        _tool_catalog(ctx, policy, server_policy)
-        if legacy
-        else _mcp_list_tools(ctx, policy, server_policy)
-    )
+    """tools/list body with MCP 2026-07-28 _meta cache hints (#979, #1294)."""
+    catalog = list(_tool_catalog(ctx, policy, server_policy))
+    if ingress_aggregate_egress_enabled(ctx.settings):
+        catalog.extend(await _aggregated_egress_catalog(ctx, request, policy, server_policy))
+    tools = catalog if legacy else _mcp_list_tools_from_catalog(catalog)
     cache = getattr(getattr(ctx.settings, "integrations", None), "mcp_list_cache", None)
     ttl_ms = int(getattr(cache, "ttl_ms", 60_000) or 0)
     return {
@@ -422,7 +533,14 @@ class _Governance:
     def _server_for_tool(self, name: str) -> str | None:
         catalog = {item["name"]: item for item in _tool_catalog(self._ctx)}
         item = catalog.get(name.strip().lower()) or {}
-        return server_id_from_provider(item.get("provider_id"))
+        sid = server_id_from_provider(item.get("provider_id"))
+        if sid is not None:
+            return sid
+        if ingress_aggregate_egress_enabled(self._ctx.settings):
+            parsed = resolve_aggregated_egress_tool(name, self._ctx.settings)
+            if parsed is not None:
+                return parsed[0]
+        return None
 
     def denied_tool(self, name: str) -> tuple[str, str | None] | None:
         """Return (tool, server_id|None) the caller may not call, else None."""
@@ -787,7 +905,15 @@ async def _run_tool(
         return response
 
     catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
-    provider_id = (catalog_by_name.get(normalized) or {}).get("provider_id")
+    catalog_item = catalog_by_name.get(normalized) or {}
+    provider_id = catalog_item.get("provider_id")
+    egress_tool = catalog_item.get("egress_tool")
+    aggregated = None
+    if egress_tool is None and ingress_aggregate_egress_enabled(ctx.settings):
+        aggregated = resolve_aggregated_egress_tool(normalized, ctx.settings)
+        if aggregated is not None:
+            provider_id = f"mcp:{aggregated[0]}"
+            egress_tool = aggregated[1]
     resolved_model = _resolve_tool_model(ctx, model, call_args)
     deadline_ms = None
     if request is not None:
@@ -806,6 +932,44 @@ async def _run_tool(
             phase="mcp",
             model=resolved_model,
         )
+
+    if provider_id and egress_tool:
+        provider = ctx.providers.get(provider_id)
+        if not isinstance(provider, McpEgressProvider):
+            return MCPQueryResponse(
+                ok=False,
+                tool=normalized,
+                result={
+                    "error": _error(
+                        "MCP_ERR_PROVIDER_NOT_FOUND",
+                        f"Provider not found: {provider_id}",
+                    )
+                },
+            )
+        internal = InternalRequest(
+            messages=[Message(role="user", content=call_input or "")],
+            model=resolved_model,
+            meta=meta,
+        )
+        provider_result = await _await_work(
+            provider.call_tool(internal, tool=str(egress_tool), arguments=call_args)
+        )
+        response = MCPQueryResponse(
+            ok=provider_result.daari_meta.warning is None,
+            tool=normalized,
+            result={"content": provider_result.content},
+            daari_meta=provider_result.daari_meta.model_dump(),
+        )
+        _meter_mcp_tool_call(
+            ctx,
+            request,
+            tool=normalized,
+            call_input=call_input,
+            model=resolved_model,
+            provider_id=provider_id,
+            daari_meta=response.daari_meta,
+        )
+        return response
 
     if provider_id:
         provider = ctx.providers.get(provider_id)
@@ -1015,8 +1179,12 @@ class MCPGatewayAdapter(GatewayAdapter):
                 return _legacy(
                     MCPQueryResponse(
                         tool="tools/list",
-                        result=_tools_list_payload(
-                            ctx, governance.policy, governance.server_policy, legacy=True
+                        result=await _tools_list_payload(
+                            ctx,
+                            governance.policy,
+                            governance.server_policy,
+                            legacy=True,
+                            request=request,
                         ),
                     ).model_dump()
                 )
@@ -1214,8 +1382,11 @@ class MCPGatewayAdapter(GatewayAdapter):
                         request,
                         _jsonrpc_result(
                             rpc_id,
-                            _tools_list_payload(
-                                ctx, governance.policy, governance.server_policy
+                            await _tools_list_payload(
+                                ctx,
+                                governance.policy,
+                                governance.server_policy,
+                                request=request,
                             ),
                         ),
                     )
