@@ -29,6 +29,18 @@ from pydantic import BaseModel, ConfigDict
 _REPEAT_PENALTY_CENTRE = 1.0
 _REPEAT_PENALTY_SCALE = 0.5
 
+
+class WebSearchUnavailable(Exception):
+    """Client set ``web_search_options`` but L6 cannot serve it (#1295).
+
+    Local tiers must not answer as if they searched the web. The gateway maps
+    ``reason`` onto a clear 4xx/501 instead of a silent local drop.
+    """
+
+    def __init__(self, reason: str = "web_search_required"):
+        self.reason = reason
+        super().__init__(f"web_search_options requires frontier (L6): {reason}")
+
 # OpenAI reasoning_effort → Ollama top-level `think` (#297).
 # `minimal` omits the field (lowest / default behaviour). Unknown strings omit.
 _REASONING_EFFORT_TO_THINK: dict[str, str | None] = {
@@ -724,8 +736,7 @@ class SamplingParams(BaseModel):
             notes.append("audio output is not available from local models")
         if self.verbosity is not None:
             notes.append("verbosity is not available from local models")
-        if self.web_search_options:
-            notes.append("web_search_options are not available from local models")
+        # web_search_options escalate to L6 or fail closed (#1295) — not a soft note.
         if self.prompt_cache_key is not None:
             notes.append("prompt_cache_key is not available from local models")
         if self.prompt_cache_retention is not None:
@@ -772,8 +783,7 @@ class SamplingParams(BaseModel):
             names.append("audio")
         if self.verbosity is not None:
             names.append("verbosity")
-        if self.web_search_options:
-            names.append("web_search_options")
+        # web_search_options are never silently dropped (#1295).
         if self.prompt_cache_key is not None:
             names.append("prompt_cache_key")
         if self.prompt_cache_retention is not None:

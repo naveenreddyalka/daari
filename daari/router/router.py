@@ -721,7 +721,55 @@ class Router:
 
     def ensure_capable(self, request: InternalRequest) -> None:
         """Raise before a stream starts so the client sees HTTP 422, not an SSE error."""
+        self._ensure_web_search_frontier(request)
         self._filter_capable_tiers(["L3", "L4", "L5"], request)
+
+    def _ensure_web_search_frontier(self, request: InternalRequest) -> None:
+        """Fail closed when the client asked for web search but L6 is blocked (#1295)."""
+        if not request.sampling.web_search_options:
+            return
+        from daari.gateway.sampling import WebSearchUnavailable
+
+        if request.meta.no_frontier:
+            raise WebSearchUnavailable("no_frontier")
+        if not self.frontier_enabled or self.frontier is None or not bool(
+            getattr(self.frontier, "api_key", None)
+        ):
+            raise WebSearchUnavailable("frontier_disabled")
+        if not self._frontier_reachable(request):
+            cap = self._effective_tier_cap(request)
+            if cap in self._TIER_ORDER:
+                raise WebSearchUnavailable(f"tier_cap:{cap}")
+            raise WebSearchUnavailable("frontier_not_allowed")
+        if self._frontier_budget_state() == "exceeded":
+            raise WebSearchUnavailable("frontier_budget_exceeded")
+
+    async def _serve_web_search_frontier(
+        self, request: InternalRequest, started: float
+    ) -> InternalResponse:
+        """Skip local text tiers and answer on L6 when web_search_options is set."""
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.deadline import guard_upstream
+
+        add_step("escalate", to="L6", reason="web_search_required")
+        log_gateway_event("web_search_required", {"to": "L6"})
+        budget_state = self._frontier_budget_state()
+        if budget_state == "soft":
+            add_step("budget_check", exceeded=False, soft=True)
+        guard_upstream("L6")
+        l6_request = await self._frontier_request(request)
+        l6_response = await self.frontier.execute(
+            l6_request,
+            escalated_from="web_search",
+            local_confidence=0.0,
+        )
+        l6_response.daari_meta.prompt_chars = sum(
+            len(message.content or "") for message in l6_request.messages
+        )
+        l6_response.daari_meta.warning = "web_search_required"
+        self.metrics.record_escalation()
+        self._record(l6_response, started)
+        return l6_response
 
     def _apply_guardrail_hits(self, hits: list[Any], *, warning: str | None) -> None:
         for hit in hits:
@@ -1422,6 +1470,12 @@ class Router:
     ) -> InternalResponse:
         started = time.perf_counter()
         request = self._with_skills_prefix(request)
+        # Client asked for web search: escalate to L6 or fail — never a local
+        # answer that silently drops search (#1295). Skip cache so a prior
+        # non-search hit cannot masquerade as a searched reply.
+        if request.sampling.web_search_options:
+            self._ensure_web_search_frontier(request)
+            return await self._serve_web_search_frontier(request, started)
         last_user = self._last_user_text(request.messages)
         cache_skip = self._category_cache_skip(profile)
         cache_max_age = self._category_cache_max_age(profile)
@@ -2055,6 +2109,22 @@ class Router:
         # above; agent flows must see the redacted tool payloads downstream.
         if agent_flow:
             stream_request.messages = [m.model_copy(deep=True) for m in request.messages]
+
+        # web_search_options: skip cache + local tiers; answer on L6 (#1295).
+        if request.sampling.web_search_options:
+            self._ensure_web_search_frontier(request)
+            add_step("escalate", to="L6", reason="web_search_required")
+            log_gateway_event("web_search_required", {"to": "L6", "stream": True})
+            served = await self._serve_web_search_frontier(stream_request, started)
+            outcome.note("L6", draft=False)
+            if served.daari_meta.dropped_params:
+                outcome.dropped_params = list(served.daari_meta.dropped_params)
+            for chunk in terminal_stream(served.content):
+                yield chunk
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+            finish_trace("L6")
+            return
 
         # Deterministic tiers (Lt tools, L2 rules, live fetch, integrations)
         # answer without a model and were unreachable while streaming (#155).
