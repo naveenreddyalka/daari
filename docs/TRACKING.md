@@ -5508,6 +5508,14 @@ when disabled. Docs: doctor-health.md. Covered by
 and `web_search_unavailable` error type/code. Covered by
 `tests/unit/test_web_search_unavailable_status.py`.
 
+### Doctor tip when mcp_oauth.local_as mints tokens ([#1312](https://github.com/naveenreddyalka/daari/issues/1312))
+
+<!-- tracking:#1312 -->
+**Status:** Done (2026-10-02). Optional doctor tip when
+`integrations.mcp_oauth.local_as` mints via `POST /oauth/token` while `/mcp`
+still requires a Bearer; absent when disabled. Docs: doctor-health.md.
+Covered by `tests/unit/test_doctor_mcp_oauth_local_as.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
