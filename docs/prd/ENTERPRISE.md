@@ -13,30 +13,28 @@
 
 ## Where daari stands (verified in-tree, 2026-10-02)
 
-**Loop velocity.** The decision-model + MCP OAuth / aggregate / web_search wave
-merged: `POST /v1/systemone`, opt-in complexity classifier, local OAuth
-authorize/token mint, `/mcp` egress tools/list aggregate, and
-`web_search_options` escalate-or-fail-closed (no silent local drop). Follow-on
-docs/doctor tips for registry and escalate hermetic pins also landed.
+**Loop velocity.** Decision-model + MCP OAuth mint / aggregate / web_search
+escalate wave is on `main` (`POST /v1/systemone`, opt-in complexity classifier,
+local AS token mint, `/mcp` egress tools/list aggregate, web_search escalate-
+or-fail-closed). Doctor tips + hermetic doc pins for that wave are draining.
 Hot-reload `config.yaml` remains in flight. Per-key tool-name allowlists for
-Messages `mcp_servers` stays parked (needs a longer session).
+Messages `mcp_servers` stay parked (needs a longer session).
 
-**Outward.** LiteLLM **v1.103.0** (2026-09-27): config-file ownership, Fuse +
-TypeSafe JEV routing, MCP client allowlists, RFC 8693 token exchange, access-
-group / project budget hardening. Portkey: Messages↔Responses routing +
-server-side MCP GA path; Agent Gateway CRUD/RBAC. Kong AI Gateway **2.x /
-3.12+**: MCP OAuth2 resource-server, upstream MCP aggregator, REST→MCP.
-Ollama **0.35.0** GA decision models (`POST /v1/systemone`); **0.40.0-rc0**
-MLX-default on Apple Silicon. OpenRouter **Jev Router** (task-difficulty
-routing). vLLM Semantic Router continues MoM signal routing (watch only).
+**Outward.** LiteLLM **v1.103.0** (config ownership, Fuse/JEV, MCP allowlists,
+RFC 8693 token exchange) plus **v1.104.0-rc1**: refuse weak/unset master key,
+group-scoped priority routing, team time-window reservation, JEV classifier for
+Auto Router, native compact-to-fit. Portkey: Agent Gateway CRUD/RBAC GA path;
+MCP Gateway claim auth (tool-level coming). Kong AI Gateway **3.12+ / 3.14**:
+MCP aggregator + OAuth2 resource-server; **Agent Gateway GA** (A2A). Ollama
+**0.35** systemone decision models; **0.40.0-rc0** MLX-default on Apple Silicon.
+OpenRouter **typesafe/jev-router** (difficulty + cache-aware model/effort stickiness).
 
-**Inward theme: config hot-reload + governance depth.** Decision-model control
-plane and MCP OAuth completeness past discovery are in-tree (opt-in). `/mcp`
-can aggregate egress `mcp_servers` into the ingress catalog. Chat
-`web_search_options` escalates to L6 when frontier is available, or fails
-closed — never a silent local answer. Remaining enterprise friction is live
-`config.yaml` reload without restart, then unparking per-key tool-name
-allowlists and deeper OBO/DCR only on buyer demand.
+**Inward theme: governance depth + config live-edit.** Local AS mint and
+egress aggregate closed the discovery→token gap for laptop MCP. Next friction
+is IdP OBO exchange for egress `mcp_servers` (LiteLLM parity), refuse-weak-
+master-key at serve (LiteLLM 1.104), doctor honesty when the classifier model
+is not pulled, and extending `/v1/daari/config` ownership to the new
+decision/MCP knobs so operators can live-tune beside hot-reload.
 
 ---
 
@@ -46,35 +44,42 @@ allowlists and deeper OBO/DCR only on buyer demand.
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — prior cycle | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM tool entitlements | Parked (needs ≥60m session) | Parked |
-| 8 | Full OBO/DCR; A2A; admin UI; Realtime/WS | 2–4 | 3–5 | LiteLLM / Portkey / Kong | Demand-triggered | Watch |
+| 9 | RFC 8693 OBO token exchange for egress `mcp_servers` | 4 | 3 | LiteLLM OBO / Kong MCP OAuth2 | File this run | File |
+| 10 | Refuse weak/unset master key at serve (opt-out) | 3 | 2 | LiteLLM 1.104 master-key gate | File this run | File |
+| 11 | Doctor tip when decision_classifier model missing from Ollama | 3 | 1 | — (local tags check) | File this run | File |
+| 12 | Extend `/v1/daari/config` ownership to decision_classifier + MCP knobs | 3 | 2 | LiteLLM config ownership UI | File this run | File |
+| 13 | Hermetic doctor-health pins for aggregate / local_as / classifier tips | 2 | 1 | — (docs regression) | File this run | File |
+| 8 | Full DCR; A2A; admin UI; Realtime/WS | 2–4 | 3–5 | Portkey Agent GW / Kong 3.14 | Demand-triggered | Watch |
 
 Shipped since 2026-09-30 scan — do not re-file: Anthropic `output_config.format`;
 Messages server-side MCP; RFC 9728 protected-resource; `POST /v1/ocr`; OpenAPI
-`/mcp/proxy`; `GET /v1/mcp/registry.json`; `POST /v1/systemone` (#1291);
-decision-model complexity classifier (#1292); MCP OAuth authorize/token mint
-(#1293); `/mcp` aggregate egress tools/list (#1294); `web_search_options`
-escalate / fail-closed (#1295). Still verified fine: effort mapping; MCP
-activity/abort; Responses `type:mcp`; Method/Name mismatch reject; client
-allowlists; Helm encrypted backups; spend `--by-tool`; `server/discover` +
-`_meta`; egress SSRF / OTel / retry / breaker; refreshable `secret://`;
+`/mcp/proxy`; `GET /v1/mcp/registry.json`; `POST /v1/systemone`; decision-model
+complexity classifier; MCP OAuth authorize/token mint; `/mcp` aggregate egress
+tools/list; `web_search_options` escalate / fail-closed; doctor tips for
+registry / aggregate / local_as / classifier. Still verified fine: effort
+mapping; MCP activity/abort; Responses `type:mcp`; Method/Name mismatch reject;
+client allowlists; Helm encrypted backups; spend `--by-tool`; `server/discover`
++ `_meta`; egress SSRF / OTel / retry / breaker; refreshable `secret://`;
 header_policy; tools/call metering; semantic tool search; ttlMs/cacheScope;
 MCP guardrails; W3C egress trace; model_group budgets; session affinity;
-Prometheus `/metrics`; agent prefix L0 + opt-in L1.
+Prometheus `/metrics`; agent prefix L0 + opt-in L1; config ownership MVP for
+prefer/budgets/cache/boundaries.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Live config reload** — finish hot-reload `config.yaml` (row 6) so operators
-   change policies without restart, matching LiteLLM config ownership locally.
-2. **Governance depth** — unpark per-key tool-name allowlists for Messages
+1. **Live config reload** — finish hot-reload `config.yaml` (row 6) and extend
+   ownership leaves for decision/MCP knobs (row 12) so operators change
+   policies without restart.
+2. **Egress OBO** — RFC 8693 token exchange for `mcp_servers` (row 9) so IdP
+   JWTs become scoped upstream MCP credentials on-box.
+3. **Serve hardening** — refuse weak/unset master keys with explicit sandbox
+   opt-out (row 10); doctor tips for missing classifier models (row 11).
+4. **Governance depth** — unpark per-key tool-name allowlists for Messages
    `mcp_servers` (row 7) once a ≥60m session is available.
-3. **Demand-triggered protocols** — OBO/DCR, A2A, admin UI, Realtime/WS (row 8)
-   only when a buyer asks; do not preempt the loop.
-4. **Decision-model polish** — keep systemone + classifier opt-in paths
-   hermetic in docs/doctor as Ollama/OpenRouter Jev evolve (watch outward).
-5. **MCP catalog honesty** — keep aggregate egress + local AS discoverable and
-   tested as IDE clients harden OAuth/MCP onboarding.
+5. **Demand-triggered protocols** — full DCR, A2A (Kong Agent Gateway / Portkey),
+   admin UI, Realtime/WS (row 8) only when a buyer asks.
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, admin UI, Realtime/WS) stay
 deferred until buyer demand.
@@ -83,11 +88,19 @@ deferred until buyer demand.
 
 ## Changelog
 
-- **2026-10-02 (web_search escalate + MCP P2 wave)** — Marked #1291–#1295
-  Shipped (systemone, decision classifier, MCP OAuth mint, `/mcp` aggregate,
-  web_search escalate/fail-closed); hot-reload still Open; tool-name allowlist
-  parked. Inward theme no longer calls web_search a silent local drop. Path
-  retargeted to hot-reload → governance → demand-triggered protocols.
+- **2026-10-02 (governance + serve hardening scan)** — Prior morning wave
+  (systemone / classifier / local AS / aggregate / web_search escalate) verified
+  on `main`; hot-reload still Open; tool-name allowlist parked. Outward: LiteLLM
+  1.104-rc1 weak-master-key + team routing; Portkey Agent Gateway; Kong Agent
+  Gateway GA; OpenRouter jev-router stickiness; Ollama 0.40 MLX-rc. Filed OBO
+  egress exchange, refuse-weak-master-key, doctor missing-classifier-model,
+  config ownership extension, hermetic doctor-health pins. Path retargeted to
+  live config → OBO → serve hardening → governance → demand-triggered.
+
+- **2026-10-02 (web_search escalate + MCP P2 wave)** — Marked systemone /
+  decision classifier / MCP OAuth mint / `/mcp` aggregate / web_search
+  escalate/fail-closed Shipped; hot-reload still Open; tool-name allowlist
+  parked. Path was hot-reload → governance → demand-triggered protocols.
 
 - **2026-10-01 (decision models + MCP OAuth depth)** — Prior-cycle format /
   Messages MCP / RFC 9728 / OCR / `/mcp/proxy` / registry.json merged;
