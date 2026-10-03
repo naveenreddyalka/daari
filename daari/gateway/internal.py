@@ -117,6 +117,8 @@ class RequestMeta(BaseModel):
     # Decision-classifier hint (#1292). Not part of the L0/L1 cache key.
     decision_tier: str | None = None
     decision_classifier: dict | None = None
+    # Compact-to-fit honesty when history was actually trimmed before L6 (#1351).
+    compact_to_fit: dict | None = None
     # Inbound Authorization bearer for MCP egress OBO token exchange (#1319).
     # Never logged; excluded from L0/L1 cache keys (explicit field lists).
     authorization_bearer: str | None = None
@@ -180,6 +182,8 @@ class DaariMeta(BaseModel):
     boundary: dict | None = None
     # Decision-classifier hop (#1292): {model, answer, complexity, tier}.
     decision: dict | None = None
+    # Compact-to-fit trim before L6 (#1351): {messages_before, messages_after}.
+    compact_to_fit: dict | None = None
     # Local pool host that served the request (issue #170).
     backend_id: str | None = None
     # G2: OpenRouter usage.cost, cached prompt tokens, and the client

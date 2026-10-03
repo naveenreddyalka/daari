@@ -96,6 +96,14 @@ def render_prometheus(
     lines.append(
         f"daari_request_deadline_exceeded_total {snap.get('deadline_exhausted', 0)}"
     )
+    lines.append(
+        "# HELP daari_compact_to_fit_applied_total Chat histories actually "
+        "trimmed before L6 (messages_before != messages_after)."
+    )
+    lines.append("# TYPE daari_compact_to_fit_applied_total counter")
+    lines.append(
+        f"daari_compact_to_fit_applied_total {snap.get('compact_to_fit_applied', 0)}"
+    )
 
     lines.append(
         "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "
