@@ -84,6 +84,9 @@ def run_doctor(
     classifier_model_tip = _check_decision_classifier_model(cfg, httpx_client)
     if classifier_model_tip is not None:
         results.append(classifier_model_tip)
+    compact_tip = _check_compact_to_fit(cfg)
+    if compact_tip is not None:
+        results.append(compact_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2253,6 +2256,29 @@ def _check_decision_classifier(settings: Settings) -> CheckResult | None:
         detail=(
             "routing.decision_classifier.enabled runs an Ollama /v1/systemone "
             "difficulty hop before heuristic tier pick; timeout/failure falls back"
+        ),
+        optional=True,
+    )
+
+
+def _check_compact_to_fit(settings: Settings) -> CheckResult | None:
+    """Informational tip when history compact-to-fit is on (#1349).
+
+    Absent when disabled (default). When enabled, remind operators that
+    oldest droppable turns trim before L6 while system/tool payloads stay
+    and over-cap history fail-closes oversized.
+    """
+    routing = getattr(settings, "routing", None)
+    compact = getattr(routing, "compact_to_fit", None) if routing is not None else None
+    if compact is None or not bool(getattr(compact, "enabled", False)):
+        return None
+    return CheckResult(
+        name="compact_to_fit",
+        ok=True,
+        detail=(
+            "routing.compact_to_fit.enabled trims oldest droppable chat turns "
+            "before L6 frontier; system messages and tool-call payloads are kept, "
+            "and over-cap history fail-closes oversized"
         ),
         optional=True,
     )
