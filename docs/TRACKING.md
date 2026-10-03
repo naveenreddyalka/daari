@@ -5573,6 +5573,15 @@ and deep-merges yaml on `persist`. Secrets stay non-editable. Docs: config.md,
 http-api.md. Covered by `tests/unit/test_config_ownership.py`.
 
 
+### Hermetic pin for systemone facade docs ([#1314](https://github.com/naveenreddyalka/daari/issues/1314))
+
+<!-- tracking:#1314 -->
+**Status:** Done (2026-10-03). Unit pins assert ollama.md and http-api.md
+mention `POST /v1/systemone` and `systemone.enabled` so the decision-model
+facade cannot drift without CI failure. Covered by
+`tests/unit/test_systemone_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
