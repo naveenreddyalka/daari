@@ -1,4 +1,4 @@
-"""Live-vs-file ownership metadata for GET/PATCH /v1/daari/config (#1111)."""
+"""Live-vs-file ownership metadata for GET/PATCH /v1/daari/config (#1111, #1322)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-_SAFE_SECTIONS = ("routing", "frontier", "cache", "boundaries")
+_SAFE_SECTIONS = ("routing", "frontier", "cache", "boundaries", "integrations")
 
 # Flat leaf paths exposed by the config editor GET payload.
 _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
@@ -15,6 +15,10 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("routing", "confidence_threshold"),
     ("routing", "latency_budget_ms"),
     ("routing", "max_tier_for_chat"),
+    ("routing", "decision_classifier", "enabled"),
+    ("routing", "decision_classifier", "model"),
+    ("routing", "decision_classifier", "timeout_seconds"),
+    ("routing", "decision_classifier", "agent_turns"),
     ("frontier", "daily_budget_usd"),
     ("frontier", "monthly_budget_usd"),
     ("frontier", "soft_budget_ratio"),
@@ -36,6 +40,10 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("boundaries", "stages_b1"),
     ("boundaries", "stages_b2"),
     ("boundaries", "stages_b3"),
+    ("integrations", "mcp_oauth", "local_as"),
+    ("integrations", "mcp_oauth", "protected_resource"),
+    ("integrations", "mcp_aggregate_egress", "enabled"),
+    ("integrations", "mcp_registry", "enabled"),
 )
 
 
@@ -86,6 +94,15 @@ def _file_leaf(doc: dict[str, Any], parts: tuple[str, ...]) -> Any:
     return _get_nested(doc, parts)
 
 
+def _live_leaf(live: dict[str, Any], parts: tuple[str, ...]) -> Any:
+    cur: Any = live
+    for part in parts:
+        if not isinstance(cur, dict) or part not in cur:
+            return _MISSING
+        cur = cur[part]
+    return cur
+
+
 def _values_equal(left: Any, right: Any) -> bool:
     if isinstance(left, list) and isinstance(right, list):
         return list(left) == list(right)
@@ -105,6 +122,12 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
             "confidence_threshold": s.routing.confidence_threshold,
             "latency_budget_ms": s.routing.latency_budget_ms,
             "max_tier_for_chat": s.routing.max_tier_for_chat,
+            "decision_classifier": {
+                "enabled": s.routing.decision_classifier.enabled,
+                "model": s.routing.decision_classifier.model,
+                "timeout_seconds": s.routing.decision_classifier.timeout_seconds,
+                "agent_turns": s.routing.decision_classifier.agent_turns,
+            },
         },
         "frontier": {
             "daily_budget_usd": s.frontier.daily_budget_usd,
@@ -133,6 +156,18 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
             "stages_b2": s.boundaries.stages_b2,
             "stages_b3": s.boundaries.stages_b3,
         },
+        "integrations": {
+            "mcp_oauth": {
+                "local_as": s.integrations.mcp_oauth.local_as,
+                "protected_resource": s.integrations.mcp_oauth.protected_resource,
+            },
+            "mcp_aggregate_egress": {
+                "enabled": s.integrations.mcp_aggregate_egress.enabled,
+            },
+            "mcp_registry": {
+                "enabled": s.integrations.mcp_registry.enabled,
+            },
+        },
     }
 
 
@@ -152,7 +187,9 @@ def ownership_fields(
     out: dict[str, dict[str, Any]] = {}
     for parts in _FIELD_PATHS:
         key = field_key(parts)
-        live_val = live[parts[0]][parts[1]]
+        live_val = _live_leaf(live, parts)
+        if live_val is _MISSING:
+            continue
         file_val = _file_leaf(doc, parts)
         in_file = file_val is not _MISSING
         diverged = bool(in_file and not _values_equal(live_val, file_val))
@@ -175,12 +212,9 @@ def ownership_fields(
 
 def patch_field_keys(body: dict[str, Any]) -> set[str]:
     keys: set[str] = set()
-    for section in _SAFE_SECTIONS:
-        section_body = body.get(section)
-        if not isinstance(section_body, dict):
-            continue
-        for name in section_body:
-            keys.add(f"{section}.{name}")
+    for parts in _FIELD_PATHS:
+        if _get_nested(body, parts) is not _MISSING:
+            keys.add(field_key(parts))
     return keys
 
 

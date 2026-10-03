@@ -612,22 +612,30 @@ class DecisionClassifierSettings(BaseModel):
         default=False,
         description=(
             "When true, Ask (and optionally Agent) turns call Ollama "
-            "/v1/systemone before the heuristic tier pick. Default off."
+            "/v1/systemone before the heuristic tier pick. Default off. "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
     model: str = Field(
         default="nimble",
-        description="Decision model name proxied to Ollama /v1/systemone.",
+        description=(
+            "Decision model name proxied to Ollama /v1/systemone. "
+            "Editable via config editor ownership."
+        ),
     )
     timeout_seconds: float = Field(
         default=5.0,
         ge=0.1,
-        description="Classifier request timeout; on timeout fall back to heuristics.",
+        description=(
+            "Classifier request timeout; on timeout fall back to heuristics. "
+            "Editable via config editor ownership."
+        ),
     )
     agent_turns: bool = Field(
         default=False,
         description=(
-            "When true, also classify agent/tool turns. Default false (Ask only)."
+            "When true, also classify agent/tool turns. Default false (Ask only). "
+            "Editable via config editor ownership."
         ),
     )
 
@@ -1549,7 +1557,8 @@ class McpAggregateEgressSettings(BaseModel):
             "`tools/call` on those names routes through the egress path "
             "(SSRF, breaker, guardrails, metering). Denied servers are omitted; "
             "per-server list failures degrade without emptying the catalog. "
-            "Default false keeps the first-party-only catalog (#1294)."
+            "Default false keeps the first-party-only catalog (#1294). "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
 
@@ -1611,7 +1620,9 @@ class McpOauthSettings(BaseModel):
             "When true, serve `GET /.well-known/oauth-protected-resource` (and the "
             "`/mcp`-scoped variant) and attach a `WWW-Authenticate` challenge on "
             "unauthenticated `/mcp` requests when API-key auth is on (#1262). "
-            "Default false leaves the existing 401 body unchanged."
+            "Default false leaves the existing 401 body unchanged. "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor); "
+            "secrets stay non-editable."
         ),
     )
     local_as: bool = Field(
@@ -1623,7 +1634,8 @@ class McpOauthSettings(BaseModel):
             "Bearer tokens bound to an existing API/virtual key (#1293). "
             "Advertises the local issuer in ``authorization_servers`` when that "
             "list is empty. Default false — discovery-only / external IdP stays "
-            "the ``protected_resource`` path."
+            "the ``protected_resource`` path. "
+            "Editable via config editor ownership."
         ),
     )
     resource: str = Field(
@@ -1653,7 +1665,8 @@ class McpOauthSettings(BaseModel):
         default="",
         description=(
             "HS256 secret for minting MCP access tokens (#1293). Empty derives from "
-            "the primary master key. Env: DAARI_INTEGRATIONS__MCP_OAUTH__SIGNING_SECRET."
+            "the primary master key. Env: DAARI_INTEGRATIONS__MCP_OAUTH__SIGNING_SECRET. "
+            "Not editable via the config editor (secrets stay redacted)."
         ),
     )
 
@@ -1703,7 +1716,7 @@ class McpRegistrySettings(BaseModel):
             "When true, serve GET /v1/mcp/registry.json listing the built-in "
             "`/mcp` ingress and configured integrations.mcp_servers URLs. "
             "Advertisement-only; /mcp still enforces API-key / allowlists. "
-            "Default false returns 404."
+            "Default false returns 404. Editable via config editor ownership."
         ),
     )
     public_base_url: str = Field(

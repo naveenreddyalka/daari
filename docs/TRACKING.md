@@ -5562,6 +5562,17 @@ Docs: doctor-health.md. Covered by
 `tests/unit/test_doctor_decision_classifier_model.py`.
 
 
+### Extend /v1/daari/config ownership to decision_classifier + MCP knobs ([#1322](https://github.com/naveenreddyalka/daari/issues/1322))
+
+<!-- tracking:#1322 -->
+**Status:** Done (2026-10-03). Config editor ownership covers
+`routing.decision_classifier.*` and MCP leaves (`mcp_oauth.local_as` /
+`protected_resource`, `mcp_aggregate_egress.enabled`, `mcp_registry.enabled`)
+with `source`/`editable` metadata; PATCH validates types, updates live Settings,
+and deep-merges yaml on `persist`. Secrets stay non-editable. Docs: config.md,
+http-api.md. Covered by `tests/unit/test_config_ownership.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

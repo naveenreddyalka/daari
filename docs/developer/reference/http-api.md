@@ -74,6 +74,10 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/responses/{response_id}/cancel` | Cancel Response |
 | `POST` | `/v1/systemone` | Systemone |
 
+## Config editor ownership
+
+`GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) expose per-field `ownership` (`source` / `editable` / `diverged`) for the safe subset, including `routing.decision_classifier.*` and MCP knobs (`integrations.mcp_oauth.local_as` / `protected_resource`, `integrations.mcp_aggregate_egress.enabled`, `integrations.mcp_registry.enabled`). Secrets such as `integrations.mcp_oauth.signing_secret` stay non-editable and are omitted from the payload.
+
 ## Responses stream resume
 
 `GET /v1/responses/{response_id}` accepts query parameters:

@@ -38,6 +38,96 @@ def _number(value: Any, key: str, *, low: float, high: float) -> float:
     return number
 
 
+def _bool(value: Any, key: str) -> bool:
+    if not isinstance(value, bool):
+        raise ConfigValidationError(f"{key} must be a bool")
+    return value
+
+
+def validated_decision_classifier(patch: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("decision_classifier must be an object")
+    allowed = {"enabled", "model", "timeout_seconds", "agent_turns"}
+    unknown = sorted(set(patch) - allowed)
+    if unknown:
+        raise ConfigValidationError(f"unknown decision_classifier keys: {unknown}")
+    out: dict[str, Any] = {}
+    if "enabled" in patch:
+        out["enabled"] = _bool(patch["enabled"], "decision_classifier.enabled")
+    if "model" in patch:
+        model = str(patch["model"]).strip()
+        if not model:
+            raise ConfigValidationError("decision_classifier.model must be a non-empty string")
+        out["model"] = model
+    if "timeout_seconds" in patch:
+        out["timeout_seconds"] = _number(
+            patch["timeout_seconds"],
+            "decision_classifier.timeout_seconds",
+            low=0.1,
+            high=600.0,
+        )
+    if "agent_turns" in patch:
+        out["agent_turns"] = _bool(patch["agent_turns"], "decision_classifier.agent_turns")
+    return out
+
+
+def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
+    """Safe MCP ownership leaves only — secrets stay non-editable (#1322)."""
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("integrations must be an object")
+    allowed_top = {"mcp_oauth", "mcp_aggregate_egress", "mcp_registry"}
+    unknown_top = sorted(set(patch) - allowed_top)
+    if unknown_top:
+        raise ConfigValidationError(f"unknown integrations keys: {unknown_top}")
+    out: dict[str, Any] = {}
+    if "mcp_oauth" in patch:
+        oauth = patch["mcp_oauth"]
+        if not isinstance(oauth, dict):
+            raise ConfigValidationError("mcp_oauth must be an object")
+        secret_keys = sorted(
+            k for k in oauth if k in {"signing_secret", "client_secret", "client_secrets"}
+        )
+        if secret_keys:
+            raise ConfigValidationError(
+                f"mcp_oauth secrets are not editable via the config editor: {secret_keys}"
+            )
+        allowed_oauth = {"local_as", "protected_resource"}
+        unknown_oauth = sorted(set(oauth) - allowed_oauth)
+        if unknown_oauth:
+            raise ConfigValidationError(f"unknown mcp_oauth keys: {unknown_oauth}")
+        oauth_out: dict[str, Any] = {}
+        for key in ("local_as", "protected_resource"):
+            if key in oauth:
+                oauth_out[key] = _bool(oauth[key], f"mcp_oauth.{key}")
+        if oauth_out:
+            out["mcp_oauth"] = oauth_out
+    if "mcp_aggregate_egress" in patch:
+        agg = patch["mcp_aggregate_egress"]
+        if not isinstance(agg, dict):
+            raise ConfigValidationError("mcp_aggregate_egress must be an object")
+        unknown_agg = sorted(set(agg) - {"enabled"})
+        if unknown_agg:
+            raise ConfigValidationError(f"unknown mcp_aggregate_egress keys: {unknown_agg}")
+        agg_out: dict[str, Any] = {}
+        if "enabled" in agg:
+            agg_out["enabled"] = _bool(agg["enabled"], "mcp_aggregate_egress.enabled")
+        if agg_out:
+            out["mcp_aggregate_egress"] = agg_out
+    if "mcp_registry" in patch:
+        reg = patch["mcp_registry"]
+        if not isinstance(reg, dict):
+            raise ConfigValidationError("mcp_registry must be an object")
+        unknown_reg = sorted(set(reg) - {"enabled"})
+        if unknown_reg:
+            raise ConfigValidationError(f"unknown mcp_registry keys: {unknown_reg}")
+        reg_out: dict[str, Any] = {}
+        if "enabled" in reg:
+            reg_out["enabled"] = _bool(reg["enabled"], "mcp_registry.enabled")
+        if reg_out:
+            out["mcp_registry"] = reg_out
+    return out
+
+
 def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if "confidence_threshold" in patch:
@@ -64,6 +154,10 @@ def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
                     f"max_tier_for_chat must be one of {TIER_CHOICES} or null"
                 )
             out["max_tier_for_chat"] = tier
+    if "decision_classifier" in patch:
+        classifier = validated_decision_classifier(patch["decision_classifier"] or {})
+        if classifier:
+            out["decision_classifier"] = classifier
     return out
 
 

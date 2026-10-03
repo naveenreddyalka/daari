@@ -2030,6 +2030,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 merged_boundaries,
                 validated_cache,
                 validated_frontier,
+                validated_integrations,
                 validated_routing,
             )
 
@@ -2039,6 +2040,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 routing = validated_routing(body.get("routing") or {})
                 frontier = validated_frontier(body.get("frontier") or {})
                 cache = validated_cache(body.get("cache") or {})
+                integrations = validated_integrations(body.get("integrations") or {})
                 raw_boundaries = body.get("boundaries") or {}
                 new_boundaries = (
                     merged_boundaries(ctx.settings.boundaries, raw_boundaries)
@@ -2060,6 +2062,21 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if "prefer" in routing:
                 ctx.router.model_preference = routing["prefer"]
                 ctx.settings.routing.prefer = routing["prefer"]
+            classifier = routing.get("decision_classifier") or {}
+            if "enabled" in classifier:
+                ctx.settings.routing.decision_classifier.enabled = classifier["enabled"]
+                ctx.router.decision_classifier_enabled = classifier["enabled"]
+            if "model" in classifier:
+                ctx.settings.routing.decision_classifier.model = classifier["model"]
+                ctx.router.decision_classifier_model = classifier["model"]
+            if "timeout_seconds" in classifier:
+                ctx.settings.routing.decision_classifier.timeout_seconds = classifier[
+                    "timeout_seconds"
+                ]
+                ctx.router.decision_classifier_timeout_seconds = classifier["timeout_seconds"]
+            if "agent_turns" in classifier:
+                ctx.settings.routing.decision_classifier.agent_turns = classifier["agent_turns"]
+                ctx.router.decision_classifier_agent_turns = classifier["agent_turns"]
             for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
                 if key in frontier:
                     setattr(ctx.settings.frontier, key, frontier[key])
@@ -2072,6 +2089,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if "l1_similarity_threshold" in cache:
                 ctx.settings.cache.l1.similarity_threshold = cache["l1_similarity_threshold"]
                 ctx.router.semantic_cache.similarity_threshold = cache["l1_similarity_threshold"]
+            mcp_oauth = integrations.get("mcp_oauth") or {}
+            for key in ("local_as", "protected_resource"):
+                if key in mcp_oauth:
+                    setattr(ctx.settings.integrations.mcp_oauth, key, mcp_oauth[key])
+            mcp_agg = integrations.get("mcp_aggregate_egress") or {}
+            if "enabled" in mcp_agg:
+                ctx.settings.integrations.mcp_aggregate_egress.enabled = mcp_agg["enabled"]
+            mcp_reg = integrations.get("mcp_registry") or {}
+            if "enabled" in mcp_reg:
+                ctx.settings.integrations.mcp_registry.enabled = mcp_reg["enabled"]
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,
@@ -2096,6 +2123,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "frontier": frontier,
                     "cache": cache,
                     "boundaries": boundaries,
+                    "integrations": integrations,
                 }
             )
             overrides = getattr(request.app.state, "config_runtime_overrides", None)
@@ -2113,6 +2141,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             "frontier": frontier,
                             "cache": cache,
                             "boundaries": boundaries,
+                            "integrations": integrations,
                         }
                     )
                 )
