@@ -162,6 +162,12 @@ def test_watchdog_skips_cursor_smoke_when_daemon_unreachable() -> None:
     assert "daemon unreachable" in text
 
 
+def test_watchdog_skips_live_integration_when_daemon_unreachable() -> None:
+    text = _WATCHDOG_SH.read_text(encoding="utf-8")
+    assert "SKIP: live integration (daemon unreachable)" in text
+    assert "daemon unreachable" in text
+
+
 def test_watchdog_issue_body_includes_serve_stderr_tail() -> None:
     text = _WATCHDOG_SH.read_text(encoding="utf-8")
     assert "serve.err.log" in text

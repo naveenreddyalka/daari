@@ -5638,6 +5638,14 @@ ownership names `decision_classifier` and MCP knobs. Covered by
 `tests/unit/test_http_api_config_ownership_docs.py`.
 
 
+### Watchdog skip live integration when daemon unreachable ([#1339](https://github.com/naveenreddyalka/daari/issues/1339))
+
+<!-- tracking:#1339 -->
+**Status:** Done (2026-10-03). Local watchdog skips `pytest -m integration` with
+`SKIP: live integration (daemon unreachable)` when serve is already down, even
+if Ollama `/api/tags` answers. Covered by `tests/unit/test_autodev_local.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
