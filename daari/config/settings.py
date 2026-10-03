@@ -551,6 +551,33 @@ class CategoryPolicy(BaseModel):
     latency_budget_ms: int | None = None
 
 
+class CompactToFitSettings(BaseModel):
+    """Trim oversized history before L6; never drop tool-call payloads (#1340)."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, chat history is compacted to max_messages / max_tokens "
+            "before L6. System messages and tool-call payloads are never "
+            "deleted; if the remainder still exceeds the cap, history is left "
+            "oversized (fail closed). Default off."
+        ),
+    )
+    max_messages: int = Field(
+        default=32,
+        ge=1,
+        description="Keep at most this many messages when compact_to_fit is on.",
+    )
+    max_tokens: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Approximate token budget (chars/4) when compact_to_fit is on. "
+            "0 disables the token cap."
+        ),
+    )
+
+
 class StallEscalationSettings(BaseModel):
     """Bump a stuck agent loop one tier from request-visible history (#357)."""
 
@@ -723,6 +750,13 @@ class RoutingSettings(RuntimeSettings):
     # When True, client reasoning_effort=high biases local tier selection
     # upward (and marks the profile complex). Default off (#297).
     reasoning_effort_escalation: bool = False
+    compact_to_fit: CompactToFitSettings = Field(
+        default_factory=CompactToFitSettings,
+        description=(
+            "Opt-in trim of oversized history before L6. Off unless enabled. "
+            "Tool-call payloads are never silently deleted."
+        ),
+    )
     stall_escalation: StallEscalationSettings = Field(
         default_factory=StallEscalationSettings,
         description="Stuck-loop bump from tool-call history. Off unless enabled.",
