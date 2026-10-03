@@ -5590,6 +5590,15 @@ facade cannot drift without CI failure. Covered by
 timeout fallback cues. Covered by `tests/unit/test_decision_classifier_docs.py`.
 
 
+### ASGI pin web_search_options when frontier disabled → 501 ([#1316](https://github.com/naveenreddyalka/daari/issues/1316))
+
+<!-- tracking:#1316 -->
+**Status:** Done (2026-10-03). ASGI chat with `web_search_options` and
+`frontier.enabled=false` returns 501 `web_search_unavailable` /
+`frontier_disabled`; absent-web_search local path unchanged. Covered by
+`tests/unit/test_web_search_escalate.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -247,6 +247,40 @@ class TestGatewayWebSearchEscalate:
         assert "web_search" in detail or "frontier" in detail
 
     @pytest.mark.asyncio
+    async def test_asgi_frontier_disabled_returns_501_web_search_unavailable(
+        self, settings, monkeypatch
+    ):
+        """Fail closed when web_search_options is set but frontier is off (#1316)."""
+        settings.cache.l0.enabled = False
+        settings.cache.l1.enabled = False
+        settings.frontier.enabled = False
+
+        app = create_app(settings)
+        app.state.ctx = AppContext.from_settings(settings)
+
+        async def fake_l3(request):
+            raise AssertionError("local must not answer web_search_options")
+
+        monkeypatch.setattr(app.state.ctx.router.ollama_l3, "execute", fake_l3)
+        monkeypatch.setattr(app.state.ctx.router.ollama_l4, "execute", fake_l3)
+        monkeypatch.setattr(app.state.ctx.router.ollama_l5, "execute", fake_l3)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": "daari",
+                    "messages": [{"role": "user", "content": "latest headlines?"}],
+                    "web_search_options": {"search_context_size": "medium"},
+                },
+                headers=META_HEADERS,
+            )
+        assert response.status_code == 501, response.text
+        body = response.json()
+        assert body["error"]["type"] == "web_search_unavailable"
+        assert body["error"]["code"] == "frontier_disabled"
+
+    @pytest.mark.asyncio
     async def test_asgi_absent_web_search_stays_local(self, settings, monkeypatch):
         settings.cache.l0.enabled = False
         settings.cache.l1.enabled = False
