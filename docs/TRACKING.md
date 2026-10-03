@@ -5599,6 +5599,17 @@ timeout fallback cues. Covered by `tests/unit/test_decision_classifier_docs.py`.
 `tests/unit/test_web_search_escalate.py`.
 
 
+### Hermetic pin doctor-health MCP/decision rows ([#1323](https://github.com/naveenreddyalka/daari/issues/1323))
+
+<!-- tracking:#1323 -->
+**Status:** Done (2026-10-03). Unit pins assert doctor-health.md rows for
+`mcp_aggregate_egress`, `mcp_oauth_local_as`, and `decision_classifier`
+include the tip config path and route cue. Covered by
+`tests/unit/test_doctor_health_mcp_aggregate_egress_docs.py`,
+`tests/unit/test_doctor_health_mcp_oauth_local_as_docs.py`, and
+`tests/unit/test_doctor_health_decision_classifier_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
