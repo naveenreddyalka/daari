@@ -5655,6 +5655,15 @@ tool-call payloads are never dropped; if the remainder still exceeds the cap,
 history stays oversized. Covered by `tests/unit/test_compact_to_fit.py`.
 
 
+### Watchdog sandbox master-key hatch docs ([#1341](https://github.com/naveenreddyalka/daari/issues/1341))
+
+<!-- tracking:#1341 -->
+**Status:** Done (2026-10-03). auth-and-keys.md documents the watchdog
+`DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY` plist hatch and
+`scripts/autodev-local.sh --install` reload. Covered by
+`tests/unit/test_watchdog_sandbox_key_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

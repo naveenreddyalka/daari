@@ -24,6 +24,13 @@ server:
 warns when the escape hatch is on, and when the master key is unset while
 virtual keys or `mcp_oauth.local_as` imply auth is expected.
 
+The local watchdog's `com.daari.serve` launchd unit sets
+`DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY=true` so sandbox serve
+survives the weak-key bind gate (#1328). After pulling that change, re-run
+`scripts/autodev-local.sh --install` so launchd reloads the plist; skipping
+reload leaves serve crash-looping and the watchdog filing connection-refused
+tickets.
+
 ### Token introspection (RFC 7662)
 
 `POST /introspect` lets an authenticated caller (master or virtual key) ask
