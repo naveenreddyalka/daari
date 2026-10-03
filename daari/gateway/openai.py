@@ -2077,6 +2077,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if "agent_turns" in classifier:
                 ctx.settings.routing.decision_classifier.agent_turns = classifier["agent_turns"]
                 ctx.router.decision_classifier_agent_turns = classifier["agent_turns"]
+            compact = routing.get("compact_to_fit") or {}
+            if "enabled" in compact:
+                ctx.settings.routing.compact_to_fit.enabled = compact["enabled"]
+                ctx.router.compact_to_fit_enabled = compact["enabled"]
+            if "max_messages" in compact:
+                ctx.settings.routing.compact_to_fit.max_messages = compact["max_messages"]
+                ctx.router.compact_to_fit_max_messages = compact["max_messages"]
+            if "max_tokens" in compact:
+                ctx.settings.routing.compact_to_fit.max_tokens = compact["max_tokens"]
+                ctx.router.compact_to_fit_max_tokens = compact["max_tokens"]
             for key in ("daily_budget_usd", "monthly_budget_usd", "soft_budget_ratio"):
                 if key in frontier:
                     setattr(ctx.settings.frontier, key, frontier[key])
