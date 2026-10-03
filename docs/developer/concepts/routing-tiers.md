@@ -171,6 +171,17 @@ request continues with today's heuristics and logs
 `decision_classifier` and `daari_meta.decision` record model, answer,
 complexity, and chosen tier.
 
+## Compact-to-fit before L6
+
+`routing.compact_to_fit.enabled` (default off) trims oldest unprotected
+chat turns before frontier escalate. System messages and tool-call payloads
+are never dropped; if the remainder still exceeds the cap, history stays
+oversized (fail closed). When a trim actually changes the message count,
+`daari_meta.compact_to_fit` records `messages_before` / `messages_after`
+and `/v1/daari/stats` increments `compact_to_fit_applied`. Unchanged or
+fail-closed history omits the meta object and does not increment the
+counter.
+
 ## TTFT-aware local preference
 
 Dry-run the initial local pick without calling Ollama or frontier:

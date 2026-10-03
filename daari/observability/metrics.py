@@ -147,6 +147,7 @@ class Metrics:
     mcp_egress: dict[str, int] = field(default_factory=dict)
     cancelled: dict[str, int] = field(default_factory=dict)
     deadline_exhausted: int = 0
+    compact_to_fit_applied: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -265,6 +266,11 @@ class Metrics:
         with self._lock:
             self.deadline_exhausted += 1
 
+    def record_compact_to_fit_applied(self) -> None:
+        """History was actually trimmed before an L6 hop (#1351)."""
+        with self._lock:
+            self.compact_to_fit_applied += 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -308,6 +314,7 @@ class Metrics:
                 "mcp_egress": dict(self.mcp_egress),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
+                "compact_to_fit_applied": self.compact_to_fit_applied,
                 "modality_requests": {
                     f"{mod}:{tier}": count
                     for (mod, tier), count in sorted(self.modality_requests.items())

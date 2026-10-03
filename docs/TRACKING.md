@@ -5681,6 +5681,16 @@ when `routing.compact_to_fit.enabled` is true (advisory, not a failure);
 silent when off. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 
 
+### daari_meta and stats when compact_to_fit trims ([#1351](https://github.com/naveenreddyalka/daari/issues/1351))
+
+<!-- tracking:#1351 -->
+**Status:** Done (2026-10-03). Successful history trims before L6 set
+`daari_meta.compact_to_fit` (`messages_before` / `messages_after`) and
+increment `/v1/daari/stats` `compact_to_fit_applied`. Unchanged or
+fail-closed (tool-protected) history does not claim a trim. Covered by
+`tests/unit/test_compact_to_fit.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

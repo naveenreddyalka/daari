@@ -1005,6 +1005,7 @@ class Router:
             response.daari_meta.complexity = profile.complexity
         if request.meta.decision_classifier and response.daari_meta.decision is None:
             response.daari_meta.decision = dict(request.meta.decision_classifier)
+        self._copy_compact_to_fit_meta(request, response)
         if request.sampling.reasoning_effort and response.daari_meta.reasoning_effort is None:
             response.daari_meta.reasoning_effort = request.sampling.reasoning_effort
         if request.sampling.service_tier and response.daari_meta.service_tier is None:
@@ -5009,7 +5010,7 @@ class Router:
         return self._scrub_for_frontier(l6_request)
 
     def _compact_to_fit_for_frontier(self, request: InternalRequest) -> InternalRequest:
-        from daari.router.compact_to_fit import compact_messages
+        from daari.router.compact_to_fit import compact_messages, estimate_tokens
 
         compacted, before, after = compact_messages(
             request.messages,
@@ -5021,8 +5022,27 @@ class Router:
             return request
         result = request.model_copy(deep=True)
         result.messages = compacted
+        detail = {
+            "messages_before": before,
+            "messages_after": after,
+            "tokens_before": estimate_tokens(request.messages),
+            "tokens_after": estimate_tokens(compacted),
+        }
+        result.meta.compact_to_fit = detail
+        if hasattr(self.metrics, "record_compact_to_fit_applied"):
+            self.metrics.record_compact_to_fit_applied()
         add_step("compact_to_fit", messages_before=before, messages_after=after)
         return result
+
+    def _copy_compact_to_fit_meta(self, request: InternalRequest, response: Any) -> None:
+        compact = getattr(request.meta, "compact_to_fit", None)
+        if not compact or response.daari_meta.compact_to_fit is not None:
+            return
+        before = compact.get("messages_before")
+        after = compact.get("messages_after")
+        if before is None or after is None or after >= before:
+            return
+        response.daari_meta.compact_to_fit = dict(compact)
 
     def _record_stream_host_failure(self, stream_slot: Any | None) -> None:
         """Trip the circuit breaker for the local slot that died mid-stream (#973)."""

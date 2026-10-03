@@ -1613,6 +1613,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "key_rate_limits": _stats_key_rate_limits(request),
                 "mcp_tool_calls": full.get("mcp_tool_calls") or {},
                 "mcp_tasks": mcp_tasks,
+                "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),
             }
 
         @router.get("/v1/daari/traces")
