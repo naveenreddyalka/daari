@@ -5646,6 +5646,15 @@ ownership names `decision_classifier` and MCP knobs. Covered by
 if Ollama `/api/tags` answers. Covered by `tests/unit/test_autodev_local.py`.
 
 
+### Opt-in compact-to-fit before L6 ([#1340](https://github.com/naveenreddyalka/daari/issues/1340))
+
+<!-- tracking:#1340 -->
+**Status:** Done (2026-10-03). `routing.compact_to_fit` (default off) trims
+oldest unprotected chat turns before frontier escalate. System messages and
+tool-call payloads are never dropped; if the remainder still exceeds the cap,
+history stays oversized. Covered by `tests/unit/test_compact_to_fit.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

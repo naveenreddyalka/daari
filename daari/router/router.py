@@ -497,6 +497,9 @@ class Router:
         context_max_history: int = 20,
         context_squeeze_whitespace: bool = True,
         context_compact: bool = False,
+        compact_to_fit_enabled: bool = False,
+        compact_to_fit_max_messages: int = 32,
+        compact_to_fit_max_tokens: int = 0,
         frontier_compress: bool = False,
         frontier_compress_ratio: float = 0.6,
         max_tier_for_chat: str | None = None,
@@ -600,6 +603,9 @@ class Router:
         self.context_max_history = context_max_history
         self.context_squeeze_whitespace = context_squeeze_whitespace
         self.context_compact = context_compact
+        self.compact_to_fit_enabled = bool(compact_to_fit_enabled)
+        self.compact_to_fit_max_messages = max(1, int(compact_to_fit_max_messages))
+        self.compact_to_fit_max_tokens = max(0, int(compact_to_fit_max_tokens))
         self.frontier_compress = frontier_compress
         self.frontier_compress_ratio = frontier_compress_ratio
         # Compaction summaries keyed by prefix hash (Trust PRD T2b).
@@ -4997,9 +5003,26 @@ class Router:
 
     async def _frontier_request(self, request: InternalRequest) -> InternalRequest:
         """Apply the outbound slim/compress/scrub pipeline before leaving the device."""
-        l6_request = self._slim_for_frontier(request)
+        l6_request = self._compact_to_fit_for_frontier(request)
+        l6_request = self._slim_for_frontier(l6_request)
         l6_request = await self._compress_for_frontier(l6_request)
         return self._scrub_for_frontier(l6_request)
+
+    def _compact_to_fit_for_frontier(self, request: InternalRequest) -> InternalRequest:
+        from daari.router.compact_to_fit import compact_messages
+
+        compacted, before, after = compact_messages(
+            request.messages,
+            enabled=self.compact_to_fit_enabled,
+            max_messages=self.compact_to_fit_max_messages,
+            max_tokens=self.compact_to_fit_max_tokens,
+        )
+        if after == before:
+            return request
+        result = request.model_copy(deep=True)
+        result.messages = compacted
+        add_step("compact_to_fit", messages_before=before, messages_after=after)
+        return result
 
     def _record_stream_host_failure(self, stream_slot: Any | None) -> None:
         """Trip the circuit breaker for the local slot that died mid-stream (#973)."""
@@ -5928,6 +5951,9 @@ class AppContext:
             context_max_history=settings.context_optimizer.max_history_messages,
             context_squeeze_whitespace=settings.context_optimizer.squeeze_whitespace,
             context_compact=settings.context_optimizer.compact,
+            compact_to_fit_enabled=settings.routing.compact_to_fit.enabled,
+            compact_to_fit_max_messages=settings.routing.compact_to_fit.max_messages,
+            compact_to_fit_max_tokens=settings.routing.compact_to_fit.max_tokens,
             frontier_compress=settings.frontier.compress_context,
             frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
