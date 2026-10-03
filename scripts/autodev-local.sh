@@ -139,6 +139,9 @@ else
 fi
 
 # --- 4. Cursor-shaped E2E smoke (18 tools + input_text, streaming) -------------
+if printf '%s\n' "${FAILURES[@]+"${FAILURES[@]}"}" | grep -Fxq "daemon unreachable"; then
+  log "SKIP: cursor smoke (daemon unreachable)"
+else
 SMOKE_OUT="$LOG_DIR/smoke-latest.json"
 "$VENV/bin/python" - "$DAEMON_URL" "$SMOKE_OUT" <<'PY' >> "$RUN_LOG" 2>&1
 import json, sys
@@ -168,6 +171,7 @@ else
   log "FAIL: cursor smoke ($(cat "$SMOKE_OUT" 2>/dev/null))"
   FAILURES+=("cursor-shaped E2E smoke failed")
 fi
+fi
 
 # --- 5. Report -----------------------------------------------------------------
 if [ ${#FAILURES[@]} -gt 0 ]; then
@@ -183,6 +187,11 @@ if [ ${#FAILURES[@]} -gt 0 ]; then
     echo "## Log tail"
     echo '```'
     tail -60 "$RUN_LOG"
+    echo '```'
+    echo
+    echo "## Serve stderr tail"
+    echo '```'
+    tail -40 "$LOG_DIR/serve.err.log" 2>/dev/null || echo "(no serve.err.log)"
     echo '```'
     echo
     echo "Machine: $(hostname). Full log: \`$RUN_LOG\`."
