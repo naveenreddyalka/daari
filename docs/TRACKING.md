@@ -5582,6 +5582,14 @@ facade cannot drift without CI failure. Covered by
 `tests/unit/test_systemone_docs.py`.
 
 
+### Hermetic pin for decision_classifier config rows ([#1315](https://github.com/naveenreddyalka/daari/issues/1315))
+
+<!-- tracking:#1315 -->
+**Status:** Done (2026-10-03). Unit pin asserts config.md lists
+`routing.decision_classifier.enabled` / `.model` / `.timeout_seconds` and
+timeout fallback cues. Covered by `tests/unit/test_decision_classifier_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
