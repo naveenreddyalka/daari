@@ -5704,6 +5704,15 @@ deny. Master key and flag-off unchanged. Doctor tip
 `tests/integration/test_mcp_governance.py`.
 
 
+### Hermetic pin compact_to_fit in config and routing-tiers ([#1350](https://github.com/naveenreddyalka/daari/issues/1350))
+
+<!-- tracking:#1350 -->
+**Status:** Done (2026-10-03). Unit pins assert `config.md` lists the three
+`routing.compact_to_fit.*` keys with fail-closed / tool-payload wording, and
+`routing-tiers.md` documents compact before L6 with the same rules. Covered by
+`tests/unit/test_compact_to_fit_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
