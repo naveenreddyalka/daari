@@ -13,24 +13,26 @@
 
 ## Where daari stands (verified in-tree, 2026-10-03)
 
-**Loop velocity.** OBO egress exchange, refuse-weak-master-key, classifier-model
-doctor tip, config ownership for decision/MCP knobs, and hermetic doctor-health
-pins are on `main`. Local watchdog sandbox serve now sets the weak-key hatch so
-KeepAlive does not crash-loop after the gate. Hot-reload `config.yaml` remains
-in flight (`agent:working`). Per-key tool-name allowlists for Messages
-`mcp_servers` stay parked (needs a longer session).
+**Loop velocity.** Morning compact-to-fit, watchdog failure-list dedupe, skip
+live integration when serve is down, http-api ownership pins, and watchdog
+sandbox hatch docs are on `main`. Hot-reload `config.yaml` remains in flight.
+Per-key tool-name allowlists for Messages `mcp_servers` stay parked (needs a
+longer session). Compact knobs exist in yaml but not on the config-editor
+ownership map, so operators still restart to live-tune spend.
 
-**Outward.** LiteLLM **v1.104.0-rc.2**: UI/CLI session tokens (`litellm_login_`
-AES-GCM, header-safe) on top of **rc.1** master-key enforcement, group-scoped
-priority routing, team time-window reservation, JEV Auto Router, native
-compact-to-fit, MCP `object_permission` + `require_key_mcp_access_defined`.
-Portkey Agent Gateway CRUD/RBAC; Kong **Agent Gateway GA** (A2A). Ollama
-**0.40** MLX-default rc on Apple Silicon.
+**Outward.** LiteLLM **v1.104.0-rc.2** (session tokens `litellm_login_` AES-GCM)
+on **rc.1**: master-key gate, group-scoped priority routing, team time-window
+reservation, JEV Auto Router, native compact-to-fit, MCP `object_permission` +
+`require_key_mcp_access_defined`. Portkey Agent Gateway CRUD/RBAC; Kong **Agent
+Gateway GA** (A2A). Ollama **0.40** MLX-default rc on Apple Silicon. No newer
+stable LiteLLM than **1.103.0** (27 Sep).
 
-**Inward theme: live config + loop hygiene + compact-before-L6.** Ownership
-leaves for classifier/MCP shipped; operators still restart for yaml edits.
-Watchdog SHA-stamped duplicates steal `--pick`. LiteLLM compact-to-fit is the
-next local-first spend lever before frontier escalate.
+**Inward theme: compact live-tune + MCP grant fail-closed.** Compact-to-fit
+ships default-off but GET/PATCH ownership, doctor, `daari_meta`, and
+routing-tiers docs still treat it as invisible. Ingress `/mcp` still lists the
+full catalog for virtual keys with no `metadata.mcp` grant — LiteLLM’s
+require-defined MCP access is the local-first gate we can ship without unparking
+per-tool Messages allowlists.
 
 ---
 
@@ -45,26 +47,32 @@ next local-first spend lever before frontier escalate.
 | 11 | Doctor tip when decision_classifier model missing from Ollama | 3 | 1 | — (local tags check) | Shipped | Shipped |
 | 12 | Extend `/v1/daari/config` ownership to decision_classifier + MCP knobs | 3 | 2 | LiteLLM config ownership UI | Shipped | Shipped |
 | 13 | Hermetic doctor-health pins for aggregate / local_as / classifier tips | 2 | 1 | — (docs regression) | Shipped | Shipped |
-| 14 | Watchdog: dedupe local E2E issues by failure list (not SHA) | 3 | 1 | — (loop hygiene) | File this run | File |
-| 15 | Skip live integration when watchdog daemon is unreachable | 2 | 1 | — (signal quality) | File this run | File |
-| 16 | Hermetic http-api pin for config ownership classifier/MCP leaves | 2 | 1 | — (docs regression) | File this run | File |
-| 17 | Opt-in compact-to-fit before L6 | 3 | 2 | LiteLLM 1.104 compact-to-fit | File this run | File |
-| 18 | Docs pin: watchdog sandbox master-key hatch + `--install` | 2 | 1 | — (ops honesty) | File this run | File |
+| 14 | Watchdog: dedupe local E2E issues by failure list (not SHA) | 3 | 1 | — (loop hygiene) | Shipped | Shipped |
+| 15 | Skip live integration when watchdog daemon is unreachable | 2 | 1 | — (signal quality) | Shipped | Shipped |
+| 16 | Hermetic http-api pin for config ownership classifier/MCP leaves | 2 | 1 | — (docs regression) | Shipped | Shipped |
+| 17 | Opt-in compact-to-fit before L6 | 3 | 2 | LiteLLM 1.104 compact-to-fit | Shipped | Shipped |
+| 18 | Docs pin: watchdog sandbox master-key hatch + `--install` | 2 | 1 | — (ops honesty) | Shipped | Shipped |
+| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | File this run | File |
+| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | File this run | File |
+| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | File this run | File |
+| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | File this run | File |
+| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | File this run | File |
 | 8 | Full DCR; A2A; admin UI; Realtime/WS | 2–4 | 3–5 | Portkey Agent GW / Kong 3.14 | Demand-triggered | Watch |
 
-Shipped since 2026-09-30 scan — do not re-file: Anthropic `output_config.format`;
-Messages server-side MCP; RFC 9728 protected-resource; `POST /v1/ocr`; OpenAPI
-`/mcp/proxy`; `GET /v1/mcp/registry.json`; `POST /v1/systemone`; decision-model
-complexity classifier; MCP OAuth authorize/token mint; `/mcp` aggregate egress
-tools/list; `web_search_options` escalate / fail-closed; doctor tips for
-registry / aggregate / local_as / classifier. Still verified fine: effort
-mapping; MCP activity/abort; Responses `type:mcp`; Method/Name mismatch reject;
-client allowlists; Helm encrypted backups; spend `--by-tool`; `server/discover`
-+ `_meta`; egress SSRF / OTel / retry / breaker; refreshable `secret://`;
+Shipped since 2026-09-30 scan — do not re-file: compact-to-fit; watchdog
+failure-list dedupe + skip-integration + sandbox hatch docs; Anthropic
+`output_config.format`; Messages server-side MCP; RFC 9728; `POST /v1/ocr`;
+OpenAPI `/mcp/proxy`; `GET /v1/mcp/registry.json`; `POST /v1/systemone`;
+decision-model classifier; MCP OAuth authorize/token mint; `/mcp` aggregate
+egress; `web_search_options` escalate / fail-closed; doctor tips for registry /
+aggregate / local_as / classifier. Still verified fine: effort mapping; MCP
+activity/abort; Responses `type:mcp`; Method/Name mismatch reject; client
+allowlists; Helm encrypted backups; spend `--by-tool`; `server/discover` +
+`_meta`; egress SSRF / OTel / retry / breaker; refreshable `secret://`;
 header_policy; tools/call metering; semantic tool search; ttlMs/cacheScope;
 MCP guardrails; W3C egress trace; model_group budgets; session affinity;
 Prometheus `/metrics`; agent prefix L0 + opt-in L1; config ownership MVP for
-prefer/budgets/cache/boundaries.
+prefer/budgets/cache/boundaries/classifier/MCP.
 
 ---
 
@@ -72,10 +80,11 @@ prefer/budgets/cache/boundaries.
 
 1. **Live config reload** — finish hot-reload `config.yaml` (row 6) so yaml
    edits match the shipped ownership PATCH path without process restart.
-2. **Loop hygiene** — watchdog failure-list dedupe (row 14) and skip
-   integration when serve is down (row 15) so `--pick` stays on product work.
-3. **Compact before L6** — opt-in compact-to-fit (row 17) as LiteLLM 1.104
-   parity that keeps tokens on-box.
+2. **Compact live-tune** — ownership (row 19), doctor (row 20), docs pin
+   (row 21), and `daari_meta`/stats (row 22) so compact-to-fit is operable,
+   not just a yaml flag.
+3. **MCP grant fail-closed** — opt-in require-defined MCP access (row 23) as
+   LiteLLM 1.104 parity without unparking per-tool Messages allowlists.
 4. **Governance depth** — unpark per-key tool-name allowlists for Messages
    `mcp_servers` (row 7) once a ≥60m session is available.
 5. **Demand-triggered protocols** — full DCR, A2A (Kong Agent Gateway / Portkey),
@@ -87,6 +96,13 @@ deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-03 (compact live-tune + MCP grant fail-closed)** — Marked compact-to-fit,
+  watchdog dedupe / skip-integration / hatch docs, and http-api ownership pins
+  Shipped. Outward: LiteLLM 1.104.0-rc.2 still current RC; 1.103.0 latest
+  stable. Filed compact ownership, doctor tip, routing-tiers pin,
+  `daari_meta`/stats, and opt-in MCP grant fail-closed. Path retargeted to live
+  config → compact live-tune → MCP grant gate → governance → demand-triggered.
 
 - **2026-10-03 (live config + loop hygiene + compact)** — Marked OBO, refuse-weak-key,
   classifier-model doctor, config ownership, doctor-health pins Shipped; watchdog
@@ -125,13 +141,8 @@ deferred until buyer demand.
   (P1), Messages server-side MCP, RFC 9728 discovery, `/v1/ocr`, `/mcp/proxy`
   (P2s). Systemone / registry / A2A held as watch.
 
-- **2026-09-29 (client honesty + MCP ops + local MCP execution)** — Overnight
-  discover/SSRF and morning resilience/secrets/Helm merged. Filed effort
-  passthrough (P1), MCP activity/abort, Responses server-side MCP, header
-  mismatch reject, config hot-reload (P2s). Client allowlists / backups /
-  `--by-tool` filed then merged 09-29/09-30.
-
-- **2026-09-28 → 09-15 and earlier** — Condensed: 2026-07-28 fidelity, MCP
-  gateway enterprise depth, gateway-backend completeness, governance,
-  agent-surface fidelity, Responses honesty, images/identity/FinOps, non-chat
-  endpoint parity, Apache 2.0, this PRD's creation (2026-08-28).
+- **2026-09-29 → 09-15 and earlier** — Condensed: client honesty, MCP ops,
+  local MCP execution, 2026-07-28 fidelity, MCP gateway enterprise depth,
+  gateway-backend completeness, governance, agent-surface fidelity, Responses
+  honesty, images/identity/FinOps, non-chat endpoint parity, Apache 2.0, this
+  PRD's creation (2026-08-28).
