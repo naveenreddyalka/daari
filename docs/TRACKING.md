@@ -5673,6 +5673,14 @@ source/editable metadata; PATCH validates bool / positive int / non-negative
 int. Default remains off. Covered by `tests/unit/test_config_ownership.py`.
 
 
+### Doctor tip when compact_to_fit.enabled ([#1349](https://github.com/naveenreddyalka/daari/issues/1349))
+
+<!-- tracking:#1349 -->
+**Status:** Done (2026-10-03). Optional `daari doctor` row `compact_to_fit`
+when `routing.compact_to_fit.enabled` is true (advisory, not a failure);
+silent when off. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

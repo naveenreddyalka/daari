@@ -50,6 +50,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `mcp_token_exchange` | Optional: when any `integrations.mcp_servers` entry uses `auth_type: oauth2_token_exchange` — tip that inbound Bearer is exchanged (RFC 8693) before egress; SSRF + fail-closed on missing subject / exchange errors |
 | doctor `master_key_strength` | Optional: warns when `server.dangerously_permit_weak_or_unset_api_key` is true, or when master key is unset while virtual keys / `mcp_oauth.local_as` imply auth (#1320) |
 | doctor `decision_classifier` | Optional: when `routing.decision_classifier.enabled` is true — tip that an Ollama `/v1/systemone` difficulty hop runs before heuristic tier pick (fallback on timeout/failure) |
+| doctor `compact_to_fit` | Optional: when `routing.compact_to_fit.enabled` is true — tip that oldest droppable turns are trimmed before L6/frontier; system and tool-call payloads are kept; over-cap history fail-closes oversized |
 | doctor `decision_classifier_model` | Optional: when the classifier is enabled but `routing.decision_classifier.model` (default `nimble`) is missing from Ollama `/api/tags` — tip to `ollama pull <model>`; quiet if Ollama is unreachable (the `ollama` check owns that) |
 
 ## Next
