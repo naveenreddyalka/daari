@@ -24,7 +24,9 @@ from daari.server.auth import resolve_auth
 
 NOW = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
 PAST = (NOW - timedelta(hours=1)).isoformat()
-FUTURE = (NOW + timedelta(days=30)).isoformat()
+# Wall-clock status/auth paths compare expires_at to datetime.now(); keep this
+# strictly after NOW so frozen-NOW assertions and live-clock checks both pass.
+FUTURE = (NOW + timedelta(days=400)).isoformat()
 CHAT = {"model": "daari", "messages": [{"role": "user", "content": "hi"}]}
 
 

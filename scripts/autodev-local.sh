@@ -114,7 +114,9 @@ else
 fi
 
 # --- 3. Live Ollama integration tests -----------------------------------------
-if curl -sf --max-time 5 "$OLLAMA_URL/api/tags" > /dev/null; then
+if printf '%s\n' "${FAILURES[@]+"${FAILURES[@]}"}" | grep -Fxq "daemon unreachable"; then
+  log "SKIP: live integration (daemon unreachable)"
+elif curl -sf --max-time 5 "$OLLAMA_URL/api/tags" > /dev/null; then
   log "Running live integration tests"
   INTEGRATION_OK=0
   for attempt in 1 2; do
