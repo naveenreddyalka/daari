@@ -11,30 +11,26 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-02)
+## Where daari stands (verified in-tree, 2026-10-03)
 
-**Loop velocity.** Decision-model + MCP OAuth mint / aggregate / web_search
-escalate wave is on `main` (`POST /v1/systemone`, opt-in complexity classifier,
-local AS token mint, `/mcp` egress tools/list aggregate, web_search escalate-
-or-fail-closed). Doctor tips + hermetic doc pins for that wave are draining.
-Hot-reload `config.yaml` remains in flight. Per-key tool-name allowlists for
-Messages `mcp_servers` stay parked (needs a longer session).
+**Loop velocity.** OBO egress exchange, refuse-weak-master-key, classifier-model
+doctor tip, config ownership for decision/MCP knobs, and hermetic doctor-health
+pins are on `main`. Local watchdog sandbox serve now sets the weak-key hatch so
+KeepAlive does not crash-loop after the gate. Hot-reload `config.yaml` remains
+in flight (`agent:working`). Per-key tool-name allowlists for Messages
+`mcp_servers` stay parked (needs a longer session).
 
-**Outward.** LiteLLM **v1.103.0** (config ownership, Fuse/JEV, MCP allowlists,
-RFC 8693 token exchange) plus **v1.104.0-rc1**: refuse weak/unset master key,
-group-scoped priority routing, team time-window reservation, JEV classifier for
-Auto Router, native compact-to-fit. Portkey: Agent Gateway CRUD/RBAC GA path;
-MCP Gateway claim auth (tool-level coming). Kong AI Gateway **3.12+ / 3.14**:
-MCP aggregator + OAuth2 resource-server; **Agent Gateway GA** (A2A). Ollama
-**0.35** systemone decision models; **0.40.0-rc0** MLX-default on Apple Silicon.
-OpenRouter **typesafe/jev-router** (difficulty + cache-aware model/effort stickiness).
+**Outward.** LiteLLM **v1.104.0-rc.2**: UI/CLI session tokens (`litellm_login_`
+AES-GCM, header-safe) on top of **rc.1** master-key enforcement, group-scoped
+priority routing, team time-window reservation, JEV Auto Router, native
+compact-to-fit, MCP `object_permission` + `require_key_mcp_access_defined`.
+Portkey Agent Gateway CRUD/RBAC; Kong **Agent Gateway GA** (A2A). Ollama
+**0.40** MLX-default rc on Apple Silicon.
 
-**Inward theme: governance depth + config live-edit.** Local AS mint and
-egress aggregate closed the discovery→token gap for laptop MCP. Next friction
-is IdP OBO exchange for egress `mcp_servers` (LiteLLM parity), refuse-weak-
-master-key at serve (LiteLLM 1.104), doctor honesty when the classifier model
-is not pulled, and extending `/v1/daari/config` ownership to the new
-decision/MCP knobs so operators can live-tune beside hot-reload.
+**Inward theme: live config + loop hygiene + compact-before-L6.** Ownership
+leaves for classifier/MCP shipped; operators still restart for yaml edits.
+Watchdog SHA-stamped duplicates steal `--pick`. LiteLLM compact-to-fit is the
+next local-first spend lever before frontier escalate.
 
 ---
 
@@ -42,13 +38,18 @@ decision/MCP knobs so operators can live-tune beside hot-reload.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — prior cycle | Open |
-| 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM tool entitlements | Parked (needs ≥60m session) | Parked |
-| 9 | RFC 8693 OBO token exchange for egress `mcp_servers` | 4 | 3 | LiteLLM OBO / Kong MCP OAuth2 | File this run | File |
-| 10 | Refuse weak/unset master key at serve (opt-out) | 3 | 2 | LiteLLM 1.104 master-key gate | File this run | File |
-| 11 | Doctor tip when decision_classifier model missing from Ollama | 3 | 1 | — (local tags check) | File this run | File |
-| 12 | Extend `/v1/daari/config` ownership to decision_classifier + MCP knobs | 3 | 2 | LiteLLM config ownership UI | File this run | File |
-| 13 | Hermetic doctor-health pins for aggregate / local_as / classifier tips | 2 | 1 | — (docs regression) | File this run | File |
+| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — in flight | Open |
+| 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked |
+| 9 | RFC 8693 OBO token exchange for egress `mcp_servers` | 4 | 3 | LiteLLM OBO / Kong MCP OAuth2 | Shipped | Shipped |
+| 10 | Refuse weak/unset master key at serve (opt-out) | 3 | 2 | LiteLLM 1.104 master-key gate | Shipped | Shipped |
+| 11 | Doctor tip when decision_classifier model missing from Ollama | 3 | 1 | — (local tags check) | Shipped | Shipped |
+| 12 | Extend `/v1/daari/config` ownership to decision_classifier + MCP knobs | 3 | 2 | LiteLLM config ownership UI | Shipped | Shipped |
+| 13 | Hermetic doctor-health pins for aggregate / local_as / classifier tips | 2 | 1 | — (docs regression) | Shipped | Shipped |
+| 14 | Watchdog: dedupe local E2E issues by failure list (not SHA) | 3 | 1 | — (loop hygiene) | File this run | File |
+| 15 | Skip live integration when watchdog daemon is unreachable | 2 | 1 | — (signal quality) | File this run | File |
+| 16 | Hermetic http-api pin for config ownership classifier/MCP leaves | 2 | 1 | — (docs regression) | File this run | File |
+| 17 | Opt-in compact-to-fit before L6 | 3 | 2 | LiteLLM 1.104 compact-to-fit | File this run | File |
+| 18 | Docs pin: watchdog sandbox master-key hatch + `--install` | 2 | 1 | — (ops honesty) | File this run | File |
 | 8 | Full DCR; A2A; admin UI; Realtime/WS | 2–4 | 3–5 | Portkey Agent GW / Kong 3.14 | Demand-triggered | Watch |
 
 Shipped since 2026-09-30 scan — do not re-file: Anthropic `output_config.format`;
@@ -69,13 +70,12 @@ prefer/budgets/cache/boundaries.
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Live config reload** — finish hot-reload `config.yaml` (row 6) and extend
-   ownership leaves for decision/MCP knobs (row 12) so operators change
-   policies without restart.
-2. **Egress OBO** — RFC 8693 token exchange for `mcp_servers` (row 9) so IdP
-   JWTs become scoped upstream MCP credentials on-box.
-3. **Serve hardening** — refuse weak/unset master keys with explicit sandbox
-   opt-out (row 10); doctor tips for missing classifier models (row 11).
+1. **Live config reload** — finish hot-reload `config.yaml` (row 6) so yaml
+   edits match the shipped ownership PATCH path without process restart.
+2. **Loop hygiene** — watchdog failure-list dedupe (row 14) and skip
+   integration when serve is down (row 15) so `--pick` stays on product work.
+3. **Compact before L6** — opt-in compact-to-fit (row 17) as LiteLLM 1.104
+   parity that keeps tokens on-box.
 4. **Governance depth** — unpark per-key tool-name allowlists for Messages
    `mcp_servers` (row 7) once a ≥60m session is available.
 5. **Demand-triggered protocols** — full DCR, A2A (Kong Agent Gateway / Portkey),
@@ -87,6 +87,13 @@ deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-03 (live config + loop hygiene + compact)** — Marked OBO, refuse-weak-key,
+  classifier-model doctor, config ownership, doctor-health pins Shipped; watchdog
+  sandbox hatch on `main`. Outward: LiteLLM 1.104.0-rc.2 session tokens; rc.1
+  compact-to-fit / MCP tool permissions. Filed watchdog dedupe, skip-integration
+  when daemon down, http-api ownership pin, compact-to-fit, watchdog hatch docs.
+  Path retargeted to live config → loop hygiene → compact-before-L6 → governance.
 
 - **2026-10-02 (governance + serve hardening scan)** — Prior morning wave
   (systemone / classifier / local AS / aggregate / web_search escalate) verified
