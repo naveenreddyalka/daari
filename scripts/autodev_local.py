@@ -69,6 +69,50 @@ def wait_for_daemon(
     return False
 
 
+def failures_fingerprint(failures: list[str]) -> str:
+    """Stable identity for watchdog failure bullets (issue #1337)."""
+    return "\n".join(sorted(item.strip() for item in failures if item.strip()))
+
+
+def parse_failures_section(body: str) -> list[str]:
+    """Extract `- ` bullets under the first `## Failures` heading."""
+    marker = "## Failures"
+    text = body or ""
+    if marker not in text:
+        return []
+    after = text.split(marker, 1)[1]
+    bullets: list[str] = []
+    for line in after.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("## ") and not stripped.startswith("## Failures"):
+            break
+        if stripped.startswith("- "):
+            bullets.append(stripped[2:].strip())
+    return bullets
+
+
+def open_issue_has_same_failures(open_bodies: list[str], failures: list[str]) -> bool:
+    """True when an open regression body lists the same failure bullets."""
+    needle = failures_fingerprint(failures)
+    if not needle:
+        return False
+    return any(failures_fingerprint(parse_failures_section(body)) == needle for body in open_bodies)
+
+
+def should_skip_regression_create(
+    nodes: list[dict[str, Any]],
+    title: str,
+    failures: list[str],
+) -> bool:
+    """Skip when title matches or an open body lists the same failures."""
+    for node in nodes:
+        if (node.get("title") or "") == title:
+            return True
+        if open_issue_has_same_failures([str(node.get("body") or "")], failures):
+            return True
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     import sys
 
@@ -77,7 +121,27 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if wait_for_daemon(args[1]) else 1
     if len(args) == 2 and args[0] == "ready":
         return 0 if daemon_ready(args[1]) else 1
-    print("usage: autodev_local.py {wait|ready} <daemon-base-url>", file=sys.stderr)
+    if len(args) >= 1 and args[0] == "skip-create":
+        import json
+
+        payload = json.loads(sys.stdin.read() or "{}")
+        nodes = (
+            payload.get("data", {})
+            .get("repository", {})
+            .get("issues", {})
+            .get("nodes")
+            or []
+        )
+        if not isinstance(nodes, list):
+            nodes = []
+        title = args[1] if len(args) > 1 else ""
+        failures = args[2:]
+        return 0 if should_skip_regression_create(nodes, title, failures) else 1
+    print(
+        "usage: autodev_local.py {wait|ready} <daemon-base-url>"
+        " | skip-create <title> <failure> ...  # GraphQL JSON on stdin",
+        file=sys.stderr,
+    )
     return 2
 
 
