@@ -5630,6 +5630,14 @@ watchdog tickets no longer duplicate. Covered by
 `tests/unit/test_autodev_local.py`.
 
 
+### Hermetic pin http-api config ownership classifier/MCP ([#1338](https://github.com/naveenreddyalka/daari/issues/1338))
+
+<!-- tracking:#1338 -->
+**Status:** Done (2026-10-03). Unit pin asserts http-api.md `/v1/daari/config`
+ownership names `decision_classifier` and MCP knobs. Covered by
+`tests/unit/test_http_api_config_ownership_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
