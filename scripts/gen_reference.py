@@ -136,7 +136,8 @@ def render_api_reference() -> str:
             "",
             "`GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) "
             "expose per-field `ownership` (`source` / `editable` / `diverged`) for the "
-            "safe subset, including `routing.decision_classifier.*` and MCP knobs "
+            "safe subset, including `routing.decision_classifier.*`, "
+            "`routing.compact_to_fit.*`, and MCP knobs "
             "(`integrations.mcp_oauth.local_as` / `protected_resource`, "
             "`integrations.mcp_aggregate_egress.enabled`, "
             "`integrations.mcp_registry.enabled`). Secrets such as "

@@ -5664,6 +5664,15 @@ history stays oversized. Covered by `tests/unit/test_compact_to_fit.py`.
 `tests/unit/test_watchdog_sandbox_key_docs.py`.
 
 
+### Extend /v1/daari/config ownership to compact_to_fit knobs ([#1348](https://github.com/naveenreddyalka/daari/issues/1348))
+
+<!-- tracking:#1348 -->
+**Status:** Done (2026-10-03). Config editor GET/PATCH expose
+`routing.compact_to_fit.enabled` / `.max_messages` / `.max_tokens` with
+source/editable metadata; PATCH validates bool / positive int / non-negative
+int. Default remains off. Covered by `tests/unit/test_config_ownership.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

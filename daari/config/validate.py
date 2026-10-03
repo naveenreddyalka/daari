@@ -44,6 +44,14 @@ def _bool(value: Any, key: str) -> bool:
     return value
 
 
+def _int(value: Any, key: str, *, low: int, high: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigValidationError(f"{key} must be an integer")
+    if not (low <= value <= high):
+        raise ConfigValidationError(f"{key} must be between {low} and {high}")
+    return value
+
+
 def validated_decision_classifier(patch: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(patch, dict):
         raise ConfigValidationError("decision_classifier must be an object")
@@ -68,6 +76,27 @@ def validated_decision_classifier(patch: dict[str, Any]) -> dict[str, Any]:
         )
     if "agent_turns" in patch:
         out["agent_turns"] = _bool(patch["agent_turns"], "decision_classifier.agent_turns")
+    return out
+
+
+def validated_compact_to_fit(patch: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("compact_to_fit must be an object")
+    allowed = {"enabled", "max_messages", "max_tokens"}
+    unknown = sorted(set(patch) - allowed)
+    if unknown:
+        raise ConfigValidationError(f"unknown compact_to_fit keys: {unknown}")
+    out: dict[str, Any] = {}
+    if "enabled" in patch:
+        out["enabled"] = _bool(patch["enabled"], "compact_to_fit.enabled")
+    if "max_messages" in patch:
+        out["max_messages"] = _int(
+            patch["max_messages"], "compact_to_fit.max_messages", low=1, high=1_000_000
+        )
+    if "max_tokens" in patch:
+        out["max_tokens"] = _int(
+            patch["max_tokens"], "compact_to_fit.max_tokens", low=0, high=10_000_000
+        )
     return out
 
 
@@ -158,6 +187,10 @@ def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
         classifier = validated_decision_classifier(patch["decision_classifier"] or {})
         if classifier:
             out["decision_classifier"] = classifier
+    if "compact_to_fit" in patch:
+        compact = validated_compact_to_fit(patch["compact_to_fit"] or {})
+        if compact:
+            out["compact_to_fit"] = compact
     return out
 
 

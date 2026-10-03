@@ -26,6 +26,11 @@ _CLASSIFIER_LEAVES = (
     "routing.decision_classifier.timeout_seconds",
     "routing.decision_classifier.agent_turns",
 )
+_COMPACT_LEAVES = (
+    "routing.compact_to_fit.enabled",
+    "routing.compact_to_fit.max_messages",
+    "routing.compact_to_fit.max_tokens",
+)
 _MCP_LEAVES = (
     "integrations.mcp_oauth.local_as",
     "integrations.mcp_oauth.protected_resource",
@@ -46,6 +51,11 @@ def _base_live() -> dict:
                 "model": "nimble",
                 "timeout_seconds": 5.0,
                 "agent_turns": False,
+            },
+            "compact_to_fit": {
+                "enabled": False,
+                "max_messages": 32,
+                "max_tokens": 0,
             },
         },
         "frontier": {
@@ -125,6 +135,29 @@ def test_ownership_fields_include_classifier_and_mcp_leaves():
         "client_secret",
     ):
         assert secret not in meta
+
+
+def test_ownership_fields_include_compact_to_fit_leaves():
+    live = _base_live()
+    live["routing"]["compact_to_fit"]["enabled"] = True
+    live["routing"]["compact_to_fit"]["max_messages"] = 16
+    file_doc = {
+        "routing": {"compact_to_fit": {"enabled": False, "max_messages": 32, "max_tokens": 0}},
+    }
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={"routing.compact_to_fit.enabled"},
+    )
+    for key in _COMPACT_LEAVES:
+        assert key in meta
+        assert meta[key]["editable"] is True
+        assert meta[key]["source"] in {"file", "runtime", "default"}
+    assert meta["routing.compact_to_fit.enabled"]["source"] == "runtime"
+    assert meta["routing.compact_to_fit.enabled"]["file_value"] is False
+    assert meta["routing.compact_to_fit.max_messages"]["source"] == "runtime"
+    assert meta["routing.compact_to_fit.max_messages"]["file_value"] == 32
+    assert meta["routing.compact_to_fit.max_tokens"]["source"] == "file"
 
 
 @pytest.mark.asyncio
@@ -257,6 +290,93 @@ async def test_patch_classifier_and_mcp_knobs_round_trip(settings, tmp_path, mon
         assert settings.integrations.mcp_oauth.signing_secret == "unit-secret-must-stay"
 
 
+@pytest.mark.asyncio
+async def test_patch_compact_to_fit_round_trip(settings, tmp_path, monkeypatch):
+    settings.observability.config_editor = True
+    assert settings.routing.compact_to_fit.enabled is False
+    assert settings.routing.compact_to_fit.max_messages == 32
+    assert settings.routing.compact_to_fit.max_tokens == 0
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "routing": {
+                    "compact_to_fit": {
+                        "enabled": False,
+                        "max_messages": 32,
+                        "max_tokens": 0,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        for key in _COMPACT_LEAVES:
+            assert key in body["ownership"]
+            assert body["ownership"][key]["editable"] is True
+            assert body["ownership"][key]["source"] in {"file", "default"}
+        assert body["routing"]["compact_to_fit"]["enabled"] is False
+
+        bad_enabled = await client.patch(
+            "/v1/daari/config",
+            json={"routing": {"compact_to_fit": {"enabled": "yes"}}},
+        )
+        assert bad_enabled.status_code == 400
+        bad_messages = await client.patch(
+            "/v1/daari/config",
+            json={"routing": {"compact_to_fit": {"max_messages": 0}}},
+        )
+        assert bad_messages.status_code == 400
+        bad_tokens = await client.patch(
+            "/v1/daari/config",
+            json={"routing": {"compact_to_fit": {"max_tokens": -1}}},
+        )
+        assert bad_tokens.status_code == 400
+        assert settings.routing.compact_to_fit.enabled is False
+
+        persisted = await client.patch(
+            "/v1/daari/config",
+            json={
+                "routing": {
+                    "compact_to_fit": {
+                        "enabled": True,
+                        "max_messages": 16,
+                        "max_tokens": 4096,
+                    }
+                },
+                "persist": True,
+            },
+        )
+        assert persisted.status_code == 200
+        payload = persisted.json()
+        assert payload["routing"]["compact_to_fit"] == {
+            "enabled": True,
+            "max_messages": 16,
+            "max_tokens": 4096,
+        }
+        assert payload["ownership"]["routing.compact_to_fit.enabled"]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["routing"]["compact_to_fit"]["enabled"] is True
+        assert written["routing"]["compact_to_fit"]["max_messages"] == 16
+        assert written["routing"]["compact_to_fit"]["max_tokens"] == 4096
+        assert settings.routing.compact_to_fit.enabled is True
+        assert settings.routing.compact_to_fit.max_messages == 16
+        assert settings.routing.compact_to_fit.max_tokens == 4096
+        assert app.state.ctx.router.compact_to_fit_enabled is True
+        assert app.state.ctx.router.compact_to_fit_max_messages == 16
+        assert app.state.ctx.router.compact_to_fit_max_tokens == 4096
+
+
 def test_live_config_payload_matches_editor_shape(settings):
     payload = live_config_payload(settings)
     assert set(payload) >= {"routing", "frontier", "cache", "boundaries", "integrations"}
@@ -267,6 +387,14 @@ def test_live_config_payload_matches_editor_shape(settings):
         "timeout_seconds",
         "agent_turns",
     }
+    assert set(payload["routing"]["compact_to_fit"]) == {
+        "enabled",
+        "max_messages",
+        "max_tokens",
+    }
+    assert payload["routing"]["compact_to_fit"]["enabled"] is False
+    assert payload["routing"]["compact_to_fit"]["max_messages"] == 32
+    assert payload["routing"]["compact_to_fit"]["max_tokens"] == 0
     assert set(payload["integrations"]["mcp_oauth"]) == {"local_as", "protected_resource"}
     assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
 
@@ -274,9 +402,10 @@ def test_live_config_payload_matches_editor_shape(settings):
 def test_docs_pin_classifier_mcp_config_ownership():
     config = CONFIG_MD.read_text(encoding="utf-8")
     http_api = HTTP_API.read_text(encoding="utf-8")
-    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES:
+    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES + _COMPACT_LEAVES:
         assert key in config
     assert "config editor" in config.lower() or "/v1/daari/config" in config
     assert "| `GET` | `/v1/daari/config`" in http_api
     assert "| `PATCH` | `/v1/daari/config`" in http_api
     assert "decision_classifier" in http_api or "ownership" in http_api.lower()
+    assert "compact_to_fit" in http_api

@@ -19,6 +19,9 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("routing", "decision_classifier", "model"),
     ("routing", "decision_classifier", "timeout_seconds"),
     ("routing", "decision_classifier", "agent_turns"),
+    ("routing", "compact_to_fit", "enabled"),
+    ("routing", "compact_to_fit", "max_messages"),
+    ("routing", "compact_to_fit", "max_tokens"),
     ("frontier", "daily_budget_usd"),
     ("frontier", "monthly_budget_usd"),
     ("frontier", "soft_budget_ratio"),
@@ -127,6 +130,11 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
                 "model": s.routing.decision_classifier.model,
                 "timeout_seconds": s.routing.decision_classifier.timeout_seconds,
                 "agent_turns": s.routing.decision_classifier.agent_turns,
+            },
+            "compact_to_fit": {
+                "enabled": s.routing.compact_to_fit.enabled,
+                "max_messages": s.routing.compact_to_fit.max_messages,
+                "max_tokens": s.routing.compact_to_fit.max_tokens,
             },
         },
         "frontier": {
