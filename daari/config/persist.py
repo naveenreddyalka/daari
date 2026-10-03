@@ -37,6 +37,17 @@ def write_config_atomically(path: Path, document: dict[str, Any]) -> None:
         raise
 
 
+def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Merge nested dict patches without wiping sibling yaml leaves (#1322)."""
+    out = dict(base)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
 def persist_safe_config(
     patch: dict[str, Any],
     *,
@@ -49,7 +60,7 @@ def persist_safe_config(
         loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         if isinstance(loaded, dict):
             existing = loaded
-    for section in ("routing", "frontier", "cache", "guardrails", "boundaries"):
+    for section in ("routing", "frontier", "cache", "guardrails", "boundaries", "integrations"):
         if section not in patch or not isinstance(patch[section], dict):
             continue
         if section == "cache":
@@ -70,7 +81,6 @@ def persist_safe_config(
             existing["cache"] = cache
             continue
         base = dict(existing.get(section) or {})
-        base.update(patch[section])
-        existing[section] = base
+        existing[section] = _deep_merge(base, patch[section])
     write_config_atomically(path, existing)
     return path

@@ -1,6 +1,8 @@
-"""Config editor live-vs-file ownership honesty (#1111)."""
+"""Config editor live-vs-file ownership honesty (#1111, #1322)."""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 import yaml
@@ -14,14 +16,37 @@ from daari.config.ownership import (
 from daari.router.router import AppContext
 from daari.server.app import create_app
 
+ROOT = Path(__file__).resolve().parents[2]
+CONFIG_MD = ROOT / "docs/developer/reference/config.md"
+HTTP_API = ROOT / "docs/developer/reference/http-api.md"
 
-def test_ownership_fields_default_vs_file_vs_runtime():
-    live = {
+_CLASSIFIER_LEAVES = (
+    "routing.decision_classifier.enabled",
+    "routing.decision_classifier.model",
+    "routing.decision_classifier.timeout_seconds",
+    "routing.decision_classifier.agent_turns",
+)
+_MCP_LEAVES = (
+    "integrations.mcp_oauth.local_as",
+    "integrations.mcp_oauth.protected_resource",
+    "integrations.mcp_aggregate_egress.enabled",
+    "integrations.mcp_registry.enabled",
+)
+
+
+def _base_live() -> dict:
+    return {
         "routing": {
             "prefer": "balanced",
             "confidence_threshold": 0.55,
             "latency_budget_ms": 2000,
             "max_tier_for_chat": "L6",
+            "decision_classifier": {
+                "enabled": False,
+                "model": "nimble",
+                "timeout_seconds": 5.0,
+                "agent_turns": False,
+            },
         },
         "frontier": {
             "daily_budget_usd": 1.0,
@@ -50,7 +75,16 @@ def test_ownership_fields_default_vs_file_vs_runtime():
             "stages_b2": True,
             "stages_b3": True,
         },
+        "integrations": {
+            "mcp_oauth": {"local_as": False, "protected_resource": False},
+            "mcp_aggregate_egress": {"enabled": False},
+            "mcp_registry": {"enabled": False},
+        },
     }
+
+
+def test_ownership_fields_default_vs_file_vs_runtime():
+    live = _base_live()
     file_doc = {"routing": {"confidence_threshold": 0.7}}
     meta = ownership_fields(
         live,
@@ -62,6 +96,35 @@ def test_ownership_fields_default_vs_file_vs_runtime():
     assert meta["routing.confidence_threshold"]["file_value"] == 0.7
     assert meta["routing.prefer"]["source"] == "default"
     assert meta["routing.prefer"]["editable"] is True
+
+
+def test_ownership_fields_include_classifier_and_mcp_leaves():
+    live = _base_live()
+    live["routing"]["decision_classifier"]["enabled"] = True
+    file_doc = {
+        "routing": {"decision_classifier": {"enabled": False, "model": "nimble"}},
+        "integrations": {"mcp_registry": {"enabled": True}},
+    }
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={"routing.decision_classifier.enabled"},
+    )
+    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES:
+        assert key in meta
+        assert meta[key]["editable"] is True
+    assert meta["routing.decision_classifier.enabled"]["source"] == "runtime"
+    assert meta["routing.decision_classifier.enabled"]["file_value"] is False
+    assert meta["routing.decision_classifier.model"]["source"] == "file"
+    assert meta["integrations.mcp_registry.enabled"]["source"] == "runtime"
+    assert meta["integrations.mcp_registry.enabled"]["diverged"] is True
+    assert meta["integrations.mcp_registry.enabled"]["file_value"] is True
+    for secret in (
+        "integrations.mcp_oauth.signing_secret",
+        "signing_secret",
+        "client_secret",
+    ):
+        assert secret not in meta
 
 
 @pytest.mark.asyncio
@@ -112,7 +175,108 @@ async def test_get_includes_ownership_and_patch_warns_without_persist(settings, 
         assert written["routing"]["confidence_threshold"] == 0.4
 
 
+@pytest.mark.asyncio
+async def test_patch_classifier_and_mcp_knobs_round_trip(settings, tmp_path, monkeypatch):
+    settings.observability.config_editor = True
+    settings.routing.decision_classifier.enabled = False
+    settings.integrations.mcp_oauth.local_as = False
+    settings.integrations.mcp_oauth.signing_secret = "unit-secret-must-stay"
+    settings.integrations.mcp_registry.enabled = False
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "routing": {"decision_classifier": {"enabled": False, "model": "nimble"}},
+                "integrations": {
+                    "mcp_oauth": {"local_as": False, "signing_secret": "file-secret"},
+                    "mcp_registry": {"enabled": False},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        for key in _CLASSIFIER_LEAVES + _MCP_LEAVES:
+            assert key in body["ownership"]
+            assert body["ownership"][key]["editable"] is True
+        assert "signing_secret" not in body.get("integrations", {}).get("mcp_oauth", {})
+        assert "integrations.mcp_oauth.signing_secret" not in body["ownership"]
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            json={"integrations": {"mcp_oauth": {"signing_secret": "nope"}}},
+        )
+        assert bad.status_code == 400
+
+        persisted = await client.patch(
+            "/v1/daari/config",
+            json={
+                "routing": {
+                    "decision_classifier": {
+                        "enabled": True,
+                        "model": "nimble",
+                        "timeout_seconds": 3.5,
+                        "agent_turns": True,
+                    }
+                },
+                "integrations": {
+                    "mcp_oauth": {"local_as": True, "protected_resource": True},
+                    "mcp_aggregate_egress": {"enabled": True},
+                    "mcp_registry": {"enabled": True},
+                },
+                "persist": True,
+            },
+        )
+        assert persisted.status_code == 200
+        payload = persisted.json()
+        assert payload["routing"]["decision_classifier"]["enabled"] is True
+        assert payload["routing"]["decision_classifier"]["timeout_seconds"] == 3.5
+        assert payload["routing"]["decision_classifier"]["agent_turns"] is True
+        assert payload["integrations"]["mcp_oauth"]["local_as"] is True
+        assert payload["integrations"]["mcp_registry"]["enabled"] is True
+        assert payload["ownership"]["routing.decision_classifier.enabled"]["source"] == "file"
+        assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
+
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["routing"]["decision_classifier"]["enabled"] is True
+        assert written["routing"]["decision_classifier"]["timeout_seconds"] == 3.5
+        assert written["integrations"]["mcp_oauth"]["local_as"] is True
+        assert written["integrations"]["mcp_oauth"]["signing_secret"] == "file-secret"
+        assert written["integrations"]["mcp_registry"]["enabled"] is True
+        assert written["integrations"]["mcp_aggregate_egress"]["enabled"] is True
+        assert settings.routing.decision_classifier.enabled is True
+        assert settings.integrations.mcp_oauth.signing_secret == "unit-secret-must-stay"
+
+
 def test_live_config_payload_matches_editor_shape(settings):
     payload = live_config_payload(settings)
-    assert set(payload) >= {"routing", "frontier", "cache", "boundaries"}
+    assert set(payload) >= {"routing", "frontier", "cache", "boundaries", "integrations"}
     assert "confidence_threshold" in payload["routing"]
+    assert set(payload["routing"]["decision_classifier"]) == {
+        "enabled",
+        "model",
+        "timeout_seconds",
+        "agent_turns",
+    }
+    assert set(payload["integrations"]["mcp_oauth"]) == {"local_as", "protected_resource"}
+    assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
+
+
+def test_docs_pin_classifier_mcp_config_ownership():
+    config = CONFIG_MD.read_text(encoding="utf-8")
+    http_api = HTTP_API.read_text(encoding="utf-8")
+    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES:
+        assert key in config
+    assert "config editor" in config.lower() or "/v1/daari/config" in config
+    assert "| `GET` | `/v1/daari/config`" in http_api
+    assert "| `PATCH` | `/v1/daari/config`" in http_api
+    assert "decision_classifier" in http_api or "ownership" in http_api.lower()
