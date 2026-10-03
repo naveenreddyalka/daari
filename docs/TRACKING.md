@@ -5610,6 +5610,17 @@ include the tip config path and route cue. Covered by
 `tests/unit/test_doctor_health_decision_classifier_docs.py`.
 
 
+### Local watchdog serve after weak master-key gate ([#1328](https://github.com/naveenreddyalka/daari/issues/1328))
+
+<!-- tracking:#1328 -->
+**Status:** Done (2026-10-03). Watchdog `com.daari.serve` launchd unit sets
+`DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY=true` so #1320 does
+not KeepAlive crash-loop sandbox serve. Cursor smoke is skipped when the
+daemon is already unreachable; filed issues include `serve.err.log` tail.
+Re-run `scripts/autodev-local.sh --install` to reload the plist. Covered by
+`tests/unit/test_autodev_local.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

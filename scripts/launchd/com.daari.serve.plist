@@ -11,6 +11,11 @@
     </array>
     <key>WorkingDirectory</key>
     <string>__REPO__</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY</key>
+        <string>true</string>
+    </dict>
     <key>KeepAlive</key>
     <true/>
     <key>RunAtLoad</key>

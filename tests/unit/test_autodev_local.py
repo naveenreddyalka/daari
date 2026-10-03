@@ -102,3 +102,26 @@ class TestWaitForDaemon:
             is False
         )
         assert sleeps == [1.0, 2.0, 1.0]
+
+
+_REPO = Path(__file__).resolve().parents[2]
+_WATCHDOG_SH = _REPO / "scripts" / "autodev-local.sh"
+_SERVE_PLIST = _REPO / "scripts" / "launchd" / "com.daari.serve.plist"
+
+
+def test_watchdog_serve_plist_permits_weak_or_unset_master_key() -> None:
+    """#1320 gate would KeepAlive crash-loop local watchdog serve (#1328)."""
+    text = _SERVE_PLIST.read_text(encoding="utf-8")
+    assert "EnvironmentVariables" in text
+    assert "DAARI_SERVER__DANGEROUSLY_PERMIT_WEAK_OR_UNSET_API_KEY" in text
+
+
+def test_watchdog_skips_cursor_smoke_when_daemon_unreachable() -> None:
+    text = _WATCHDOG_SH.read_text(encoding="utf-8")
+    assert "SKIP: cursor smoke" in text
+    assert "daemon unreachable" in text
+
+
+def test_watchdog_issue_body_includes_serve_stderr_tail() -> None:
+    text = _WATCHDOG_SH.read_text(encoding="utf-8")
+    assert "serve.err.log" in text
