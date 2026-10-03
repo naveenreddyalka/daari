@@ -5621,6 +5621,15 @@ Re-run `scripts/autodev-local.sh --install` to reload the plist. Covered by
 `tests/unit/test_autodev_local.py`.
 
 
+### Watchdog dedupe local E2E issues by failure list ([#1337](https://github.com/naveenreddyalka/daari/issues/1337))
+
+<!-- tracking:#1337 -->
+**Status:** Done (2026-10-03). Filing skips when an open `regression` issue
+has the same title **or** the same `## Failures` bullets, so SHA-stamped
+watchdog tickets no longer duplicate. Covered by
+`tests/unit/test_autodev_local.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

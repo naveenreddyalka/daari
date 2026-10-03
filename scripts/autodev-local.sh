@@ -55,17 +55,16 @@ FAILURES=()
 file_regression_issue() {
   local title="$1"
   local body_file="$2"
-  # Dedupe: skip when an open regression issue with the same title exists.
+  # Dedupe: skip when an open regression issue with the same title exists,
+  # or the same Failures bullet list (SHA-stamped titles used to duplicate).
   # Reads the GraphQL repository connection instead of a search-backed
   # `gh issue list` query: GitHub's search index can lag the repository
   # (issue #291), and a stale index here silently files duplicates.
-  local existing
-  existing=$(gh api graphql \
-    -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){issues(states:OPEN,labels:["regression"],first:100){nodes{title}}}}' \
-    -F owner=naveenreddyalka -F name=daari \
-    --jq '.data.repository.issues.nodes[].title' 2>/dev/null \
-    | grep -Fxc "$title" || echo 0)
-  if [ "${existing:-0}" -gt 0 ]; then
+  local gql
+  gql=$(gh api graphql \
+    -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){issues(states:OPEN,labels:["regression"],first:100){nodes{title,body}}}}' \
+    -F owner=naveenreddyalka -F name=daari 2>/dev/null) || gql="{}"
+  if printf '%s' "$gql" | "$VENV/bin/python" "$REPO/scripts/autodev_local.py" skip-create "$title" "${FAILURES[@]+"${FAILURES[@]}"}"; then
     log "Open regression issue already exists for: $title — skipping create."
     return
   fi

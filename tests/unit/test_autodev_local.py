@@ -104,6 +104,46 @@ class TestWaitForDaemon:
         assert sleeps == [1.0, 2.0, 1.0]
 
 
+class TestFailureDedupe:
+    def test_same_failures_skips_regardless_of_sha(self, autodev_local):
+        body = (
+            "Local watchdog @ `abc123`\n\n## Failures\n"
+            "- daemon unreachable\n- cursor-shaped E2E smoke failed\n\n## Log tail\n"
+        )
+        assert (
+            autodev_local.open_issue_has_same_failures(
+                [body],
+                ["cursor-shaped E2E smoke failed", "daemon unreachable"],
+            )
+            is True
+        )
+
+    def test_different_failures_do_not_skip(self, autodev_local):
+        body = "x\n\n## Failures\n- daemon unreachable\n\n## Log\n"
+        assert autodev_local.open_issue_has_same_failures([body], ["live integration tests failed"]) is False
+
+    def test_empty_or_closed_style_bodies_do_not_skip(self, autodev_local):
+        assert autodev_local.open_issue_has_same_failures([], ["daemon unreachable"]) is False
+        assert autodev_local.open_issue_has_same_failures(["no section"], ["daemon unreachable"]) is False
+
+    def test_skip_create_matches_title_or_failures(self, autodev_local):
+        nodes = [
+            {
+                "title": "[autodev] Local E2E regression on main @ abc",
+                "body": "## Failures\n- daemon unreachable\n",
+            }
+        ]
+        assert autodev_local.should_skip_regression_create(
+            nodes, "[autodev] Local E2E regression on main @ abc", ["live integration tests failed"]
+        )
+        assert autodev_local.should_skip_regression_create(
+            nodes, "[autodev] Local E2E regression on main @ def", ["daemon unreachable"]
+        )
+        assert not autodev_local.should_skip_regression_create(
+            nodes, "[autodev] Local E2E regression on main @ def", ["live integration tests failed"]
+        )
+
+
 _REPO = Path(__file__).resolve().parents[2]
 _WATCHDOG_SH = _REPO / "scripts" / "autodev-local.sh"
 _SERVE_PLIST = _REPO / "scripts" / "launchd" / "com.daari.serve.plist"
@@ -125,3 +165,9 @@ def test_watchdog_skips_cursor_smoke_when_daemon_unreachable() -> None:
 def test_watchdog_issue_body_includes_serve_stderr_tail() -> None:
     text = _WATCHDOG_SH.read_text(encoding="utf-8")
     assert "serve.err.log" in text
+
+
+def test_watchdog_dedupes_open_issues_by_failure_list() -> None:
+    text = _WATCHDOG_SH.read_text(encoding="utf-8")
+    assert "skip-create" in text
+    assert "body" in text
