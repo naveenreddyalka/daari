@@ -5691,6 +5691,19 @@ fail-closed (tool-protected) history does not claim a trim. Covered by
 `tests/unit/test_compact_to_fit.py`.
 
 
+### Opt-in fail-closed MCP when key has no MCP grant ([#1352](https://github.com/naveenreddyalka/daari/issues/1352))
+
+<!-- tracking:#1352 -->
+**Status:** Done (2026-10-03). `integrations.mcp_policy.require_key_access_defined`
+(default false) fail-closes virtual keys whose `metadata.mcp` lacks
+`allow` / `deny` / `servers.allow|deny`: empty `tools/list`, `tools/call`
+deny. Master key and flag-off unchanged. Doctor tip
+`mcp_require_key_access`. Docs: mcp.md, config.md. Covered by
+`tests/unit/test_mcp_require_key_access.py`,
+`tests/unit/test_doctor_mcp_require_key_access.py`,
+`tests/integration/test_mcp_governance.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
