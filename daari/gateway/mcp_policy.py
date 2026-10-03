@@ -22,6 +22,8 @@ from daari.enterprise.audit import AuditLog
 TOOL_DENIED = -32003
 AUDIT_ACTION = "mcp.tools/call"
 KEY_METADATA_FIELD = "mcp"
+# Sentinel allow pattern that matches no tool name — used when fail-closed (#1352).
+_DENY_ALL_SENTINEL = "__daari_no_mcp_grant__"
 
 
 def _patterns(raw: Any) -> tuple[str, ...]:
@@ -82,6 +84,43 @@ class McpToolPolicy:
         """Layer a narrower scope on top: denies accumulate, the narrower allow list wins."""
         deny = self.deny + tuple(item for item in specific.deny if item not in self.deny)
         return McpToolPolicy(allow=specific.allow or self.allow, deny=deny)
+
+
+# Exclusive allow list that matches nothing → empty catalog / tools/call deny (#1352).
+DENY_ALL_TOOLS = McpToolPolicy(allow=(_DENY_ALL_SENTINEL,))
+
+
+def key_has_mcp_grant(metadata: Any) -> bool:
+    """True when virtual-key metadata declares an MCP tool/server grant (#1352).
+
+    A grant is ``metadata.mcp`` containing ``allow``, ``deny``, and/or
+    ``servers.allow`` / ``servers.deny``. ``clients`` alone is not a tool grant.
+    """
+    if not isinstance(metadata, dict):
+        return False
+    mcp = metadata.get(KEY_METADATA_FIELD)
+    if not isinstance(mcp, dict):
+        return False
+    if "allow" in mcp or "deny" in mcp:
+        return True
+    servers = mcp.get("servers")
+    if isinstance(servers, dict) and ("allow" in servers or "deny" in servers):
+        return True
+    return False
+
+
+def virtual_key_lacks_mcp_grant(claims: Any, settings: Any) -> bool:
+    """True when opt-in fail-closed applies to this virtual key (#1352)."""
+    integrations = getattr(settings, "integrations", None)
+    policy_settings = getattr(integrations, "mcp_policy", None)
+    if not bool(getattr(policy_settings, "require_key_access_defined", False)):
+        return False
+    if claims is None or getattr(claims, "kind", None) != "virtual":
+        return False
+    key = getattr(claims, "virtual_key", None)
+    if key is None:
+        return False
+    return not key_has_mcp_grant(getattr(key, "metadata", None) or {})
 
 
 @dataclass(frozen=True)
@@ -152,6 +191,8 @@ class McpClientPolicy:
 
 
 def resolve_policy(claims: Any, settings: Any) -> McpToolPolicy:
+    if virtual_key_lacks_mcp_grant(claims, settings):
+        return DENY_ALL_TOOLS
     integrations = getattr(settings, "integrations", None)
     policy = McpToolPolicy.from_mapping(getattr(integrations, "mcp_policy", None))
     key = getattr(claims, "virtual_key", None) if claims is not None else None

@@ -1539,6 +1539,15 @@ class McpToolPolicySettings(BaseModel):
             "mcp_policy / mcp_team_policies / virtual-key metadata.mcp.clients."
         ),
     )
+    require_key_access_defined: bool = Field(
+        default=False,
+        description=(
+            "When true, virtual keys with no MCP grant in metadata.mcp "
+            "(allow / deny / servers.allow / servers.deny) get an empty "
+            "tools/list and tools/call deny on /mcp and /v1/mcp/query (#1352). "
+            "Master key and flag-off behavior unchanged. Default false."
+        ),
+    )
 
 
 class McpTasksSettings(BaseModel):

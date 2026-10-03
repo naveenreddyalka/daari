@@ -66,6 +66,9 @@ def run_doctor(
     results.extend(_check_mcp_servers(cfg, httpx_client))
     results.append(_check_mcp_server_policy(cfg))
     results.append(_check_mcp_oauth_protected_resource(cfg))
+    require_key_tip = _check_mcp_require_key_access(cfg)
+    if require_key_tip is not None:
+        results.append(require_key_tip)
     registry_tip = _check_mcp_registry(cfg)
     if registry_tip is not None:
         results.append(registry_tip)
@@ -2146,6 +2149,27 @@ def _check_mcp_oauth_protected_resource(settings: Settings) -> CheckResult:
             "MCP auth is on but integrations.mcp_oauth.protected_resource is false — "
             "Cursor/Claude Desktop OAuth discovery needs "
             "GET /.well-known/oauth-protected-resource"
+        ),
+        optional=True,
+    )
+
+
+def _check_mcp_require_key_access(settings: Settings) -> CheckResult | None:
+    """Informational tip when MCP fail-closed-without-grant is on (#1352).
+
+    Absent when ``require_key_access_defined`` is false (default). When enabled,
+    remind operators that virtual keys need ``metadata.mcp`` allow/deny/servers.
+    """
+    policy = getattr(settings.integrations, "mcp_policy", None)
+    if policy is None or not bool(getattr(policy, "require_key_access_defined", False)):
+        return None
+    return CheckResult(
+        name="mcp_require_key_access",
+        ok=True,
+        detail=(
+            "integrations.mcp_policy.require_key_access_defined: virtual keys "
+            "without metadata.mcp allow/deny/servers get empty tools/list and "
+            "tools/call deny; master key unchanged"
         ),
         optional=True,
     )

@@ -241,3 +241,71 @@ async def test_client_allowlist_hit_and_deny_miss(settings, monkeypatch):
     ) as client:
         open_list = await _rpc(client, "tools/list", meta_bad, headers=unset_headers)
     assert "tools" in open_list.json()["result"]
+
+
+async def test_require_key_access_empty_catalog_without_grant(settings, monkeypatch):
+    """Flag on + VK with no metadata.mcp grant → empty tools/list (#1352)."""
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers, _ = _app_with_key(settings, monkeypatch)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        denied = await _rpc(
+            client, "tools/call", {"name": "route", "arguments": {"input": "hi"}}, headers=headers
+        )
+        legacy = await client.post("/v1/mcp/query", json={"tool": "tools/list"}, headers=headers)
+    assert listed.json()["result"]["tools"] == []
+    assert denied.json()["error"]["code"] == TOOL_DENIED
+    assert legacy.json()["result"]["tools"] == []
+
+
+async def test_require_key_access_granted_key_keeps_policy(settings, monkeypatch):
+    """Flag on + explicit metadata.mcp.allow keeps normal allow/deny (#1352)."""
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers, _ = _app_with_key(
+        settings, monkeypatch, metadata={"mcp": {"allow": ["route"]}}
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        allowed = await _rpc(
+            client, "tools/call", {"name": "route", "arguments": {"input": "hi"}}, headers=headers
+        )
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert names == {"route"}
+    assert allowed.json()["result"]["content"][0]["text"] == "routed"
+
+
+async def test_require_key_access_flag_off_unchanged(settings, monkeypatch):
+    """Default off: VK without metadata.mcp still sees the catalog (#1352)."""
+    assert settings.integrations.mcp_policy.require_key_access_defined is False
+    app, headers, _ = _app_with_key(settings, monkeypatch)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert "route" in names
+    assert "stats" in names
+
+
+async def test_require_key_access_master_key_unchanged(settings, monkeypatch):
+    """Master key ignores require_key_access_defined (#1352)."""
+    settings.server.api_key = "sekret"
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="routed",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+    headers = {"Authorization": "Bearer sekret"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        allowed = await _rpc(
+            client, "tools/call", {"name": "route", "arguments": {"input": "hi"}}, headers=headers
+        )
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert "route" in names
+    assert allowed.json()["result"]["content"][0]["text"] == "routed"

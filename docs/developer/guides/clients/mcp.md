@@ -246,6 +246,27 @@ reject non-matching clients with JSON-RPC `-32004` (`MCP client denied by
 policy`) and an `mcp.client` audit row. Unset lists leave every authenticated
 caller through (backward compatible).
 
+### Require key MCP grant (fail-closed)
+
+By default a virtual key with no `metadata.mcp` still sees the full first-party
+catalog. Opt in to LiteLLM-style fail-closed with
+`integrations.mcp_policy.require_key_access_defined: true`:
+
+```yaml
+integrations:
+  mcp_policy:
+    require_key_access_defined: true
+```
+
+When the flag is on, a virtual key whose `metadata.mcp` has **no** tool/server
+grant — none of `allow`, `deny`, or nested `servers.allow` / `servers.deny` —
+gets an empty `tools/list` and every `tools/call` is denied (`-32003` /
+`MCP_ERR_TOOL_DENIED`). Keys that declare any of those fields keep normal
+allow/deny merge behavior. A `clients` block alone is **not** a tool grant.
+The master `server.api_key` and flag-off installs are unchanged.
+`daari doctor` surfaces an optional `mcp_require_key_access` tip when the flag
+is on.
+
 What the caller sees:
 
 - `tools/list` (JSON-RPC and `/v1/mcp/query`) only returns allowed tools.
