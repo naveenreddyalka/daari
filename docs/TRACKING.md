@@ -5773,6 +5773,14 @@ fail-closed stay `Shipped` and do not say `File this run`. Covered by
 `tests/unit/test_enterprise_prd_docs.py`.
 
 
+### Hermetic pin daari_meta.compact_to_fit on traces-stats ([#1371](https://github.com/naveenreddyalka/daari/issues/1371))
+
+<!-- tracking:#1371 -->
+**Status:** Done (2026-10-04). `traces-stats.md` documents
+`daari_meta.compact_to_fit` (`messages_before` / `messages_after`) with
+`X-Daari-Meta: true`. Covered by `tests/unit/test_compact_to_fit_stats_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

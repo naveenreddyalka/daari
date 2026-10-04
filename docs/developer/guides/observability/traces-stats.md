@@ -27,6 +27,8 @@ Each `tiers.*` entry may include optional `p50_ms` / `p95_ms` from the
 latency histogram (absent when that tier has no samples).
 `compact_to_fit_applied` increments only when a compact-to-fit trim actually
 changes the message count (unchanged or fail-closed history does not).
+Successful trims also set `daari_meta.compact_to_fit` (`messages_before` /
+`messages_after`) when `X-Daari-Meta: true`.
 
 ## Retention
 
