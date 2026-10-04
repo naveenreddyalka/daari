@@ -17,4 +17,19 @@ LiteLLM is a **provider gateway**: one OpenAI-shaped API in front of 100+ cloud 
 
 They can stack: daari for local $0 tiers, LiteLLM (or OpenRouter) as one L6 slot.
 
+## LiteLLM 1.104 GA (local parity)
+
+LiteLLM [v1.104.0](https://docs.litellm.ai/release_notes/v1.104.0/v1-104-0)
+(3 Oct 2026) tightened a few gateway gates. daari already matches these
+**on-device** without sending transcripts off-box:
+
+| LiteLLM 1.104 | daari today |
+|---------------|-------------|
+| Refuse weak/unset master key at start | Same: refuse weak/unset master key (sandbox hatch for local demos) |
+| Native compact-to-fit across conversation APIs | Opt-in `routing.compact_to_fit` trims droppable turns before L6 |
+| MCP key grant / tool permissions (`require_key_mcp_access_defined`) | Opt-in `integrations.mcp_policy.require_key_access_defined` fail-closed when the virtual key has no MCP grant |
+
+**stdio MCP off by default** in LiteLLM is N/A for daari today (no stdio MCP
+transport); watch if a buyer asks. A2A and admin UI stay demand-triggered.
+
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).

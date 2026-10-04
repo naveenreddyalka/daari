@@ -5878,6 +5878,14 @@ by `tokens_before - tokens_after`. Meta includes `tokens_before` /
 `tests/unit/test_prometheus.py`.
 
 
+### Refresh compare-litellm for LiteLLM 1.104 GA ([#1393](https://github.com/naveenreddyalka/daari/issues/1393))
+
+<!-- tracking:#1393 -->
+**Status:** Done (2026-10-04). `compare-litellm.md` notes 1.104 GA parity for
+master-key refuse, compact-to-fit, and MCP grant fail-closed; stdio MCP
+marked N/A/watch. Covered by `tests/unit/test_compare_litellm_1104.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
