@@ -104,6 +104,12 @@ def render_prometheus(
     lines.append(
         f"daari_compact_to_fit_applied_total {snap.get('compact_to_fit_applied', 0)}"
     )
+    lines.append(
+        "# HELP daari_mcp_grant_denied_total MCP initialize, tools/list, or "
+        "tools/call rejected because the virtual key has no MCP grant."
+    )
+    lines.append("# TYPE daari_mcp_grant_denied_total counter")
+    lines.append(f"daari_mcp_grant_denied_total {snap.get('mcp_grant_denied', 0)}")
 
     lines.append(
         "# HELP daari_tier_shadow_samples_total Local-tier answers replayed at a "

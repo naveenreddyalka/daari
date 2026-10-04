@@ -5850,6 +5850,16 @@ Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 `tests/unit/test_stats_cli_help.py`.
 
 
+### MCP grant fail-closed dedicated counter ([#1390](https://github.com/naveenreddyalka/daari/issues/1390))
+
+<!-- tracking:#1390 -->
+**Status:** Done (2026-10-04). `mcp_grant_denied` / `daari_mcp_grant_denied_total`
+increments on initialize, tools/list, and tools/call when
+`require_key_access_defined` fail-closed applies. Ordinary tool-name deny
+does not. Series present at 0 when unused. Covered by
+`tests/unit/test_prometheus.py` and `tests/unit/test_mcp_require_key_access.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

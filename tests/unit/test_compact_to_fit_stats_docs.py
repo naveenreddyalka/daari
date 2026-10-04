@@ -10,7 +10,12 @@ DOC = (
 )
 
 
-def test_traces_stats_docs_pin_compact_to_fit_applied() -> None:
+def test_traces_stats_docs_pin_mcp_grant_denied() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "mcp_grant_denied" in text
+    lower = text.lower()
+    assert "require_key_access_defined" in text or "grant" in lower
+    assert "initialize" in lower or "tools/list" in lower or "tools/call" in lower
     text = DOC.read_text(encoding="utf-8")
     assert "compact_to_fit_applied" in text
     lower = text.lower()
