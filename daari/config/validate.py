@@ -104,7 +104,12 @@ def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
     """Safe MCP ownership leaves only — secrets stay non-editable (#1322)."""
     if not isinstance(patch, dict):
         raise ConfigValidationError("integrations must be an object")
-    allowed_top = {"mcp_oauth", "mcp_aggregate_egress", "mcp_registry"}
+    allowed_top = {
+        "mcp_oauth",
+        "mcp_aggregate_egress",
+        "mcp_registry",
+        "mcp_policy",
+    }
     unknown_top = sorted(set(patch) - allowed_top)
     if unknown_top:
         raise ConfigValidationError(f"unknown integrations keys: {unknown_top}")
@@ -154,6 +159,21 @@ def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
             reg_out["enabled"] = _bool(reg["enabled"], "mcp_registry.enabled")
         if reg_out:
             out["mcp_registry"] = reg_out
+    if "mcp_policy" in patch:
+        policy = patch["mcp_policy"]
+        if not isinstance(policy, dict):
+            raise ConfigValidationError("mcp_policy must be an object")
+        unknown_policy = sorted(set(policy) - {"require_key_access_defined"})
+        if unknown_policy:
+            raise ConfigValidationError(f"unknown mcp_policy keys: {unknown_policy}")
+        policy_out: dict[str, Any] = {}
+        if "require_key_access_defined" in policy:
+            policy_out["require_key_access_defined"] = _bool(
+                policy["require_key_access_defined"],
+                "mcp_policy.require_key_access_defined",
+            )
+        if policy_out:
+            out["mcp_policy"] = policy_out
     return out
 
 

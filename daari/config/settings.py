@@ -1545,7 +1545,8 @@ class McpToolPolicySettings(BaseModel):
             "When true, virtual keys with no MCP grant in metadata.mcp "
             "(allow / deny / servers.allow / servers.deny) get an empty "
             "tools/list and tools/call deny on /mcp and /v1/mcp/query (#1352). "
-            "Master key and flag-off behavior unchanged. Default false."
+            "Master key and flag-off behavior unchanged. Default false. "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
 
