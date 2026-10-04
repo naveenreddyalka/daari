@@ -5781,6 +5781,15 @@ fail-closed stay `Shipped` and do not say `File this run`. Covered by
 `X-Daari-Meta: true`. Covered by `tests/unit/test_compact_to_fit_stats_docs.py`.
 
 
+### Hermetic pin mcp.md servers-only grant vs clients-only ([#1372](https://github.com/naveenreddyalka/daari/issues/1372))
+
+<!-- tracking:#1372 -->
+**Status:** Done (2026-10-04). Unit pin asserts mcp.md treats
+`servers.allow`/`servers.deny` as a grant under
+`require_key_access_defined` and a `clients` block alone as not a tool
+grant. Covered by `tests/unit/test_mcp_require_key_access_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
