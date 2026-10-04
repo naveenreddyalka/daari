@@ -16,3 +16,12 @@ def test_traces_stats_docs_pin_compact_to_fit_applied() -> None:
     lower = text.lower()
     assert "trim" in lower or "message count" in lower
     assert "increment" in lower or "increments" in lower
+
+
+def test_traces_stats_docs_pin_daari_meta_compact_to_fit() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "daari_meta.compact_to_fit" in text or (
+        "compact_to_fit" in text and "daari_meta" in text
+    )
+    assert "messages_before" in text
+    assert "messages_after" in text
