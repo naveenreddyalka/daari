@@ -83,6 +83,18 @@ class TestRenderPrometheus:
         assert 'daari_boundary_decisions_total{stage="pre",label="tools"} 2' in text
         assert 'daari_boundary_decisions_total{stage="post",label="json"} 1' in text
 
+    def test_compact_to_fit_applied_zero_on_empty_metrics(self):
+        """Exporter must emit compact_to_fit series even when unused (#1379)."""
+        text = render_prometheus(Metrics())
+        assert "daari_compact_to_fit_applied_total 0" in text
+
+    def test_compact_to_fit_applied_increments_on_record(self):
+        """A recorded trim must increment the Prometheus counter (#1379)."""
+        metrics = Metrics()
+        metrics.record_compact_to_fit_applied()
+        text = render_prometheus(metrics)
+        assert "daari_compact_to_fit_applied_total 1" in text
+
 
 @pytest.mark.asyncio
 async def test_metrics_endpoint_open_without_auth(settings):
