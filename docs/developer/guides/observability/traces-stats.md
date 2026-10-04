@@ -25,6 +25,8 @@ documented in [metrics-prometheus.md](metrics-prometheus.md).
 `key_rate_limits` is the same shape for virtual keys with `rpd > 0` (`key` is the name, never the secret) and is `[]` otherwise.
 Each `tiers.*` entry may include optional `p50_ms` / `p95_ms` from the
 latency histogram (absent when that tier has no samples).
+`compact_to_fit_applied` increments only when a compact-to-fit trim actually
+changes the message count (unchanged or fail-closed history does not).
 
 ## Retention
 

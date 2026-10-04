@@ -5732,6 +5732,14 @@ fail-closed grants with master-key unchanged. Covered by
 `tests/unit/test_mcp_require_key_access_docs.py`.
 
 
+### Hermetic pin compact_to_fit_applied in stats docs ([#1361](https://github.com/naveenreddyalka/daari/issues/1361))
+
+<!-- tracking:#1361 -->
+**Status:** Done (2026-10-04). `traces-stats.md` documents
+`compact_to_fit_applied` incrementing only when a trim changes message
+count. Covered by `tests/unit/test_compact_to_fit_stats_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
