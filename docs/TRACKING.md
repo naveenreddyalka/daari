@@ -5748,6 +5748,14 @@ non-empty first-party `tools/list`; `clients` alone still fail-closes.
 Covered by `tests/integration/test_mcp_governance.py`.
 
 
+### Mark compact live-tune and MCP grant rows shipped in ENTERPRISE.md ([#1363](https://github.com/naveenreddyalka/daari/issues/1363))
+
+<!-- tracking:#1363 -->
+**Status:** Done (2026-10-04). ENTERPRISE.md rows 19–23 are Shipped; path
+retargeted to live config reload then remaining gaps. Changelog line for
+this pass.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
