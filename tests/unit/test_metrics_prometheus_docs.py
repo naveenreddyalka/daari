@@ -42,10 +42,12 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert "daari_escalations_total" in text
     assert "daari_errors_total" in text
     assert "Escalations & errors" in text
+    assert "Compact-to-fit applied" in text
     cancelled_row = next(row for row in body if "daari_cancelled_requests_total" in row)
     assert "`tts`" in cancelled_row
     assert "`mcp`" in cancelled_row
     compact_row = next(row for row in body if "daari_compact_to_fit_applied_total" in row)
     assert "trim" in compact_row.lower()
+    assert "Compact-to-fit applied" in compact_row or "Grafana" in compact_row
     grant_row = next(row for row in body if "daari_mcp_grant_denied_total" in row)
     assert "grant" in grant_row.lower()
