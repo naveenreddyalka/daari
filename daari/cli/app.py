@@ -1579,7 +1579,8 @@ def stats(
     """Show tier counters from the running daemon.
 
     Prints the full ``GET /v1/daari/stats`` JSON, including ``soft_warnings`` /
-    ``rejects`` cliff maps and ``backend_summary`` pool counts.
+    ``rejects`` cliff maps, ``backend_summary`` pool counts, and
+    ``compact_to_fit_applied`` when compact-to-fit actually trims.
     """
     settings = get_settings()
     bind_host = host or settings.server.host
