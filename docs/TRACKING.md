@@ -5823,6 +5823,14 @@ Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 `tests/unit/test_compact_to_fit_stats_docs.py`.
 
 
+### HTTP pin require_key_access_defined ownership ([#1382](https://github.com/naveenreddyalka/daari/issues/1382))
+
+<!-- tracking:#1382 -->
+**Status:** Done (2026-10-04). Unit pin asserts http-api.md documents
+`require_key_access_defined` on GET/PATCH `/v1/daari/config` ownership.
+Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
