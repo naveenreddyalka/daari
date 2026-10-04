@@ -5860,6 +5860,14 @@ does not. Series present at 0 when unused. Covered by
 `tests/unit/test_prometheus.py` and `tests/unit/test_mcp_require_key_access.py`.
 
 
+### Grafana compact_to_fit_applied overview panel ([#1391](https://github.com/naveenreddyalka/daari/issues/1391))
+
+<!-- tracking:#1391 -->
+**Status:** Done (2026-10-04). Overview dashboard charts
+`daari_compact_to_fit_applied_total` under **Compact-to-fit applied**.
+Covered by `tests/unit/test_grafana_dashboard.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

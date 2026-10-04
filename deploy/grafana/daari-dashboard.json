@@ -445,6 +445,20 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 30,
+      "title": "Compact-to-fit applied",
+      "description": "Chat histories actually trimmed before L6 (`daari_compact_to_fit_applied_total`). Unchanged or fail-closed history does not increment.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 112 },
+      "targets": [
+        {
+          "expr": "rate(daari_compact_to_fit_applied_total[5m])",
+          "legendFormat": "compact-to-fit applied",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

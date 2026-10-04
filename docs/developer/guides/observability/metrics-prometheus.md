@@ -29,9 +29,10 @@ a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
 `daari_upstream_retries_total`, `daari_cache_false_hits_avoided_total`, and
 `daari_budget_alerts_total`, an **MCP tool ingress by outcome** panel on
 `daari_mcp_tool_calls_total`, a **Tier shadow agree/disagree** panel on
-`daari_tier_shadow_samples_total`, and an **Escalations & errors** panel on
+`daari_tier_shadow_samples_total`, a **Compact-to-fit applied** panel on
+`daari_compact_to_fit_applied_total`, and an **Escalations & errors** panel on
 `daari_escalations_total` / `daari_errors_total` so operators see flake / false-hit / budget /
-MCP deny / routing-shadow pressure without raw PromQL).
+MCP deny / routing-shadow / compact-to-fit pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
@@ -55,7 +56,7 @@ Two counters worth alerting on:
 | `daari_tier_shadow_samples_total{agreed}` | Local-tier answers replayed at a comparison tier (`agreed="true\|false"`). Rising `false` vs `true` means routing drift under `routing.shadow_sample_rate`. See [routing-tiers.md](../../concepts/routing-tiers.md) shadow section. Overview Grafana charts agree/disagree under **Tier shadow agree/disagree**. |
 | `daari_cancelled_requests_total{phase}` | Client hung up (`phase` is `chat`, `anthropic`, `responses`, `stream`, `mcp`, `embed`, `asr`, `translation`, or `tts`) and the upstream call was cancelled. Normal completions do not increment. Overview Grafana charts by phase under **Cancelled requests by phase**. |
 | `daari_request_deadline_exceeded_total` | Wall-clock request budget spent (`upstream.request_deadline_seconds` or `X-Daari-Deadline-Ms`) on chat, audio, embeddings, and MCP `tools/call` — not chat-only. Escalation stops without a frontier call. Overview Grafana charts under **Request deadline exceeded**. |
-| `daari_compact_to_fit_applied_total` | Chat histories actually trimmed before L6 (`messages_before` != `messages_after`). Unchanged or fail-closed history does not increment. No-op when `observability.prometheus=false`. |
+| `daari_compact_to_fit_applied_total` | Chat histories actually trimmed before L6 (`messages_before` != `messages_after`). Unchanged or fail-closed history does not increment. No-op when `observability.prometheus=false`. Overview Grafana charts under **Compact-to-fit applied**. |
 | `daari_mcp_grant_denied_total` | MCP `initialize` / `tools/list` / `tools/call` (and legacy `/v1/mcp/query`) when `require_key_access_defined` fail-closed applies because the virtual key has no MCP grant. Ordinary tool-name `deny` does not increment. No-op when `observability.prometheus=false`. |
 | `daari_escalations_total` / `daari_errors_total` | Local→frontier (L6) escalations and gateway/router errors. Overview Grafana charts both under **Escalations & errors**. |
 
