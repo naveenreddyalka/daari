@@ -5807,6 +5807,17 @@ Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 `tests/unit/test_prometheus.py`.
 
 
+### MCP initialize fail-closed without key grant ([#1389](https://github.com/naveenreddyalka/daari/issues/1389))
+
+<!-- tracking:#1389 -->
+**Status:** Done (2026-10-04). When `require_key_access_defined` is true,
+virtual keys with no MCP grant fail `initialize` (HTTP 403, JSON-RPC
+`-32003`). Granted keys, master key, and flag-off still handshake.
+`tools/list` empty catalog and `tools/call` deny unchanged. Covered by
+`tests/unit/test_mcp_require_key_access.py` and
+`tests/integration/test_mcp_governance.py`.
+
+
 ### CLI pin daari stats --help for compact_to_fit_applied ([#1380](https://github.com/naveenreddyalka/daari/issues/1380))
 
 <!-- tracking:#1380 -->

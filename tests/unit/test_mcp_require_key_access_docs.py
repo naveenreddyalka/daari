@@ -25,6 +25,9 @@ def test_mcp_guide_pins_require_key_access_defined() -> None:
     assert "fail-closed" in lower or "fail closed" in lower
     assert "grant" in lower
     assert "master" in lower and "unchanged" in lower
+    section = text.split("### Require key MCP grant", 1)[1].split("###", 1)[0].lower()
+    assert "initialize" in section
+    assert "403" in section or "-32003" in section
 
 
 def test_mcp_guide_pins_servers_grant_vs_clients_only() -> None:

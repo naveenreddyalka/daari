@@ -33,6 +33,7 @@ from daari.gateway.mcp_policy import (
     resolve_policy,
     resolve_server_policy,
     server_id_from_provider,
+    virtual_key_lacks_mcp_grant,
 )
 from daari.gateway.mcp_tasks import (
     client_opted_into_tasks,
@@ -657,6 +658,19 @@ def _denial_data(tool: str, server: str | None = None) -> dict[str, Any]:
     if server:
         data["server"] = server
     return data
+
+
+def _grant_denied_initialize_response(request: Request, rpc_id: Any) -> Response:
+    return _rpc_response(
+        request,
+        _jsonrpc_error(
+            rpc_id,
+            TOOL_DENIED,
+            "MCP initialize denied: virtual key has no MCP grant",
+            data={"method": "initialize"},
+        ),
+        status_code=403,
+    )
 
 
 def _client_denied_response(
@@ -1395,6 +1409,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                         _jsonrpc_result(rpc_id, _discover_result(requested_meta)),
                     )
                 if method == "initialize":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        return _grant_denied_initialize_response(request, rpc_id)
                     protocol = _negotiate_protocol(params)
                     return _rpc_response(
                         request,

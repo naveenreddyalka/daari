@@ -1,16 +1,28 @@
-"""Opt-in fail-closed when virtual key has no MCP grant (#1352)."""
+"""Opt-in fail-closed when virtual key has no MCP grant (#1352, #1389)."""
 
 from __future__ import annotations
 
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from daari.auth.virtual_keys import VirtualKey, VirtualKeyStore
 from daari.config.settings import Settings
 from daari.gateway.mcp_policy import (
     DENY_ALL_TOOLS,
+    TOOL_DENIED,
     key_has_mcp_grant,
     resolve_policy,
     virtual_key_lacks_mcp_grant,
 )
-from daari.auth.virtual_keys import VirtualKey
+from daari.router.router import AppContext
+from daari.server.app import create_app
 from daari.server.auth import AuthClaims
+
+_INIT_PARAMS = {
+    "protocolVersion": "2025-03-26",
+    "capabilities": {},
+    "clientInfo": {"name": "test", "version": "0"},
+}
 
 
 def _key(metadata=None) -> VirtualKey:
@@ -108,3 +120,54 @@ class TestRequireKeyAccessDefined:
         policy = resolve_policy(_claims({"mcp": {"allow": ["route"]}}), settings)
         assert policy.allows("route")
         assert not policy.allows("stats")
+
+
+def _vk_app(settings, *, metadata=None):
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create("agent", client_id="agent", metadata=metadata)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    return app, {"Authorization": f"Bearer {created.plaintext}"}
+
+
+async def _initialize(client, headers):
+    return await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": _INIT_PARAMS},
+        headers=headers,
+    )
+
+
+@pytest.mark.asyncio
+async def test_initialize_denied_when_vk_lacks_grant(settings):
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers = _vk_app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _initialize(client, headers)
+    assert response.status_code == 403
+    error = response.json()["error"]
+    assert error["code"] == TOOL_DENIED
+    assert "initialize" in error["message"].lower() or "grant" in error["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_initialize_ok_when_vk_has_grant(settings):
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers = _vk_app(settings, metadata={"mcp": {"allow": ["route"]}})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _initialize(client, headers)
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert "tools" in result["capabilities"]
+
+
+@pytest.mark.asyncio
+async def test_initialize_ok_when_flag_off(settings):
+    assert settings.integrations.mcp_policy.require_key_access_defined is False
+    app, headers = _vk_app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await _initialize(client, headers)
+    assert response.status_code == 200
+    assert "result" in response.json()
