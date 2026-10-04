@@ -260,15 +260,18 @@ integrations:
 
 When the flag is on, a virtual key whose `metadata.mcp` has **no** tool/server
 grant — none of `allow`, `deny`, or nested `servers.allow` / `servers.deny` —
-gets an empty `tools/list` and every `tools/call` is denied (`-32003` /
-`MCP_ERR_TOOL_DENIED`). Keys that declare any of those fields keep normal
-allow/deny merge behavior. A `clients` block alone is **not** a tool grant.
+fails `initialize` (HTTP `403` JSON-RPC `-32003`), gets an empty `tools/list`,
+and every `tools/call` is denied (`-32003` / `MCP_ERR_TOOL_DENIED`). Keys that
+declare any of those fields keep normal allow/deny merge behavior and still
+complete `initialize`. A `clients` block alone is **not** a tool grant.
 The master `server.api_key` and flag-off installs are unchanged.
 `daari doctor` surfaces an optional `mcp_require_key_access` tip when the flag
 is on.
 
 What the caller sees:
 
+- A denied `initialize` on `POST /mcp` is HTTP `403` with JSON-RPC error
+  `-32003` (`MCP initialize denied: virtual key has no MCP grant`).
 - `tools/list` (JSON-RPC and `/v1/mcp/query`) only returns allowed tools.
 - A denied `tools/call` on `POST /mcp` is JSON-RPC error `-32003`
   (`Tool denied by policy: <name>`, `data.tool` set).

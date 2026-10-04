@@ -243,6 +243,71 @@ async def test_client_allowlist_hit_and_deny_miss(settings, monkeypatch):
     assert "tools" in open_list.json()["result"]
 
 
+async def test_require_key_access_initialize_denied_without_grant(settings, monkeypatch):
+    """Flag on + VK with no metadata.mcp grant → initialize 403 (#1389)."""
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers, _ = _app_with_key(settings, monkeypatch)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        init = await _rpc(
+            client,
+            "initialize",
+            {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"},
+            },
+            headers=headers,
+        )
+        listed = await _rpc(client, "tools/list", headers=headers)
+        denied = await _rpc(
+            client, "tools/call", {"name": "route", "arguments": {"input": "hi"}}, headers=headers
+        )
+    assert init.status_code == 403
+    assert init.json()["error"]["code"] == TOOL_DENIED
+    assert listed.json()["result"]["tools"] == []
+    assert denied.json()["error"]["code"] == TOOL_DENIED
+
+
+async def test_require_key_access_initialize_ok_with_grant(settings, monkeypatch):
+    """Flag on + explicit grant still completes initialize (#1389)."""
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers, _ = _app_with_key(
+        settings, monkeypatch, metadata={"mcp": {"allow": ["route"]}}
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        init = await _rpc(
+            client,
+            "initialize",
+            {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"},
+            },
+            headers=headers,
+        )
+    assert init.status_code == 200
+    assert "tools" in init.json()["result"]["capabilities"]
+
+
+async def test_require_key_access_initialize_ok_flag_off(settings, monkeypatch):
+    """Default off: VK without grant still initializes (#1389)."""
+    assert settings.integrations.mcp_policy.require_key_access_defined is False
+    app, headers, _ = _app_with_key(settings, monkeypatch)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        init = await _rpc(
+            client,
+            "initialize",
+            {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"},
+            },
+            headers=headers,
+        )
+    assert init.status_code == 200
+    assert "result" in init.json()
+
+
 async def test_require_key_access_empty_catalog_without_grant(settings, monkeypatch):
     """Flag on + VK with no metadata.mcp grant → empty tools/list (#1352)."""
     settings.integrations.mcp_policy.require_key_access_defined = True

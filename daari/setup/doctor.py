@@ -2168,8 +2168,8 @@ def _check_mcp_require_key_access(settings: Settings) -> CheckResult | None:
         ok=True,
         detail=(
             "integrations.mcp_policy.require_key_access_defined: virtual keys "
-            "without metadata.mcp allow/deny/servers get empty tools/list and "
-            "tools/call deny; master key unchanged"
+            "without metadata.mcp allow/deny/servers fail initialize, get empty "
+            "tools/list, and tools/call deny; master key unchanged"
         ),
         optional=True,
     )
