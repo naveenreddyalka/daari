@@ -5831,6 +5831,14 @@ Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 
 
+### Docs pin cli.md stats compact_to_fit_applied ([#1383](https://github.com/naveenreddyalka/daari/issues/1383))
+
+<!-- tracking:#1383 -->
+**Status:** Done (2026-10-04). `cli.md` `stats` row names
+`compact_to_fit_applied` on `GET /v1/daari/stats` JSON. Covered by
+`tests/unit/test_stats_cli_help.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
