@@ -5756,6 +5756,14 @@ retargeted to live config reload then remaining gaps. Changelog line for
 this pass.
 
 
+### Hermetic pin compact_to_fit_applied Prometheus series ([#1369](https://github.com/naveenreddyalka/daari/issues/1369))
+
+<!-- tracking:#1369 -->
+**Status:** Done (2026-10-04). `metrics-prometheus.md` lists
+`daari_compact_to_fit_applied_total` for actual compact-to-fit trims.
+Covered by `tests/unit/test_metrics_prometheus_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
