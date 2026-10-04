@@ -5868,6 +5868,16 @@ does not. Series present at 0 when unused. Covered by
 Covered by `tests/unit/test_grafana_dashboard.py`.
 
 
+### Stats for tokens dropped by compact_to_fit ([#1392](https://github.com/naveenreddyalka/daari/issues/1392))
+
+<!-- tracking:#1392 -->
+**Status:** Done (2026-10-04). When compact-to-fit actually trims, increment
+`compact_to_fit_tokens_dropped` / `daari_compact_to_fit_tokens_dropped_total`
+by `tokens_before - tokens_after`. Meta includes `tokens_before` /
+`tokens_after`. Covered by `tests/unit/test_compact_to_fit.py` and
+`tests/unit/test_prometheus.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

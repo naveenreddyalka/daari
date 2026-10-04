@@ -1614,6 +1614,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "mcp_tool_calls": full.get("mcp_tool_calls") or {},
                 "mcp_tasks": mcp_tasks,
                 "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),
+                "compact_to_fit_tokens_dropped": int(
+                    full.get("compact_to_fit_tokens_dropped") or 0
+                ),
                 "mcp_grant_denied": int(full.get("mcp_grant_denied") or 0),
             }
 

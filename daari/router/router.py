@@ -5022,15 +5022,19 @@ class Router:
             return request
         result = request.model_copy(deep=True)
         result.messages = compacted
+        tokens_before = estimate_tokens(request.messages)
+        tokens_after = estimate_tokens(compacted)
         detail = {
             "messages_before": before,
             "messages_after": after,
-            "tokens_before": estimate_tokens(request.messages),
-            "tokens_after": estimate_tokens(compacted),
+            "tokens_before": tokens_before,
+            "tokens_after": tokens_after,
         }
         result.meta.compact_to_fit = detail
         if hasattr(self.metrics, "record_compact_to_fit_applied"):
-            self.metrics.record_compact_to_fit_applied()
+            self.metrics.record_compact_to_fit_applied(
+                tokens_dropped=max(0, tokens_before - tokens_after)
+            )
         add_step("compact_to_fit", messages_before=before, messages_after=after)
         return result
 

@@ -105,6 +105,15 @@ def render_prometheus(
         f"daari_compact_to_fit_applied_total {snap.get('compact_to_fit_applied', 0)}"
     )
     lines.append(
+        "# HELP daari_compact_to_fit_tokens_dropped_total Estimated tokens "
+        "removed by compact-to-fit before L6 (tokens_before - tokens_after)."
+    )
+    lines.append("# TYPE daari_compact_to_fit_tokens_dropped_total counter")
+    lines.append(
+        "daari_compact_to_fit_tokens_dropped_total "
+        f"{snap.get('compact_to_fit_tokens_dropped', 0)}"
+    )
+    lines.append(
         "# HELP daari_mcp_grant_denied_total MCP initialize, tools/list, or "
         "tools/call rejected because the virtual key has no MCP grant."
     )
