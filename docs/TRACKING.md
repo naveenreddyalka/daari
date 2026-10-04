@@ -5740,6 +5740,14 @@ fail-closed grants with master-key unchanged. Covered by
 count. Covered by `tests/unit/test_compact_to_fit_stats_docs.py`.
 
 
+### ASGI pin servers-only MCP grant under require_key_access_defined ([#1362](https://github.com/naveenreddyalka/daari/issues/1362))
+
+<!-- tracking:#1362 -->
+**Status:** Done (2026-10-04). Flag on + `metadata.mcp.servers.allow` keeps a
+non-empty first-party `tools/list`; `clients` alone still fail-closes.
+Covered by `tests/integration/test_mcp_governance.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -309,3 +309,48 @@ async def test_require_key_access_master_key_unchanged(settings, monkeypatch):
     names = {tool["name"] for tool in listed.json()["result"]["tools"]}
     assert "route" in names
     assert allowed.json()["result"]["content"][0]["text"] == "routed"
+
+
+async def test_require_key_access_servers_only_grant_keeps_catalog(settings, monkeypatch):
+    """Flag on + metadata.mcp.servers.allow is a grant: first-party tools stay listed (#1362)."""
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers, _ = _app_with_key(
+        settings, monkeypatch, metadata={"mcp": {"servers": {"allow": ["weather"]}}}
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", headers=headers)
+        allowed = await _rpc(
+            client, "tools/call", {"name": "route", "arguments": {"input": "hi"}}, headers=headers
+        )
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert names
+    assert "route" in names
+    assert "stats" in names
+    assert allowed.json()["result"]["content"][0]["text"] == "routed"
+
+
+async def test_require_key_access_clients_only_is_not_a_grant(settings, monkeypatch):
+    """Flag on + metadata.mcp.clients alone still fail-closes (#1362)."""
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers, _ = _app_with_key(
+        settings,
+        monkeypatch,
+        metadata={"mcp": {"clients": {"allow": ["claude-code"], "deny": []}}},
+    )
+    params = {
+        "_meta": {
+            "io.modelcontextprotocol/clientInfo": {"name": "claude-code", "version": "0"},
+        }
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await _rpc(client, "tools/list", params, headers=headers)
+        denied = await _rpc(
+            client,
+            "tools/call",
+            {"name": "route", "arguments": {"input": "hi"}, **params},
+            headers=headers,
+        )
+        legacy = await client.post("/v1/mcp/query", json={"tool": "tools/list"}, headers=headers)
+    assert listed.json()["result"]["tools"] == []
+    assert denied.json()["error"]["code"] == TOOL_DENIED
+    assert legacy.json()["result"]["tools"] == []
