@@ -36,6 +36,7 @@ _MCP_LEAVES = (
     "integrations.mcp_oauth.protected_resource",
     "integrations.mcp_aggregate_egress.enabled",
     "integrations.mcp_registry.enabled",
+    "integrations.mcp_policy.require_key_access_defined",
 )
 
 
@@ -89,6 +90,7 @@ def _base_live() -> dict:
             "mcp_oauth": {"local_as": False, "protected_resource": False},
             "mcp_aggregate_egress": {"enabled": False},
             "mcp_registry": {"enabled": False},
+            "mcp_policy": {"require_key_access_defined": False},
         },
     }
 
@@ -265,6 +267,7 @@ async def test_patch_classifier_and_mcp_knobs_round_trip(settings, tmp_path, mon
                     "mcp_oauth": {"local_as": True, "protected_resource": True},
                     "mcp_aggregate_egress": {"enabled": True},
                     "mcp_registry": {"enabled": True},
+                    "mcp_policy": {"require_key_access_defined": True},
                 },
                 "persist": True,
             },
@@ -276,7 +279,14 @@ async def test_patch_classifier_and_mcp_knobs_round_trip(settings, tmp_path, mon
         assert payload["routing"]["decision_classifier"]["agent_turns"] is True
         assert payload["integrations"]["mcp_oauth"]["local_as"] is True
         assert payload["integrations"]["mcp_registry"]["enabled"] is True
+        assert payload["integrations"]["mcp_policy"]["require_key_access_defined"] is True
         assert payload["ownership"]["routing.decision_classifier.enabled"]["source"] == "file"
+        assert (
+            payload["ownership"]["integrations.mcp_policy.require_key_access_defined"][
+                "source"
+            ]
+            == "file"
+        )
         assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
 
         written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
@@ -286,7 +296,9 @@ async def test_patch_classifier_and_mcp_knobs_round_trip(settings, tmp_path, mon
         assert written["integrations"]["mcp_oauth"]["signing_secret"] == "file-secret"
         assert written["integrations"]["mcp_registry"]["enabled"] is True
         assert written["integrations"]["mcp_aggregate_egress"]["enabled"] is True
+        assert written["integrations"]["mcp_policy"]["require_key_access_defined"] is True
         assert settings.routing.decision_classifier.enabled is True
+        assert settings.integrations.mcp_policy.require_key_access_defined is True
         assert settings.integrations.mcp_oauth.signing_secret == "unit-secret-must-stay"
 
 
@@ -397,6 +409,57 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert payload["routing"]["compact_to_fit"]["max_tokens"] == 0
     assert set(payload["integrations"]["mcp_oauth"]) == {"local_as", "protected_resource"}
     assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
+    assert set(payload["integrations"]["mcp_policy"]) == {"require_key_access_defined"}
+    assert payload["integrations"]["mcp_policy"]["require_key_access_defined"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_mcp_require_key_access_round_trip(settings, tmp_path, monkeypatch):
+    settings.observability.config_editor = True
+    assert settings.integrations.mcp_policy.require_key_access_defined is False
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {"integrations": {"mcp_policy": {"require_key_access_defined": False}}}
+        ),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        key = "integrations.mcp_policy.require_key_access_defined"
+        assert key in body["ownership"]
+        assert body["ownership"][key]["editable"] is True
+        assert body["integrations"]["mcp_policy"]["require_key_access_defined"] is False
+
+        bad = await client.patch(
+            "/v1/daari/config",
+            json={"integrations": {"mcp_policy": {"require_key_access_defined": "yes"}}},
+        )
+        assert bad.status_code == 400
+        assert settings.integrations.mcp_policy.require_key_access_defined is False
+
+        persisted = await client.patch(
+            "/v1/daari/config",
+            json={
+                "integrations": {"mcp_policy": {"require_key_access_defined": True}},
+                "persist": True,
+            },
+        )
+        assert persisted.status_code == 200
+        payload = persisted.json()
+        assert payload["integrations"]["mcp_policy"]["require_key_access_defined"] is True
+        assert payload["ownership"][key]["source"] == "file"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        assert written["integrations"]["mcp_policy"]["require_key_access_defined"] is True
+        assert settings.integrations.mcp_policy.require_key_access_defined is True
 
 
 def test_docs_pin_classifier_mcp_config_ownership():
@@ -409,3 +472,4 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "| `PATCH` | `/v1/daari/config`" in http_api
     assert "decision_classifier" in http_api or "ownership" in http_api.lower()
     assert "compact_to_fit" in http_api
+    assert "require_key_access_defined" in http_api or "mcp_policy" in http_api

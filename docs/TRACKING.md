@@ -5713,6 +5713,15 @@ deny. Master key and flag-off unchanged. Doctor tip
 `tests/unit/test_compact_to_fit_docs.py`.
 
 
+### Config ownership for mcp_policy.require_key_access_defined ([#1359](https://github.com/naveenreddyalka/daari/issues/1359))
+
+<!-- tracking:#1359 -->
+**Status:** Done (2026-10-03). GET/PATCH `/v1/daari/config` exposes
+`integrations.mcp_policy.require_key_access_defined` with ownership metadata;
+PATCH validates bool and persists. Covered by
+`tests/unit/test_config_ownership.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

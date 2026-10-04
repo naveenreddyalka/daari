@@ -47,6 +47,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("integrations", "mcp_oauth", "protected_resource"),
     ("integrations", "mcp_aggregate_egress", "enabled"),
     ("integrations", "mcp_registry", "enabled"),
+    ("integrations", "mcp_policy", "require_key_access_defined"),
 )
 
 
@@ -174,6 +175,11 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
             },
             "mcp_registry": {
                 "enabled": s.integrations.mcp_registry.enabled,
+            },
+            "mcp_policy": {
+                "require_key_access_defined": (
+                    s.integrations.mcp_policy.require_key_access_defined
+                ),
             },
         },
     }

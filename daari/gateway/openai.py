@@ -2110,6 +2110,11 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             mcp_reg = integrations.get("mcp_registry") or {}
             if "enabled" in mcp_reg:
                 ctx.settings.integrations.mcp_registry.enabled = mcp_reg["enabled"]
+            mcp_policy = integrations.get("mcp_policy") or {}
+            if "require_key_access_defined" in mcp_policy:
+                ctx.settings.integrations.mcp_policy.require_key_access_defined = (
+                    mcp_policy["require_key_access_defined"]
+                )
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,
