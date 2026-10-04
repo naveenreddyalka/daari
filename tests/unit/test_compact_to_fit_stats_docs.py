@@ -25,3 +25,14 @@ def test_traces_stats_docs_pin_daari_meta_compact_to_fit() -> None:
     )
     assert "messages_before" in text
     assert "messages_after" in text
+
+
+HEADERS = Path(__file__).resolve().parents[2] / "docs/developer/reference/headers.md"
+
+
+def test_headers_docs_pin_x_daari_meta_compact_to_fit() -> None:
+    text = HEADERS.read_text(encoding="utf-8")
+    assert "X-Daari-Meta" in text
+    assert "compact_to_fit" in text
+    assert "messages_before" in text
+    assert "messages_after" in text
