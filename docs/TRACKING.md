@@ -5815,6 +5815,14 @@ Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 `tests/unit/test_stats_cli_help.py`.
 
 
+### Docs pin headers.md X-Daari-Meta compact_to_fit ([#1381](https://github.com/naveenreddyalka/daari/issues/1381))
+
+<!-- tracking:#1381 -->
+**Status:** Done (2026-10-04). `headers.md` documents `compact_to_fit`
+(`messages_before` / `messages_after`) on `X-Daari-Meta`. Covered by
+`tests/unit/test_compact_to_fit_stats_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
