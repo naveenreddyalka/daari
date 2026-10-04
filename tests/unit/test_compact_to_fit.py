@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
-from daari.router.compact_to_fit import compact_messages
+from daari.router.compact_to_fit import compact_messages, estimate_tokens
 from daari.router.router import AppContext
 from daari.server.app import create_app
 
@@ -92,6 +92,7 @@ def test_disabled_router_path_omits_meta_and_counter(settings) -> None:
     assert out.meta.compact_to_fit is None
     snap = ctx.metrics.snapshot(include_histograms=True)
     assert snap.get("compact_to_fit_applied", 0) == 0
+    assert snap.get("compact_to_fit_tokens_dropped", 0) == 0
 
 
 def test_enabled_over_budget_l6_path_sets_meta_and_increments(settings) -> None:
@@ -99,12 +100,16 @@ def test_enabled_over_budget_l6_path_sets_meta_and_increments(settings) -> None:
     settings.routing.compact_to_fit.max_messages = 3
     ctx = AppContext.from_settings(settings)
     request = InternalRequest(messages=[_user(i) for i in range(10)], model="m")
+    expected_before = estimate_tokens(request.messages)
     out = ctx.router._compact_to_fit_for_frontier(request)
     compact = out.meta.compact_to_fit
     assert compact is not None
     assert compact["messages_before"] == 10
     assert compact["messages_after"] == 3
     assert compact["messages_after"] < compact["messages_before"]
+    assert compact["tokens_before"] == expected_before
+    assert compact["tokens_after"] == estimate_tokens(out.messages)
+    assert compact["tokens_after"] < compact["tokens_before"]
     response = InternalResponse(
         content="ok",
         model="m",
@@ -114,6 +119,9 @@ def test_enabled_over_budget_l6_path_sets_meta_and_increments(settings) -> None:
     assert response.daari_meta.compact_to_fit == compact
     snap = ctx.metrics.snapshot(include_histograms=True)
     assert snap["compact_to_fit_applied"] == 1
+    dropped = compact["tokens_before"] - compact["tokens_after"]
+    assert snap["compact_to_fit_tokens_dropped"] == dropped
+    assert dropped > 0
 
 
 def test_tool_protected_history_does_not_claim_successful_trim(settings) -> None:
@@ -135,6 +143,7 @@ def test_tool_protected_history_does_not_claim_successful_trim(settings) -> None
     assert out.meta.compact_to_fit is None
     snap = ctx.metrics.snapshot(include_histograms=True)
     assert snap.get("compact_to_fit_applied", 0) == 0
+    assert snap.get("compact_to_fit_tokens_dropped", 0) == 0
 
 
 @pytest.mark.asyncio
@@ -147,12 +156,18 @@ async def test_stats_compact_counter_default_zero_and_after_trim(settings) -> No
         before = await client.get("/v1/daari/stats")
         assert before.status_code == 200
         assert before.json().get("compact_to_fit_applied", 0) == 0
-        app.state.ctx.router._compact_to_fit_for_frontier(
+        assert before.json().get("compact_to_fit_tokens_dropped", 0) == 0
+        trimmed = app.state.ctx.router._compact_to_fit_for_frontier(
             InternalRequest(messages=[_user(i) for i in range(10)], model="m")
         )
         after = await client.get("/v1/daari/stats")
     assert after.status_code == 200
     assert after.json()["compact_to_fit_applied"] == 1
+    compact = trimmed.meta.compact_to_fit
+    assert compact is not None
+    assert after.json()["compact_to_fit_tokens_dropped"] == (
+        compact["tokens_before"] - compact["tokens_after"]
+    )
 
 
 def test_routing_tiers_docs_note_compact_meta() -> None:

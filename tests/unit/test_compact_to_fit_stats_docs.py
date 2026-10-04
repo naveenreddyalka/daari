@@ -32,6 +32,15 @@ def test_traces_stats_docs_pin_daari_meta_compact_to_fit() -> None:
     assert "messages_after" in text
 
 
+def test_traces_stats_docs_pin_compact_to_fit_tokens_dropped() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "compact_to_fit_tokens_dropped" in text
+    lower = text.lower()
+    assert "token" in lower
+    assert "tokens_before" in text
+    assert "tokens_after" in text
+
+
 HEADERS = Path(__file__).resolve().parents[2] / "docs/developer/reference/headers.md"
 
 

@@ -3,7 +3,7 @@
 | Header | Effect |
 |--------|--------|
 | `Authorization: Bearer` / `x-api-key` | API key or virtual key |
-| `X-Daari-Meta: true` | Embed `daari_meta` in JSON responses (including `compact_to_fit` `messages_before` / `messages_after` when a trim actually ran) |
+| `X-Daari-Meta: true` | Embed `daari_meta` in JSON responses (including `compact_to_fit` `messages_before` / `messages_after` and `tokens_before` / `tokens_after` when a trim actually ran) |
 | `X-Daari-No-Cache` | Skip L0/L1 |
 | `X-Daari-Tier-Override` | Force a tier |
 | `X-Daari-Tier-Cap` | Cap local tier (e.g. `L3`). Beats body `cost_tier`. |

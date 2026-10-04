@@ -27,8 +27,11 @@ Each `tiers.*` entry may include optional `p50_ms` / `p95_ms` from the
 latency histogram (absent when that tier has no samples).
 `compact_to_fit_applied` increments only when a compact-to-fit trim actually
 changes the message count (unchanged or fail-closed history does not).
+The same trim adds `tokens_before - tokens_after` (existing estimator) to
+`compact_to_fit_tokens_dropped`; no-op and fail-closed paths leave it at 0.
 Successful trims also set `daari_meta.compact_to_fit` (`messages_before` /
-`messages_after`) when `X-Daari-Meta: true`.
+`messages_after`, plus `tokens_before` / `tokens_after`) when
+`X-Daari-Meta: true`.
 `mcp_grant_denied` increments once per `initialize`, `tools/list`, or
 `tools/call` (JSON-RPC and legacy `/v1/mcp/query`) when
 `integrations.mcp_policy.require_key_access_defined` fail-closed applies

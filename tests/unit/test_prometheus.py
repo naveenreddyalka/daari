@@ -87,13 +87,23 @@ class TestRenderPrometheus:
         """Exporter must emit compact_to_fit series even when unused (#1379)."""
         text = render_prometheus(Metrics())
         assert "daari_compact_to_fit_applied_total 0" in text
+        assert "daari_compact_to_fit_tokens_dropped_total 0" in text
 
     def test_compact_to_fit_applied_increments_on_record(self):
         """A recorded trim must increment the Prometheus counter (#1379)."""
         metrics = Metrics()
+        metrics.record_compact_to_fit_applied(tokens_dropped=12)
+        text = render_prometheus(metrics)
+        assert "daari_compact_to_fit_applied_total 1" in text
+        assert "daari_compact_to_fit_tokens_dropped_total 12" in text
+
+    def test_compact_to_fit_tokens_dropped_noop_without_tokens(self):
+        """Applied without tokens_dropped must leave the tokens series at 0 (#1392)."""
+        metrics = Metrics()
         metrics.record_compact_to_fit_applied()
         text = render_prometheus(metrics)
         assert "daari_compact_to_fit_applied_total 1" in text
+        assert "daari_compact_to_fit_tokens_dropped_total 0" in text
 
     def test_mcp_grant_denied_zero_on_empty_metrics(self):
         """Exporter must emit mcp_grant_denied series even when unused (#1390)."""

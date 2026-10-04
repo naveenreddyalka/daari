@@ -148,6 +148,7 @@ class Metrics:
     cancelled: dict[str, int] = field(default_factory=dict)
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
+    compact_to_fit_tokens_dropped: int = 0
     mcp_grant_denied: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
@@ -267,10 +268,11 @@ class Metrics:
         with self._lock:
             self.deadline_exhausted += 1
 
-    def record_compact_to_fit_applied(self) -> None:
-        """History was actually trimmed before an L6 hop (#1351)."""
+    def record_compact_to_fit_applied(self, *, tokens_dropped: int = 0) -> None:
+        """History was actually trimmed before an L6 hop (#1351, #1392)."""
         with self._lock:
             self.compact_to_fit_applied += 1
+            self.compact_to_fit_tokens_dropped += max(0, int(tokens_dropped))
 
     def record_mcp_grant_denied(self) -> None:
         """Fail-closed MCP grant missing on initialize / list / call (#1390)."""
@@ -321,6 +323,7 @@ class Metrics:
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
+                "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
                 "mcp_grant_denied": self.mcp_grant_denied,
                 "modality_requests": {
                     f"{mod}:{tier}": count
