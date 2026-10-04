@@ -15,3 +15,10 @@ def test_http_api_pins_config_ownership_classifier_and_mcp_knobs() -> None:
     mcp_cues = ("mcp_oauth.local_as", "mcp_aggregate_egress", "mcp_registry")
     assert sum(1 for cue in mcp_cues if cue in text) >= 2
     assert "compact_to_fit" in text
+
+
+def test_http_api_pins_config_ownership_compact_to_fit() -> None:
+    text = HTTP_API.read_text(encoding="utf-8")
+    assert "/v1/daari/config" in text
+    assert "ownership" in text.lower()
+    assert "routing.compact_to_fit" in text or "compact_to_fit.*" in text

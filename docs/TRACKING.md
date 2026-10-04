@@ -5790,6 +5790,14 @@ fail-closed stay `Shipped` and do not say `File this run`. Covered by
 grant. Covered by `tests/unit/test_mcp_require_key_access_docs.py`.
 
 
+### Hermetic pin http-api compact_to_fit ownership leaves ([#1373](https://github.com/naveenreddyalka/daari/issues/1373))
+
+<!-- tracking:#1373 -->
+**Status:** Done (2026-10-04). Unit pin asserts http-api.md documents
+`routing.compact_to_fit` on GET/PATCH `/v1/daari/config` ownership.
+Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
