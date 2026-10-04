@@ -27,6 +27,7 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     assert any("daari_request_deadline_exceeded_total" in row for row in body)
     assert any("daari_escalations_total" in row for row in body)
     assert any("daari_errors_total" in row for row in body)
+    assert any("daari_compact_to_fit_applied_total" in row for row in body)
     # Orphaned mid-table prose would end the contiguous body early.
     assert body[-1].startswith("| `daari_escalations_total")
 
@@ -43,3 +44,5 @@ def test_metrics_prometheus_series_table_is_contiguous() -> None:
     cancelled_row = next(row for row in body if "daari_cancelled_requests_total" in row)
     assert "`tts`" in cancelled_row
     assert "`mcp`" in cancelled_row
+    compact_row = next(row for row in body if "daari_compact_to_fit_applied_total" in row)
+    assert "trim" in compact_row.lower()
