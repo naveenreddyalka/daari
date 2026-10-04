@@ -5764,6 +5764,15 @@ this pass.
 Covered by `tests/unit/test_metrics_prometheus_docs.py`.
 
 
+### Hermetic pin ENTERPRISE compact and MCP grant rows shipped ([#1370](https://github.com/naveenreddyalka/daari/issues/1370))
+
+<!-- tracking:#1370 -->
+**Status:** Done (2026-10-04). Unit pin asserts ENTERPRISE.md gap rows for
+compact ownership, doctor tip, docs pin, meta/stats, and MCP grant
+fail-closed stay `Shipped` and do not say `File this run`. Covered by
+`tests/unit/test_enterprise_prd_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
