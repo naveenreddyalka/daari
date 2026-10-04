@@ -22,3 +22,10 @@ def test_http_api_pins_config_ownership_compact_to_fit() -> None:
     assert "/v1/daari/config" in text
     assert "ownership" in text.lower()
     assert "routing.compact_to_fit" in text or "compact_to_fit.*" in text
+
+
+def test_http_api_pins_config_ownership_require_key_access_defined() -> None:
+    text = HTTP_API.read_text(encoding="utf-8")
+    assert "/v1/daari/config" in text
+    assert "ownership" in text.lower()
+    assert "require_key_access_defined" in text or "mcp_policy.require_key_access_defined" in text
