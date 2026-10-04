@@ -25,3 +25,14 @@ def test_mcp_guide_pins_require_key_access_defined() -> None:
     assert "fail-closed" in lower or "fail closed" in lower
     assert "grant" in lower
     assert "master" in lower and "unchanged" in lower
+
+
+def test_mcp_guide_pins_servers_grant_vs_clients_only() -> None:
+    text = MCP.read_text(encoding="utf-8")
+    assert "require_key_access_defined" in text
+    lower = text.lower()
+    assert "servers.allow" in text or "servers.allow" in lower
+    assert "servers.deny" in text or "servers.deny" in lower
+    assert "grant" in lower
+    assert "clients" in lower
+    assert "not" in lower and ("tool grant" in lower or "not a grant" in lower)
