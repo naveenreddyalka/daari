@@ -11,3 +11,9 @@ def test_stats_help_mentions_backend_summary() -> None:
     result = CliRunner().invoke(cli_app, ["stats", "--help"])
     assert result.exit_code == 0
     assert "backend_summary" in result.output
+
+
+def test_stats_help_mentions_compact_to_fit_applied() -> None:
+    result = CliRunner().invoke(cli_app, ["stats", "--help"])
+    assert result.exit_code == 0
+    assert "compact_to_fit_applied" in result.output

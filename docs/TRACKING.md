@@ -5807,6 +5807,14 @@ Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 `tests/unit/test_prometheus.py`.
 
 
+### CLI pin daari stats --help for compact_to_fit_applied ([#1380](https://github.com/naveenreddyalka/daari/issues/1380))
+
+<!-- tracking:#1380 -->
+**Status:** Done (2026-10-04). `daari stats --help` names
+`compact_to_fit_applied` alongside other stats JSON keys. Covered by
+`tests/unit/test_stats_cli_help.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
