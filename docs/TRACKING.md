@@ -5722,6 +5722,16 @@ PATCH validates bool and persists. Covered by
 `tests/unit/test_config_ownership.py`.
 
 
+### Hermetic pin require_key_access_defined in mcp and config ([#1360](https://github.com/naveenreddyalka/daari/issues/1360))
+
+<!-- tracking:#1360 -->
+**Status:** Done (2026-10-04). Unit pins assert `config.md` lists
+`integrations.mcp_policy.require_key_access_defined` with empty tools/list
+or tools/call deny / metadata.mcp grant wording, and `mcp.md` documents
+fail-closed grants with master-key unchanged. Covered by
+`tests/unit/test_mcp_require_key_access_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
