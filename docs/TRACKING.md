@@ -5798,6 +5798,15 @@ grant. Covered by `tests/unit/test_mcp_require_key_access_docs.py`.
 Covered by `tests/unit/test_http_api_config_ownership_docs.py`.
 
 
+### Prometheus pin compact_to_fit_applied series increment ([#1379](https://github.com/naveenreddyalka/daari/issues/1379))
+
+<!-- tracking:#1379 -->
+**Status:** Done (2026-10-04). `render_prometheus` emits
+`daari_compact_to_fit_applied_total 0` on empty metrics and `1` after
+`record_compact_to_fit_applied()`. Covered by
+`tests/unit/test_prometheus.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
