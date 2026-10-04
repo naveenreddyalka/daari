@@ -29,6 +29,13 @@ latency histogram (absent when that tier has no samples).
 changes the message count (unchanged or fail-closed history does not).
 Successful trims also set `daari_meta.compact_to_fit` (`messages_before` /
 `messages_after`) when `X-Daari-Meta: true`.
+`mcp_grant_denied` increments once per `initialize`, `tools/list`, or
+`tools/call` (JSON-RPC and legacy `/v1/mcp/query`) when
+`integrations.mcp_policy.require_key_access_defined` fail-closed applies
+because the virtual key has no MCP grant. Ordinary tool-name `deny`, granted
+keys, master key, and flag-off installs do not increment it. The Prometheus
+counterpart is `daari_mcp_grant_denied_total` (no-op when
+`observability.prometheus=false`).
 
 ## Retention
 

@@ -56,6 +56,7 @@ Two counters worth alerting on:
 | `daari_cancelled_requests_total{phase}` | Client hung up (`phase` is `chat`, `anthropic`, `responses`, `stream`, `mcp`, `embed`, `asr`, `translation`, or `tts`) and the upstream call was cancelled. Normal completions do not increment. Overview Grafana charts by phase under **Cancelled requests by phase**. |
 | `daari_request_deadline_exceeded_total` | Wall-clock request budget spent (`upstream.request_deadline_seconds` or `X-Daari-Deadline-Ms`) on chat, audio, embeddings, and MCP `tools/call` — not chat-only. Escalation stops without a frontier call. Overview Grafana charts under **Request deadline exceeded**. |
 | `daari_compact_to_fit_applied_total` | Chat histories actually trimmed before L6 (`messages_before` != `messages_after`). Unchanged or fail-closed history does not increment. No-op when `observability.prometheus=false`. |
+| `daari_mcp_grant_denied_total` | MCP `initialize` / `tools/list` / `tools/call` (and legacy `/v1/mcp/query`) when `require_key_access_defined` fail-closed applies because the virtual key has no MCP grant. Ordinary tool-name `deny` does not increment. No-op when `observability.prometheus=false`. |
 | `daari_escalations_total` / `daari_errors_total` | Local→frontier (L6) escalations and gateway/router errors. Overview Grafana charts both under **Escalations & errors**. |
 
 The same `soft_warnings` / `rejects` maps are also on `GET /v1/daari/stats` (and the

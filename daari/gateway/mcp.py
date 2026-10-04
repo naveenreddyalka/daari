@@ -98,6 +98,16 @@ def _record_mcp_tool(ctx: AppContext, tool: str, outcome: str) -> None:
     metrics.record_mcp_tool_call(tool=tool.strip().lower() or "unknown", outcome=outcome)
 
 
+def _record_mcp_grant_denied(ctx: AppContext) -> None:
+    """Bump grant fail-closed counter when Prometheus exposition is on (#1390)."""
+    if not getattr(ctx.settings.observability, "prometheus", True):
+        return
+    metrics = getattr(ctx.router, "metrics", None)
+    if metrics is None or not hasattr(metrics, "record_mcp_grant_denied"):
+        return
+    metrics.record_mcp_grant_denied()
+
+
 class MCPQueryRequest(BaseModel):
     tool: str = Field(default="route")
     input: str | None = None
@@ -598,6 +608,8 @@ class _Governance:
         if denied is not None:
             tool, server = denied
             self.audit(tool=tool, decision="deny", transport=transport, server=server)
+            if virtual_key_lacks_mcp_grant(self.claims, self._ctx.settings):
+                _record_mcp_grant_denied(self._ctx)
             return denied
         server = self._server_for_tool(name)
         self.audit(tool=name, decision="allow", transport=transport, server=server)
@@ -1222,6 +1234,8 @@ class MCPGatewayAdapter(GatewayAdapter):
             catalog_by_name = {item["name"]: item for item in _tool_catalog(ctx)}
 
             if tool in {"tools/list", "list_tools"}:
+                if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                    _record_mcp_grant_denied(ctx)
                 return _legacy(
                     MCPQueryResponse(
                         tool="tools/list",
@@ -1410,6 +1424,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                     )
                 if method == "initialize":
                     if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
                         return _grant_denied_initialize_response(request, rpc_id)
                     protocol = _negotiate_protocol(params)
                     return _rpc_response(
@@ -1426,6 +1441,8 @@ class MCPGatewayAdapter(GatewayAdapter):
                 if method == "ping":
                     return _rpc_response(request, _jsonrpc_result(rpc_id, {}))
                 if method == "tools/list":
+                    if virtual_key_lacks_mcp_grant(governance.claims, ctx.settings):
+                        _record_mcp_grant_denied(ctx)
                     return _rpc_response(
                         request,
                         _jsonrpc_result(

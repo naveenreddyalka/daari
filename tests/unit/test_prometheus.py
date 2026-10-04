@@ -95,6 +95,18 @@ class TestRenderPrometheus:
         text = render_prometheus(metrics)
         assert "daari_compact_to_fit_applied_total 1" in text
 
+    def test_mcp_grant_denied_zero_on_empty_metrics(self):
+        """Exporter must emit mcp_grant_denied series even when unused (#1390)."""
+        text = render_prometheus(Metrics())
+        assert "daari_mcp_grant_denied_total 0" in text
+
+    def test_mcp_grant_denied_increments_on_record(self):
+        """A recorded fail-closed grant deny must increment the series (#1390)."""
+        metrics = Metrics()
+        metrics.record_mcp_grant_denied()
+        text = render_prometheus(metrics)
+        assert "daari_mcp_grant_denied_total 1" in text
+
 
 @pytest.mark.asyncio
 async def test_metrics_endpoint_open_without_auth(settings):

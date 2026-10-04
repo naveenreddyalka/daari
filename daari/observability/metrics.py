@@ -148,6 +148,7 @@ class Metrics:
     cancelled: dict[str, int] = field(default_factory=dict)
     deadline_exhausted: int = 0
     compact_to_fit_applied: int = 0
+    mcp_grant_denied: int = 0
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -271,6 +272,11 @@ class Metrics:
         with self._lock:
             self.compact_to_fit_applied += 1
 
+    def record_mcp_grant_denied(self) -> None:
+        """Fail-closed MCP grant missing on initialize / list / call (#1390)."""
+        with self._lock:
+            self.mcp_grant_denied += 1
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -315,6 +321,7 @@ class Metrics:
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
+                "mcp_grant_denied": self.mcp_grant_denied,
                 "modality_requests": {
                     f"{mod}:{tier}": count
                     for (mod, tier), count in sorted(self.modality_requests.items())

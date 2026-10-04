@@ -14,6 +14,7 @@ from daari.gateway.mcp_policy import (
     resolve_policy,
     virtual_key_lacks_mcp_grant,
 )
+from daari.observability.prometheus import render_prometheus
 from daari.router.router import AppContext
 from daari.server.app import create_app
 from daari.server.auth import AuthClaims
@@ -171,3 +172,95 @@ async def test_initialize_ok_when_flag_off(settings):
         response = await _initialize(client, headers)
     assert response.status_code == 200
     assert "result" in response.json()
+
+
+def _grant_denied_count(app) -> int:
+    metrics = app.state.ctx.metrics
+    snap = metrics.snapshot(include_histograms=True)
+    return int(snap.get("mcp_grant_denied") or 0)
+
+
+@pytest.mark.asyncio
+async def test_stats_json_exposes_mcp_grant_denied(settings):
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        before = await client.get("/v1/daari/stats")
+        assert before.status_code == 200
+        assert before.json().get("mcp_grant_denied", 0) == 0
+        app.state.ctx.metrics.record_mcp_grant_denied()
+        after = await client.get("/v1/daari/stats")
+    assert after.json()["mcp_grant_denied"] == 1
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers = _vk_app(settings)
+    assert _grant_denied_count(app) == 0
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await _initialize(client, headers)
+    assert denied.status_code == 403
+    assert _grant_denied_count(app) == 1
+    assert "daari_mcp_grant_denied_total 1" in render_prometheus(app.state.ctx.metrics)
+
+
+@pytest.mark.asyncio
+async def test_tools_list_fail_closed_increments_mcp_grant_denied(settings):
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers = _vk_app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await client.post(
+            "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            headers=headers,
+        )
+    assert listed.json()["result"]["tools"] == []
+    assert _grant_denied_count(app) == 1
+
+
+@pytest.mark.asyncio
+async def test_ordinary_tool_deny_does_not_increment_mcp_grant_denied(settings, monkeypatch):
+    from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse
+    from tests.conftest import mock_all_ollama_executors
+
+    app, headers = _vk_app(settings, metadata={"mcp": {"deny": ["stats"]}})
+
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="ok",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "stats", "arguments": {}},
+            },
+            headers=headers,
+        )
+    assert denied.json()["error"]["code"] == TOOL_DENIED
+    assert _grant_denied_count(app) == 0
+
+
+@pytest.mark.asyncio
+async def test_granted_initialize_does_not_increment_mcp_grant_denied(settings):
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers = _vk_app(settings, metadata={"mcp": {"allow": ["route"]}})
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        ok = await _initialize(client, headers)
+    assert ok.status_code == 200
+    assert _grant_denied_count(app) == 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_grant_denied_noop_when_prometheus_disabled(settings):
+    settings.observability.prometheus = False
+    settings.integrations.mcp_policy.require_key_access_defined = True
+    app, headers = _vk_app(settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await _initialize(client, headers)
+    assert denied.status_code == 403
+    assert _grant_denied_count(app) == 0
