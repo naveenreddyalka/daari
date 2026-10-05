@@ -78,6 +78,10 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 
 `GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) expose per-field `ownership` (`source` / `editable` / `diverged`) for the safe subset, including `routing.decision_classifier.*`, `routing.compact_to_fit.*`, and MCP knobs (`integrations.mcp_oauth.local_as` / `protected_resource`, `integrations.mcp_aggregate_egress.enabled`, `integrations.mcp_registry.enabled`, `integrations.mcp_policy.require_key_access_defined`). Secrets such as `integrations.mcp_oauth.signing_secret` stay non-editable and are omitted from the payload.
 
+## Traces compact_to_fit
+
+`GET /v1/daari/traces` and `GET /v1/daari/traces/{trace_id}` include a `compact_to_fit` step with `tokens_before` / `tokens_after` when a compact-to-fit trim actually ran (no step when the message count is unchanged). Clients that skip `X-Daari-Meta` still see those FinOps fields on the trace.
+
 ## Responses stream resume
 
 `GET /v1/responses/{response_id}` accepts query parameters:
