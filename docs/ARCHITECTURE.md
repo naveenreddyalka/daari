@@ -1,7 +1,7 @@
 # daari — Architecture & project structure
 
 > Living overview of the repo layout, runtime flow, and implementation status.  
-> **Last updated:** 2026-07-23 (v1.2.0) · **Verified at:** `working tree`
+> **Last updated:** 2026-10-05 · **Verified at:** `working tree`
 
 For phase tasks and exit criteria, see [TRACKING.md](TRACKING.md). For clone/run/test pickup, see [DEVELOPING.md](DEVELOPING.md).
 
@@ -91,7 +91,7 @@ User runtime paths (not in repo): `~/.daari/config.yaml`, `~/.daari/cache/{l0,l1
 | `daari/cache/semantic.py` | L1 semantic cache — Ollama embeddings + cosine similarity | ✅ |
 | `daari/config/settings.py` | Merged config (`defaults.yaml` + `~/.daari/` + profile overlays + skills prefix) | ✅ |
 | `daari/config/defaults.yaml` | Package defaults (host, port, models) | ✅ |
-| `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` (`soft_warnings` / `rejects` cliff maps, `backend_summary`) | ✅ |
+| `daari/observability/metrics.py` | Tier counters for `/v1/daari/stats` (`soft_warnings` / `rejects` cliff maps, `backend_summary`, `compact_to_fit_applied` / `compact_to_fit_tokens_dropped`) | ✅ |
 | `daari/providers/base.py` | `IntegrationProvider` protocol (`execute`, `health`) | ✅ |
 | `daari/providers/registry.py` | Provider registry used by router | ✅ |
 | `daari/providers/integrations.py` | Sourcegraph GraphQL + GHE repo/issue search providers | ✅ |
@@ -216,7 +216,7 @@ flowchart LR
 5. Apply L2-dev command rules (`git`, `pytest`, `eslint`) and policy gate; execute Lt when allowed.
 6. Apply L2 deterministic transforms (JSON/YAML patterns).
 7. Build the prompt profile (category/complexity; learned router can override the heuristic); pick the initial tier via category policy → tier cap (`X-Daari-Tier-Cap`, `.daari.yaml`) → latency budget step-down (profiled model latency vs `routing.latency_budget_ms` / `X-Daari-Latency-Budget`) with warm-model preference.
-8. Model path L3/L4/L5 with fallback; confidence (per-category tuned when `learning.auto_tune`) drives escalation toward L6 — slimmed, optionally compressed and PII-scrubbed, budget-guarded (daily + monthly soft/hard).
+8. Model path L3/L4/L5 with fallback; confidence (per-category tuned when `learning.auto_tune`) drives escalation toward L6 — slimmed, optionally compressed and PII-scrubbed, budget-guarded (daily + monthly soft/hard). Opt-in `routing.compact_to_fit` trims droppable turns before L6; a successful trim records `tokens_before` / `tokens_after` on the `compact_to_fit` trace step (fail-closed if the remainder still exceeds the cap).
 9. `X-Daari-No-Frontier: true` (or the project profile) prevents L6 escalation.
 
 ---
