@@ -52,6 +52,7 @@ Run the same curl twice — the second response should show `"tier": "L0"` in `d
 
 **Routing & caching**
 - Local-first routing chain: `L0` exact cache → `L1` semantic cache (with draft injection) → `CCS`/`L2` rules → `Lt` CLI tools → `L3–L5` local models (Ollama or MLX) → `L6` frontier, with confidence-based escalation
+- Opt-in compact-to-fit (`routing.compact_to_fit`): trim droppable turns before L6; successful trims record `tokens_before` / `tokens_after` (stats: `compact_to_fit_tokens_dropped`)
 - Cache trust you can measure: shadow-sampled **false-hit rate**, response-diversity monitoring, input normalization, per-category TTLs
 - Prompt intelligence: category/complexity profiling, per-category policies, latency budgets, warm-model preference, learned routing from your own outcomes
 
