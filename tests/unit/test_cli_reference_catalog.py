@@ -35,3 +35,17 @@ def test_cli_reference_learn_matches_typer_and_route_preview() -> None:
     assert "--json" not in preview_blob, "stale --json on route preview (#699)"
     assert "--latency-budget-ms" in text
     assert "--model" in text
+
+
+def test_cli_md_trace_mentions_compact_to_fit_token_fields() -> None:
+    text = CLI_MD.read_text(encoding="utf-8")
+    rows = [
+        line
+        for line in text.splitlines()
+        if line.startswith("|") and "`trace`" in line
+    ]
+    assert rows, "cli.md missing a `trace` table row"
+    blob = "\n".join(rows)
+    assert "compact_to_fit" in blob
+    assert "tokens_before" in blob
+    assert "tokens_after" in blob
