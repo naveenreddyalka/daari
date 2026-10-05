@@ -284,11 +284,32 @@ def test_grafana_dashboard_includes_compact_to_fit_applied_panel():
     """Compact-to-fit trim counter should be visible on the overview (#1391)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
     panel = next(
-        (p for p in payload["panels"] if "Compact-to-fit" in p.get("title", "")),
+        (
+            p
+            for p in payload["panels"]
+            if p.get("title") == "Compact-to-fit applied"
+        ),
         None,
     )
     assert panel is not None, "expected a compact-to-fit panel in daari-dashboard.json"
     exprs = [t.get("expr", "") for t in panel.get("targets", [])]
     assert any("daari_compact_to_fit_applied_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_compact_to_fit_tokens_dropped_panel():
+    """Estimated tokens dropped by compact-to-fit should chart on overview (#1400)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "tokens dropped" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a tokens-dropped panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_compact_to_fit_tokens_dropped_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
 

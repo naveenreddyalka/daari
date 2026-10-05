@@ -5886,6 +5886,14 @@ master-key refuse, compact-to-fit, and MCP grant fail-closed; stdio MCP
 marked N/A/watch. Covered by `tests/unit/test_compare_litellm_1104.py`.
 
 
+### Grafana compact_to_fit_tokens_dropped overview panel ([#1400](https://github.com/naveenreddyalka/daari/issues/1400))
+
+<!-- tracking:#1400 -->
+**Status:** Done (2026-10-05). Overview dashboard charts
+`daari_compact_to_fit_tokens_dropped_total` under **Compact-to-fit tokens
+dropped**. Covered by `tests/unit/test_grafana_dashboard.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

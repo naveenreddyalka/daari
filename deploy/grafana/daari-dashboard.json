@@ -459,6 +459,20 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 31,
+      "title": "Compact-to-fit tokens dropped",
+      "description": "Estimated tokens removed by compact-to-fit before L6 (`daari_compact_to_fit_tokens_dropped_total`). Increments only when a trim changes message count.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 112 },
+      "targets": [
+        {
+          "expr": "rate(daari_compact_to_fit_tokens_dropped_total[5m])",
+          "legendFormat": "compact-to-fit tokens dropped",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",
