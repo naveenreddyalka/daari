@@ -145,6 +145,14 @@ def render_api_reference() -> str:
             "`integrations.mcp_oauth.signing_secret` stay non-editable and are omitted "
             "from the payload.",
             "",
+            "## Traces compact_to_fit",
+            "",
+            "`GET /v1/daari/traces` and `GET /v1/daari/traces/{trace_id}` include a "
+            "`compact_to_fit` step with `tokens_before` / `tokens_after` when a "
+            "compact-to-fit trim actually ran (no step when the message count is "
+            "unchanged). Clients that skip `X-Daari-Meta` still see those FinOps "
+            "fields on the trace.",
+            "",
             "## Responses stream resume",
             "",
             "`GET /v1/responses/{response_id}` accepts query parameters:",

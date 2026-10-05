@@ -5951,6 +5951,14 @@ compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 `tests/unit/test_cli_reference_catalog.py`.
 
 
+### HTTP API pin traces compact_to_fit token fields ([#1413](https://github.com/naveenreddyalka/daari/issues/1413))
+
+<!-- tracking:#1413 -->
+**Status:** Done (2026-10-05). http-api.md notes `compact_to_fit` trace step
+`tokens_before` / `tokens_after` when a trim ran. Covered by
+`tests/unit/test_http_api_traces_compact_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
