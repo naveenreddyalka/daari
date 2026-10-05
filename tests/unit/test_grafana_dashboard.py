@@ -313,3 +313,21 @@ def test_grafana_dashboard_includes_compact_to_fit_tokens_dropped_panel():
     assert any("daari_compact_to_fit_tokens_dropped_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
 
+
+def test_grafana_dashboard_includes_mcp_grant_denied_panel():
+    """MCP grant fail-closed denials should chart on the overview (#1401)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "grant denied" in p.get("title", "").lower()
+            or p.get("title") == "MCP grant denied"
+        ),
+        None,
+    )
+    assert panel is not None, "expected an MCP grant-denied panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_mcp_grant_denied_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
