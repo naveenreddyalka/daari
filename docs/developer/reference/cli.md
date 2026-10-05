@@ -7,7 +7,7 @@ Entry point: `daari` (Typer).
 | Command | Purpose |
 |---------|---------|
 | `serve` | Run the gateway daemon |
-| `stats` | Tier counters (`GET /v1/daari/stats` JSON, including `compact_to_fit_applied`) |
+| `stats` | Tier counters (`GET /v1/daari/stats` JSON, including `compact_to_fit_applied` / `compact_to_fit_tokens_dropped`) |
 | `doctor` | Health / suggest-models (`--strict` treats pending migrate as required) |
 | `migrate` | Open durable stores / `--dry-run` inspect pending additive migrations |
 | `install` | Convenience installer helpers |
