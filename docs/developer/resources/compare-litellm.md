@@ -26,7 +26,7 @@ LiteLLM [v1.104.0](https://docs.litellm.ai/release_notes/v1.104.0/v1-104-0)
 | LiteLLM 1.104 | daari today |
 |---------------|-------------|
 | Refuse weak/unset master key at start | Same: refuse weak/unset master key (sandbox hatch for local demos) |
-| Native compact-to-fit across conversation APIs | Opt-in `routing.compact_to_fit` trims droppable turns before L6 |
+| Native compact-to-fit across conversation APIs | Opt-in `routing.compact_to_fit` trims droppable turns before L6; successful trims record `tokens_before` / `tokens_after` on-device (stats/Prometheus: `compact_to_fit_tokens_dropped`) |
 | MCP key grant / tool permissions (`require_key_mcp_access_defined`) | Opt-in `integrations.mcp_policy.require_key_access_defined` fail-closed when the virtual key has no MCP grant |
 
 **stdio MCP off by default** in LiteLLM is N/A for daari today (no stdio MCP

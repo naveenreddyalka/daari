@@ -5975,6 +5975,14 @@ compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 `tests/unit/test_gtm_public_copy.py`.
 
 
+### Docs: compare-litellm compact-to-fit token telemetry ([#1420](https://github.com/naveenreddyalka/daari/issues/1420))
+
+<!-- tracking:#1420 -->
+**Status:** Done (2026-10-05). compare-litellm 1.104 compact row names
+`tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped`. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
