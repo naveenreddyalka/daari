@@ -5919,6 +5919,14 @@ inward theme and path no longer treat those as open. Covered by
 `tests/unit/test_enterprise_prd_docs.py`.
 
 
+### compact_to_fit trace step tokens_before/after ([#1404](https://github.com/naveenreddyalka/daari/issues/1404))
+
+<!-- tracking:#1404 -->
+**Status:** Done (2026-10-05). Successful compact-to-fit trims record
+`tokens_before` / `tokens_after` on the `compact_to_fit` trace step; no-op
+paths still omit the step. Covered by `tests/unit/test_compact_to_fit.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

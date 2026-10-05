@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 
 from daari.config.settings import Settings
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.observability.trace import current_trace, end_trace, start_trace
 from daari.router.compact_to_fit import compact_messages, estimate_tokens
 from daari.router.router import AppContext
 from daari.server.app import create_app
@@ -168,6 +169,49 @@ async def test_stats_compact_counter_default_zero_and_after_trim(settings) -> No
     assert after.json()["compact_to_fit_tokens_dropped"] == (
         compact["tokens_before"] - compact["tokens_after"]
     )
+
+
+def test_trim_trace_step_includes_token_counts(settings) -> None:
+    settings.routing.compact_to_fit.enabled = True
+    settings.routing.compact_to_fit.max_messages = 3
+    ctx = AppContext.from_settings(settings)
+    request = InternalRequest(messages=[_user(i) for i in range(10)], model="m")
+    expected_before = estimate_tokens(request.messages)
+    start_trace()
+    try:
+        out = ctx.router._compact_to_fit_for_frontier(request)
+        steps = [s for s in (current_trace().steps if current_trace() else []) if s["step"] == "compact_to_fit"]
+    finally:
+        end_trace()
+    assert len(steps) == 1
+    detail = steps[0]["detail"]
+    assert detail["messages_before"] == 10
+    assert detail["messages_after"] == 3
+    assert detail["tokens_before"] == expected_before
+    assert detail["tokens_after"] == estimate_tokens(out.messages)
+    assert detail["tokens_after"] < detail["tokens_before"]
+
+
+def test_noop_trim_does_not_emit_compact_trace_step(settings) -> None:
+    settings.routing.compact_to_fit.enabled = True
+    settings.routing.compact_to_fit.max_messages = 2
+    ctx = AppContext.from_settings(settings)
+    messages = [
+        Message(
+            role="assistant",
+            content="",
+            tool_calls=[{"id": "call_1", "type": "function", "function": {"name": "f"}}],
+        ),
+        Message(role="tool", content="result", tool_call_id="call_1"),
+        Message(role="system", content="sys"),
+    ]
+    start_trace()
+    try:
+        ctx.router._compact_to_fit_for_frontier(InternalRequest(messages=messages, model="m"))
+        steps = [s for s in (current_trace().steps if current_trace() else []) if s["step"] == "compact_to_fit"]
+    finally:
+        end_trace()
+    assert steps == []
 
 
 def test_routing_tiers_docs_note_compact_meta() -> None:

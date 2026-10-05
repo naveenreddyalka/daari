@@ -39,6 +39,7 @@ def test_traces_stats_docs_pin_compact_to_fit_tokens_dropped() -> None:
     assert "token" in lower
     assert "tokens_before" in text
     assert "tokens_after" in text
+    assert "trace step" in lower or "compact_to_fit` trace" in text
 
 
 HEADERS = Path(__file__).resolve().parents[2] / "docs/developer/reference/headers.md"
