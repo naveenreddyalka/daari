@@ -5943,6 +5943,14 @@ message count. Covered by `tests/unit/test_compact_to_fit_docs.py`.
 compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 
 
+### CLI pin trace compact_to_fit token fields ([#1412](https://github.com/naveenreddyalka/daari/issues/1412))
+
+<!-- tracking:#1412 -->
+**Status:** Done (2026-10-05). `cli.md` `trace` row documents `compact_to_fit`
+`tokens_before` / `tokens_after`. Covered by
+`tests/unit/test_cli_reference_catalog.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

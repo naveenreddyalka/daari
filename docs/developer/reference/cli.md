@@ -13,7 +13,7 @@ Entry point: `daari` (Typer).
 | `install` | Convenience installer helpers |
 | `onboard` | pip/brew first-run (Ollama + default models) |
 | `feedback` | Record accept/reject |
-| `trace` | Show a request trace |
+| `trace` | Show a request trace (`compact_to_fit` steps include `tokens_before` / `tokens_after` when a trim ran) |
 | `report` | Savings / usage ledger |
 | `usage` | Alias of `report` |
 | `spend` | Per-request chargeback export (`export`, `--tier`) and rollups (`report`, `--by-tool`, `--by-user`) — see [chargeback](../guides/observability/chargeback.md) |
