@@ -5959,6 +5959,14 @@ compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 `tests/unit/test_http_api_traces_compact_docs.py`.
 
 
+### ARCHITECTURE pin compact_to_fit token fields ([#1418](https://github.com/naveenreddyalka/daari/issues/1418))
+
+<!-- tracking:#1418 -->
+**Status:** Done (2026-10-05). ARCHITECTURE.md routing overview names
+`routing.compact_to_fit` and `tokens_before` / `tokens_after`. Covered by
+`tests/unit/test_architecture_introspect.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
