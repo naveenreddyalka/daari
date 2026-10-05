@@ -1,4 +1,4 @@
-"""Hermetic pin: ENTERPRISE compact and MCP grant rows stay Shipped (#1370)."""
+"""Hermetic pin: ENTERPRISE compact/MCP/operate-gate rows stay Shipped (#1370, #1403)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,18 @@ _SHIPPED_GAP_CUES = (
     "Hermetic pin: compact_to_fit in config + routing-tiers",
     "`daari_meta` + stats when compact_to_fit actually trims",
     "Opt-in fail-closed MCP when key has no MCP grant",
+    "Grafana panel for `compact_to_fit_applied`",
+    "Dedicated stats/Prom counter for MCP grant fail-closed",
+    "Refuse MCP `initialize` when key has no grant",
+    "Stats for estimated tokens dropped by compact-to-fit",
+    "Refresh compare-litellm for LiteLLM 1.104 GA",
+)
+
+_STALE_OPERATE_GATE_CLAIMS = (
+    "Grafana has no compact panel",
+    "grant-denies blend into generic MCP deny",
+    "initialize still handshakes without a grant",
+    "token-drop FinOps is missing",
 )
 
 
@@ -44,3 +56,13 @@ def test_enterprise_prd_pins_compact_and_mcp_grant_rows_shipped() -> None:
         for row in matches:
             assert "Shipped" in row, f"expected Shipped in gap row: {row}"
             assert "File this run" not in row, f"stale File this run in: {row}"
+
+
+def test_enterprise_prd_does_not_claim_operate_gates_still_open() -> None:
+    text = ENTERPRISE.read_text(encoding="utf-8")
+    stand = text.split("## Scored gap table", 1)[0]
+    path = text.split("## Path to enterprise-grade", 1)[-1].split("## Changelog", 1)[0]
+    for claim in _STALE_OPERATE_GATE_CLAIMS:
+        assert claim not in stand, f"stale operate-gate claim in stand: {claim}"
+    assert "rows 24–27" not in path
+    assert "Grafana compact panel" not in path
