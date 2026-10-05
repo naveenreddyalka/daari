@@ -33,6 +33,14 @@ def test_readme_names_apache_and_shows_l0_path():
     assert "https://naveenreddyalka.github.io/daari/" in text
 
 
+def test_readme_snapshot_mentions_compact_to_fit_token_fields() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    lower = text.lower()
+    assert "compact_to_fit" in text or "compact-to-fit" in lower
+    assert "tokens_before" in text or "tokens dropped" in lower
+    assert "tokens_after" in text or "tokens dropped" in lower
+
+
 def test_public_copy_does_not_claim_current_license_is_polyform():
     hits: list[str] = []
     for path in PUBLIC_COPY:

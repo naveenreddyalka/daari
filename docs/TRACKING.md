@@ -5967,6 +5967,14 @@ compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 `tests/unit/test_architecture_introspect.py`.
 
 
+### README pin compact-to-fit in feature snapshot ([#1419](https://github.com/naveenreddyalka/daari/issues/1419))
+
+<!-- tracking:#1419 -->
+**Status:** Done (2026-10-05). README routing snapshot mentions compact-to-fit
+`tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped`. Covered by
+`tests/unit/test_gtm_public_copy.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
