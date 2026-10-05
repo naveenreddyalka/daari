@@ -178,9 +178,11 @@ chat turns before frontier escalate. System messages and tool-call payloads
 are never dropped; if the remainder still exceeds the cap, history stays
 oversized (fail closed). When a trim actually changes the message count,
 `daari_meta.compact_to_fit` records `messages_before` / `messages_after`
-and `/v1/daari/stats` increments `compact_to_fit_applied`. Unchanged or
+plus `tokens_before` / `tokens_after`, `/v1/daari/stats` increments
+`compact_to_fit_applied`, and `compact_to_fit_tokens_dropped` adds
+`tokens_before - tokens_after`. Unchanged or
 fail-closed history omits the meta object and does not increment the
-counter.
+counters.
 
 ## TTFT-aware local preference
 
