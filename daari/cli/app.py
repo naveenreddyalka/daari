@@ -1580,7 +1580,8 @@ def stats(
 
     Prints the full ``GET /v1/daari/stats`` JSON, including ``soft_warnings`` /
     ``rejects`` cliff maps, ``backend_summary`` pool counts, and
-    ``compact_to_fit_applied`` when compact-to-fit actually trims.
+    ``compact_to_fit_applied`` / ``compact_to_fit_tokens_dropped`` when
+    compact-to-fit actually trims.
     """
     settings = get_settings()
     bind_host = host or settings.server.host

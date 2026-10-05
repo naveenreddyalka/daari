@@ -19,6 +19,12 @@ def test_stats_help_mentions_compact_to_fit_applied() -> None:
     assert "compact_to_fit_applied" in result.output
 
 
+def test_stats_help_mentions_compact_to_fit_tokens_dropped() -> None:
+    result = CliRunner().invoke(cli_app, ["stats", "--help"])
+    assert result.exit_code == 0
+    assert "compact_to_fit_tokens_dropped" in result.output
+
+
 def test_cli_md_stats_mentions_compact_to_fit_applied() -> None:
     from pathlib import Path
 
@@ -27,3 +33,13 @@ def test_cli_md_stats_mentions_compact_to_fit_applied() -> None:
     ).read_text(encoding="utf-8")
     assert "`stats`" in text
     assert "compact_to_fit_applied" in text
+
+
+def test_cli_md_stats_mentions_compact_to_fit_tokens_dropped() -> None:
+    from pathlib import Path
+
+    text = (
+        Path(__file__).resolve().parents[2] / "docs/developer/reference/cli.md"
+    ).read_text(encoding="utf-8")
+    assert "`stats`" in text
+    assert "compact_to_fit_tokens_dropped" in text

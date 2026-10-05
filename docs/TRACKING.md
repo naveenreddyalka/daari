@@ -5902,6 +5902,14 @@ dropped**. Covered by `tests/unit/test_grafana_dashboard.py`.
 `tests/unit/test_grafana_dashboard.py`.
 
 
+### CLI pin stats help for compact_to_fit_tokens_dropped ([#1402](https://github.com/naveenreddyalka/daari/issues/1402))
+
+<!-- tracking:#1402 -->
+**Status:** Done (2026-10-05). `daari stats --help` and `cli.md` mention
+`compact_to_fit_tokens_dropped`. Covered by
+`tests/unit/test_stats_cli_help.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
