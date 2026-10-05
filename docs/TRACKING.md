@@ -5910,6 +5910,15 @@ dropped**. Covered by `tests/unit/test_grafana_dashboard.py`.
 `tests/unit/test_stats_cli_help.py`.
 
 
+### ENTERPRISE operate-gates rows marked shipped ([#1403](https://github.com/naveenreddyalka/daari/issues/1403))
+
+<!-- tracking:#1403 -->
+**Status:** Done (2026-10-05). PRD rows 24–28 (Grafana compact, grant counter,
+initialize refuse, token-drop stats, compare-litellm 1.104) marked Shipped;
+inward theme and path no longer treat those as open. Covered by
+`tests/unit/test_enterprise_prd_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -11,12 +11,14 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-04)
+## Where daari stands (verified in-tree, 2026-10-05)
 
 **Loop velocity.** Compact-to-fit (ownership, doctor, routing-tiers pin,
-`daari_meta`/stats, Prometheus series) and MCP grant fail-closed (ownership,
-doctor, http-api pin) are on `main`. Hot-reload `config.yaml` remains in
-flight. Per-key tool-name allowlists for Messages `mcp_servers` stay parked.
+`daari_meta`/stats, Prometheus series, Grafana panel, token-drop FinOps) and
+MCP grant fail-closed (ownership, doctor, http-api pin, grant-denied counter,
+`initialize` refuse) are on `main`. compare-litellm notes LiteLLM **1.104 GA**.
+Hot-reload `config.yaml` remains in flight. Per-key tool-name allowlists for
+Messages `mcp_servers` stay parked.
 
 **Outward.** LiteLLM **v1.104.0 GA** (3 Oct): master-key enforcement, stdio MCP
 off by default, native compact-to-fit, group-scoped priority routing, team
@@ -25,11 +27,9 @@ Microsoft 365 MCP catalog, Straiker guardrail, proxy migration — watch, not
 file. Portkey Agent Gateway CRUD/RBAC; Kong **Agent Gateway GA** (A2A). Ollama
 **0.40** still MLX-default rc on Apple Silicon; stable **0.35.1** systemone.
 
-**Inward theme: operate what shipped.** Compact and MCP grant gates are live,
-but Grafana has no compact panel, grant-denies blend into generic MCP deny,
-`initialize` still handshakes without a grant, and token-drop FinOps is
-missing. Yaml edits still need a process restart versus the PATCH ownership
-path.
+**Inward theme: live config vs PATCH.** Operate-gates for compact and MCP
+grants (Grafana, grant counter, initialize refuse, token-drop stats) shipped.
+Yaml edits still need a process restart versus the PATCH ownership path.
 
 ---
 
@@ -39,11 +39,11 @@ path.
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — in flight | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked |
-| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | File this run | File this run |
-| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | File this run | File this run |
-| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | File this run | File this run |
-| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | File this run | File this run |
-| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | File this run | File this run |
+| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
+| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
+| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
+| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
 | 9 | RFC 8693 OBO token exchange for egress `mcp_servers` | 4 | 3 | LiteLLM OBO / Kong MCP OAuth2 | Shipped | Shipped |
 | 10 | Refuse weak/unset master key at serve (opt-out) | 3 | 2 | LiteLLM 1.104 master-key gate | Shipped | Shipped |
 | 11 | Doctor tip when decision_classifier model missing from Ollama | 3 | 1 | — (local tags check) | Shipped | Shipped |
@@ -62,8 +62,10 @@ path.
 | 8 | Full DCR; A2A; admin UI; Realtime/WS; group-scoped priority; stdio MCP; M365 catalog | 2–4 | 3–5 | Portkey / Kong 3.14 / LiteLLM 1.104–1.105 | Demand-triggered | Watch |
 
 Shipped since 2026-09-30 scan — do not re-file: compact-to-fit including
-ownership, doctor, routing-tiers pin, `daari_meta`/stats, Prometheus series;
-MCP grant fail-closed + ownership/doctor/http-api pins; watchdog failure-list
+ownership, doctor, routing-tiers pin, `daari_meta`/stats, Prometheus series,
+Grafana compact + token-drop panels; MCP grant fail-closed +
+ownership/doctor/http-api pins + grant-denied counter + initialize refuse;
+compare-litellm 1.104 GA; watchdog failure-list
 dedupe + skip-integration + sandbox hatch docs; Anthropic `output_config.format`;
 Messages server-side MCP; RFC 9728; `POST /v1/ocr`; OpenAPI `/mcp/proxy`;
 `GET /v1/mcp/registry.json`; `POST /v1/systemone`; decision-model classifier;
@@ -83,13 +85,14 @@ model_group budgets; session affinity; Prometheus `/metrics`; agent prefix L0
 
 1. **Live config reload** — finish hot-reload `config.yaml` (row 6) so yaml
    edits match the shipped ownership PATCH path without process restart.
-2. **Operate shipped gates** — Grafana compact panel, grant-denied counter,
-   initialize fail-closed, compact token-drop stats (rows 24–27).
-3. **Governance depth** — unpark per-key tool-name allowlists for Messages
+2. **Governance depth** — unpark per-key tool-name allowlists for Messages
    `mcp_servers` (row 7) once a ≥60m session is available.
-4. **Honest comparison** — keep compare-litellm aligned with 1.104 GA (row 28).
-5. **Agent protocols on demand** — full DCR, A2A, admin UI, Realtime/WS,
+3. **LiteLLM 1.105 watch** — M365 catalog / Straiker / proxy migration stay
+   watch-only until GA; do not re-file 1.104 operate-gates.
+4. **Agent protocols on demand** — full DCR, A2A, admin UI, Realtime/WS,
    group-scoped priority, stdio MCP, M365 catalog (row 8) only when a buyer asks.
+5. **Compliance on demand** — WIF depth, SOC 2 program stay deferred until a
+   buyer asks.
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, admin UI, Realtime/WS) stay
 deferred until buyer demand.
@@ -97,6 +100,11 @@ deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-05 (operate-gates shipped)** — Marked Grafana compact, grant
+  counter, initialize refuse, token-drop stats, and compare-litellm 1.104 as
+  Shipped. Path retargeted to live config → governance → 1.105 watch →
+  demand-triggered. Do not re-file those operate-gates.
 
 - **2026-10-04 (operate shipped gates)** — Outward: LiteLLM **1.104.0 GA**
   (3 Oct); **1.105.0-rc.1** watch-only. Path retargeted to live config →
