@@ -5935,6 +5935,14 @@ paths still omit the step. Covered by `tests/unit/test_compact_to_fit.py`.
 message count. Covered by `tests/unit/test_compact_to_fit_docs.py`.
 
 
+### doctor compact_to_fit tip mentions token-drop stats ([#1411](https://github.com/naveenreddyalka/daari/issues/1411))
+
+<!-- tracking:#1411 -->
+**Status:** Done (2026-10-05). Optional `compact_to_fit` doctor tip names
+`tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped` when
+compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

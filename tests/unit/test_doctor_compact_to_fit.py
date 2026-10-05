@@ -20,6 +20,9 @@ def test_tip_when_compact_to_fit_enabled(settings):
     assert "l6" in detail or "frontier" in detail
     assert "tool" in detail
     assert "fail" in detail or "oversiz" in detail
+    assert "compact_to_fit_tokens_dropped" in row.detail or (
+        "tokens_before" in row.detail and "tokens_after" in row.detail
+    )
 
 
 def test_tip_absent_when_compact_to_fit_disabled(settings):
@@ -39,3 +42,4 @@ def test_doctor_health_docs_mention_compact_to_fit_tip():
     )
     assert "compact_to_fit.enabled" in row
     assert "L6" in row or "frontier" in row.lower()
+    assert "tokens_before" in row or "compact_to_fit_tokens_dropped" in row

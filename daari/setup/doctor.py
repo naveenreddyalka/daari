@@ -2302,7 +2302,8 @@ def _check_compact_to_fit(settings: Settings) -> CheckResult | None:
         detail=(
             "routing.compact_to_fit.enabled trims oldest droppable chat turns "
             "before L6 frontier; system messages and tool-call payloads are kept, "
-            "and over-cap history fail-closes oversized"
+            "and over-cap history fail-closes oversized. Successful trims record "
+            "tokens_before / tokens_after and increment compact_to_fit_tokens_dropped"
         ),
         optional=True,
     )
