@@ -5035,7 +5035,13 @@ class Router:
             self.metrics.record_compact_to_fit_applied(
                 tokens_dropped=max(0, tokens_before - tokens_after)
             )
-        add_step("compact_to_fit", messages_before=before, messages_after=after)
+        add_step(
+            "compact_to_fit",
+            messages_before=before,
+            messages_after=after,
+            tokens_before=tokens_before,
+            tokens_after=tokens_after,
+        )
         return result
 
     def _copy_compact_to_fit_meta(self, request: InternalRequest, response: Any) -> None:

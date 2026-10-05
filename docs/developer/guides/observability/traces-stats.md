@@ -31,7 +31,8 @@ The same trim adds `tokens_before - tokens_after` (existing estimator) to
 `compact_to_fit_tokens_dropped`; no-op and fail-closed paths leave it at 0.
 Successful trims also set `daari_meta.compact_to_fit` (`messages_before` /
 `messages_after`, plus `tokens_before` / `tokens_after`) when
-`X-Daari-Meta: true`.
+`X-Daari-Meta: true`. The same fields are on the `compact_to_fit` trace
+step (no step when the message count is unchanged).
 `mcp_grant_denied` increments once per `initialize`, `tools/list`, or
 `tools/call` (JSON-RPC and legacy `/v1/mcp/query`) when
 `integrations.mcp_policy.require_key_access_defined` fail-closed applies
