@@ -5927,6 +5927,14 @@ inward theme and path no longer treat those as open. Covered by
 paths still omit the step. Covered by `tests/unit/test_compact_to_fit.py`.
 
 
+### routing-tiers compact_to_fit tokens_before/after ([#1410](https://github.com/naveenreddyalka/daari/issues/1410))
+
+<!-- tracking:#1410 -->
+**Status:** Done (2026-10-05). routing-tiers.md notes `tokens_before` /
+`tokens_after` and `compact_to_fit_tokens_dropped` when a trim changes
+message count. Covered by `tests/unit/test_compact_to_fit_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

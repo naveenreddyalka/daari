@@ -26,3 +26,6 @@ def test_routing_tiers_pins_compact_to_fit() -> None:
     assert "compact" in lower and ("l6" in lower or "frontier" in lower)
     assert "fail closed" in lower or "fail-closed" in lower
     assert "tool-call" in lower or "tool payload" in lower
+    assert "tokens_before" in text
+    assert "tokens_after" in text
+    assert "compact_to_fit_tokens_dropped" in text or "tokens_dropped" in text
