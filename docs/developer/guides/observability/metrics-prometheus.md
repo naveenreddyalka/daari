@@ -31,7 +31,8 @@ a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
 `daari_mcp_tool_calls_total`, a **Tier shadow agree/disagree** panel on
 `daari_tier_shadow_samples_total`, a **Compact-to-fit applied** panel on
 `daari_compact_to_fit_applied_total`, a **Compact-to-fit tokens dropped** panel on
-`daari_compact_to_fit_tokens_dropped_total`, and an **Escalations & errors** panel on
+`daari_compact_to_fit_tokens_dropped_total`, an **MCP grant denied** panel on
+`daari_mcp_grant_denied_total`, and an **Escalations & errors** panel on
 `daari_escalations_total` / `daari_errors_total` so operators see flake / false-hit / budget /
 MCP deny / routing-shadow / compact-to-fit pressure without raw PromQL).
 
@@ -59,7 +60,7 @@ Two counters worth alerting on:
 | `daari_request_deadline_exceeded_total` | Wall-clock request budget spent (`upstream.request_deadline_seconds` or `X-Daari-Deadline-Ms`) on chat, audio, embeddings, and MCP `tools/call` — not chat-only. Escalation stops without a frontier call. Overview Grafana charts under **Request deadline exceeded**. |
 | `daari_compact_to_fit_applied_total` | Chat histories actually trimmed before L6 (`messages_before` != `messages_after`). Unchanged or fail-closed history does not increment. No-op when `observability.prometheus=false`. Overview Grafana charts under **Compact-to-fit applied**. |
 | `daari_compact_to_fit_tokens_dropped_total` | Estimated tokens removed by compact-to-fit before L6 (`tokens_before - tokens_after` via the shared estimator). Increments only when a trim changes message count; unchanged or fail-closed history does not. Zero when unused. No-op when `observability.prometheus=false`. Stats counterpart: `compact_to_fit_tokens_dropped` on `GET /v1/daari/stats`. Overview Grafana charts under **Compact-to-fit tokens dropped**. |
-| `daari_mcp_grant_denied_total` | MCP `initialize` / `tools/list` / `tools/call` (and legacy `/v1/mcp/query`) when `require_key_access_defined` fail-closed applies because the virtual key has no MCP grant. Ordinary tool-name `deny` does not increment. No-op when `observability.prometheus=false`. |
+| `daari_mcp_grant_denied_total` | MCP `initialize` / `tools/list` / `tools/call` (and legacy `/v1/mcp/query`) when `require_key_access_defined` fail-closed applies because the virtual key has no MCP grant. Ordinary tool-name `deny` does not increment. No-op when `observability.prometheus=false`. Overview Grafana charts under **MCP grant denied**. |
 | `daari_escalations_total` / `daari_errors_total` | Local→frontier (L6) escalations and gateway/router errors. Overview Grafana charts both under **Escalations & errors**. |
 
 The same `soft_warnings` / `rejects` maps are also on `GET /v1/daari/stats` (and the

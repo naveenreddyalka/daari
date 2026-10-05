@@ -473,6 +473,20 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 32,
+      "title": "MCP grant denied",
+      "description": "MCP initialize / tools/list / tools/call rejected when require_key_access_defined fail-closed applies (`daari_mcp_grant_denied_total`). Ordinary tool-name deny does not increment.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 120 },
+      "targets": [
+        {
+          "expr": "rate(daari_mcp_grant_denied_total[5m])",
+          "legendFormat": "mcp grant denied",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

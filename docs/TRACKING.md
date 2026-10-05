@@ -5894,6 +5894,14 @@ marked N/A/watch. Covered by `tests/unit/test_compare_litellm_1104.py`.
 dropped**. Covered by `tests/unit/test_grafana_dashboard.py`.
 
 
+### Grafana mcp_grant_denied overview panel ([#1401](https://github.com/naveenreddyalka/daari/issues/1401))
+
+<!-- tracking:#1401 -->
+**Status:** Done (2026-10-05). Overview dashboard charts
+`daari_mcp_grant_denied_total` under **MCP grant denied**. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
