@@ -11,25 +11,26 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-05)
+## Where daari stands (verified in-tree, 2026-10-05 late)
 
-**Loop velocity.** Compact-to-fit (ownership, doctor, routing-tiers pin,
-`daari_meta`/stats, Prometheus series, Grafana panel, token-drop FinOps) and
-MCP grant fail-closed (ownership, doctor, http-api pin, grant-denied counter,
-`initialize` refuse) are on `main`. compare-litellm notes LiteLLM **1.104 GA**.
-Hot-reload `config.yaml` remains in flight. Per-key tool-name allowlists for
-Messages `mcp_servers` stay parked.
+**Loop velocity.** Operate-gates for compact-to-fit and MCP grant fail-closed
+(Grafana, grant counter, initialize refuse, token-drop stats, compare-litellm
+1.104) are on `main`. Trace/doctor/http-api/cli pins for
+`tokens_before` / `tokens_after` shipped. Hot-reload `config.yaml` remains in
+flight. Per-key tool-name allowlists for Messages `mcp_servers` stay parked.
+FinOps surface still incomplete on the local web-ui stats page and savings
+report; `observability.structured_json_logs` is not yet ownership-editable.
 
-**Outward.** LiteLLM **v1.104.0 GA** (3 Oct): master-key enforcement, stdio MCP
-off by default, native compact-to-fit, group-scoped priority routing, team
-time-window reservation, JEV Auto Router. **v1.105.0-rc.1** (4 Oct, prerelease):
-Microsoft 365 MCP catalog, Straiker guardrail, proxy migration — watch, not
-file. Portkey Agent Gateway CRUD/RBAC; Kong **Agent Gateway GA** (A2A). Ollama
-**0.40** still MLX-default rc on Apple Silicon; stable **0.35.1** systemone.
+**Outward.** LiteLLM **v1.104.0 GA** (3 Oct) still the stable competitive bar.
+**v1.105.0-rc.1** (4 Oct): Microsoft 365 MCP catalog, Straiker v3 fail-closed,
+`litellm.agent()` / Lens traces — watch-only, not file. Ollama **0.40** still
+MLX-default rc on Apple Silicon; stable **0.35.1** systemone. Portkey / Kong
+Agent Gateway GA unchanged as demand-triggered protocol peers.
 
-**Inward theme: live config vs PATCH.** Operate-gates for compact and MCP
-grants (Grafana, grant counter, initialize refuse, token-drop stats) shipped.
-Yaml edits still need a process restart versus the PATCH ownership path.
+**Inward theme: FinOps + container ops honesty.** Prometheus/Grafana already
+expose compact token-drop and MCP grant-denied series. Laptop operators using
+`daari web-ui` / `daari report` / config PATCH still cannot see or live-tune
+the same loop without yaml edits + restart.
 
 ---
 
@@ -39,33 +40,23 @@ Yaml edits still need a process restart versus the PATCH ownership path.
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — in flight | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked |
+| 29 | Web-ui stats for `compact_to_fit_tokens_dropped` + `mcp_grant_denied` | 3 | 1 | LiteLLM / Grafana spend + MCP 403 | Local dashboard parity with shipped Prom series | File |
+| 30 | Config ownership for `observability.structured_json_logs` | 3 | 2 | LiteLLM proxy log toggle | Live PATCH for container stdout JSON without restart | File |
+| 31 | Doctor tip when `structured_json_logs` is enabled | 2 | 1 | — (ops honesty) | On-box tip before SIEM scrapers miss file-only logs | File |
+| 32 | Pin `compact_to_fit_tokens_dropped` in savings-report.md | 2 | 1 | LiteLLM spend docs | FinOps guide next to `daari report` | File |
+| 33 | compare-litellm note for LiteLLM 1.105 RC watch | 2 | 1 | LiteLLM release notes | Honest watch bar without shipping RC features | File |
 | 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
 | 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
 | 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
 | 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
 | 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
-| 9 | RFC 8693 OBO token exchange for egress `mcp_servers` | 4 | 3 | LiteLLM OBO / Kong MCP OAuth2 | Shipped | Shipped |
-| 10 | Refuse weak/unset master key at serve (opt-out) | 3 | 2 | LiteLLM 1.104 master-key gate | Shipped | Shipped |
-| 11 | Doctor tip when decision_classifier model missing from Ollama | 3 | 1 | — (local tags check) | Shipped | Shipped |
-| 12 | Extend `/v1/daari/config` ownership to decision_classifier + MCP knobs | 3 | 2 | LiteLLM config ownership UI | Shipped | Shipped |
-| 13 | Hermetic doctor-health pins for aggregate / local_as / classifier tips | 2 | 1 | — (docs regression) | Shipped | Shipped |
-| 14 | Watchdog: dedupe local E2E issues by failure list (not SHA) | 3 | 1 | — (loop hygiene) | Shipped | Shipped |
-| 15 | Skip live integration when watchdog daemon is unreachable | 2 | 1 | — (signal quality) | Shipped | Shipped |
-| 16 | Hermetic http-api pin for config ownership classifier/MCP leaves | 2 | 1 | — (docs regression) | Shipped | Shipped |
-| 17 | Opt-in compact-to-fit before L6 | 3 | 2 | LiteLLM 1.104 compact-to-fit | Shipped | Shipped |
-| 18 | Docs pin: watchdog sandbox master-key hatch + `--install` | 2 | 1 | — (ops honesty) | Shipped | Shipped |
-| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
-| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
-| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
-| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
-| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
-| 8 | Full DCR; A2A; admin UI; Realtime/WS; group-scoped priority; stdio MCP; M365 catalog | 2–4 | 3–5 | Portkey / Kong 3.14 / LiteLLM 1.104–1.105 | Demand-triggered | Watch |
+| 8 | Full DCR; A2A; admin UI; Realtime/WS; group-scoped priority; stdio MCP; M365 catalog; Lens/agent traces | 2–4 | 3–5 | Portkey / Kong / LiteLLM 1.104–1.105 | Demand-triggered | Watch |
 
 Shipped since 2026-09-30 scan — do not re-file: compact-to-fit including
 ownership, doctor, routing-tiers pin, `daari_meta`/stats, Prometheus series,
 Grafana compact + token-drop panels; MCP grant fail-closed +
 ownership/doctor/http-api pins + grant-denied counter + initialize refuse;
-compare-litellm 1.104 GA; watchdog failure-list
+compare-litellm 1.104 GA + compact token telemetry pin; watchdog failure-list
 dedupe + skip-integration + sandbox hatch docs; Anthropic `output_config.format`;
 Messages server-side MCP; RFC 9728; `POST /v1/ocr`; OpenAPI `/mcp/proxy`;
 `GET /v1/mcp/registry.json`; `POST /v1/systemone`; decision-model classifier;
@@ -85,14 +76,15 @@ model_group budgets; session affinity; Prometheus `/metrics`; agent prefix L0
 
 1. **Live config reload** — finish hot-reload `config.yaml` (row 6) so yaml
    edits match the shipped ownership PATCH path without process restart.
-2. **Governance depth** — unpark per-key tool-name allowlists for Messages
+2. **FinOps + container ops surface** — web-ui stats for compact token-drop /
+   MCP grant-denied (row 29), structured_json_logs ownership + doctor tip
+   (rows 30–31), savings-report pin (row 32).
+3. **Governance depth** — unpark per-key tool-name allowlists for Messages
    `mcp_servers` (row 7) once a ≥60m session is available.
-3. **LiteLLM 1.105 watch** — M365 catalog / Straiker / proxy migration stay
-   watch-only until GA; do not re-file 1.104 operate-gates.
-4. **Agent protocols on demand** — full DCR, A2A, admin UI, Realtime/WS,
+4. **LiteLLM 1.105 watch** — M365 catalog / Straiker / Lens / agent() stay
+   watch-only until GA; keep compare-litellm honest (row 33).
+5. **Agent protocols on demand** — full DCR, A2A, admin UI, Realtime/WS,
    group-scoped priority, stdio MCP, M365 catalog (row 8) only when a buyer asks.
-5. **Compliance on demand** — WIF depth, SOC 2 program stay deferred until a
-   buyer asks.
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, admin UI, Realtime/WS) stay
 deferred until buyer demand.
@@ -100,6 +92,12 @@ deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-05 (FinOps + container ops)** — Landscape flat at LiteLLM 1.104 GA
+  / 1.105 RC watch. Filed web-ui stats for compact token-drop + MCP
+  grant-denied, structured_json_logs ownership + doctor tip, savings-report
+  pin, and compare-litellm 1.105 RC watch note. Path: live config → FinOps
+  surface → governance → 1.105 watch → demand-triggered.
 
 - **2026-10-05 (operate-gates shipped)** — Marked Grafana compact, grant
   counter, initialize refuse, token-drop stats, and compare-litellm 1.104 as
@@ -119,11 +117,8 @@ deferred until buyer demand.
   shipped; watchdog dedupe / skip-integration / hatch docs; http-api ownership
   pins. LiteLLM still quoted as 1.104 rc / 1.103.0 stable at that cut.
 
-- **2026-10-02** — OBO, refuse-weak-key, classifier doctor, config ownership,
-  doctor-health pins Shipped; systemone / classifier / aggregate /
-  web_search escalate already on `main`.
-
-- **2026-10-01 → 09-15 and earlier** — Condensed: decision models + MCP OAuth
-  depth; structured outputs; client honesty; MCP ops; local MCP execution;
+- **2026-10-02 → 09-15 and earlier** — Condensed: OBO / refuse-weak-key /
+  classifier doctor / config ownership; decision models + MCP OAuth depth;
+  structured outputs; client honesty; MCP ops; local MCP execution;
   2026-07-28 fidelity; gateway-backend completeness; Apache 2.0; this PRD's
   creation (2026-08-28).
