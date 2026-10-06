@@ -3,6 +3,8 @@ const apiBaseUrl = (config.apiBaseUrl || "http://127.0.0.1:11435").replace(/\/$/
 
 const totalNode = document.getElementById("total-requests");
 const errorsNode = document.getElementById("errors");
+const compactTokensDroppedNode = document.getElementById("compact-to-fit-tokens-dropped");
+const mcpGrantDeniedNode = document.getElementById("mcp-grant-denied");
 const tiersNode = document.getElementById("tiers-table");
 const tiersChartNode = document.getElementById("tiers-chart");
 const softWarningsNode = document.getElementById("soft-warnings-table");
@@ -407,6 +409,18 @@ async function loadStats() {
     latestStats = stats;
     totalNode.textContent = formatNumber(stats.total_requests);
     errorsNode.textContent = formatNumber(stats.errors);
+    if (compactTokensDroppedNode) {
+      compactTokensDroppedNode.textContent = formatNumber(
+        typeof stats.compact_to_fit_tokens_dropped === "number"
+          ? stats.compact_to_fit_tokens_dropped
+          : 0
+      );
+    }
+    if (mcpGrantDeniedNode) {
+      mcpGrantDeniedNode.textContent = formatNumber(
+        typeof stats.mcp_grant_denied === "number" ? stats.mcp_grant_denied : 0
+      );
+    }
     renderTiers(stats.tiers || {});
     renderKindCounts(softWarningsNode, stats.soft_warnings, "No soft warnings yet.");
     renderKindCounts(rejectsNode, stats.rejects, "No hard rejects yet.");
@@ -441,6 +455,12 @@ async function loadStats() {
     latestOrgProfile = null;
     totalNode.textContent = "-";
     errorsNode.textContent = "-";
+    if (compactTokensDroppedNode) {
+      compactTokensDroppedNode.textContent = "-";
+    }
+    if (mcpGrantDeniedNode) {
+      mcpGrantDeniedNode.textContent = "-";
+    }
     renderTiers({});
     renderKindCounts(softWarningsNode, {}, "No soft warnings yet.");
     renderKindCounts(rejectsNode, {}, "No hard rejects yet.");

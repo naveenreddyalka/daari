@@ -6000,6 +6000,15 @@ documents `tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped`
 `tests/unit/test_compact_to_fit_docs.py`.
 
 
+### Web-ui stats show compact_to_fit_tokens_dropped and mcp_grant_denied ([#1429](https://github.com/naveenreddyalka/daari/issues/1429))
+
+<!-- tracking:#1429 -->
+**Status:** Done (2026-10-06). Dashboard summary cards render
+`compact_to_fit_tokens_dropped` and `mcp_grant_denied` from
+`/v1/daari/stats` (zeros when absent). Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
