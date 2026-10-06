@@ -6,6 +6,8 @@ import { fakeFetch, loadDashboard, settle } from "./harness.js";
 const STATS = {
   total_requests: 42,
   errors: 1,
+  compact_to_fit_tokens_dropped: 96,
+  mcp_grant_denied: 3,
   tiers: { L0: { count: 10, p50_ms: 1, p95_ms: 2 }, L3: { count: 32, p50_ms: 900, p95_ms: 2100 } },
   soft_warnings: { rate_limit: 3, request_quota: 1 },
   rejects: { budget: 2, rate_limit: 4 },
@@ -84,6 +86,31 @@ function routes(overrides = {}) {
     ...overrides,
   };
 }
+
+test("stats summary shows compact_to_fit_tokens_dropped and mcp_grant_denied", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  assert.equal(doc.getElementById("compact-to-fit-tokens-dropped").textContent, "96");
+  assert.equal(doc.getElementById("mcp-grant-denied").textContent, "3");
+});
+
+test("stats summary zeros compact/mcp counters when absent", async (t) => {
+  const base = { ...STATS };
+  delete base.compact_to_fit_tokens_dropped;
+  delete base.mcp_grant_denied;
+  const fetch = fakeFetch(routes({ "/v1/daari/stats": base }));
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  assert.equal(doc.getElementById("compact-to-fit-tokens-dropped").textContent, "0");
+  assert.equal(doc.getElementById("mcp-grant-denied").textContent, "0");
+});
 
 test("report totals and daily table render", async (t) => {
   const fetch = fakeFetch(routes());
@@ -305,6 +332,44 @@ test("recent traces list renders and detail opens on click", async (t) => {
   const detail = doc.getElementById("trace-detail");
   assert.equal(detail.hidden, false);
   assert.match(detail.textContent, /"step": "served"/);
+});
+
+test("trace detail shows compact_to_fit tokens_before/tokens_after when step present", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/traces/abcd1234efgh": {
+        trace_id: "abcd1234efgh",
+        tier: "L6",
+        steps: [
+          { step: "profile" },
+          {
+            step: "compact_to_fit",
+            tokens_before: 480,
+            tokens_after: 120,
+            messages_before: 40,
+            messages_after: 8,
+          },
+          { step: "served", tier: "L6" },
+        ],
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const link = doc.querySelector("#traces-table button.trace-link");
+  link.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+
+  const detail = doc.getElementById("trace-detail");
+  assert.equal(detail.hidden, false);
+  assert.match(detail.textContent, /compact_to_fit/);
+  assert.match(detail.textContent, /tokens_before/);
+  assert.match(detail.textContent, /tokens_after/);
+  assert.match(detail.textContent, /480/);
+  assert.match(detail.textContent, /120/);
 });
 
 test("disabled ledger shows a clear message", async (t) => {

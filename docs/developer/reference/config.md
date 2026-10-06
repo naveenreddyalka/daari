@@ -91,7 +91,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.ttft_min_samples` | int | `20` | Minimum TTFT samples per tier before ttft_aware may prefer it. |
 | `routing.learned_router` | bool | `False` |  |
 | `routing.reasoning_effort_escalation` | bool | `False` |  |
-| `routing.compact_to_fit.enabled` | bool | `False` | When true, chat history is compacted to max_messages / max_tokens before L6. System messages and tool-call payloads are never deleted; if the remainder still exceeds the cap, history is left oversized (fail closed). Default off. Editable via GET/PATCH /v1/daari/config ownership (config editor). |
+| `routing.compact_to_fit.enabled` | bool | `False` | When true, chat history is compacted to max_messages / max_tokens before L6. System messages and tool-call payloads are never deleted; if the remainder still exceeds the cap, history is left oversized (fail closed). A successful trim records tokens_before / tokens_after on the compact_to_fit trace step and increments compact_to_fit_tokens_dropped on /v1/daari/stats. Default off. Editable via GET/PATCH /v1/daari/config ownership (config editor). |
 | `routing.compact_to_fit.max_messages` | int | `32` | Keep at most this many messages when compact_to_fit is on. Positive integer. Editable via config editor ownership. |
 | `routing.compact_to_fit.max_tokens` | int | `0` | Approximate token budget (chars/4) when compact_to_fit is on. 0 disables the token cap. Non-negative integer. Editable via config editor ownership. |
 | `routing.stall_escalation.enabled` | bool | `False` | When true, N identical tool calls in the last window, or N consecutive error tool results, escalate the chosen tier by one. Default off. |

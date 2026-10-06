@@ -31,7 +31,7 @@ See [SECURITY.md](../../SECURITY.md#cors-and-security-headers) for native CORS v
 
 ## What it shows
 
-- `GET /v1/daari/stats` summary (`total_requests`, `errors`, `soft_warnings`, `rejects`, `backend_summary`)
+- `GET /v1/daari/stats` summary (`total_requests`, `errors`, `compact_to_fit_tokens_dropped`, `mcp_grant_denied`, `soft_warnings`, `rejects`, `backend_summary`)
 - Soft warnings and hard rejects by kind (pre-cliff / cliff counters)
 - MCP tool outcomes (`stats.mcp_tool_calls`) and task status counts (`stats.mcp_tasks`)
 - Local pool backends table (`id`, healthy, circuit, outstanding from `stats.backends`) plus `backend_summary` counts (total / healthy / unhealthy / open_circuit)
@@ -41,6 +41,7 @@ See [SECURITY.md](../../SECURITY.md#cors-and-security-headers) for native CORS v
 - Optional org-learning summary + metrics from `GET /v1/org-learning/profile` when reachable
 - Export current stats snapshot as JSON
 - Dark/light theme toggle (persisted locally)
+- Recent traces: click a trace id for the step timeline; `compact_to_fit` steps surface `tokens_before` / `tokens_after` when present
 
 ## Files
 
