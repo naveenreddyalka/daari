@@ -442,7 +442,78 @@ test("API key field sends Authorization Bearer on dashboard fetches", async (t) 
   const statsCall = [...fetch.calls].reverse().find((c) => c.url.includes("/v1/daari/stats"));
   assert.ok(statsCall, "refresh must hit stats");
   assert.equal(statsCall.init?.headers?.Authorization, "Bearer sekret-key");
-  assert.equal(dom.window.localStorage.getItem("daari.webui.apiKey"), "sekret-key");
+  // Default: memory only — never localStorage; sessionStorage only when opted in.
+  assert.equal(dom.window.localStorage.getItem("daari.webui.apiKey"), null);
+  assert.equal(dom.window.sessionStorage.getItem("daari.webui.apiKey"), null);
+});
+
+test("remember-for-session stores key in sessionStorage not localStorage", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const keyInput = doc.getElementById("api-key");
+  const remember = doc.getElementById("remember-api-key");
+  assert.ok(remember, "remember-api-key checkbox must exist");
+  remember.checked = true;
+  keyInput.value = "session-sekret";
+  keyInput.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+
+  assert.equal(dom.window.sessionStorage.getItem("daari.webui.apiKey"), "session-sekret");
+  assert.equal(dom.window.localStorage.getItem("daari.webui.apiKey"), null);
+});
+
+test("malicious stats/trace fields render as inert text", async (t) => {
+  const xss = '<img src=x onerror=window.__xss=1><script>window.__xss=1</script>';
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/stats": {
+        ...STATS,
+        tiers: { [xss]: { count: 1, p50_ms: 1, p95_ms: 2 } },
+        soft_warnings: { [xss]: 1 },
+        backends: [{ id: xss, healthy: true, circuit: xss, outstanding: 0 }],
+        key_rate_limits: [{ key: xss, kind: "rpd", limit: 1, remaining: 1 }],
+      },
+      "/v1/daari/traces": {
+        traces: [
+          {
+            trace_id: "safeid01abcdef",
+            ts: xss,
+            tier: xss,
+            category: xss,
+          },
+        ],
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  assert.equal(dom.window.__xss, undefined, "onerror / script must not run");
+  assert.equal(doc.querySelectorAll("img").length, 0, "no injected img elements");
+  assert.equal(doc.querySelectorAll("#tiers-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#soft-warnings-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#backends-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#traces-table script").length, 0);
+  assert.match(doc.getElementById("tiers-table").textContent, /onerror/);
+  assert.match(doc.getElementById("backends-table").textContent, /onerror/);
+  assert.match(doc.getElementById("traces-table").textContent, /onerror/);
+});
+
+test("index.html ships a restrictive CSP meta", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const meta = dom.window.document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  assert.ok(meta, "CSP meta required");
+  assert.match(meta.content, /default-src 'self'/);
+  assert.match(meta.content, /script-src 'self'/);
 });
 
 test("config editor Load/Save include Authorization when API key set", async (t) => {
