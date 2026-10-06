@@ -1421,9 +1421,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/models/{model_id}")
         async def retrieve_model(model_id: str, request: Request) -> dict[str, Any]:
-            from daari.router.capabilities import openai_model_cards
+            from daari.gateway.anthropic import wants_anthropic_models
+            from daari.router.capabilities import (
+                anthropic_model_cards,
+                anthropic_model_line,
+                openai_model_cards,
+            )
 
             ctx: AppContext = request.app.state.ctx
+            if wants_anthropic_models(request):
+                for card in anthropic_model_cards(ctx.settings):
+                    if card["id"] == model_id:
+                        return card
+                from datetime import datetime, timezone
+
+                return {
+                    "id": model_id,
+                    "type": "model",
+                    "display_name": model_id,
+                    "created_at": datetime.fromtimestamp(
+                        int(time.time()), tz=timezone.utc
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "line": anthropic_model_line(model_id),
+                }
             for card in openai_model_cards(ctx.settings):
                 if card["id"] == model_id:
                     return card

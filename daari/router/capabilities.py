@@ -221,6 +221,30 @@ def _anthropic_display_name(model_id: str) -> str:
     return " ".join(part for part in spaced.split() if part) or model_id
 
 
+# Explicit Anthropic Models API `line` values (#1451). Unknown / local ids → null.
+# Do not parse free-form id tokens — only this map (plus dated/vendor aliases).
+_ANTHROPIC_MODEL_LINES: dict[str, str] = {
+    "claude-sonnet-5-5": "sonnet",
+    "claude-sonnet-5": "sonnet",
+    "claude-3-5-sonnet": "sonnet",
+    "claude-opus-5": "opus",
+    "claude-3-opus": "opus",
+    "claude-haiku-4-5": "haiku",
+    "claude-3-5-haiku": "haiku",
+    "claude-fable-5-1": "fable",
+}
+
+
+def anthropic_model_line(model_id: str) -> str | None:
+    """Return Anthropic `line` for a known Claude family id, else None."""
+    from daari.pricing import matching_model_key
+
+    key = matching_model_key(model_id, _ANTHROPIC_MODEL_LINES)
+    if key is None:
+        return None
+    return _ANTHROPIC_MODEL_LINES[key]
+
+
 def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
     """Anthropic-native `/v1/models` rows from the same catalog as OpenAI (#454)."""
     from datetime import datetime, timezone
@@ -231,12 +255,14 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
         created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
+        model_id = str(card["id"])
         cards.append(
             {
-                "id": card["id"],
+                "id": model_id,
                 "type": "model",
-                "display_name": _anthropic_display_name(str(card["id"])),
+                "display_name": _anthropic_display_name(model_id),
                 "created_at": created_at,
+                "line": anthropic_model_line(model_id),
             }
         )
     return cards
