@@ -28,6 +28,7 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "claude-fable-5-1",
         "claude-opus-5",
         "claude-sonnet-5",
+        "claude-sonnet-5-5",
         "claude-haiku-4-5",
         "gpt-6-astra",
         "gpt-6.1-sol",

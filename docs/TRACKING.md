@@ -6070,6 +6070,15 @@ Ollama 0.35.1+ `images` (base64 list); `rate_limit_family` maps the path to
 `tests/unit/test_rate_families.py`.
 
 
+### Add claude-sonnet-5-5 pricing, capabilities, and param compat ([#1450](https://github.com/naveenreddyalka/daari/issues/1450))
+
+<!-- tracking:#1450 -->
+**Status:** Done (2026-10-06). Shipped `$2/$10` (cached `$0.20`, 1h cache write
+`$4.00`) for `claude-sonnet-5-5` with Claude 5.x capabilities and strip of
+non-default `temperature`/`top_p`/`top_k`. Covered by
+`tests/unit/test_claude_sonnet_5_5_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
