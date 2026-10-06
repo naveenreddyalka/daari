@@ -131,6 +131,30 @@ async def test_proxies_to_ollama_and_adds_daari_meta(settings, monkeypatch):
     assert payload["model"] == "nimble"
     assert payload["state"] == _BODY["state"]
     assert "label" in payload["questions"]
+    assert "images" not in payload
+
+
+@pytest.mark.asyncio
+async def test_forwards_images_to_ollama(settings, monkeypatch):
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+    body = {**_BODY, "images": ["aGVsbG8=", "d29ybGQ="]}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=body)
+
+    assert response.status_code == 200
+    assert len(seen) == 1
+    assert seen[0]["images"] == ["aGVsbG8=", "d29ybGQ="]
+    assert seen[0]["state"] == _BODY["state"]
+    assert "label" in seen[0]["questions"]
 
 
 @pytest.mark.asyncio

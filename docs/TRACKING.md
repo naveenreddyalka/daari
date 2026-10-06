@@ -6061,6 +6061,15 @@ invented above-272K surcharge. Covered by
 `tests/unit/test_gpt_6_1_sol_pricing.py`.
 
 
+### Forward systemone multimodal images + rate family ([#1443](https://github.com/naveenreddyalka/daari/issues/1443))
+
+<!-- tracking:#1443 -->
+**Status:** Done (2026-10-06). `POST /v1/systemone` accepts and forwards
+Ollama 0.35.1+ `images` (base64 list); `rate_limit_family` maps the path to
+`systemone`. Covered by `tests/unit/test_systemone.py`,
+`tests/unit/test_rate_families.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
