@@ -5991,6 +5991,15 @@ compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 Covered by `packages/web-ui/test/dashboard.test.js`.
 
 
+### Docs: config.md pin compact_to_fit FinOps token fields ([#1422](https://github.com/naveenreddyalka/daari/issues/1422))
+
+<!-- tracking:#1422 -->
+**Status:** Done (2026-10-06). `routing.compact_to_fit.enabled` description
+documents `tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped`
+(via settings Field + gen_reference). Covered by
+`tests/unit/test_compact_to_fit_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
