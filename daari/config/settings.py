@@ -1312,7 +1312,14 @@ class ObservabilitySettings(RuntimeSettings):
     postgres_pool_min: int = Field(default=1, ge=0)
     postgres_pool_max: int = Field(default=4, ge=1)
     # Emit gateway request logs as single-line JSON to stdout (containers).
-    structured_json_logs: bool = False
+    structured_json_logs: bool = Field(
+        default=False,
+        description=(
+            "Emit gateway request logs as single-line JSON to stdout "
+            "(containers/SIEM). Default off. Editable via GET/PATCH "
+            "/v1/daari/config ownership (config editor)."
+        ),
+    )
     # Opt-in OTLP logs export of gateway events (issue #849). Requires
     # OTEL_EXPORTER_OTLP_ENDPOINT and the optional OTel extra; fail-open.
     otlp_logs: bool = False

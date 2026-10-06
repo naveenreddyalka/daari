@@ -194,7 +194,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.postgres_url` | str | `''` |  |
 | `observability.postgres_pool_min` | int | `1` |  |
 | `observability.postgres_pool_max` | int | `4` |  |
-| `observability.structured_json_logs` | bool | `False` |  |
+| `observability.structured_json_logs` | bool | `False` | Emit gateway request logs as single-line JSON to stdout (containers/SIEM). Default off. Editable via GET/PATCH /v1/daari/config ownership (config editor). |
 | `observability.otlp_logs` | bool | `False` |  |
 | `observability.stateless` | bool | `False` |  |
 | `observability.retention.traces_days` | int | `0` |  |

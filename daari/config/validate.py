@@ -177,6 +177,22 @@ def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def validated_observability(patch: dict[str, Any]) -> dict[str, Any]:
+    """Safe log-shape knob only — other observability flags stay file/restart."""
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("observability must be an object")
+    allowed = {"structured_json_logs"}
+    unknown = sorted(set(patch) - allowed)
+    if unknown:
+        raise ConfigValidationError(f"unknown observability keys: {unknown}")
+    out: dict[str, Any] = {}
+    if "structured_json_logs" in patch:
+        out["structured_json_logs"] = _bool(
+            patch["structured_json_logs"], "observability.structured_json_logs"
+        )
+    return out
+
+
 def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if "confidence_threshold" in patch:
