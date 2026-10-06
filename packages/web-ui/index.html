@@ -3,6 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Restrictive CSP for the static dashboard.
+      - default-src/script-src/style-src 'self': no inline scripts/styles; app.js sets widths via element.style
+      - connect-src includes localhost HTTP so the UI can call the daemon API on another port
+      - img-src data: unused today but kept for future chart exports
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:* http://[::1]:*; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'"
+    />
     <title>daari stats dashboard</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -14,6 +24,10 @@
         <label class="api-key-field">
           API key / Bearer
           <input id="api-key" type="password" autocomplete="off" placeholder="optional when daemon auth off" />
+        </label>
+        <label class="remember-key">
+          <input id="remember-api-key" type="checkbox" />
+          Remember for this session
         </label>
         <button id="theme-toggle" type="button">Switch to light</button>
         <button id="export-stats" type="button">Export stats JSON</button>

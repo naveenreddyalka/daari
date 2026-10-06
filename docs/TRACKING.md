@@ -6079,6 +6079,15 @@ non-default `temperature`/`top_p`/`top_k`. Covered by
 `tests/unit/test_claude_sonnet_5_5_pricing.py`.
 
 
+### Web-ui: escape DOM, CSP, session key storage ([#1444](https://github.com/naveenreddyalka/daari/issues/1444))
+
+<!-- tracking:#1444 -->
+**Status:** Done (2026-10-06). Dashboard renders API fields via `textContent`,
+ships a restrictive CSP meta, and keeps the Bearer key in memory /
+`sessionStorage` (opt-in) instead of `localStorage`. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
