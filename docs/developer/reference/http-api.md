@@ -94,3 +94,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 When `starting_after` is omitted, a non-negative integer `Last-Event-ID` header is treated the same way (invalid/negative values are ignored → resume from 0); an explicit query param wins over the header.
 
 Non-terminal (in-flight / `queued`) responses return **409** when `stream=true`. Plain GET (no `stream`) remains JSON.
+
+## Systemone
+
+`POST /v1/systemone` proxies Ollama decision models. The body accepts optional `images` (list of base64 strings, Ollama 0.35.1+ Clef multimodal) forwarded verbatim when present; omit the field for text-only scoring.

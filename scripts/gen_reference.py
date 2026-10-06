@@ -101,7 +101,8 @@ def render_config_reference() -> str:
             "[auth and keys](../guides/configuration/auth-and-keys.md).",
             "",
             "Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / "
-            "`moderations` / `rerank` / `ocr` / `mcp` / `other`) is also not a `rate_limit.*` setting — "
+            "`moderations` / `rerank` / `ocr` / `mcp` / `systemone` / `other`) is also not a "
+            "`rate_limit.*` setting — "
             "store it on the virtual key as metadata `rate_families` (see auth-and-keys). "
             "Unset families keep global key rpm/tpm only (#1099).",
             "",
@@ -175,6 +176,12 @@ def render_api_reference() -> str:
             "",
             "Non-terminal (in-flight / `queued`) responses return **409** when "
             "`stream=true`. Plain GET (no `stream`) remains JSON.",
+            "",
+            "## Systemone",
+            "",
+            "`POST /v1/systemone` proxies Ollama decision models. The body accepts optional "
+            "`images` (list of base64 strings, Ollama 0.35.1+ Clef multimodal) forwarded "
+            "verbatim when present; omit the field for text-only scoring.",
             "",
         ]
     )

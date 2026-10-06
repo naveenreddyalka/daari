@@ -49,6 +49,8 @@ class SystemOneRequest(BaseModel):
     model: str
     state: Any
     questions: dict[str, Any] = Field(min_length=1)
+    # Ollama 0.35.1+ Clef multimodal: base64 image strings scored with state.
+    images: list[str] | None = None
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -203,6 +205,8 @@ async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
         "state": body.state,
         "questions": body.questions,
     }
+    if body.images is not None:
+        payload["images"] = list(body.images)
     timeout = float(
         getattr(getattr(settings, "upstream", None), "local_timeout_seconds", 120.0) or 120.0
     )
