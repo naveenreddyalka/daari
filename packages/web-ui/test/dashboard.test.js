@@ -307,6 +307,44 @@ test("recent traces list renders and detail opens on click", async (t) => {
   assert.match(detail.textContent, /"step": "served"/);
 });
 
+test("trace detail shows compact_to_fit tokens_before/tokens_after when step present", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/traces/abcd1234efgh": {
+        trace_id: "abcd1234efgh",
+        tier: "L6",
+        steps: [
+          { step: "profile" },
+          {
+            step: "compact_to_fit",
+            tokens_before: 480,
+            tokens_after: 120,
+            messages_before: 40,
+            messages_after: 8,
+          },
+          { step: "served", tier: "L6" },
+        ],
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const link = doc.querySelector("#traces-table button.trace-link");
+  link.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+
+  const detail = doc.getElementById("trace-detail");
+  assert.equal(detail.hidden, false);
+  assert.match(detail.textContent, /compact_to_fit/);
+  assert.match(detail.textContent, /tokens_before/);
+  assert.match(detail.textContent, /tokens_after/);
+  assert.match(detail.textContent, /480/);
+  assert.match(detail.textContent, /120/);
+});
+
 test("disabled ledger shows a clear message", async (t) => {
   const fetch = fakeFetch(routes({ "/v1/daari/report": { enabled: false, days: [], totals: {} } }));
   const dom = loadDashboard({ fetch });
