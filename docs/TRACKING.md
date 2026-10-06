@@ -6018,6 +6018,14 @@ validates bool and updates live `configure_request_log` without restart.
 Covered by `tests/unit/test_config_ownership.py`.
 
 
+### Doctor tip for observability.structured_json_logs ([#1431](https://github.com/naveenreddyalka/daari/issues/1431))
+
+<!-- tracking:#1431 -->
+**Status:** Done (2026-10-06). `daari doctor` emits an optional tip when
+`observability.structured_json_logs` is on (stdout JSON); quiet when off.
+Covered by `tests/unit/test_doctor_structured_json_logs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
