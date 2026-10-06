@@ -296,3 +296,145 @@ async def test_virtual_key_spend_metered(settings, tmp_path, monkeypatch):
     assert rows[0]["key_id"] == key.key.key_id
     assert rows[0]["team_id"] == key.key.team_id
     assert rows[0]["model"] == "mistral-ocr-latest"
+
+
+def test_ocr_metrics_record_modality_ocr_not_chat():
+    """Prometheus must label OCR as modality=ocr, not collapse to chat (#1445)."""
+    from daari.gateway import ocr
+    from daari.observability.metrics import Metrics, infer_modality
+    from daari.observability.prometheus import render_prometheus
+
+    assert infer_modality("ocr", modality="ocr") == "ocr"
+
+    class Ctx:
+        def __init__(self):
+            self.metrics = Metrics()
+            self.router = type("R", (), {"usage_ledger": None})()
+
+    ctx = Ctx()
+    ocr._record_request(
+        ctx, client_id="c", model="mistral-ocr-latest", prompt_chars=40, completion_chars=80
+    )
+    text = render_prometheus(ctx.metrics)
+    assert 'daari_requests_total{tier="ocr",modality="ocr"} 1' in text
+    assert 'daari_requests_total{tier="ocr",modality="chat"}' not in text
+    assert 'daari_tokens_total{modality="ocr",tier="ocr",direction="input"}' in text
+
+
+@pytest.mark.asyncio
+async def test_ocr_output_guardrail_redacts(settings, monkeypatch):
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    secret_body = {
+        **_OCR_OK,
+        "pages": [
+            {
+                "index": 0,
+                "markdown": "SSN is SECRET-VALUE on file",
+                "dimensions": {"dpi": 200, "height": 100, "width": 100},
+                "images": [],
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=secret_body)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ocr.base_url = "http://ocr.local/v1"
+    settings.ocr.model = "local-ocr"
+    settings.frontier.enabled = False
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        output_rules=[
+            GuardrailRuleSettings(
+                name="scrub_out", pattern=r"SECRET-VALUE", action="redact", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/ocr", json={"document": _DOC})
+
+    assert response.status_code == 200, response.text
+    markdown = response.json()["pages"][0]["markdown"]
+    assert "SECRET-VALUE" not in markdown
+    assert "<redacted>" in markdown
+
+
+@pytest.mark.asyncio
+async def test_ocr_output_guardrail_blocks(settings, monkeypatch):
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    secret_body = {
+        **_OCR_OK,
+        "pages": [
+            {
+                "index": 0,
+                "markdown": "classified CONFIDENTIAL leak",
+                "dimensions": {"dpi": 200, "height": 100, "width": 100},
+                "images": [],
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=secret_body)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ocr.base_url = "http://ocr.local/v1"
+    settings.ocr.model = "local-ocr"
+    settings.frontier.enabled = False
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="blocked by policy",
+        output_rules=[
+            GuardrailRuleSettings(
+                name="no_conf", pattern=r"CONFIDENTIAL", action="block", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/ocr", json={"document": _DOC})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "guardrail_blocked"
+
+
+@pytest.mark.asyncio
+async def test_ocr_upstream_emits_otel_client_span(settings, monkeypatch):
+    """OCR wraps the upstream hop in modality_client_span (no global provider override)."""
+    from contextlib import contextmanager
+
+    from daari.observability import otel as otel_mod
+
+    seen: list[tuple[str, dict]] = []
+
+    @contextmanager
+    def fake_span(name, *, attributes=None):
+        seen.append((name, dict(attributes or {})))
+        yield object()
+
+    monkeypatch.setattr(otel_mod, "modality_client_span", fake_span)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_OCR_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ocr.base_url = "http://ocr.local/v1"
+    settings.ocr.model = "local-ocr"
+    settings.frontier.enabled = False
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/ocr", json={"document": _DOC})
+
+    assert response.status_code == 200, response.text
+    assert seen, "expected daari.ocr client span"
+    name, attrs = seen[0]
+    assert name == "daari.ocr"
+    assert attrs.get("daari.modality") == "ocr"
+    assert attrs.get("gen_ai.operation.name") == "ocr"

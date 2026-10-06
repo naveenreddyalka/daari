@@ -6088,6 +6088,15 @@ ships a restrictive CSP meta, and keeps the Bearer key in memory /
 `packages/web-ui/test/dashboard.test.js`.
 
 
+### OCR modality Prometheus label, guardrails, OTel span ([#1445](https://github.com/naveenreddyalka/daari/issues/1445))
+
+<!-- tracking:#1445 -->
+**Status:** Done (2026-10-06). `ocr` is a first-class Prometheus modality;
+OCR page markdown runs through output guardrails; upstream calls emit a
+`daari.ocr` CLIENT span. Covered by `tests/unit/test_ocr.py`,
+`tests/unit/test_modality_metrics.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -338,6 +338,38 @@ def _record_request(
     )
 
 
+def _apply_ocr_output_policy(
+    data: dict[str, Any],
+    engine: Any,
+    *,
+    metrics: Any = None,
+) -> tuple[dict[str, Any] | None, Any]:
+    """Run page markdown through output guardrails (ASR parity).
+
+    Returns ``(payload, None)`` on success or ``(None, blocked_response)`` when
+    a deny rule fires.
+    """
+    from daari.gateway.guardrails import (
+        apply_endpoint_output_policy,
+        endpoint_guardrail_blocked_response,
+    )
+
+    pages = data.get("pages")
+    if not isinstance(pages, list):
+        return data, None
+    rewritten_pages: list[Any] = []
+    for page in pages:
+        if not isinstance(page, dict):
+            rewritten_pages.append(page)
+            continue
+        markdown = str(page.get("markdown") or "")
+        policy = apply_endpoint_output_policy(markdown, engine, metrics=metrics)
+        if policy.blocked:
+            return None, endpoint_guardrail_blocked_response(policy.block_message)
+        rewritten_pages.append({**page, "markdown": policy.text})
+    return {**data, "pages": rewritten_pages}, None
+
+
 async def _run_vision(
     target: OcrTarget,
     *,
@@ -429,15 +461,31 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
     prompt_chars = len(source) + len(model)
     retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
     metrics = getattr(ctx, "metrics", None)
+    from daari.gateway.guardrails import router_guardrails
+    from daari.observability.metrics import genai_operation_name
+    from daari.observability.otel import inject_trace_headers, modality_client_span
+
+    engine = router_guardrails(ctx)
     last_exc: Exception | None = None
     last_upstream: httpx.Response | None = None
+    span_attrs = {
+        "daari.modality": "ocr",
+        "gen_ai.operation.name": genai_operation_name("ocr"),
+        "gen_ai.request.model": model,
+    }
 
     for target in targets:
         try:
             if target.via == "vision":
-                data = await _run_vision(
-                    target, model=model, source=source, doc_kind=doc_kind
-                )
+                with modality_client_span("daari.ocr", attributes=span_attrs):
+                    data = await _run_vision(
+                        target, model=model, source=source, doc_kind=doc_kind
+                    )
+                data, blocked = _apply_ocr_output_policy(data, engine, metrics=metrics)
+                if blocked is not None:
+                    abandon_slot(idem_slot)
+                    return blocked
+                assert data is not None
                 log_gateway_event(
                     "ocr_ok", {"model": model, "via": "vision", "slot": target.slot_id}
                 )
@@ -475,18 +523,20 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
             headers = {"Content-Type": "application/json"}
             if target.api_key:
                 headers["Authorization"] = f"Bearer {target.api_key}"
+            headers = inject_trace_headers(headers)
             url = f"{target.base_url.rstrip('/')}/ocr"
             payload = _ocr_payload(body, model)
-            upstream = await post_l6(
-                _shared_client(),
-                url,
-                headers=headers,
-                payload=payload,
-                timeout=target.timeout,
-                upstream="ocr",
-                retry=target.retry if target.retry is not None else retry_settings,
-                metrics=metrics,
-            )
+            with modality_client_span("daari.ocr", attributes=span_attrs):
+                upstream = await post_l6(
+                    _shared_client(),
+                    url,
+                    headers=headers,
+                    payload=payload,
+                    timeout=target.timeout,
+                    upstream="ocr",
+                    retry=target.retry if target.retry is not None else retry_settings,
+                    metrics=metrics,
+                )
         except ValueError as exc:
             abandon_slot(idem_slot)
             return _error(400, "invalid_request_error", str(exc))
@@ -538,6 +588,14 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
         except Exception:
             abandon_slot(idem_slot)
             return _error(502, "bad_gateway", "OCR upstream returned non-JSON.")
+        if not isinstance(data, dict):
+            abandon_slot(idem_slot)
+            return _error(502, "bad_gateway", "OCR upstream returned non-object JSON.")
+        data, blocked = _apply_ocr_output_policy(data, engine, metrics=metrics)
+        if blocked is not None:
+            abandon_slot(idem_slot)
+            return blocked
+        assert data is not None
         log_gateway_event(
             "ocr_ok", {"model": model, "via": target.via, "slot": target.slot_id}
         )
