@@ -255,6 +255,7 @@ def test_resolve_price_covers_september_2026_frontier_lineup():
         "claude-haiku-4-5": (1.0, 5.0, 0.10),
         # OpenAI API price table, standard short-context tier
         "gpt-6-astra": (10.0, 50.0, 1.00),
+        "gpt-6.1-sol": (2.0, 10.0, 0.10),
         "gpt-5.6": (4.0, 20.0, 0.40),
         "gpt-5.6-sol": (4.0, 20.0, 0.40),
         "gpt-5.6-terra": (2.0, 12.0, 0.20),
@@ -303,6 +304,7 @@ def test_doctor_does_not_warn_for_priced_september_2026_models():
     for model in (
         "claude-fable-5-1",
         "gpt-6-astra",
+        "gpt-6.1-sol",
         "gemini-3.8-flash",
         "claude-fable-5-1-20260901",
         "anthropic.claude-fable-5-1",

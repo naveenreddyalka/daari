@@ -19,6 +19,7 @@ KNOWN_CAPABILITIES = ("tools", "json", "vision", "long_context")
 # Claude Fable 5.1 / Opus 5 / Sonnet 5: tools, vision, 1M context, JSON
 # (https://platform.claude.com/docs/en/models/overview).
 # GPT-6 Astra and the GPT-5.6 family: tools, JSON, image input, ≥1M context.
+# GPT-6.1 Sol: same capability set (coding/professional; tools + vision).
 # Gemini 3.8 Flash: tools, JSON, native image/audio/video, 1M context
 # (https://ai.google.dev/gemini-api/docs/latest-model).
 _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -29,6 +30,7 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "claude-sonnet-5",
         "claude-haiku-4-5",
         "gpt-6-astra",
+        "gpt-6.1-sol",
         "gpt-5.6",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
