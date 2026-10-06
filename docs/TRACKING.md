@@ -6009,6 +6009,39 @@ documents `tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped`
 `packages/web-ui/test/dashboard.test.js`.
 
 
+### Config ownership for observability.structured_json_logs ([#1430](https://github.com/naveenreddyalka/daari/issues/1430))
+
+<!-- tracking:#1430 -->
+**Status:** Done (2026-10-06). GET/PATCH `/v1/daari/config` exposes
+`observability.structured_json_logs` with ownership metadata; PATCH
+validates bool and updates live `configure_request_log` without restart.
+Covered by `tests/unit/test_config_ownership.py`.
+
+
+### Doctor tip for observability.structured_json_logs ([#1431](https://github.com/naveenreddyalka/daari/issues/1431))
+
+<!-- tracking:#1431 -->
+**Status:** Done (2026-10-06). `daari doctor` emits an optional tip when
+`observability.structured_json_logs` is on (stdout JSON); quiet when off.
+Covered by `tests/unit/test_doctor_structured_json_logs.py`.
+
+
+### Docs: pin compact_to_fit_tokens_dropped in savings-report ([#1432](https://github.com/naveenreddyalka/daari/issues/1432))
+
+<!-- tracking:#1432 -->
+**Status:** Done (2026-10-06). Savings-report guide points operators at
+`compact_to_fit_tokens_dropped` and trace `tokens_before` / `tokens_after`.
+Covered by `tests/unit/test_savings_report_compact_docs.py`.
+
+
+### Docs: LiteLLM 1.105 RC watch in compare-litellm ([#1433](https://github.com/naveenreddyalka/daari/issues/1433))
+
+<!-- tracking:#1433 -->
+**Status:** Done (2026-10-06). compare-litellm notes LiteLLM 1.105 as RC/watch
+(M365 MCP catalog, Straiker, Lens/agent traces) while keeping 1.104 GA as
+the stable floor. Covered by `tests/unit/test_compare_litellm_1104.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -38,6 +38,7 @@ _MCP_LEAVES = (
     "integrations.mcp_registry.enabled",
     "integrations.mcp_policy.require_key_access_defined",
 )
+_OBS_JSON_LOGS = "observability.structured_json_logs"
 
 
 def _base_live() -> dict:
@@ -92,6 +93,7 @@ def _base_live() -> dict:
             "mcp_registry": {"enabled": False},
             "mcp_policy": {"require_key_access_defined": False},
         },
+        "observability": {"structured_json_logs": False},
     }
 
 
@@ -389,9 +391,31 @@ async def test_patch_compact_to_fit_round_trip(settings, tmp_path, monkeypatch):
         assert app.state.ctx.router.compact_to_fit_max_tokens == 4096
 
 
+def test_ownership_fields_include_structured_json_logs():
+    live = _base_live()
+    live["observability"]["structured_json_logs"] = True
+    file_doc = {"observability": {"structured_json_logs": False}}
+    meta = ownership_fields(
+        live,
+        file_doc=file_doc,
+        runtime_overrides={_OBS_JSON_LOGS},
+    )
+    assert _OBS_JSON_LOGS in meta
+    assert meta[_OBS_JSON_LOGS]["editable"] is True
+    assert meta[_OBS_JSON_LOGS]["source"] == "runtime"
+    assert meta[_OBS_JSON_LOGS]["file_value"] is False
+
+
 def test_live_config_payload_matches_editor_shape(settings):
     payload = live_config_payload(settings)
-    assert set(payload) >= {"routing", "frontier", "cache", "boundaries", "integrations"}
+    assert set(payload) >= {
+        "routing",
+        "frontier",
+        "cache",
+        "boundaries",
+        "integrations",
+        "observability",
+    }
     assert "confidence_threshold" in payload["routing"]
     assert set(payload["routing"]["decision_classifier"]) == {
         "enabled",
@@ -411,6 +435,8 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
     assert set(payload["integrations"]["mcp_policy"]) == {"require_key_access_defined"}
     assert payload["integrations"]["mcp_policy"]["require_key_access_defined"] is False
+    assert set(payload["observability"]) == {"structured_json_logs"}
+    assert payload["observability"]["structured_json_logs"] is False
 
 
 @pytest.mark.asyncio
@@ -462,10 +488,68 @@ async def test_patch_mcp_require_key_access_round_trip(settings, tmp_path, monke
         assert settings.integrations.mcp_policy.require_key_access_defined is True
 
 
+@pytest.mark.asyncio
+async def test_patch_structured_json_logs_round_trip(settings, tmp_path, monkeypatch):
+    from daari.gateway import request_log
+
+    settings.observability.config_editor = True
+    assert settings.observability.structured_json_logs is False
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump({"observability": {"structured_json_logs": False}}),
+        encoding="utf-8",
+    )
+    previous_stdout = request_log._stdout_json
+    try:
+        app = create_app(settings)
+        app.state.ctx = AppContext.from_settings(settings)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            got = await client.get("/v1/daari/config")
+            assert got.status_code == 200
+            body = got.json()
+            assert _OBS_JSON_LOGS in body["ownership"]
+            assert body["ownership"][_OBS_JSON_LOGS]["editable"] is True
+            assert body["observability"]["structured_json_logs"] is False
+
+            bad = await client.patch(
+                "/v1/daari/config",
+                json={"observability": {"structured_json_logs": "yes"}},
+            )
+            assert bad.status_code == 400
+            unknown = await client.patch(
+                "/v1/daari/config",
+                json={"observability": {"prometheus": True}},
+            )
+            assert unknown.status_code == 400
+            assert settings.observability.structured_json_logs is False
+            assert request_log._stdout_json is False
+
+            persisted = await client.patch(
+                "/v1/daari/config",
+                json={
+                    "observability": {"structured_json_logs": True},
+                    "persist": True,
+                },
+            )
+            assert persisted.status_code == 200
+            payload = persisted.json()
+            assert payload["observability"]["structured_json_logs"] is True
+            assert payload["ownership"][_OBS_JSON_LOGS]["source"] == "file"
+            written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+            assert written["observability"]["structured_json_logs"] is True
+            assert settings.observability.structured_json_logs is True
+            assert request_log._stdout_json is True
+    finally:
+        request_log.configure_request_log(structured_json_logs=previous_stdout)
+
+
 def test_docs_pin_classifier_mcp_config_ownership():
     config = CONFIG_MD.read_text(encoding="utf-8")
     http_api = HTTP_API.read_text(encoding="utf-8")
-    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES + _COMPACT_LEAVES:
+    for key in _CLASSIFIER_LEAVES + _MCP_LEAVES + _COMPACT_LEAVES + (_OBS_JSON_LOGS,):
         assert key in config
     assert "config editor" in config.lower() or "/v1/daari/config" in config
     assert "| `GET` | `/v1/daari/config`" in http_api
@@ -473,3 +557,4 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "decision_classifier" in http_api or "ownership" in http_api.lower()
     assert "compact_to_fit" in http_api
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
+    assert "structured_json_logs" in http_api

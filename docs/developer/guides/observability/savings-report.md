@@ -26,6 +26,14 @@ Includes cache-trust panels when shadow samples exist. For local pool pressure
 alongside spend, see `backend_summary` on
 [traces and stats](traces-stats.md) (`GET /v1/daari/stats`).
 
+When `routing.compact_to_fit` actually trims history before L6, the same
+stats payload increments `compact_to_fit_tokens_dropped` (estimated tokens
+removed). The compact-to-fit [trace step](traces-stats.md) records
+`tokens_before` / `tokens_after`; routing behavior is described in
+[routing tiers](../../concepts/routing-tiers.md#compact-to-fit-before-l6).
+That counter is local FinOps next to this report — it is not a cloud
+compact dashboard.
+
 ## Where the numbers come from
 
 Token counts are whatever the provider reported — `prompt_eval_count` /

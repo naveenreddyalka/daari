@@ -2036,6 +2036,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 validated_cache,
                 validated_frontier,
                 validated_integrations,
+                validated_observability,
                 validated_routing,
             )
 
@@ -2046,6 +2047,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 frontier = validated_frontier(body.get("frontier") or {})
                 cache = validated_cache(body.get("cache") or {})
                 integrations = validated_integrations(body.get("integrations") or {})
+                observability = validated_observability(body.get("observability") or {})
                 raw_boundaries = body.get("boundaries") or {}
                 new_boundaries = (
                     merged_boundaries(ctx.settings.boundaries, raw_boundaries)
@@ -2119,6 +2121,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.settings.integrations.mcp_policy.require_key_access_defined = (
                     mcp_policy["require_key_access_defined"]
                 )
+            if "structured_json_logs" in observability:
+                ctx.settings.observability.structured_json_logs = observability[
+                    "structured_json_logs"
+                ]
+                from daari.gateway.request_log import configure_request_log
+
+                configure_request_log(
+                    structured_json_logs=observability["structured_json_logs"]
+                )
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,
@@ -2144,6 +2155,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "cache": cache,
                     "boundaries": boundaries,
                     "integrations": integrations,
+                    "observability": observability,
                 }
             )
             overrides = getattr(request.app.state, "config_runtime_overrides", None)
@@ -2162,6 +2174,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             "cache": cache,
                             "boundaries": boundaries,
                             "integrations": integrations,
+                            "observability": observability,
                         }
                     )
                 )

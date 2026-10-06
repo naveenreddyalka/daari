@@ -7,7 +7,14 @@ from typing import Any
 
 import yaml
 
-_SAFE_SECTIONS = ("routing", "frontier", "cache", "boundaries", "integrations")
+_SAFE_SECTIONS = (
+    "routing",
+    "frontier",
+    "cache",
+    "boundaries",
+    "integrations",
+    "observability",
+)
 
 # Flat leaf paths exposed by the config editor GET payload.
 _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
@@ -48,6 +55,7 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("integrations", "mcp_aggregate_egress", "enabled"),
     ("integrations", "mcp_registry", "enabled"),
     ("integrations", "mcp_policy", "require_key_access_defined"),
+    ("observability", "structured_json_logs"),
 )
 
 
@@ -181,6 +189,9 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
                     s.integrations.mcp_policy.require_key_access_defined
                 ),
             },
+        },
+        "observability": {
+            "structured_json_logs": s.observability.structured_json_logs,
         },
     }
 
