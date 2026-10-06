@@ -22,6 +22,23 @@ class ShippingNotes:
 
 
 _VERSION = re.compile(r"^## \[([^\]]+)\]")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+
+def _rewrite_repo_links(text: str) -> str:
+    """Changelog links are repo-root relative; the draft is not.
+
+    Absolute blob URLs stay valid under docs/gtm/drafts/ so `mkdocs build
+    --strict` does not treat them as missing documentation pages.
+    """
+
+    def repl(match: re.Match[str]) -> str:
+        label, target = match.group(1), match.group(2)
+        if target.startswith(("http://", "https://", "mailto:", "#")):
+            return match.group(0)
+        return f"[{label}]({REPO}/blob/main/{target.lstrip('/')})"
+
+    return _MD_LINK.sub(repl, text)
 
 
 def _latest_release_block(changelog: str) -> tuple[str, str]:
@@ -62,10 +79,13 @@ def render_shipping_notes(changelog: str) -> ShippingNotes:
     version, block = _latest_release_block(changelog)
     bullets = _bullets(block)
     bullet_md = "\n".join(f"- {b}" for b in bullets) or "- See CHANGELOG.md"
-    headline = next(
-        (ln.replace("**", "").strip() for ln in block.splitlines() if ln.startswith("**")),
-        f"daari {version}",
+    headline = _rewrite_repo_links(
+        next(
+            (ln.replace("**", "").strip() for ln in block.splitlines() if ln.startswith("**")),
+            f"daari {version}",
+        )
     )
+    bullet_md = _rewrite_repo_links(bullet_md)
     markdown = f"""# Shipping note — daari {version}
 
 {headline}
