@@ -50,6 +50,9 @@ def run_doctor(
     weak_key_tip = _check_weak_or_unset_master_key(cfg)
     if weak_key_tip is not None:
         results.append(weak_key_tip)
+    ungoverned_tip = _check_config_editor_ungoverned(cfg)
+    if ungoverned_tip is not None:
+        results.append(ungoverned_tip)
     results.append(_check_secret_refs(cfg))
     results.extend(_check_ollama(cfg, httpx_client, l4_required=cursor_configured))
     results.append(_check_embedding_endpoint(cfg, httpx_client))
@@ -236,6 +239,32 @@ def _check_weak_or_unset_master_key(settings: Settings) -> CheckResult | None:
             optional=True,
         )
     return None
+
+
+def _check_config_editor_ungoverned(settings: Settings) -> CheckResult | None:
+    """Warn when config editor writes are open because no master key is set (#1441)."""
+    if not bool(getattr(settings.observability, "config_editor", False)):
+        return None
+    sso = settings.enterprise.sso
+    oidc_ready = bool(
+        sso.jwks_url.strip()
+        or any(str(u or "").strip() for u in (sso.jwks_urls or []))
+        or sso.discovery_url.strip()
+    )
+    if sso.enabled and (sso.secret or oidc_ready):
+        return None
+    if settings.server.master_keys():
+        return None
+    return CheckResult(
+        name="config_editor_ungoverned",
+        ok=False,
+        detail=(
+            "observability.config_editor is on and no master key is set — "
+            "PATCH /v1/daari/config (and other admin surfaces) are ungoverned; "
+            "set server.api_key or enable enterprise.sso"
+        ),
+        optional=True,
+    )
 
 
 def _check_secret_refs(settings: Settings) -> CheckResult:

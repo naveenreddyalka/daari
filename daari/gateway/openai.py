@@ -1911,28 +1911,45 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 raise HTTPException(status_code=404, detail="config editor disabled")
 
         def _require_role(request: Request, ctx: AppContext, minimum: str) -> str:
-            """SSO role gate for admin/ops surfaces when enterprise.sso.enabled."""
+            """Role gate for admin/ops surfaces.
+
+            When SSO is on, enforce IdP roles (master key still counts as admin).
+            When SSO is off and a master key is set, admin-level gates require the
+            master key; analyst/read surfaces stay viewer-style for virtual keys.
+            With no master key (sandbox hatch), gates stay open.
+            """
+            from daari.enterprise.rbac import role_at_least, role_from_claims
+            from daari.server.auth import master_key_matches
+
             sso = ctx.settings.enterprise.sso
             oidc_ready = bool(
                 sso.jwks_url.strip()
                 or any(str(u or "").strip() for u in (sso.jwks_urls or []))
                 or sso.discovery_url.strip()
             )
-            if not sso.enabled or (not sso.secret and not oidc_ready):
-                return "admin"
-            from daari.enterprise.rbac import role_at_least, role_from_claims
-            from daari.enterprise.sso import verify_access_token
-
             auth = request.headers.get("authorization", "")
             token = ""
             if auth.lower().startswith("bearer "):
                 token = auth[len("bearer ") :].strip()
+            master_keys = ctx.settings.server.master_keys()
+
+            if not sso.enabled or (not sso.secret and not oidc_ready):
+                if master_keys:
+                    if master_key_matches(token, master_keys):
+                        return "admin"
+                    # Viewer-style: virtual keys may satisfy analyst/read minimums.
+                    if role_at_least("analyst", minimum):
+                        return "analyst"
+                    raise HTTPException(
+                        status_code=403, detail="master key required"
+                    )
+                return "admin"
+
+            from daari.enterprise.sso import verify_access_token
+
             if not token:
                 raise HTTPException(status_code=401, detail="SSO token required")
             # Master API key still counts as admin when it matches.
-            from daari.server.auth import master_key_matches
-
-            master_keys = ctx.settings.server.master_keys()
             if master_key_matches(token, master_keys):
                 return "admin"
             try:

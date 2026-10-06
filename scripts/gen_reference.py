@@ -145,6 +145,13 @@ def render_api_reference() -> str:
             "`integrations.mcp_oauth.signing_secret` stay non-editable and are omitted "
             "from the payload.",
             "",
+            "**Auth:** With SSO off and a master key set, `PATCH` (and other admin "
+            "surfaces) require the master key — virtual keys get **403**. `GET` keeps "
+            "viewer-style read access for virtual keys (safe subset only). With SSO on, "
+            "role gates apply (`analyst` for GET, `admin_min_role` for PATCH). With no "
+            "master key (sandbox hatch), writes stay open; `daari doctor` warns that the "
+            "config editor is ungoverned.",
+            "",
             "## Traces compact_to_fit",
             "",
             "`GET /v1/daari/traces` and `GET /v1/daari/traces/{trace_id}` include a "
