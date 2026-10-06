@@ -6097,6 +6097,14 @@ OCR page markdown runs through output guardrails; upstream calls emit a
 `tests/unit/test_modality_metrics.py`.
 
 
+### Anthropic Models API `line` on native /v1/models ([#1451](https://github.com/naveenreddyalka/daari/issues/1451))
+
+<!-- tracking:#1451 -->
+**Status:** Done (2026-10-06). Anthropic-shaped model cards include nullable
+`line` from an explicit Claude family map; local/unknown ids stay null.
+Covered by `tests/unit/test_anthropic_gateway.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
