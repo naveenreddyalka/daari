@@ -560,8 +560,10 @@ class CompactToFitSettings(BaseModel):
             "When true, chat history is compacted to max_messages / max_tokens "
             "before L6. System messages and tool-call payloads are never "
             "deleted; if the remainder still exceeds the cap, history is left "
-            "oversized (fail closed). Default off. Editable via GET/PATCH "
-            "/v1/daari/config ownership (config editor)."
+            "oversized (fail closed). A successful trim records tokens_before / "
+            "tokens_after on the compact_to_fit trace step and increments "
+            "compact_to_fit_tokens_dropped on /v1/daari/stats. Default off. "
+            "Editable via GET/PATCH /v1/daari/config ownership (config editor)."
         ),
     )
     max_messages: int = Field(

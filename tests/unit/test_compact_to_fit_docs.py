@@ -19,6 +19,14 @@ def test_config_md_pins_compact_to_fit_keys() -> None:
     assert "tool-call" in lower or "tool payload" in lower or "tool-call payloads" in lower
 
 
+def test_config_md_pins_compact_to_fit_finops_token_fields() -> None:
+    """config.md compact_to_fit rows document FinOps verification (#1422)."""
+    text = CONFIG.read_text(encoding="utf-8")
+    assert "tokens_before" in text
+    assert "tokens_after" in text
+    assert "compact_to_fit_tokens_dropped" in text
+
+
 def test_routing_tiers_pins_compact_to_fit() -> None:
     text = ROUTING.read_text(encoding="utf-8")
     lower = text.lower()
