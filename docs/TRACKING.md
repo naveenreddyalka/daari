@@ -6042,6 +6042,16 @@ Covered by `tests/unit/test_savings_report_compact_docs.py`.
 the stable floor. Covered by `tests/unit/test_compare_litellm_1104.py`.
 
 
+### Require master key for config writes when SSO is off ([#1441](https://github.com/naveenreddyalka/daari/issues/1441))
+
+<!-- tracking:#1441 -->
+**Status:** Done (2026-10-06). With SSO off and a master key set, virtual keys
+get 403 on `PATCH /v1/daari/config` (and other `_require_admin_role` surfaces);
+master key still succeeds. `GET` stays viewer-style for virtual keys. Sandbox
+(no master key) stays open; `daari doctor` warns `config_editor_ungoverned`.
+Covered by `tests/unit/test_config_admin_master_key.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
