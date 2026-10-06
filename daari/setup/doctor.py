@@ -90,6 +90,9 @@ def run_doctor(
     compact_tip = _check_compact_to_fit(cfg)
     if compact_tip is not None:
         results.append(compact_tip)
+    json_logs_tip = _check_structured_json_logs(cfg)
+    if json_logs_tip is not None:
+        results.append(json_logs_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
@@ -2304,6 +2307,27 @@ def _check_compact_to_fit(settings: Settings) -> CheckResult | None:
             "before L6 frontier; system messages and tool-call payloads are kept, "
             "and over-cap history fail-closes oversized. Successful trims record "
             "tokens_before / tokens_after and increment compact_to_fit_tokens_dropped"
+        ),
+        optional=True,
+    )
+
+
+def _check_structured_json_logs(settings: Settings) -> CheckResult | None:
+    """Informational tip when gateway logs also go to stdout as JSON (#1431).
+
+    Absent when disabled (default). When enabled, remind operators that
+    scrapers should read stdout, not only ``~/.daari/cursor-requests.log``.
+    """
+    obs = getattr(settings, "observability", None)
+    if obs is None or not bool(getattr(obs, "structured_json_logs", False)):
+        return None
+    return CheckResult(
+        name="structured_json_logs",
+        ok=True,
+        detail=(
+            "observability.structured_json_logs emits gateway events as "
+            "single-line JSON on stdout (containers/SIEM); "
+            "~/.daari/cursor-requests.log is still written"
         ),
         optional=True,
     )

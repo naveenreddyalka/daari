@@ -52,6 +52,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `master_key_strength` | Optional: warns when `server.dangerously_permit_weak_or_unset_api_key` is true, or when master key is unset while virtual keys / `mcp_oauth.local_as` imply auth (#1320) |
 | doctor `decision_classifier` | Optional: when `routing.decision_classifier.enabled` is true — tip that an Ollama `/v1/systemone` difficulty hop runs before heuristic tier pick (fallback on timeout/failure) |
 | doctor `compact_to_fit` | Optional: when `routing.compact_to_fit.enabled` is true — tip that oldest droppable turns are trimmed before L6/frontier; system and tool-call payloads are kept; over-cap history fail-closes oversized; successful trims expose `tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped` |
+| doctor `structured_json_logs` | Optional: when `observability.structured_json_logs` is true — tip that gateway events are single-line JSON on stdout (containers/SIEM); `~/.daari/cursor-requests.log` is still written |
 | doctor `decision_classifier_model` | Optional: when the classifier is enabled but `routing.decision_classifier.model` (default `nimble`) is missing from Ollama `/api/tags` — tip to `ollama pull <model>`; quiet if Ollama is unreachable (the `ollama` check owns that) |
 
 ## Next
