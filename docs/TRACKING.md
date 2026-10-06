@@ -6026,6 +6026,14 @@ Covered by `tests/unit/test_config_ownership.py`.
 Covered by `tests/unit/test_doctor_structured_json_logs.py`.
 
 
+### Docs: pin compact_to_fit_tokens_dropped in savings-report ([#1432](https://github.com/naveenreddyalka/daari/issues/1432))
+
+<!-- tracking:#1432 -->
+**Status:** Done (2026-10-06). Savings-report guide points operators at
+`compact_to_fit_tokens_dropped` and trace `tokens_before` / `tokens_after`.
+Covered by `tests/unit/test_savings_report_compact_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
