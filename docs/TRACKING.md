@@ -6052,6 +6052,15 @@ master key still succeeds. `GET` stays viewer-style for virtual keys. Sandbox
 Covered by `tests/unit/test_config_admin_master_key.py`.
 
 
+### Add gpt-6.1-sol pricing, capabilities, and param compat ([#1442](https://github.com/naveenreddyalka/daari/issues/1442))
+
+<!-- tracking:#1442 -->
+**Status:** Done (2026-10-06). Shipped `$2/$10` (cached `$0.10`, cache write
+`$2.50`) for `gpt-6.1-sol` with capabilities + GPT-6 family param compat; no
+invented above-272K surcharge. Covered by
+`tests/unit/test_gpt_6_1_sol_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

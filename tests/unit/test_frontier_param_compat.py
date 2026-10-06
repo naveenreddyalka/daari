@@ -59,6 +59,11 @@ def test_astra_table_declares_unsupported_params_and_tools_transport():
     assert entry.tools_transport == "responses"
     # Dated / prefixed ids resolve via longest-prefix matching_model_key.
     assert lookup_frontier_param_compat("openai.gpt-6-astra-20260901") is entry
+    sol = lookup_frontier_param_compat("gpt-6.1-sol")
+    assert sol is not None
+    assert sol.tools_transport == "responses"
+    assert "temperature" in sol.unsupported_params
+    assert lookup_frontier_param_compat("openai.gpt-6.1-sol") is sol
 
 
 def test_astra_payload_omits_temperature_top_p_logprobs():
