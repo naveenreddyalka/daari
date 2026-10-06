@@ -6009,6 +6009,15 @@ documents `tokens_before` / `tokens_after` and `compact_to_fit_tokens_dropped`
 `packages/web-ui/test/dashboard.test.js`.
 
 
+### Config ownership for observability.structured_json_logs ([#1430](https://github.com/naveenreddyalka/daari/issues/1430))
+
+<!-- tracking:#1430 -->
+**Status:** Done (2026-10-06). GET/PATCH `/v1/daari/config` exposes
+`observability.structured_json_logs` with ownership metadata; PATCH
+validates bool and updates live `configure_request_log` without restart.
+Covered by `tests/unit/test_config_ownership.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
