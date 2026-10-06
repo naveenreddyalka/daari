@@ -337,11 +337,38 @@ async function loadReport() {
   }
 }
 
+function formatCompactToFitSummary(detail) {
+  const steps = Array.isArray(detail?.steps) ? detail.steps : [];
+  const lines = [];
+  for (const step of steps) {
+    if (!step || step.step !== "compact_to_fit") {
+      continue;
+    }
+    const before = step.tokens_before;
+    const after = step.tokens_after;
+    if (typeof before !== "number" && typeof after !== "number") {
+      continue;
+    }
+    lines.push(
+      `compact_to_fit tokens_before=${typeof before === "number" ? before : "-"} tokens_after=${
+        typeof after === "number" ? after : "-"
+      }`
+    );
+  }
+  return lines.join("\n");
+}
+
+function formatTraceDetail(detail) {
+  const summary = formatCompactToFitSummary(detail);
+  const json = JSON.stringify(detail, null, 2);
+  return summary ? `${summary}\n\n${json}` : json;
+}
+
 async function showTraceDetail(traceId) {
   try {
     const detail = await fetchJson(`${apiBaseUrl}/v1/daari/traces/${encodeURIComponent(traceId)}`);
     traceDetailNode.hidden = false;
-    traceDetailNode.textContent = JSON.stringify(detail, null, 2);
+    traceDetailNode.textContent = formatTraceDetail(detail);
   } catch (error) {
     traceDetailNode.hidden = false;
     traceDetailNode.textContent = `Trace detail unavailable (${error.message}).`;

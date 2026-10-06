@@ -41,6 +41,7 @@ See [SECURITY.md](../../SECURITY.md#cors-and-security-headers) for native CORS v
 - Optional org-learning summary + metrics from `GET /v1/org-learning/profile` when reachable
 - Export current stats snapshot as JSON
 - Dark/light theme toggle (persisted locally)
+- Recent traces: click a trace id for the step timeline; `compact_to_fit` steps surface `tokens_before` / `tokens_after` when present
 
 ## Files
 

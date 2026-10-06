@@ -5983,6 +5983,14 @@ compact is enabled. Covered by `tests/unit/test_doctor_compact_to_fit.py`.
 `tests/unit/test_compare_litellm_1104.py`.
 
 
+### Web-ui shows compact_to_fit tokens on traces ([#1421](https://github.com/naveenreddyalka/daari/issues/1421))
+
+<!-- tracking:#1421 -->
+**Status:** Done (2026-10-06). Trace detail panel surfaces `compact_to_fit`
+`tokens_before` / `tokens_after` when the step is present (plus full JSON).
+Covered by `packages/web-ui/test/dashboard.test.js`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
