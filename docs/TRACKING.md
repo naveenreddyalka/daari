@@ -6034,6 +6034,14 @@ Covered by `tests/unit/test_doctor_structured_json_logs.py`.
 Covered by `tests/unit/test_savings_report_compact_docs.py`.
 
 
+### Docs: LiteLLM 1.105 RC watch in compare-litellm ([#1433](https://github.com/naveenreddyalka/daari/issues/1433))
+
+<!-- tracking:#1433 -->
+**Status:** Done (2026-10-06). compare-litellm notes LiteLLM 1.105 as RC/watch
+(M365 MCP catalog, Straiker, Lens/agent traces) while keeping 1.104 GA as
+the stable floor. Covered by `tests/unit/test_compare_litellm_1104.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
