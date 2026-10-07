@@ -6124,6 +6124,14 @@ reason in regression issue bodies. Covered by
 `tests/unit/test_autodev_local.py`.
 
 
+### compact_to_fit counts images/audio and protects multimodal turns ([#1454](https://github.com/naveenreddyalka/daari/issues/1454))
+
+<!-- tracking:#1454 -->
+**Status:** Done (2026-10-07). `estimate_tokens` adds per-image / per-audio
+heuristics; image-only and audio-only turns are protected like tool pairs.
+Covered by `tests/unit/test_compact_to_fit.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

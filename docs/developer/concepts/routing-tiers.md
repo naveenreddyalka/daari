@@ -178,15 +178,17 @@ complexity, and chosen tier. Prometheus exposes
 ## Compact-to-fit before L6
 
 `routing.compact_to_fit.enabled` (default off) trims oldest unprotected
-chat turns before frontier escalate. System messages and tool-call payloads
-are never dropped; if the remainder still exceeds the cap, history stays
-oversized (fail closed). When a trim actually changes the message count,
-`daari_meta.compact_to_fit` records `messages_before` / `messages_after`
-plus `tokens_before` / `tokens_after`, `/v1/daari/stats` increments
-`compact_to_fit_applied`, and `compact_to_fit_tokens_dropped` adds
-`tokens_before - tokens_after`. Unchanged or
-fail-closed history omits the meta object and does not increment the
-counters.
+chat turns before frontier escalate. System messages, tool-call payloads,
+and multimodal turns that carry `images` / `audio` are never dropped;
+`estimate_tokens` adds a per-image floor (85) and a per-audio heuristic
+(floor 50, plus base64 length / 100) so vision/audio turns are not treated
+as empty when `content` is blank. If the remainder still exceeds the cap,
+history stays oversized (fail closed). When a trim actually changes the
+message count, `daari_meta.compact_to_fit` records `messages_before` /
+`messages_after` plus `tokens_before` / `tokens_after`, `/v1/daari/stats`
+increments `compact_to_fit_applied`, and `compact_to_fit_tokens_dropped`
+adds `tokens_before - tokens_after`. Unchanged or fail-closed history
+omits the meta object and does not increment the counters.
 
 ## TTFT-aware local preference
 

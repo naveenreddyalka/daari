@@ -8,9 +8,20 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from daari.config.settings import Settings
-from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.gateway.internal import (
+    ContentAudio,
+    ContentImage,
+    DaariMeta,
+    InternalRequest,
+    InternalResponse,
+    Message,
+)
 from daari.observability.trace import current_trace, end_trace, start_trace
-from daari.router.compact_to_fit import compact_messages, estimate_tokens
+from daari.router.compact_to_fit import (
+    TOKENS_PER_IMAGE,
+    compact_messages,
+    estimate_tokens,
+)
 from daari.router.router import AppContext
 from daari.server.app import create_app
 
@@ -76,6 +87,52 @@ def test_enabled_token_budget_shrinks() -> None:
     )
     assert after < before
     assert len(out) < 8
+
+
+def test_text_only_estimate_unchanged_shape() -> None:
+    """Plain text still uses the char/4 heuristic (#1454)."""
+    messages = [Message(role="user", content="abcd")]  # 4 chars → 1 token floor path
+    assert estimate_tokens(messages) == max(1, (4 + 3) // 4)
+
+
+def test_images_and_audio_increase_estimate() -> None:
+    """Multimodal parts must not look near-zero when content is empty (#1454)."""
+    text_only = [Message(role="user", content="")]
+    with_image = [
+        Message(
+            role="user",
+            content="",
+            images=[ContentImage(media_type="image/png", data="aaa")],
+        )
+    ]
+    with_audio = [
+        Message(
+            role="user",
+            content="",
+            audio=[ContentAudio(data="b" * 200, format="wav")],
+        )
+    ]
+    assert estimate_tokens(text_only) == 1
+    assert estimate_tokens(with_image) == 1 + TOKENS_PER_IMAGE
+    assert estimate_tokens(with_audio) > estimate_tokens(text_only)
+
+
+def test_image_only_turn_survives_tight_compaction() -> None:
+    """Image-only user turn is protected like tool payloads (#1454)."""
+    image_turn = Message(
+        role="user",
+        content="",
+        images=[ContentImage(media_type="image/png", data="vision")],
+    )
+    messages = [_user(i) for i in range(8)] + [image_turn]
+    out, before, after = compact_messages(
+        messages, enabled=True, max_messages=2, max_tokens=1
+    )
+    assert before == 9
+    assert any(m.images for m in out)
+    assert image_turn in out
+    # Still over budget after protecting multimodal → fail-closed keeps image.
+    assert after >= 1
 
 
 def test_settings_default_off() -> None:
