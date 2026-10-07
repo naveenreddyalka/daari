@@ -282,6 +282,7 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 | `gpt-5.6-terra` | 2.00 | 0.20 | — | 12.00 | OpenAI API pricing |
 | `gpt-5.6-luna` | 0.20 | 0.02 | — | 1.20 | OpenAI API pricing |
 | `gemini-3.8-flash` | 0.75 | 0.075 | — | 3.75 | [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing) intro rate through 2026-12-31 |
+| `grok-4.7` | 2.00 | 0.50 | — | 6.00 | xAI / LiteLLM 1.105 RC lab bar (2026-10-04); OpenRouter ~$1.6/$4.8 |
 
 `gpt-5.6` is the Sol alias. Longer keys win, so `gpt-5.6-luna` is not priced
 as Sol. Gemini 3.8 Flash's published standard rate becomes $1.50 / $7.50 on

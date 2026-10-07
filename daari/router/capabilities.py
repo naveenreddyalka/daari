@@ -37,6 +37,7 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "gpt-5.6-terra",
         "gpt-5.6-luna",
         "gemini-3.8-flash",
+        "grok-4.7",
     )
 }
 

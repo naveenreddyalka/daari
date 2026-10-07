@@ -6142,6 +6142,14 @@ including on `ConnectError`, so FAIL logs cannot show a prior cycle's
 remains covered by #1453. Covered by `tests/unit/test_autodev_local.py`.
 
 
+### grok-4.7 pricing, capabilities, and param compat ([#1466](https://github.com/naveenreddyalka/daari/issues/1466))
+
+<!-- tracking:#1466 -->
+**Status:** Done (2026-10-07). Lab $2/$6 + $0.50 cache read for `grok-4.7`
+(LiteLLM 1.105 RC day-one); capabilities match other frontier chat IDs; no
+sampler strip (none published). Covered by `tests/unit/test_grok_4_7_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

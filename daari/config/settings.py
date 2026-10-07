@@ -1076,6 +1076,14 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "output_per_1m": 3.75,
         "cached_input_per_1m": 0.075,
     },
+    # xAI Grok 4.7 (LiteLLM 1.105 RC day-one, 2026-10-04): lab $2/$6,
+    # cache read $0.50. OpenRouter list is ~$1.6/$4.8 — we ship the lab bar.
+    # https://docs.litellm.ai/release_notes/v1.105.0rc1/v1-105-0-rc-1
+    "grok-4.7": {
+        "input_per_1m": 2.00,
+        "output_per_1m": 6.00,
+        "cached_input_per_1m": 0.50,
+    },
 }
 
 
