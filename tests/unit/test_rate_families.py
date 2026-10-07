@@ -29,6 +29,8 @@ def test_rate_limit_family_maps_paths():
     assert rate_limit_family("/v1/mcp/query") == "mcp"
     assert rate_limit_family("/v1/systemone") == "systemone"
     assert rate_limit_family("/v1/systemone/") == "systemone"
+    assert rate_limit_family("/v1/decisions") == "decisions"
+    assert rate_limit_family("/v1/decisions/") == "decisions"
     assert rate_limit_family("/health") == "other"
 
 

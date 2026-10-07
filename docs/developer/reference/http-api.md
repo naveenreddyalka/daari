@@ -45,6 +45,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/stats` | Daari Stats |
 | `GET` | `/v1/daari/traces` | Daari Traces |
 | `GET` | `/v1/daari/traces/{trace_id}` | Daari Trace Detail |
+| `POST` | `/v1/decisions` | Decisions |
 | `POST` | `/v1/embeddings` | Embeddings |
 | `GET` | `/v1/files` | List Files |
 | `POST` | `/v1/files` | Upload File |
