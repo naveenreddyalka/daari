@@ -259,6 +259,7 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         log_gateway_event(
             "mcp_openapi_proxy_list", {"spec_id": spec_id, "tools": len(public_tools)}
         )
+        # List/schema responses omit cost headers (no proxied call / no tokens).
         return JSONResponse({"tools": public_tools})
 
     if action not in {"tools/call", "call"}:
@@ -319,12 +320,27 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         "mcp_openapi_proxy_call",
         {"spec_id": spec_id, "tool": name, "status": upstream.status_code},
     )
+    from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+    prompt_chars = len(json.dumps(arguments, sort_keys=True, default=str))
+    cost_headers = modality_response_headers(
+        settings,
+        tier="mcp",
+        model="mcp-openapi-proxy",
+        prompt_chars=prompt_chars,
+        input_tokens=max(0, prompt_chars // 4),
+        output_tokens=0,
+        cost_usd=0.0,
+        session_id=session_id_from_request(request),
+        savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+    )
     return JSONResponse(
         {
             "content": [{"type": "text", "text": json.dumps(payload, default=str)}],
             "isError": upstream.status_code >= 400,
             "status_code": upstream.status_code,
-        }
+        },
+        headers=cost_headers,
     )
 
 

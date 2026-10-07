@@ -203,6 +203,44 @@ async def test_tools_call_proxies_http(settings, monkeypatch):
     text = body["content"][0]["text"]
     assert "fido" in text
     assert any("/pets/42" in url for url in seen)
+    from daari.gateway.cost_headers import COST_HEADER, TIER_HEADER
+
+    assert COST_HEADER in response.headers
+    assert float(response.headers[COST_HEADER]) == 0.0
+    assert response.headers[TIER_HEADER] == "mcp"
+
+
+@pytest.mark.asyncio
+async def test_tools_list_omits_cost_headers(settings, monkeypatch):
+    """tools/list has no proxied call — omit cost headers (not zero-cost)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/openapi.json"):
+            return httpx.Response(200, json=_SPEC)
+        raise AssertionError(f"unexpected {request.url}")
+
+    _patch_http(monkeypatch, handler)
+    _allow_public_host(monkeypatch)
+    settings.integrations.mcp_openapi_proxy.enabled = True
+    settings.integrations.mcp_openapi_proxy.specs = [
+        McpOpenApiSpecSettings(
+            id="pets",
+            openapi_url="https://api.example.com/openapi.json",
+            base_url="https://api.example.com",
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/mcp/proxy",
+            json={"action": "tools/list", "spec_id": "pets"},
+        )
+
+    assert response.status_code == 200
+    from daari.gateway.cost_headers import COST_HEADER
+
+    assert COST_HEADER not in response.headers
 
 
 def test_mcp_docs_mention_proxy():

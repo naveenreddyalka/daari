@@ -6177,6 +6177,15 @@ systemone executor; `gpt-6-luna` passes through L6 with `no_frontier` /
 family, cost headers + usage ledger. Covered by `tests/unit/test_decisions.py`.
 
 
+### MCP proxy response cost headers ([#1469](https://github.com/naveenreddyalka/daari/issues/1469))
+
+<!-- tracking:#1469 -->
+**Status:** Done (2026-10-07). Successful `/mcp/proxy` `tools/call` responses
+emit the standard `x-daari-response-cost*` set via `modality_response_headers`
+(zero USD when no model tokens). `tools/list` omits cost headers. Covered by
+`tests/unit/test_mcp_openapi_proxy.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
