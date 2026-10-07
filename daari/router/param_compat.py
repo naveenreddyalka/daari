@@ -35,8 +35,8 @@ class FrontierParamCompatResult:
 # gpt-6-astra / gpt-6.1-sol: no custom temperature/top_p/logprobs;
 # no reasoning_effort=none; tool calling requires the Responses API
 # (chat completions tools unsupported). Same GPT-6 restriction family.
-# claude-sonnet-5-5: adaptive thinking on by default; non-default
-# temperature/top_p/top_k → 400 (strip like gpt-6.1-sol sampler posture).
+# claude-sonnet-5-5 / claude-opus-5-5: adaptive thinking on by default;
+# non-default temperature/top_p/top_k → 400 (strip like gpt-6.1-sol).
 _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
     "gpt-6-astra": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
@@ -51,6 +51,9 @@ _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
         tools_transport="responses",
     ),
     "claude-sonnet-5-5": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
+    ),
+    "claude-opus-5-5": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
     ),
 }
