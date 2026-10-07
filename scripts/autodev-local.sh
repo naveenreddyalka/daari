@@ -51,6 +51,12 @@ case "${1:-}" in
 esac
 
 FAILURES=()
+FATAL_SERVE_CONFIG=""
+SERVE_ERR_LOG="$LOG_DIR/serve.err.log"
+
+daemon_unreachable() {
+  printf '%s\n' "${FAILURES[@]+"${FAILURES[@]}"}" | grep -Eq '^daemon unreachable'
+}
 
 file_regression_issue() {
   local title="$1"
@@ -93,28 +99,60 @@ else
       log "pyproject.toml changed — reinstalling package"
       "$VENV/bin/pip" install -e ".[dev]" >> "$RUN_LOG" 2>&1
     fi
-    log "Restarting daari serve to deploy new code"
-    launchctl kickstart -k "gui/$(id -u)/$SERVE_LABEL" 2>/dev/null || true
-    sleep 3
+    SERVE_ERR_LOG="${SERVE_ERR_LOG:-$LOG_DIR/serve.err.log}"
+    if DEPLOY_FATAL=$("$VENV/bin/python" "$REPO/scripts/autodev_local.py" classify-fatal "$SERVE_ERR_LOG" 2>/dev/null); then
+      log "FATAL serve config ($DEPLOY_FATAL) — Skipping kickstart after main update"
+      FATAL_SERVE_CONFIG="$DEPLOY_FATAL"
+      launchctl unload "$LAUNCH_AGENTS/$SERVE_LABEL.plist" 2>/dev/null || true
+    else
+      log "Restarting daari serve to deploy new code"
+      launchctl kickstart -k "gui/$(id -u)/$SERVE_LABEL" 2>/dev/null || true
+      sleep 3
+    fi
   else
     log "main already up to date (${AFTER:0:7})"
   fi
 fi
 
 # --- 2. Daemon health ---------------------------------------------------------
-if ! "$VENV/bin/python" "$REPO/scripts/autodev_local.py" ready "$DAEMON_URL" >> "$RUN_LOG" 2>&1; then
+# Classify serve.err.log for fatal config (master_key refuse). Stale stderr is
+# ignored when the daemon is already healthy.
+if CLASSIFIED=$("$VENV/bin/python" "$REPO/scripts/autodev_local.py" classify-fatal "$SERVE_ERR_LOG" 2>/dev/null); then
+  FATAL_SERVE_CONFIG="$CLASSIFIED"
+fi
+
+if "$VENV/bin/python" "$REPO/scripts/autodev_local.py" ready "$DAEMON_URL" >> "$RUN_LOG" 2>&1; then
+  log "daemon healthy at $DAEMON_URL"
+  FATAL_SERVE_CONFIG=""
+elif [ -n "$FATAL_SERVE_CONFIG" ]; then
+  # Fatal config: do not busy-kickstart — KeepAlive would only spam the same
+  # stderr. Unload serve for this cycle (#1453).
+  log "FATAL serve config ($FATAL_SERVE_CONFIG) — Skipping kickstart; unloading $SERVE_LABEL for this cycle"
+  launchctl unload "$LAUNCH_AGENTS/$SERVE_LABEL.plist" 2>/dev/null || true
+  log "FAIL: daemon unreachable at $DAEMON_URL (fatal config: $FATAL_SERVE_CONFIG)"
+  FAILURES+=("daemon unreachable (fatal config: $FATAL_SERVE_CONFIG)")
+else
   log "daari serve not responding — kickstarting"
   launchctl kickstart -k "gui/$(id -u)/$SERVE_LABEL" 2>/dev/null || true
-fi
-if "$VENV/bin/python" "$REPO/scripts/autodev_local.py" wait "$DAEMON_URL" >> "$RUN_LOG" 2>&1; then
-  log "daemon healthy at $DAEMON_URL"
-else
-  log "FAIL: daemon unreachable at $DAEMON_URL"
-  FAILURES+=("daemon unreachable")
+  if "$VENV/bin/python" "$REPO/scripts/autodev_local.py" wait "$DAEMON_URL" >> "$RUN_LOG" 2>&1; then
+    log "daemon healthy at $DAEMON_URL"
+  else
+    # Re-classify after wait — serve may have crashed mid-backoff.
+    if CLASSIFIED=$("$VENV/bin/python" "$REPO/scripts/autodev_local.py" classify-fatal "$SERVE_ERR_LOG" 2>/dev/null); then
+      FATAL_SERVE_CONFIG="$CLASSIFIED"
+      log "FAIL: daemon unreachable at $DAEMON_URL (fatal config: $FATAL_SERVE_CONFIG)"
+      FAILURES+=("daemon unreachable (fatal config: $FATAL_SERVE_CONFIG)")
+      log "FATAL serve config ($FATAL_SERVE_CONFIG) — Skipping kickstart; unloading $SERVE_LABEL for this cycle"
+      launchctl unload "$LAUNCH_AGENTS/$SERVE_LABEL.plist" 2>/dev/null || true
+    else
+      log "FAIL: daemon unreachable at $DAEMON_URL"
+      FAILURES+=("daemon unreachable")
+    fi
+  fi
 fi
 
 # --- 3. Live Ollama integration tests -----------------------------------------
-if printf '%s\n' "${FAILURES[@]+"${FAILURES[@]}"}" | grep -Fxq "daemon unreachable"; then
+if daemon_unreachable; then
   log "SKIP: live integration (daemon unreachable)"
 elif curl -sf --max-time 5 "$OLLAMA_URL/api/tags" > /dev/null; then
   log "Running live integration tests"
@@ -140,7 +178,7 @@ else
 fi
 
 # --- 4. Cursor-shaped E2E smoke (18 tools + input_text, streaming) -------------
-if printf '%s\n' "${FAILURES[@]+"${FAILURES[@]}"}" | grep -Fxq "daemon unreachable"; then
+if daemon_unreachable; then
   log "SKIP: cursor smoke (daemon unreachable)"
 else
 SMOKE_OUT="$LOG_DIR/smoke-latest.json"
@@ -192,8 +230,13 @@ if [ ${#FAILURES[@]} -gt 0 ]; then
     echo
     echo "## Serve stderr tail"
     echo '```'
-    tail -40 "$LOG_DIR/serve.err.log" 2>/dev/null || echo "(no serve.err.log)"
+    tail -40 "$SERVE_ERR_LOG" 2>/dev/null || echo "(no serve.err.log)"
     echo '```'
+    if [ -n "${FATAL_SERVE_CONFIG:-}" ]; then
+      echo
+      echo "## Fatal serve config"
+      echo "Classified reason: \`$FATAL_SERVE_CONFIG\` (kickstart/KeepAlive skipped for this cycle)."
+    fi
     echo
     echo "Machine: $(hostname). Full log: \`$RUN_LOG\`."
   } > "$BODY_FILE"
