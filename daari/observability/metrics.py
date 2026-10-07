@@ -8,6 +8,12 @@ from typing import Any
 LATENCY_BUCKETS_MS: tuple[float, ...] = (5, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000)
 # TTFT tends to be shorter than full request latency; reuse the same bounds.
 TTFT_BUCKETS_MS: tuple[float, ...] = LATENCY_BUCKETS_MS
+# Decision-classifier hop latency (#1452); same bounds as request latency.
+DECISION_CLASSIFIER_LATENCY_BUCKETS_MS: tuple[float, ...] = LATENCY_BUCKETS_MS
+
+DECISION_CLASSIFIER_OUTCOMES = frozenset(
+    {"success", "heuristic_fallback", "error", "skipped"}
+)
 
 # Prometheus modality label values (#1106).
 MODALITIES = frozenset(
@@ -163,6 +169,9 @@ class Metrics:
     compact_to_fit_applied: int = 0
     compact_to_fit_tokens_dropped: int = 0
     mcp_grant_denied: int = 0
+    # outcome → count for optional systemone decision classifier (#1452).
+    decision_classifier: dict[str, int] = field(default_factory=dict)
+    decision_classifier_latency: TtftStats = field(default_factory=TtftStats)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -292,6 +301,17 @@ class Metrics:
         with self._lock:
             self.mcp_grant_denied += 1
 
+    def record_decision_classifier(self, *, outcome: str, latency_ms: int = 0) -> None:
+        """Optional /v1/systemone difficulty hop outcome + latency (#1452)."""
+        label = (outcome or "").strip().lower() or "error"
+        if label not in DECISION_CLASSIFIER_OUTCOMES:
+            label = "error"
+        with self._lock:
+            self.decision_classifier[label] = self.decision_classifier.get(label, 0) + 1
+            # Skipped bypasses the hop — do not invent latency samples.
+            if label != "skipped" and latency_ms >= 0:
+                self.decision_classifier_latency.observe(max(0, int(latency_ms)))
+
     def snapshot(self, *, include_histograms: bool = False) -> dict[str, Any]:
         """Tier map for /v1/daari/stats. With include_histograms=True also
         returns {"tiers", "errors", "escalations", "guardrails"} for exporters."""
@@ -338,6 +358,12 @@ class Metrics:
                 "compact_to_fit_applied": self.compact_to_fit_applied,
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
                 "mcp_grant_denied": self.mcp_grant_denied,
+                "decision_classifier": dict(self.decision_classifier),
+                "decision_classifier_latency": {
+                    "count": self.decision_classifier_latency.count,
+                    "total_ttft_ms": self.decision_classifier_latency.total_ttft_ms,
+                    "buckets": dict(self.decision_classifier_latency.buckets),
+                },
                 "modality_requests": {
                     f"{mod}:{tier}": count
                     for (mod, tier), count in sorted(self.modality_requests.items())

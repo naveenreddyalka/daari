@@ -8,6 +8,7 @@ from daari.cache.exact import ExactCache
 from daari.cache.semantic import SemanticCache
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.observability.metrics import Metrics
+from daari.observability.prometheus import render_prometheus
 from daari.observability.trace import TraceStore
 from daari.router.decision_classifier import (
     classification_from_answers,
@@ -181,3 +182,77 @@ async def test_route_records_decision_on_daari_meta(tmp_path, monkeypatch):
     assert response.daari_meta.decision["model"] == "nimble"
     assert response.daari_meta.tier == "L4"
     assert response.daari_meta.complexity == "standard"
+
+
+@pytest.mark.asyncio
+async def test_success_records_prometheus_outcome_and_latency(tmp_path, monkeypatch):
+    """Classifier success must expose outcome + latency series (#1452)."""
+    router = _router(tmp_path, enabled=True)
+
+    async def fake_classify(**kwargs):
+        from daari.router.decision_classifier import DecisionClassification
+
+        return DecisionClassification(
+            model="nimble",
+            complexity="complex",
+            tier="L5",
+            answer={"type": "choice", "choice": "complex"},
+        )
+
+    import daari.router.decision_classifier as dc
+
+    monkeypatch.setattr(dc, "classify_via_systemone", fake_classify)
+
+    request = _request("hi")
+    from daari.router.profile import build_prompt_profile
+
+    await router._apply_decision_classifier(request, build_prompt_profile(request))
+    text = render_prometheus(router.metrics)
+    assert "# TYPE daari_decision_classifier_total counter" in text
+    assert 'daari_decision_classifier_total{outcome="success"} 1' in text
+    assert "# TYPE daari_decision_classifier_latency_ms histogram" in text
+    assert "daari_decision_classifier_latency_ms_count" in text
+    assert "daari_decision_classifier_latency_ms_sum" in text
+
+
+@pytest.mark.asyncio
+async def test_failure_records_heuristic_fallback_outcome(tmp_path, monkeypatch):
+    """Classifier failure must count heuristic_fallback (#1452)."""
+    router = _router(tmp_path, enabled=True)
+
+    async def boom(**kwargs):
+        raise RuntimeError("ollama down")
+
+    import daari.router.decision_classifier as dc
+
+    monkeypatch.setattr(dc, "classify_via_systemone", boom)
+
+    request = _request("hi")
+    from daari.router.profile import build_prompt_profile
+
+    await router._apply_decision_classifier(request, build_prompt_profile(request))
+    text = render_prometheus(router.metrics)
+    assert 'daari_decision_classifier_total{outcome="heuristic_fallback"} 1' in text
+    assert "daari_decision_classifier_latency_ms_count" in text
+
+
+@pytest.mark.asyncio
+async def test_bypass_records_skipped_outcome(tmp_path):
+    """Enabled but bypassed (empty text) counts skipped, no latency (#1452)."""
+    router = _router(tmp_path, enabled=True)
+    request = _request("   ")
+    from daari.router.profile import build_prompt_profile
+
+    await router._apply_decision_classifier(request, build_prompt_profile(request))
+    text = render_prometheus(router.metrics)
+    assert 'daari_decision_classifier_total{outcome="skipped"} 1' in text
+    assert "daari_decision_classifier_latency_ms" not in text
+
+
+def test_record_decision_classifier_error_outcome():
+    """error outcome is a first-class label (#1452)."""
+    metrics = Metrics()
+    metrics.record_decision_classifier(outcome="error", latency_ms=12)
+    text = render_prometheus(metrics)
+    assert 'daari_decision_classifier_total{outcome="error"} 1' in text
+    assert 'daari_decision_classifier_latency_ms_count 1' in text
