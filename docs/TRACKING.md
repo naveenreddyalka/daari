@@ -6132,6 +6132,16 @@ heuristics; image-only and audio-only turns are protected like tool pairs.
 Covered by `tests/unit/test_compact_to_fit.py`.
 
 
+### Watchdog cursor smoke overwrites stale success JSON ([#1425](https://github.com/naveenreddyalka/daari/issues/1425))
+
+<!-- tracking:#1425 -->
+**Status:** Done (2026-10-07). Cursor-shaped smoke runs via
+`autodev_local.py cursor-smoke` and always rewrites `smoke-latest.json`,
+including on `ConnectError`, so FAIL logs cannot show a prior cycle's
+`status_code: 200` / `content_chunks > 0`. Daemon crash-loop root cause
+remains covered by #1453. Covered by `tests/unit/test_autodev_local.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
