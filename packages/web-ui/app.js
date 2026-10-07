@@ -43,14 +43,52 @@ const API_KEY_STORAGE = "daari.webui.apiKey";
 let refreshTimerId = null;
 let latestStats = null;
 let latestOrgProfile = null;
+/** In-memory key when "remember for this session" is off. */
+let memoryApiKey = "";
+
+function clearNode(node) {
+  if (!node) {
+    return;
+  }
+  node.replaceChildren();
+}
+
+function appendTextCells(row, values, classNames = []) {
+  values.forEach((value, index) => {
+    const td = document.createElement("td");
+    td.textContent = value == null ? "" : String(value);
+    if (classNames[index]) {
+      td.className = classNames[index];
+    }
+    row.appendChild(td);
+  });
+}
+
+function setEmptyRow(tbody, colspan, message) {
+  clearNode(tbody);
+  const tr = document.createElement("tr");
+  const td = document.createElement("td");
+  td.colSpan = colspan;
+  td.textContent = message;
+  tr.appendChild(td);
+  tbody.appendChild(tr);
+}
+
+function getRememberApiKey() {
+  const checkbox = document.getElementById("remember-api-key");
+  return Boolean(checkbox && checkbox.checked);
+}
 
 function getApiKey() {
   const input = document.getElementById("api-key");
   if (input && typeof input.value === "string" && input.value.trim()) {
     return input.value.trim();
   }
+  if (memoryApiKey) {
+    return memoryApiKey;
+  }
   try {
-    return (localStorage.getItem(API_KEY_STORAGE) || "").trim();
+    return (sessionStorage.getItem(API_KEY_STORAGE) || "").trim();
   } catch {
     return "";
   }
@@ -58,11 +96,18 @@ function getApiKey() {
 
 function persistApiKey(value) {
   const trimmed = (value || "").trim();
+  memoryApiKey = trimmed;
+  // Never persist secrets in localStorage (survives XSS / shared profiles).
   try {
-    if (trimmed) {
-      localStorage.setItem(API_KEY_STORAGE, trimmed);
+    localStorage.removeItem(API_KEY_STORAGE);
+  } catch {
+    /* private mode */
+  }
+  try {
+    if (getRememberApiKey() && trimmed) {
+      sessionStorage.setItem(API_KEY_STORAGE, trimmed);
     } else {
-      localStorage.removeItem(API_KEY_STORAGE);
+      sessionStorage.removeItem(API_KEY_STORAGE);
     }
   } catch {
     /* private mode */
@@ -93,11 +138,11 @@ function formatMs(value) {
 }
 
 function renderTiers(tiers) {
-  tiersNode.innerHTML = "";
+  clearNode(tiersNode);
+  clearNode(tiersChartNode);
   const entries = Object.entries(tiers || {});
   if (entries.length === 0) {
-    tiersNode.innerHTML = '<tr><td colspan="4">No tier data yet.</td></tr>';
-    tiersChartNode.innerHTML = "";
+    setEmptyRow(tiersNode, 4, "No tier data yet.");
     return;
   }
   const sorted = entries.sort(([a], [b]) => a.localeCompare(b));
@@ -105,17 +150,25 @@ function renderTiers(tiers) {
     ...sorted.map(([, details]) => (typeof details?.count === "number" ? details.count : 0)),
     1
   );
-  tiersChartNode.innerHTML = "";
   for (const [tier, details] of sorted) {
     const count = typeof details?.count === "number" ? details.count : 0;
     const width = Math.max(2, Math.round((count / maxCount) * 100));
     const row = document.createElement("div");
     row.className = "tier-bar-row";
-    row.innerHTML = `
-      <span>${tier}</span>
-      <div class="tier-track"><div class="tier-fill" style="width: ${width}%"></div></div>
-      <span class="tier-count">${formatNumber(count)}</span>
-    `;
+    const label = document.createElement("span");
+    label.textContent = String(tier);
+    const track = document.createElement("div");
+    track.className = "tier-track";
+    const fill = document.createElement("div");
+    fill.className = "tier-fill";
+    fill.style.width = `${width}%`;
+    track.appendChild(fill);
+    const countSpan = document.createElement("span");
+    countSpan.className = "tier-count";
+    countSpan.textContent = formatNumber(count);
+    row.appendChild(label);
+    row.appendChild(track);
+    row.appendChild(countSpan);
     tiersChartNode.appendChild(row);
   }
   for (const [tier, details] of sorted) {
@@ -123,9 +176,7 @@ function renderTiers(tiers) {
     const count = typeof details?.count === "number" ? details.count : 0;
     const p50 = typeof details?.p50_ms === "number" ? details.p50_ms : null;
     const p95 = typeof details?.p95_ms === "number" ? details.p95_ms : null;
-    row.innerHTML = `<td>${tier}</td><td>${formatNumber(count)}</td><td>${formatMs(p50)}</td><td>${formatMs(
-      p95
-    )}</td>`;
+    appendTextCells(row, [tier, formatNumber(count), formatMs(p50), formatMs(p95)]);
     tiersNode.appendChild(row);
   }
 }
@@ -134,15 +185,15 @@ function renderKindCounts(tbody, counts, emptyLabel) {
   if (!tbody) {
     return;
   }
-  tbody.innerHTML = "";
   const entries = Object.entries(counts || {}).sort(([a], [b]) => a.localeCompare(b));
   if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="2">${emptyLabel}</td></tr>`;
+    setEmptyRow(tbody, 2, emptyLabel);
     return;
   }
+  clearNode(tbody);
   for (const [kind, count] of entries) {
     const row = document.createElement("tr");
-    row.innerHTML = `<td>${kind}</td><td>${formatNumber(typeof count === "number" ? count : 0)}</td>`;
+    appendTextCells(row, [kind, formatNumber(typeof count === "number" ? count : 0)]);
     tbody.appendChild(row);
   }
 }
@@ -188,12 +239,12 @@ function renderBackends(backends) {
   if (!backendsNode) {
     return;
   }
-  backendsNode.innerHTML = "";
   const rows = Array.isArray(backends) ? backends : [];
   if (rows.length === 0) {
-    backendsNode.innerHTML = '<tr><td colspan="4">No local pool backends.</td></tr>';
+    setEmptyRow(backendsNode, 4, "No local pool backends.");
     return;
   }
+  clearNode(backendsNode);
   const sorted = [...rows].sort((a, b) => String(a?.id || "").localeCompare(String(b?.id || "")));
   for (const backend of sorted) {
     const row = document.createElement("tr");
@@ -203,7 +254,7 @@ function renderBackends(backends) {
     const circuit = backend?.circuit != null ? String(backend.circuit) : "-";
     const outstanding =
       typeof backend?.outstanding === "number" ? formatNumber(backend.outstanding) : "-";
-    row.innerHTML = `<td>${id}</td><td>${healthy}</td><td>${circuit}</td><td>${outstanding}</td>`;
+    appendTextCells(row, [id, healthy, circuit, outstanding]);
     backendsNode.appendChild(row);
   }
 }
@@ -212,19 +263,19 @@ function renderTeamRateLimits(rows) {
   if (!teamRateLimitsNode) {
     return;
   }
-  teamRateLimitsNode.innerHTML = "";
   const items = Array.isArray(rows) ? rows : [];
   if (items.length === 0) {
-    teamRateLimitsNode.innerHTML = '<tr><td colspan="4">No team rate limits.</td></tr>';
+    setEmptyRow(teamRateLimitsNode, 4, "No team rate limits.");
     return;
   }
-  for (const row of items) {
+  clearNode(teamRateLimitsNode);
+  for (const item of items) {
     const tr = document.createElement("tr");
-    const team = row?.team != null ? String(row.team) : "-";
-    const kind = row?.kind != null ? String(row.kind) : "-";
-    const limit = row?.limit != null ? String(row.limit) : "-";
-    const remaining = row?.remaining != null ? String(row.remaining) : "-";
-    tr.innerHTML = `<td>${team}</td><td>${kind}</td><td>${limit}</td><td>${remaining}</td>`;
+    const team = item?.team != null ? String(item.team) : "-";
+    const kind = item?.kind != null ? String(item.kind) : "-";
+    const limit = item?.limit != null ? String(item.limit) : "-";
+    const remaining = item?.remaining != null ? String(item.remaining) : "-";
+    appendTextCells(tr, [team, kind, limit, remaining]);
     teamRateLimitsNode.appendChild(tr);
   }
 }
@@ -233,19 +284,19 @@ function renderKeyRateLimits(rows) {
   if (!keyRateLimitsNode) {
     return;
   }
-  keyRateLimitsNode.innerHTML = "";
   const items = Array.isArray(rows) ? rows : [];
   if (items.length === 0) {
-    keyRateLimitsNode.innerHTML = '<tr><td colspan="4">No key rate limits.</td></tr>';
+    setEmptyRow(keyRateLimitsNode, 4, "No key rate limits.");
     return;
   }
-  for (const row of items) {
+  clearNode(keyRateLimitsNode);
+  for (const item of items) {
     const tr = document.createElement("tr");
-    const key = row?.key != null ? String(row.key) : "-";
-    const kind = row?.kind != null ? String(row.kind) : "-";
-    const limit = row?.limit != null ? String(row.limit) : "-";
-    const remaining = row?.remaining != null ? String(row.remaining) : "-";
-    tr.innerHTML = `<td>${key}</td><td>${kind}</td><td>${limit}</td><td>${remaining}</td>`;
+    const key = item?.key != null ? String(item.key) : "-";
+    const kind = item?.kind != null ? String(item.kind) : "-";
+    const limit = item?.limit != null ? String(item.limit) : "-";
+    const remaining = item?.remaining != null ? String(item.remaining) : "-";
+    appendTextCells(tr, [key, kind, limit, remaining]);
     keyRateLimitsNode.appendChild(tr);
   }
 }
@@ -273,34 +324,39 @@ function renderReport(report) {
   const savings = totals.estimated_saved_usd;
   reportSavingsNode.textContent = typeof savings === "number" ? `$${savings.toFixed(4)}` : "-";
 
-  reportTableNode.innerHTML = "";
   const days = Array.isArray(report.days) ? [...report.days].reverse() : [];
   if (days.length === 0) {
-    reportTableNode.innerHTML = '<tr><td colspan="4">No usage recorded in this window.</td></tr>';
+    setEmptyRow(reportTableNode, 4, "No usage recorded in this window.");
     return;
   }
+  clearNode(reportTableNode);
   for (const day of days) {
     const tierSummary = Object.entries(day.tiers || {})
       .map(([tier, stats]) => `${tier}:${formatNumber(stats.requests)}`)
       .join(" ");
     const row = document.createElement("tr");
-    row.innerHTML = `<td>${day.day}</td><td>${formatNumber(day.requests)}</td><td>${formatNumber(
-      day.cache_hits
-    )}</td><td class="tier-summary">${tierSummary}</td>`;
+    appendTextCells(
+      row,
+      [day.day, formatNumber(day.requests), formatNumber(day.cache_hits), tierSummary],
+      ["", "", "", "tier-summary"]
+    );
     reportTableNode.appendChild(row);
   }
 }
 
 function renderCacheTrust(trust) {
-  cacheTrustTableNode.innerHTML = "";
   const falseHits = (trust && trust.false_hit_rates) || {};
   const diversity = (trust && trust.diversity) || {};
   const categories = [...new Set([...Object.keys(falseHits), ...Object.keys(diversity)])].sort();
   if (categories.length === 0) {
-    cacheTrustTableNode.innerHTML =
-      '<tr><td colspan="4">No shadow samples yet — cache trust data appears after L1 hits are sampled.</td></tr>';
+    setEmptyRow(
+      cacheTrustTableNode,
+      4,
+      "No shadow samples yet — cache trust data appears after L1 hits are sampled."
+    );
     return;
   }
+  clearNode(cacheTrustTableNode);
   for (const category of categories) {
     const shadow = falseHits[category];
     const div = diversity[category];
@@ -314,7 +370,7 @@ function renderCacheTrust(trust) {
         ? `${div.unique_answers}/${div.entries} (${(div.ratio * 100).toFixed(0)}%)`
         : "-";
     const row = document.createElement("tr");
-    row.innerHTML = `<td>${category}</td><td>${samples}</td><td>${rate}</td><td>${ratio}</td>`;
+    appendTextCells(row, [category, samples, rate, ratio]);
     cacheTrustTableNode.appendChild(row);
   }
 }
@@ -381,23 +437,29 @@ async function loadTraces() {
   try {
     const payload = await fetchJson(`${apiBaseUrl}/v1/daari/traces?limit=10`);
     const traces = Array.isArray(payload.traces) ? payload.traces : [];
-    tracesTableNode.innerHTML = "";
     if (traces.length === 0) {
-      tracesTableNode.innerHTML = '<tr><td colspan="4">No traces recorded yet.</td></tr>';
+      setEmptyRow(tracesTableNode, 4, "No traces recorded yet.");
       tracesStatusNode.textContent = "";
       return;
     }
+    clearNode(tracesTableNode);
     for (const trace of traces) {
       const row = document.createElement("tr");
       const shortId = String(trace.trace_id || "").slice(0, 8);
-      row.innerHTML = `<td>${trace.ts || "-"}</td><td>${trace.tier || "-"}</td><td>${
-        trace.category || "-"
-      }</td><td><button type="button" class="trace-link" data-trace-id="${trace.trace_id}">${shortId}</button></td>`;
+      appendTextCells(row, [trace.ts || "-", trace.tier || "-", trace.category || "-"]);
+      const td = document.createElement("td");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "trace-link";
+      button.textContent = shortId;
+      button.dataset.traceId = String(trace.trace_id || "");
+      td.appendChild(button);
+      row.appendChild(td);
       tracesTableNode.appendChild(row);
     }
     tracesStatusNode.textContent = "Click a trace id for the step timeline.";
   } catch (error) {
-    tracesTableNode.innerHTML = "";
+    clearNode(tracesTableNode);
     tracesStatusNode.textContent = `Traces unavailable (${error.message}).`;
   }
 }
@@ -618,14 +680,32 @@ async function saveConfigEditor() {
 }
 
 const apiKeyInput = document.getElementById("api-key");
+const rememberApiKeyNode = document.getElementById("remember-api-key");
+try {
+  localStorage.removeItem(API_KEY_STORAGE);
+} catch {
+  /* ignore */
+}
 if (apiKeyInput) {
   try {
-    apiKeyInput.value = localStorage.getItem(API_KEY_STORAGE) || "";
+    const sessionKey = (sessionStorage.getItem(API_KEY_STORAGE) || "").trim();
+    if (sessionKey) {
+      apiKeyInput.value = sessionKey;
+      memoryApiKey = sessionKey;
+      if (rememberApiKeyNode) {
+        rememberApiKeyNode.checked = true;
+      }
+    }
   } catch {
     /* ignore */
   }
   apiKeyInput.addEventListener("change", () => {
     persistApiKey(apiKeyInput.value);
+  });
+}
+if (rememberApiKeyNode) {
+  rememberApiKeyNode.addEventListener("change", () => {
+    persistApiKey(apiKeyInput ? apiKeyInput.value : memoryApiKey);
   });
 }
 

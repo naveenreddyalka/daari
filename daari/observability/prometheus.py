@@ -8,7 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from daari.observability.metrics import LATENCY_BUCKETS_MS, TTFT_BUCKETS_MS, Metrics
+from daari.observability.metrics import (
+    DECISION_CLASSIFIER_LATENCY_BUCKETS_MS,
+    LATENCY_BUCKETS_MS,
+    TTFT_BUCKETS_MS,
+    Metrics,
+)
 
 
 def _escape_label(value: str) -> str:
@@ -409,5 +414,47 @@ def render_prometheus(
             lines.append(
                 f"daari_cancelled_requests_total{_labels(phase=phase)} {int(count)}"
             )
+
+    classifier = snap.get("decision_classifier") or {}
+    if classifier:
+        lines.append(
+            "# HELP daari_decision_classifier_total Optional /v1/systemone "
+            "difficulty hop outcomes "
+            "(success, heuristic_fallback, error, skipped)."
+        )
+        lines.append("# TYPE daari_decision_classifier_total counter")
+        for outcome, count in sorted(classifier.items()):
+            lines.append(
+                f"daari_decision_classifier_total{_labels(outcome=str(outcome))} "
+                f"{int(count)}"
+            )
+
+    clf_latency = snap.get("decision_classifier_latency") or {}
+    if clf_latency and int(clf_latency.get("count") or 0) > 0:
+        lines.append(
+            "# HELP daari_decision_classifier_latency_ms Optional /v1/systemone "
+            "difficulty hop latency in milliseconds."
+        )
+        lines.append("# TYPE daari_decision_classifier_latency_ms histogram")
+        buckets = clf_latency.get("buckets") or {}
+        cumulative = 0
+        for bound in DECISION_CLASSIFIER_LATENCY_BUCKETS_MS:
+            cumulative += buckets.get(bound, 0)
+            lines.append(
+                f"daari_decision_classifier_latency_ms_bucket{_labels(le=str(bound))} "
+                f"{cumulative}"
+            )
+        cumulative += buckets.get("+Inf", 0)
+        lines.append(
+            f"daari_decision_classifier_latency_ms_bucket{_labels(le='+Inf')} "
+            f"{cumulative}"
+        )
+        lines.append(
+            "daari_decision_classifier_latency_ms_sum "
+            f"{int(clf_latency.get('total_ttft_ms') or 0)}"
+        )
+        lines.append(
+            f"daari_decision_classifier_latency_ms_count {int(clf_latency.get('count') or 0)}"
+        )
 
     return "\n".join(lines) + "\n"

@@ -69,10 +69,11 @@ Defaults apply to every key (including the master key). A virtual key's `--rpm` 
 Optional **modality-family** ceilings on a virtual key live in key metadata
 (`rate_families`) so chat cannot starve images (or the reverse) on a shared
 key (#1099). Families: `chat`, `embeddings`, `images`, `audio`, `moderations`,
-`rerank`, `ocr`, `mcp`, `other`. Each entry may set `rpm` and/or `tpm` (0 / omitted =
+`rerank`, `ocr`, `mcp`, `systemone`, `other`. Each entry may set `rpm` and/or `tpm` (0 / omitted =
 no family ceiling). Counters are `rpm:{key_id}:family:{name}` /
 `tpm:{key_id}:family:{name}` — exhausting `images` leaves `chat` open;
-exhausting `mcp` (`POST /mcp`, `/v1/mcp/*`) leaves `chat` open (#1202).
+exhausting `mcp` (`POST /mcp`, `/v1/mcp/*`) leaves `chat` open (#1202);
+exhausting `systemone` (`POST /v1/systemone`) leaves `chat` open (#1443).
 Unset `rate_families` preserves today's global key rpm/tpm only.
 
 ```bash
@@ -140,8 +141,12 @@ and attribution apply.
 | `PATCH /v1/daari/config` | `enterprise.sso.admin_min_role` (default `admin`) |
 | `POST /v1/daari/reload-caches`, `POST /v1/org-learning/sync` | `admin_min_role` |
 
-With SSO off (or no JWKS/secret configured), these gates are skipped so
-single-user installs stay open behind API-key middleware alone.
+With SSO off (or no JWKS/secret configured) and a master key set, admin-level
+gates (`PATCH /v1/daari/config`, reload-caches, …) require the master key —
+virtual keys get **403**. Analyst/read surfaces (`GET /v1/daari/config`, stats,
+traces) stay viewer-style for virtual keys. With no master key (sandbox hatch
+`dangerously_permit_weak_or_unset_api_key`), gates stay open; `daari doctor`
+warns that the config editor is ungoverned.
 
 ### IdP-minted virtual keys (MDM)
 

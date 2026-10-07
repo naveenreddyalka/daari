@@ -42,10 +42,35 @@ def test_anthropic_model_cards_match_openai_ids(settings) -> None:
     assert all(card["type"] == "model" for card in anthropic)
     assert all(card["display_name"] for card in anthropic)
     assert all(card["created_at"].endswith("Z") for card in anthropic)
+    assert all("line" in card for card in anthropic)
     payload = anthropic_models_payload(settings)
     assert payload["has_more"] is False
     assert payload["first_id"] == anthropic[0]["id"]
     assert payload["last_id"] == anthropic[-1]["id"]
+
+
+def test_anthropic_model_line_explicit_map() -> None:
+    from daari.router.capabilities import anthropic_model_line
+
+    assert anthropic_model_line("claude-sonnet-5") == "sonnet"
+    assert anthropic_model_line("claude-sonnet-5-5") == "sonnet"
+    assert anthropic_model_line("anthropic.claude-sonnet-5-5") == "sonnet"
+    assert anthropic_model_line("claude-opus-5") == "opus"
+    assert anthropic_model_line("claude-haiku-4-5") == "haiku"
+    assert anthropic_model_line("claude-fable-5-1") == "fable"
+    assert anthropic_model_line("claude-fable-5-1-20260901") == "fable"
+    # Local / unknown: null — never invent from free-form id tokens.
+    assert anthropic_model_line("daari") is None
+    assert anthropic_model_line("llama3.2:3b") is None
+    assert anthropic_model_line("gpt-6.1-sol") is None
+    assert anthropic_model_line("totally-unknown-model") is None
+
+
+def test_anthropic_model_cards_line_null_for_local(settings) -> None:
+    by_id = {card["id"]: card["line"] for card in anthropic_model_cards(settings)}
+    assert by_id.get("daari") is None
+    if "llama3.2:3b" in by_id:
+        assert by_id["llama3.2:3b"] is None
 
 
 @pytest.mark.asyncio
@@ -147,9 +172,31 @@ async def test_models_list_anthropic_shape_via_header(settings):
     assert body["data"][0]["type"] == "model"
     assert "display_name" in body["data"][0]
     assert "created_at" in body["data"][0]
+    assert "line" in body["data"][0]
     assert via_key.json()["data"][0]["type"] == "model"
     assert openai_shape.json()["object"] == "list"
     assert "capabilities" in openai_shape.json()["data"][0]
+
+
+@pytest.mark.asyncio
+async def test_models_retrieve_anthropic_shape_includes_line(settings):
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://test"
+    ) as client:
+        daari = await client.get(
+            "/v1/models/daari", headers={"anthropic-version": "2023-06-01"}
+        )
+        sonnet = await client.get(
+            "/v1/models/claude-sonnet-5-5",
+            headers={"anthropic-version": "2023-06-01"},
+        )
+    assert daari.status_code == 200
+    assert daari.json()["type"] == "model"
+    assert daari.json()["line"] is None
+    assert sonnet.status_code == 200
+    assert sonnet.json()["line"] == "sonnet"
 
 
 def test_extract_keeps_thinking_with_text() -> None:

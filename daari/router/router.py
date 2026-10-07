@@ -1199,6 +1199,14 @@ class Router:
         )
         return profile.model_copy(update={"category": category})
 
+    def _record_decision_classifier(
+        self, *, outcome: str, latency_ms: int = 0
+    ) -> None:
+        metrics = getattr(self, "metrics", None)
+        if metrics is None or not hasattr(metrics, "record_decision_classifier"):
+            return
+        metrics.record_decision_classifier(outcome=outcome, latency_ms=latency_ms)
+
     async def _apply_decision_classifier(
         self, request: InternalRequest, profile: PromptProfile
     ) -> PromptProfile:
@@ -1207,19 +1215,23 @@ class Router:
             return profile
         agent_turn = bool(request.tools) or request.has_tool_calls_in_history
         if agent_turn and not self.decision_classifier_agent_turns:
+            self._record_decision_classifier(outcome="skipped")
             return profile
         # Client override wins; do not spend a classifier hop.
         if (request.meta.tier_override or "").upper() in {"L3", "L4", "L5"}:
+            self._record_decision_classifier(outcome="skipped")
             return profile
         text = self._last_user_text(request.messages)
         if self.harness_aware_profile:
             text, _ = strip_harness_text(text)
         if not (text or "").strip():
+            self._record_decision_classifier(outcome="skipped")
             return profile
         from daari.gateway.request_log import log_gateway_event
         from daari.router.decision_classifier import classify_via_systemone
 
         base_url = getattr(self.ollama_l3, "base_url", "") or "http://127.0.0.1:11434"
+        started = time.perf_counter()
         try:
             result = await classify_via_systemone(
                 base_url=base_url,
@@ -1228,6 +1240,10 @@ class Router:
                 timeout_seconds=self.decision_classifier_timeout_seconds,
             )
         except Exception as exc:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            self._record_decision_classifier(
+                outcome="heuristic_fallback", latency_ms=latency_ms
+            )
             detail = {
                 "error": str(exc),
                 "model": self.decision_classifier_model,
@@ -1237,6 +1253,8 @@ class Router:
             log_gateway_event("decision_classifier_degraded", detail)
             return profile
 
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        self._record_decision_classifier(outcome="success", latency_ms=latency_ms)
         request.meta.decision_tier = result.tier
         request.meta.decision_classifier = {
             "model": result.model,

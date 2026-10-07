@@ -6042,6 +6042,106 @@ Covered by `tests/unit/test_savings_report_compact_docs.py`.
 the stable floor. Covered by `tests/unit/test_compare_litellm_1104.py`.
 
 
+### Require master key for config writes when SSO is off ([#1441](https://github.com/naveenreddyalka/daari/issues/1441))
+
+<!-- tracking:#1441 -->
+**Status:** Done (2026-10-06). With SSO off and a master key set, virtual keys
+get 403 on `PATCH /v1/daari/config` (and other `_require_admin_role` surfaces);
+master key still succeeds. `GET` stays viewer-style for virtual keys. Sandbox
+(no master key) stays open; `daari doctor` warns `config_editor_ungoverned`.
+Covered by `tests/unit/test_config_admin_master_key.py`.
+
+
+### Add gpt-6.1-sol pricing, capabilities, and param compat ([#1442](https://github.com/naveenreddyalka/daari/issues/1442))
+
+<!-- tracking:#1442 -->
+**Status:** Done (2026-10-06). Shipped `$2/$10` (cached `$0.10`, cache write
+`$2.50`) for `gpt-6.1-sol` with capabilities + GPT-6 family param compat; no
+invented above-272K surcharge. Covered by
+`tests/unit/test_gpt_6_1_sol_pricing.py`.
+
+
+### Forward systemone multimodal images + rate family ([#1443](https://github.com/naveenreddyalka/daari/issues/1443))
+
+<!-- tracking:#1443 -->
+**Status:** Done (2026-10-06). `POST /v1/systemone` accepts and forwards
+Ollama 0.35.1+ `images` (base64 list); `rate_limit_family` maps the path to
+`systemone`. Covered by `tests/unit/test_systemone.py`,
+`tests/unit/test_rate_families.py`.
+
+
+### Add claude-sonnet-5-5 pricing, capabilities, and param compat ([#1450](https://github.com/naveenreddyalka/daari/issues/1450))
+
+<!-- tracking:#1450 -->
+**Status:** Done (2026-10-06). Shipped `$2/$10` (cached `$0.20`, 1h cache write
+`$4.00`) for `claude-sonnet-5-5` with Claude 5.x capabilities and strip of
+non-default `temperature`/`top_p`/`top_k`. Covered by
+`tests/unit/test_claude_sonnet_5_5_pricing.py`.
+
+
+### Web-ui: escape DOM, CSP, session key storage ([#1444](https://github.com/naveenreddyalka/daari/issues/1444))
+
+<!-- tracking:#1444 -->
+**Status:** Done (2026-10-06). Dashboard renders API fields via `textContent`,
+ships a restrictive CSP meta, and keeps the Bearer key in memory /
+`sessionStorage` (opt-in) instead of `localStorage`. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
+
+### OCR modality Prometheus label, guardrails, OTel span ([#1445](https://github.com/naveenreddyalka/daari/issues/1445))
+
+<!-- tracking:#1445 -->
+**Status:** Done (2026-10-06). `ocr` is a first-class Prometheus modality;
+OCR page markdown runs through output guardrails; upstream calls emit a
+`daari.ocr` CLIENT span. Covered by `tests/unit/test_ocr.py`,
+`tests/unit/test_modality_metrics.py`.
+
+
+### Anthropic Models API `line` on native /v1/models ([#1451](https://github.com/naveenreddyalka/daari/issues/1451))
+
+<!-- tracking:#1451 -->
+**Status:** Done (2026-10-06). Anthropic-shaped model cards include nullable
+`line` from an explicit Claude family map; local/unknown ids stay null.
+Covered by `tests/unit/test_anthropic_gateway.py`.
+
+
+### Prometheus latency and outcome series for decision classifier ([#1452](https://github.com/naveenreddyalka/daari/issues/1452))
+
+<!-- tracking:#1452 -->
+**Status:** Done (2026-10-07). `daari_decision_classifier_total{outcome}` and
+`daari_decision_classifier_latency_ms` for the optional `/v1/systemone`
+difficulty hop (`success` / `heuristic_fallback` / `error` / `skipped`).
+Covered by `tests/unit/test_decision_classifier.py`,
+`tests/unit/test_prometheus.py`.
+
+
+### Classify fatal serve config and stop KeepAlive crash-loop spam ([#1453](https://github.com/naveenreddyalka/daari/issues/1453))
+
+<!-- tracking:#1453 -->
+**Status:** Done (2026-10-07). Watchdog classifies `master_key` / hard refuse
+stderr, skips kickstart, unloads serve for the cycle, and includes the
+reason in regression issue bodies. Covered by
+`tests/unit/test_autodev_local.py`.
+
+
+### compact_to_fit counts images/audio and protects multimodal turns ([#1454](https://github.com/naveenreddyalka/daari/issues/1454))
+
+<!-- tracking:#1454 -->
+**Status:** Done (2026-10-07). `estimate_tokens` adds per-image / per-audio
+heuristics; image-only and audio-only turns are protected like tool pairs.
+Covered by `tests/unit/test_compact_to_fit.py`.
+
+
+### Watchdog cursor smoke overwrites stale success JSON ([#1425](https://github.com/naveenreddyalka/daari/issues/1425))
+
+<!-- tracking:#1425 -->
+**Status:** Done (2026-10-07). Cursor-shaped smoke runs via
+`autodev_local.py cursor-smoke` and always rewrites `smoke-latest.json`,
+including on `ConnectError`, so FAIL logs cannot show a prior cycle's
+`status_code: 200` / `content_chunks > 0`. Daemon crash-loop root cause
+remains covered by #1453. Covered by `tests/unit/test_autodev_local.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

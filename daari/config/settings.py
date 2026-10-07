@@ -1028,6 +1028,17 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.20,
         "cache_write_1h_per_1m": 4.00,
     },
+    # Anthropic Claude Sonnet 5.5 (2026-09-28): same $2/$10 as Sonnet 5;
+    # cache read 0.1× ($0.20), 1h cache write 2× ($4.00).
+    # https://www.anthropic.com/claude-sonnet-5-5
+    # https://platform.claude.com/docs/en/about-claude/pricing
+    # Longer key must win over claude-sonnet-5 for dated/vendor ids.
+    "claude-sonnet-5-5": {
+        "input_per_1m": 2.00,
+        "output_per_1m": 10.00,
+        "cached_input_per_1m": 0.20,
+        "cache_write_1h_per_1m": 4.00,
+    },
     "claude-haiku-4-5": {
         "input_per_1m": 1.00,
         "output_per_1m": 5.00,
@@ -1044,6 +1055,15 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "input_threshold_tokens": 272_000,
         "above_input_per_1m": 20.00,
         "above_output_per_1m": 75.00,
+    },
+    # OpenAI gpt-6.1-sol (2026-09-29): $2/$10, cached $0.10, cache write $2.50.
+    # Prompts up to 272K; no published above-threshold surcharge (do not invent).
+    # cache_write_1h_per_1m stores the published cache-write rate for ledger paths.
+    "gpt-6.1-sol": {
+        "input_per_1m": 2.00,
+        "output_per_1m": 10.00,
+        "cached_input_per_1m": 0.10,
+        "cache_write_1h_per_1m": 2.50,
     },
     "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},

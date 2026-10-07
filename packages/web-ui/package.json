@@ -5,7 +5,7 @@
   "description": "DOM-level tests for the daari stats dashboard",
   "type": "module",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/*.test.js"
   },
   "devDependencies": {
     "jsdom": "^24.1.0"

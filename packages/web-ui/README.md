@@ -17,7 +17,9 @@ Use custom API base:
 daari web-ui serve --api-base-url http://127.0.0.1:11535
 ```
 
-When the daemon has `server.api_key` (or virtual keys / SSO JWT), paste the Bearer token into the **API key / Bearer** field in the toolbar — it is stored in `localStorage` and sent on all dashboard and config-editor requests.
+When the daemon has `server.api_key` (or virtual keys / SSO JWT), paste the Bearer token into the **API key / Bearer** field in the toolbar. By default the key stays in memory only (re-enter after reload). Check **Remember for this session** to keep it in `sessionStorage` for the browser tab; it is never written to `localStorage`. The key is sent as `Authorization: Bearer` on all dashboard and config-editor requests.
+
+**Config editor Save** requires the master key (or an SSO admin token). Virtual keys can Load (`GET`) the safe subset but get HTTP 403 on Save (`PATCH`) when a master key is set and SSO is off.
 
 Cross-origin note: the web-ui origin (`http://127.0.0.1:11437`) is separate from the gateway (`:11435`). With a Bearer key set, browsers send credentialed cross-origin requests — configure the gateway allowlist:
 

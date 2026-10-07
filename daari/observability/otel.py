@@ -73,6 +73,25 @@ def mcp_client_span(name: str, *, server_id: str, tool_name: str | None = None):
     Parent is the inbound W3C context when middleware extracted one. Missing
     OTel packages yield a no-op so egress stays usable offline.
     """
+    attrs: dict[str, Any] = {"mcp.server.id": str(server_id)}
+    if tool_name:
+        attrs["mcp.tool.name"] = str(tool_name)
+    with modality_client_span(name, attributes=attrs) as span:
+        yield span
+
+
+@contextmanager
+def modality_client_span(
+    name: str,
+    *,
+    attributes: dict[str, Any] | None = None,
+):
+    """CLIENT span for an outbound modality hop (OCR, MCP, …).
+
+    Parent is the inbound W3C context when middleware extracted one. Missing
+    OTel packages yield a no-op so egress stays usable offline. Exceptions
+    raised by the wrapped body propagate (setup failures become a no-op).
+    """
     try:
         from opentelemetry import trace as otel_trace
         from opentelemetry.trace import SpanKind
@@ -81,22 +100,20 @@ def mcp_client_span(name: str, *, server_id: str, tool_name: str | None = None):
         return
     try:
         tracer = otel_trace.get_tracer("daari")
-        attrs: dict[str, Any] = {"mcp.server.id": str(server_id)}
-        if tool_name:
-            attrs["mcp.tool.name"] = str(tool_name)
         span_kwargs: dict[str, Any] = {
             "kind": SpanKind.CLIENT,
-            "attributes": attrs,
+            "attributes": dict(attributes or {}),
         }
         inbound = _inbound_context.get()
         if inbound is not None:
             parent = otel_trace.get_current_span(inbound)
             if parent.get_span_context().is_valid:
                 span_kwargs["context"] = inbound
-        with tracer.start_as_current_span(name, **span_kwargs) as span:
-            yield span
     except Exception:
         yield None
+        return
+    with tracer.start_as_current_span(name, **span_kwargs) as span:
+        yield span
 
 
 def inject_trace_headers(

@@ -78,6 +78,8 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 
 `GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) expose per-field `ownership` (`source` / `editable` / `diverged`) for the safe subset, including `routing.decision_classifier.*`, `routing.compact_to_fit.*`, `observability.structured_json_logs`, and MCP knobs (`integrations.mcp_oauth.local_as` / `protected_resource`, `integrations.mcp_aggregate_egress.enabled`, `integrations.mcp_registry.enabled`, `integrations.mcp_policy.require_key_access_defined`). Secrets such as `integrations.mcp_oauth.signing_secret` stay non-editable and are omitted from the payload.
 
+**Auth:** With SSO off and a master key set, `PATCH` (and other admin surfaces) require the master key — virtual keys get **403**. `GET` keeps viewer-style read access for virtual keys (safe subset only). With SSO on, role gates apply (`analyst` for GET, `admin_min_role` for PATCH). With no master key (sandbox hatch), writes stay open; `daari doctor` warns that the config editor is ungoverned.
+
 ## Traces compact_to_fit
 
 `GET /v1/daari/traces` and `GET /v1/daari/traces/{trace_id}` include a `compact_to_fit` step with `tokens_before` / `tokens_after` when a compact-to-fit trim actually ran (no step when the message count is unchanged). Clients that skip `X-Daari-Meta` still see those FinOps fields on the trace.
@@ -92,3 +94,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 When `starting_after` is omitted, a non-negative integer `Last-Event-ID` header is treated the same way (invalid/negative values are ignored → resume from 0); an explicit query param wins over the header.
 
 Non-terminal (in-flight / `queued`) responses return **409** when `stream=true`. Plain GET (no `stream`) remains JSON.
+
+## Systemone
+
+`POST /v1/systemone` proxies Ollama decision models. The body accepts optional `images` (list of base64 strings, Ollama 0.35.1+ Clef multimodal) forwarded verbatim when present; omit the field for text-only scoring.

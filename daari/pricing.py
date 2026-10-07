@@ -66,13 +66,20 @@ def matching_model_key(model: str, keys: object) -> str | None:
 
 
 def _model_id_candidates(model: str) -> list[str]:
+    """Id plus vendor-/path-stripped suffixes.
+
+    ``openai.gpt-6.1-sol`` must still see ``gpt-6.1-sol`` — taking only the
+    final ``.`` segment yields ``1-sol`` and misses dotted OpenAI ids.
+    """
     candidates = [model]
     for sep in (".", "/"):
         if sep not in model:
             continue
-        tail = model.rsplit(sep, 1)[-1]
-        if tail and tail not in candidates:
-            candidates.append(tail)
+        parts = model.split(sep)
+        for i in range(1, len(parts)):
+            tail = sep.join(parts[i:])
+            if tail and tail not in candidates:
+                candidates.append(tail)
     return candidates
 
 

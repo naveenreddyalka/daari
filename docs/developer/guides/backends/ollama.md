@@ -64,6 +64,9 @@ curl -s http://127.0.0.1:11435/v1/systemone -d '{
 }'
 ```
 
+Ollama 0.35.1+ Clef multimodal models also accept `"images": ["<base64>", …]`
+alongside `state`; daari forwards them verbatim when present.
+
 Opt out with `systemone.enabled: false` (returns 501). Upstream is
 `ollama.base_url`; when Ollama is down the route returns typed
 `backend_unavailable` (503).

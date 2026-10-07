@@ -101,7 +101,8 @@ def render_config_reference() -> str:
             "[auth and keys](../guides/configuration/auth-and-keys.md).",
             "",
             "Per-key modality-family RPM/TPM (`chat` / `embeddings` / `images` / `audio` / "
-            "`moderations` / `rerank` / `ocr` / `mcp` / `other`) is also not a `rate_limit.*` setting — "
+            "`moderations` / `rerank` / `ocr` / `mcp` / `systemone` / `other`) is also not a "
+            "`rate_limit.*` setting — "
             "store it on the virtual key as metadata `rate_families` (see auth-and-keys). "
             "Unset families keep global key rpm/tpm only (#1099).",
             "",
@@ -145,6 +146,13 @@ def render_api_reference() -> str:
             "`integrations.mcp_oauth.signing_secret` stay non-editable and are omitted "
             "from the payload.",
             "",
+            "**Auth:** With SSO off and a master key set, `PATCH` (and other admin "
+            "surfaces) require the master key — virtual keys get **403**. `GET` keeps "
+            "viewer-style read access for virtual keys (safe subset only). With SSO on, "
+            "role gates apply (`analyst` for GET, `admin_min_role` for PATCH). With no "
+            "master key (sandbox hatch), writes stay open; `daari doctor` warns that the "
+            "config editor is ungoverned.",
+            "",
             "## Traces compact_to_fit",
             "",
             "`GET /v1/daari/traces` and `GET /v1/daari/traces/{trace_id}` include a "
@@ -168,6 +176,12 @@ def render_api_reference() -> str:
             "",
             "Non-terminal (in-flight / `queued`) responses return **409** when "
             "`stream=true`. Plain GET (no `stream`) remains JSON.",
+            "",
+            "## Systemone",
+            "",
+            "`POST /v1/systemone` proxies Ollama decision models. The body accepts optional "
+            "`images` (list of base64 strings, Ollama 0.35.1+ Clef multimodal) forwarded "
+            "verbatim when present; omit the field for text-only scoring.",
             "",
         ]
     )

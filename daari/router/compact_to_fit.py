@@ -2,14 +2,23 @@
 
 When enabled, oversized chat history is reduced to ``max_messages`` /
 ``max_tokens`` by dropping the oldest *unprotected* turns. System messages,
-assistant ``tool_calls`` payloads, and ``tool`` / ``function`` results are
-never deleted. If the remainder still exceeds the cap, the request is left
-oversized (fail closed) rather than dropping tools.
+assistant ``tool_calls`` payloads, ``tool`` / ``function`` results, and
+multimodal user turns that carry ``images`` / ``audio`` (#1454) are never
+deleted. If the remainder still exceeds the cap, the request is left
+oversized (fail closed) rather than dropping tools or the sole vision/audio
+payload.
 """
 
 from __future__ import annotations
 
 from daari.gateway.internal import Message
+
+# Heuristic floors so multimodal turns never look empty when ``content`` is
+# blank (#1454). Image floor tracks OpenAI low-detail vision (~85). Audio uses
+# a per-part floor plus base64 length / 100 when duration is unknown.
+TOKENS_PER_IMAGE = 85
+TOKENS_PER_AUDIO_FLOOR = 50
+AUDIO_BASE64_CHARS_PER_TOKEN = 100
 
 
 def _protected(message: Message) -> bool:
@@ -19,7 +28,21 @@ def _protected(message: Message) -> bool:
         return True
     if message.tool_call_id:
         return True
+    # Sole multimodal payload must survive compaction like tool pairs (#1454).
+    if message.images or message.audio:
+        return True
     return False
+
+
+def _multimodal_tokens(message: Message) -> int:
+    total = TOKENS_PER_IMAGE * len(message.images or [])
+    for part in message.audio or []:
+        data_len = len(getattr(part, "data", None) or "")
+        total += max(
+            TOKENS_PER_AUDIO_FLOOR,
+            (data_len + AUDIO_BASE64_CHARS_PER_TOKEN - 1) // AUDIO_BASE64_CHARS_PER_TOKEN,
+        )
+    return total
 
 
 def estimate_tokens(messages: list[Message]) -> int:
@@ -28,6 +51,7 @@ def estimate_tokens(messages: list[Message]) -> int:
         total += max(1, (len(message.content or "") + 3) // 4)
         if message.tool_calls:
             total += max(1, (len(str(message.tool_calls)) + 3) // 4)
+        total += _multimodal_tokens(message)
     return total
 
 
