@@ -6115,6 +6115,15 @@ Covered by `tests/unit/test_decision_classifier.py`,
 `tests/unit/test_prometheus.py`.
 
 
+### Classify fatal serve config and stop KeepAlive crash-loop spam ([#1453](https://github.com/naveenreddyalka/daari/issues/1453))
+
+<!-- tracking:#1453 -->
+**Status:** Done (2026-10-07). Watchdog classifies `master_key` / hard refuse
+stderr, skips kickstart, unloads serve for the cycle, and includes the
+reason in regression issue bodies. Covered by
+`tests/unit/test_autodev_local.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

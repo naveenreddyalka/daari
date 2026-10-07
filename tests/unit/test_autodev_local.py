@@ -12,8 +12,11 @@ _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "autodev_local.py"
 
 @pytest.fixture(scope="module")
 def autodev_local():
+    import sys
+
     spec = importlib.util.spec_from_file_location("autodev_local", _SCRIPT)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -159,13 +162,13 @@ def test_watchdog_serve_plist_permits_weak_or_unset_master_key() -> None:
 def test_watchdog_skips_cursor_smoke_when_daemon_unreachable() -> None:
     text = _WATCHDOG_SH.read_text(encoding="utf-8")
     assert "SKIP: cursor smoke" in text
-    assert "daemon unreachable" in text
+    assert "daemon_unreachable" in text
 
 
 def test_watchdog_skips_live_integration_when_daemon_unreachable() -> None:
     text = _WATCHDOG_SH.read_text(encoding="utf-8")
     assert "SKIP: live integration (daemon unreachable)" in text
-    assert "daemon unreachable" in text
+    assert "daemon_unreachable" in text
 
 
 def test_watchdog_issue_body_includes_serve_stderr_tail() -> None:
@@ -177,3 +180,58 @@ def test_watchdog_dedupes_open_issues_by_failure_list() -> None:
     text = _WATCHDOG_SH.read_text(encoding="utf-8")
     assert "skip-create" in text
     assert "body" in text
+
+
+# Sample serve.err.log tails from the 2026-10-05 KeepAlive crash loop (#1453).
+_SAMPLE_MASTER_KEY_REFUSE = """
+INFO:     Waiting for application startup.
+  ✗ master_key: refusing to serve: server.api_key unset
+"""
+
+_SAMPLE_WEAK_KEY_REFUSE = """
+  ✗ master_key: refusing to serve: server.api_key matches weak denylist ('changeme') — choose a unique secret, or set server.dangerously_permit_weak_or_unset_api_key: true for local sandboxes
+"""
+
+_SAMPLE_BOOTING = """
+INFO:     Started server process [12345]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+"""
+
+
+class TestClassifyFatalServeConfig:
+    def test_master_key_unset_refuse(self, autodev_local):
+        hit = autodev_local.classify_fatal_serve_config(_SAMPLE_MASTER_KEY_REFUSE)
+        assert hit is not None
+        assert hit.reason == "master_key_refuse"
+        assert "refusing to serve" in hit.matched.lower()
+
+    def test_weak_denylist_refuse(self, autodev_local):
+        hit = autodev_local.classify_fatal_serve_config(_SAMPLE_WEAK_KEY_REFUSE)
+        assert hit is not None
+        assert hit.reason == "master_key_refuse"
+
+    def test_booting_stderr_is_not_fatal(self, autodev_local):
+        assert autodev_local.classify_fatal_serve_config(_SAMPLE_BOOTING) is None
+
+    def test_empty_stderr_is_not_fatal(self, autodev_local):
+        assert autodev_local.classify_fatal_serve_config("") is None
+        assert autodev_local.classify_fatal_serve_config(None) is None
+
+    def test_should_skip_kickstart_on_fatal(self, autodev_local):
+        hit = autodev_local.classify_fatal_serve_config(_SAMPLE_MASTER_KEY_REFUSE)
+        assert autodev_local.should_skip_serve_kickstart(hit) is True
+        assert autodev_local.should_skip_serve_kickstart(None) is False
+
+    def test_failure_bullet_includes_classified_reason(self, autodev_local):
+        hit = autodev_local.classify_fatal_serve_config(_SAMPLE_MASTER_KEY_REFUSE)
+        bullet = autodev_local.daemon_unreachable_failure_bullet(hit)
+        assert bullet.startswith("daemon unreachable")
+        assert "master_key_refuse" in bullet
+
+
+def test_watchdog_classifies_fatal_config_before_kickstart() -> None:
+    text = _WATCHDOG_SH.read_text(encoding="utf-8")
+    assert "classify-fatal" in text
+    assert "FATAL_SERVE_CONFIG" in text
+    assert "skip kickstart" in text.lower() or "Skipping kickstart" in text
