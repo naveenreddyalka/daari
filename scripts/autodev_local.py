@@ -7,6 +7,9 @@ backoff instead.
 
 Fatal-config stderr (master_key refuse, #1453) must not busy-kickstart: classify
 the serve.err.log tail and skip KeepAlive-style restarts for that watchdog cycle.
+
+Cursor smoke (#1425) always overwrites smoke-latest.json — including on
+ConnectError — so FAIL logs never echo a prior cycle's 200 / content_chunks.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import httpx
@@ -168,6 +172,100 @@ def should_skip_regression_create(
     return False
 
 
+class CursorSmokeResult(NamedTuple):
+    """Outcome of the Cursor-shaped streaming smoke probe (#1425)."""
+
+    ok: bool
+    status_code: int | None
+    content_chunks: int
+    error: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "status_code": self.status_code,
+            "content_chunks": self.content_chunks,
+        }
+        if self.error:
+            payload["error"] = self.error
+        return payload
+
+
+def _count_content_delta_chunks(stream_text: str) -> int:
+    return sum(
+        1 for ln in (stream_text or "").splitlines() if '"content"' in ln and '"delta"' in ln
+    )
+
+
+def _cursor_smoke_payload() -> dict[str, Any]:
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": f"tool_{i}",
+                "description": "ide tool",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+        for i in range(18)
+    ]
+    return {
+        "model": "daari",
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "messages": [
+            {"role": "system", "content": "You are a coding assistant with tools."},
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": "What is 2 plus 2?"}],
+            },
+        ],
+        "tools": tools,
+    }
+
+
+def run_cursor_smoke(
+    daemon_url: str,
+    out_path: str | Path,
+    *,
+    post: Callable[..., Any] | None = None,
+    timeout: float = 120.0,
+) -> CursorSmokeResult:
+    """POST a Cursor-shaped stream request; always overwrite out_path (#1425).
+
+    A prior-run success JSON must never survive a ConnectError — the watchdog
+    used to `cat smoke-latest.json` after an uncaught exception and log a
+    false 200 / content_chunks > 0 from the previous cycle.
+    """
+    import json
+
+    path = Path(out_path)
+    root = daemon_url.rstrip("/")
+    post_fn = post or (lambda url, **kwargs: httpx.post(url, **kwargs))
+    try:
+        response = post_fn(
+            f"{root}/v1/chat/completions",
+            json=_cursor_smoke_payload(),
+            timeout=timeout,
+        )
+        status = int(getattr(response, "status_code", 0) or 0)
+        chunks = _count_content_delta_chunks(str(getattr(response, "text", "") or ""))
+        result = CursorSmokeResult(
+            ok=status == 200 and chunks > 0,
+            status_code=status,
+            content_chunks=chunks,
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any transport failure to the JSON
+        result = CursorSmokeResult(
+            ok=False,
+            status_code=None,
+            content_chunks=0,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result.as_dict()), encoding="utf-8")
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     import sys
 
@@ -207,9 +305,14 @@ def main(argv: list[str] | None = None) -> int:
         title = args[1] if len(args) > 1 else ""
         failures = args[2:]
         return 0 if should_skip_regression_create(nodes, title, failures) else 1
+    if len(args) == 3 and args[0] == "cursor-smoke":
+        result = run_cursor_smoke(args[1], args[2])
+        print(f"smoke: {result.as_dict()}")
+        return 0 if result.ok else 1
     print(
         "usage: autodev_local.py {wait|ready} <daemon-base-url>"
         " | classify-fatal [stderr-path|-]"
+        " | cursor-smoke <daemon-base-url> <out-json-path>"
         " | skip-create <title> <failure> ...  # GraphQL JSON on stdin",
         file=sys.stderr,
     )

@@ -235,3 +235,73 @@ def test_watchdog_classifies_fatal_config_before_kickstart() -> None:
     assert "classify-fatal" in text
     assert "FATAL_SERVE_CONFIG" in text
     assert "skip kickstart" in text.lower() or "Skipping kickstart" in text
+
+
+class TestCursorSmoke:
+    """Cursor-shaped smoke must never log a stale prior-run success (#1425)."""
+
+    def test_success_writes_chunks_and_exits_zero(self, autodev_local, tmp_path):
+        out = tmp_path / "smoke.json"
+        # Prior-run success left on disk — must be overwritten.
+        out.write_text('{"status_code": 200, "content_chunks": 99}', encoding="utf-8")
+
+        class _Resp:
+            status_code = 200
+            text = 'data: {"choices":[{"delta":{"content":"4"}}]}\n'
+
+        result = autodev_local.run_cursor_smoke(
+            "http://127.0.0.1:11435",
+            out,
+            post=lambda *_a, **_k: _Resp(),
+        )
+        assert result.ok is True
+        assert result.status_code == 200
+        assert result.content_chunks >= 1
+        assert out.read_text(encoding="utf-8")
+        import json
+
+        written = json.loads(out.read_text(encoding="utf-8"))
+        assert written["status_code"] == 200
+        assert written["content_chunks"] >= 1
+        assert "error" not in written
+
+    def test_connect_error_overwrites_stale_success(self, autodev_local, tmp_path):
+        out = tmp_path / "smoke.json"
+        out.write_text('{"status_code": 200, "content_chunks": 1}', encoding="utf-8")
+
+        def boom(*_a, **_k):
+            raise ConnectionError("Connection refused")
+
+        result = autodev_local.run_cursor_smoke(
+            "http://127.0.0.1:11435",
+            out,
+            post=boom,
+        )
+        assert result.ok is False
+        import json
+
+        written = json.loads(out.read_text(encoding="utf-8"))
+        assert written["status_code"] is None
+        assert written["content_chunks"] == 0
+        assert "refused" in written["error"].lower() or "Connection" in written["error"]
+
+    def test_zero_chunks_is_failure(self, autodev_local, tmp_path):
+        out = tmp_path / "smoke.json"
+
+        class _Resp:
+            status_code = 200
+            text = 'data: {"choices":[{"delta":{}}]}\n'
+
+        result = autodev_local.run_cursor_smoke(
+            "http://127.0.0.1:11435",
+            out,
+            post=lambda *_a, **_k: _Resp(),
+        )
+        assert result.ok is False
+        assert result.content_chunks == 0
+
+
+def test_watchdog_shell_uses_cursor_smoke_helper() -> None:
+    text = _WATCHDOG_SH.read_text(encoding="utf-8")
+    assert "cursor-smoke" in text
+    assert "run_cursor_smoke" in text or "autodev_local.py" in text

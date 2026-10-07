@@ -178,33 +178,13 @@ else
 fi
 
 # --- 4. Cursor-shaped E2E smoke (18 tools + input_text, streaming) -------------
+# Always go through autodev_local.py cursor-smoke so ConnectError overwrites
+# smoke-latest.json (stale prior-run 200/chunks must not appear in FAIL logs).
 if daemon_unreachable; then
   log "SKIP: cursor smoke (daemon unreachable)"
 else
 SMOKE_OUT="$LOG_DIR/smoke-latest.json"
-"$VENV/bin/python" - "$DAEMON_URL" "$SMOKE_OUT" <<'PY' >> "$RUN_LOG" 2>&1
-import json, sys
-import httpx
-
-daemon, out_path = sys.argv[1], sys.argv[2]
-tools = [{"type": "function", "function": {"name": f"tool_{i}", "description": "ide tool",
-          "parameters": {"type": "object", "properties": {}}}} for i in range(18)]
-payload = {
-    "model": "daari", "stream": True, "stream_options": {"include_usage": True},
-    "messages": [
-        {"role": "system", "content": "You are a coding assistant with tools."},
-        {"role": "user", "content": [{"type": "input_text", "text": "What is 2 plus 2?"}]},
-    ],
-    "tools": tools,
-}
-r = httpx.post(f"{daemon}/v1/chat/completions", json=payload, timeout=120)
-chunks = sum(1 for ln in r.text.splitlines() if '"content"' in ln and '"delta"' in ln)
-result = {"status_code": r.status_code, "content_chunks": chunks}
-json.dump(result, open(out_path, "w"))
-print(f"smoke: {result}")
-sys.exit(0 if r.status_code == 200 and chunks > 0 else 1)
-PY
-if [ $? -eq 0 ]; then
+if "$VENV/bin/python" "$REPO/scripts/autodev_local.py" cursor-smoke "$DAEMON_URL" "$SMOKE_OUT" >> "$RUN_LOG" 2>&1; then
   log "cursor smoke: PASS ($(cat "$SMOKE_OUT" 2>/dev/null))"
 else
   log "FAIL: cursor smoke ($(cat "$SMOKE_OUT" 2>/dev/null))"
