@@ -273,6 +273,7 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 |-------|------:|-------------:|---------------:|-------:|--------|
 | `claude-fable-5-1` | 10.00 | 0.25 | 20.00 | 50.00 | [Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview) |
 | `claude-opus-5` | 5.00 | 0.50 | 10.00 | 25.00 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) |
+| `claude-opus-5-5` | 4.00 | 0.40 | 8.00 | 20.00 | LiteLLM 1.104 / Anthropic Opus 5.5 (2026-10-03); non-default temperature/top_p/top_k stripped |
 | `claude-sonnet-5` | 2.00 | 0.20 | 4.00 | 10.00 | Anthropic pricing |
 | `claude-sonnet-5-5` | 2.00 | 0.20 | 4.00 | 10.00 | [Sonnet 5.5](https://www.anthropic.com/claude-sonnet-5-5) (2026-09-28); same $2/$10 as Sonnet 5; non-default temperature/top_p/top_k stripped |
 | `claude-haiku-4-5` | 1.00 | 0.10 | 2.00 | 5.00 | Anthropic pricing |

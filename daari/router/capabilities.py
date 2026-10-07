@@ -27,6 +27,7 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
     for name in (
         "claude-fable-5-1",
         "claude-opus-5",
+        "claude-opus-5-5",
         "claude-sonnet-5",
         "claude-sonnet-5-5",
         "claude-haiku-4-5",
@@ -229,6 +230,7 @@ _ANTHROPIC_MODEL_LINES: dict[str, str] = {
     "claude-sonnet-5": "sonnet",
     "claude-3-5-sonnet": "sonnet",
     "claude-opus-5": "opus",
+    "claude-opus-5-5": "opus",
     "claude-3-opus": "opus",
     "claude-haiku-4-5": "haiku",
     "claude-3-5-haiku": "haiku",

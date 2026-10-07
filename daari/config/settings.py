@@ -1022,6 +1022,16 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.50,
         "cache_write_1h_per_1m": 10.00,
     },
+    # Anthropic Claude Opus 5.5 (LiteLLM 1.104, 2026-10-03): $4/$20;
+    # cache read 0.1× ($0.40), 1h cache write 2× ($8.00).
+    # Longer key must win over claude-opus-5 for dated/vendor ids.
+    # https://docs.litellm.ai/release_notes/v1.104.0/v1-104-0
+    "claude-opus-5-5": {
+        "input_per_1m": 4.00,
+        "output_per_1m": 20.00,
+        "cached_input_per_1m": 0.40,
+        "cache_write_1h_per_1m": 8.00,
+    },
     "claude-sonnet-5": {
         "input_per_1m": 2.00,
         "output_per_1m": 10.00,

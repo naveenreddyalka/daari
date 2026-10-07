@@ -6150,6 +6150,14 @@ remains covered by #1453. Covered by `tests/unit/test_autodev_local.py`.
 sampler strip (none published). Covered by `tests/unit/test_grok_4_7_pricing.py`.
 
 
+### claude-opus-5-5 pricing, capabilities, and param compat ([#1467](https://github.com/naveenreddyalka/daari/issues/1467))
+
+<!-- tracking:#1467 -->
+**Status:** Done (2026-10-07). Lab $4/$20 + cache rates for `claude-opus-5-5`
+(LiteLLM 1.104); capabilities + Anthropic `line: opus`; sampler strip matches
+Sonnet 5.5. Covered by `tests/unit/test_claude_opus_5_5_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
