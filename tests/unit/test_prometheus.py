@@ -117,6 +117,24 @@ class TestRenderPrometheus:
         text = render_prometheus(metrics)
         assert "daari_mcp_grant_denied_total 1" in text
 
+    def test_decision_classifier_outcome_and_latency(self):
+        """Classifier outcome counter + latency histogram (#1452)."""
+        metrics = Metrics()
+        metrics.record_decision_classifier(outcome="success", latency_ms=40)
+        metrics.record_decision_classifier(outcome="heuristic_fallback", latency_ms=80)
+        metrics.record_decision_classifier(outcome="skipped")
+        metrics.record_decision_classifier(outcome="error", latency_ms=5)
+        text = render_prometheus(metrics)
+        assert "# TYPE daari_decision_classifier_total counter" in text
+        assert 'daari_decision_classifier_total{outcome="success"} 1' in text
+        assert 'daari_decision_classifier_total{outcome="heuristic_fallback"} 1' in text
+        assert 'daari_decision_classifier_total{outcome="skipped"} 1' in text
+        assert 'daari_decision_classifier_total{outcome="error"} 1' in text
+        assert "# TYPE daari_decision_classifier_latency_ms histogram" in text
+        assert 'daari_decision_classifier_latency_ms_bucket{le="50"} 2' in text
+        assert "daari_decision_classifier_latency_ms_sum 125" in text
+        assert "daari_decision_classifier_latency_ms_count 3" in text
+
 
 @pytest.mark.asyncio
 async def test_metrics_endpoint_open_without_auth(settings):

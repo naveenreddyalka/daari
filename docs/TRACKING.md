@@ -6105,6 +6105,16 @@ OCR page markdown runs through output guardrails; upstream calls emit a
 Covered by `tests/unit/test_anthropic_gateway.py`.
 
 
+### Prometheus latency and outcome series for decision classifier ([#1452](https://github.com/naveenreddyalka/daari/issues/1452))
+
+<!-- tracking:#1452 -->
+**Status:** Done (2026-10-07). `daari_decision_classifier_total{outcome}` and
+`daari_decision_classifier_latency_ms` for the optional `/v1/systemone`
+difficulty hop (`success` / `heuristic_fallback` / `error` / `skipped`).
+Covered by `tests/unit/test_decision_classifier.py`,
+`tests/unit/test_prometheus.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

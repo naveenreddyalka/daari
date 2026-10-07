@@ -169,7 +169,11 @@ request continues with today's heuristics and logs
 `decision_classifier_degraded`. Ask turns only unless
 `routing.decision_classifier.agent_turns` is true. Trace step
 `decision_classifier` and `daari_meta.decision` record model, answer,
-complexity, and chosen tier.
+complexity, and chosen tier. Prometheus exposes
+`daari_decision_classifier_total{outcome}`
+(`success` / `heuristic_fallback` / `error` / `skipped`) and
+`daari_decision_classifier_latency_ms` (see
+[metrics-prometheus.md](../guides/observability/metrics-prometheus.md)).
 
 ## Compact-to-fit before L6
 
