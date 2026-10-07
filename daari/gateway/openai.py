@@ -1295,6 +1295,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 return parsed
             return await handle_systemone(request, parsed)
 
+        @router.post("/v1/decisions", response_model=None)
+        async def decisions(body: dict[str, Any], request: Request) -> Any:
+            """OpenAI Decisions beta via local models or gpt-6-luna (#1474)."""
+            from daari.gateway.decisions import handle_decisions, parse_decisions_body
+            from fastapi.responses import JSONResponse
+
+            parsed = parse_decisions_body(body)
+            if isinstance(parsed, JSONResponse):
+                return parsed
+            return await handle_decisions(request, parsed)
+
         @router.post("/v1/ocr", response_model=None)
         async def ocr(body: dict[str, Any], request: Request) -> Any:
             """LiteLLM/Mistral-shaped OCR via local multimodal or L6 (#1263)."""

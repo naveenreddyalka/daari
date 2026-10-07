@@ -1075,6 +1075,13 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 2.50,
     },
+    # OpenAI Decisions API gpt-6-luna (2026-10-06 public beta): $0.10 / 1M input;
+    # no cache-read, cache-write, or output-token charges.
+    # https://developers.openai.com/api/docs/guides/decisions
+    "gpt-6-luna": {
+        "input_per_1m": 0.10,
+        "output_per_1m": 0.0,
+    },
     "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-terra": {"input_per_1m": 2.00, "output_per_1m": 12.00, "cached_input_per_1m": 0.20},

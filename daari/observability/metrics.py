@@ -26,6 +26,7 @@ MODALITIES = frozenset(
         "moderations",
         "rerank",
         "systemone",
+        "decisions",
         "ocr",
     }
 )
@@ -40,6 +41,7 @@ GENAI_OPERATION_NAMES: dict[str, str] = {
     "moderations": "moderation",
     "rerank": "rerank",
     "systemone": "systemone",
+    "decisions": "decisions",
     "ocr": "ocr",
 }
 
@@ -63,6 +65,8 @@ def infer_modality(tier: str, modality: str | None = None) -> str:
         return "rerank"
     if t == "systemone":
         return "systemone"
+    if t == "decisions":
+        return "decisions"
     if t == "ocr":
         return "ocr"
     return "chat"
