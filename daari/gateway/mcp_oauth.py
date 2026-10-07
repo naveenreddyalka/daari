@@ -29,6 +29,8 @@ _log = logging.getLogger(__name__)
 
 _MCP_OAUTH_ISS = "daari-mcp"
 _TOKEN_TYP = "mcp_at"
+AUDIT_TOKEN_MINTED = "mcp_oauth.token_minted"
+AUDIT_TOKEN_DENIED = "mcp_oauth.token_denied"
 
 
 def mcp_oauth_enabled(settings: Any) -> bool:
@@ -161,6 +163,35 @@ def signing_secret_for(settings: Any) -> str:
         return hmac.new(b"daari-mcp-oauth-v1", master.encode("utf-8"), hashlib.sha256).hexdigest()
     # Local-only fallback when no master key (virtual-key installs).
     return hmac.new(b"daari-mcp-oauth-v1", b"local-as", hashlib.sha256).hexdigest()
+
+
+def _audit_token_event(
+    settings: Any,
+    *,
+    action: str,
+    claims: AuthClaims | None = None,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    """Write mint/deny to the enterprise audit sink — never the raw token (#1468)."""
+    try:
+        from daari.enterprise.postgres_audit import audit_log_from_settings
+
+        if claims is None:
+            actor, role = "anonymous", "anonymous"
+        else:
+            kind = claims.kind or "anonymous"
+            if kind == "virtual" and claims.key_id:
+                actor, role = str(claims.key_id), str(claims.client_id or kind)
+            else:
+                actor, role = kind, kind
+        audit_log_from_settings(settings).record(
+            actor=actor,
+            role=role,
+            action=action,
+            detail=detail or {},
+        )
+    except Exception:
+        _log.debug("mcp_oauth.audit_failed action=%s", action, exc_info=True)
 
 
 def mint_access_token(
@@ -339,6 +370,11 @@ def build_mcp_oauth_router(settings: Any) -> APIRouter:
                     form = {}
             grant = str(form.get("grant_type") or "").strip()
             if grant != "client_credentials":
+                _audit_token_event(
+                    settings,
+                    action=AUDIT_TOKEN_DENIED,
+                    detail={"reason": "unsupported_grant_type", "grant_type": grant},
+                )
                 return _oauth_error(
                     400,
                     "unsupported_grant_type",
@@ -346,6 +382,11 @@ def build_mcp_oauth_router(settings: Any) -> APIRouter:
                 )
             client_secret = _extract_client_secret(request, form)
             if not client_secret:
+                _audit_token_event(
+                    settings,
+                    action=AUDIT_TOKEN_DENIED,
+                    detail={"reason": "invalid_client", "cause": "missing_client_secret"},
+                )
                 return _oauth_error(401, "invalid_client", "Missing client_secret.")
             store = getattr(getattr(request.app, "state", None), "virtual_key_store", None)
             server = getattr(settings, "server", None)
@@ -353,6 +394,12 @@ def build_mcp_oauth_router(settings: Any) -> APIRouter:
             claims = resolve_auth(client_secret, master_key=master, store=store)
             if claims is None or claims.kind == "expired":
                 _log.info("mcp_oauth.token_denied reason=invalid_client")
+                _audit_token_event(
+                    settings,
+                    action=AUDIT_TOKEN_DENIED,
+                    claims=claims,
+                    detail={"reason": "invalid_client"},
+                )
                 return _oauth_error(401, "invalid_client", "Invalid client credentials.")
             scope = str(form.get("scope") or "mcp").strip() or "mcp"
             token, expires_in = mint_access_token(settings, claims, scope=scope)
@@ -363,6 +410,17 @@ def build_mcp_oauth_router(settings: Any) -> APIRouter:
                 claims.kind,
                 expires_in,
                 token_fp,
+            )
+            _audit_token_event(
+                settings,
+                action=AUDIT_TOKEN_MINTED,
+                claims=claims,
+                detail={
+                    "kind": claims.kind,
+                    "expires_in": expires_in,
+                    "scope": scope,
+                    "token_fp": token_fp,
+                },
             )
             return JSONResponse(
                 status_code=200,

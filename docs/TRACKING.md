@@ -6158,6 +6158,15 @@ sampler strip (none published). Covered by `tests/unit/test_grok_4_7_pricing.py`
 Sonnet 5.5. Covered by `tests/unit/test_claude_opus_5_5_pricing.py`.
 
 
+### MCP OAuth mint/deny audit_log events ([#1468](https://github.com/naveenreddyalka/daari/issues/1468))
+
+<!-- tracking:#1468 -->
+**Status:** Done (2026-10-07). `POST /oauth/token` records
+`mcp_oauth.token_minted` / `mcp_oauth.token_denied` via the enterprise audit
+sink (kind, expires_in, scope, token fingerprint — never the raw token).
+Covered by `tests/unit/test_mcp_oauth_token_mint.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
