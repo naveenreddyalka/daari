@@ -279,6 +279,7 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 | `claude-haiku-4-5` | 1.00 | 0.10 | 2.00 | 5.00 | Anthropic pricing |
 | `gpt-6-astra` | 10.00 | 1.00 | — | 50.00 | OpenAI; ≥272K input → $20 / $2 / $75 |
 | `gpt-6.1-sol` | 2.00 | 0.10 | 2.50 | 10.00 | OpenAI (2026-09-29); 5× cheaper than Astra; no published above-272K surcharge |
+| `gpt-6-luna` | 0.10 | — | — | 0.50 | Chat/Responses. `POST /v1/decisions` is input-only: $0.10 in, $0 out, $0 cache |
 | `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | — | 20.00 | OpenAI promo through 2026-11-21 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)) |
 | `gpt-5.6-terra` | 2.00 | 0.20 | — | 12.00 | OpenAI API pricing |
 | `gpt-5.6-luna` | 0.20 | 0.02 | — | 1.20 | OpenAI API pricing |

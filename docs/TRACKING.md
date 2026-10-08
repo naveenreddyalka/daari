@@ -6236,6 +6236,15 @@ responses_multi_agent=v1`); local / no-frontier paths return an honest 400.
 local ids). Covered by `tests/unit/test_anthropic_gateway.py`.
 
 
+### Age-encrypt backup create/restore round-trip ([#1482](https://github.com/naveenreddyalka/daari/issues/1482))
+
+<!-- tracking:#1482 -->
+**Status:** Done (2026-10-08). Hermetic age encrypt/restore covers virtual keys,
+spend, and audit when `age` is on PATH, and skips when it is not. Missing
+recipient and missing identity stay fail-closed with `BackupError`. Covered by
+`tests/unit/test_backup_restore.py`.
+
+
 ### Grafana panels for decision classifier series ([#1483](https://github.com/naveenreddyalka/daari/issues/1483))
 
 <!-- tracking:#1483 -->
@@ -6243,6 +6252,16 @@ local ids). Covered by `tests/unit/test_anthropic_gateway.py`.
 `daari_decision_classifier_total` by outcome and
 `daari_decision_classifier_latency_ms` p50/p95. Covered by
 `tests/unit/test_grafana_dashboard.py`.
+
+
+### Decisions-path input-only rates for gpt-6-luna ([#1484](https://github.com/naveenreddyalka/daari/issues/1484))
+
+<!-- tracking:#1484 -->
+**Status:** Done (2026-10-08). Chat/Responses keep $0.10 / $0.50 for
+`gpt-6-luna`. `POST /v1/decisions` bills that id input-only ($0.10, $0 output,
+$0 cache read/write) via `billing_path="decisions"`. Covered by
+`tests/unit/test_gpt_6_luna_decisions_pricing.py` and
+`tests/unit/test_decisions.py`.
 
 
 ## How to update
