@@ -6218,6 +6218,16 @@ Teams sections plus spend breakdown from `report.teams` /
 and `packages/web-ui/test/dashboard.test.js`.
 
 
+### Responses multi-agent beta fields (#1478)
+
+<!-- tracking:#1478 -->
+**Status:** Done (2026-10-08). `ResponsesRequest.multi_agent` is declared and
+forwarded on the L6 OpenAI payload (plus `OpenAI-Beta:
+responses_multi_agent=v1`); local / no-frontier paths return an honest 400.
+`unsupported_responses_tools` is wired at ingress. Covered by
+`tests/unit/test_responses_multi_agent.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

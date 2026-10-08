@@ -69,6 +69,13 @@ def unsupported_responses_tools(tools: list[dict[str, Any]] | None) -> list[str]
     return bad
 
 
+def multi_agent_enabled(multi_agent: dict[str, Any] | None) -> bool:
+    """True when the Responses multi-agent beta asks for delegation (#1478)."""
+    if not isinstance(multi_agent, dict):
+        return False
+    return bool(multi_agent.get("enabled"))
+
+
 def _reasoning_summary_text(item: dict[str, Any]) -> str:
     summary = item.get("summary")
     if isinstance(summary, list):
@@ -133,6 +140,8 @@ class ResponsesRequest(BaseModel):
     prompt_cache_options: dict[str, Any] | None = None
     # Stable end-user id for spend attribution / chargeback (#1172).
     user: str | None = None
+    # gpt-6.1-sol / GPT-5.6 Responses multi-agent beta (#1478).
+    multi_agent: dict[str, Any] | None = None
 
 
 class CompactRequest(BaseModel):
@@ -934,6 +943,16 @@ class ResponsesGatewayAdapter(GatewayAdapter):
 
             mcp_ss_enabled = server_side_responses_enabled(ctx.settings)
             mcp_configured = configured_mcp_server_ids(ctx.settings)
+            # Wire the #1135 helper so hosted types never silently drop (#1478).
+            hosted_bad = unsupported_responses_tools(body.tools)
+            if mcp_ss_enabled:
+                hosted_bad = [kind for kind in hosted_bad if kind != "mcp"]
+            if hosted_bad:
+                supported = sorted(_SUPPORTED_TOOL_TYPES | ({"mcp"} if mcp_ss_enabled else set()))
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"tools type not supported: {hosted_bad}. supported: {supported}",
+                )
             tool_reject = validate_responses_mcp_tools(
                 body.tools,
                 enabled=mcp_ss_enabled,
@@ -941,6 +960,23 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             )
             if tool_reject:
                 raise HTTPException(status_code=400, detail=tool_reject)
+            if multi_agent_enabled(body.multi_agent):
+                if x_daari_no_frontier == "true":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="multi_agent requires frontier (L6); X-Daari-No-Frontier set",
+                    )
+                router = ctx.router
+                frontier_ok = bool(
+                    getattr(router, "frontier_enabled", False)
+                    and getattr(router, "frontier", None) is not None
+                    and bool(getattr(router.frontier, "api_key", None))
+                )
+                if not frontier_ok:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="multi_agent requires frontier (L6); frontier disabled",
+                    )
             try:
                 latency_budget_ms = int(x_daari_latency_budget) if x_daari_latency_budget else None
             except ValueError:

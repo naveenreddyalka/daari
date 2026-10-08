@@ -728,7 +728,12 @@ class Router:
     def ensure_capable(self, request: InternalRequest) -> None:
         """Raise before a stream starts so the client sees HTTP 422, not an SSE error."""
         self._ensure_web_search_frontier(request)
+        self._ensure_multi_agent_frontier(request)
         self._filter_capable_tiers(["L3", "L4", "L5"], request)
+
+    def _multi_agent_requested(self, request: InternalRequest) -> bool:
+        multi = getattr(request.sampling, "multi_agent", None)
+        return isinstance(multi, dict) and bool(multi.get("enabled"))
 
     def _ensure_web_search_frontier(self, request: InternalRequest) -> None:
         """Fail closed when the client asked for web search but L6 is blocked (#1295)."""
@@ -749,6 +754,26 @@ class Router:
             raise WebSearchUnavailable("frontier_not_allowed")
         if self._frontier_budget_state() == "exceeded":
             raise WebSearchUnavailable("frontier_budget_exceeded")
+
+    def _ensure_multi_agent_frontier(self, request: InternalRequest) -> None:
+        """Fail closed when multi_agent.enabled cannot reach L6 (#1478)."""
+        if not self._multi_agent_requested(request):
+            return
+        from daari.gateway.sampling import MultiAgentUnavailable
+
+        if request.meta.no_frontier:
+            raise MultiAgentUnavailable("no_frontier")
+        if not self.frontier_enabled or self.frontier is None or not bool(
+            getattr(self.frontier, "api_key", None)
+        ):
+            raise MultiAgentUnavailable("frontier_disabled")
+        if not self._frontier_reachable(request):
+            cap = self._effective_tier_cap(request)
+            if cap in self._TIER_ORDER:
+                raise MultiAgentUnavailable(f"tier_cap:{cap}")
+            raise MultiAgentUnavailable("frontier_not_allowed")
+        if self._frontier_budget_state() == "exceeded":
+            raise MultiAgentUnavailable("frontier_budget_exceeded")
 
     async def _serve_web_search_frontier(
         self, request: InternalRequest, started: float
@@ -773,6 +798,33 @@ class Router:
             len(message.content or "") for message in l6_request.messages
         )
         l6_response.daari_meta.warning = "web_search_required"
+        self.metrics.record_escalation()
+        self._record(l6_response, started)
+        return l6_response
+
+    async def _serve_multi_agent_frontier(
+        self, request: InternalRequest, started: float
+    ) -> InternalResponse:
+        """Skip local tiers when Responses multi_agent.enabled is set (#1478)."""
+        from daari.gateway.request_log import log_gateway_event
+        from daari.router.deadline import guard_upstream
+
+        add_step("escalate", to="L6", reason="multi_agent_required")
+        log_gateway_event("multi_agent_required", {"to": "L6"})
+        budget_state = self._frontier_budget_state()
+        if budget_state == "soft":
+            add_step("budget_check", exceeded=False, soft=True)
+        guard_upstream("L6")
+        l6_request = await self._frontier_request(request)
+        l6_response = await self.frontier.execute(
+            l6_request,
+            escalated_from="multi_agent",
+            local_confidence=0.0,
+        )
+        l6_response.daari_meta.prompt_chars = sum(
+            len(message.content or "") for message in l6_request.messages
+        )
+        l6_response.daari_meta.warning = "multi_agent_required"
         self.metrics.record_escalation()
         self._record(l6_response, started)
         return l6_response
@@ -1501,6 +1553,9 @@ class Router:
         if request.sampling.web_search_options:
             self._ensure_web_search_frontier(request)
             return await self._serve_web_search_frontier(request, started)
+        if self._multi_agent_requested(request):
+            self._ensure_multi_agent_frontier(request)
+            return await self._serve_multi_agent_frontier(request, started)
         last_user = self._last_user_text(request.messages)
         cache_skip = self._category_cache_skip(profile)
         cache_max_age = self._category_cache_max_age(profile)
@@ -2141,6 +2196,22 @@ class Router:
             add_step("escalate", to="L6", reason="web_search_required")
             log_gateway_event("web_search_required", {"to": "L6", "stream": True})
             served = await self._serve_web_search_frontier(stream_request, started)
+            outcome.note("L6", draft=False)
+            if served.daari_meta.dropped_params:
+                outcome.dropped_params = list(served.daari_meta.dropped_params)
+            for chunk in terminal_stream(served.content):
+                yield chunk
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
+            finish_trace("L6")
+            return
+
+        # multi_agent.enabled: skip local tiers; answer on L6 (#1478).
+        if self._multi_agent_requested(request):
+            self._ensure_multi_agent_frontier(request)
+            add_step("escalate", to="L6", reason="multi_agent_required")
+            log_gateway_event("multi_agent_required", {"to": "L6", "stream": True})
+            served = await self._serve_multi_agent_frontier(stream_request, started)
             outcome.note("L6", draft=False)
             if served.daari_meta.dropped_params:
                 outcome.dropped_params = list(served.daari_meta.dropped_params)

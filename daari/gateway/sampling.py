@@ -41,6 +41,18 @@ class WebSearchUnavailable(Exception):
         self.reason = reason
         super().__init__(f"web_search_options requires frontier (L6): {reason}")
 
+
+class MultiAgentUnavailable(Exception):
+    """Client set ``multi_agent.enabled`` but L6 cannot serve it (#1478).
+
+    Local tiers silently dropping delegation fields would look like a successful
+    single-agent reply. Fail closed with a clear reason instead.
+    """
+
+    def __init__(self, reason: str = "multi_agent_requires_frontier"):
+        self.reason = reason
+        super().__init__(f"multi_agent requires frontier (L6): {reason}")
+
 # OpenAI reasoning_effort → Ollama top-level `think` (#297).
 # `minimal` omits the field (lowest / default behaviour). Unknown strings omit.
 _REASONING_EFFORT_TO_THINK: dict[str, str | None] = {
@@ -336,6 +348,8 @@ class SamplingParams(BaseModel):
     prompt_cache_key: str | None = None
     prompt_cache_retention: str | None = None
     prompt_cache_options: dict[str, Any] | None = None
+    # Responses multi-agent beta (#1478). Forwarded on L6; fail-closed locally.
+    multi_agent: dict[str, Any] | None = None
 
     @classmethod
     def from_openai_body(cls, body: dict[str, Any]) -> SamplingParams:
@@ -416,6 +430,7 @@ class SamplingParams(BaseModel):
             prompt_cache_key=_normalize_str(body.get("prompt_cache_key")),
             prompt_cache_retention=_normalize_str(body.get("prompt_cache_retention")),
             prompt_cache_options=_normalize_dict(body.get("prompt_cache_options")),
+            multi_agent=_normalize_dict(body.get("multi_agent")),
         )
 
     @classmethod
@@ -513,6 +528,10 @@ class SamplingParams(BaseModel):
                 "responses_truncation_ignored",
                 {"truncation": truncation},
             )
+
+        # multi_agent is Responses-native; keep it even if chat body ignored it.
+        if "multi_agent" in body and "multi_agent" not in mapped:
+            mapped["multi_agent"] = body.get("multi_agent")
 
         return cls.from_openai_body(mapped)
 
@@ -681,6 +700,8 @@ class SamplingParams(BaseModel):
             payload["prompt_cache_retention"] = self.prompt_cache_retention
         if self.prompt_cache_options:
             payload["prompt_cache_options"] = dict(self.prompt_cache_options)
+        if self.multi_agent:
+            payload["multi_agent"] = dict(self.multi_agent)
         if self.json_schema:
             wrapper: dict[str, Any] = {
                 "name": self.json_schema_name or "daari",
