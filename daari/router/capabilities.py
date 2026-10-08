@@ -251,6 +251,38 @@ def anthropic_model_line(model_id: str) -> str | None:
     return _ANTHROPIC_MODEL_LINES[key]
 
 
+# Models that reject ``thinking: {type: "disabled"}`` with HTTP 400.
+# Empty today — Anthropic's always-on thinking ids are rare; default is accept.
+_THINKING_DISABLED_UNSUPPORTED: frozenset[str] = frozenset()
+
+
+def anthropic_thinking_disabled_supported(model_id: str) -> bool:
+    """Whether ``thinking: {type: \"disabled\"}`` is accepted (#1481).
+
+    Anthropic semantics: ``supported: true`` when the model accepts disabled
+    (including models that do not support thinking at all); ``false`` only when
+    the API rejects ``\"disabled\"`` with 400.
+    """
+    if not _THINKING_DISABLED_UNSUPPORTED:
+        return True
+    from daari.pricing import matching_model_key
+
+    return matching_model_key(model_id, {k: True for k in _THINKING_DISABLED_UNSUPPORTED}) is None
+
+
+def anthropic_capabilities(model_id: str) -> dict[str, Any]:
+    """Anthropic Models API ``capabilities`` object (#1481)."""
+    return {
+        "thinking": {
+            "types": {
+                "disabled": {
+                    "supported": anthropic_thinking_disabled_supported(model_id),
+                }
+            }
+        }
+    }
+
+
 def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
     """Anthropic-native `/v1/models` rows from the same catalog as OpenAI (#454)."""
     from datetime import datetime, timezone
@@ -269,6 +301,7 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
                 "display_name": _anthropic_display_name(model_id),
                 "created_at": created_at,
                 "line": anthropic_model_line(model_id),
+                "capabilities": anthropic_capabilities(model_id),
             }
         )
     return cards

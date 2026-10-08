@@ -73,6 +73,47 @@ def test_anthropic_model_cards_line_null_for_local(settings) -> None:
         assert by_id["llama3.2:3b"] is None
 
 
+def test_anthropic_model_cards_thinking_disabled_capability(settings) -> None:
+    """Models API reports capabilities.thinking.types.disabled (#1481)."""
+    from daari.router.capabilities import (
+        anthropic_capabilities,
+        anthropic_thinking_disabled_supported,
+    )
+
+    cards = {card["id"]: card for card in anthropic_model_cards(settings)}
+    assert "daari" in cards
+    local_caps = cards["daari"]["capabilities"]
+    assert local_caps["thinking"]["types"]["disabled"]["supported"] is True
+
+    # Claude family id — field present with Anthropic semantics (accept disabled).
+    from daari.router.capabilities import anthropic_model_line as _line
+
+    claude_id = next(
+        (cid for cid in cards if "claude" in cid.lower() or _line(cid)),
+        "claude-sonnet-5-5",
+    )
+    if claude_id not in cards:
+        # Catalog may omit frontier ids; still pin the helper shape.
+        assert anthropic_thinking_disabled_supported("claude-sonnet-5-5") is True
+        assert (
+            anthropic_capabilities("claude-sonnet-5-5")["thinking"]["types"]["disabled"][
+                "supported"
+            ]
+            is True
+        )
+    else:
+        assert cards[claude_id]["capabilities"]["thinking"]["types"]["disabled"][
+            "supported"
+        ] is True
+
+    for card in cards.values():
+        assert "capabilities" in card
+        assert card["capabilities"]["thinking"]["types"]["disabled"]["supported"] in (
+            True,
+            False,
+        )
+
+
 @pytest.mark.asyncio
 async def test_messages_captures_anthropic_beta_and_version(settings):
     """Inbound anthropic-beta / anthropic-version land on RequestMeta (#455)."""
