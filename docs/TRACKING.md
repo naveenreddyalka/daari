@@ -6228,6 +6228,14 @@ responses_multi_agent=v1`); local / no-frontier paths return an honest 400.
 `tests/unit/test_responses_multi_agent.py`.
 
 
+### Anthropic capabilities.thinking.types.disabled ([#1481](https://github.com/naveenreddyalka/daari/issues/1481))
+
+<!-- tracking:#1481 -->
+**Status:** Done (2026-10-08). Anthropic-native `/v1/models` cards include
+`capabilities.thinking.types.disabled.supported` (true by default, including
+local ids). Covered by `tests/unit/test_anthropic_gateway.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
