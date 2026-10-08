@@ -6236,6 +6236,15 @@ responses_multi_agent=v1`); local / no-frontier paths return an honest 400.
 local ids). Covered by `tests/unit/test_anthropic_gateway.py`.
 
 
+### Grafana panels for decision classifier series ([#1483](https://github.com/naveenreddyalka/daari/issues/1483))
+
+<!-- tracking:#1483 -->
+**Status:** Done (2026-10-08). Overview dashboard charts
+`daari_decision_classifier_total` by outcome and
+`daari_decision_classifier_latency_ms` p50/p95. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
