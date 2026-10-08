@@ -461,11 +461,21 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
     prompt_chars = len(source) + len(model)
     retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
     metrics = getattr(ctx, "metrics", None)
-    from daari.gateway.guardrails import router_guardrails
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
     from daari.observability.metrics import genai_operation_name
     from daari.observability.otel import inject_trace_headers, modality_client_span
 
     engine = router_guardrails(ctx)
+    # Screen document URL / data-URI text before dispatch (#1476).
+    input_policy = apply_endpoint_input_policy(source, engine, metrics=metrics)
+    if input_policy.blocked:
+        abandon_slot(idem_slot)
+        return endpoint_guardrail_blocked_response(input_policy.block_message)
+    source = input_policy.text
     last_exc: Exception | None = None
     last_upstream: httpx.Response | None = None
     span_attrs = {

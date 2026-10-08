@@ -6196,6 +6196,17 @@ claim (403 + audit); `POST /oauth/revoke` denylists by `jti` until remaining
 `tests/unit/test_mcp_oauth_token_mint.py`.
 
 
+### OTel, guardrails, and retry on /mcp/proxy + /v1/systemone (+ OCR input) ([#1476](https://github.com/naveenreddyalka/daari/issues/1476))
+
+<!-- tracking:#1476 -->
+**Status:** Done (2026-10-08). `/mcp/proxy` and `/v1/systemone` emit OTel client
+spans and wrap upstream HTTP in `run_upstream`; MCP guardrails screen proxy
+tool args/results; systemone screens `state`/`questions` (+ answer output);
+OCR applies input guardrails before dispatch. Covered by
+`tests/unit/test_mcp_openapi_proxy.py`, `tests/unit/test_systemone.py`,
+`tests/unit/test_ocr.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
