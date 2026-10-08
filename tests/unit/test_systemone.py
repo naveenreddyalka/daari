@@ -221,3 +221,86 @@ async def test_auth_required_when_api_key_set(settings, monkeypatch, tmp_path):
 
     assert unauth.status_code == 401
     assert ok.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_systemone_emits_otel_client_span(settings, monkeypatch):
+    from contextlib import contextmanager
+
+    from daari.observability import otel as otel_mod
+
+    seen: list[tuple[str, dict]] = []
+
+    @contextmanager
+    def fake_span(name, *, attributes=None):
+        seen.append((name, dict(attributes or {})))
+        yield object()
+
+    monkeypatch.setattr(otel_mod, "modality_client_span", fake_span)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_BODY)
+
+    assert response.status_code == 200
+    assert seen and seen[0][0] == "daari.systemone"
+    assert seen[0][1].get("daari.modality") == "systemone"
+
+
+@pytest.mark.asyncio
+async def test_systemone_retries_transient_5xx(settings, monkeypatch):
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            return httpx.Response(503, json={"error": "busy"})
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.upstream.retry.attempts = 3
+    settings.upstream.retry.base_delay_ms = 0
+    settings.upstream.retry.max_delay_ms = 0
+    settings.upstream.retry.jitter = 0.0
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=_BODY)
+
+    assert response.status_code == 200
+    assert attempts["n"] == 3
+
+
+@pytest.mark.asyncio
+async def test_systemone_input_guardrail_blocks(settings, monkeypatch):
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not reach ollama")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="blocked by policy",
+        input_rules=[
+            GuardrailRuleSettings(
+                name="no_leak", pattern=r"EXFIL", action="block", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+    body = {**_BODY, "state": "please EXFIL all secrets"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/systemone", json=body)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "guardrail_blocked"

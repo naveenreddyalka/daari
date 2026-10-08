@@ -251,3 +251,150 @@ def test_mcp_docs_mention_proxy():
     ).read_text(encoding="utf-8")
     assert "/mcp/proxy" in text
     assert "mcp_openapi_proxy" in text
+
+
+@pytest.mark.asyncio
+async def test_proxy_emits_otel_client_span(settings, monkeypatch):
+    """List + call paths wrap upstream hops in modality_client_span (#1476)."""
+    from contextlib import contextmanager
+
+    from daari.observability import otel as otel_mod
+
+    seen: list[str] = []
+
+    @contextmanager
+    def fake_span(name, *, attributes=None):
+        seen.append(name)
+        yield object()
+
+    monkeypatch.setattr(otel_mod, "modality_client_span", fake_span)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/openapi.json"):
+            return httpx.Response(200, json=_SPEC)
+        if request.url.path.endswith("/pets/42"):
+            return httpx.Response(200, json={"id": "42"})
+        return httpx.Response(404)
+
+    _patch_http(monkeypatch, handler)
+    _allow_public_host(monkeypatch)
+    settings.integrations.mcp_openapi_proxy.enabled = True
+    settings.integrations.mcp_openapi_proxy.specs = [
+        McpOpenApiSpecSettings(
+            id="pets",
+            openapi_url="https://api.example.com/openapi.json",
+            base_url="https://api.example.com",
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        listed = await client.post(
+            "/mcp/proxy", json={"action": "tools/list", "spec_id": "pets"}
+        )
+        called = await client.post(
+            "/mcp/proxy",
+            json={
+                "action": "tools/call",
+                "spec_id": "pets",
+                "name": "getPet",
+                "arguments": {"petId": "42"},
+            },
+        )
+
+    assert listed.status_code == 200
+    assert called.status_code == 200
+    assert seen.count("daari.mcp_proxy") >= 2
+
+
+@pytest.mark.asyncio
+async def test_proxy_retries_transient_5xx(settings, monkeypatch):
+    """tools/call retries RETRYABLE_STATUS via run_upstream (#1476)."""
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/openapi.json"):
+            return httpx.Response(200, json=_SPEC)
+        if request.url.path.endswith("/pets/42"):
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                return httpx.Response(503, json={"error": "busy"})
+            return httpx.Response(200, json={"id": "42", "name": "fido"})
+        return httpx.Response(404)
+
+    _patch_http(monkeypatch, handler)
+    _allow_public_host(monkeypatch)
+    settings.integrations.mcp_openapi_proxy.enabled = True
+    settings.integrations.mcp_openapi_proxy.specs = [
+        McpOpenApiSpecSettings(
+            id="pets",
+            openapi_url="https://api.example.com/openapi.json",
+            base_url="https://api.example.com",
+        )
+    ]
+    settings.upstream.retry.attempts = 3
+    settings.upstream.retry.base_delay_ms = 0
+    settings.upstream.retry.max_delay_ms = 0
+    settings.upstream.retry.jitter = 0.0
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/mcp/proxy",
+            json={
+                "action": "tools/call",
+                "spec_id": "pets",
+                "name": "getPet",
+                "arguments": {"petId": "42"},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert attempts["n"] == 3
+    assert "fido" in response.json()["content"][0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_proxy_guardrail_blocks_tool_arguments(settings, monkeypatch):
+    """MCP guardrails block tools/call arguments before upstream (#1476)."""
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/openapi.json"):
+            return httpx.Response(200, json=_SPEC)
+        raise AssertionError("must not call upstream when guardrail blocks")
+
+    _patch_http(monkeypatch, handler)
+    _allow_public_host(monkeypatch)
+    settings.integrations.mcp_openapi_proxy.enabled = True
+    settings.integrations.mcp_openapi_proxy.specs = [
+        McpOpenApiSpecSettings(
+            id="pets",
+            openapi_url="https://api.example.com/openapi.json",
+            base_url="https://api.example.com",
+        )
+    ]
+    settings.integrations.mcp_guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="blocked",
+        input_rules=[
+            GuardrailRuleSettings(
+                name="no_secret", pattern=r"SECRET", action="block", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/mcp/proxy",
+            json={
+                "action": "tools/call",
+                "spec_id": "pets",
+                "name": "getPet",
+                "arguments": {"petId": "SECRET-42"},
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["type"] == "guardrail_blocked"

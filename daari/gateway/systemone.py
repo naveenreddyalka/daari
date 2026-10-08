@@ -176,6 +176,90 @@ def parse_systemone_body(raw: Any) -> SystemOneRequest | JSONResponse:
         return _error(400, "invalid_request", f"{loc}: {msg}")
 
 
+def _systemone_input_text(body: SystemOneRequest) -> str:
+    """Flatten state + questions for input guardrail screening (#1476)."""
+    parts: list[str] = []
+    if isinstance(body.state, str):
+        parts.append(body.state)
+    else:
+        try:
+            parts.append(json.dumps(body.state, default=str))
+        except Exception:
+            parts.append(str(body.state))
+    try:
+        parts.append(json.dumps(body.questions, default=str))
+    except Exception:
+        parts.append(str(body.questions))
+    return "\n".join(parts)
+
+
+def _apply_systemone_output_policy(
+    data: dict[str, Any],
+    engine: Any,
+    *,
+    metrics: Any = None,
+) -> tuple[dict[str, Any] | None, Any]:
+    """Screen judgment text (answers) through output guardrails (#1476)."""
+    from daari.gateway.guardrails import (
+        apply_endpoint_output_policy,
+        endpoint_guardrail_blocked_response,
+    )
+
+    answers = data.get("answers")
+    if not isinstance(answers, dict):
+        return data, None
+    rewritten: dict[str, Any] = {}
+    for key, value in answers.items():
+        if isinstance(value, dict):
+            choice = str(value.get("choice") or "")
+            if choice:
+                policy = apply_endpoint_output_policy(choice, engine, metrics=metrics)
+                if policy.blocked:
+                    return None, endpoint_guardrail_blocked_response(policy.block_message)
+                rewritten[key] = {**value, "choice": policy.text}
+            else:
+                rewritten[key] = value
+        elif isinstance(value, str):
+            policy = apply_endpoint_output_policy(value, engine, metrics=metrics)
+            if policy.blocked:
+                return None, endpoint_guardrail_blocked_response(policy.block_message)
+            rewritten[key] = policy.text
+        else:
+            rewritten[key] = value
+    return {**data, "answers": rewritten}, None
+
+
+async def _post_systemone(
+    url: str,
+    *,
+    payload: dict[str, Any],
+    timeout: float,
+    retry: Any | None = None,
+    metrics: Any | None = None,
+) -> httpx.Response:
+    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+
+    policy = (
+        retry
+        if isinstance(retry, RetryPolicy)
+        else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
+    )
+
+    async def attempt() -> httpx.Response:
+        response = await _shared_client().post(url, json=payload, timeout=timeout)
+        if response.status_code in RETRYABLE_STATUS:
+            response.raise_for_status()
+        return response
+
+    return await run_upstream(
+        attempt,
+        upstream="systemone",
+        policy=policy,
+        timeout=timeout,
+        metrics=metrics,
+    )
+
+
 async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
     ctx = request.app.state.ctx
     settings = ctx.settings
@@ -200,9 +284,30 @@ async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
     if denied is not None:
         return denied
 
+    metrics = getattr(ctx, "metrics", None)
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+        router_guardrails,
+    )
+
+    engine = router_guardrails(ctx)
+    input_policy = apply_endpoint_input_policy(
+        _systemone_input_text(body), engine, metrics=metrics
+    )
+    if input_policy.blocked:
+        return endpoint_guardrail_blocked_response(input_policy.block_message)
+
+    state = body.state
+    if isinstance(body.state, str):
+        state_policy = apply_endpoint_input_policy(body.state, engine, metrics=metrics)
+        if state_policy.blocked:
+            return endpoint_guardrail_blocked_response(state_policy.block_message)
+        state = state_policy.text
+
     payload = {
         "model": model,
-        "state": body.state,
+        "state": state,
         "questions": body.questions,
     }
     if body.images is not None:
@@ -210,10 +315,26 @@ async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
     timeout = float(
         getattr(getattr(settings, "upstream", None), "local_timeout_seconds", 120.0) or 120.0
     )
+    retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
     url = f"{base}/v1/systemone"
+    from daari.observability.metrics import genai_operation_name
+    from daari.observability.otel import modality_client_span
+
+    span_attrs = {
+        "daari.modality": "systemone",
+        "gen_ai.operation.name": genai_operation_name("systemone"),
+        "gen_ai.request.model": model,
+    }
     started = time.perf_counter()
     try:
-        upstream = await _shared_client().post(url, json=payload, timeout=timeout)
+        with modality_client_span("daari.systemone", attributes=span_attrs):
+            upstream = await _post_systemone(
+                url,
+                payload=payload,
+                timeout=timeout,
+                retry=retry_settings,
+                metrics=metrics,
+            )
     except httpx.RequestError as exc:
         log_gateway_event(
             "systemone_ollama_down",
@@ -244,6 +365,11 @@ async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
         return _error(502, "bad_gateway", "Ollama systemone returned non-JSON.")
     if not isinstance(data, dict):
         return _error(502, "bad_gateway", "Ollama systemone returned non-object JSON.")
+
+    data, blocked = _apply_systemone_output_policy(data, engine, metrics=metrics)
+    if blocked is not None:
+        return blocked
+    assert data is not None
 
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     try:
