@@ -43,8 +43,22 @@ class ResolvedPrice:
     output_per_1m: float
     cached_input_per_1m: float | None = None
     cache_write_1h_per_1m: float | None = None
+    cache_write_per_1m: float | None = None
     is_fallback: bool = False
     input_threshold_tokens: int | None = None
+
+
+# Decisions API reuses the chat model id but bills input-only (#1484).
+# Chat/Responses stay on pricing.models; this overlay must not leak the other way.
+_DECISIONS_MODEL_PRICES: dict[str, dict[str, float]] = {
+    "gpt-6-luna": {
+        "input_per_1m": 0.10,
+        "output_per_1m": 0.0,
+        "cached_input_per_1m": 0.0,
+        "cache_write_per_1m": 0.0,
+        "cache_write_1h_per_1m": 0.0,
+    },
+}
 
 
 def matching_model_key(model: str, keys: object) -> str | None:
@@ -89,12 +103,20 @@ def resolve_price(
     *,
     fallback_per_1k: float,
     input_tokens: int = 0,
+    billing_path: str | None = None,
 ) -> ResolvedPrice:
     """Price for `model`, falling back to the flat per-1k rate when unknown.
 
     When the model defines ``input_threshold_tokens`` and ``input_tokens``
     reaches that threshold, the above-* rates apply to the whole request (#411).
+
+    ``billing_path="decisions"`` uses the Decisions card for ids that OpenAI
+    bills differently on ``POST /v1/decisions`` than on Chat/Responses (#1484).
     """
+    if (billing_path or "").strip().lower() == "decisions" and model:
+        decisions_key = matching_model_key(model, _DECISIONS_MODEL_PRICES)
+        if decisions_key is not None:
+            return _resolved_from_entry(_DECISIONS_MODEL_PRICES[decisions_key])
     table = getattr(pricing, "models", None) or {}
     entry = None
     if model:
@@ -102,34 +124,7 @@ def resolve_price(
         if key is not None:
             entry = table[key]
     if entry is not None:
-        input_rate = float(_field(entry, "input_per_1m"))
-        output_rate = float(_field(entry, "output_per_1m"))
-        cached_rate = _optional_field(entry, "cached_input_per_1m")
-        write_1h = _optional_field(entry, "cache_write_1h_per_1m")
-        threshold = _optional_int_field(entry, "input_threshold_tokens")
-        above_input = _optional_field(entry, "above_input_per_1m")
-        above_output = _optional_field(entry, "above_output_per_1m")
-        if (
-            threshold is not None
-            and threshold > 0
-            and int(input_tokens) >= threshold
-            and above_input is not None
-        ):
-            if cached_rate is not None and input_rate > 0:
-                cached_rate = cached_rate * (above_input / input_rate)
-            if write_1h is not None and input_rate > 0:
-                write_1h = write_1h * (above_input / input_rate)
-            input_rate = above_input
-            if above_output is not None:
-                output_rate = above_output
-        return ResolvedPrice(
-            input_per_1m=input_rate,
-            output_per_1m=output_rate,
-            cached_input_per_1m=cached_rate,
-            cache_write_1h_per_1m=write_1h,
-            is_fallback=False,
-            input_threshold_tokens=threshold,
-        )
+        return _resolved_from_entry(entry, input_tokens=input_tokens)
     flat_per_1m = float(fallback_per_1k) * 1000.0
     return ResolvedPrice(
         input_per_1m=flat_per_1m, output_per_1m=flat_per_1m, is_fallback=True
@@ -147,12 +142,14 @@ def cost_usd(
     cache_write_tokens: int = 0,
     cache_ttl: str | None = None,
     service_tier: str | None = None,
+    billing_path: str | None = None,
 ) -> float:
     price = resolve_price(
         model,
         pricing,
         fallback_per_1k=fallback_per_1k,
         input_tokens=input_tokens,
+        billing_path=billing_path,
     )
     write_tokens = max(0, int(cache_write_tokens))
     billable_input = max(0, input_tokens - cached_input_tokens)
@@ -168,14 +165,55 @@ def cost_usd(
 
 
 def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:
-    """1h TTL uses cache_write_1h_per_1m; missing/5m keeps today's input rate."""
+    """1h TTL uses cache_write_1h_per_1m; missing/5m keeps today's input rate.
+
+    ``cache_write_per_1m`` (including 0) overrides the non-1h write rate so a
+    path can bill cache writes at $0 without changing chat models.
+    """
     ttl = (cache_ttl or "").strip().lower()
     if ttl in {"1h", "1hr", "60m"}:
         if price.cache_write_1h_per_1m is not None:
             return float(price.cache_write_1h_per_1m)
         # Configured models should set the field; fall back to 2× input.
         return float(price.input_per_1m) * 2.0
+    if price.cache_write_per_1m is not None:
+        return float(price.cache_write_per_1m)
     return float(price.input_per_1m)
+
+
+def _resolved_from_entry(entry: object, *, input_tokens: int = 0) -> ResolvedPrice:
+    input_rate = float(_field(entry, "input_per_1m"))
+    output_rate = float(_field(entry, "output_per_1m"))
+    cached_rate = _optional_field(entry, "cached_input_per_1m")
+    write_1h = _optional_field(entry, "cache_write_1h_per_1m")
+    write_rate = _optional_field(entry, "cache_write_per_1m")
+    threshold = _optional_int_field(entry, "input_threshold_tokens")
+    above_input = _optional_field(entry, "above_input_per_1m")
+    above_output = _optional_field(entry, "above_output_per_1m")
+    if (
+        threshold is not None
+        and threshold > 0
+        and int(input_tokens) >= threshold
+        and above_input is not None
+    ):
+        if cached_rate is not None and input_rate > 0:
+            cached_rate = cached_rate * (above_input / input_rate)
+        if write_1h is not None and input_rate > 0:
+            write_1h = write_1h * (above_input / input_rate)
+        if write_rate is not None and input_rate > 0:
+            write_rate = write_rate * (above_input / input_rate)
+        input_rate = above_input
+        if above_output is not None:
+            output_rate = above_output
+    return ResolvedPrice(
+        input_per_1m=input_rate,
+        output_per_1m=output_rate,
+        cached_input_per_1m=cached_rate,
+        cache_write_1h_per_1m=write_1h,
+        cache_write_per_1m=write_rate,
+        is_fallback=False,
+        input_threshold_tokens=threshold,
+    )
 
 
 def pricing_warnings(settings: object) -> list[str]:

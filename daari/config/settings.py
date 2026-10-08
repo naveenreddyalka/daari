@@ -1075,12 +1075,13 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 2.50,
     },
-    # OpenAI Decisions API gpt-6-luna (2026-10-06 public beta): $0.10 / 1M input;
-    # no cache-read, cache-write, or output-token charges.
+    # OpenAI gpt-6-luna chat/responses: $0.10 / 1M input, $0.50 / 1M output.
+    # POST /v1/decisions bills the same id input-only ($0.10, $0 out, $0 cache)
+    # via daari.pricing billing_path="decisions" — do not put those zeros here.
     # https://developers.openai.com/api/docs/guides/decisions
     "gpt-6-luna": {
         "input_per_1m": 0.10,
-        "output_per_1m": 0.0,
+        "output_per_1m": 0.50,
     },
     "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},

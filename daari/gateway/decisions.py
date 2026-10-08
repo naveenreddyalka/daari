@@ -621,12 +621,18 @@ async def _handle_frontier(
         )
         usage_settings = getattr(settings, "usage", None)
         fallback = float(getattr(usage_settings, "frontier_price_per_1k_tokens", 0.002) or 0.002)
+        from daari.gateway.provider_prefs import usage_cost_and_cache
+
+        _reported, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
         spent = cost_usd(
             resolved_model,
             input_tokens,
             max(0, output_tokens),
             pricing,
             fallback_per_1k=fallback,
+            cached_input_tokens=int(cached_tokens or 0),
+            cache_write_tokens=int(cache_write_tokens or 0),
+            billing_path="decisions",
         )
         caller = _caller_client_id(request)
         _bind_spend_context(request, ctx, model=resolved_model, client_id=caller)

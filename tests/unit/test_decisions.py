@@ -128,7 +128,7 @@ def test_gpt_6_luna_pricing_capabilities_param_compat():
     price = resolve_price("gpt-6-luna", settings.pricing, fallback_per_1k=0.002)
     assert price.is_fallback is False
     assert price.input_per_1m == pytest.approx(0.10)
-    assert price.output_per_1m == pytest.approx(0.0)
+    assert price.output_per_1m == pytest.approx(0.50)
     assert matching_model_key("openai.gpt-6-luna", settings.pricing.models) == "gpt-6-luna"
     assert matching_model_key("gpt-6-luna-20261006", settings.pricing.models) == "gpt-6-luna"
     # Sibling gpt-5.6-luna keeps its own rates.
@@ -141,7 +141,7 @@ def test_gpt_6_luna_pricing_capabilities_param_compat():
         pricing=settings.pricing,
         fallback_per_1k=0.002,
     )
-    assert usd == pytest.approx(0.10)
+    assert usd == pytest.approx(0.1005)
     caps = known_model_capabilities("gpt-6-luna")
     assert "vision" in caps
     assert lookup_frontier_param_compat("gpt-6-luna") is not None
@@ -292,6 +292,41 @@ async def test_gpt_6_luna_passthrough_to_frontier(settings, monkeypatch):
     payload = json.loads(seen[0].read())
     assert payload["model"] == "gpt-6-luna"
     assert payload["input"] == _BODY["input"]
+
+
+@pytest.mark.asyncio
+async def test_gpt_6_luna_decisions_cost_ignores_output_and_cache(settings, monkeypatch):
+    billed = {
+        **_OPENAI_OK,
+        "usage": {
+            "input_tokens": 1_000_000,
+            "output_tokens": 1_000_000,
+            "prompt_tokens_details": {"cached_tokens": 100_000},
+            "cache_creation_input_tokens": 50_000,
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=billed)
+
+    _patch_frontier(monkeypatch, handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json={**_BODY, "model": "gpt-6-luna"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["daari_meta"]["cost_usd"] == pytest.approx(0.09)
+    assert float(response.headers["x-daari-response-cost"]) == pytest.approx(0.09)
 
 
 @pytest.mark.asyncio

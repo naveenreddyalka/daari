@@ -6245,6 +6245,16 @@ recipient and missing identity stay fail-closed with `BackupError`. Covered by
 `tests/unit/test_backup_restore.py`.
 
 
+### Decisions-path input-only rates for gpt-6-luna ([#1484](https://github.com/naveenreddyalka/daari/issues/1484))
+
+<!-- tracking:#1484 -->
+**Status:** Done (2026-10-08). Chat/Responses keep $0.10 / $0.50 for
+`gpt-6-luna`. `POST /v1/decisions` bills that id input-only ($0.10, $0 output,
+$0 cache read/write) via `billing_path="decisions"`. Covered by
+`tests/unit/test_gpt_6_luna_decisions_pricing.py` and
+`tests/unit/test_decisions.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
