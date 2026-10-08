@@ -133,6 +133,23 @@ def is_local_decisions_model(model: str) -> bool:
     return name in _LOCAL_MODELS
 
 
+def normalize_decisions_model(model: str) -> str | None:
+    """Map Decisions model ids to a canonical local or frontier target (#1485).
+
+    Frontier aliases (`gpt-6-luna`, `gpt-6-luna-decisions`,
+    `openai/gpt-6-luna-decisions`, dated/vendor variants) collapse to
+    ``gpt-6-luna``. Local catalog ids pass through. Unknown ids → ``None``.
+    """
+    name = (model or "").strip()
+    if not name:
+        return None
+    if is_frontier_decisions_model(name):
+        return _FRONTIER_DECISIONS_KEYS[0]
+    if is_local_decisions_model(name):
+        return name
+    return None
+
+
 def default_local_model(settings: Any) -> str:
     routing = getattr(settings, "routing", None)
     classifier = getattr(routing, "decision_classifier", None) if routing is not None else None
@@ -847,16 +864,18 @@ async def handle_decisions(request: Request, body: DecisionsRequest) -> Any:
     settings = ctx.settings
     requested = (body.model or "").strip()
 
-    if is_frontier_decisions_model(requested):
-        return await _handle_frontier(request, body, model=requested)
+    if not requested:
+        return await _handle_local(request, body, model=default_local_model(settings))
 
-    if requested and not is_local_decisions_model(requested):
-        # Unknown id: prefer frontier only when it looks like Luna Decisions;
-        # otherwise treat as a local Ollama decision-model name.
-        if "luna" in requested.lower() and "gpt-6" in requested.lower().replace(".", "-"):
-            return await _handle_frontier(request, body, model=requested)
-
-    model = requested or default_local_model(settings)
-    if is_frontier_decisions_model(model):
-        return await _handle_frontier(request, body, model=model)
-    return await _handle_local(request, body, model=model)
+    canonical = normalize_decisions_model(requested)
+    if canonical is None:
+        return _error(
+            400,
+            "invalid_request",
+            f"Unknown decisions model '{requested}'. "
+            "Use a local decision model (clef, clef-flash, nimble, tev1) "
+            "or a gpt-6-luna Decisions alias.",
+        )
+    if is_frontier_decisions_model(canonical):
+        return await _handle_frontier(request, body, model=canonical)
+    return await _handle_local(request, body, model=canonical)
