@@ -22,6 +22,7 @@ RATE_FAMILIES = frozenset(
         "ocr",
         "mcp",
         "systemone",
+        "decisions",
         "other",
     }
 )
@@ -30,6 +31,8 @@ RATE_FAMILIES = frozenset(
 def rate_limit_family(path: str) -> str:
     """Map a request path to a modality family."""
     p = (path or "").split("?", 1)[0]
+    if p == "/v1/decisions" or p.startswith("/v1/decisions/"):
+        return "decisions"
     if p == "/v1/systemone" or p.startswith("/v1/systemone/"):
         return "systemone"
     if p == "/v1/ocr" or p.startswith("/v1/ocr/"):

@@ -50,6 +50,10 @@ _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
         reasoning_effort_floor="minimal",
         tools_transport="responses",
     ),
+    # Decisions API only — no chat sampler knobs on POST /v1/decisions.
+    "gpt-6-luna": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
+    ),
     "claude-sonnet-5-5": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
     ),

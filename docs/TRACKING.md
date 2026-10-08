@@ -6167,6 +6167,25 @@ sink (kind, expires_in, scope, token fingerprint — never the raw token).
 Covered by `tests/unit/test_mcp_oauth_token_mint.py`.
 
 
+### OpenAI-compatible /v1/decisions on local models + gpt-6-luna ([#1474](https://github.com/naveenreddyalka/daari/issues/1474))
+
+<!-- tracking:#1474 -->
+**Status:** Done (2026-10-07). `POST /v1/decisions` accepts the OpenAI
+Decisions beta shape; local decision models (`nimble`/`clef`/…) run via the
+systemone executor; `gpt-6-luna` passes through L6 with `no_frontier` /
+`region_pin` fences. Pricing $0.10/1M input (no output), `decisions` rate
+family, cost headers + usage ledger. Covered by `tests/unit/test_decisions.py`.
+
+
+### MCP proxy response cost headers ([#1469](https://github.com/naveenreddyalka/daari/issues/1469))
+
+<!-- tracking:#1469 -->
+**Status:** Done (2026-10-07). Successful `/mcp/proxy` `tools/call` responses
+emit the standard `x-daari-response-cost*` set via `modality_response_headers`
+(zero USD when no model tokens). `tools/list` omits cost headers. Covered by
+`tests/unit/test_mcp_openapi_proxy.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

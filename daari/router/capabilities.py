@@ -42,6 +42,9 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
     )
 }
 
+# Decisions API model: text + image inputs, typed answers (no chat tools).
+_FRONTIER_CAPABILITIES["gpt-6-luna"] = frozenset({"vision", "json"})
+
 
 class UnsupportedCapability(Exception):
     """The request needs a capability no configured local model declares."""
