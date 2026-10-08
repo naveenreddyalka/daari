@@ -487,6 +487,39 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 33,
+      "title": "Decision classifier by outcome",
+      "description": "Optional /v1/systemone difficulty hop (`daari_decision_classifier_total`) by outcome: success, heuristic_fallback, error, skipped. Disabled classifier does not increment.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 128 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(daari_decision_classifier_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "title": "Decision classifier latency p50 / p95 (ms)",
+      "description": "Wall time of the classifier hop (`daari_decision_classifier_latency_ms`). Recorded for success, heuristic_fallback, and error — not skipped.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 128 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(daari_decision_classifier_latency_ms_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(daari_decision_classifier_latency_ms_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ]
     }
   ],
   "refresh": "30s",

@@ -6245,6 +6245,15 @@ recipient and missing identity stay fail-closed with `BackupError`. Covered by
 `tests/unit/test_backup_restore.py`.
 
 
+### Grafana panels for decision classifier series ([#1483](https://github.com/naveenreddyalka/daari/issues/1483))
+
+<!-- tracking:#1483 -->
+**Status:** Done (2026-10-08). Overview dashboard charts
+`daari_decision_classifier_total` by outcome and
+`daari_decision_classifier_latency_ms` p50/p95. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+
 ### Decisions-path input-only rates for gpt-6-luna ([#1484](https://github.com/naveenreddyalka/daari/issues/1484))
 
 <!-- tracking:#1484 -->
