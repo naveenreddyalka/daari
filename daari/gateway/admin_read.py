@@ -1,0 +1,210 @@
+"""Redacted admin inventories for virtual keys and teams (#1477)."""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def _spend_rows(
+    store: Any,
+    *,
+    key: Any = None,
+    team: Any = None,
+    ledger: Any = None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> list[dict[str, Any]]:
+    """Current spend vs caps; empty when ledger is off or unavailable."""
+    if ledger is None or not getattr(ledger, "enabled", False):
+        return []
+    if key is None and team is None:
+        return []
+    try:
+        from daari.auth.budgets import budget_status
+    except Exception:
+        return []
+
+    if key is not None:
+        client_id = key.client_id or key.key_id
+        team_obj = team
+        if team_obj is None and key.team_id and hasattr(store, "get_team"):
+            try:
+                team_obj = store.get_team(key.team_id)
+            except Exception:
+                team_obj = None
+        team_ids: list[str] = []
+        if team_obj is not None and hasattr(store, "team_client_ids"):
+            try:
+                team_ids = list(store.team_client_ids(team_obj.team_id) or [])
+            except Exception:
+                team_ids = []
+        try:
+            statuses = budget_status(
+                key,
+                team_obj,
+                ledger,
+                client_id=client_id,
+                team_client_ids=team_ids,
+                pricing=pricing,
+                fallback_per_1k=fallback_per_1k,
+            )
+        except Exception:
+            return []
+        return [_status_row(s) for s in statuses]
+
+    # Team-only: synthesize spend from member keys' team-scoped windows.
+    if not hasattr(store, "list") or team is None:
+        return []
+    try:
+        members = [k for k in store.list() if getattr(k, "team_id", None) == team.team_id]
+    except Exception:
+        return []
+    if not members:
+        # Still report team windows with zero spend when no members.
+        return [
+            {
+                "window": w.duration,
+                "quota": "usd" if float(w.max_usd or 0) > 0 else "requests",
+                "scope": "team",
+                "spend": 0.0,
+                "limit": float(w.max_usd or w.max_requests or 0),
+            }
+            for w in (team.budget_windows or ())
+            if float(w.max_usd or 0) > 0 or int(w.max_requests or 0) > 0
+        ]
+    # Use first member as the budget_status subject (team scopes aggregate).
+    sample = members[0]
+    return _spend_rows(
+        store,
+        key=sample,
+        team=team,
+        ledger=ledger,
+        pricing=pricing,
+        fallback_per_1k=fallback_per_1k,
+    )
+
+
+def _status_row(status: Any) -> dict[str, Any]:
+    quota = getattr(status, "quota", "usd")
+    spend = float(status.spend)
+    limit = float(status.limit)
+    if quota == "requests":
+        spend = float(int(spend))
+        limit = float(int(limit))
+    return {
+        "window": status.window.duration,
+        "quota": quota,
+        "scope": status.scope,
+        "spend": round(spend, 6) if quota == "usd" else int(spend),
+        "limit": round(limit, 6) if quota == "usd" else int(limit),
+    }
+
+
+def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Public key inventory row — never secrets or hashes."""
+    return {
+        "key_id": key.key_id,
+        "name": key.name,
+        "prefix": key.prefix,
+        "team_id": key.team_id,
+        "team": key.team_name,
+        "daily_budget_usd": float(key.daily_budget_usd or 0),
+        "monthly_budget_usd": float(key.monthly_budget_usd or 0),
+        "budget_windows": [w.as_dict() for w in (key.budget_windows or ())],
+        "tier_cap": key.tier_cap,
+        "rpm": int(key.rpm or 0),
+        "tpm": int(key.tpm or 0),
+        "rpd": int(key.rpd or 0),
+        "expires_at": key.expires_at,
+        "status": key.status() if callable(getattr(key, "status", None)) else "active",
+        "client_id": key.client_id,
+        "cache_scope": getattr(key, "cache_scope", "global"),
+        "priority": getattr(key, "priority", "normal"),
+        "spend": list(spend or []),
+    }
+
+
+def redact_team(
+    team: Any,
+    *,
+    key_count: int = 0,
+    spend: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Public team inventory row — never secrets or hashes."""
+    return {
+        "team_id": team.team_id,
+        "name": team.name,
+        "budget_windows": [w.as_dict() for w in (team.budget_windows or ())],
+        "rpm": int(team.rpm or 0),
+        "tpm": int(team.tpm or 0),
+        "rpd": int(team.rpd or 0),
+        "region_pin": getattr(team, "region_pin", None),
+        "cache_scope": getattr(team, "cache_scope", "global"),
+        "priority": getattr(team, "priority", "normal"),
+        "key_count": int(key_count),
+        "spend": list(spend or []),
+    }
+
+
+def keys_inventory(
+    store: Any,
+    *,
+    ledger: Any = None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> dict[str, Any]:
+    if store is None or not getattr(store, "enabled", True) or not hasattr(store, "list"):
+        return {"keys": []}
+    try:
+        keys = list(store.list() or [])
+    except Exception:
+        return {"keys": []}
+    rows: list[dict[str, Any]] = []
+    for key in keys:
+        team = None
+        if key.team_id and hasattr(store, "get_team"):
+            try:
+                team = store.get_team(key.team_id)
+            except Exception:
+                team = None
+        spend = _spend_rows(
+            store,
+            key=key,
+            team=team,
+            ledger=ledger,
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
+        rows.append(redact_key(key, spend=spend))
+    return {"keys": rows}
+
+
+def teams_inventory(
+    store: Any,
+    *,
+    ledger: Any = None,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> dict[str, Any]:
+    if store is None or not getattr(store, "enabled", True) or not hasattr(store, "list_teams"):
+        return {"teams": []}
+    try:
+        teams = list(store.list_teams() or [])
+    except Exception:
+        return {"teams": []}
+    try:
+        all_keys = list(store.list() or []) if hasattr(store, "list") else []
+    except Exception:
+        all_keys = []
+    rows: list[dict[str, Any]] = []
+    for team in teams:
+        key_count = sum(1 for k in all_keys if getattr(k, "team_id", None) == team.team_id)
+        spend = _spend_rows(
+            store,
+            team=team,
+            ledger=ledger,
+            pricing=pricing,
+            fallback_per_1k=fallback_per_1k,
+        )
+        rows.append(redact_team(team, key_count=key_count, spend=spend))
+    return {"teams": rows}
