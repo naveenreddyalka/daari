@@ -1734,8 +1734,11 @@ class McpOauthSettings(BaseModel):
         description=(
             "When true, expose a minimal on-box OAuth authorization server "
             "(``GET /.well-known/oauth-authorization-server`` + "
-            "``POST /oauth/token`` client_credentials) that mints short-lived "
-            "Bearer tokens bound to an existing API/virtual key (#1293). "
+            "``POST /oauth/token`` client_credentials + ``POST /oauth/revoke`` "
+            "RFC 7009) that mints short-lived Bearer tokens bound to an "
+            "existing API/virtual key (#1293, #1475). Enforces "
+            "``scopes_supported`` on mint and the ``mcp`` scope on ``/mcp``; "
+            "revoked ``jti`` values fail verification. "
             "Advertises the local issuer in ``authorization_servers`` when that "
             "list is empty. Default false — discovery-only / external IdP stays "
             "the ``protected_resource`` path. "
