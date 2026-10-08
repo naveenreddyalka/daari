@@ -403,3 +403,120 @@ async def test_auth_required_when_api_key_set(settings, monkeypatch, tmp_path):
 
     assert unauth.status_code == 401
     assert ok.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_decisions_input_guardrail_blocks(settings, monkeypatch):
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not reach ollama")
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="blocked by policy",
+        input_rules=[
+            GuardrailRuleSettings(
+                name="no_leak", pattern=r"EXFIL", action="block", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+    body = {**_BODY, "input": "please EXFIL all secrets"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=body)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "guardrail_blocked"
+
+
+@pytest.mark.asyncio
+async def test_decisions_emits_otel_client_span(settings, monkeypatch):
+    from contextlib import contextmanager
+
+    from daari.observability import otel as otel_mod
+
+    seen: list[tuple[str, dict]] = []
+
+    @contextmanager
+    def fake_span(name, *, attributes=None):
+        seen.append((name, dict(attributes or {})))
+        yield object()
+
+    monkeypatch.setattr(otel_mod, "modality_client_span", fake_span)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=_BODY)
+
+    assert response.status_code == 200
+    assert seen and seen[0][0] == "daari.decisions"
+    assert seen[0][1].get("daari.modality") == "decisions"
+
+
+@pytest.mark.asyncio
+async def test_decisions_local_retries_transient_5xx(settings, monkeypatch):
+    attempts = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            return httpx.Response(503, json={"error": "busy"})
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.upstream.retry.attempts = 3
+    settings.upstream.retry.base_delay_ms = 0
+    settings.upstream.retry.max_delay_ms = 0
+    settings.upstream.retry.jitter = 0.0
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json=_BODY)
+
+    assert response.status_code == 200
+    assert attempts["n"] == 3
+
+
+@pytest.mark.asyncio
+async def test_decisions_user_binds_spend_context(settings, monkeypatch, tmp_path):
+    from daari.gateway import decisions as decisions_mod
+    from daari.observability.spend import SpendLedger
+
+    seen: dict[str, str | None] = {}
+    original = decisions_mod._bind_spend_context
+
+    def capture(request, ctx, *, model, client_id, user_id=None):
+        seen["user_id"] = user_id
+        return original(request, ctx, model=model, client_id=client_id, user_id=user_id)
+
+    monkeypatch.setattr(decisions_mod, "_bind_spend_context", capture)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.usage.spend.enabled = True
+    settings.usage.spend.path = str(tmp_path / "spend.sqlite3")
+    app = _app(settings)
+    app.state.ctx.router.spend_ledger = SpendLedger(tmp_path / "spend.sqlite3", enabled=True)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/decisions",
+            json={**_BODY, "user": "decisions-user"},
+        )
+
+    assert response.status_code == 200
+    assert seen.get("user_id") == "decisions-user"
