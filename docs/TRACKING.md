@@ -6236,6 +6236,15 @@ responses_multi_agent=v1`); local / no-frontier paths return an honest 400.
 local ids). Covered by `tests/unit/test_anthropic_gateway.py`.
 
 
+### Age-encrypt backup create/restore round-trip ([#1482](https://github.com/naveenreddyalka/daari/issues/1482))
+
+<!-- tracking:#1482 -->
+**Status:** Done (2026-10-08). Hermetic age encrypt/restore covers virtual keys,
+spend, and audit when `age` is on PATH, and skips when it is not. Missing
+recipient and missing identity stay fail-closed with `BackupError`. Covered by
+`tests/unit/test_backup_restore.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
