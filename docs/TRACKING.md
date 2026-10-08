@@ -6264,6 +6264,15 @@ $0 cache read/write) via `billing_path="decisions"`. Covered by
 `tests/unit/test_decisions.py`.
 
 
+### Guardrails + OTel + local retry on /v1/decisions ([#1497](https://github.com/naveenreddyalka/daari/issues/1497))
+
+<!-- tracking:#1497 -->
+**Status:** Done (2026-10-08). `/v1/decisions` screens flattened input+questions
+and answer text via endpoint guardrails, opens `daari.decisions` OTel spans,
+routes the local Ollama hop through `_post_systemone` retry, and binds optional
+OpenAI-shaped `user` onto spend context. Covered by `tests/unit/test_decisions.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

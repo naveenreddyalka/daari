@@ -89,6 +89,7 @@ class DecisionsRequest(BaseModel):
     model: str | None = None
     input: Any
     questions: list[DecisionQuestion] = Field(min_length=1)
+    user: str | None = None
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:
@@ -254,12 +255,99 @@ def _systemone_answers_to_openai(answers: Any) -> list[dict[str, Any]]:
     return converted
 
 
+def _decisions_input_text(body: DecisionsRequest) -> str:
+    """Flatten input + questions for input guardrail screening (#1497)."""
+    parts: list[str] = []
+    state, _images = _extract_input_text_and_images(body.input)
+    if state:
+        parts.append(state)
+    else:
+        try:
+            parts.append(json.dumps(body.input, default=str))
+        except Exception:
+            parts.append(str(body.input))
+    try:
+        parts.append(
+            json.dumps([q.model_dump(exclude_none=True) for q in body.questions], default=str)
+        )
+    except Exception:
+        parts.append(str(body.questions))
+    return "\n".join(parts)
+
+
+def _apply_decisions_input_policy(
+    body: DecisionsRequest,
+    engine: Any,
+    *,
+    metrics: Any = None,
+) -> tuple[DecisionsRequest | None, Any]:
+    """Screen flattened input + questions; rewrite string input (systemone parity)."""
+    from daari.gateway.guardrails import (
+        apply_endpoint_input_policy,
+        endpoint_guardrail_blocked_response,
+    )
+
+    input_policy = apply_endpoint_input_policy(
+        _decisions_input_text(body), engine, metrics=metrics
+    )
+    if input_policy.blocked:
+        return None, endpoint_guardrail_blocked_response(input_policy.block_message)
+
+    if isinstance(body.input, str):
+        state_policy = apply_endpoint_input_policy(body.input, engine, metrics=metrics)
+        if state_policy.blocked:
+            return None, endpoint_guardrail_blocked_response(state_policy.block_message)
+        if state_policy.text != body.input:
+            body = body.model_copy(update={"input": state_policy.text})
+    return body, None
+
+
+def _apply_decisions_output_policy(
+    data: dict[str, Any],
+    engine: Any,
+    *,
+    metrics: Any = None,
+) -> tuple[dict[str, Any] | None, Any]:
+    """Screen answer text through output guardrails (#1497)."""
+    from daari.gateway.guardrails import (
+        apply_endpoint_output_policy,
+        endpoint_guardrail_blocked_response,
+    )
+    from daari.gateway.systemone import _apply_systemone_output_policy
+
+    answers = data.get("answers")
+    if isinstance(answers, dict):
+        return _apply_systemone_output_policy(data, engine, metrics=metrics)
+    if not isinstance(answers, list):
+        return data, None
+    rewritten: list[Any] = []
+    for item in answers:
+        if isinstance(item, dict):
+            choice = str(item.get("choice") or "")
+            if choice:
+                policy = apply_endpoint_output_policy(choice, engine, metrics=metrics)
+                if policy.blocked:
+                    return None, endpoint_guardrail_blocked_response(policy.block_message)
+                rewritten.append({**item, "choice": policy.text})
+            else:
+                rewritten.append(item)
+        elif isinstance(item, str):
+            policy = apply_endpoint_output_policy(item, engine, metrics=metrics)
+            if policy.blocked:
+                return None, endpoint_guardrail_blocked_response(policy.block_message)
+            rewritten.append(policy.text)
+        else:
+            rewritten.append(item)
+    return {**data, "answers": rewritten}, None
+
+
 def _bind_spend_context(
     request: Request,
     ctx: Any,
     *,
     model: str,
     client_id: str | None,
+    user_id: str | None = None,
 ) -> None:
     router = getattr(ctx, "router", None)
     ledger = getattr(router, "spend_ledger", None)
@@ -286,7 +374,7 @@ def _bind_spend_context(
             key_id=key_id,
             team_id=team_id,
             client_id=client_id or "",
-            user_id="",
+            user_id=(user_id or "").strip(),
             request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
             pricing=pricing,
@@ -375,6 +463,15 @@ async def _handle_local(
     if denied is not None:
         return denied
 
+    metrics = getattr(ctx, "metrics", None)
+    from daari.gateway.guardrails import router_guardrails
+
+    engine = router_guardrails(ctx)
+    body, blocked = _apply_decisions_input_policy(body, engine, metrics=metrics)
+    if blocked is not None:
+        return blocked
+    assert body is not None
+
     state, images = _extract_input_text_and_images(body.input)
     payload: dict[str, Any] = {
         "model": model,
@@ -384,16 +481,31 @@ async def _handle_local(
     if images:
         payload["images"] = images
 
-    # Reuse the systemone pooled client so local decision traffic shares one pool.
+    # Reuse systemone retry helper so local decisions share pool + retry (#1497).
     from daari.gateway import systemone as systemone_mod
+    from daari.observability.metrics import genai_operation_name
+    from daari.observability.otel import modality_client_span
 
     timeout = float(
         getattr(getattr(settings, "upstream", None), "local_timeout_seconds", 120.0) or 120.0
     )
+    retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
     url = f"{base}/v1/systemone"
+    span_attrs = {
+        "daari.modality": "decisions",
+        "gen_ai.operation.name": genai_operation_name("decisions"),
+        "gen_ai.request.model": model,
+    }
     started = time.perf_counter()
     try:
-        upstream = await systemone_mod._shared_client().post(url, json=payload, timeout=timeout)
+        with modality_client_span("daari.decisions", attributes=span_attrs):
+            upstream = await systemone_mod._post_systemone(
+                url,
+                payload=payload,
+                timeout=timeout,
+                retry=retry_settings,
+                metrics=metrics,
+            )
     except httpx.RequestError as exc:
         log_gateway_event(
             "decisions_ollama_down",
@@ -426,6 +538,11 @@ async def _handle_local(
     if not isinstance(data, dict):
         return _error(502, "bad_gateway", "Ollama systemone returned non-object JSON.")
 
+    data, out_blocked = _apply_decisions_output_policy(data, engine, metrics=metrics)
+    if out_blocked is not None:
+        return out_blocked
+    assert data is not None
+
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     try:
         input_tokens = int(usage.get("input_tokens") or 0)
@@ -441,7 +558,9 @@ async def _handle_local(
 
     resolved_model = str(data.get("model") or model)
     caller = _caller_client_id(request)
-    _bind_spend_context(request, ctx, model=resolved_model, client_id=caller)
+    _bind_spend_context(
+        request, ctx, model=resolved_model, client_id=caller, user_id=body.user
+    )
     _record_request(
         ctx,
         client_id=caller,
@@ -523,16 +642,31 @@ async def _handle_frontier(
     if denied is not None:
         return denied
 
+    metrics = getattr(ctx, "metrics", None)
+    from daari.gateway.guardrails import router_guardrails
+    from daari.observability.metrics import genai_operation_name
+    from daari.observability.otel import modality_client_span
+
+    engine = router_guardrails(ctx)
+    body, blocked_in = _apply_decisions_input_policy(body, engine, metrics=metrics)
+    if blocked_in is not None:
+        return blocked_in
+    assert body is not None
+
     payload = {
         "model": model,
         "input": body.input,
         "questions": [q.model_dump(exclude_none=True) for q in body.questions],
     }
     retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
-    metrics = getattr(ctx, "metrics", None)
     last_exc: Exception | None = None
     last_upstream: httpx.Response | None = None
     started = time.perf_counter()
+    span_attrs = {
+        "daari.modality": "decisions",
+        "gen_ai.operation.name": genai_operation_name("decisions"),
+        "gen_ai.request.model": model,
+    }
 
     for target in targets:
         headers = {
@@ -541,16 +675,17 @@ async def _handle_frontier(
         }
         url = f"{target.base_url.rstrip('/')}/decisions"
         try:
-            upstream = await post_l6(
-                _shared_client(),
-                url,
-                headers=headers,
-                payload=payload,
-                timeout=target.timeout,
-                upstream="decisions",
-                retry=target.retry if target.retry is not None else retry_settings,
-                metrics=metrics,
-            )
+            with modality_client_span("daari.decisions", attributes=span_attrs):
+                upstream = await post_l6(
+                    _shared_client(),
+                    url,
+                    headers=headers,
+                    payload=payload,
+                    timeout=target.timeout,
+                    upstream="decisions",
+                    retry=target.retry if target.retry is not None else retry_settings,
+                    metrics=metrics,
+                )
         except httpx.HTTPStatusError as exc:
             last_upstream = exc.response
             last_exc = exc
@@ -600,6 +735,11 @@ async def _handle_frontier(
         if not isinstance(data, dict):
             return _error(502, "bad_gateway", "Decisions upstream returned non-object JSON.")
 
+        data, out_blocked = _apply_decisions_output_policy(data, engine, metrics=metrics)
+        if out_blocked is not None:
+            return out_blocked
+        assert data is not None
+
         latency_ms = _elapsed_ms(started)
         usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
         try:
@@ -635,7 +775,9 @@ async def _handle_frontier(
             billing_path="decisions",
         )
         caller = _caller_client_id(request)
-        _bind_spend_context(request, ctx, model=resolved_model, client_id=caller)
+        _bind_spend_context(
+            request, ctx, model=resolved_model, client_id=caller, user_id=body.user
+        )
         _record_request(
             ctx,
             client_id=caller,

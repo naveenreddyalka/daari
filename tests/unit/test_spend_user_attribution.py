@@ -286,6 +286,7 @@ def _modality_bind_fixture(tmp_path):
         "daari.gateway.speech",
         "daari.gateway.transcriptions",
         "daari.gateway.rerank",
+        "daari.gateway.decisions",
     ],
 )
 def test_modality_bind_spend_context_sets_user_id(tmp_path, module_path):
