@@ -438,3 +438,34 @@ async def test_ocr_upstream_emits_otel_client_span(settings, monkeypatch):
     assert name == "daari.ocr"
     assert attrs.get("daari.modality") == "ocr"
     assert attrs.get("gen_ai.operation.name") == "ocr"
+
+
+@pytest.mark.asyncio
+async def test_ocr_input_guardrail_blocks(settings, monkeypatch):
+    """Document source text is screened before upstream dispatch (#1476)."""
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not call OCR upstream when input blocked")
+
+    _patch_upstream(monkeypatch, handler)
+    settings.ocr.base_url = "http://ocr.local/v1"
+    settings.ocr.model = "local-ocr"
+    settings.frontier.enabled = False
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="blocked by policy",
+        input_rules=[
+            GuardrailRuleSettings(
+                name="no_evil", pattern=r"evil\.example", action="block", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+    doc = {"type": "image_url", "image_url": "https://evil.example/doc.png"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/ocr", json={"document": doc})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "guardrail_blocked"

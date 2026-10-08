@@ -249,6 +249,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/.well-known/oauth-protected-resource/mcp",
             "/.well-known/oauth-authorization-server",
             "/oauth/token",
+            "/oauth/revoke",
             "/v1/mcp/registry.json",
         }
         if not master_keys:
@@ -350,6 +351,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "type": "authentication_error",
                             "code": "key_expired",
                             "message": "Virtual API key has expired.",
+                        }
+                    },
+                )
+            if claims is not None and claims.kind == "insufficient_scope":
+                from daari.enterprise.postgres_audit import audit_log_from_settings
+                from daari.gateway.mcp_oauth import AUDIT_TOKEN_DENIED
+
+                audit_log_from_settings(resolved).record(
+                    actor=claims.client_id or claims.key_id or "anonymous",
+                    role="mcp_oauth",
+                    action=AUDIT_TOKEN_DENIED,
+                    detail={
+                        "reason": "insufficient_scope",
+                        "path": request.url.path,
+                    },
+                )
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": {
+                            "type": "authorization_error",
+                            "code": "insufficient_scope",
+                            "message": "Access token is missing the required mcp scope.",
                         }
                     },
                 )

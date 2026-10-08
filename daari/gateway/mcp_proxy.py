@@ -181,15 +181,62 @@ def _base_url_from_spec(spec: dict[str, Any], override: str) -> str:
     return ""
 
 
+async def _upstream_request(
+    method: str,
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    json_body: Any = None,
+    timeout: float = 30.0,
+    upstream: str = "mcp_proxy",
+    retry: Any | None = None,
+    metrics: Any | None = None,
+) -> httpx.Response:
+    """HTTP via ``run_upstream`` so transient 5xx retries with per-attempt traces (#1476)."""
+    from daari.router.retry import RETRYABLE_STATUS, RetryPolicy, run_upstream
+
+    policy = (
+        retry
+        if isinstance(retry, RetryPolicy)
+        else (RetryPolicy(attempts=1) if retry is None else RetryPolicy.from_settings(retry))
+    )
+
+    async def attempt() -> httpx.Response:
+        response = await _shared_client().request(
+            method, url, params=params, json=json_body, timeout=timeout
+        )
+        if response.status_code in RETRYABLE_STATUS:
+            response.raise_for_status()
+        return response
+
+    return await run_upstream(
+        attempt,
+        upstream=upstream,
+        policy=policy,
+        timeout=timeout,
+        metrics=metrics,
+    )
+
+
 async def _load_spec(
-    settings: Any, entry: Any
+    settings: Any,
+    entry: Any,
+    *,
+    retry: Any | None = None,
+    metrics: Any | None = None,
 ) -> tuple[dict[str, Any], str]:
     url = (entry.openapi_url or "").strip()
     if not url:
         raise ValueError(f"spec {entry.id!r} has empty openapi_url")
     validate_egress_url(url, allow_private_networks=_allow_private(settings))
-    client = _shared_client()
-    response = await client.get(url, timeout=30.0)
+    response = await _upstream_request(
+        "GET",
+        url,
+        timeout=30.0,
+        upstream="mcp_proxy_spec",
+        retry=retry,
+        metrics=metrics,
+    )
     response.raise_for_status()
     document = _parse_spec_document(
         response.content, content_type=response.headers.get("content-type", "")
@@ -238,8 +285,22 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
     if entry is None:
         return _error(400, "invalid_request_error", f"unknown spec_id {spec_id!r}")
 
+    retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
+    metrics = getattr(ctx, "metrics", None)
+    from daari.observability.metrics import genai_operation_name
+    from daari.observability.otel import modality_client_span
+
+    span_attrs = {
+        "daari.modality": "mcp",
+        "gen_ai.operation.name": genai_operation_name("mcp"),
+        "daari.mcp.spec_id": spec_id,
+    }
+
     try:
-        document, base_url = await _load_spec(settings, entry)
+        with modality_client_span("daari.mcp_proxy", attributes=span_attrs):
+            document, base_url = await _load_spec(
+                settings, entry, retry=retry_settings, metrics=metrics
+            )
     except EgressUrlBlocked as exc:
         log_gateway_event("mcp_openapi_proxy_ssrf", {"spec_id": spec_id, "error": str(exc)})
         return _error(400, "egress_blocked", str(exc))
@@ -275,6 +336,28 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         log_gateway_event("mcp_openapi_proxy_denied", {"spec_id": spec_id, "tool": name})
         return _error(403, "tool_denied", f"tool {name!r} denied by mcp policy")
 
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+    from daari.gateway.mcp_guardrails import McpGuardrails, first_rule
+
+    guardrails = McpGuardrails.from_settings(
+        settings,
+        audit=audit_log_from_settings(settings),
+        claims=getattr(request.state, "auth_claims", None),
+        transport="mcp_proxy",
+    )
+    input_result = guardrails.check_arguments(name, arguments)
+    if input_result.blocked:
+        rule = first_rule(input_result)
+        log_gateway_event(
+            "mcp_openapi_proxy_guardrail",
+            {"spec_id": spec_id, "tool": name, "rule": rule, "direction": "input"},
+        )
+        return _error(
+            403,
+            "guardrail_blocked",
+            f"Tool call blocked by guardrail {rule}: {name}",
+        )
+
     match = next((tool for tool in tools if tool["name"] == name), None)
     if match is None:
         return _error(404, "not_found", f"tool {name!r} not in spec {spec_id!r}")
@@ -299,11 +382,19 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
     except EgressUrlBlocked as exc:
         return _error(400, "egress_blocked", str(exc))
 
-    client = _shared_client()
+    call_attrs = {**span_attrs, "daari.mcp.tool": name}
     try:
-        upstream = await client.request(
-            method, url, params=query or None, json=json_body, timeout=30.0
-        )
+        with modality_client_span("daari.mcp_proxy", attributes=call_attrs):
+            upstream = await _upstream_request(
+                method,
+                url,
+                params=query or None,
+                json_body=json_body,
+                timeout=30.0,
+                upstream="mcp_proxy",
+                retry=retry_settings,
+                metrics=metrics,
+            )
     except Exception as exc:
         log_gateway_event(
             "mcp_openapi_proxy_call_error",
@@ -316,6 +407,12 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         payload = upstream.json()
     except Exception:
         payload = {"text": upstream.text[:4000]}
+    result = {
+        "content": [{"type": "text", "text": json.dumps(payload, default=str)}],
+        "isError": upstream.status_code >= 400,
+        "status_code": upstream.status_code,
+    }
+    result, _ = guardrails.check_tool_result(name, result)
     log_gateway_event(
         "mcp_openapi_proxy_call",
         {"spec_id": spec_id, "tool": name, "status": upstream.status_code},
@@ -334,14 +431,7 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         session_id=session_id_from_request(request),
         savings=getattr(getattr(ctx, "router", None), "session_savings", None),
     )
-    return JSONResponse(
-        {
-            "content": [{"type": "text", "text": json.dumps(payload, default=str)}],
-            "isError": upstream.status_code >= 400,
-            "status_code": upstream.status_code,
-        },
-        headers=cost_headers,
-    )
+    return JSONResponse(result, headers=cost_headers)
 
 
 def build_mcp_proxy_router() -> APIRouter:
