@@ -21,6 +21,8 @@ def test_mcp_guide_pins_local_as_token_mint() -> None:
     assert "local_as" in text
     assert "/oauth/token" in text
     assert "client_credentials" in text
+    assert "/oauth/revoke" in text
+    assert "scopes_supported" in text
 
 
 def test_config_md_lists_mcp_oauth() -> None:

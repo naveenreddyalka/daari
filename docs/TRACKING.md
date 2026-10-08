@@ -6186,6 +6186,16 @@ emit the standard `x-daari-response-cost*` set via `modality_response_headers`
 `tests/unit/test_mcp_openapi_proxy.py`.
 
 
+### MCP OAuth scope enforcement + RFC 7009 revocation ([#1475](https://github.com/naveenreddyalka/daari/issues/1475))
+
+<!-- tracking:#1475 -->
+**Status:** Done (2026-10-08). Local AS mint rejects scopes outside
+`scopes_supported` (`invalid_scope` + audit); `/mcp` requires the `mcp` scope
+claim (403 + audit); `POST /oauth/revoke` denylists by `jti` until remaining
+`exp`; AS metadata advertises `revocation_endpoint`. Covered by
+`tests/unit/test_mcp_oauth_token_mint.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

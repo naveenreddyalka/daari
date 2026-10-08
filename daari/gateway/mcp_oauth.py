@@ -5,8 +5,9 @@ Opt-in via ``integrations.mcp_oauth.protected_resource`` (#1262) and
 ``/.well-known/oauth-protected-resource`` and shapes unauthenticated ``/mcp``
 401s with a ``WWW-Authenticate`` challenge. When ``local_as`` is on, daari also
 exposes a minimal on-box authorization server (AS metadata +
-``POST /oauth/token`` client_credentials) that mints short-lived JWTs usable as
-Bearer on ``/mcp``.
+``POST /oauth/token`` client_credentials + ``POST /oauth/revoke`` RFC 7009)
+that mints short-lived JWTs usable as Bearer on ``/mcp``, enforces
+``scopes_supported``, and denylists revoked ``jti`` values (#1475).
 """
 
 from __future__ import annotations
@@ -16,7 +17,9 @@ import hashlib
 import hmac
 import json
 import logging
+import threading
 import time
+import uuid
 from typing import Any
 from urllib.parse import urljoin
 
@@ -29,8 +32,14 @@ _log = logging.getLogger(__name__)
 
 _MCP_OAUTH_ISS = "daari-mcp"
 _TOKEN_TYP = "mcp_at"
+_REQUIRED_MCP_SCOPE = "mcp"
 AUDIT_TOKEN_MINTED = "mcp_oauth.token_minted"
 AUDIT_TOKEN_DENIED = "mcp_oauth.token_denied"
+AUDIT_TOKEN_REVOKED = "mcp_oauth.token_revoked"
+
+# jti → absolute expiry (unix). Process-local denylist; TTL bounded by remaining exp.
+_revoked_jtis: dict[str, int] = {}
+_revoked_lock = threading.Lock()
 
 
 def mcp_oauth_enabled(settings: Any) -> bool:
@@ -93,16 +102,39 @@ def protected_resource_metadata(
     }
 
 
+def _scopes_supported(settings: Any) -> list[str]:
+    oauth = _oauth(settings)
+    scopes = list(getattr(oauth, "scopes_supported", None) or [])
+    return scopes or ["mcp"]
+
+
+def _parse_scopes(scope: str) -> list[str]:
+    return [part for part in str(scope or "").split() if part]
+
+
+def scope_is_supported(settings: Any, scope: str) -> bool:
+    """True when every space-delimited scope token is in ``scopes_supported``."""
+    supported = set(_scopes_supported(settings))
+    requested = _parse_scopes(scope)
+    if not requested:
+        return True
+    return all(part in supported for part in requested)
+
+
+def token_has_required_scope(scope: str, required: str = _REQUIRED_MCP_SCOPE) -> bool:
+    return required in _parse_scopes(scope)
+
+
 def authorization_server_metadata(
     settings: Any, *, request: Request | None = None
 ) -> dict[str, Any]:
-    """RFC 8414 AS metadata for the on-box client_credentials mint (#1293)."""
-    oauth = _oauth(settings)
+    """RFC 8414 AS metadata for the on-box client_credentials mint (#1293, #1475)."""
     issuer = _local_issuer(settings, request)
-    scopes = list(getattr(oauth, "scopes_supported", None) or []) or ["mcp"]
+    scopes = _scopes_supported(settings)
     return {
         "issuer": issuer,
         "token_endpoint": urljoin(f"{issuer}/", "oauth/token"),
+        "revocation_endpoint": urljoin(f"{issuer}/", "oauth/revoke"),
         "grant_types_supported": ["client_credentials"],
         "token_endpoint_auth_methods_supported": [
             "client_secret_basic",
@@ -111,6 +143,65 @@ def authorization_server_metadata(
         "response_types_supported": [],
         "scopes_supported": scopes,
     }
+
+
+def _prune_revoked(now: int | None = None) -> None:
+    ts = int(time.time()) if now is None else now
+    with _revoked_lock:
+        stale = [jti for jti, exp in _revoked_jtis.items() if exp < ts]
+        for jti in stale:
+            _revoked_jtis.pop(jti, None)
+
+
+def is_jti_revoked(jti: str) -> bool:
+    if not jti:
+        return False
+    _prune_revoked()
+    with _revoked_lock:
+        return jti in _revoked_jtis
+
+
+def revoke_jti(jti: str, exp: int) -> None:
+    """Denylist ``jti`` until ``exp`` (absolute unix). No-op when already expired."""
+    now = int(time.time())
+    if not jti or exp < now:
+        return
+    with _revoked_lock:
+        _revoked_jtis[jti] = int(exp)
+    _prune_revoked(now)
+
+
+def clear_revocation_denylist() -> None:
+    """Test helper — drop all denylisted jtis."""
+    with _revoked_lock:
+        _revoked_jtis.clear()
+
+
+def _decode_token_claims(token: str, settings: Any) -> dict[str, Any] | None:
+    """Verify HS256 signature and return payload dict, or None."""
+    if not token or token.count(".") != 2:
+        return None
+    parts = token.split(".")
+    signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
+    try:
+        actual = _b64url_decode(parts[2])
+    except Exception:
+        return None
+    secret = signing_secret_for(settings).encode("utf-8")
+    expected = hmac.new(secret, signing_input, hashlib.sha256).digest()
+    if not hmac.compare_digest(expected, actual):
+        return None
+    try:
+        claims_doc = json.loads(_b64url_decode(parts[1]))
+    except Exception:
+        return None
+    if not isinstance(claims_doc, dict):
+        return None
+    if claims_doc.get("iss") != _MCP_OAUTH_ISS or claims_doc.get("typ") != _TOKEN_TYP:
+        return None
+    if claims_doc.get("aud") != "mcp":
+        return None
+    return claims_doc
 
 
 def metadata_url(settings: Any, *, request: Request | None = None) -> str:
@@ -213,6 +304,7 @@ def mint_access_token(
         "scope": scope or "mcp",
         "typ": _TOKEN_TYP,
         "kind": claims.kind,
+        "jti": str(uuid.uuid4()),
     }
     if claims.kind == "virtual" and claims.key_id:
         payload["key_id"] = claims.key_id
@@ -227,6 +319,26 @@ def mint_access_token(
     return token, ttl
 
 
+def revoke_access_token(token: str, settings: Any) -> bool:
+    """Revoke a minted access token by ``jti``. Returns True when denylisted."""
+    claims_doc = _decode_token_claims(token, settings)
+    if claims_doc is None:
+        return False
+    jti = str(claims_doc.get("jti") or "").strip()
+    if not jti:
+        return False
+    try:
+        exp = int(claims_doc.get("exp", 0))
+    except (TypeError, ValueError):
+        return False
+    if exp < int(time.time()):
+        return False
+    if is_jti_revoked(jti):
+        return True
+    revoke_jti(jti, exp)
+    return True
+
+
 def verify_access_token(
     token: str,
     settings: Any,
@@ -234,28 +346,14 @@ def verify_access_token(
     master_key: str | list[str] | None = None,
     store: Any = None,
 ) -> AuthClaims | None:
-    """Verify a local AS JWT and map it to AuthClaims. Never logs the token."""
-    if not token or token.count(".") != 2:
-        return None
-    parts = token.split(".")
-    signing_input = f"{parts[0]}.{parts[1]}".encode("ascii")
-    try:
-        actual = _b64url_decode(parts[2])
-    except Exception:
-        return None
-    secret = signing_secret_for(settings).encode("utf-8")
-    expected = hmac.new(secret, signing_input, hashlib.sha256).digest()
-    if not hmac.compare_digest(expected, actual):
-        return None
-    try:
-        claims_doc = json.loads(_b64url_decode(parts[1]))
-    except Exception:
-        return None
-    if not isinstance(claims_doc, dict):
-        return None
-    if claims_doc.get("iss") != _MCP_OAUTH_ISS or claims_doc.get("typ") != _TOKEN_TYP:
-        return None
-    if claims_doc.get("aud") != "mcp":
+    """Verify a local AS JWT and map it to AuthClaims. Never logs the token.
+
+    Returns ``AuthClaims(kind=\"insufficient_scope\")`` when the JWT is
+    cryptographically valid but missing the required ``mcp`` scope (#1475).
+    Revoked ``jti`` values return ``None``.
+    """
+    claims_doc = _decode_token_claims(token, settings)
+    if claims_doc is None:
         return None
     try:
         exp = int(claims_doc.get("exp", 0))
@@ -263,6 +361,12 @@ def verify_access_token(
         return None
     if exp < int(time.time()):
         return None
+    jti = str(claims_doc.get("jti") or "").strip()
+    if jti and is_jti_revoked(jti):
+        return None
+    scope = str(claims_doc.get("scope") or "")
+    if not token_has_required_scope(scope):
+        return AuthClaims(kind="insufficient_scope")
     kind = claims_doc.get("kind")
     if kind == "master":
         return AuthClaims(kind="master")
@@ -402,6 +506,22 @@ def build_mcp_oauth_router(settings: Any) -> APIRouter:
                 )
                 return _oauth_error(401, "invalid_client", "Invalid client credentials.")
             scope = str(form.get("scope") or "mcp").strip() or "mcp"
+            if not scope_is_supported(settings, scope):
+                _audit_token_event(
+                    settings,
+                    action=AUDIT_TOKEN_DENIED,
+                    claims=claims,
+                    detail={
+                        "reason": "invalid_scope",
+                        "scope": scope,
+                        "scopes_supported": _scopes_supported(settings),
+                    },
+                )
+                return _oauth_error(
+                    400,
+                    "invalid_scope",
+                    "Requested scope is not in scopes_supported.",
+                )
             token, expires_in = mint_access_token(settings, claims, scope=scope)
             # Log only a non-reversible fingerprint — never the token or secret.
             token_fp = hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
@@ -431,5 +551,37 @@ def build_mcp_oauth_router(settings: Any) -> APIRouter:
                     "scope": scope,
                 },
             )
+
+        @router.post("/oauth/revoke")
+        async def oauth_revoke(request: Request) -> JSONResponse:
+            """RFC 7009 token revocation — denylist by jti until remaining exp."""
+            content_type = (request.headers.get("content-type") or "").lower()
+            form: dict[str, Any] = {}
+            if "application/json" in content_type:
+                try:
+                    payload = await request.json()
+                    if isinstance(payload, dict):
+                        form = payload
+                except Exception:
+                    form = {}
+            else:
+                try:
+                    raw = await request.form()
+                    form = {str(k): raw.get(k) for k in raw}
+                except Exception:
+                    form = {}
+            token = str(form.get("token") or "").strip()
+            # RFC 7009: always 200 for well-formed requests, even unknown tokens.
+            if token:
+                revoked = revoke_access_token(token, settings)
+                if revoked:
+                    token_fp = hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
+                    _log.info("mcp_oauth.token_revoked fp=%s", token_fp)
+                    _audit_token_event(
+                        settings,
+                        action=AUDIT_TOKEN_REVOKED,
+                        detail={"token_fp": token_fp},
+                    )
+            return JSONResponse(status_code=200, content={})
 
     return router

@@ -67,15 +67,18 @@ integrations:
 ```
 
 Opt-in local authorization server (`integrations.mcp_oauth.local_as: true`)
-adds `GET /.well-known/oauth-authorization-server` and
-`POST /oauth/token` (`grant_type=client_credentials`). Exchange an existing
-API key or virtual key as `client_secret` (form body or HTTP Basic) for a
-short-lived Bearer JWT (`token_ttl_seconds`, default 900) that `/mcp` accepts
-like the API-key path. Invalid or expired tokens get the same 401 +
-`WWW-Authenticate` challenge. Tokens are HS256-signed (`signing_secret`, or
-derived from the master key); plaintext secrets are never logged. When
-`authorization_servers` is empty, discovery advertises the local issuer.
-No external IdP required.
+adds `GET /.well-known/oauth-authorization-server`,
+`POST /oauth/token` (`grant_type=client_credentials`), and
+`POST /oauth/revoke` (RFC 7009). Exchange an existing API key or virtual key
+as `client_secret` (form body or HTTP Basic) for a short-lived Bearer JWT
+(`token_ttl_seconds`, default 900) that `/mcp` accepts like the API-key path.
+Mint rejects scopes outside `scopes_supported` (`invalid_scope`); `/mcp`
+requires the `mcp` scope claim (missing/wrong → 403). Revoke denylists by
+`jti` until remaining `exp`. Invalid, expired, or revoked tokens get the same
+401 + `WWW-Authenticate` challenge. Tokens are HS256-signed
+(`signing_secret`, or derived from the master key); plaintext secrets are
+never logged. When `authorization_servers` is empty, discovery advertises the
+local issuer. No external IdP required.
 
 Opt-in OpenAPI → MCP proxy (`integrations.mcp_openapi_proxy.enabled: true`)
 exposes `POST /mcp/proxy` for schema discovery (`action: tools/list`) and
