@@ -251,6 +251,32 @@
           </thead>
           <tbody id="report-table"></tbody>
         </table>
+        <h3>Team spend</h3>
+        <p class="subtle">From <code>report.teams</code> — requests and savings rolled up by team.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th>Requests</th>
+              <th>Cache hits</th>
+              <th>Est. savings</th>
+            </tr>
+          </thead>
+          <tbody id="report-teams-table"></tbody>
+        </table>
+        <h3>Model group spend</h3>
+        <p class="subtle">From <code>report.model_group_spend</code>.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Model group</th>
+              <th>Window</th>
+              <th>Spend</th>
+              <th>Budget</th>
+            </tr>
+          </thead>
+          <tbody id="report-model-group-spend-table"></tbody>
+        </table>
         <h3>Cache trust</h3>
         <table>
           <thead>
@@ -264,6 +290,45 @@
           <tbody id="cache-trust-table"></tbody>
         </table>
         <p id="report-status" class="subtle">Loading...</p>
+      </section>
+
+      <section class="card">
+        <h2>Virtual keys</h2>
+        <p class="subtle">Read-only inventory from <code>GET /v1/daari/keys</code> (admin / master key). Secrets never leave the store.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Alias</th>
+              <th>Team</th>
+              <th>Tier cap</th>
+              <th>Expires</th>
+              <th>Status</th>
+              <th>Spend</th>
+            </tr>
+          </thead>
+          <tbody id="admin-keys-table"></tbody>
+        </table>
+        <p id="admin-keys-status" class="subtle">Loading...</p>
+      </section>
+
+      <section class="card">
+        <h2>Teams</h2>
+        <p class="subtle">Read-only inventory from <code>GET /v1/daari/teams</code> (admin / master key).</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Team</th>
+              <th>Name</th>
+              <th>Keys</th>
+              <th>RPM</th>
+              <th>RPD</th>
+              <th>Spend</th>
+            </tr>
+          </thead>
+          <tbody id="admin-teams-table"></tbody>
+        </table>
+        <p id="admin-teams-status" class="subtle">Loading...</p>
       </section>
 
       <section class="card">

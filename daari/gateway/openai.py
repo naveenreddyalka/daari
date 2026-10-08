@@ -2260,6 +2260,46 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             entries = audit_log_from_settings(ctx.settings).list(limit=100)
             return {"entries": entries}
 
+        @router.get("/v1/daari/keys")
+        async def daari_keys_list(request: Request) -> dict[str, Any]:
+            """Redacted virtual-key inventory for the local admin plane (#1477)."""
+            ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
+            from daari.gateway.admin_read import keys_inventory
+
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            ledger = getattr(ctx.router, "usage_ledger", None)
+            return keys_inventory(
+                store,
+                ledger=ledger,
+                pricing=getattr(ctx.settings, "pricing", None),
+                fallback_per_1k=float(
+                    getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                ),
+            )
+
+        @router.get("/v1/daari/teams")
+        async def daari_teams_list(request: Request) -> dict[str, Any]:
+            """Redacted team inventory for the local admin plane (#1477)."""
+            ctx: AppContext = request.app.state.ctx
+            _require_admin_role(request, ctx)
+            from daari.gateway.admin_read import teams_inventory
+
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            ledger = getattr(ctx.router, "usage_ledger", None)
+            return teams_inventory(
+                store,
+                ledger=ledger,
+                pricing=getattr(ctx.settings, "pricing", None),
+                fallback_per_1k=float(
+                    getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                ),
+            )
+
         @router.post("/v1/org-learning/sync")
         async def org_learning_sync(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx

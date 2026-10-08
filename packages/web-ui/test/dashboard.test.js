@@ -61,6 +61,42 @@ const REPORT = {
       code_gen: { entries: 5, unique_answers: 5, ratio: 1.0 },
     },
   },
+  teams: [
+    { team: "eng", requests: 30, cache_hits: 12, estimated_saved_usd: 0.01 },
+    { team: "ops", requests: 12, cache_hits: 6, estimated_saved_usd: 0.0023 },
+  ],
+  model_group_spend: [
+    { model_group: "chat", window: "1d", spend_usd: 0.5, budget_usd: 10.0 },
+    { model_group: "embed", window: "1d", spend_usd: 0.05, budget_usd: 0.0 },
+  ],
+};
+
+const ADMIN_KEYS = {
+  keys: [
+    {
+      key_id: "abc123",
+      name: "alice",
+      team: "eng",
+      team_id: "t1",
+      tier_cap: "L3",
+      expires_at: "2099-01-01T00:00:00+00:00",
+      status: "active",
+      spend: [{ window: "day", quota: "usd", spend: 0.25, limit: 1.0 }],
+    },
+  ],
+};
+
+const ADMIN_TEAMS = {
+  teams: [
+    {
+      team_id: "t1",
+      name: "eng",
+      key_count: 1,
+      rpm: 60,
+      rpd: 500,
+      spend: [{ window: "day", quota: "usd", spend: 1.5, limit: 10.0 }],
+    },
+  ],
 };
 
 const TRACES = {
@@ -80,6 +116,8 @@ function routes(overrides = {}) {
   return {
     "/v1/daari/stats": STATS,
     "/v1/daari/report": REPORT,
+    "/v1/daari/keys": ADMIN_KEYS,
+    "/v1/daari/teams": ADMIN_TEAMS,
     "/v1/daari/traces/abcd1234efgh": TRACE_DETAIL,
     "/v1/daari/traces": TRACES,
     "/v1/org-learning/profile": { status: 404 },
@@ -486,6 +524,27 @@ test("malicious stats/trace fields render as inert text", async (t) => {
           },
         ],
       },
+      "/v1/daari/keys": {
+        keys: [
+          {
+            key_id: xss,
+            name: xss,
+            team: xss,
+            tier_cap: xss,
+            expires_at: xss,
+            status: xss,
+            spend: [],
+          },
+        ],
+      },
+      "/v1/daari/teams": {
+        teams: [{ team_id: xss, name: xss, key_count: 1, rpm: 1, rpd: 1, spend: [] }],
+      },
+      "/v1/daari/report": {
+        ...REPORT,
+        teams: [{ team: xss, requests: 1, cache_hits: 0, estimated_saved_usd: 0 }],
+        model_group_spend: [{ model_group: xss, window: xss, spend_usd: 0.1, budget_usd: 1 }],
+      },
     })
   );
   const dom = loadDashboard({ fetch });
@@ -499,9 +558,53 @@ test("malicious stats/trace fields render as inert text", async (t) => {
   assert.equal(doc.querySelectorAll("#soft-warnings-table script").length, 0);
   assert.equal(doc.querySelectorAll("#backends-table script").length, 0);
   assert.equal(doc.querySelectorAll("#traces-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#admin-keys-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#admin-teams-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#report-teams-table script").length, 0);
   assert.match(doc.getElementById("tiers-table").textContent, /onerror/);
   assert.match(doc.getElementById("backends-table").textContent, /onerror/);
   assert.match(doc.getElementById("traces-table").textContent, /onerror/);
+  assert.match(doc.getElementById("admin-keys-table").textContent, /onerror/);
+  assert.match(doc.getElementById("admin-teams-table").textContent, /onerror/);
+});
+
+test("admin keys and teams tables render from inventory endpoints", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const keyRows = [...doc.querySelectorAll("#admin-keys-table tr")];
+  assert.equal(keyRows.length, 1);
+  assert.match(keyRows[0].textContent, /alice/);
+  assert.match(keyRows[0].textContent, /L3/);
+  assert.match(keyRows[0].textContent, /0\.25/);
+  assert.match(doc.getElementById("admin-keys-status").textContent, /1 key/);
+
+  const teamRows = [...doc.querySelectorAll("#admin-teams-table tr")];
+  assert.equal(teamRows.length, 1);
+  assert.match(teamRows[0].textContent, /eng/);
+  assert.match(teamRows[0].textContent, /60/);
+  assert.match(doc.getElementById("admin-teams-status").textContent, /1 team/);
+});
+
+test("report spend breakdown renders teams and model_group_spend", async (t) => {
+  const fetch = fakeFetch(routes());
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const teamRows = [...doc.querySelectorAll("#report-teams-table tr")];
+  assert.equal(teamRows.length, 2);
+  assert.match(teamRows.map((r) => r.textContent).join("|"), /eng/);
+  assert.match(teamRows.map((r) => r.textContent).join("|"), /ops/);
+
+  const groupRows = [...doc.querySelectorAll("#report-model-group-spend-table tr")];
+  assert.equal(groupRows.length, 2);
+  assert.match(groupRows.map((r) => r.textContent).join("|"), /chat/);
+  assert.match(groupRows.map((r) => r.textContent).join("|"), /embed/);
 });
 
 test("index.html ships a restrictive CSP meta", async (t) => {

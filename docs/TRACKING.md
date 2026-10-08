@@ -6207,6 +6207,17 @@ OCR applies input guardrails before dispatch. Covered by
 `tests/unit/test_ocr.py`.
 
 
+### Read-only keys/teams/spend admin plane ([#1477](https://github.com/naveenreddyalka/daari/issues/1477))
+
+<!-- tracking:#1477 -->
+**Status:** Done (2026-10-08). Admin-gated `GET /v1/daari/keys` and
+`GET /v1/daari/teams` return redacted inventories (id/alias/team/budgets/tier
+caps/expiry + current spend; never secrets or hashes). Web-ui adds Keys and
+Teams sections plus spend breakdown from `report.teams` /
+`report.model_group_spend`. Covered by `tests/unit/test_admin_read_plane.py`
+and `packages/web-ui/test/dashboard.test.js`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
