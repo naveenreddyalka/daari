@@ -123,6 +123,18 @@ def test_rate_family_maps_decisions():
     assert rate_limit_family("/v1/decisions/") == "decisions"
 
 
+def test_normalize_decisions_model_aliases():
+    from daari.gateway.decisions import normalize_decisions_model
+
+    assert normalize_decisions_model("gpt-6-luna") == "gpt-6-luna"
+    assert normalize_decisions_model("gpt-6-luna-decisions") == "gpt-6-luna"
+    assert normalize_decisions_model("openai/gpt-6-luna-decisions") == "gpt-6-luna"
+    assert normalize_decisions_model("nimble") == "nimble"
+    assert normalize_decisions_model("clef-flash") == "clef-flash"
+    assert normalize_decisions_model("gpt-4o") is None
+    assert normalize_decisions_model("") is None
+
+
 def test_gpt_6_luna_pricing_capabilities_param_compat():
     settings = Settings()
     price = resolve_price("gpt-6-luna", settings.pricing, fallback_per_1k=0.002)
@@ -292,6 +304,65 @@ async def test_gpt_6_luna_passthrough_to_frontier(settings, monkeypatch):
     payload = json.loads(seen[0].read())
     assert payload["model"] == "gpt-6-luna"
     assert payload["input"] == _BODY["input"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "alias",
+    ["gpt-6-luna", "gpt-6-luna-decisions", "openai/gpt-6-luna-decisions"],
+)
+async def test_gpt_6_luna_decisions_aliases_normalize_to_frontier(settings, monkeypatch, alias):
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.read()))
+        return httpx.Response(200, json=_OPENAI_OK)
+
+    _patch_frontier(monkeypatch, handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json={**_BODY, "model": alias})
+
+    assert response.status_code == 200, response.text
+    assert seen and seen[0]["model"] == "gpt-6-luna"
+    assert response.json()["daari_meta"]["executor"] == "frontier"
+
+
+@pytest.mark.asyncio
+async def test_unknown_decisions_model_returns_400(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must not reach upstream")
+
+    _patch_local(monkeypatch, handler)
+    _patch_frontier(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/v1/decisions", json={**_BODY, "model": "gpt-4o"})
+
+    assert response.status_code == 400
+    assert response.json()["error"]["type"] == "invalid_request"
+    assert "gpt-4o" in response.json()["error"]["message"]
 
 
 @pytest.mark.asyncio

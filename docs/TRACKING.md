@@ -6273,6 +6273,15 @@ routes the local Ollama hop through `_post_systemone` retry, and binds optional
 OpenAI-shaped `user` onto spend context. Covered by `tests/unit/test_decisions.py`.
 
 
+### Normalize gpt-6-luna-decisions aliases on /v1/decisions ([#1485](https://github.com/naveenreddyalka/daari/issues/1485))
+
+<!-- tracking:#1485 -->
+**Status:** Done (2026-10-08). `normalize_decisions_model` maps
+`gpt-6-luna` / `gpt-6-luna-decisions` / `openai/gpt-6-luna-decisions` to the
+frontier Decisions target; unknown ids return 400. Covered by
+`tests/unit/test_decisions.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
