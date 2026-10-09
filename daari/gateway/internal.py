@@ -202,6 +202,9 @@ class DaariMeta(BaseModel):
     service_tier: str | None = None
     # True when tools / tool history make this an agent turn (ADR-0004 / #604).
     agent_turn: bool | None = None
+    # Per-agent usage breakdown for multi_agent L6 (attribution only; totals
+    # stay on input_tokens/output_tokens/cost_usd — never double-billed) (#1500).
+    agent_usage: list[dict] | None = None
     # GenAI operation.name override for non-chat modalities (#1106).
     operation_name: str | None = None
 
