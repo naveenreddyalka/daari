@@ -6310,6 +6310,15 @@ denylist is TTL-bound and not backup-critical. Covered by
 `tests/unit/test_revoked_jti_store.py`.
 
 
+### Paginate + audit GET /v1/daari/keys and /teams ([#1499](https://github.com/naveenreddyalka/daari/issues/1499))
+
+<!-- tracking:#1499 -->
+**Status:** Done (2026-10-09). Admin inventories accept `limit`/`offset`
+(default cap 100, max 500) and return `total`/`has_more`; successful GETs
+emit `admin.keys.list` / `admin.teams.list` audit events. Covered by
+`tests/unit/test_admin_read_plane.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

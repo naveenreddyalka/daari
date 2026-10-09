@@ -224,6 +224,8 @@ when `postgres.enabled` is true.
 | `sso.mint_virtual_key` / `sso.revoke_virtual_key` | SSO key sync | claim + key_id |
 | `budget.alert` | Budget webhook fired | scope / threshold |
 | `config.patch` | Admin config patch | changed keys |
+| `admin.keys.list` | `GET /v1/daari/keys` | `limit`, `offset`, `total`, `returned` |
+| `admin.teams.list` | `GET /v1/daari/teams` | `limit`, `offset`, `total`, `returned` |
 | `retention.prune` | Retention sweep | counts |
 | `mcp.tools/call` / `mcp.guardrail` | MCP policy | tool / decision |
 

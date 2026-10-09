@@ -2261,44 +2261,82 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             return {"entries": entries}
 
         @router.get("/v1/daari/keys")
-        async def daari_keys_list(request: Request) -> dict[str, Any]:
-            """Redacted virtual-key inventory for the local admin plane (#1477)."""
+        async def daari_keys_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+        ) -> dict[str, Any]:
+            """Redacted virtual-key inventory for the local admin plane (#1477/#1499)."""
             ctx: AppContext = request.app.state.ctx
-            _require_admin_role(request, ctx)
+            role = _require_admin_role(request, ctx)
+            from daari.enterprise.postgres_audit import audit_log_from_settings
             from daari.gateway.admin_read import keys_inventory
 
             store = getattr(request.app.state, "virtual_key_store", None) or getattr(
                 ctx, "virtual_key_store", None
             )
             ledger = getattr(ctx.router, "usage_ledger", None)
-            return keys_inventory(
+            result = keys_inventory(
                 store,
                 ledger=ledger,
                 pricing=getattr(ctx.settings, "pricing", None),
                 fallback_per_1k=float(
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
+                limit=limit,
+                offset=offset,
             )
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.keys.list",
+                detail={
+                    "limit": result.get("limit"),
+                    "offset": result.get("offset"),
+                    "total": result.get("total"),
+                    "returned": len(result.get("keys") or []),
+                },
+            )
+            return result
 
         @router.get("/v1/daari/teams")
-        async def daari_teams_list(request: Request) -> dict[str, Any]:
-            """Redacted team inventory for the local admin plane (#1477)."""
+        async def daari_teams_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+        ) -> dict[str, Any]:
+            """Redacted team inventory for the local admin plane (#1477/#1499)."""
             ctx: AppContext = request.app.state.ctx
-            _require_admin_role(request, ctx)
+            role = _require_admin_role(request, ctx)
+            from daari.enterprise.postgres_audit import audit_log_from_settings
             from daari.gateway.admin_read import teams_inventory
 
             store = getattr(request.app.state, "virtual_key_store", None) or getattr(
                 ctx, "virtual_key_store", None
             )
             ledger = getattr(ctx.router, "usage_ledger", None)
-            return teams_inventory(
+            result = teams_inventory(
                 store,
                 ledger=ledger,
                 pricing=getattr(ctx.settings, "pricing", None),
                 fallback_per_1k=float(
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
+                limit=limit,
+                offset=offset,
             )
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.teams.list",
+                detail={
+                    "limit": result.get("limit"),
+                    "offset": result.get("offset"),
+                    "total": result.get("total"),
+                    "returned": len(result.get("teams") or []),
+                },
+            )
+            return result
 
         @router.post("/v1/org-learning/sync")
         async def org_learning_sync(request: Request) -> dict[str, Any]:
