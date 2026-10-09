@@ -1023,13 +1023,14 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cache_write_1h_per_1m": 10.00,
     },
     # Anthropic Claude Opus 5.5 (LiteLLM 1.104, 2026-10-03): $4/$20;
-    # cache read 0.1× ($0.40), 1h cache write 2× ($8.00).
+    # cache read halved 2026-10-07 ($0.20), 1h cache write 2× ($8.00).
     # Longer key must win over claude-opus-5 for dated/vendor ids.
     # https://docs.litellm.ai/release_notes/v1.104.0/v1-104-0
+    # https://platform.claude.com/docs/en/about-claude/pricing
     "claude-opus-5-5": {
         "input_per_1m": 4.00,
         "output_per_1m": 20.00,
-        "cached_input_per_1m": 0.40,
+        "cached_input_per_1m": 0.20,
         "cache_write_1h_per_1m": 8.00,
     },
     "claude-sonnet-5": {
@@ -1039,14 +1040,14 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cache_write_1h_per_1m": 4.00,
     },
     # Anthropic Claude Sonnet 5.5 (2026-09-28): same $2/$10 as Sonnet 5;
-    # cache read 0.1× ($0.20), 1h cache write 2× ($4.00).
+    # cache read halved 2026-10-07 ($0.10), 1h cache write 2× ($4.00).
     # https://www.anthropic.com/claude-sonnet-5-5
     # https://platform.claude.com/docs/en/about-claude/pricing
     # Longer key must win over claude-sonnet-5 for dated/vendor ids.
     "claude-sonnet-5-5": {
         "input_per_1m": 2.00,
         "output_per_1m": 10.00,
-        "cached_input_per_1m": 0.20,
+        "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 4.00,
     },
     "claude-haiku-4-5": {
@@ -1054,6 +1055,20 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "output_per_1m": 5.00,
         "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 2.00,
+    },
+    # Anthropic Claude Haiku 5.5 (2026-10-07): ≤100K $0.10/$0.50;
+    # cache read $0.01, 1h write $0.20. Above 100K → 5× via threshold ratio
+    # (same path as gpt-6-astra): cache $0.05 / 1h write $1.00.
+    # https://www.anthropic.com/claude-haiku-5-5
+    # https://platform.claude.com/docs/en/about-claude/pricing
+    "claude-haiku-5-5": {
+        "input_per_1m": 0.10,
+        "output_per_1m": 0.50,
+        "cached_input_per_1m": 0.01,
+        "cache_write_1h_per_1m": 0.20,
+        "input_threshold_tokens": 100_000,
+        "above_input_per_1m": 0.50,
+        "above_output_per_1m": 2.50,
     },
     # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
     # Sol is the promotional rate published through 2026-11-21 ($4/$20).

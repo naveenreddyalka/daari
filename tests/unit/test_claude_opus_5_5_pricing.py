@@ -23,7 +23,7 @@ def test_claude_opus_5_5_pricing_rates():
     assert price.is_fallback is False
     assert price.input_per_1m == pytest.approx(4.0)
     assert price.output_per_1m == pytest.approx(20.0)
-    assert price.cached_input_per_1m == pytest.approx(0.40)
+    assert price.cached_input_per_1m == pytest.approx(0.20)
     assert price.cache_write_1h_per_1m == pytest.approx(8.00)
 
 
