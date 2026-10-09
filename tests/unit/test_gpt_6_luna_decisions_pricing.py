@@ -15,6 +15,7 @@ def test_chat_gpt_6_luna_keeps_output_rate():
     price = resolve_price("gpt-6-luna", settings.pricing, fallback_per_1k=0.002)
     assert price.output_per_1m == pytest.approx(0.50)
     assert price.input_per_1m == pytest.approx(0.10)
+    assert price.cached_input_per_1m == pytest.approx(0.01)
     chat = cost_usd(
         "gpt-6-luna",
         input_tokens=1_000_000,
@@ -24,8 +25,32 @@ def test_chat_gpt_6_luna_keeps_output_rate():
         cached_input_tokens=100_000,
         cache_write_tokens=50_000,
     )
-    # 900k input @ $0.10 + 100k cache @ input + 1M output @ $0.50 + 50k write @ input.
-    assert chat == pytest.approx(0.605)
+    # 900k input @ $0.10 + 100k cache @ $0.01 + 1M output @ $0.50 + 50k write @ input.
+    assert chat == pytest.approx(0.596)
+
+
+def test_chat_gpt_6_luna_cached_input_not_billed_at_input_rate():
+    """Cache hits must use $0.01/MTok, not the $0.10 input rate (#1506)."""
+    settings = Settings()
+    usd = cost_usd(
+        "gpt-6-luna",
+        input_tokens=1_000_000,
+        output_tokens=0,
+        pricing=settings.pricing,
+        fallback_per_1k=0.002,
+        cached_input_tokens=1_000_000,
+    )
+    assert usd == pytest.approx(0.01)
+    overcharge = cost_usd(
+        "gpt-6-luna",
+        input_tokens=1_000_000,
+        output_tokens=0,
+        pricing=settings.pricing,
+        fallback_per_1k=0.002,
+        cached_input_tokens=0,
+    )
+    assert overcharge == pytest.approx(0.10)
+    assert usd < overcharge
 
 
 def test_decisions_path_gpt_6_luna_is_input_only():
