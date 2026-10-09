@@ -1427,13 +1427,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             # Claude Code / Desktop send anthropic-version and/or x-api-key (#454).
             if wants_anthropic_models(request):
-                return anthropic_models_payload(ctx.settings)
+                # Anthropic lifecycle filter: repeatable / comma (#1507).
+                lifecycle_vals = list(request.query_params.getlist("lifecycle"))
+                return anthropic_models_payload(
+                    ctx.settings,
+                    lifecycle=lifecycle_vals or None,
+                )
             return {"object": "list", "data": openai_model_cards(ctx.settings)}
 
         @router.get("/v1/models/{model_id}")
         async def retrieve_model(model_id: str, request: Request) -> dict[str, Any]:
             from daari.gateway.anthropic import wants_anthropic_models
             from daari.router.capabilities import (
+                anthropic_capabilities,
+                anthropic_lifecycle_fields,
                 anthropic_model_cards,
                 anthropic_model_line,
                 openai_model_cards,
@@ -1454,6 +1461,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         int(time.time()), tz=timezone.utc
                     ).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "line": anthropic_model_line(model_id),
+                    "capabilities": anthropic_capabilities(model_id),
+                    **anthropic_lifecycle_fields(model_id, ctx.settings),
                 }
             for card in openai_model_cards(ctx.settings):
                 if card["id"] == model_id:

@@ -73,6 +73,91 @@ def test_anthropic_model_cards_line_null_for_local(settings) -> None:
         assert by_id["llama3.2:3b"] is None
 
 
+def test_anthropic_model_cards_lifecycle_and_server_tools(settings) -> None:
+    """Anthropic Models API lifecycle + capabilities.server_tools (#1507)."""
+    from daari.router.capabilities import anthropic_capabilities, anthropic_models_payload
+
+    cards = anthropic_model_cards(settings)
+    assert cards
+    for card in cards:
+        assert card["lifecycle"] in ("active", "deprecated", "retired")
+        assert "deprecated_at" in card
+        assert "retires_at" in card
+        server = card["capabilities"]["server_tools"]
+        assert "supported" in server
+        assert "web_search" in server and "supported" in server["web_search"]
+        assert "code_execution" in server and "supported" in server["code_execution"]
+
+    claude_caps = anthropic_capabilities("claude-sonnet-5-5")
+    assert claude_caps["server_tools"]["supported"] is True
+    assert claude_caps["server_tools"]["web_search"]["supported"] is True
+    assert claude_caps["server_tools"]["code_execution"]["supported"] is True
+
+    local_caps = anthropic_capabilities("daari")
+    assert local_caps["server_tools"]["supported"] is False
+    assert local_caps["server_tools"]["web_search"]["supported"] is False
+    assert local_caps["server_tools"]["code_execution"]["supported"] is False
+
+    # Default list omits retired.
+    default_ids = {c["id"] for c in anthropic_models_payload(settings)["data"]}
+    assert default_ids == {
+        c["id"] for c in cards if c["lifecycle"] in ("active", "deprecated")
+    }
+
+
+@pytest.mark.asyncio
+async def test_anthropic_models_lifecycle_query_filter(settings) -> None:
+    from daari.router.capabilities import anthropic_model_cards
+    from daari.router.router import AppContext
+    from daari.server.app import create_app
+
+    # Inject one retired card via monkeypatch on anthropic_model_cards.
+    real_cards = anthropic_model_cards(settings)
+    retired = dict(real_cards[0])
+    retired["id"] = "claude-retired-test"
+    retired["lifecycle"] = "retired"
+    retired["deprecated_at"] = "2026-01-01T00:00:00Z"
+    retired["retires_at"] = "2026-06-01T00:00:00Z"
+    mixed = list(real_cards) + [retired]
+
+    import daari.router.capabilities as caps_mod
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    original = caps_mod.anthropic_model_cards
+    caps_mod.anthropic_model_cards = lambda _s: mixed
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            default = await client.get(
+                "/v1/models", headers={"anthropic-version": "2023-06-01"}
+            )
+            assert default.status_code == 200
+            default_ids = {c["id"] for c in default.json()["data"]}
+            assert "claude-retired-test" not in default_ids
+
+            with_retired = await client.get(
+                "/v1/models",
+                params={"lifecycle": "retired"},
+                headers={"anthropic-version": "2023-06-01"},
+            )
+            assert with_retired.status_code == 200
+            retired_ids = {c["id"] for c in with_retired.json()["data"]}
+            assert retired_ids == {"claude-retired-test"}
+
+            multi = await client.get(
+                "/v1/models",
+                params=[("lifecycle", "active"), ("lifecycle", "retired")],
+                headers={"anthropic-version": "2023-06-01"},
+            )
+            multi_ids = {c["id"] for c in multi.json()["data"]}
+            assert "claude-retired-test" in multi_ids
+            assert any(c["lifecycle"] == "active" for c in multi.json()["data"])
+    finally:
+        caps_mod.anthropic_model_cards = original
+
+
 def test_anthropic_model_cards_thinking_disabled_capability(settings) -> None:
     """Models API reports capabilities.thinking.types.disabled (#1481)."""
     from daari.router.capabilities import (

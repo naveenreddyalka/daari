@@ -272,8 +272,52 @@ def anthropic_thinking_disabled_supported(model_id: str) -> bool:
     return matching_model_key(model_id, {k: True for k in _THINKING_DISABLED_UNSUPPORTED}) is None
 
 
+def _anthropic_claude_5x(model_id: str) -> bool:
+    """True for catalog Claude 5.x ids (server_tools hosts); not Claude 3/4 or locals."""
+    from daari.pricing import matching_model_key
+
+    key = matching_model_key(model_id, _ANTHROPIC_MODEL_LINES)
+    if key is None:
+        return False
+    if key.startswith("claude-3") or key.startswith("claude-haiku-4"):
+        return False
+    return True
+
+
+def anthropic_server_tools(model_id: str) -> dict[str, Any]:
+    """Anthropic ``capabilities.server_tools`` (#1507)."""
+    supported = _anthropic_claude_5x(model_id)
+    return {
+        "supported": supported,
+        "web_search": {"supported": supported},
+        "code_execution": {"supported": supported},
+    }
+
+
+def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, Any]:
+    """Lifecycle stage + optional dates for Anthropic model cards (#1507)."""
+    overrides = {}
+    raw = getattr(getattr(settings, "models", None), "lifecycle", None) or {}
+    if isinstance(raw, dict):
+        from daari.pricing import matching_model_key
+
+        key = matching_model_key(model_id, raw) if raw else None
+        if key is not None and isinstance(raw.get(key), dict):
+            overrides = raw[key]
+    stage = str(overrides.get("lifecycle") or "active").strip().lower() or "active"
+    if stage not in ("active", "deprecated", "retired"):
+        stage = "active"
+    deprecated_at = overrides.get("deprecated_at")
+    retires_at = overrides.get("retires_at")
+    return {
+        "lifecycle": stage,
+        "deprecated_at": deprecated_at if deprecated_at else None,
+        "retires_at": retires_at if retires_at else None,
+    }
+
+
 def anthropic_capabilities(model_id: str) -> dict[str, Any]:
-    """Anthropic Models API ``capabilities`` object (#1481)."""
+    """Anthropic Models API ``capabilities`` object (#1481 / #1507)."""
     return {
         "thinking": {
             "types": {
@@ -281,7 +325,8 @@ def anthropic_capabilities(model_id: str) -> dict[str, Any]:
                     "supported": anthropic_thinking_disabled_supported(model_id),
                 }
             }
-        }
+        },
+        "server_tools": anthropic_server_tools(model_id),
     }
 
 
@@ -304,14 +349,39 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
                 "created_at": created_at,
                 "line": anthropic_model_line(model_id),
                 "capabilities": anthropic_capabilities(model_id),
+                **anthropic_lifecycle_fields(model_id, settings),
             }
         )
     return cards
 
 
-def anthropic_models_payload(settings: Any) -> dict[str, Any]:
-    """Full Anthropic list-models response body (#454)."""
-    data = anthropic_model_cards(settings)
+def _parse_lifecycle_filter(lifecycle: Any) -> frozenset[str]:
+    """Parse lifecycle query (repeatable / comma). Default: active+deprecated."""
+    if lifecycle is None:
+        return frozenset({"active", "deprecated"})
+    parts: list[str] = []
+    if isinstance(lifecycle, str):
+        parts = [p.strip() for p in lifecycle.split(",")]
+    elif isinstance(lifecycle, (list, tuple, set, frozenset)):
+        for item in lifecycle:
+            parts.extend(str(item).split(","))
+    else:
+        return frozenset({"active", "deprecated"})
+    stages = {p.strip().lower() for p in parts if p and p.strip()}
+    stages &= {"active", "deprecated", "retired"}
+    return frozenset(stages) if stages else frozenset({"active", "deprecated"})
+
+
+def anthropic_models_payload(
+    settings: Any, *, lifecycle: Any = None
+) -> dict[str, Any]:
+    """Full Anthropic list-models response body (#454 / #1507)."""
+    allowed = _parse_lifecycle_filter(lifecycle)
+    data = [
+        card
+        for card in anthropic_model_cards(settings)
+        if str(card.get("lifecycle") or "active") in allowed
+    ]
     return {
         "data": data,
         "has_more": False,
