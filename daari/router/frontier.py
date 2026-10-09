@@ -13,7 +13,7 @@ from daari.gateway.provider_prefs import (
     is_openrouter_base,
     usage_cost_and_cache,
 )
-from daari.observability.tokens import openai_token_usage
+from daari.observability.tokens import nested_agent_usages, openai_token_usage
 from daari.router.anthropic_messages import (
     anthropic_headers_for_request,
     anthropic_messages_path,
@@ -360,6 +360,7 @@ class FrontierExecutor:
             data, prompt_chars, content
         )
         cost_usd, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
+        agent_usage = nested_agent_usages(data) or None
         provider_prefs = (
             as_openrouter_payload(request.provider) if request.provider is not None else None
         )
@@ -381,6 +382,7 @@ class FrontierExecutor:
             provider_prefs=provider_prefs,
             daari_cost_usd=0.0,
             service_tier=request.sampling.service_tier,
+            agent_usage=agent_usage,
         )
         self._apply_param_compat_meta(meta)
         return InternalResponse(

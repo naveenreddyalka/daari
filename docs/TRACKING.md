@@ -6319,6 +6319,17 @@ emit `admin.keys.list` / `admin.teams.list` audit events. Covered by
 `tests/unit/test_admin_read_plane.py`.
 
 
+### Meter multi_agent subagent token usage on L6 ([#1500](https://github.com/naveenreddyalka/daari/issues/1500))
+
+<!-- tracking:#1500 -->
+**Status:** Done (2026-10-09). OpenAI aggregated top-level `usage` (includes
+subagents) stays the metered total; when nested `agent_usages` /
+`usage_by_agent` under-count relative to top-level, parent+nested tokens and
+cost are summed before ledger write. Per-agent rows land on
+`daari_meta.agent_usage` for attribution without double-billing. Covered by
+`tests/unit/test_responses_multi_agent.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
