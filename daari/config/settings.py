@@ -1103,6 +1103,15 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 2.50,
     },
+    # OpenAI chat-latest — rolling alias for ChatGPT Instant (updated 2026-10-07).
+    # Published rates $5 / $0.50 cached / $30; underlying snapshot moves — do not
+    # treat as a production pin (prefer gpt-6-astra). See OpenAI model page.
+    # https://developers.openai.com/api/docs/models/chat-latest
+    "chat-latest": {
+        "input_per_1m": 5.00,
+        "output_per_1m": 30.00,
+        "cached_input_per_1m": 0.50,
+    },
     # OpenAI gpt-6-luna chat/responses: $0.10 / 1M input, $0.01 cached,
     # $0.50 / 1M output. POST /v1/decisions bills the same id input-only
     # ($0.10, $0 out, $0 cache) via daari.pricing billing_path="decisions" —

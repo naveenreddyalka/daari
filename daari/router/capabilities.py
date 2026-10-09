@@ -34,6 +34,8 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "claude-haiku-5-5",
         "gpt-6-astra",
         "gpt-6.1-sol",
+        # Rolling ChatGPT Instant alias (rates in pricing; snapshot moves).
+        "chat-latest",
         "gpt-5.6",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
