@@ -6363,6 +6363,15 @@ records L0 hits with `modality=decisions`. Covered by
 `tests/integration/test_gateway_flow.py`.
 
 
+### Map OpenAI chat-latest rolling alias in catalog ([#1509](https://github.com/naveenreddyalka/daari/issues/1509))
+
+<!-- tracking:#1509 -->
+**Status:** Done (2026-10-09). `chat-latest` prices at the published ChatGPT
+Instant rates ($5 / $0.50 cached / $30) as a rolling alias (snapshot moves;
+prefer `gpt-6-astra` for pins). Capabilities + `/v1/models` when configured
+as a frontier provider. Covered by `tests/unit/test_chat_latest_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
