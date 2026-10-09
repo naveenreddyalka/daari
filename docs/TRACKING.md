@@ -6282,6 +6282,34 @@ frontier Decisions target; unknown ids return 400. Covered by
 `tests/unit/test_decisions.py`.
 
 
+### Add claude-haiku-5-5 pricing + reprice sonnet/opus-5-5 cache reads ([#1505](https://github.com/naveenreddyalka/daari/issues/1505))
+
+<!-- tracking:#1505 -->
+**Status:** Done (2026-10-09). `claude-haiku-5-5` catalog with ≤100K rates and
+100K-threshold scaling (cache read $0.05 / 1h write $1.00 above); Sonnet/Opus
+5.5 cache reads halved to $0.10 / $0.20; capabilities, Anthropic `line: haiku`,
+and sampler strip. Covered by `tests/unit/test_claude_haiku_5_5_pricing.py`.
+
+
+### Bill gpt-6-luna chat/responses cached input at $0.01/MTok ([#1506](https://github.com/naveenreddyalka/daari/issues/1506))
+
+<!-- tracking:#1506 -->
+**Status:** Done (2026-10-09). Chat/Responses `gpt-6-luna` sets
+`cached_input_per_1m: 0.01` so prompt-cache hits are not billed at the $0.10
+input rate; Decisions overlay still zeros cache/output. Covered by
+`tests/unit/test_gpt_6_luna_decisions_pricing.py`.
+
+
+### Fleet-durable MCP OAuth revoked-jti denylist ([#1498](https://github.com/naveenreddyalka/daari/issues/1498))
+
+<!-- tracking:#1498 -->
+**Status:** Done (2026-10-09). Revoked JTIs use Redis (`cache.backend=redis`) or
+Postgres (`observability.postgres_url`, `memory:` in tests); single-pod keeps
+in-process. Doctor warns on multi-replica `local_as` without a shared store;
+denylist is TTL-bound and not backup-critical. Covered by
+`tests/unit/test_revoked_jti_store.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

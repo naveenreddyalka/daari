@@ -809,8 +809,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from daari.gateway.mcp_oauth import mcp_oauth_routes_enabled
 
     if mcp_oauth_routes_enabled(resolved):
-        from daari.gateway.mcp_oauth import build_mcp_oauth_router
+        from daari.gateway.mcp_oauth import (
+            build_mcp_oauth_router,
+            configure_revocation_store,
+        )
 
+        configure_revocation_store(resolved)
         app.include_router(build_mcp_oauth_router(resolved))
     app.include_router(OllamaCompatGatewayAdapter().router())
     app.include_router(ResponsesGatewayAdapter().router())

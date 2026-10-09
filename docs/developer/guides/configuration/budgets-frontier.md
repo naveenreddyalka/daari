@@ -273,13 +273,14 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 |-------|------:|-------------:|---------------:|-------:|--------|
 | `claude-fable-5-1` | 10.00 | 0.25 | 20.00 | 50.00 | [Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview) |
 | `claude-opus-5` | 5.00 | 0.50 | 10.00 | 25.00 | [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing) |
-| `claude-opus-5-5` | 4.00 | 0.40 | 8.00 | 20.00 | LiteLLM 1.104 / Anthropic Opus 5.5 (2026-10-03); non-default temperature/top_p/top_k stripped |
+| `claude-opus-5-5` | 4.00 | 0.20 | 8.00 | 20.00 | LiteLLM 1.104 / Anthropic Opus 5.5; cache read halved 2026-10-07; non-default temperature/top_p/top_k stripped |
 | `claude-sonnet-5` | 2.00 | 0.20 | 4.00 | 10.00 | Anthropic pricing |
-| `claude-sonnet-5-5` | 2.00 | 0.20 | 4.00 | 10.00 | [Sonnet 5.5](https://www.anthropic.com/claude-sonnet-5-5) (2026-09-28); same $2/$10 as Sonnet 5; non-default temperature/top_p/top_k stripped |
+| `claude-sonnet-5-5` | 2.00 | 0.10 | 4.00 | 10.00 | [Sonnet 5.5](https://www.anthropic.com/claude-sonnet-5-5); cache read halved 2026-10-07; non-default temperature/top_p/top_k stripped |
 | `claude-haiku-4-5` | 1.00 | 0.10 | 2.00 | 5.00 | Anthropic pricing |
+| `claude-haiku-5-5` | 0.10 | 0.01 | 0.20 | 0.50 | [Haiku 5.5](https://www.anthropic.com/claude-haiku-5-5) (2026-10-07); ≥100K → $0.50 / $0.05 / $1.00 1h / $2.50; sampler strip like Sonnet 5.5 |
 | `gpt-6-astra` | 10.00 | 1.00 | — | 50.00 | OpenAI; ≥272K input → $20 / $2 / $75 |
 | `gpt-6.1-sol` | 2.00 | 0.10 | 2.50 | 10.00 | OpenAI (2026-09-29); 5× cheaper than Astra; no published above-272K surcharge |
-| `gpt-6-luna` | 0.10 | — | — | 0.50 | Chat/Responses. `POST /v1/decisions` is input-only: $0.10 in, $0 out, $0 cache |
+| `gpt-6-luna` | 0.10 | 0.01 | — | 0.50 | Chat/Responses. `POST /v1/decisions` is input-only: $0.10 in, $0 out, $0 cache |
 | `gpt-5.6` / `gpt-5.6-sol` | 4.00 | 0.40 | — | 20.00 | OpenAI promo through 2026-11-21 ([Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)) |
 | `gpt-5.6-terra` | 2.00 | 0.20 | — | 12.00 | OpenAI API pricing |
 | `gpt-5.6-luna` | 0.20 | 0.02 | — | 1.20 | OpenAI API pricing |
