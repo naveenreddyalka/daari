@@ -11,41 +11,38 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-08)
+## Where daari stands (verified in-tree, 2026-10-09)
 
-**Loop velocity.** Rows 44–48 (filed 10-07) all landed on `main` within a day:
-`/v1/decisions` + gpt-6-luna pricing (incl. the decisions input-only billing
-path), MCP OAuth scope enforcement + RFC 7009 revoke, OTel/guardrails/retry on
-`/mcp/proxy` + `/v1/systemone`, the web-ui keys/teams admin read plane, and
-Responses multi-agent forward-or-400. Anthropic `thinking.types.disabled` on
-native `/v1/models` and the age-encrypt backup round-trip test shipped too.
-Hot-reload `config.yaml` stays in flight; the Messages `mcp_servers` tool
-allowlist stays parked.
+**Loop velocity.** The whole 10-08 table (rows 49–52, 54) drained in under a
+day: the queued Haiku 5.5 catalog + Sonnet/Opus cache-read reprice, gpt-6-luna
+cached-input billing, decisions guardrails/OTel/retry + alias normalization,
+the fleet-durable OAuth revoked-jti denylist, admin keys/teams pagination +
+audit, multi_agent subagent metering, and Anthropic `server_tools` + lifecycle
+on native `/v1/models`. Only the ops-docs row (53) stays open, alongside the
+decisions L0 cache and chat-latest alias refills.
 
-**Outward.** **LiteLLM backported `/v1/systemone`, OpenAI-format
-`/v1/decisions`, and the OpenAI Decisions provider to stable v1.104.2 (8 Oct)**
-— every major competitor now ships a decisions surface; daari reached parity
-first and differentiation moves to governance depth. **Anthropic launched
-Claude Haiku 5.5 (7 Oct)** — $0.10/$0.50 per MTok with a 100K-token prompt
-threshold (5× above it), 1M context, 128K output, adaptive thinking — **and
-halved cache-read pricing on Sonnet 5.5 ($0.10) and Opus 5.5 ($0.20)**, so
-daari's shipped rates now overbill cache reads 2×. Anthropic Models API added
-`capabilities.server_tools` + lifecycle-stage fields/filter; SDKs added beta
-browser/computer-use toolsets (client-side loops — passthrough unaffected).
-OpenAI added a `chat-latest` rolling snapshot alias (7 Oct). Portkey moved to
-**v2.28.0** (AWS OAuth client-credentials, JWT just-in-time service access,
-`DISABLE_TIKTOKEN` chars/4 estimator). Ollama **0.40.1 stable** (cloud
-usage/balance proxying — facade unaffected). Kong 2.2.0 / OpenRouter (08-19) /
-MCP blog (08-22) flat.
+**Outward.** **OpenAI shipped Ultrafast mode** — `service_tier: "ultrafast"`
+on the Responses API for `gpt-6.1-sol` (8 Oct, US+EU residency) and
+`gpt-6-astra` (29 Sep, US only) with dedicated pricing; daari's tier table
+doesn't know it, so ultrafast traffic bills at 1.0× today. **Anthropic's
+Haiku 5.5 is a breaking change**: manual `budget_tokens` thinking now 400s
+and adaptive thinking defaults on — daari forwards client thinking verbatim
+on Anthropic egress, so migrating clients break through daari too. Anthropic
+also added Compliance API chat endpoints for unified Claude chats (8 Oct,
+org-level — non-goal). LiteLLM stable bar stays **v1.104.2** (10-08 backport
+patches v1.102.4/v1.101.6 are maintenance; 1.105-rc.3/1.106-dev.2 carry the
+known decisions backports). Portkey **v2.28.0**, Kong **2.2.0**, vLLM 0.31.0,
+OpenRouter (08-19), MCP blog (08-22) all flat. **Ollama 0.40.2 stable**
+(background model upgrades + backups — runtime-only, facade unaffected).
 
-**Inward theme: depth on the surfaces that just shipped.** Code audit (10-08)
-confirmed: `/v1/decisions` meters the Prom `decisions` modality but skips
-guardrails/OTel, hardcodes spend `user_id=""`, and its local path bypasses
-systemone hardening; the MCP OAuth revoked-jti denylist is a process-local
-dict (`mcp_oauth.py` ~L41) — revocation does not replicate across Helm
-replicas and is forgotten on restart; admin `GET /v1/daari/keys`/`teams` dumps
-are unpaginated and unaudited; multi_agent L6 reads only top-level usage;
-doctor/Helm/auth-and-keys docs lag the Decisions family.
+**Inward theme: governance parity and billing truth on the newest surfaces.**
+Code audit (10-09) confirmed: `/v1/decisions` skips chat's per-model /
+per-user 402 pre-checks and drops `user_id` from the usage ledger; the
+OpenAI-shaped `/v1/models` lacks the lifecycle + `server_tools` fields the
+Anthropic shape just gained, and lifecycle is advertise-only (retired models
+still route); the haiku-5-5 row under-bills 5m cache writes ($0.10 vs $0.125,
+$0.50 vs $0.625 above 100K); the new Postgres revoked-jti denylist opens two
+raw connections per MCP token validation despite the pooled-store work.
 
 ---
 
@@ -53,12 +50,17 @@ doctor/Helm/auth-and-keys docs lag the Decisions family.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 54 | claude-haiku-5-5 catalog (100K-threshold rates, caps, param compat) + reprice sonnet/opus-5-5 cache reads | 5 | 1 | Anthropic pricing page (7 Oct); LiteLLM day-one catalogs | Cost-true routing and honest cache savings on the new cheap tier | File next run (10-08 issue budget spent) |
-| 49 | Guardrails + OTel (+ local retry) + `user` spend on `/v1/decisions` | 5 | 2 | Portkey/Kong policy on decisions `state`; OCR parity in-tree | Same on-box policy engine as systemone/OCR | Filed [#1497](https://github.com/naveenreddyalka/daari/issues/1497) |
-| 50 | Fleet-durable MCP OAuth revoked-jti denylist (Redis/Postgres) | 5 | 3 | Kong Token Vault; LiteLLM shared revoke stores | Revoke must stick across Helm replicas | Filed [#1498](https://github.com/naveenreddyalka/daari/issues/1498) |
-| 51 | Paginate + audit `GET /v1/daari/keys` and `/teams` | 4 | 2 | LiteLLM proxy admin UI audit trail | Control-plane honesty at key-store scale | Done [#1499](https://github.com/naveenreddyalka/daari/issues/1499) |
-| 52 | Meter multi_agent subagent token usage / spend on L6 | 4 | 2 | OpenAI aggregated usage; LiteLLM agent cost split | FinOps chargeback for delegated agents | Done [#1500](https://github.com/naveenreddyalka/daari/issues/1500) |
-| 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface before rate-family miss | Filed [#1501](https://github.com/naveenreddyalka/daari/issues/1501) |
+| 55 | Model/user budget 402 pre-checks + `user_id` ledger rows on `/v1/decisions` | 5 | 2 | LiteLLM model budgets (chat only) | 402 a scoped key before any call; per-user chargeback on typed judgments | Filed [#1518](https://github.com/naveenreddyalka/daari/issues/1518) |
+| 56 | Ultrafast service tier: true pricing + model/residency gating | 4 | 2 | OpenAI Ultrafast pricing page | Bill the premium tier honestly; refuse EU-pinned astra ultrafast on-box | Filed [#1519](https://github.com/naveenreddyalka/daari/issues/1519) |
+| 57 | claude-haiku-5-5 fidelity: budget_tokens→400 compat, 5m cache-write rate, cards | 4 | 2 | Anthropic migration guide; LiteLLM day-one catalogs | Absorb the provider breaking change for every client behind the gateway | Filed [#1520](https://github.com/naveenreddyalka/daari/issues/1520) |
+| 58 | Lifecycle + server_tools on OpenAI-shaped `/v1/models`; fail-closed retired routing | 4 | 2 | Anthropic Models API | One catalog, two facades, enforced retirement | Filed [#1521](https://github.com/naveenreddyalka/daari/issues/1521) |
+| 59 | Pooled connections for the Postgres revoked-jti denylist hot path | 4 | 2 | Kong Token Vault (pooled stores) | Fleet revoke stays cheap on the per-request auth path | Filed [#1522](https://github.com/naveenreddyalka/daari/issues/1522) |
+| 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface | Filed [#1501](https://github.com/naveenreddyalka/daari/issues/1501) |
+| 54 | claude-haiku-5-5 catalog + sonnet/opus-5-5 cache-read reprice | 5 | 1 | Anthropic pricing page | Cost-true routing on the new cheap tier | Shipped |
+| 49 | Guardrails + OTel + retry + `user` spend on `/v1/decisions` | 5 | 2 | Portkey/Kong decisions policy | Same on-box policy engine as systemone/OCR | Shipped |
+| 50 | Fleet-durable MCP OAuth revoked-jti denylist | 5 | 3 | Kong Token Vault | Revoke sticks across Helm replicas | Shipped |
+| 51 | Paginate + audit `GET /v1/daari/keys` and `/teams` | 4 | 2 | LiteLLM admin UI | Control-plane honesty at key-store scale | Shipped |
+| 52 | Meter multi_agent subagent token usage / spend on L6 | 4 | 2 | OpenAI aggregated usage | FinOps chargeback for delegated agents | Shipped |
 | 44 | OpenAI-compatible `/v1/decisions` + gpt-6-luna | 5 | 2 | OpenAI Decisions beta; LiteLLM v1.104.2 | Typed judgments on-box | Shipped |
 | 45 | MCP OAuth scope + RFC 7009 revocation | 4 | 2 | LiteLLM / Kong | On-box revoke/scope | Shipped |
 | 46 | OTel + guardrails + retry on `/mcp/proxy` + `/v1/systemone` | 4 | 2 | Kong / Portkey | Local policy latency | Shipped |
@@ -78,47 +80,52 @@ doctor/Helm/auth-and-keys docs lag the Decisions family.
 | 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
 | 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365 catalog; Skills; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM / OpenAI | Demand-triggered | Watch |
 
-Shipped this week (do not re-file): `/v1/decisions` + luna pricing (incl.
-input-only decisions billing); MCP OAuth scope/revoke endpoint;
-systemone/mcp_proxy/OCR hardening stacks; admin read plane existence;
-multi-agent forward; Anthropic `thinking.types.disabled`; age-encrypt backup
-test; web-ui CSP/sessionStorage; classifier Prom series; grok-4.7 /
-claude-opus-5-5 / claude-sonnet-5-5 catalog entries (rates now need the 7-Oct
-cache reprice — row 54).
+Shipped this week (do not re-file): haiku-5-5 pricing row + sonnet/opus-5-5
+cache-read reprice; gpt-6-luna cached-input $0.01 + decisions input-only
+billing; decisions guardrails/OTel/retry + alias normalization; fleet-durable
+revoked-jti denylist (Redis/Postgres/in-process + doctor); admin keys/teams
+pagination + audit; multi_agent nested-usage metering; Anthropic
+`server_tools` + lifecycle on native `/v1/models`; grok-4.7 /
+claude-opus-5-5 catalog entries.
 
-Watch rows (do not file yet): Decisions L0/exact cache (strong local-first
-angle once governance lands); Decisions stream/batch/Ollama/Anthropic facades;
-admin dedicated rate family; gpt-6-luna Decisions schema drift while the beta
-hardens; OpenAI `chat-latest` alias pricing (rolling snapshot — map when a
-client sends it); Anthropic Models API `server_tools` + lifecycle-stage parity
-on native `/v1/models` (fold into row-54 catalog sweep or next one); Anthropic
-SDK browser/computer-use toolsets (client-side loop — passthrough unaffected);
-LiteLLM 1.105/1.106 M365 MCP catalog + scoped-SQL tracing (file at GA);
-Portkey v2.28.0 JWT just-in-time access + `/v1/health` `last_synced_at` (file
-on operator ask); OpenAI in-product HIPAA BAA (compliance non-goal).
+Watch rows (do not file yet): admin pagination depth — web-ui ignores
+`has_more`, `GET /v1/daari/audit` hard-codes limit=100 with no offset,
+`/v1/daari/report` clients/users unbounded (file when a fleet-scale operator
+asks); multi_agent per-subagent-model pricing — `nested_agent_usages` keeps
+no `model`, so absent provider cost all tokens bill at the parent model's
+rate (file on multi-model agent-graph demand); decisions streaming reject-400
++ Idempotency-Key parity; decisions L0 cache + chat-latest alias (open
+refills); gpt-6-luna Decisions schema drift while the beta hardens; Anthropic
+Compliance API chat export (org-level, non-goal); Anthropic SDK
+browser/computer-use toolsets (client-side loop); Claude Max/Team monthly API
+credits (billing-side); LiteLLM 1.105/1.106 M365 MCP catalog + scoped-SQL
+tracing (file at GA); Portkey v2.28.0 JWT just-in-time access (operator ask);
+OpenAI in-product HIPAA BAA (compliance non-goal).
 
-Verified fine this run — don't re-audit: Prom `decisions` modality +
-`rate_families` mapping; luna in `_DEFAULT_MODEL_PRICES` with decisions
-billing path; revoke `_prune_revoked` TTL cleanup; web-ui Bearer in memory /
-opt-in `sessionStorage` (no localStorage); `/v1/decisions` listed in
-http-api.md; batches still chat-only by design (`_execute_batch_chat_body`).
+Verified fine this run — don't re-audit: decisions rate family + cost headers
++ pooled httpx + spend-context user binding; haiku threshold scaling for
+input/output/cache-read/1h-write (boundary-tested at 100K); Anthropic-shaped
+`/v1/models` lifecycle filter + server_tools; revoked-jti doctor coverage +
+TTL prune + intentional omission from the backup catalog (TTL-bound);
+multi_agent double-bill guard; admin keys/teams list audit events.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Catalog truth after the 7-Oct reprice** — add claude-haiku-5-5 with its
-   100K-threshold rates and fix sonnet/opus-5-5 cache reads (row 54): shipped
-   rates currently overbill cache reads 2×, a live billing-correctness defect.
-2. **Decisions governance parity** — guardrails + OTel + local retry + `user`
-   spend on `/v1/decisions` (row 49), matching systemone/OCR, now that
-   LiteLLM v1.104.2 ships the same surface without on-box policy.
-3. **MCP revoke that survives replicas** — durable jti denylist (row 50) so
-   Helm `replicaCount>1` and restarts keep revocations.
-4. **Admin read plane at scale** — pagination + audit events (row 51), then
-   multi-agent FinOps metering (row 52).
-5. **Ops discoverability** — doctor/Helm/auth-and-keys for Decisions (row 53),
-   then hot-reload (row 6) and the parked Messages tool allowlist (row 7).
+1. **Decisions governance parity** — model/user budget 402 pre-checks and
+   per-user ledger attribution on `/v1/decisions` (row 55): the typed-judgment
+   modality must meter and fence like chat before fleets adopt it at volume.
+2. **Billing truth on the new provider tiers** — Ultrafast service-tier
+   pricing with model + residency gating (row 56) and the haiku-5-5 5m
+   cache-write rate (row 57): both are live billing-correctness defects.
+3. **Breaking-change absorption** — haiku-5-5 `budget_tokens` → adaptive
+   mapping on Anthropic egress (row 57) so clients migrate by doing nothing.
+4. **Catalog honesty with teeth** — lifecycle + server_tools on the OpenAI
+   shape and fail-closed retired routing (row 58).
+5. **Auth hot-path efficiency** — pooled revoked-jti lookups (row 59), then
+   the ops-docs row (53), hot-reload (row 6), and the parked Messages tool
+   allowlist (row 7).
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, Realtime/WS, FIPS
 builds, HIPAA BAA) stay deferred until buyer demand.
@@ -127,18 +134,22 @@ builds, HIPAA BAA) stay deferred until buyer demand.
 
 ## Changelog
 
+- **2026-10-09 (governance parity + billing truth on newest surfaces)** —
+  Rows 49–52 and 54 marked Shipped (drained in under a day, including the
+  queued Haiku 5.5 reprice). Inward audit filed rows 55–59: decisions budget
+  402s + user ledger, Ultrafast tier pricing/gating, haiku-5-5 fidelity
+  (budget_tokens compat, 5m write rate, cards), OpenAI-shape lifecycle parity
+  with fail-closed retirement, pooled revoked-jti lookups. Outward: OpenAI
+  Ultrafast mode (sol 10-08, astra 09-29); Anthropic haiku `budget_tokens`
+  400 breaking change + Compliance chat export; Ollama 0.40.2 stable;
+  LiteLLM/Portkey/Kong/vLLM/OpenRouter/MCP flat.
+
 - **2026-10-08 (depth on shipped Decisions / OAuth / admin / multi-agent)** —
-  Rows 44–48 marked Shipped (drained in under a day). Inward audit filed rows
-  49–53: decisions guardrails/OTel/user-spend, fleet OAuth denylist, admin
-  pagination/audit, multi_agent spend metering, decisions ops docs. Outward:
-  LiteLLM v1.104.2 backports decisions/systemone to stable (bar moves);
-  Anthropic Haiku 5.5 + Sonnet/Opus cache-read reprice → row 54 queued for
-  the next run's budget; Portkey v2.28.0; Ollama 0.40.1.
+  Filed rows 49–53 after the 10-07 table drained in a day; queued the Haiku
+  5.5 catalog + cache-read reprice as row 54. LiteLLM v1.104.2 backported
+  decisions/systemone to stable; Portkey v2.28.0.
 
-- **2026-10-07 (decisions surface + lifecycle depth)** — Filed rows 44–48
-  (local-first `/v1/decisions`, MCP OAuth scope/revocation, new-surface
-  spans/guardrails/retry, web-ui admin read plane, Responses multi-agent).
-
-- **2026-10-06 → 08-28** — Condensed: catalog + classifier/watchdog; admin-plane
-  + OCR governance; operate-gates + FinOps; LiteLLM 1.104; OBO/classifier;
-  decision models + MCP OAuth; Apache 2.0; this PRD's creation.
+- **2026-10-07 → 08-28** — Condensed: decisions surface + lifecycle depth;
+  catalog + classifier/watchdog; admin-plane + OCR governance; operate-gates
+  + FinOps; LiteLLM 1.104; OBO/classifier; decision models + MCP OAuth;
+  Apache 2.0; this PRD's creation.
