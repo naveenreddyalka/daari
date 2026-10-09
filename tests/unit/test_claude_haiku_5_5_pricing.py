@@ -24,6 +24,7 @@ def test_claude_haiku_5_5_pricing_rates_below_threshold():
     assert price.input_per_1m == pytest.approx(0.10)
     assert price.output_per_1m == pytest.approx(0.50)
     assert price.cached_input_per_1m == pytest.approx(0.01)
+    assert price.cache_write_per_1m == pytest.approx(0.125)
     assert price.cache_write_1h_per_1m == pytest.approx(0.20)
     assert price.input_threshold_tokens == 100_000
 
@@ -42,6 +43,7 @@ def test_claude_haiku_5_5_threshold_scales_cache_and_1h_write():
         input_tokens=99_999,
     )
     assert below.cached_input_per_1m == pytest.approx(0.01)
+    assert below.cache_write_per_1m == pytest.approx(0.125)
     assert below.cache_write_1h_per_1m == pytest.approx(0.20)
 
     above = resolve_price(
@@ -53,6 +55,7 @@ def test_claude_haiku_5_5_threshold_scales_cache_and_1h_write():
     assert above.input_per_1m == pytest.approx(0.50)
     assert above.output_per_1m == pytest.approx(2.50)
     assert above.cached_input_per_1m == pytest.approx(0.05)
+    assert above.cache_write_per_1m == pytest.approx(0.625)
     assert above.cache_write_1h_per_1m == pytest.approx(1.00)
 
     cache_usd = cost_usd(
@@ -134,6 +137,67 @@ def test_claude_haiku_4_5_keeps_samplers_without_compat_entry():
     result = apply_frontier_param_compat(payload, "claude-haiku-4-5")
     assert payload == {"temperature": 0.5, "top_p": 0.9, "top_k": 20}
     assert result.dropped_params == []
+
+
+def test_claude_haiku_5_5_five_minute_cache_write_rates():
+    """5m cache writes bill $0.125/MTok below 100K and $0.625 above (#1520)."""
+    settings = Settings()
+    below = cost_usd(
+        "claude-haiku-5-5",
+        input_tokens=99_999,
+        output_tokens=0,
+        pricing=settings.pricing,
+        fallback_per_1k=0.002,
+        cache_write_tokens=1_000_000,
+        cache_ttl="5m",
+    )
+    assert below == pytest.approx(99_999 / 1_000_000 * 0.10 + 0.125)
+
+    above = cost_usd(
+        "claude-haiku-5-5",
+        input_tokens=100_000,
+        output_tokens=0,
+        pricing=settings.pricing,
+        fallback_per_1k=0.002,
+        cache_write_tokens=1_000_000,
+        cache_ttl="5m",
+    )
+    assert above == pytest.approx(100_000 / 1_000_000 * 0.50 + 0.625)
+
+
+def test_claude_haiku_5_5_maps_budget_tokens_to_adaptive():
+    """Manual budget_tokens must never reach Anthropic egress for haiku-5-5 (#1520)."""
+    from daari.gateway.internal import InternalRequest, Message
+    from daari.gateway.sampling import SamplingParams
+    from daari.router.anthropic_messages import to_anthropic_payload
+
+    request = InternalRequest(
+        messages=[Message(role="user", content="hi")],
+        model="claude-haiku-5-5",
+        sampling=SamplingParams(
+            max_tokens=1024,
+            thinking={"type": "enabled", "budget_tokens": 4096},
+        ),
+    )
+    payload = to_anthropic_payload(request, model="claude-haiku-5-5")
+    result = apply_frontier_param_compat(payload, "claude-haiku-5-5")
+    assert "budget_tokens" not in (payload.get("thinking") or {})
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"]["effort"] == "medium"
+    assert any("budget_tokens" in w for w in result.warnings)
+    assert "budget_tokens" in result.dropped_params
+
+
+def test_claude_haiku_5_5_model_card_limits_and_adaptive_default():
+    from daari.router.capabilities import anthropic_capabilities, anthropic_model_limits
+
+    limits = anthropic_model_limits("claude-haiku-5-5")
+    assert limits["context_window"] == 1_000_000
+    assert limits["max_output_tokens"] == 128_000
+    caps = anthropic_capabilities("claude-haiku-5-5")
+    assert caps["thinking"]["types"]["adaptive"]["supported"] is True
+    assert caps["thinking"]["types"]["adaptive"]["default"] is True
+    assert caps["thinking"]["default_effort"] == "medium"
 
 
 def test_budgets_frontier_docs_pin_claude_haiku_5_5():

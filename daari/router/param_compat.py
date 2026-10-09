@@ -163,4 +163,40 @@ def apply_frontier_param_compat(
             f"(requires Responses API)"
         )
 
+    # Haiku 5.5: manual budget_tokens thinking 400s — map to adaptive + effort (#1520).
+    from daari.pricing import matching_model_key
+
+    if matching_model_key(model, ("claude-haiku-5-5",)) is not None:
+        warning = _map_haiku_55_budget_thinking(payload)
+        if warning:
+            result.warnings.append(warning)
+            if "budget_tokens" not in result.dropped_params:
+                result.dropped_params.append("budget_tokens")
+
     return result
+
+
+def _map_haiku_55_budget_thinking(payload: dict[str, Any]) -> str | None:
+    """Rewrite ``thinking.budget_tokens`` to adaptive + output_config.effort."""
+    thinking = payload.get("thinking")
+    if not isinstance(thinking, dict):
+        return None
+    budget = thinking.get("budget_tokens")
+    if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+        return None
+    from daari.gateway.sampling import reasoning_effort_from_thinking
+
+    effort = reasoning_effort_from_thinking(dict(thinking)) or "medium"
+    payload["thinking"] = {"type": "adaptive"}
+    output_config = payload.get("output_config")
+    if not isinstance(output_config, dict):
+        output_config = {}
+    else:
+        output_config = dict(output_config)
+    if not output_config.get("effort"):
+        output_config["effort"] = effort
+    payload["output_config"] = output_config
+    return (
+        "thinking budget_tokens is not supported by claude-haiku-5-5; "
+        f"mapped to adaptive thinking with effort '{output_config['effort']}'"
+    )
