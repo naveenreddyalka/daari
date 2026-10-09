@@ -6330,6 +6330,16 @@ cost are summed before ledger write. Per-agent rows land on
 `tests/unit/test_responses_multi_agent.py`.
 
 
+### Anthropic server_tools + lifecycle on /v1/models ([#1507](https://github.com/naveenreddyalka/daari/issues/1507))
+
+<!-- tracking:#1507 -->
+**Status:** Done (2026-10-09). Anthropic-native model cards expose
+`lifecycle` / `deprecated_at` / `retires_at` and
+`capabilities.server_tools` (Claude 5.x true; locals false). List honors
+`lifecycle` query (default active+deprecated; `retired` only when requested).
+Covered by `tests/unit/test_anthropic_gateway.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
