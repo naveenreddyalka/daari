@@ -6,9 +6,13 @@ import pytest
 
 from daari.config.settings import Settings
 from daari.gateway.cost_headers import COST_HEADER, response_cost_headers
-from daari.gateway.internal import DaariMeta, InternalRequest, Message
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
 from daari.gateway.sampling import SamplingParams
-from daari.pricing import cost_usd, service_tier_factor
+from daari.pricing import (
+    cost_usd,
+    resolve_service_tier_for_request,
+    service_tier_factor,
+)
 from daari.router.anthropic_messages import to_anthropic_payload
 
 
@@ -16,6 +20,7 @@ def test_known_tiers_have_factors():
     assert service_tier_factor("flex") == 0.5
     assert service_tier_factor("priority") == 2.0
     assert service_tier_factor("fast") == 2.0
+    assert service_tier_factor("ultrafast") == 6.0
     assert service_tier_factor("standard") == 1.0
     assert service_tier_factor(None) == 1.0
     assert service_tier_factor("default") == 1.0
@@ -40,6 +45,63 @@ def test_fast_tier_does_not_log_ignored(monkeypatch):
     )
     assert service_tier_factor("fast") == 2.0
     assert "service_tier_ignored" not in events
+
+
+def test_ultrafast_tier_does_not_log_ignored(monkeypatch):
+    """OpenAI Ultrafast (6× Standard) must not emit service_tier_ignored (#1519)."""
+    events: list[str] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append(event),
+    )
+    assert service_tier_factor("ultrafast") == 6.0
+    assert "service_tier_ignored" not in events
+
+
+def test_ultrafast_cost_matches_six_times_standard_for_supported_models():
+    settings = Settings()
+    for model in ("gpt-6.1-sol", "gpt-6-astra"):
+        standard = cost_usd(
+            model, 1_000_000, 0, settings.pricing, fallback_per_1k=0.002
+        )
+        ultra = cost_usd(
+            model,
+            1_000_000,
+            0,
+            settings.pricing,
+            fallback_per_1k=0.002,
+            service_tier="ultrafast",
+        )
+        assert ultra == pytest.approx(standard * 6.0)
+
+
+def test_ultrafast_policy_allows_supported_models_and_regions():
+    ok_sol = resolve_service_tier_for_request(
+        model="gpt-6.1-sol", service_tier="ultrafast", region_pin="eu"
+    )
+    ok_astra_us = resolve_service_tier_for_request(
+        model="gpt-6-astra", service_tier="ultrafast", region_pin="us"
+    )
+    assert ok_sol.service_tier == "ultrafast"
+    assert ok_sol.warning is None
+    assert ok_astra_us.service_tier == "ultrafast"
+    assert ok_astra_us.warning is None
+
+
+def test_ultrafast_policy_downgrades_unsupported_model():
+    decision = resolve_service_tier_for_request(
+        model="gpt-4o-mini", service_tier="ultrafast", region_pin=None
+    )
+    assert decision.service_tier is None
+    assert decision.warning == "ultrafast_unsupported_model"
+
+
+def test_ultrafast_policy_downgrades_astra_on_eu_pin():
+    decision = resolve_service_tier_for_request(
+        model="gpt-6-astra", service_tier="ultrafast", region_pin="eu"
+    )
+    assert decision.service_tier is None
+    assert decision.warning == "ultrafast_eu_unsupported"
 
 
 def test_flex_halves_and_priority_doubles_standard_cost():
@@ -163,3 +225,86 @@ def test_cost_header_uses_service_tier():
     )
     headers = response_cost_headers(meta, settings)
     assert float(headers[COST_HEADER]) == pytest.approx(0.075)
+
+
+@pytest.mark.asyncio
+async def test_router_warns_and_clears_ultrafast_on_unsupported_model(tmp_path):
+    from daari.cache.exact import ExactCache
+    from daari.cache.semantic import SemanticCache
+    from daari.observability.metrics import Metrics
+    from daari.router.router import OllamaExecutor, Router
+    from tests.conftest import NoopEmbedder
+
+    executor = OllamaExecutor(
+        base_url="http://test", default_model="llama3.2:3b", tier="L3"
+    )
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="A confident answer with plenty of length to avoid escalation.",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(
+                tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+            ),
+        )
+
+    executor.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(
+        cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+        semantic_cache=SemanticCache(
+            path=str(tmp_path / "l1"), embedder=NoopEmbedder(), enabled=False
+        ),
+        ollama_l3=executor,
+        metrics=Metrics(),
+        max_tier_for_chat="L3",
+    )
+    request = InternalRequest(
+        messages=[Message(role="user", content="hello there")],
+        model="gpt-4o-mini",
+        sampling=SamplingParams(service_tier="ultrafast"),
+    )
+    response = await router.route(request)
+    assert request.sampling.service_tier is None
+    assert response.daari_meta.warning == "ultrafast_unsupported_model"
+
+
+@pytest.mark.asyncio
+async def test_router_warns_and_clears_astra_ultrafast_on_eu_pin(tmp_path):
+    from daari.cache.exact import ExactCache
+    from daari.cache.semantic import SemanticCache
+    from daari.observability.metrics import Metrics
+    from daari.router.router import OllamaExecutor, Router
+    from tests.conftest import NoopEmbedder
+
+    executor = OllamaExecutor(
+        base_url="http://test", default_model="llama3.2:3b", tier="L3"
+    )
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="A confident answer with plenty of length to avoid escalation.",
+            model="gpt-6-astra",
+            daari_meta=DaariMeta(
+                tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+            ),
+        )
+
+    executor.execute = fake_execute  # type: ignore[method-assign]
+    router = Router(
+        cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+        semantic_cache=SemanticCache(
+            path=str(tmp_path / "l1"), embedder=NoopEmbedder(), enabled=False
+        ),
+        ollama_l3=executor,
+        metrics=Metrics(),
+        max_tier_for_chat="L3",
+    )
+    request = InternalRequest(
+        messages=[Message(role="user", content="hello there")],
+        model="gpt-6-astra",
+        sampling=SamplingParams(service_tier="ultrafast"),
+    )
+    request.meta.region_pin = "eu"
+    response = await router.route(request)
+    assert request.sampling.service_tier is None
+    assert response.daari_meta.warning == "ultrafast_eu_unsupported"

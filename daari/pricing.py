@@ -16,14 +16,21 @@ from dataclasses import dataclass
 
 # OpenAI / Anthropic / OpenRouter service_tier multipliers (#430).
 # `fast` is OpenAI's 30 Jul 2026 rename of Priority (same 2× Standard) (#1527).
+# `ultrafast` is 6× Standard for gpt-6.1-sol / gpt-6-astra (#1519).
 _SERVICE_TIER_FACTORS = {
     "flex": 0.5,
     "priority": 2.0,
     "fast": 2.0,
+    "ultrafast": 6.0,
     "standard": 1.0,
     "default": 1.0,
     "auto": 1.0,
 }
+
+# OpenAI Ultrafast is only published for these Responses models (#1519).
+_ULTRAFAST_MODELS = ("gpt-6.1-sol", "gpt-6-astra")
+# Astra Ultrafast supports US residency + global only; EU pin is unsupported.
+_ULTRAFAST_EU_UNSUPPORTED = frozenset({"gpt-6-astra"})
 
 
 def service_tier_factor(tier: str | None) -> float:
@@ -37,6 +44,43 @@ def service_tier_factor(tier: str | None) -> float:
 
     log_gateway_event("service_tier_ignored", {"tier": key})
     return 1.0
+
+
+@dataclass(frozen=True)
+class ServiceTierDecision:
+    """Effective service_tier after Ultrafast model/residency gating (#1519)."""
+
+    service_tier: str | None
+    warning: str | None = None
+
+
+def resolve_service_tier_for_request(
+    *,
+    model: str | None,
+    service_tier: str | None,
+    region_pin: str | None = None,
+) -> ServiceTierDecision:
+    """Keep Ultrafast only for supported model + residency; else clear + warn.
+
+    Unsupported model or EU-pinned Astra must not silently bill at 1.0× while
+    still advertising ultrafast upstream — clear the tier and set a warning.
+    """
+    if service_tier is None or not str(service_tier).strip():
+        return ServiceTierDecision(service_tier=None)
+    key = str(service_tier).strip().lower()
+    if key != "ultrafast":
+        return ServiceTierDecision(service_tier=key)
+    matched = matching_model_key(model or "", _ULTRAFAST_MODELS) if model else None
+    if matched is None:
+        return ServiceTierDecision(
+            service_tier=None, warning="ultrafast_unsupported_model"
+        )
+    pin = (region_pin or "").strip().lower()
+    if pin == "eu" and matched in _ULTRAFAST_EU_UNSUPPORTED:
+        return ServiceTierDecision(
+            service_tier=None, warning="ultrafast_eu_unsupported"
+        )
+    return ServiceTierDecision(service_tier="ultrafast")
 
 
 @dataclass(frozen=True)
