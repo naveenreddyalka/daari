@@ -37,9 +37,30 @@ AUDIT_TOKEN_MINTED = "mcp_oauth.token_minted"
 AUDIT_TOKEN_DENIED = "mcp_oauth.token_denied"
 AUDIT_TOKEN_REVOKED = "mcp_oauth.token_revoked"
 
-# jti → absolute expiry (unix). Process-local denylist; TTL bounded by remaining exp.
-_revoked_jtis: dict[str, int] = {}
+# Default in-process denylist; configure_revocation_store() swaps in Redis/Postgres
+# for multi-replica fleets (#1498). TTL bounded by remaining token exp.
+_revoked_store: Any | None = None
 _revoked_lock = threading.Lock()
+
+
+def _store() -> Any:
+    global _revoked_store
+    if _revoked_store is None:
+        from daari.gateway.revoked_jti_store import InProcessRevokedJtiStore
+
+        _revoked_store = InProcessRevokedJtiStore()
+    return _revoked_store
+
+
+def configure_revocation_store(settings: Any) -> Any:
+    """Install the Redis/Postgres/in-process denylist for this process (#1498)."""
+    global _revoked_store
+    from daari.gateway.revoked_jti_store import resolve_revocation_store
+
+    store = resolve_revocation_store(settings)
+    with _revoked_lock:
+        _revoked_store = store
+    return store
 
 
 def mcp_oauth_enabled(settings: Any) -> bool:
@@ -146,35 +167,29 @@ def authorization_server_metadata(
 
 
 def _prune_revoked(now: int | None = None) -> None:
-    ts = int(time.time()) if now is None else now
-    with _revoked_lock:
-        stale = [jti for jti, exp in _revoked_jtis.items() if exp < ts]
-        for jti in stale:
-            _revoked_jtis.pop(jti, None)
+    _store().prune(now=now)
 
 
 def is_jti_revoked(jti: str) -> bool:
     if not jti:
         return False
-    _prune_revoked()
-    with _revoked_lock:
-        return jti in _revoked_jtis
+    return bool(_store().is_revoked(jti))
 
 
 def revoke_jti(jti: str, exp: int) -> None:
     """Denylist ``jti`` until ``exp`` (absolute unix). No-op when already expired."""
-    now = int(time.time())
-    if not jti or exp < now:
-        return
-    with _revoked_lock:
-        _revoked_jtis[jti] = int(exp)
-    _prune_revoked(now)
+    _store().revoke(jti, exp)
 
 
 def clear_revocation_denylist() -> None:
-    """Test helper — drop all denylisted jtis."""
+    """Test helper — drop all denylisted jtis and reset to in-process store."""
+    global _revoked_store
     with _revoked_lock:
-        _revoked_jtis.clear()
+        if _revoked_store is not None:
+            _revoked_store.clear()
+        from daari.gateway.revoked_jti_store import InProcessRevokedJtiStore
+
+        _revoked_store = InProcessRevokedJtiStore()
 
 
 def _decode_token_claims(token: str, settings: Any) -> dict[str, Any] | None:

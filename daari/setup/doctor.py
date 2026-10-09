@@ -107,6 +107,7 @@ def run_doctor(
     results.append(_check_policy_status(cfg))
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
+    results.append(_check_mcp_oauth_revoke_fleet(cfg))
     results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
@@ -1208,6 +1209,63 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
         name="fleet_cache",
         ok=True,
         detail=f"fleet_replicas={replicas}; cache.backend=redis",
+        optional=True,
+    )
+
+
+def _check_mcp_oauth_revoke_fleet(settings: Settings) -> CheckResult:
+    """Warn when local AS revoke denylist is process-local on a multi-replica fleet (#1498)."""
+    oauth = getattr(getattr(settings, "integrations", None), "mcp_oauth", None)
+    if not bool(getattr(oauth, "local_as", False)):
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=True,
+            detail="mcp_oauth.local_as off (revoke denylist unused)",
+            optional=True,
+        )
+    raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=False,
+            detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
+            optional=True,
+        )
+    cache_backend = str(getattr(settings.cache, "backend", "disk") or "disk").strip().lower()
+    redis_url = str(getattr(settings.cache, "redis_url", "") or "").strip()
+    pg_url = str(getattr(settings.observability, "postgres_url", "") or "").strip()
+    shared = (cache_backend == "redis" and bool(redis_url)) or bool(pg_url)
+    if replicas <= 1:
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=True,
+            detail=(
+                "single replica: in-process revoked-jti denylist is fine "
+                "(not backup-critical; TTL = token exp)"
+                if not shared
+                else "single replica with shared Redis/Postgres revoke store"
+            ),
+            optional=True,
+        )
+    if shared:
+        backend = "redis" if cache_backend == "redis" and redis_url else "postgres"
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; revoked jtis via {backend}",
+            optional=True,
+        )
+    return CheckResult(
+        name="mcp_oauth_revoke_fleet",
+        ok=False,
+        detail=(
+            f"DAARI_FLEET_REPLICAS={replicas} with mcp_oauth.local_as but no shared "
+            "store — POST /oauth/revoke only sticks on one pod; set "
+            "cache.backend=redis or observability.postgres_url so revoked jtis "
+            "are readable from every replica (denylist is TTL-bound, not backed up)"
+        ),
         optional=True,
     )
 
