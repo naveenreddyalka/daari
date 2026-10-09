@@ -15,9 +15,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # OpenAI / Anthropic / OpenRouter service_tier multipliers (#430).
+# `fast` is OpenAI's 30 Jul 2026 rename of Priority (same 2× Standard) (#1527).
 _SERVICE_TIER_FACTORS = {
     "flex": 0.5,
     "priority": 2.0,
+    "fast": 2.0,
     "standard": 1.0,
     "default": 1.0,
     "auto": 1.0,

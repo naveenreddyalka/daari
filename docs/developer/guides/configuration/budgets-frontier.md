@@ -319,7 +319,8 @@ headers, the usage ledger, and budget enforcement all go through the same
 ### Service-tier pricing
 
 OpenAI / Anthropic / OpenRouter `service_tier` is forwarded on L6 hops and
-multiplies `cost_usd`: `flex` is 0.5×, `priority` is 2×, `standard` /
+multiplies `cost_usd`: `flex` is 0.5×, `priority` / `fast` are 2× (OpenAI
+renamed Priority to Fast mode; both names bill the same), `standard` /
 `default` / `auto` / missing is 1×. Unknown values log `service_tier_ignored`
 and bill as standard.
 
