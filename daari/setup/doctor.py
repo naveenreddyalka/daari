@@ -200,9 +200,7 @@ def _check_weak_or_unset_master_key(settings: Settings) -> CheckResult | None:
     server = settings.server
     hatch = bool(getattr(server, "dangerously_permit_weak_or_unset_api_key", False))
     keys = server.master_keys()
-    local_as = bool(
-        getattr(getattr(settings.integrations, "mcp_oauth", None), "local_as", False)
-    )
+    local_as = bool(getattr(getattr(settings.integrations, "mcp_oauth", None), "local_as", False))
     vk_path = str(getattr(getattr(server, "virtual_keys", None), "path", "") or "")
     # Virtual-key store exists on disk when operators have minted keys.
     vk_implied = False
@@ -593,10 +591,7 @@ def _check_responses_stream_resume(
     return CheckResult(
         name="responses_stream_resume",
         ok=False,
-        detail=(
-            f"OpenAPI GET {path} incomplete stream resume docs "
-            f"(missing {', '.join(missing)})"
-        ),
+        detail=(f"OpenAPI GET {path} incomplete stream resume docs (missing {', '.join(missing)})"),
         optional=True,
     )
 
@@ -897,10 +892,7 @@ def _check_warm_models(
         return CheckResult(
             name="warm_models",
             ok=False,
-            detail=(
-                "daemon up but no configured models in /api/ps — "
-                "run: daari models warm"
-            ),
+            detail=("daemon up but no configured models in /api/ps — run: daari models warm"),
             optional=True,
         )
     except Exception as exc:
@@ -1560,9 +1552,7 @@ def _check_recent_backup(settings: Settings) -> CheckResult:
     if found:
         detail = f"recent backup: {found[-1].name}"
         if recent_backups_all_plaintext(found):
-            detail += (
-                " (all plaintext — consider: daari backup create … --encrypt openssl)"
-            )
+            detail += " (all plaintext — consider: daari backup create … --encrypt openssl)"
         return CheckResult(
             name="backup",
             ok=True,
@@ -1949,7 +1939,9 @@ def _check_header_policy(settings: Settings) -> CheckResult:
             detail="server.header_policy disabled (default)",
             optional=True,
         )
-    required = [str(name).strip() for name in (getattr(policy, "required", None) or []) if str(name).strip()]
+    required = [
+        str(name).strip() for name in (getattr(policy, "required", None) or []) if str(name).strip()
+    ]
     deny = list(getattr(policy, "deny", None) or [])
     allow = getattr(policy, "allow", None) or {}
     allow_keys = [str(name).strip() for name in allow if str(name).strip()]
@@ -2186,7 +2178,9 @@ def _check_mcp_server_policy(settings: Settings) -> CheckResult:
     team_policies = getattr(settings.integrations, "mcp_team_policies", None) or {}
     team_bits: list[str] = []
     for name, block in team_policies.items():
-        t_servers = getattr(block, "servers", None) if not isinstance(block, dict) else block.get("servers")
+        t_servers = (
+            getattr(block, "servers", None) if not isinstance(block, dict) else block.get("servers")
+        )
         if isinstance(t_servers, dict):
             t_allow, t_deny = t_servers.get("allow") or [], t_servers.get("deny") or []
         else:
@@ -2336,8 +2330,7 @@ def _check_mcp_token_exchange(settings: Settings) -> CheckResult | None:
     obo = [
         s
         for s in servers
-        if str(getattr(s, "auth_type", "") or "").strip().lower()
-        == "oauth2_token_exchange"
+        if str(getattr(s, "auth_type", "") or "").strip().lower() == "oauth2_token_exchange"
     ]
     if not obo:
         return None
@@ -2450,13 +2443,9 @@ def _check_decision_classifier_model(
         except ValueError:
             return None
         names = [
-            str(m.get("name") or "")
-            for m in (data.get("models") or [])
-            if isinstance(m, dict)
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
         ]
-        present = any(
-            name == model or name.startswith(f"{model}:") for name in names if name
-        )
+        present = any(name == model or name.startswith(f"{model}:") for name in names if name)
         if present:
             return None
         return CheckResult(

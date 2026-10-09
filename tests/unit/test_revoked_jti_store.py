@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from unittest.mock import MagicMock
 
-import pytest
 
 from daari.config.settings import Settings
 from daari.gateway.mcp_oauth import (

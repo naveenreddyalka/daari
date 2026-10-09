@@ -229,9 +229,7 @@ def www_authenticate_header(settings: Any, *, request: Request | None = None) ->
     return f'Bearer realm="mcp", resource_metadata="{url}"'
 
 
-def mcp_oauth_challenge_response(
-    settings: Any, *, request: Request | None = None
-) -> JSONResponse:
+def mcp_oauth_challenge_response(settings: Any, *, request: Request | None = None) -> JSONResponse:
     return JSONResponse(
         status_code=401,
         content={

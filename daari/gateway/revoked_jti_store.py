@@ -196,9 +196,7 @@ class RedisRevokedJtiStore:
             try:
                 from daari.cache.redis_client import connect_redis
 
-                self._client = connect_redis(
-                    redis_url, timeout_seconds=timeout_seconds
-                )
+                self._client = connect_redis(redis_url, timeout_seconds=timeout_seconds)
             except Exception:
                 self.enabled = False
                 self._client = None
