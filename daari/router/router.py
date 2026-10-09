@@ -965,6 +965,7 @@ class Router:
             deadline_active,
             resolve_deadline_seconds,
         )
+        from daari.pricing import resolve_service_tier_for_request
 
         if not deadline_active():
             seconds = resolve_deadline_seconds(
@@ -974,6 +975,15 @@ class Router:
             if seconds is not None:
                 with bind_request_deadline(seconds, metrics=self.metrics):
                     return await self.route(request)
+        # Ultrafast: gate to published models/residency before L6 / cost (#1519).
+        tier_decision = resolve_service_tier_for_request(
+            model=request.model,
+            service_tier=getattr(request.sampling, "service_tier", None),
+            region_pin=getattr(request.meta, "region_pin", None),
+        )
+        if request.sampling.service_tier != tier_decision.service_tier:
+            request.sampling.service_tier = tier_decision.service_tier
+        ultrafast_warning = tier_decision.warning
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         if reused:
@@ -997,7 +1007,9 @@ class Router:
             self._remember_user_turn_profile(request, profile)
         policy = await self._apply_input_policy(request, profile)
         boundary_meta = policy.boundary_meta
-        input_warning = policy.warning
+        input_warning = policy.warning or ultrafast_warning
+        if ultrafast_warning and policy.warning and policy.warning != ultrafast_warning:
+            input_warning = f"{policy.warning}; {ultrafast_warning}"
         if policy.refusal is not None:
             response = policy.refusal
             if response.daari_meta.task_type is None:

@@ -320,9 +320,12 @@ headers, the usage ledger, and budget enforcement all go through the same
 
 OpenAI / Anthropic / OpenRouter `service_tier` is forwarded on L6 hops and
 multiplies `cost_usd`: `flex` is 0.5×, `priority` / `fast` are 2× (OpenAI
-renamed Priority to Fast mode; both names bill the same), `standard` /
-`default` / `auto` / missing is 1×. Unknown values log `service_tier_ignored`
-and bill as standard.
+renamed Priority to Fast mode; both names bill the same), `ultrafast` is 6×
+for `gpt-6.1-sol` and `gpt-6-astra` (Astra Ultrafast is US/global only — an
+`region_pin: eu` key clears the tier with `daari_meta.warning=
+ultrafast_eu_unsupported`; unsupported models get
+`ultrafast_unsupported_model`), `standard` / `default` / `auto` / missing is
+1×. Unknown values log `service_tier_ignored` and bill as standard.
 
 ### Anthropic cache_control TTL write rates
 

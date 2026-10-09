@@ -6382,6 +6382,16 @@ unchanged. Docs: budgets-frontier service-tier note. Covered by
 `tests/unit/test_service_tier.py`.
 
 
+### Ultrafast service_tier (6×) with model + EU gating ([#1519](https://github.com/naveenreddyalka/daari/issues/1519))
+
+<!-- tracking:#1519 -->
+**Status:** Done (2026-10-09). `service_tier: "ultrafast"` bills at 6×
+Standard for `gpt-6.1-sol` / `gpt-6-astra`; unsupported models and
+EU-pinned Astra clear the tier with `daari_meta.warning`
+(`ultrafast_unsupported_model` / `ultrafast_eu_unsupported`). Docs:
+budgets-frontier. Covered by `tests/unit/test_service_tier.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
