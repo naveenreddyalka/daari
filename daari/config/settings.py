@@ -275,6 +275,19 @@ class SystemOneSettings(BaseModel):
     )
 
 
+class DecisionsSettings(BaseModel):
+    """POST /v1/decisions behavior (#1508)."""
+
+    cache_enabled: bool = Field(
+        default=True,
+        description=(
+            "When true (default), identical typed decision requests are served "
+            "from the L0 exact cache. Requires cache.l0.enabled. Clients can "
+            "bypass with X-Daari-No-Cache: true."
+        ),
+    )
+
+
 class MLXSettings(BaseModel):
     """Optional MLX backend (issue #97): serve tiers via mlx_lm.server."""
 
@@ -2022,6 +2035,7 @@ class Settings(BaseSettings):
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     systemone: SystemOneSettings = Field(default_factory=SystemOneSettings)
+    decisions: DecisionsSettings = Field(default_factory=DecisionsSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
     asr: AsrSettings = Field(default_factory=AsrSettings)
     ocr: OcrSettings = Field(default_factory=OcrSettings)

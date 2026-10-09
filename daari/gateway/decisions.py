@@ -515,6 +515,205 @@ def _prompt_chars(state: str, questions: list[DecisionQuestion]) -> int:
         return len(state) + sum(len(q.instructions) for q in questions)
 
 
+def _no_cache_requested(request: Request) -> bool:
+    raw = str(request.headers.get("x-daari-no-cache") or "").strip().lower()
+    return raw in {"true", "1", "yes"}
+
+
+def _decisions_cache_enabled(settings: Any) -> bool:
+    decisions = getattr(settings, "decisions", None)
+    if decisions is not None and not bool(getattr(decisions, "cache_enabled", True)):
+        return False
+    cache = getattr(settings, "cache", None)
+    l0 = getattr(cache, "l0", None) if cache is not None else None
+    if l0 is not None and not bool(getattr(l0, "enabled", True)):
+        return False
+    return True
+
+
+def _decisions_cache_fingerprint(model: str, body: DecisionsRequest) -> str:
+    """Stable exact-match payload for L0 keys (#1508)."""
+    return json.dumps(
+        {
+            "model": model,
+            "input": body.input,
+            "questions": [q.model_dump(exclude_none=True) for q in body.questions],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def _decisions_cache_request(
+    request: Request, model: str, body: DecisionsRequest
+) -> Any:
+    from daari.gateway.internal import InternalRequest, Message, RequestMeta
+    from daari.server.auth import apply_auth_claims_to_meta
+
+    meta = RequestMeta()
+    apply_auth_claims_to_meta(meta, getattr(request.state, "auth_claims", None))
+    return InternalRequest(
+        messages=[Message(role="user", content=_decisions_cache_fingerprint(model, body))],
+        model=f"__decisions__:{model}",
+        meta=meta,
+    )
+
+
+def _lookup_decisions_cache(
+    request: Request,
+    ctx: Any,
+    *,
+    model: str,
+    body: DecisionsRequest,
+) -> dict[str, Any] | None:
+    if not _decisions_cache_enabled(getattr(ctx, "settings", None)) or _no_cache_requested(
+        request
+    ):
+        return None
+    cache = getattr(getattr(ctx, "router", None), "cache", None)
+    if cache is None:
+        return None
+    try:
+        hit = cache.get(_decisions_cache_request(request, model, body))
+    except Exception:
+        return None
+    if hit is None:
+        return None
+    try:
+        data = json.loads(hit.content)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _store_decisions_cache(
+    request: Request,
+    ctx: Any,
+    *,
+    model: str,
+    body: DecisionsRequest,
+    payload: dict[str, Any],
+) -> None:
+    if not _decisions_cache_enabled(getattr(ctx, "settings", None)) or _no_cache_requested(
+        request
+    ):
+        return
+    cache = getattr(getattr(ctx, "router", None), "cache", None)
+    if cache is None:
+        return
+    from daari.gateway.internal import DaariMeta, InternalResponse
+
+    try:
+        cache.put(
+            _decisions_cache_request(request, model, body),
+            InternalResponse(
+                content=json.dumps(payload, default=str),
+                model=model,
+                daari_meta=DaariMeta(tier="L0", cache_hit=False, executor="cache", model=model),
+            ),
+        )
+    except Exception:
+        log_gateway_event("decisions_cache_put_failed", {"model": model})
+
+
+def _serve_decisions_cache_hit(
+    request: Request,
+    ctx: Any,
+    *,
+    model: str,
+    body: DecisionsRequest,
+    cached: dict[str, Any],
+    started: float,
+) -> JSONResponse:
+    """Return a prior answers payload with chat-parity L0 meta (#1508)."""
+    latency_ms = _elapsed_ms(started)
+    usage = cached.get("usage") if isinstance(cached.get("usage"), dict) else {}
+    try:
+        input_tokens = int(usage.get("input_tokens") or 0)
+    except (TypeError, ValueError):
+        input_tokens = 0
+    try:
+        output_tokens = int(usage.get("output_tokens") or 0)
+    except (TypeError, ValueError):
+        output_tokens = 0
+    state, _images = _extract_input_text_and_images(body.input)
+    prompt_chars = _prompt_chars(state, body.questions)
+    if input_tokens <= 0:
+        input_tokens = max(0, prompt_chars // 4)
+    resolved_model = str(cached.get("model") or model)
+    caller = _caller_client_id(request)
+    _bind_spend_context(
+        request, ctx, model=resolved_model, client_id=caller, user_id=body.user
+    )
+    metrics = getattr(ctx, "metrics", None)
+    if metrics is not None:
+        metrics.record(
+            "L0",
+            cache_hit=True,
+            modality="decisions",
+            input_tokens=input_tokens,
+            output_tokens=max(0, output_tokens),
+            latency_ms=latency_ms,
+        )
+    ledger = getattr(getattr(ctx, "router", None), "usage_ledger", None)
+    if ledger is not None:
+        ledger.record(
+            tier="decisions",
+            cache_hit=True,
+            prompt_chars=prompt_chars,
+            completion_chars=0,
+            client_id=caller,
+            user_id=(body.user or "").strip() or None,
+            model=resolved_model,
+            provider="cache",
+            input_tokens=input_tokens,
+            output_tokens=max(0, output_tokens),
+            reported_cost=0.0,
+        )
+    out = {
+        "id": cached.get("id") or f"dec_cache_{resolved_model}",
+        "object": cached.get("object") or "decision",
+        "model": resolved_model,
+        "answers": cached.get("answers"),
+        "usage": {
+            "input_tokens": input_tokens,
+            "output_tokens": max(0, output_tokens),
+        },
+        "daari_meta": {
+            "tier": "L0",
+            "executor": "cache",
+            "provider_id": "cache",
+            "model": resolved_model,
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": max(0, output_tokens),
+            "usage_estimated": False,
+            "cache_hit": True,
+        },
+    }
+    log_gateway_event(
+        "decisions_cache_hit",
+        {"model": resolved_model, "latency_ms": latency_ms},
+    )
+    from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
+
+    headers = modality_response_headers(
+        getattr(ctx, "settings", None),
+        tier="L0",
+        model=resolved_model,
+        prompt_chars=prompt_chars,
+        input_tokens=input_tokens,
+        output_tokens=max(0, output_tokens),
+        cost_usd=0.0,
+        cache_hit=True,
+        executor="cache",
+        session_id=session_id_from_request(request),
+        savings=getattr(getattr(ctx, "router", None), "session_savings", None),
+    )
+    return JSONResponse(out, headers=headers)
+
+
 async def _handle_local(
     request: Request,
     body: DecisionsRequest,
@@ -554,6 +753,13 @@ async def _handle_local(
         return blocked
     assert body is not None
 
+    started = time.perf_counter()
+    cached = _lookup_decisions_cache(request, ctx, model=model, body=body)
+    if cached is not None:
+        return _serve_decisions_cache_hit(
+            request, ctx, model=model, body=body, cached=cached, started=started
+        )
+
     state, images = _extract_input_text_and_images(body.input)
     payload: dict[str, Any] = {
         "model": model,
@@ -578,7 +784,6 @@ async def _handle_local(
         "gen_ai.operation.name": genai_operation_name("decisions"),
         "gen_ai.request.model": model,
     }
-    started = time.perf_counter()
     try:
         with modality_client_span("daari.decisions", attributes=span_attrs):
             upstream = await systemone_mod._post_systemone(
@@ -656,11 +861,12 @@ async def _handle_local(
         user_id=body.user,
     )
 
+    answers = _systemone_answers_to_openai(data.get("answers"))
     out = {
         "id": data.get("id") or f"dec_local_{resolved_model}",
         "object": "decision",
         "model": resolved_model,
-        "answers": _systemone_answers_to_openai(data.get("answers")),
+        "answers": answers,
         "usage": {
             "input_tokens": input_tokens,
             "output_tokens": max(0, output_tokens),
@@ -677,6 +883,19 @@ async def _handle_local(
             "cache_hit": False,
         },
     }
+    _store_decisions_cache(
+        request,
+        ctx,
+        model=model,
+        body=body,
+        payload={
+            "id": out["id"],
+            "object": out["object"],
+            "model": resolved_model,
+            "answers": answers,
+            "usage": out["usage"],
+        },
+    )
     log_gateway_event(
         "decisions_local_ok",
         {"model": resolved_model, "latency_ms": latency_ms, "input_tokens": input_tokens},
@@ -741,6 +960,13 @@ async def _handle_frontier(
         return blocked_in
     assert body is not None
 
+    started = time.perf_counter()
+    cached = _lookup_decisions_cache(request, ctx, model=model, body=body)
+    if cached is not None:
+        return _serve_decisions_cache_hit(
+            request, ctx, model=model, body=body, cached=cached, started=started
+        )
+
     payload = {
         "model": model,
         "input": body.input,
@@ -749,7 +975,6 @@ async def _handle_frontier(
     retry_settings = getattr(getattr(settings, "upstream", None), "retry", None)
     last_exc: Exception | None = None
     last_upstream: httpx.Response | None = None
-    started = time.perf_counter()
     span_attrs = {
         "daari.modality": "decisions",
         "gen_ai.operation.name": genai_operation_name("decisions"),
@@ -892,6 +1117,22 @@ async def _handle_frontier(
             "cache_hit": False,
             "cost_usd": spent,
         }
+        _store_decisions_cache(
+            request,
+            ctx,
+            model=model,
+            body=body,
+            payload={
+                "id": out.get("id") or f"dec_frontier_{resolved_model}",
+                "object": out.get("object") or "decision",
+                "model": resolved_model,
+                "answers": out.get("answers"),
+                "usage": {
+                    "input_tokens": input_tokens,
+                    "output_tokens": max(0, output_tokens),
+                },
+            },
+        )
         log_gateway_event(
             "decisions_frontier_ok",
             {"model": resolved_model, "slot": target.slot_id, "latency_ms": latency_ms},
