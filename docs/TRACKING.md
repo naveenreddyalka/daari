@@ -6291,6 +6291,15 @@ frontier Decisions target; unknown ids return 400. Covered by
 and sampler strip. Covered by `tests/unit/test_claude_haiku_5_5_pricing.py`.
 
 
+### Bill gpt-6-luna chat/responses cached input at $0.01/MTok ([#1506](https://github.com/naveenreddyalka/daari/issues/1506))
+
+<!-- tracking:#1506 -->
+**Status:** Done (2026-10-09). Chat/Responses `gpt-6-luna` sets
+`cached_input_per_1m: 0.01` so prompt-cache hits are not billed at the $0.10
+input rate; Decisions overlay still zeros cache/output. Covered by
+`tests/unit/test_gpt_6_luna_decisions_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
