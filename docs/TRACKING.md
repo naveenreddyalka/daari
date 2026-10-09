@@ -6372,6 +6372,16 @@ prefer `gpt-6-astra` for pins). Capabilities + `/v1/models` when configured
 as a frontier provider. Covered by `tests/unit/test_chat_latest_pricing.py`.
 
 
+### Alias service_tier fast to 2.0× (OpenAI Fast mode) ([#1527](https://github.com/naveenreddyalka/daari/issues/1527))
+
+<!-- tracking:#1527 -->
+**Status:** Done (2026-10-09). `service_tier: "fast"` (OpenAI Fast mode,
+former Priority) multiplies `cost_usd` at 2.0× like `priority`; no
+`service_tier_ignored`. Chat + Responses HTTP models forward `fast`
+unchanged. Docs: budgets-frontier service-tier note. Covered by
+`tests/unit/test_service_tier.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
