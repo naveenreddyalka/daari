@@ -401,6 +401,64 @@ def _bind_spend_context(
     )
 
 
+def _reject_decisions_budget(
+    request: Request,
+    model: str,
+    settings: Any,
+    *,
+    user_id: str | None = None,
+) -> JSONResponse | None:
+    """model_group / model_max / user_daily USD fences before any upstream call (#1518)."""
+    from daari.gateway.model_access import reject_model_group_budget, reject_model_max_budget
+
+    group_denied = reject_model_group_budget(request, model, settings)
+    if group_denied is not None:
+        return group_denied
+    model_denied = reject_model_max_budget(request, model, settings)
+    if model_denied is not None:
+        return model_denied
+
+    claims = getattr(request.state, "auth_claims", None)
+    vk = getattr(claims, "virtual_key", None) if claims is not None else None
+    named = (user_id or "").strip()
+    if (
+        vk is not None
+        and float(getattr(vk, "user_daily_usd_cap", 0) or 0) > 0
+        and named
+    ):
+        from daari.auth.budgets import user_daily_cap_exceeded
+
+        ctx = getattr(getattr(request, "app", None), "state", None)
+        router = getattr(getattr(ctx, "ctx", None), "router", None) if ctx is not None else None
+        ledger = getattr(router, "usage_ledger", None) if router is not None else None
+        client = (
+            getattr(claims, "client_id", None)
+            or getattr(vk, "client_id", None)
+            or getattr(claims, "key_id", None)
+            or ""
+        )
+        pricing = getattr(settings, "pricing", None)
+        fallback = float(
+            getattr(getattr(settings, "usage", None), "frontier_price_per_1k_tokens", 0.002)
+            or 0.002
+        )
+        exceeded = (
+            user_daily_cap_exceeded(
+                vk,
+                ledger,
+                client_id=str(client),
+                user_id=named,
+                pricing=pricing,
+                fallback_per_1k=fallback,
+            )
+            if ledger is not None
+            else None
+        )
+        if exceeded is not None:
+            return JSONResponse(status_code=402, content={"error": exceeded})
+    return None
+
+
 def _record_request(
     ctx: Any,
     *,
@@ -412,6 +470,7 @@ def _record_request(
     latency_ms: int,
     provider: str,
     cost_usd_value: float,
+    user_id: str | None = None,
 ) -> None:
     metrics = getattr(ctx, "metrics", None)
     if metrics is not None:
@@ -432,6 +491,7 @@ def _record_request(
         prompt_chars=prompt_chars,
         completion_chars=0,
         client_id=client_id,
+        user_id=(user_id or "").strip() or None,
         model=model,
         provider=provider,
         input_tokens=input_tokens,
@@ -479,6 +539,11 @@ async def _handle_local(
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         return denied
+    budget_denied = _reject_decisions_budget(
+        request, model, settings, user_id=body.user
+    )
+    if budget_denied is not None:
+        return budget_denied
 
     metrics = getattr(ctx, "metrics", None)
     from daari.gateway.guardrails import router_guardrails
@@ -588,6 +653,7 @@ async def _handle_local(
         latency_ms=latency_ms,
         provider="ollama",
         cost_usd_value=0.0,
+        user_id=body.user,
     )
 
     out = {
@@ -658,6 +724,11 @@ async def _handle_frontier(
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         return denied
+    budget_denied = _reject_decisions_budget(
+        request, model, settings, user_id=body.user
+    )
+    if budget_denied is not None:
+        return budget_denied
 
     metrics = getattr(ctx, "metrics", None)
     from daari.gateway.guardrails import router_guardrails
@@ -805,6 +876,7 @@ async def _handle_frontier(
             latency_ms=latency_ms,
             provider="frontier",
             cost_usd_value=spent,
+            user_id=body.user,
         )
 
         out = dict(data)
