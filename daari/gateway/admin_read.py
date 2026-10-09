@@ -4,6 +4,34 @@ from __future__ import annotations
 
 from typing import Any
 
+# Default page size for GET /v1/daari/keys and /teams (#1499).
+DEFAULT_INVENTORY_LIMIT = 100
+MAX_INVENTORY_LIMIT = 500
+
+
+def _clamp_page(*, limit: int | None, offset: int | None) -> tuple[int, int]:
+    """Normalize limit/offset; default cap is DEFAULT_INVENTORY_LIMIT."""
+    try:
+        lim = DEFAULT_INVENTORY_LIMIT if limit is None else int(limit)
+    except (TypeError, ValueError):
+        lim = DEFAULT_INVENTORY_LIMIT
+    try:
+        off = 0 if offset is None else int(offset)
+    except (TypeError, ValueError):
+        off = 0
+    lim = max(1, min(lim, MAX_INVENTORY_LIMIT))
+    off = max(0, off)
+    return lim, off
+
+
+def _page_meta(total: int, *, limit: int, offset: int, returned: int) -> dict[str, Any]:
+    return {
+        "total": int(total),
+        "limit": int(limit),
+        "offset": int(offset),
+        "has_more": (offset + returned) < total,
+    }
+
 
 def _spend_rows(
     store: Any,
@@ -152,15 +180,21 @@ def keys_inventory(
     ledger: Any = None,
     pricing: Any = None,
     fallback_per_1k: float = 0.002,
+    limit: int | None = None,
+    offset: int | None = None,
 ) -> dict[str, Any]:
+    lim, off = _clamp_page(limit=limit, offset=offset)
+    empty = {"keys": [], **_page_meta(0, limit=lim, offset=off, returned=0)}
     if store is None or not getattr(store, "enabled", True) or not hasattr(store, "list"):
-        return {"keys": []}
+        return empty
     try:
         keys = list(store.list() or [])
     except Exception:
-        return {"keys": []}
+        return empty
+    total = len(keys)
+    page_keys = keys[off : off + lim]
     rows: list[dict[str, Any]] = []
-    for key in keys:
+    for key in page_keys:
         team = None
         if key.team_id and hasattr(store, "get_team"):
             try:
@@ -176,7 +210,7 @@ def keys_inventory(
             fallback_per_1k=fallback_per_1k,
         )
         rows.append(redact_key(key, spend=spend))
-    return {"keys": rows}
+    return {"keys": rows, **_page_meta(total, limit=lim, offset=off, returned=len(rows))}
 
 
 def teams_inventory(
@@ -185,19 +219,25 @@ def teams_inventory(
     ledger: Any = None,
     pricing: Any = None,
     fallback_per_1k: float = 0.002,
+    limit: int | None = None,
+    offset: int | None = None,
 ) -> dict[str, Any]:
+    lim, off = _clamp_page(limit=limit, offset=offset)
+    empty = {"teams": [], **_page_meta(0, limit=lim, offset=off, returned=0)}
     if store is None or not getattr(store, "enabled", True) or not hasattr(store, "list_teams"):
-        return {"teams": []}
+        return empty
     try:
         teams = list(store.list_teams() or [])
     except Exception:
-        return {"teams": []}
+        return empty
     try:
         all_keys = list(store.list() or []) if hasattr(store, "list") else []
     except Exception:
         all_keys = []
+    total = len(teams)
+    page_teams = teams[off : off + lim]
     rows: list[dict[str, Any]] = []
-    for team in teams:
+    for team in page_teams:
         key_count = sum(1 for k in all_keys if getattr(k, "team_id", None) == team.team_id)
         spend = _spend_rows(
             store,
@@ -207,4 +247,4 @@ def teams_inventory(
             fallback_per_1k=fallback_per_1k,
         )
         rows.append(redact_team(team, key_count=key_count, spend=spend))
-    return {"teams": rows}
+    return {"teams": rows, **_page_meta(total, limit=lim, offset=off, returned=len(rows))}

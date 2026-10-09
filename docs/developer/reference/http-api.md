@@ -77,6 +77,10 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/responses/{response_id}/cancel` | Cancel Response |
 | `POST` | `/v1/systemone` | Systemone |
 
+## Admin keys / teams inventory
+
+`GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return redacted rows plus pagination metadata: query `limit` (default **100**, max **500**) and `offset` (default **0**); response includes `total`, `has_more`, `limit`, and `offset`. Successful reads emit `admin.keys.list` / `admin.teams.list` audit events (`limit` / `offset` / `total` / `returned` — never secrets).
+
 ## Config editor ownership
 
 `GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) expose per-field `ownership` (`source` / `editable` / `diverged`) for the safe subset, including `routing.decision_classifier.*`, `routing.compact_to_fit.*`, `observability.structured_json_logs`, and MCP knobs (`integrations.mcp_oauth.local_as` / `protected_resource`, `integrations.mcp_aggregate_egress.enabled`, `integrations.mcp_registry.enabled`, `integrations.mcp_policy.require_key_access_defined`). Secrets such as `integrations.mcp_oauth.signing_secret` stay non-editable and are omitted from the payload.
