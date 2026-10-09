@@ -6300,6 +6300,16 @@ input rate; Decisions overlay still zeros cache/output. Covered by
 `tests/unit/test_gpt_6_luna_decisions_pricing.py`.
 
 
+### Fleet-durable MCP OAuth revoked-jti denylist ([#1498](https://github.com/naveenreddyalka/daari/issues/1498))
+
+<!-- tracking:#1498 -->
+**Status:** Done (2026-10-09). Revoked JTIs use Redis (`cache.backend=redis`) or
+Postgres (`observability.postgres_url`, `memory:` in tests); single-pod keeps
+in-process. Doctor warns on multi-replica `local_as` without a shared store;
+denylist is TTL-bound and not backup-critical. Covered by
+`tests/unit/test_revoked_jti_store.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
