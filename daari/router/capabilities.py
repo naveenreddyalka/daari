@@ -31,6 +31,7 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "claude-sonnet-5",
         "claude-sonnet-5-5",
         "claude-haiku-4-5",
+        "claude-haiku-5-5",
         "gpt-6-astra",
         "gpt-6.1-sol",
         "gpt-5.6",
@@ -236,6 +237,7 @@ _ANTHROPIC_MODEL_LINES: dict[str, str] = {
     "claude-opus-5-5": "opus",
     "claude-3-opus": "opus",
     "claude-haiku-4-5": "haiku",
+    "claude-haiku-5-5": "haiku",
     "claude-3-5-haiku": "haiku",
     "claude-fable-5-1": "fable",
 }
