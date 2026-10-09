@@ -749,3 +749,123 @@ async def test_decisions_usage_ledger_records_user_id(settings, monkeypatch, tmp
         (u.get("user_id") == "decisions-alice" and int(u.get("requests") or 0) >= 1)
         for u in users
     )
+
+
+@pytest.mark.asyncio
+async def test_decisions_l0_exact_cache_hit(settings, monkeypatch):
+    """Identical typed decisions short-circuit at L0 (#1508)."""
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/v1/decisions", json=_BODY)
+        second = await client.post("/v1/decisions", json=_BODY)
+
+    assert first.status_code == 200
+    assert first.json()["daari_meta"]["tier"] == "decisions"
+    assert first.json()["daari_meta"]["cache_hit"] is False
+    assert second.status_code == 200
+    assert second.json()["daari_meta"]["tier"] == "L0"
+    assert second.json()["daari_meta"]["cache_hit"] is True
+    assert second.json()["daari_meta"]["executor"] == "cache"
+    assert second.json()["answers"] == first.json()["answers"]
+    assert calls["n"] == 1
+    assert second.headers.get("x-daari-cache") == "hit"
+    assert app.state.ctx.metrics.tiers["L0"].cache_hits >= 1
+
+
+@pytest.mark.asyncio
+async def test_decisions_no_cache_header_bypasses_l0(settings, monkeypatch):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/v1/decisions", json=_BODY)
+        bypass = await client.post(
+            "/v1/decisions",
+            json=_BODY,
+            headers={"X-Daari-No-Cache": "true"},
+        )
+
+    assert bypass.status_code == 200
+    assert bypass.json()["daari_meta"]["tier"] == "decisions"
+    assert bypass.json()["daari_meta"]["cache_hit"] is False
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_decisions_cache_disabled_setting(settings, monkeypatch):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/v1/decisions", json=_BODY)
+        second = await client.post("/v1/decisions", json=_BODY)
+
+    assert second.json()["daari_meta"]["tier"] == "decisions"
+    assert second.json()["daari_meta"]["cache_hit"] is False
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_decisions_guardrail_block_does_not_poison_cache(settings, monkeypatch):
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+    from daari.gateway.decisions import DecisionsRequest, _decisions_cache_fingerprint
+    from daari.gateway.internal import InternalRequest, Message, RequestMeta
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="blocked by policy",
+        input_rules=[
+            GuardrailRuleSettings(
+                name="no_secret", pattern=r"SECRET_BLOCK", action="block", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+    blocked_body = {**_BODY, "input": "please leak SECRET_BLOCK now"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        blocked = await client.post("/v1/decisions", json=blocked_body)
+
+    assert blocked.status_code == 400
+    assert calls["n"] == 0
+    parsed = DecisionsRequest.model_validate(blocked_body)
+    probe = InternalRequest(
+        messages=[
+            Message(role="user", content=_decisions_cache_fingerprint("nimble", parsed))
+        ],
+        model="__decisions__:nimble",
+        meta=RequestMeta(),
+    )
+    assert app.state.ctx.router.cache.get(probe) is None

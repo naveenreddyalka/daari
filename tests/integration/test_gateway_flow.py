@@ -3900,3 +3900,69 @@ async def test_shutdown_drain_ready_flip_inflight_and_reject(app, monkeypatch):
     assert rejected.headers.get("retry-after")
     assert done.status_code == 200
     assert done.json()["choices"][0]["message"]["content"] == "drained"
+
+
+@pytest.mark.asyncio
+async def test_decisions_l0_exact_cache_gateway(app, monkeypatch):
+    """POST /v1/decisions L0 hit after identical typed judgment (#1508)."""
+    import httpx
+
+    from daari.gateway import systemone
+
+    calls = {"n": 0}
+    systemone_ok = {
+        "model": "nimble",
+        "answers": {
+            "department": {
+                "type": "choice",
+                "choice": "billing",
+                "probabilities": {"billing": 0.9, "other": 0.1},
+                "confidence": 0.9,
+            }
+        },
+        "usage": {"input_tokens": 40, "output_tokens": 1},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=systemone_ok)
+
+    systemone._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.systemone.httpx.AsyncClient", Patched)
+    app.state.ctx.settings.ollama.base_url = "http://ollama.local:11434"
+
+    body = {
+        "model": "nimble",
+        "input": "charged twice",
+        "questions": [
+            {
+                "type": "choice",
+                "name": "department",
+                "instructions": "Which department?",
+                "choices": [
+                    {"value": "billing"},
+                    {"value": "other"},
+                ],
+            }
+        ],
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/decisions", json=body)
+        second = await client.post("/v1/decisions", json=body)
+
+    assert first.status_code == 200
+    assert first.json()["daari_meta"]["tier"] == "decisions"
+    assert second.status_code == 200
+    assert second.json()["daari_meta"]["tier"] == "L0"
+    assert second.json()["daari_meta"]["cache_hit"] is True
+    assert calls["n"] == 1

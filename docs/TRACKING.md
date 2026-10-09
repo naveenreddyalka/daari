@@ -6350,6 +6350,19 @@ chat before any local or frontier call. `usage_ledger.record` carries
 decisions traffic. Covered by `tests/unit/test_decisions.py`.
 
 
+### Decisions L0 exact cache for typed judgments ([#1508](https://github.com/naveenreddyalka/daari/issues/1508))
+
+<!-- tracking:#1508 -->
+**Status:** Done (2026-10-09). Identical `POST /v1/decisions` requests
+(normalized model + input + questions) hit the shared L0 exact cache with
+`daari_meta.tier=L0` / `cache_hit=true`. Default-on via
+`decisions.cache_enabled` (requires `cache.l0.enabled`);
+`X-Daari-No-Cache: true` bypasses. Guardrail blocks never write. Prom
+records L0 hits with `modality=decisions`. Covered by
+`tests/unit/test_decisions.py` and
+`tests/integration/test_gateway_flow.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
