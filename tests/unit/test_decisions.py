@@ -591,3 +591,161 @@ async def test_decisions_user_binds_spend_context(settings, monkeypatch, tmp_pat
 
     assert response.status_code == 200
     assert seen.get("user_id") == "decisions-user"
+
+
+def _decisions_app_with_keys(settings, tmp_path, monkeypatch):
+    """Auth + usage ledger wired for decisions budget tests (#1518)."""
+    from daari.observability.usage import UsageLedger
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("budget reject must not call upstream")
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.frontier.soft_budget_ratio = 0.8
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    app.state.ctx.router.usage_ledger = ledger
+    return app, store, ledger
+
+
+@pytest.mark.asyncio
+async def test_decisions_model_max_budget_402_before_upstream(settings, monkeypatch, tmp_path):
+    """Exhausted model_max_budget returns 402 on POST /v1/decisions (#1518)."""
+    app, store, ledger = _decisions_app_with_keys(settings, tmp_path, monkeypatch)
+    store.create_team("eng", model_max_budget={"nimble*": 1.0})
+    key = store.create(
+        "a",
+        client_id="key-a",
+        team="eng",
+        model_max_budget={"nimble*": 1.0},
+    )
+    ledger.record(
+        tier="L6",
+        client_id="key-a",
+        model="nimble",
+        input_tokens=int(1.05 / 0.002 * 1000),
+        output_tokens=0,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        hard = await client.post(
+            "/v1/decisions",
+            json=_BODY,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert hard.status_code == 402
+    err = hard.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "model"
+    assert err["model_pattern"] == "nimble*"
+
+
+@pytest.mark.asyncio
+async def test_decisions_model_group_budget_402(settings, monkeypatch, tmp_path):
+    """model_group budgets enforce on /v1/decisions like chat (#1518)."""
+    settings.model_groups = {"local-judges": ["nimble*", "clef*"]}
+    app, store, ledger = _decisions_app_with_keys(settings, tmp_path, monkeypatch)
+    from daari.auth.virtual_keys import BudgetWindow
+
+    key = store.create(
+        "a",
+        client_id="key-a",
+        model_group_budgets={"local-judges": [BudgetWindow("day", 1.0)]},
+    )
+    ledger.record(
+        tier="L6",
+        client_id="key-a",
+        model="nimble",
+        input_tokens=int(1.05 / 0.002 * 1000),
+        output_tokens=0,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        hard = await client.post(
+            "/v1/decisions",
+            json=_BODY,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert hard.status_code == 402
+    err = hard.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "model_group"
+    assert err["model_group"] == "local-judges"
+
+
+@pytest.mark.asyncio
+async def test_decisions_user_daily_usd_cap_402(settings, monkeypatch, tmp_path):
+    """user_daily_usd_cap 402s decisions when the named user is over cap (#1518)."""
+    app, store, ledger = _decisions_app_with_keys(settings, tmp_path, monkeypatch)
+    key = store.create(
+        "a",
+        client_id="key-a",
+        user_daily_usd_cap=0.002,
+    )
+    ledger.record(
+        tier="L6",
+        client_id="key-a",
+        user_id="alice",
+        model="gpt-4-custom",
+        input_tokens=int(0.003 / 0.002 * 1000),
+        output_tokens=0,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        hard = await client.post(
+            "/v1/decisions",
+            json={**_BODY, "user": "alice"},
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert hard.status_code == 402
+    err = hard.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_decisions_usage_ledger_records_user_id(settings, monkeypatch, tmp_path):
+    """Decisions usage_ledger.record carries user_id into report users (#1518)."""
+    from daari.observability.usage import UsageLedger
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("bot", client_id="bot-1")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    app.state.ctx.router.usage_ledger = ledger
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/decisions",
+            json={**_BODY, "user": "decisions-alice"},
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+        assert response.status_code == 200
+        report = await client.get(
+            "/v1/daari/report",
+            headers={"Authorization": "Bearer master"},
+        )
+
+    assert report.status_code == 200
+    users = report.json().get("users") or []
+    match = [u for u in users if u.get("user_id") == "decisions-alice"]
+    assert match, f"expected decisions-alice in report users, got {users}"
+    assert match[0].get("client_id") == "bot-1"
+    assert any(
+        (u.get("user_id") == "decisions-alice" and int(u.get("requests") or 0) >= 1)
+        for u in users
+    )

@@ -6340,6 +6340,16 @@ cost are summed before ledger write. Per-agent rows land on
 Covered by `tests/unit/test_anthropic_gateway.py`.
 
 
+### Decisions model/user budget 402 + user_id ledger ([#1518](https://github.com/naveenreddyalka/daari/issues/1518))
+
+<!-- tracking:#1518 -->
+**Status:** Done (2026-10-09). `POST /v1/decisions` applies the same
+`model_group` / `model_max_budget` / `user_daily_usd_cap` 402 pre-checks as
+chat before any local or frontier call. `usage_ledger.record` carries
+`user_id` from the request body so `/v1/daari/report` `users` attributes
+decisions traffic. Covered by `tests/unit/test_decisions.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
