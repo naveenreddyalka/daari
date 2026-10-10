@@ -131,9 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
             begin_shutdown(app)
-            await await_budget_alert_tasks(
-                app, timeout=BUDGET_ALERT_DRAIN_TIMEOUT_SECONDS
-            )
+            await await_budget_alert_tasks(app, timeout=BUDGET_ALERT_DRAIN_TIMEOUT_SECONDS)
             if metrics_stop is not None:
                 await metrics_stop()
             await app.state.ctx.stop_backend_health()
@@ -158,11 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         @app.middleware("http")
         async def cors_and_security_headers(request: Request, call_next):
             origin = (request.headers.get("origin") or "").strip()
-            if (
-                cors_origins
-                and request.method == "OPTIONS"
-                and origin in cors_origins
-            ):
+            if cors_origins and request.method == "OPTIONS" and origin in cors_origins:
                 from fastapi.responses import Response
 
                 preflight = Response(status_code=204)
@@ -254,9 +248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         if not master_keys:
             open_paths.add("/metrics")
-        cors_allow = {
-            origin.strip() for origin in resolved.server.cors_origins if origin.strip()
-        }
+        cors_allow = {origin.strip() for origin in resolved.server.cors_origins if origin.strip()}
 
         @app.middleware("http")
         async def require_api_key(request: Request, call_next):
@@ -278,11 +270,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             supplied = extract_api_key(request.headers)
             claims = resolve_auth(supplied, master_key=master_keys, store=store)
-            if (
-                claims is None
-                and supplied
-                and resolved.integrations.mcp_oauth.local_as
-            ):
+            if claims is None and supplied and resolved.integrations.mcp_oauth.local_as:
                 from daari.gateway.mcp_oauth import verify_access_token
 
                 claims = verify_access_token(
@@ -514,9 +502,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             )
                             # Refresh key so budget_status sees pruned metadata.
                             refreshed = (
-                                store.get_key(key.key_id)
-                                if hasattr(store, "get_key")
-                                else None
+                                store.get_key(key.key_id) if hasattr(store, "get_key") else None
                             )
                             if refreshed is not None:
                                 key = refreshed
@@ -581,6 +567,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             budget_response_headers[QUOTA_REQUESTS_WARNING_HEADER] = "soft"
                             request.state.request_quota_soft = True
             request.state.auth_claims = claims
+            # Throttled last_used_at stamp for virtual keys (#1545).
+            if (
+                claims is not None
+                and getattr(claims, "kind", None) == "virtual"
+                and getattr(claims, "key_id", None)
+                and store is not None
+                and hasattr(store, "touch_last_used")
+            ):
+                try:
+                    store.touch_last_used(str(claims.key_id))
+                except Exception:
+                    pass
             response = await call_next(request)
             extra_budget_headers = getattr(request.state, "budget_response_headers", None)
             if extra_budget_headers:
