@@ -6423,6 +6423,16 @@ connections per lookup. Redis + in-process backends unchanged. Covered by
 `tests/unit/test_revoked_jti_store.py`.
 
 
+### Honor Idempotency-Key on POST /v1/decisions ([#1528](https://github.com/naveenreddyalka/daari/issues/1528))
+
+<!-- tracking:#1528 -->
+**Status:** Done (2026-10-10). `Idempotency-Key` replays local and frontier
+`POST /v1/decisions` responses from the on-box store without a second
+route/upstream call; same key + different body → 409 `idempotency_conflict`;
+missing key is a no-op. Docs: headers.md, config.md. Covered by
+`tests/unit/test_idempotency.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

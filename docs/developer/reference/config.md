@@ -170,7 +170,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
 | `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) so store:true / previous_response_id / background polling work across replicas (#481). |
 | `responses.retention_days` | int | `0` | Delete stored responses older than this many days (#497). 0 keeps them forever. |
-| `idempotency.enabled` | bool | `True` | When true, honor Idempotency-Key on chat completions and Responses. A missing header is always a no-op. |
+| `idempotency.enabled` | bool | `True` | When true, honor Idempotency-Key on chat completions, Responses, modality routes, and decisions. A missing header is always a no-op. |
 | `idempotency.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) for multi-replica fleets. |
 | `idempotency.ttl_seconds` | int | `86400` | How long completed idempotency records are kept (default 24h). |
 | `idempotency.wait_seconds` | float | `60.0` | How long an in-flight duplicate waits for the first request. |

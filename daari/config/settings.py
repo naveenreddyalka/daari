@@ -1303,8 +1303,8 @@ class IdempotencySettings(BaseModel):
     enabled: bool = Field(
         default=True,
         description=(
-            "When true, honor Idempotency-Key on chat completions and Responses. "
-            "A missing header is always a no-op."
+            "When true, honor Idempotency-Key on chat completions, Responses, "
+            "modality routes, and decisions. A missing header is always a no-op."
         ),
     )
     backend: Literal["sqlite", "postgres"] = Field(
