@@ -277,7 +277,7 @@ rates. Current flagship and workhorse models, USD per 1M tokens:
 | `claude-sonnet-5` | 2.00 | 0.20 | 4.00 | 10.00 | Anthropic pricing |
 | `claude-sonnet-5-5` | 2.00 | 0.10 | 4.00 | 10.00 | [Sonnet 5.5](https://www.anthropic.com/claude-sonnet-5-5); cache read halved 2026-10-07; non-default temperature/top_p/top_k stripped |
 | `claude-haiku-4-5` | 1.00 | 0.10 | 2.00 | 5.00 | Anthropic pricing |
-| `claude-haiku-5-5` | 0.10 | 0.01 | 0.20 | 0.50 | [Haiku 5.5](https://www.anthropic.com/claude-haiku-5-5) (2026-10-07); ≥100K → $0.50 / $0.05 / $1.00 1h / $2.50; sampler strip like Sonnet 5.5 |
+| `claude-haiku-5-5` | 0.10 | 0.01 | 0.20 | 0.50 | [Haiku 5.5](https://www.anthropic.com/claude-haiku-5-5) (2026-10-07); 5m write $0.125 (≥100K $0.625); 1h write $0.20 (≥100K $1.00); adaptive thinking maps `budget_tokens` → effort |
 | `gpt-6-astra` | 10.00 | 1.00 | — | 50.00 | OpenAI; ≥272K input → $20 / $2 / $75 |
 | `gpt-6.1-sol` | 2.00 | 0.10 | 2.50 | 10.00 | OpenAI (2026-09-29); 5× cheaper than Astra; no published above-272K surcharge |
 | `chat-latest` | 5.00 | 0.50 | — | 30.00 | Rolling ChatGPT Instant alias (updated 2026-10-07); underlying snapshot moves — prefer `gpt-6-astra` for production pins |
@@ -319,9 +319,13 @@ headers, the usage ledger, and budget enforcement all go through the same
 ### Service-tier pricing
 
 OpenAI / Anthropic / OpenRouter `service_tier` is forwarded on L6 hops and
-multiplies `cost_usd`: `flex` is 0.5×, `priority` is 2×, `standard` /
-`default` / `auto` / missing is 1×. Unknown values log `service_tier_ignored`
-and bill as standard.
+multiplies `cost_usd`: `flex` is 0.5×, `priority` / `fast` are 2× (OpenAI
+renamed Priority to Fast mode; both names bill the same), `ultrafast` is 6×
+for `gpt-6.1-sol` and `gpt-6-astra` (Astra Ultrafast is US/global only — an
+`region_pin: eu` key clears the tier with `daari_meta.warning=
+ultrafast_eu_unsupported`; unsupported models get
+`ultrafast_unsupported_model`), `standard` / `default` / `auto` / missing is
+1×. Unknown values log `service_tier_ignored` and bill as standard.
 
 ### Anthropic cache_control TTL write rates
 

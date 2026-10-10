@@ -320,16 +320,31 @@ def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str,
 
 def anthropic_capabilities(model_id: str) -> dict[str, Any]:
     """Anthropic Models API ``capabilities`` object (#1481 / #1507)."""
-    return {
-        "thinking": {
-            "types": {
-                "disabled": {
-                    "supported": anthropic_thinking_disabled_supported(model_id),
-                }
-            }
-        },
+    thinking_types: dict[str, Any] = {
+        "disabled": {
+            "supported": anthropic_thinking_disabled_supported(model_id),
+        }
+    }
+    caps: dict[str, Any] = {
+        "thinking": {"types": thinking_types},
         "server_tools": anthropic_server_tools(model_id),
     }
+    # Haiku 5.5: adaptive thinking on by default at medium effort (#1520).
+    from daari.pricing import matching_model_key
+
+    if matching_model_key(model_id, ("claude-haiku-5-5",)) is not None:
+        thinking_types["adaptive"] = {"supported": True, "default": True}
+        caps["thinking"]["default_effort"] = "medium"
+    return caps
+
+
+def anthropic_model_limits(model_id: str) -> dict[str, int]:
+    """Published context / max-output limits for Anthropic model cards (#1520)."""
+    from daari.pricing import matching_model_key
+
+    if matching_model_key(model_id, ("claude-haiku-5-5",)) is not None:
+        return {"context_window": 1_000_000, "max_output_tokens": 128_000}
+    return {}
 
 
 def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
@@ -343,17 +358,17 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
             "%Y-%m-%dT%H:%M:%SZ"
         )
         model_id = str(card["id"])
-        cards.append(
-            {
-                "id": model_id,
-                "type": "model",
-                "display_name": _anthropic_display_name(model_id),
-                "created_at": created_at,
-                "line": anthropic_model_line(model_id),
-                "capabilities": anthropic_capabilities(model_id),
-                **anthropic_lifecycle_fields(model_id, settings),
-            }
-        )
+        row: dict[str, Any] = {
+            "id": model_id,
+            "type": "model",
+            "display_name": _anthropic_display_name(model_id),
+            "created_at": created_at,
+            "line": anthropic_model_line(model_id),
+            "capabilities": anthropic_capabilities(model_id),
+            **anthropic_lifecycle_fields(model_id, settings),
+        }
+        row.update(anthropic_model_limits(model_id))
+        cards.append(row)
     return cards
 
 

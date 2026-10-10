@@ -1002,8 +1002,11 @@ class ModelPrice(BaseModel):
     # Providers discount cached prompt prefixes; None means bill at input rate.
     cached_input_per_1m: float | None = None
     # Anthropic prompt-cache write at 1h TTL (2× base input). Missing TTL / 5m
-    # keeps today's rate (input_per_1m for write tokens) (#434).
+    # keeps today's rate (input_per_1m for write tokens) unless
+    # cache_write_per_1m is set (#434 / #1520).
     cache_write_1h_per_1m: float | None = None
+    # Explicit 5m / default cache-write rate (e.g. Haiku 5.5 $0.125 = 1.25×).
+    cache_write_per_1m: float | None = None
     # Long-context tier: once prompt tokens reach the threshold, the whole
     # request is billed at the above-* rates (#411 / gpt-6-astra >272K).
     input_threshold_tokens: int | None = None
@@ -1070,14 +1073,15 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cache_write_1h_per_1m": 2.00,
     },
     # Anthropic Claude Haiku 5.5 (2026-10-07): ≤100K $0.10/$0.50;
-    # cache read $0.01, 1h write $0.20. Above 100K → 5× via threshold ratio
-    # (same path as gpt-6-astra): cache $0.05 / 1h write $1.00.
+    # cache read $0.01, 5m write $0.125 (1.25×), 1h write $0.20. Above 100K
+    # → 5× via threshold ratio: cache $0.05 / 5m write $0.625 / 1h write $1.00.
     # https://www.anthropic.com/claude-haiku-5-5
     # https://platform.claude.com/docs/en/about-claude/pricing
     "claude-haiku-5-5": {
         "input_per_1m": 0.10,
         "output_per_1m": 0.50,
         "cached_input_per_1m": 0.01,
+        "cache_write_per_1m": 0.125,
         "cache_write_1h_per_1m": 0.20,
         "input_threshold_tokens": 100_000,
         "above_input_per_1m": 0.50,

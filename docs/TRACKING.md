@@ -6372,6 +6372,36 @@ prefer `gpt-6-astra` for pins). Capabilities + `/v1/models` when configured
 as a frontier provider. Covered by `tests/unit/test_chat_latest_pricing.py`.
 
 
+### Alias service_tier fast to 2.0× (OpenAI Fast mode) ([#1527](https://github.com/naveenreddyalka/daari/issues/1527))
+
+<!-- tracking:#1527 -->
+**Status:** Done (2026-10-09). `service_tier: "fast"` (OpenAI Fast mode,
+former Priority) multiplies `cost_usd` at 2.0× like `priority`; no
+`service_tier_ignored`. Chat + Responses HTTP models forward `fast`
+unchanged. Docs: budgets-frontier service-tier note. Covered by
+`tests/unit/test_service_tier.py`.
+
+
+### Ultrafast service_tier (6×) with model + EU gating ([#1519](https://github.com/naveenreddyalka/daari/issues/1519))
+
+<!-- tracking:#1519 -->
+**Status:** Done (2026-10-09). `service_tier: "ultrafast"` bills at 6×
+Standard for `gpt-6.1-sol` / `gpt-6-astra`; unsupported models and
+EU-pinned Astra clear the tier with `daari_meta.warning`
+(`ultrafast_unsupported_model` / `ultrafast_eu_unsupported`). Docs:
+budgets-frontier. Covered by `tests/unit/test_service_tier.py`.
+
+
+### claude-haiku-5-5 fidelity (budget_tokens, 5m write, cards) ([#1520](https://github.com/naveenreddyalka/daari/issues/1520))
+
+<!-- tracking:#1520 -->
+**Status:** Done (2026-10-09). Haiku 5.5 egress maps `budget_tokens`
+thinking to adaptive + `output_config.effort` with a `daari_meta` warning;
+5m cache writes bill $0.125 / $0.625 (above 100K); Anthropic `/v1/models`
+cards advertise 1M context, 128K max output, adaptive default medium.
+Covered by `tests/unit/test_claude_haiku_5_5_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
