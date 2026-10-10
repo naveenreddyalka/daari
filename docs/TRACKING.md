@@ -6433,6 +6433,15 @@ missing key is a no-op. Docs: headers.md, config.md. Covered by
 `tests/unit/test_idempotency.py`.
 
 
+### Reject stream=true on POST /v1/decisions ([#1529](https://github.com/naveenreddyalka/daari/issues/1529))
+
+<!-- tracking:#1529 -->
+**Status:** Done (2026-10-10). `stream: true` on Decisions returns HTTP 400
+(`invalid_request`) stating streaming is unsupported; `stream: false` /
+omitted continue to succeed. OpenAPI does not advertise a stream field.
+Covered by `tests/unit/test_decisions.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

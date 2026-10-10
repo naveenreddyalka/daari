@@ -102,6 +102,15 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
 def parse_decisions_body(raw: Any) -> DecisionsRequest | JSONResponse:
     if not isinstance(raw, dict):
         return _error(400, "invalid_request", "Request body must be a JSON object.")
+    # Decisions is a non-streaming typed-judgment surface; fail honestly when
+    # clients copy stream=true from chat/Responses (#1529).
+    if raw.get("stream") is True:
+        return _error(
+            400,
+            "invalid_request",
+            "Streaming is unsupported for POST /v1/decisions; "
+            "omit stream or set stream=false.",
+        )
     try:
         return DecisionsRequest.model_validate(raw)
     except ValidationError as exc:

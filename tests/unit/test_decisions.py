@@ -115,7 +115,67 @@ _BODY = {
 def test_openapi_lists_decisions(settings):
     schema = create_app(settings).openapi()
     assert "/v1/decisions" in schema["paths"]
-    assert "post" in schema["paths"]["/v1/decisions"]
+    post = schema["paths"]["/v1/decisions"]["post"]
+    assert post is not None
+    # Decisions is non-streaming; OpenAPI must not advertise a stream parameter.
+    params = post.get("parameters") or []
+    assert not any(
+        isinstance(p, dict) and p.get("name") == "stream" for p in params
+    )
+    body_schema = (
+        ((post.get("requestBody") or {}).get("content") or {})
+        .get("application/json", {})
+        .get("schema")
+        or {}
+    )
+    props = body_schema.get("properties") or {}
+    assert "stream" not in props
+    description = (post.get("description") or "").lower()
+    assert "stream" not in description or "unsupported" in description
+
+
+@pytest.mark.asyncio
+async def test_stream_true_returns_400(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("stream=true must not reach upstream")
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/decisions", json={**_BODY, "stream": True}
+        )
+
+    assert response.status_code == 400
+    err = response.json()["error"]
+    assert err["type"] == "invalid_request"
+    assert "stream" in err["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_stream_false_and_omitted_succeed(settings, monkeypatch):
+    seen = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        omitted = await client.post("/v1/decisions", json=_BODY)
+        explicit = await client.post(
+            "/v1/decisions", json={**_BODY, "stream": False}
+        )
+
+    assert omitted.status_code == 200, omitted.text
+    assert explicit.status_code == 200, explicit.text
+    assert seen["n"] == 2
 
 
 def test_rate_family_maps_decisions():

@@ -1301,7 +1301,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.post("/v1/decisions", response_model=None)
         async def decisions(body: dict[str, Any], request: Request) -> Any:
-            """OpenAI Decisions beta via local models or gpt-6-luna (#1474)."""
+            """OpenAI Decisions beta via local models or gpt-6-luna (#1474).
+
+            Streaming is unsupported: ``stream: true`` returns 400 (#1529).
+            """
             from daari.gateway.decisions import handle_decisions, parse_decisions_body
             from fastapi.responses import JSONResponse
 
