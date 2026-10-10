@@ -62,6 +62,16 @@ hermetic `cache_scope` tenancy test; `GET /v1/models` ignores VK allowlists.
 | 51 | Paginate + audit `GET /v1/daari/keys` and `/teams` | 4 | 2 | LiteLLM admin UI | Control-plane honesty | Shipped |
 | 52 | Meter multi_agent subagent token usage / spend on L6 | 4 | 2 | OpenAI aggregated usage | FinOps for delegated agents | Shipped |
 | 44 | OpenAI-compatible `/v1/decisions` + gpt-6-luna | 5 | 2 | OpenAI Decisions beta | Typed judgments on-box | Shipped |
+| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
+| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
+| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
+| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
+| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
+| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
+| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
+| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
 | 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365 catalog; Skills; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM / OpenAI | Demand-triggered | Watch |
 
 Shipped this week (do not re-file): rows 55–59; decisions L0 cache;
@@ -119,8 +129,8 @@ builds, HIPAA BAA) stay deferred until buyer demand.
   per-subagent model pricing, decisions L0 cache_scope hermetic test, filtered
   `/v1/models` catalog. Outward: LiteLLM 1.105 still RC (Lens/agent traces —
   watch for GA); OpenRouter filtered-catalog parity; gateways otherwise flat.
-  Pruned condensed early shipped rows 19–28 / 45–48 from the table (still in
-  git history); watch list drops the four gaps now filed.
+  Compact/MCP grant pin rows 19–28 retained as Shipped; watch list drops the
+  four gaps now filed.
 
 - **2026-10-10 pm (key + end-user lifecycle governance)** — Row 53 marked
   Shipped (same-day drain). Filed rows 60–64 after a code audit of key/user
