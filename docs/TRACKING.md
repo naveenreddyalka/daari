@@ -6402,6 +6402,17 @@ cards advertise 1M context, 128K max output, adaptive default medium.
 Covered by `tests/unit/test_claude_haiku_5_5_pricing.py`.
 
 
+### OpenAI /v1/models lifecycle + server_tools and retired routing ([#1521](https://github.com/naveenreddyalka/daari/issues/1521))
+
+<!-- tracking:#1521 -->
+**Status:** Done (2026-10-10). OpenAI-shaped list/retrieve cards expose the
+same `lifecycle` / `server_tools` data as the Anthropic facade; `lifecycle`
+query filter works on both shapes. Catalog `retired` models fail closed with
+HTTP 410 (`models.reject_retired`, default true); `deprecated` models still
+serve with `daari_meta.warning=model_deprecated`. Covered by
+`tests/unit/test_openai_models_lifecycle.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

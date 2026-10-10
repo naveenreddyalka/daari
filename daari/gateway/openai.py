@@ -885,11 +885,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 reject_disallowed_model,
                 reject_model_group_budget,
                 reject_model_max_budget,
+                reject_retired_model,
             )
 
             denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
             if denied is not None:
                 return denied
+            retired = reject_retired_model(request, body.model, ctx.settings)
+            if retired is not None:
+                return retired
             group_denied = reject_model_group_budget(request, body.model, ctx.settings)
             if group_denied is not None:
                 return group_denied
@@ -1422,18 +1426,24 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
             from daari.gateway.anthropic import wants_anthropic_models
-            from daari.router.capabilities import anthropic_models_payload, openai_model_cards
+            from daari.router.capabilities import (
+                anthropic_models_payload,
+                openai_models_payload,
+            )
 
             ctx: AppContext = request.app.state.ctx
+            # Lifecycle filter (repeatable / comma) on both facades (#1507 / #1521).
+            lifecycle_vals = list(request.query_params.getlist("lifecycle"))
             # Claude Code / Desktop send anthropic-version and/or x-api-key (#454).
             if wants_anthropic_models(request):
-                # Anthropic lifecycle filter: repeatable / comma (#1507).
-                lifecycle_vals = list(request.query_params.getlist("lifecycle"))
                 return anthropic_models_payload(
                     ctx.settings,
                     lifecycle=lifecycle_vals or None,
                 )
-            return {"object": "list", "data": openai_model_cards(ctx.settings)}
+            return openai_models_payload(
+                ctx.settings,
+                lifecycle=lifecycle_vals or None,
+            )
 
         @router.get("/v1/models/{model_id}")
         async def retrieve_model(model_id: str, request: Request) -> dict[str, Any]:
@@ -1443,6 +1453,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 anthropic_lifecycle_fields,
                 anthropic_model_cards,
                 anthropic_model_line,
+                anthropic_server_tools,
                 openai_model_cards,
             )
 
@@ -1473,6 +1484,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "created": int(time.time()),
                 "owned_by": "daari" if model_id == "daari" else "ollama",
                 "capabilities": [],
+                **anthropic_lifecycle_fields(model_id, ctx.settings),
+                "server_tools": anthropic_server_tools(model_id),
             }
 
         @router.get("/health")

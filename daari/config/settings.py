@@ -239,6 +239,16 @@ class ModelsSettings(BaseModel):
     # Per-model capability tags (tools/json/vision/long_context). Empty →
     # stock defaults in CapabilityCatalog (issue #113).
     capabilities: dict[str, list[str]] = Field(default_factory=dict)
+    # Per-model lifecycle overrides for /v1/models + retired routing (#1507 / #1521).
+    # Shape: {model_id: {lifecycle: active|deprecated|retired, deprecated_at?, retires_at?}}.
+    lifecycle: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    reject_retired: bool = Field(
+        default=True,
+        description=(
+            "When true (default), chat/messages/responses to a model whose catalog "
+            "lifecycle is retired return HTTP 410 instead of routing (fail-closed)."
+        ),
+    )
     timeout_s: dict[str, float] = Field(
         default_factory=dict,
         description=(

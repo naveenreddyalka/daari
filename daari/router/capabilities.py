@@ -159,6 +159,9 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         # Omit unknown windows — never invent 0 (#400).
         if context_length is not None and int(context_length) > 0:
             card["context_length"] = int(context_length)
+        # OpenAI facade shares Anthropic lifecycle + server_tools data (#1521).
+        card.update(anthropic_lifecycle_fields(model_id, settings))
+        card["server_tools"] = anthropic_server_tools(model_id)
         cards.append(card)
 
     local_union: set[str] = set()
@@ -405,6 +408,19 @@ def anthropic_models_payload(
         "first_id": data[0]["id"] if data else None,
         "last_id": data[-1]["id"] if data else None,
     }
+
+
+def openai_models_payload(
+    settings: Any, *, lifecycle: Any = None
+) -> dict[str, Any]:
+    """OpenAI list-models body with shared lifecycle filter (#1521)."""
+    allowed = _parse_lifecycle_filter(lifecycle)
+    data = [
+        card
+        for card in openai_model_cards(settings)
+        if str(card.get("lifecycle") or "active") in allowed
+    ]
+    return {"object": "list", "data": data}
 
 
 def _context_windows(settings: Any) -> dict[str, int]:
