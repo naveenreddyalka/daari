@@ -1172,7 +1172,7 @@ async def _handle_frontier(
     return _error(503, "upstream_error", "Decisions upstream request failed.")
 
 
-async def handle_decisions(request: Request, body: DecisionsRequest) -> Any:
+async def _dispatch_decisions(request: Request, body: DecisionsRequest) -> Any:
     ctx = request.app.state.ctx
     settings = ctx.settings
     requested = (body.model or "").strip()
@@ -1192,3 +1192,40 @@ async def handle_decisions(request: Request, body: DecisionsRequest) -> Any:
     if is_frontier_decisions_model(canonical):
         return await _handle_frontier(request, body, model=canonical)
     return await _handle_local(request, body, model=canonical)
+
+
+async def handle_decisions(request: Request, body: DecisionsRequest) -> Any:
+    """POST /v1/decisions with Idempotency-Key replay (#1528)."""
+    from daari.gateway.idempotency import (
+        abandon_slot,
+        complete_json_slot,
+        resolve_idempotency,
+    )
+
+    ctx = request.app.state.ctx
+    idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
+    if idem_kind in {"replay", "conflict"} and idem_response is not None:
+        return idem_response
+
+    try:
+        response = await _dispatch_decisions(request, body)
+    except Exception:
+        abandon_slot(idem_slot)
+        raise
+
+    if isinstance(response, JSONResponse) and 200 <= response.status_code < 300:
+        try:
+            payload = json.loads(response.body)
+        except Exception:
+            abandon_slot(idem_slot)
+            return response
+        if isinstance(payload, dict):
+            complete_json_slot(
+                idem_slot, status_code=response.status_code, payload=payload
+            )
+        else:
+            abandon_slot(idem_slot)
+        return response
+
+    abandon_slot(idem_slot)
+    return response

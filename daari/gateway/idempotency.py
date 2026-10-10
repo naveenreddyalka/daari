@@ -1,4 +1,4 @@
-"""Idempotency-Key helpers for chat, Responses, and modality routes (#714, #1065, #1082)."""
+"""Idempotency-Key helpers for chat, Responses, modality, and decisions (#714, #1065, #1082, #1528)."""
 
 from __future__ import annotations
 
