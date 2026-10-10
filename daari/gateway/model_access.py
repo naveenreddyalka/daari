@@ -97,6 +97,37 @@ def reject_disallowed_model(
     return JSONResponse(status_code=403, content=denial_body(name))
 
 
+def reject_retired_model(
+    request: Any,
+    model: str,
+    settings: Any,
+) -> JSONResponse | None:
+    """410 when catalog lifecycle is retired and models.reject_retired (#1521)."""
+    models = getattr(settings, "models", None)
+    if models is not None and getattr(models, "reject_retired", True) is False:
+        return None
+    from daari.router.capabilities import anthropic_lifecycle_fields
+
+    name = (model or "").strip()
+    if not name:
+        return None
+    stage = anthropic_lifecycle_fields(name, settings).get("lifecycle") or "active"
+    if stage != "retired":
+        return None
+    path = getattr(getattr(request, "url", None), "path", "") or ""
+    log_gateway_event("model_retired", {"model": name, "path": path})
+    return JSONResponse(
+        status_code=410,
+        content={
+            "error": {
+                "type": "model_retired",
+                "code": "model_retired",
+                "message": f"Model '{name}' is retired and cannot be used.",
+            }
+        },
+    )
+
+
 def reject_model_group_budget(
     request: Any,
     model: str,

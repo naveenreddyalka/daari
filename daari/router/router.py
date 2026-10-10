@@ -540,6 +540,7 @@ class Router:
         decision_classifier_model: str = "nimble",
         decision_classifier_timeout_seconds: float = 5.0,
         decision_classifier_agent_turns: bool = False,
+        models_lifecycle: dict[str, Any] | None = None,
     ) -> None:
         self.cache = cache
         self._l0_singleflight = SingleFlight()
@@ -664,12 +665,38 @@ class Router:
         self.decision_classifier_model = (decision_classifier_model or "nimble").strip() or "nimble"
         self.decision_classifier_timeout_seconds = float(decision_classifier_timeout_seconds or 5.0)
         self.decision_classifier_agent_turns = bool(decision_classifier_agent_turns)
+        self.models_lifecycle = dict(models_lifecycle) if models_lifecycle else {}
         self.local_pool = local_pool
         self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
 
     @property
     def ollama(self) -> OllamaExecutor:
         return self.ollama_l3
+
+    def _apply_lifecycle_warning(
+        self, request: InternalRequest, response: InternalResponse
+    ) -> None:
+        """Attach daari_meta.warning when the requested model is deprecated (#1521)."""
+        if not self.models_lifecycle:
+            return
+        from types import SimpleNamespace
+
+        from daari.router.capabilities import anthropic_lifecycle_fields
+
+        settings = SimpleNamespace(
+            models=SimpleNamespace(lifecycle=self.models_lifecycle)
+        )
+        stage = anthropic_lifecycle_fields(request.model or "", settings).get(
+            "lifecycle"
+        )
+        if stage != "deprecated":
+            return
+        existing = response.daari_meta.warning
+        if existing and "model_deprecated" in existing:
+            return
+        response.daari_meta.warning = (
+            f"{existing}; model_deprecated" if existing else "model_deprecated"
+        )
 
     def _tier_models(self) -> dict[str, str]:
         return {
@@ -1032,6 +1059,7 @@ class Router:
         response = self._apply_output_policy(response)
         if input_warning and not response.daari_meta.warning:
             response.daari_meta.warning = input_warning
+        self._apply_lifecycle_warning(request, response)
         # Say so when a requested parameter could not be honored, rather than
         # returning 200 as though it had been (#161). Frontier answers come from a
         # provider that does support them, so only local tiers warn. Appended
@@ -6137,6 +6165,7 @@ class AppContext:
             decision_classifier_model=settings.routing.decision_classifier.model,
             decision_classifier_timeout_seconds=settings.routing.decision_classifier.timeout_seconds,
             decision_classifier_agent_turns=settings.routing.decision_classifier.agent_turns,
+            models_lifecycle=dict(settings.models.lifecycle or {}),
         )
         from daari.observability.spend import install_spend_hook, spend_ledger_from_settings
 
