@@ -1428,6 +1428,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
+            from daari.auth.model_access import patterns_from_claims
             from daari.gateway.anthropic import wants_anthropic_models
             from daari.router.capabilities import (
                 anthropic_models_payload,
@@ -1437,19 +1438,27 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             ctx: AppContext = request.app.state.ctx
             # Lifecycle filter (repeatable / comma) on both facades (#1507 / #1521).
             lifecycle_vals = list(request.query_params.getlist("lifecycle"))
+            claims = getattr(request.state, "auth_claims", None)
+            catalog = getattr(ctx.settings, "model_groups", None) or {}
+            key_patterns, team_patterns = patterns_from_claims(claims, catalog)
             # Claude Code / Desktop send anthropic-version and/or x-api-key (#454).
             if wants_anthropic_models(request):
                 return anthropic_models_payload(
                     ctx.settings,
                     lifecycle=lifecycle_vals or None,
+                    key_patterns=key_patterns,
+                    team_patterns=team_patterns,
                 )
             return openai_models_payload(
                 ctx.settings,
                 lifecycle=lifecycle_vals or None,
+                key_patterns=key_patterns,
+                team_patterns=team_patterns,
             )
 
         @router.get("/v1/models/{model_id}")
         async def retrieve_model(model_id: str, request: Request) -> dict[str, Any]:
+            from daari.auth.model_access import model_permitted, patterns_from_claims
             from daari.gateway.anthropic import wants_anthropic_models
             from daari.router.capabilities import (
                 anthropic_capabilities,
@@ -1461,6 +1470,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
 
             ctx: AppContext = request.app.state.ctx
+            claims = getattr(request.state, "auth_claims", None)
+            catalog = getattr(ctx.settings, "model_groups", None) or {}
+            key_patterns, team_patterns = patterns_from_claims(claims, catalog)
+            if not model_permitted(
+                model_id, key_patterns=key_patterns, team_patterns=team_patterns
+            ):
+                raise HTTPException(status_code=404, detail="model not found")
             if wants_anthropic_models(request):
                 for card in anthropic_model_cards(ctx.settings):
                     if card["id"] == model_id:

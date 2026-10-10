@@ -392,16 +392,45 @@ def _parse_lifecycle_filter(lifecycle: Any) -> frozenset[str]:
     return frozenset(stages) if stages else frozenset({"active", "deprecated"})
 
 
+def _filter_cards_by_allowlist(
+    cards: list[dict[str, Any]],
+    *,
+    key_patterns: list[str] | tuple[str, ...] | None,
+    team_patterns: list[str] | tuple[str, ...] | None,
+) -> list[dict[str, Any]]:
+    """Drop cards outside the VK allowlist. Unset patterns → no filter (#1555)."""
+    if key_patterns is None and team_patterns is None:
+        return cards
+    from daari.auth.model_access import model_permitted
+
+    return [
+        card
+        for card in cards
+        if model_permitted(
+            str(card.get("id") or ""),
+            key_patterns=key_patterns,
+            team_patterns=team_patterns,
+        )
+    ]
+
+
 def anthropic_models_payload(
-    settings: Any, *, lifecycle: Any = None
+    settings: Any,
+    *,
+    lifecycle: Any = None,
+    key_patterns: list[str] | tuple[str, ...] | None = None,
+    team_patterns: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Full Anthropic list-models response body (#454 / #1507)."""
+    """Full Anthropic list-models response body (#454 / #1507 / #1555)."""
     allowed = _parse_lifecycle_filter(lifecycle)
     data = [
         card
         for card in anthropic_model_cards(settings)
         if str(card.get("lifecycle") or "active") in allowed
     ]
+    data = _filter_cards_by_allowlist(
+        data, key_patterns=key_patterns, team_patterns=team_patterns
+    )
     return {
         "data": data,
         "has_more": False,
@@ -411,15 +440,22 @@ def anthropic_models_payload(
 
 
 def openai_models_payload(
-    settings: Any, *, lifecycle: Any = None
+    settings: Any,
+    *,
+    lifecycle: Any = None,
+    key_patterns: list[str] | tuple[str, ...] | None = None,
+    team_patterns: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """OpenAI list-models body with shared lifecycle filter (#1521)."""
+    """OpenAI list-models body with lifecycle + VK allowlist (#1521 / #1555)."""
     allowed = _parse_lifecycle_filter(lifecycle)
     data = [
         card
         for card in openai_model_cards(settings)
         if str(card.get("lifecycle") or "active") in allowed
     ]
+    data = _filter_cards_by_allowlist(
+        data, key_patterns=key_patterns, team_patterns=team_patterns
+    )
     return {"object": "list", "data": data}
 
 

@@ -53,6 +53,13 @@ A request whose model is outside the allowlist is HTTP 403
 `auth.model_denied` audit row. Router fallback will not send that key to a
 frontier model outside the allowlist.
 
+`GET /v1/models` (OpenAI and Anthropic facades) returns only cards that match
+the key ∪ team allowlist when either side is set — same patterns as inference.
+Master key and unrestricted virtual keys still see the full catalog.
+`GET /v1/models/{id}` returns **404** for ids outside the allowlist. Lifecycle
+query filters compose with the allowlist (retired models stay omitted by
+default).
+
 ## Admission priority
 
 The global in-flight gate admits waiters by priority class, then FIFO:
