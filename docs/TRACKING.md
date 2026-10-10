@@ -6461,6 +6461,14 @@ budgets-frontier, data-residency. Covered by
 `tests/unit/test_regional_pricing.py`.
 
 
+### Refresh ENTERPRISE.md after Oct 7–10 drain ([#1470](https://github.com/naveenreddyalka/daari/issues/1470))
+
+<!-- tracking:#1470 -->
+**Status:** Done (2026-10-10). Living PRD marks rows 55–59 Shipped, rewrites
+stand + next-5 for ops-docs / hot-reload / MCP allowlist, and drops watch
+rows that already landed. Covered by `tests/unit/test_enterprise_prd_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
