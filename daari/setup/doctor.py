@@ -61,6 +61,7 @@ def run_doctor(
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_images_generations(cfg))
     results.append(_check_ocr(cfg))
+    results.append(_check_decisions(cfg))
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -622,6 +623,50 @@ def _check_ocr(settings: Settings) -> CheckResult:
             "ocr.base_url and ocr.vision_model unset — POST /v1/ocr falls through "
             "to frontier L6; set a local OCR root or multimodal vision model "
             "(see clients-and-gateways.md / config.md)"
+        ),
+        optional=True,
+    )
+
+
+def _check_decisions(settings: Settings) -> CheckResult:
+    """Tip when POST /v1/decisions lacks a local or gpt-6-luna path (#1501)."""
+    systemone_on = bool(getattr(getattr(settings, "systemone", None), "enabled", True))
+    frontier = getattr(settings, "frontier", None)
+    frontier_on = bool(getattr(frontier, "enabled", False))
+    frontier_key = bool(settings.resolve_frontier_api_key()) if frontier_on else False
+    local_ok = systemone_on
+    frontier_ok = frontier_on and frontier_key
+    # Misconfigured frontier key is always actionable even when local works.
+    if frontier_on and not frontier_key:
+        return CheckResult(
+            name="decisions",
+            ok=False,
+            detail=(
+                "POST /v1/decisions: frontier enabled but no API key "
+                "(gpt-6-luna L6 blocked) — set DAARI_FRONTIER_API_KEY or "
+                "OPENAI_API_KEY (see clients-and-gateways.md / http-api)"
+            ),
+            optional=True,
+        )
+    if local_ok or frontier_ok:
+        parts: list[str] = []
+        if local_ok:
+            parts.append("local models via systemone (clef/nimble/tev1)")
+        if frontier_ok:
+            parts.append("gpt-6-luna via frontier L6")
+        return CheckResult(
+            name="decisions",
+            ok=True,
+            detail=f"POST /v1/decisions available ({'; '.join(parts)})",
+            optional=True,
+        )
+    return CheckResult(
+        name="decisions",
+        ok=False,
+        detail=(
+            "POST /v1/decisions: systemone.enabled=false and frontier.enabled=false "
+            "(no local clef/nimble/tev1 or gpt-6-luna path) — enable systemone "
+            "and/or frontier + API key (see clients-and-gateways.md / http-api)"
         ),
         optional=True,
     )

@@ -6469,6 +6469,16 @@ stand + next-5 for ops-docs / hot-reload / MCP allowlist, and drops watch
 rows that already landed. Covered by `tests/unit/test_enterprise_prd_docs.py`.
 
 
+### Doctor + Helm + auth-and-keys coverage for /v1/decisions ([#1501](https://github.com/naveenreddyalka/daari/issues/1501))
+
+<!-- tracking:#1501 -->
+**Status:** Done (2026-10-10). Doctor `decisions` tip for systemone/frontier
+gaps; Helm values comment for decisions/systemone via ollama+frontier;
+auth-and-keys lists `decisions` rate family. Covered by
+`tests/unit/test_doctor_decisions.py`, `test_doctor_health_decisions_docs.py`,
+`test_auth_and_keys_decisions_family.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
