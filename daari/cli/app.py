@@ -402,23 +402,39 @@ def keys_update(
 
 
 @keys_app.command("list")
-def keys_list() -> None:
+def keys_list(
+    status: str | None = typer.Option(
+        None,
+        "--status",
+        help="Filter: active | expired | revoked",
+    ),
+    idle_days: int | None = typer.Option(
+        None,
+        "--idle-days",
+        help="Keys unused for N days (or never used)",
+    ),
+) -> None:
     """List virtual keys (prefixes only — never plaintext)."""
     from daari.auth.budgets import budget_status
     from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
-    from daari.auth.virtual_keys import effective_cache_scope
+    from daari.auth.virtual_keys import effective_cache_scope, filter_virtual_keys
     from daari.observability.usage import UsageLedger
 
     settings = get_settings()
     store = virtual_key_store_from_settings(settings)
-    keys = store.list()
+    try:
+        keys = filter_virtual_keys(store.list(), status=status, idle_days=idle_days)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2) from exc
     if not keys:
         typer.echo("No virtual keys.")
         return
     ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
     typer.echo(
         f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'rpd':>5} "
-        f"{'tier':<4} {'scope':<6} {'prio':<6} {'expires':<25} {'grace_until':<25} status"
+        f"{'tier':<4} {'scope':<6} {'prio':<6} {'expires':<25} {'last_used':<25} "
+        f"{'grace_until':<25} status"
     )
     for key in keys:
         team = store.get_team(key.team_id) if key.team_id else None
@@ -429,6 +445,7 @@ def keys_list() -> None:
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
             f"{key.tpm:>7} {key.rpd:>5} {(key.tier_cap or '-'):<4} {scope:<6} "
             f"{key.priority:<6} {(key.expires_at or 'never'):<25} "
+            f"{(key.last_used_at or 'never'):<25} "
             f"{(key.previous_expires_at or '-'):<25} {key.status()}"
         )
         client_id = key.client_id or key.key_id
@@ -483,6 +500,7 @@ def keys_show(key_id: str = typer.Argument(..., help="key_id from `daari keys li
     typer.echo(f"name:    {key.name}")
     typer.echo(f"prefix:  {key.prefix}…")
     typer.echo(f"status:  {key.status()}")
+    typer.echo(f"last_used: {key.last_used_at or 'never'}")
     typer.echo(f"team:    {key.team_name or key.team_id or '-'}")
     mcp_meta = (key.metadata or {}).get("mcp") if isinstance(key.metadata, dict) else None
     if isinstance(mcp_meta, dict):

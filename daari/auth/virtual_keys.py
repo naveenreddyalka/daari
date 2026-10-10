@@ -41,10 +41,52 @@ def normalize_cache_scope(value: str | None) -> str:
     """Write path: reject anything other than global, team, or key."""
     text = (value or "global").strip().lower() or "global"
     if text not in _CACHE_SCOPE_RANK:
-        raise ValueError(
-            f"cache_scope must be one of {', '.join(CACHE_SCOPES)} (got {value!r})"
-        )
+        raise ValueError(f"cache_scope must be one of {', '.join(CACHE_SCOPES)} (got {value!r})")
     return text
+
+
+def filter_virtual_keys(
+    keys: list[VirtualKey] | tuple[VirtualKey, ...],
+    *,
+    status: str | None = None,
+    idle_days: int | None = None,
+    now: datetime | None = None,
+) -> list[VirtualKey]:
+    """Filter by ``status`` and/or idle age (#1545).
+
+    ``idle_days=N`` keeps keys whose ``last_used_at`` is older than N days, or
+    never used (``None``).
+    """
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    wanted = (status or "").strip().lower() or None
+    if wanted is not None and wanted not in {"active", "expired", "revoked"}:
+        raise ValueError(f"status must be active, expired, or revoked (got {status!r})")
+    out: list[VirtualKey] = []
+    for key in keys:
+        if wanted is not None and key.status(current) != wanted:
+            continue
+        if idle_days is not None:
+            days = int(idle_days)
+            if days < 0:
+                raise ValueError("idle_days must be >= 0")
+            last = key.last_used_at
+            if last is None:
+                out.append(key)
+                continue
+            try:
+                when = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+            except ValueError:
+                out.append(key)
+                continue
+            if when.tzinfo is None:
+                when = when.replace(tzinfo=timezone.utc)
+            age = current - when.astimezone(timezone.utc)
+            if age < timedelta(days=days):
+                continue
+        out.append(key)
+    return out
 
 
 def coerce_priority(value: str | None) -> str:
@@ -179,7 +221,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     allowed_models_json TEXT,
     model_groups_json TEXT,
     cache_scope TEXT NOT NULL DEFAULT 'global',
-    priority TEXT NOT NULL DEFAULT 'normal'
+    priority TEXT NOT NULL DEFAULT 'normal',
+    last_used_at TEXT
 );
 CREATE TABLE IF NOT EXISTS key_hits (
     key_id TEXT NOT NULL,
@@ -269,6 +312,8 @@ class VirtualKey:
     cache_scope: str = "global"
     # In-flight admission class (#848). Prefer metadata["priority"]; column mirrors it.
     priority: str = "normal"
+    # ISO-8601 UTC of last successful auth; None = never used (#1545).
+    last_used_at: str | None = None
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
@@ -282,9 +327,7 @@ class VirtualKey:
         return "active"
 
 
-def admission_priority_for(
-    key: VirtualKey | None = None, team: Team | None = None
-) -> str:
+def admission_priority_for(key: VirtualKey | None = None, team: Team | None = None) -> str:
     """Key priority wins over team; default normal (#848)."""
     if key is not None:
         meta = getattr(key, "metadata", None) or {}
@@ -418,21 +461,17 @@ class VirtualKeyStore:
                 "ALTER TABLE virtual_keys ADD COLUMN cache_scope TEXT NOT NULL DEFAULT 'global'"
             )
         if "cache_scope" not in team_cols:
-            conn.execute(
-                "ALTER TABLE teams ADD COLUMN cache_scope TEXT NOT NULL DEFAULT 'global'"
-            )
+            conn.execute("ALTER TABLE teams ADD COLUMN cache_scope TEXT NOT NULL DEFAULT 'global'")
         if "priority" not in cols:
             conn.execute(
                 "ALTER TABLE virtual_keys ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'"
             )
         if "priority" not in team_cols:
-            conn.execute(
-                "ALTER TABLE teams ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'"
-            )
+            conn.execute("ALTER TABLE teams ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'")
         if "metadata_json" not in team_cols:
-            conn.execute(
-                "ALTER TABLE teams ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'"
-            )
+            conn.execute("ALTER TABLE teams ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'")
+        if "last_used_at" not in cols:
+            conn.execute("ALTER TABLE virtual_keys ADD COLUMN last_used_at TEXT")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS team_members (
@@ -995,8 +1034,7 @@ class VirtualKeyStore:
         boost = make_budget_boost(usd=usd, requests=requests, until=until)
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT metadata_json FROM virtual_keys"
-                " WHERE key_id = ? AND revoked_at IS NULL",
+                "SELECT metadata_json FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
                 (key_id,),
             ).fetchone()
             if row is None:
@@ -1006,8 +1044,7 @@ class VirtualKeyStore:
             boosts.append(boost)
             meta["budget_boosts"] = boosts
             conn.execute(
-                "UPDATE virtual_keys SET metadata_json = ?"
-                " WHERE key_id = ? AND revoked_at IS NULL",
+                "UPDATE virtual_keys SET metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
                 (json.dumps(meta), key_id),
             )
         return boost
@@ -1053,8 +1090,7 @@ class VirtualKeyStore:
 
         with self._lock, self._connect() as conn:
             row = conn.execute(
-                "SELECT metadata_json FROM virtual_keys"
-                " WHERE key_id = ? AND revoked_at IS NULL",
+                "SELECT metadata_json FROM virtual_keys WHERE key_id = ? AND revoked_at IS NULL",
                 (key_id,),
             ).fetchone()
             if row is None:
@@ -1063,8 +1099,7 @@ class VirtualKeyStore:
             if not expired:
                 return []
             conn.execute(
-                "UPDATE virtual_keys SET metadata_json = ?"
-                " WHERE key_id = ? AND revoked_at IS NULL",
+                "UPDATE virtual_keys SET metadata_json = ? WHERE key_id = ? AND revoked_at IS NULL",
                 (json.dumps(meta), key_id),
             )
         return expired
@@ -1205,6 +1240,8 @@ class VirtualKeyStore:
         model_groups: tuple[str, ...] | None = None,
         rpd: int = 0,
         cache_scope: str = "global",
+        priority: str | None = None,
+        last_used_at: str | None = None,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -1220,6 +1257,9 @@ class VirtualKeyStore:
         if pin is None and len(row) > 12:
             # Prefer explicit column when present (list/resolve SELECTs).
             pass
+        prio = priority
+        if prio is None and isinstance(parsed, dict):
+            prio = parsed.get("priority")
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -1243,9 +1283,8 @@ class VirtualKeyStore:
             allowed_models=allowed_models,
             model_groups=model_groups,
             cache_scope=coerce_cache_scope(cache_scope),
-            priority=coerce_priority(
-                (parsed.get("priority") if isinstance(parsed, dict) else None)
-            ),
+            priority=coerce_priority(prio),
+            last_used_at=last_used_at,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -1257,7 +1296,8 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
+                " v.last_used_at"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " ORDER BY v.created_at DESC"
@@ -1274,6 +1314,7 @@ class VirtualKeyStore:
                 model_groups=decode_names(r[18]) if len(r) > 18 else None,
                 rpd=int(r[19] or 0) if len(r) > 19 else 0,
                 cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
+                last_used_at=r[21] if len(r) > 21 else None,
             )
             for r in rows
         ]
@@ -1288,7 +1329,8 @@ class VirtualKeyStore:
                 " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                 " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                 " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
-                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope"
+                " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
+                " v.last_used_at"
                 " FROM virtual_keys v"
                 " LEFT JOIN teams t ON t.team_id = v.team_id"
                 " WHERE v.key_hash = ? OR v.previous_key_hash = ?",
@@ -1314,7 +1356,42 @@ class VirtualKeyStore:
             model_groups=decode_names(row[20]) if len(row) > 20 else None,
             rpd=int(row[21] or 0) if len(row) > 21 else 0,
             cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
+            last_used_at=row[23] if len(row) > 23 else None,
         )
+
+    def touch_last_used(
+        self,
+        key_id: str,
+        *,
+        now: datetime | None = None,
+        min_interval_s: float = 60.0,
+    ) -> bool:
+        """Stamp ``last_used_at`` after successful auth; throttled to 60s (#1545)."""
+        if not self.enabled or not key_id:
+            return False
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        current = current.astimezone(timezone.utc)
+        stamp = current.isoformat()
+        with self._lock:
+            last_at = getattr(self, "_last_used_touch_at", None)
+            if last_at is None:
+                self._last_used_touch_at = {}
+                last_at = self._last_used_touch_at
+            prev = last_at.get(key_id)
+            if prev is not None and (current - prev).total_seconds() < float(min_interval_s):
+                return False
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "UPDATE virtual_keys SET last_used_at = ?"
+                    " WHERE key_id = ? AND revoked_at IS NULL",
+                    (stamp, key_id),
+                )
+                if cur.rowcount <= 0:
+                    return False
+            last_at[key_id] = current
+            return True
 
     def check_rpm(self, key: VirtualKey) -> bool:
         """Return True if the request is within the RPM limit (and record the hit)."""
@@ -1355,6 +1432,7 @@ class VirtualKeyStore:
             "expires_at": key.expires_at,
             "previous_expires_at": key.previous_expires_at,
             "user_daily_usd_cap": key.user_daily_usd_cap,
+            "last_used_at": key.last_used_at,
             "status": key.status(),
             "cache_scope": key.cache_scope,
         }

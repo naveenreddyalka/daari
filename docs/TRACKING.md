@@ -6489,6 +6489,16 @@ compose. Docs: virtual-keys. Covered by
 `tests/unit/test_models_catalog_allowlist.py`.
 
 
+### Track last_used_at on virtual keys + status/idle filters ([#1545](https://github.com/naveenreddyalka/daari/issues/1545))
+
+<!-- tracking:#1545 -->
+**Status:** Done (2026-10-10). SQLite + Postgres VK stores gain nullable
+`last_used_at` (throttled touch on successful auth). Surfaced on CLI list/show
+and `GET /v1/daari/keys`; `--status` / `?status=` and `--idle-days` /
+`?idle_days=` filter inventory. Docs: virtual-keys. Covered by
+`tests/unit/test_vk_last_used.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -144,6 +144,7 @@ def redact_key(key: Any, *, spend: list[dict[str, Any]] | None = None) -> dict[s
         "tpm": int(key.tpm or 0),
         "rpd": int(key.rpd or 0),
         "expires_at": key.expires_at,
+        "last_used_at": getattr(key, "last_used_at", None),
         "status": key.status() if callable(getattr(key, "status", None)) else "active",
         "client_id": key.client_id,
         "cache_scope": getattr(key, "cache_scope", "global"),
@@ -182,6 +183,8 @@ def keys_inventory(
     fallback_per_1k: float = 0.002,
     limit: int | None = None,
     offset: int | None = None,
+    status: str | None = None,
+    idle_days: int | None = None,
 ) -> dict[str, Any]:
     lim, off = _clamp_page(limit=limit, offset=offset)
     empty = {"keys": [], **_page_meta(0, limit=lim, offset=off, returned=0)}
@@ -191,6 +194,10 @@ def keys_inventory(
         keys = list(store.list() or [])
     except Exception:
         return empty
+    if status is not None or idle_days is not None:
+        from daari.auth.virtual_keys import filter_virtual_keys
+
+        keys = filter_virtual_keys(keys, status=status, idle_days=idle_days)
     total = len(keys)
     page_keys = keys[off : off + lim]
     rows: list[dict[str, Any]] = []

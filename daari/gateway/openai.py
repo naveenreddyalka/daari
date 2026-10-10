@@ -2307,8 +2307,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             request: Request,
             limit: int | None = None,
             offset: int | None = None,
+            status: str | None = None,
+            idle_days: int | None = None,
         ) -> dict[str, Any]:
-            """Redacted virtual-key inventory for the local admin plane (#1477/#1499)."""
+            """Redacted virtual-key inventory for the local admin plane (#1477/#1499/#1545)."""
             ctx: AppContext = request.app.state.ctx
             role = _require_admin_role(request, ctx)
             from daari.enterprise.postgres_audit import audit_log_from_settings
@@ -2318,16 +2320,21 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx, "virtual_key_store", None
             )
             ledger = getattr(ctx.router, "usage_ledger", None)
-            result = keys_inventory(
-                store,
-                ledger=ledger,
-                pricing=getattr(ctx.settings, "pricing", None),
-                fallback_per_1k=float(
-                    getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
-                ),
-                limit=limit,
-                offset=offset,
-            )
+            try:
+                result = keys_inventory(
+                    store,
+                    ledger=ledger,
+                    pricing=getattr(ctx.settings, "pricing", None),
+                    fallback_per_1k=float(
+                        getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                    ),
+                    limit=limit,
+                    offset=offset,
+                    status=status,
+                    idle_days=idle_days,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             audit_log_from_settings(ctx.settings).record(
                 actor=request.headers.get("x-daari-actor", "api"),
                 role=role,
