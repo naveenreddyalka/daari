@@ -13,28 +13,28 @@
 
 ## Where daari stands (verified in-tree, 2026-10-10)
 
-**Loop velocity.** The 10-09 governance/billing table (rows 55–59) drained the
-same day: decisions model/user 402s + `user_id` ledger, Ultrafast 6× with
-model/EU gating, haiku-5-5 `budget_tokens` compat + 5m write rate, OpenAI-shape
-lifecycle/`server_tools` with fail-closed retirement, and pooled Postgres
-revoked-jti lookups. Follow-on drain added decisions L0 cache, `chat-latest`
-catalog alias, Fast=`priority` 2×, Idempotency-Key + stream reject-400 on
-`/v1/decisions`, audit list pagination, and OpenAI regional-processing 1.10×
-when `region_pin` is us/eu. Only the ops-docs row (53) and long-running
-hot-reload / Messages tool-allowlist rows stay open.
+**Loop velocity.** The whole 10-09 table (rows 55–59) plus follow-ons drained
+in under a day; by 17:11 on 10-10 even the ops-docs row (53) shipped, leaving
+only long-running hot-reload (6) and the parked Messages tool-allowlist (7)
+open. Fresh feeder filed 10-10 pm: rows 60–64 (key/user lifecycle governance).
 
-**Outward.** OpenAI Ultrafast + Fast rename and regional-processing uplift are
-now billed honestly in-tree. Anthropic Haiku 5.5 breaking-change absorption
-landed. LiteLLM stable bar stays **v1.104.2** (1.105/1.106 still RC/dev).
-Portkey **v2.28.0**, Kong **2.2.0**, vLLM 0.31.0, OpenRouter / MCP blog flat.
-Ollama **0.40.2** (background upgrades — runtime-only).
+**Outward.** Gateways flat: LiteLLM stable bar **v1.104.2** (1.105/1.106 still
+RC/dev; dev churn is the Rust core + MCP elicitation relay), Portkey
+**v2.28.0**, Kong **2.2.0**, vLLM 0.31.0, Ollama **0.40.2**, MCP blog 08-22.
+The mover is **OpenRouter's Oct 6–9 admin-plane wave**: `last_used_at` +
+`include_expired` on keys, an end-user CRUD API, guardrail objects with bulk
+key assignment, and BYOK `declared_region`. Provider side quiet after 10-08
+(Ultrafast on sol US+EU; Anthropic Managed Agents dynamic workflows are
+platform-side, non-goal).
 
-**Inward theme: operate honesty and config ownership.** Code audit (10-10)
-confirmed: doctor/Helm/auth-and-keys still under-document `/v1/decisions`;
-`Settings` still requires process restart for `config.yaml` edits; Messages
-`mcp_servers` still lack a per-key tool-name allowlist subset. Admin
-`/v1/daari/audit` pagination shipped — remaining watch is web-ui `has_more`
-and unbounded report rollups.
+**Inward theme: key and end-user lifecycle governance.** Code audit (10-10 pm)
+verified: virtual keys have no `last_used_at` and no status/idle list filters;
+key expiry is reactive-401 only (no doctor scan, no Prometheus gauge, no
+webhook); end-users are ledger dimensions with no registry, per-user cap
+override, or cross-key block; chat guardrails are global-only while MCP tool
+governance already resolves global → team → key; retired-model 410s are
+log-only (no audit row/metric) and doctor never lifecycle-checks configured
+tier/frontier models.
 
 ---
 
@@ -42,7 +42,12 @@ and unbounded report rollups.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface | Filed [#1501](https://github.com/naveenreddyalka/daari/issues/1501) |
+| 60 | `last_used_at` on virtual keys + status/idle list filters | 4 | 2 | OpenRouter keys API | Key hygiene on-box, air-gapped | Filed [#1545](https://github.com/naveenreddyalka/daari/issues/1545) |
+| 61 | Proactive key-expiry signals: doctor scan, Prom gauge, signed webhook | 4 | 2 | OpenRouter / LiteLLM alerts | Same store that enforces warns | Filed [#1546](https://github.com/naveenreddyalka/daari/issues/1546) |
+| 62 | End-user inventory + per-user block/cap overrides | 5 | 3 | OpenRouter end-users / LiteLLM | Ledger already knows every user | Filed [#1547](https://github.com/naveenreddyalka/daari/issues/1547) |
+| 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter guardrail assign / Portkey | Per-tenant policy, zero hops | Filed [#1548](https://github.com/naveenreddyalka/daari/issues/1548) |
+| 64 | Audit + metric on retired-model blocks; doctor lifecycle check | 3 | 2 | LiteLLM audit planes | Catalog + router + audit in one box | Filed [#1549](https://github.com/naveenreddyalka/daari/issues/1549) |
+| 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface | Shipped [#1544](https://github.com/naveenreddyalka/daari/pull/1544) |
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open [#1234](https://github.com/naveenreddyalka/daari/issues/1234) |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked [#1288](https://github.com/naveenreddyalka/daari/issues/1288) |
 | 55 | Model/user budget 402 pre-checks + `user_id` ledger on `/v1/decisions` | 5 | 2 | LiteLLM model budgets | Typed judgments meter like chat | Shipped [#1524](https://github.com/naveenreddyalka/daari/pull/1524) |
@@ -80,39 +85,47 @@ cache-read reprice; gpt-6-luna cached-input + decisions input-only; fleet
 revoked-jti; admin keys/teams pagination; multi_agent nested metering;
 Anthropic + OpenAI lifecycle/`server_tools`.
 
-Watch rows (do not file yet): web-ui ignores admin `has_more`;
-`/v1/daari/report` clients/users unbounded (file at fleet-scale ask);
-multi_agent per-subagent-model pricing (`nested_agent_usages` has no `model`);
-gpt-6-luna Decisions schema drift while the beta hardens; Anthropic Compliance
-API chat export (org-level, non-goal); Anthropic SDK browser/computer-use
-toolsets (client-side); Claude Max/Team monthly API credits; LiteLLM
-1.105/1.106 M365 MCP catalog + scoped-SQL tracing (file at GA); Portkey
-v2.28.0 JWT JIT access (operator ask); OpenAI in-product HIPAA BAA
-(compliance non-goal).
+Watch rows (do not file yet): web-ui ignores admin `has_more` and never
+renders report `users`; `/v1/daari/report` clients/users unbounded (file at
+fleet-scale ask); multi_agent per-subagent-model pricing
+(`nested_agent_usages` has no `model`); decisions L0 lacks a hermetic
+`cache_scope` tenancy test (fold into next test audit); gpt-6-luna Decisions
+schema drift while the beta hardens; OpenRouter BYOK `declared_region`
+(daari `region_pin` covers routing; file only if clients want declared-region
+metadata on stored provider keys); Anthropic Managed Agents dynamic workflows
+(platform-side, non-goal); Anthropic Compliance API chat export (org-level,
+non-goal); Claude Max/Team monthly API credits; LiteLLM 1.105/1.106 M365 MCP
+catalog + scoped-SQL tracing (file at GA); Portkey v2.28.0 JWT JIT access
+(operator ask); OpenAI in-product HIPAA BAA (compliance non-goal).
 
-Verified fine this run — don't re-audit: decisions rate family + cost headers
-+ pooled httpx + spend-context user binding + budget 402s; Ultrafast/Fast
-tier factors + EU astra gate; regional-processing factor; haiku threshold
-scaling; OpenAI + Anthropic `/v1/models` lifecycle filter + server_tools;
-revoked-jti doctor + pooled Postgres path; multi_agent double-bill guard;
-audit/keys/teams list pagination.
+Verified fine this run — don't re-audit: regional-processing 1.10× wired into
+cost headers, stream usage, spend ledger, and decisions billing with unit
+coverage; decisions L0 honors `X-Daari-No-Cache` + builds tenancy-scoped keys
+via `apply_auth_claims_to_meta`; retired-model 410 enforcement itself on all
+inference facades + deprecated warning header; key expiry enforcement +
+rotation grace + SSO key TTL; end-user spend attribution (`--by-user`, report
+`users`, key-level `user_daily_usd_cap` 402s, `daari erase --user`); MCP
+per-key/team tool/server governance (`resolve_policy` global → team → key);
+decisions rate family + budget 402s; Ultrafast/Fast tier factors + EU astra
+gate; audit/keys/teams list pagination.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Operate honesty for Decisions** — doctor + Helm + auth-and-keys coverage
-   for `/v1/decisions` (row 53) so fleets discover the surface without reading
-   the changelog.
-2. **Config ownership without restart** — hot-reload `Settings` from
-   `config.yaml` (row 6) so residency/budget/provider edits take effect
-   mid-flight.
-3. **MCP tool allowlist depth** — per-key tool-name subset for Messages
-   `mcp_servers` (row 7), parked until a ≥60m session can land it safely.
-4. **Admin plane at fleet scale** — web-ui `has_more` + bounded report
-   rollups (watch) once an operator hits the current caps.
-5. **Multi-model agent FinOps** — per-subagent-model pricing on nested usages
-   (watch) when multi-model agent graphs leave the lab.
+1. **Credential lifecycle hygiene** — `last_used_at` + status/idle filters
+   (row 60) and proactive expiry signals (row 61) so operators find dead keys
+   before auditors or 401s do.
+2. **End-user governance** — user inventory + per-user block/cap overrides
+   (row 62): stop one user on a shared agent key without revoking the key.
+3. **Per-tenant guardrails** — named profiles bound per key/team (row 63),
+   reusing the MCP global → team → key precedence already in-tree.
+4. **Lifecycle operate honesty** — audited, metered retired-model blocks +
+   doctor lifecycle checks (row 64), then config ownership without restart
+   (row 6, hot-reload).
+5. **Admin plane at fleet scale** — web-ui `has_more` + report `users`
+   rendering + bounded rollups (watch), and the parked Messages tool
+   allowlist (row 7) when a long session is available.
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, Realtime/WS, FIPS
 builds, HIPAA BAA) stay deferred until buyer demand.
@@ -120,6 +133,13 @@ builds, HIPAA BAA) stay deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-10 pm (key + end-user lifecycle governance)** — Row 53 marked
+  Shipped (same-day drain). Filed rows 60–64 after a code audit of key/user
+  lifecycle: `last_used_at`, expiry signals, end-user registry, per-tenant
+  guardrail profiles, retired-block observability. Outward: OpenRouter Oct
+  6–9 admin-plane wave (end-user CRUD, guardrail→key assignment, key
+  `last_used_at`); gateways otherwise flat.
 
 - **2026-10-10 (Oct 7–10 drain: mark shipped, re-aim path)** — Rows 55–59
   marked Shipped with PR links. Stand/path rewritten for current `main`:
