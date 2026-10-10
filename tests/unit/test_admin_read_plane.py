@@ -262,6 +262,74 @@ async def test_teams_pagination_truncates_large_store(settings, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_audit_pagination_has_more_second_page(settings, tmp_path):
+    """GET /v1/daari/audit?limit=&offset= matches keys/teams page meta (#1530)."""
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    log = audit_log_from_settings(settings)
+    for i in range(5):
+        log.record(
+            actor="seed",
+            role="admin",
+            action="test.seed",
+            detail={"i": i},
+        )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        page = await client.get(
+            "/v1/daari/audit",
+            params={"limit": 2, "offset": 0},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page.status_code == 200
+        body = page.json()
+        assert body["total"] == 5
+        assert body["limit"] == 2
+        assert body["offset"] == 0
+        assert len(body["entries"]) == 2
+        assert body["has_more"] is True
+
+        page2 = await client.get(
+            "/v1/daari/audit",
+            params={"limit": 2, "offset": 2},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page2.status_code == 200
+        body2 = page2.json()
+        assert body2["total"] == 5
+        assert body2["offset"] == 2
+        assert len(body2["entries"]) == 2
+        assert body2["has_more"] is True
+
+        page3 = await client.get(
+            "/v1/daari/audit",
+            params={"limit": 2, "offset": 4},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page3.status_code == 200
+        body3 = page3.json()
+        assert len(body3["entries"]) == 1
+        assert body3["has_more"] is False
+
+        defaulted = await client.get(
+            "/v1/daari/audit",
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert defaulted.status_code == 200
+        dbody = defaulted.json()
+        assert dbody["limit"] == 100
+        assert dbody["offset"] == 0
+        assert dbody["total"] == 5
+        assert len(dbody["entries"]) == 5
+        assert dbody["has_more"] is False
+
+
+@pytest.mark.asyncio
 async def test_keys_list_emits_audit_entry(settings, tmp_path):
     from daari.enterprise.postgres_audit import audit_log_from_settings
 

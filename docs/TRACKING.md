@@ -6442,6 +6442,15 @@ omitted continue to succeed. OpenAPI does not advertise a stream field.
 Covered by `tests/unit/test_decisions.py`.
 
 
+### Paginate GET /v1/daari/audit with limit/offset ([#1530](https://github.com/naveenreddyalka/daari/issues/1530))
+
+<!-- tracking:#1530 -->
+**Status:** Done (2026-10-10). Audit list clamps `limit`/`offset` like keys/teams
+and returns `entries`, `total`, `limit`, `offset`, `has_more` (default cap 100).
+SQLite + Postgres audit stores gain `count()` and `list(offset=)`. Covered by
+`tests/unit/test_admin_read_plane.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -2277,13 +2277,25 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             return result
 
         @router.get("/v1/daari/audit")
-        async def daari_audit_list(request: Request) -> dict[str, Any]:
+        async def daari_audit_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+        ) -> dict[str, Any]:
+            """Hash-chained audit feed with keys/teams pagination (#1530)."""
             ctx: AppContext = request.app.state.ctx
             _require_role(request, ctx, "analyst")
             from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import _clamp_page, _page_meta
 
-            entries = audit_log_from_settings(ctx.settings).list(limit=100)
-            return {"entries": entries}
+            lim, off = _clamp_page(limit=limit, offset=offset)
+            log = audit_log_from_settings(ctx.settings)
+            total = log.count()
+            entries = log.list(limit=lim, offset=off)
+            return {
+                "entries": entries,
+                **_page_meta(total, limit=lim, offset=off, returned=len(entries)),
+            }
 
         @router.get("/v1/daari/keys")
         async def daari_keys_list(
