@@ -205,6 +205,8 @@ rateLimit:
 
 # L6 frontier fallback. apiKeySecret mounts DAARI_FRONTIER_API_KEY
 # (also accepted: OPENAI_API_KEY / OPENROUTER_API_KEY via env).
+# Also serves POST /v1/decisions for gpt-6-luna (typed judgments) when the
+# client model is the frontier decisions id — same key as chat L6.
 frontier:
   enabled: false
   apiKeySecret: {}
@@ -216,6 +218,10 @@ localPool:
 
 # Embedder base URL for POST /v1/embeddings and L1. Empty leaves the image
 # default (localhost). Distinct from orgPool, which only sets the routing URL.
+# Local POST /v1/decisions models (clef / clef-flash / nimble / tev1) and
+# POST /v1/systemone proxy to this Ollama root when systemone.enabled (app
+# default true). No extra Helm knobs — set DAARI_SYSTEMONE__ENABLED=false via
+# env to disable the local decisions / systemone path.
 ollama:
   baseUrl: ""
 
