@@ -6479,6 +6479,16 @@ auth-and-keys lists `decisions` rate family. Covered by
 `test_auth_and_keys_decisions_family.py`.
 
 
+### Filter GET /v1/models by virtual-key allowlist ([#1555](https://github.com/naveenreddyalka/daari/issues/1555))
+
+<!-- tracking:#1555 -->
+**Status:** Done (2026-10-10). OpenAI and Anthropic `/v1/models` list payloads
+honor key ∪ team `allowed_models` / model groups (master / unrestricted VK
+unchanged). Retrieve returns 404 outside the allowlist; lifecycle filters
+compose. Docs: virtual-keys. Covered by
+`tests/unit/test_models_catalog_allowlist.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
