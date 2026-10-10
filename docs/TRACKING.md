@@ -6413,6 +6413,16 @@ serve with `daari_meta.warning=model_deprecated`. Covered by
 `tests/unit/test_openai_models_lifecycle.py`.
 
 
+### Pooled Postgres revoked-jti denylist hot path ([#1522](https://github.com/naveenreddyalka/daari/issues/1522))
+
+<!-- tracking:#1522 -->
+**Status:** Done (2026-10-10). `PostgresRevokedJtiStore` uses the shared
+`psycopg_pool` (#975); `is_revoked` / `revoke` prune on the same checkout
+(interval-throttled DELETE) so MCP token validation no longer opens two raw
+connections per lookup. Redis + in-process backends unchanged. Covered by
+`tests/unit/test_revoked_jti_store.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
