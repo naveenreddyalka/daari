@@ -52,6 +52,10 @@ L6 responses that used a regional slot set `daari_meta.region` and the
 `x-daari-region` response header so logs and SIEM pipelines can prove residency
 per request.
 
+Pinned `us`/`eu` traffic on OpenAI models released on or after 2026-03-05 also
+bills at **1.10×** the standard (or Fast/Ultrafast) rate so `cost_usd` matches
+the regional invoice (see [budgets and frontier](budgets-frontier.md#service-tier-pricing)).
+
 ## Next
 
 → [Budgets and frontier](budgets-frontier.md) · [Auth and keys](auth-and-keys.md)

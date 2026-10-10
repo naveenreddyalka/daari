@@ -6451,6 +6451,16 @@ SQLite + Postgres audit stores gain `count()` and `list(offset=)`. Covered by
 `tests/unit/test_admin_read_plane.py`.
 
 
+### OpenAI regional-processing 10% uplift when region_pin set ([#1531](https://github.com/naveenreddyalka/daari/issues/1531))
+
+<!-- tracking:#1531 -->
+**Status:** Done (2026-10-10). `cost_usd` applies 1.10× for us/eu `region_pin`
+on OpenAI models released on or after 2026-03-05 (chat, Responses headers,
+Decisions input-only, spend ledger). Unset pin unchanged. Docs:
+budgets-frontier, data-residency. Covered by
+`tests/unit/test_regional_pricing.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

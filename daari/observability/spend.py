@@ -137,6 +137,7 @@ class SpendContext:
     request_id: str = ""
     requested_model: str = ""
     service_tier: str | None = None
+    region_pin: str | None = None
     pricing: Any = None
     fallback_per_1k: float = 0.002
     reported_cost: float | None = None
@@ -171,6 +172,7 @@ def compute_request_usd(
     fallback_per_1k: float,
     reported_cost: float | None = None,
     service_tier: str | None = None,
+    region_pin: str | None = None,
     avoided_model: str | None = None,
     cache_write_tokens: int = 0,
     cache_ttl: str | None = None,
@@ -190,6 +192,7 @@ def compute_request_usd(
                 cache_write_tokens=int(cache_write_tokens),
                 cache_ttl=cache_ttl,
                 service_tier=service_tier,
+                region_pin=region_pin,
             )
         return round(max(0.0, spent), 8), 0.0
     avoided = cost_usd(
@@ -202,6 +205,7 @@ def compute_request_usd(
         cache_write_tokens=int(cache_write_tokens),
         cache_ttl=cache_ttl,
         service_tier=service_tier,
+        region_pin=region_pin,
     )
     return 0.0, round(max(0.0, avoided), 8)
 
@@ -395,6 +399,7 @@ class SpendLedger:
             fallback_per_1k=float(bound.fallback_per_1k or 0.002),
             reported_cost=reported,
             service_tier=bound.service_tier,
+            region_pin=bound.region_pin,
         )
         client = kwargs.get("client_id") or bound.client_id or ""
         user = kwargs.get("user_id")
