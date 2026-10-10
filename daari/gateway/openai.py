@@ -76,7 +76,11 @@ OPENAI_SSE_HEADERS = {
 def _web_search_unavailable_response(exc: WebSearchUnavailable) -> JSONResponse:
     """Map web_search fail-closed reasons to gateway status codes (#1295)."""
     reason = exc.reason or "web_search_required"
-    if reason == "no_frontier" or reason.startswith("tier_cap:") or reason == "frontier_not_allowed":
+    if (
+        reason == "no_frontier"
+        or reason.startswith("tier_cap:")
+        or reason == "frontier_not_allowed"
+    ):
         status = 403
     elif reason == "frontier_budget_exceeded":
         status = 402
@@ -948,9 +952,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
             from daari.gateway.idempotency import resolve_idempotency
 
-            idem_kind, idem_response, idem_slot = await resolve_idempotency(
-                request, ctx, body
-            )
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
 
@@ -1194,9 +1196,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     },
                 )
             ctx: AppContext = request.app.state.ctx
-            idem_kind, idem_response, idem_slot = await resolve_idempotency(
-                request, ctx, body
-            )
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
             try:
@@ -1355,9 +1355,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 resolve_idempotency,
             )
 
-            idem_kind, idem_response, idem_slot = await resolve_idempotency(
-                request, ctx, body
-            )
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
 
@@ -1540,9 +1538,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             coordinated shutdown, returns 503 ``shutting_down`` immediately
             so load balancers stop sending traffic (#1104)."""
             if getattr(request.app.state, "shutting_down", False):
-                return JSONResponse(
-                    status_code=503, content={"status": "shutting_down"}
-                )
+                return JSONResponse(status_code=503, content={"status": "shutting_down"})
             ctx: AppContext = request.app.state.ctx
             cache_ok = ctx.cache is not None
             pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
@@ -1771,7 +1767,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
             )
-            from daari.auth.budgets import model_group_spend_report_rows, team_model_spend_report_rows
+            from daari.auth.budgets import (
+                model_group_spend_report_rows,
+                team_model_spend_report_rows,
+            )
 
             payload["model_group_spend"] = model_group_spend_report_rows(
                 store,
@@ -1938,26 +1937,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if key_id is not None and not isinstance(key_id, str):
                 raise HTTPException(status_code=422, detail="key_id must be a string")
             model_s = model.strip() if isinstance(model, str) and model.strip() else None
-            hash_s = entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
+            hash_s = (
+                entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
+            )
             team_s = team_id.strip() if isinstance(team_id, str) and team_id.strip() else None
             key_s = key_id.strip() if isinstance(key_id, str) and key_id.strip() else None
             l0 = getattr(ctx.router, "cache", None)
             l1 = getattr(ctx.router, "semantic_cache", None)
             l0_removed = (
-                int(
-                    l0.invalidate(
-                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
-                    )
-                )
+                int(l0.invalidate(model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s))
                 if l0 is not None and hasattr(l0, "invalidate")
                 else 0
             )
             l1_removed = (
-                int(
-                    l1.invalidate(
-                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
-                    )
-                )
+                int(l1.invalidate(model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s))
                 if l1 is not None and hasattr(l1, "invalidate")
                 else 0
             )
@@ -2012,9 +2005,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     # Viewer-style: virtual keys may satisfy analyst/read minimums.
                     if role_at_least("analyst", minimum):
                         return "analyst"
-                    raise HTTPException(
-                        status_code=403, detail="master key required"
-                    )
+                    raise HTTPException(status_code=403, detail="master key required")
                 return "admin"
 
             from daari.enterprise.sso import verify_access_token
@@ -2207,18 +2198,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.settings.integrations.mcp_registry.enabled = mcp_reg["enabled"]
             mcp_policy = integrations.get("mcp_policy") or {}
             if "require_key_access_defined" in mcp_policy:
-                ctx.settings.integrations.mcp_policy.require_key_access_defined = (
-                    mcp_policy["require_key_access_defined"]
-                )
+                ctx.settings.integrations.mcp_policy.require_key_access_defined = mcp_policy[
+                    "require_key_access_defined"
+                ]
             if "structured_json_logs" in observability:
                 ctx.settings.observability.structured_json_logs = observability[
                     "structured_json_logs"
                 ]
                 from daari.gateway.request_log import configure_request_log
 
-                configure_request_log(
-                    structured_json_logs=observability["structured_json_logs"]
-                )
+                configure_request_log(structured_json_logs=observability["structured_json_logs"])
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,

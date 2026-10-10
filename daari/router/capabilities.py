@@ -357,9 +357,7 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
     cards: list[dict[str, Any]] = []
     for card in openai_model_cards(settings):
         created = int(card.get("created") or 0)
-        created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         model_id = str(card["id"])
         row: dict[str, Any] = {
             "id": model_id,
@@ -428,9 +426,7 @@ def anthropic_models_payload(
         for card in anthropic_model_cards(settings)
         if str(card.get("lifecycle") or "active") in allowed
     ]
-    data = _filter_cards_by_allowlist(
-        data, key_patterns=key_patterns, team_patterns=team_patterns
-    )
+    data = _filter_cards_by_allowlist(data, key_patterns=key_patterns, team_patterns=team_patterns)
     return {
         "data": data,
         "has_more": False,
@@ -453,9 +449,7 @@ def openai_models_payload(
         for card in openai_model_cards(settings)
         if str(card.get("lifecycle") or "active") in allowed
     ]
-    data = _filter_cards_by_allowlist(
-        data, key_patterns=key_patterns, team_patterns=team_patterns
-    )
+    data = _filter_cards_by_allowlist(data, key_patterns=key_patterns, team_patterns=team_patterns)
     return {"object": "list", "data": data}
 
 

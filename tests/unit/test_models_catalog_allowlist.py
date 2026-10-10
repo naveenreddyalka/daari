@@ -43,9 +43,7 @@ def test_openai_payload_filters_by_allowlist_patterns():
     assert "claude-sonnet-5-5" in full
     assert "llama3.2:3b" in full
 
-    filtered = openai_models_payload(
-        settings, key_patterns=["claude-*"], team_patterns=None
-    )
+    filtered = openai_models_payload(settings, key_patterns=["claude-*"], team_patterns=None)
     ids = {c["id"] for c in filtered["data"]}
     assert "claude-sonnet-5-5" in ids
     assert "llama3.2:3b" not in ids
@@ -99,12 +97,8 @@ async def test_http_models_filtered_for_vk_full_for_master(tmp_path):
     app.state.virtual_key_store = store
     app.state.ctx.virtual_key_store = store
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
-        master = await client.get(
-            "/v1/models", headers={"Authorization": "Bearer master"}
-        )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        master = await client.get("/v1/models", headers={"Authorization": "Bearer master"})
         assert master.status_code == 200
         master_ids = {c["id"] for c in master.json()["data"]}
         assert "llama3.2:3b" in master_ids
@@ -146,7 +140,7 @@ async def test_http_models_filtered_for_vk_full_for_master(tmp_path):
         assert denied.status_code == 404
 
         allowed = await client.get(
-            f"/v1/models/claude-sonnet-5-5",
+            "/v1/models/claude-sonnet-5-5",
             headers={"Authorization": f"Bearer {locked.plaintext}"},
         )
         assert allowed.status_code == 200
