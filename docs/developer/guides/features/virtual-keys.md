@@ -124,6 +124,16 @@ alerts:
 per key entering `expiring_soon` (signed with `X-Daari-Signature` when the
 secret is set). Full recipe: [budgets and frontier](../configuration/budgets-frontier.md#key-expiry-alerts).
 
+## Backup export / import
+
+`daari keys export --json` / `daari keys import` round-trip key hashes (never
+plaintext) plus teams. The document also carries lifecycle and admission
+fields so host migration keeps idle hygiene and gate behavior: `last_used_at`,
+`priority`, and `cache_scope`. Older export files without those keys import
+with today's defaults (`last_used_at` null, `priority=normal`,
+`cache_scope=global`). Prefer export/import over copying the SQLite file when
+moving hosts — see [upgrade](../operations/upgrade.md).
+
 ## Verify
 
 Call `/v1/chat/completions` with the key; exceed budget and confirm rejection.

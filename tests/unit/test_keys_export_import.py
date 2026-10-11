@@ -28,6 +28,53 @@ def test_export_contains_hashes_not_plaintext(tmp_path):
     assert doc["keys"][0]["tpm"] == 1000
 
 
+def test_round_trip_preserves_last_used_priority_cache_scope(tmp_path):
+    """Export/import keeps lifecycle + admission fields (#1581)."""
+    src = VirtualKeyStore(tmp_path / "src.sqlite3")
+    created = src.create(
+        "alice",
+        priority="high",
+        cache_scope="key",
+        team="eng",
+    )
+    stamped = NOW.isoformat()
+    assert src.touch_last_used(created.key.key_id, now=NOW, min_interval_s=0) is True
+    doc = src.export_document()
+    row = doc["keys"][0]
+    assert row["last_used_at"] == stamped
+    assert row["priority"] == "high"
+    assert row["cache_scope"] == "key"
+
+    dst = VirtualKeyStore(tmp_path / "dst.sqlite3")
+    summary = dst.import_document(doc)
+    assert summary["keys"]["created"] == 1
+    restored = dst.get_key(created.key.key_id)
+    assert restored is not None
+    assert restored.last_used_at == stamped
+    assert restored.priority == "high"
+    assert restored.cache_scope == "key"
+
+    # Old export docs without the new fields keep today's defaults.
+    legacy = {
+        "schema": KEYS_EXPORT_SCHEMA,
+        "teams": [],
+        "keys": [
+            {
+                k: v
+                for k, v in row.items()
+                if k not in {"last_used_at", "priority", "cache_scope"}
+            }
+        ],
+    }
+    dst2 = VirtualKeyStore(tmp_path / "dst2.sqlite3")
+    dst2.import_document(legacy)
+    legacy_key = dst2.get_key(created.key.key_id)
+    assert legacy_key is not None
+    assert legacy_key.last_used_at is None
+    assert legacy_key.priority == "normal"
+    assert legacy_key.cache_scope == "global"
+
+
 def test_round_trip_preserves_rotated_grace_and_budgets(tmp_path):
     src = VirtualKeyStore(tmp_path / "src.sqlite3")
     created = src.create(

@@ -6602,6 +6602,14 @@ Docs: metrics-prometheus / traces-stats. Covered by
 `key_expiry` and `key_expiry_webhook_secret`. Covered by
 `tests/unit/test_doctor_key_expiry_docs.py`.
 
+### Keys export/import round-trips last_used_at, priority, cache_scope ([#1581](https://github.com/naveenreddyalka/daari/issues/1581))
+
+<!-- tracking:#1581 -->
+**Status:** Done (2026-10-11). `daari keys export` / `import` carry
+`last_used_at`, `priority`, and `cache_scope` (additive on schema 1; older
+docs default). Docs: virtual-keys.md backup section. Covered by
+`tests/unit/test_keys_export_import.py`.
+
 
 ## How to update
 
