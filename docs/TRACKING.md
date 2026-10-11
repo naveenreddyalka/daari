@@ -6518,6 +6518,15 @@ errors on configured retired tier/frontier/pool models and tips on deprecated.
 Covered by `tests/unit/test_model_lifecycle_signals.py`.
 
 
+### Decisions L0 cache_scope tenancy isolation test ([#1554](https://github.com/naveenreddyalka/daari/issues/1554))
+
+<!-- tracking:#1554 -->
+**Status:** Done (2026-10-10). Hermetic ASGI test: two `cache_scope=key` VKs
+miss each other's identical `/v1/decisions` bodies; same key hits L0. Optional
+same-team hit / cross-team miss for `cache_scope=team`. Covered by
+`tests/unit/test_decisions_cache_scope.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
