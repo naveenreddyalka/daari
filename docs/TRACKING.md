@@ -6544,6 +6544,15 @@ status** (`daari_virtual_keys{status}`) and **Retired model rejects**
 `tests/unit/test_grafana_dashboard.py`.
 
 
+### Hermetic scrape refreshes daari_virtual_keys gauge ([#1566](https://github.com/naveenreddyalka/daari/issues/1566))
+
+<!-- tracking:#1566 -->
+**Status:** Done (2026-10-11). ASGI/`prometheus_text_for_app` pin: mixed
+active / expiring_soon / expired / revoked keys appear on GET `/metrics`;
+enabled key_expiry alerter posts once on scrape. Covered by
+`tests/unit/test_metrics_virtual_keys.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
