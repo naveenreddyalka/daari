@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -112,6 +113,7 @@ def run_doctor(
     results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
+    results.append(_check_key_expiry(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
@@ -1531,6 +1533,66 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
             "402/429 warnings are disabled while hard caps remain; set "
             "soft_budget_ratio (e.g. 0.8) so agents can back off before cliffs"
         ),
+        optional=True,
+    )
+
+
+def _check_key_expiry(
+    settings: Settings, *, now: datetime | None = None
+) -> CheckResult:
+    """Warn on keys expiring soon; count expired-but-not-revoked (#1546)."""
+    from daari.auth.virtual_keys import key_expiry_bucket
+
+    warn_days = int(getattr(settings.alerts, "key_expiry_warn_days", 14) or 0)
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail="virtual keys disabled",
+            optional=True,
+        )
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    expiring: list[str] = []
+    expired = 0
+    for key in store.list():
+        bucket = key_expiry_bucket(key, now=moment, warn_days=warn_days)
+        if bucket == "expired":
+            expired += 1
+        elif bucket == "expiring_soon":
+            expiring.append(key.name)
+    if not expiring and expired == 0:
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail=(
+                f"no keys expiring within {warn_days}d; expired=0 "
+                f"(alerts.key_expiry_warn_days={warn_days})"
+            ),
+            optional=True,
+        )
+    shown = ", ".join(expiring[:8])
+    extra = f" (+{len(expiring) - 8} more)" if len(expiring) > 8 else ""
+    parts: list[str] = []
+    if expiring:
+        parts.append(f"expiring within {warn_days}d: {shown}{extra}")
+    parts.append(f"expired={expired}")
+    return CheckResult(
+        name="key_expiry",
+        ok=False,
+        detail="; ".join(parts),
         optional=True,
     )
 

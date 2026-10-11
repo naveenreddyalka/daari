@@ -89,6 +89,55 @@ def filter_virtual_keys(
     return out
 
 
+KEY_EXPIRY_BUCKETS = ("active", "expired", "expiring_soon", "revoked")
+
+
+def key_expiry_bucket(
+    key: VirtualKey,
+    *,
+    now: datetime | None = None,
+    warn_days: int = 14,
+) -> str:
+    """Lifecycle bucket for doctor / Prometheus / expiry webhooks (#1546).
+
+    ``revoked`` beats ``expired`` beats ``expiring_soon`` beats ``active``.
+    Keys without ``expires_at`` are never ``expiring_soon``.
+    """
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    if key.revoked:
+        return "revoked"
+    if key.is_expired(current):
+        return "expired"
+    if not key.expires_at:
+        return "active"
+    try:
+        when = datetime.fromisoformat(str(key.expires_at).replace("Z", "+00:00"))
+    except ValueError:
+        return "active"
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    days = max(0, int(warn_days))
+    if when.astimezone(timezone.utc) <= current + timedelta(days=days):
+        return "expiring_soon"
+    return "active"
+
+
+def count_key_expiry_buckets(
+    keys: list[VirtualKey] | tuple[VirtualKey, ...],
+    *,
+    now: datetime | None = None,
+    warn_days: int = 14,
+) -> dict[str, int]:
+    """Counts per ``KEY_EXPIRY_BUCKETS`` for gauge / doctor (#1546)."""
+    counts = {name: 0 for name in KEY_EXPIRY_BUCKETS}
+    for key in keys:
+        bucket = key_expiry_bucket(key, now=now, warn_days=warn_days)
+        counts[bucket] = counts.get(bucket, 0) + 1
+    return counts
+
+
 def coerce_priority(value: str | None) -> str:
     """Read path for admission priority (#848)."""
     from daari.auth.rate_limit import normalize_priority
