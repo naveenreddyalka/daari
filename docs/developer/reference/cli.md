@@ -74,9 +74,20 @@ Encryption env / flags: `DAARI_BACKUP_PASS` (or `--passphrase-env`),
 | `org-learning` | `stats`, `sync`, `export` |
 | `web-ui` | `serve` |
 | `project` | `init`, `show` |
-| `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` (`--priority high\|normal\|low` on create / team-create for admission QoS) |
+| `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` (`--priority high\|normal\|low` on create / team-create for admission QoS; see [`keys`](#keys) for list filters) |
 | `enterprise` | `bootstrap`, `policy-sync`, `policy-status` |
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 | `audit` | `list`, `export`, `verify` |
+
+## `keys`
+
+| Command | Purpose |
+|---------|---------|
+| `keys list` | Inventory virtual keys |
+| `keys list --status active\|expired\|revoked` | Filter by lifecycle status |
+| `keys list --idle-days N` | Keys whose `last_used_at` is older than N days (or never used) |
+
+Successful auth updates `last_used_at` (throttled to once per 60s per key).
+Full recipe: [virtual keys](../guides/features/virtual-keys.md).
 
 Use `daari <cmd> --help` for flags.
