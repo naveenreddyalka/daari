@@ -107,6 +107,23 @@ daari keys list
 `daari keys list` prints the effective scope. `POST /introspect` includes
 `cache_scope` for the token (never the secret).
 
+## Key expiry (doctor / Prometheus / webhook)
+
+Enforcement-time expiry is a 401 `key_expired`. For 90-day rotation, also
+enable the proactive plane next to budget alerts:
+
+```yaml
+alerts:
+  key_expiry_webhook_url: https://hooks.example/daari-key-expiry
+  key_expiry_webhook_secret: secret://env-file/~/.daari/secrets.env#KEY_EXPIRY_WEBHOOK
+  key_expiry_warn_days: 14
+```
+
+`daari doctor` warns inside the warn window; scrape exposes
+`daari_virtual_keys{status=...}`; the webhook POSTs `event: key_expiry` once
+per key entering `expiring_soon` (signed with `X-Daari-Signature` when the
+secret is set). Full recipe: [budgets and frontier](../configuration/budgets-frontier.md#key-expiry-alerts).
+
 ## Verify
 
 Call `/v1/chat/completions` with the key; exceed budget and confirm rejection.

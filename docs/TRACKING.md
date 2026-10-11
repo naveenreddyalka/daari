@@ -6553,6 +6553,15 @@ enabled key_expiry alerter posts once on scrape. Covered by
 `tests/unit/test_metrics_virtual_keys.py`.
 
 
+### Docs: key_expiry webhook + warn_days next to budget alerts ([#1565](https://github.com/naveenreddyalka/daari/issues/1565))
+
+<!-- tracking:#1565 -->
+**Status:** Done (2026-10-11). Operator guides document
+`key_expiry_webhook_url` / `_secret` / `warn_days`, payload
+`event: key_expiry`, `X-Daari-Signature` reuse, doctor `key_expiry`, and
+`daari_virtual_keys`. Covered by `tests/unit/test_key_expiry_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
