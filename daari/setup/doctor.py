@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1540,8 +1541,6 @@ def _check_key_expiry(
     settings: Settings, *, now: datetime | None = None
 ) -> CheckResult:
     """Warn on keys expiring soon; count expired-but-not-revoked (#1546)."""
-    from datetime import datetime, timezone
-
     from daari.auth.virtual_keys import key_expiry_bucket
 
     warn_days = int(getattr(settings.alerts, "key_expiry_warn_days", 14) or 0)
