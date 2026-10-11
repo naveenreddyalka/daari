@@ -73,7 +73,9 @@ class McpGuardrails:
         transport: str = "jsonrpc",
     ) -> McpGuardrails:
         integrations = getattr(settings, "integrations", None)
-        engine = engine_from_block(getattr(integrations, "mcp_guardrails", None))
+        engine = engine_from_block(
+            getattr(integrations, "mcp_guardrails", None), settings=settings
+        )
         return cls(engine=engine, audit=audit, claims=claims, transport=transport)
 
     @property

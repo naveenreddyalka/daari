@@ -1469,7 +1469,12 @@ class GuardrailRuleSettings(BaseModel):
     name: str = "rule"
     pattern: str | None = None
     action: str = "block"  # block | warn | redact
-    kind: str = "deny"  # deny | allow | secret | pii
+    kind: str = "deny"  # deny | allow | secret | pii | decision
+    # Decision-model guardrail (#1589). Used when kind=decision.
+    statement: str | None = None
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    model: str | None = None  # local decisions catalog id; default decision_classifier
+    on_error: str = "warn"  # warn (default) | block when decisions backend is down
 
 
 class GuardrailSettings(BaseModel):
