@@ -6527,6 +6527,14 @@ same-team hit / cross-team miss for `cache_scope=team`. Covered by
 `tests/unit/test_decisions_cache_scope.py`.
 
 
+### Doctor tip for unsigned key_expiry webhooks ([#1563](https://github.com/naveenreddyalka/daari/issues/1563))
+
+<!-- tracking:#1563 -->
+**Status:** Done (2026-10-10). Optional doctor `key_expiry_webhook_secret`
+warns when `alerts.key_expiry_webhook_url` is set without a signing secret.
+Covered by `tests/test_doctor.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
