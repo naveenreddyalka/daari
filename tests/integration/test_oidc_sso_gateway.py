@@ -158,6 +158,9 @@ async def test_sso_rbac_role_matrix_for_admin_surfaces(settings, monkeypatch, tm
         "/v1/daari/report",
         "/v1/daari/audit",
         "/v1/daari/config",
+        "/v1/daari/route/preview",
+        "/v1/daari/cache/diversity",
+        "/v1/daari/learn/stats",
     )
     mutate_paths = (
         ("POST", "/v1/daari/reload-caches"),
@@ -181,11 +184,26 @@ async def test_sso_rbac_role_matrix_for_admin_surfaces(settings, monkeypatch, tm
             assert (await _get(path, user_tok)).status_code == 403, path
         for method, path in mutate_paths:
             assert (await _mutate(method, path, user_tok)).status_code == 403, path
+        assert (
+            await client.post(
+                "/v1/daari/feedback",
+                headers={"Authorization": f"Bearer {user_tok}"},
+                json={"trace_id": "t", "signal": "accept"},
+            )
+        ).status_code == 403
 
         for path in read_paths:
             assert (await _get(path, analyst_tok)).status_code == 200, path
         for method, path in mutate_paths:
             assert (await _mutate(method, path, analyst_tok)).status_code == 403, path
+        # Role gate passes; missing outcome → 404 (#1588).
+        assert (
+            await client.post(
+                "/v1/daari/feedback",
+                headers={"Authorization": f"Bearer {analyst_tok}"},
+                json={"trace_id": "missing", "signal": "accept"},
+            )
+        ).status_code == 404
 
         for path in read_paths:
             assert (await _get(path, admin_tok)).status_code == 200, path
