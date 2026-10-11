@@ -365,3 +365,49 @@ def test_grafana_dashboard_includes_mcp_grant_denied_panel():
     assert any("daari_mcp_grant_denied_total" in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
 
+
+def test_grafana_dashboard_includes_virtual_keys_lifecycle_panel():
+    """Virtual-key lifecycle gauges from #1546 should chart on overview (#1564)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (
+            p
+            for p in payload["panels"]
+            if "virtual key" in p.get("title", "").lower()
+            or "virtual_keys" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert panel is not None, "expected a virtual-keys lifecycle panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("daari_virtual_keys" in expr for expr in exprs)
+    assert any('status="expired"' in expr for expr in exprs)
+    assert any('status="expiring_soon"' in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_retired_rejects_series():
+    """Retired-model hard rejects from #1549 should chart on overview (#1564)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panels = payload["panels"]
+    dedicated = next(
+        (
+            p
+            for p in panels
+            if "retired" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    exprs: list[str] = []
+    if dedicated is not None:
+        exprs = [t.get("expr", "") for t in dedicated.get("targets", [])]
+    else:
+        hard = next(
+            (p for p in panels if "Hard reject" in p.get("title", "")),
+            None,
+        )
+        assert hard is not None, "expected hard-rejects or retired-rejects panel"
+        exprs = [t.get("expr", "") for t in hard.get("targets", [])]
+    assert any("daari_rejects_total" in expr for expr in exprs)
+    assert any('kind="retired"' in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
