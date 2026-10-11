@@ -6587,6 +6587,14 @@ Docs: metrics-prometheus / traces-stats. Covered by
 `tests/unit/test_stats_virtual_keys.py`.
 
 
+### Pin Grafana dashboard panel ids unique ([#1574](https://github.com/naveenreddyalka/daari/issues/1574))
+
+<!-- tracking:#1574 -->
+**Status:** Done (2026-10-11). Unit pin asserts every panel `id` in
+`deploy/grafana/daari-dashboard.json` is unique. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
