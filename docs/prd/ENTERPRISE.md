@@ -36,7 +36,7 @@ ACL doc has no hermetic pin.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 70 | Keys export/import round-trip `last_used_at` + priority + cache_scope | 4 | 2 | LiteLLM key backup | Air-gapped restore keeps idle/admission | Filed [#1581](https://github.com/naveenreddyalka/daari/issues/1581) |
+| 70 | Keys export/import round-trip `last_used_at` + priority + cache_scope | 4 | 2 | LiteLLM key backup | Air-gapped restore keeps idle/admission | Shipped [#1586](https://github.com/naveenreddyalka/daari/pull/1586) |
 | 71 | Doctor tip when VK allowlist matches zero catalog cards | 3 | 2 | — (ops honesty) | Catch typo before BYOK clients 404 | Filed [#1582](https://github.com/naveenreddyalka/daari/issues/1582) |
 | 72 | `daari stats --help` mentions `virtual_keys` | 2 | 1 | — (CLI honesty) | Same JSON operators already dump | Filed [#1583](https://github.com/naveenreddyalka/daari/issues/1583) |
 | 73 | compare-litellm: LiteLLM 1.105 RC Decisions vs daari | 2 | 1 | LiteLLM release notes | On-box Decisions already ship | Filed [#1584](https://github.com/naveenreddyalka/daari/issues/1584) |
@@ -56,7 +56,16 @@ ACL doc has no hermetic pin.
 | 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface | Shipped |
 | 55–59 | Decisions budgets; Ultrafast; haiku fidelity; lifecycle; revoked-jti pool | 4–5 | 2 | LiteLLM / OpenAI / Kong | On-box parity | Shipped |
 | 44–52 | Decisions facade; MCP OAuth denylist; admin pagination; multi_agent meter | 4–5 | 2–3 | Portkey / Kong / LiteLLM | On-box parity | Shipped |
-| 19–28 | compact-to-fit + MCP grant fail-closed depth | 2–4 | 1–2 | LiteLLM | Shipped | Shipped |
+| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
+| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
+| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
+| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
+| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
+| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
+| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
+| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
 | 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365 catalog; Skills; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM / OpenAI | Demand-triggered | Watch |
 
 Shipped this week (do not re-file): filtered `/v1/models` catalog; key
