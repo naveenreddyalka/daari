@@ -1261,7 +1261,8 @@ class PostgresVirtualKeyStore:
                     " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                     " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
                     " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
-                    " allowed_models_json, model_groups_json, rpd"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                    " last_used_at"
                     " FROM virtual_keys ORDER BY created_at ASC, key_id ASC"
                 )
                 key_rows = cur.fetchall()
@@ -1315,6 +1316,13 @@ class PostgresVirtualKeyStore:
                 if len(row) > 22 and row[22] is not None
                 else None,
                 "rpd": int(row[23] or 0) if len(row) > 23 else 0,
+                "cache_scope": coerce_cache_scope(row[24])
+                if len(row) > 24 and row[24] is not None
+                else "global",
+                "priority": coerce_priority(row[25])
+                if len(row) > 25 and row[25] is not None
+                else "normal",
+                "last_used_at": row[26] if len(row) > 26 else None,
             }
             for row in key_rows
         ]
@@ -1390,15 +1398,22 @@ class PostgresVirtualKeyStore:
                         windows = self._windows_json(
                             self._parse_windows(json.dumps(key.get("budget_windows") or []))
                         )
+                        scope = normalize_cache_scope(key.get("cache_scope") or "global")
+                        prio = coerce_priority(key.get("priority") or "normal")
+                        last_used = key.get("last_used_at")
+                        if last_used is not None:
+                            last_used = str(last_used).strip() or None
                         cur.execute(
                             "INSERT INTO virtual_keys (key_hash, key_id, name, prefix,"
                             " created_at, revoked_at, expires_at, daily_budget_usd,"
                             " monthly_budget_usd, rpm, tpm, tier_cap, client_id, team_id,"
                             " budget_windows_json, metadata_json, user_daily_usd_cap,"
                             " previous_key_hash, previous_prefix, previous_expires_at,"
-                            " region_pin, allowed_models_json, model_groups_json, rpd)"
+                            " region_pin, allowed_models_json, model_groups_json, rpd,"
+                            " cache_scope, priority, last_used_at)"
                             " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-                            " %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                            " %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
+                            " %s, %s, %s)"
                             " ON CONFLICT (key_id) DO UPDATE SET"
                             " key_hash = EXCLUDED.key_hash,"
                             " name = EXCLUDED.name,"
@@ -1421,7 +1436,10 @@ class PostgresVirtualKeyStore:
                             " region_pin = EXCLUDED.region_pin,"
                             " allowed_models_json = EXCLUDED.allowed_models_json,"
                             " model_groups_json = EXCLUDED.model_groups_json,"
-                            " rpd = EXCLUDED.rpd",
+                            " rpd = EXCLUDED.rpd,"
+                            " cache_scope = EXCLUDED.cache_scope,"
+                            " priority = EXCLUDED.priority,"
+                            " last_used_at = EXCLUDED.last_used_at",
                             (
                                 key["key_hash"],
                                 key["key_id"],
@@ -1447,6 +1465,9 @@ class PostgresVirtualKeyStore:
                                 encode_names(decode_names(key.get("allowed_models"))),
                                 encode_names(decode_names(key.get("model_groups"))),
                                 int(key.get("rpd") or 0),
+                                scope,
+                                prio,
+                                last_used,
                             ),
                         )
                 conn.commit()
