@@ -6562,6 +6562,14 @@ enabled key_expiry alerter posts once on scrape. Covered by
 `daari_virtual_keys`. Covered by `tests/unit/test_key_expiry_docs.py`.
 
 
+### Docs: keys list --status / --idle-days in cli.md ([#1571](https://github.com/naveenreddyalka/daari/issues/1571))
+
+<!-- tracking:#1571 -->
+**Status:** Done (2026-10-11). CLI reference documents `keys list --status`
+and `--idle-days` plus `last_used_at` throttle. Covered by
+`tests/unit/test_keys_list_cli_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
