@@ -327,6 +327,11 @@ ultrafast_eu_unsupported`; unsupported models get
 `ultrafast_unsupported_model`), `standard` / `default` / `auto` / missing is
 1×. Unknown values log `service_tier_ignored` and bill as standard.
 
+OpenAI regional processing (data residency) adds a further **1.10×** uplift on
+models released on or after 2026-03-05 when a key/team `region_pin` is `us` or
+`eu`; unset pin bills the standard (or Fast/Ultrafast) rate with no residency
+premium (`daari doctor` pricing notes). FedRAMP routing is not invented here.
+
 ### Anthropic cache_control TTL write rates
 
 Anthropic prompt-cache markers on system/tool blocks (`cache_control.ttl`

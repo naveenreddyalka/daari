@@ -6451,6 +6451,82 @@ SQLite + Postgres audit stores gain `count()` and `list(offset=)`. Covered by
 `tests/unit/test_admin_read_plane.py`.
 
 
+### OpenAI regional-processing 10% uplift when region_pin set ([#1531](https://github.com/naveenreddyalka/daari/issues/1531))
+
+<!-- tracking:#1531 -->
+**Status:** Done (2026-10-10). `cost_usd` applies 1.10× for us/eu `region_pin`
+on OpenAI models released on or after 2026-03-05 (chat, Responses headers,
+Decisions input-only, spend ledger). Unset pin unchanged. Docs:
+budgets-frontier, data-residency. Covered by
+`tests/unit/test_regional_pricing.py`.
+
+
+### Refresh ENTERPRISE.md after Oct 7–10 drain ([#1470](https://github.com/naveenreddyalka/daari/issues/1470))
+
+<!-- tracking:#1470 -->
+**Status:** Done (2026-10-10). Living PRD marks rows 55–59 Shipped, rewrites
+stand + next-5 for ops-docs / hot-reload / MCP allowlist, and drops watch
+rows that already landed. Covered by `tests/unit/test_enterprise_prd_docs.py`.
+
+
+### Doctor + Helm + auth-and-keys coverage for /v1/decisions ([#1501](https://github.com/naveenreddyalka/daari/issues/1501))
+
+<!-- tracking:#1501 -->
+**Status:** Done (2026-10-10). Doctor `decisions` tip for systemone/frontier
+gaps; Helm values comment for decisions/systemone via ollama+frontier;
+auth-and-keys lists `decisions` rate family. Covered by
+`tests/unit/test_doctor_decisions.py`, `test_doctor_health_decisions_docs.py`,
+`test_auth_and_keys_decisions_family.py`.
+
+
+### Filter GET /v1/models by virtual-key allowlist ([#1555](https://github.com/naveenreddyalka/daari/issues/1555))
+
+<!-- tracking:#1555 -->
+**Status:** Done (2026-10-10). OpenAI and Anthropic `/v1/models` list payloads
+honor key ∪ team `allowed_models` / model groups (master / unrestricted VK
+unchanged). Retrieve returns 404 outside the allowlist; lifecycle filters
+compose. Docs: virtual-keys. Covered by
+`tests/unit/test_models_catalog_allowlist.py`.
+
+
+### Track last_used_at on virtual keys + status/idle filters ([#1545](https://github.com/naveenreddyalka/daari/issues/1545))
+
+<!-- tracking:#1545 -->
+**Status:** Done (2026-10-10). SQLite + Postgres VK stores gain nullable
+`last_used_at` (throttled touch on successful auth). Surfaced on CLI list/show
+and `GET /v1/daari/keys`; `--status` / `?status=` and `--idle-days` /
+`?idle_days=` filter inventory. Docs: virtual-keys. Covered by
+`tests/unit/test_vk_last_used.py`.
+
+
+### Proactive key-expiry signals — doctor, Prometheus, webhook ([#1546](https://github.com/naveenreddyalka/daari/issues/1546))
+
+<!-- tracking:#1546 -->
+**Status:** Done (2026-10-10). `daari doctor` warns on keys expiring within
+`alerts.key_expiry_warn_days` (default 14) and counts expired-but-not-revoked.
+Prometheus `daari_virtual_keys{status=...}` gauge refreshes on scrape. Opt-in
+signed `key_expiry` webhook (Redis-deduped, fail-open). Covered by
+`tests/unit/test_doctor_key_expiry.py` and `tests/unit/test_key_expiry_alerts.py`.
+
+
+### Retired-model audit, reject metric, doctor lifecycle ([#1549](https://github.com/naveenreddyalka/daari/issues/1549))
+
+<!-- tracking:#1549 -->
+**Status:** Done (2026-10-10). Retired 410s write `models.retired_denied` audit
+rows and increment `daari_rejects_total{kind="retired"}`. `daari doctor`
+errors on configured retired tier/frontier/pool models and tips on deprecated.
+Covered by `tests/unit/test_model_lifecycle_signals.py`.
+
+
+### Decisions L0 cache_scope tenancy isolation test ([#1554](https://github.com/naveenreddyalka/daari/issues/1554))
+
+<!-- tracking:#1554 -->
+**Status:** Done (2026-10-10). Hermetic ASGI test: two `cache_scope=key` VKs
+miss each other's identical `/v1/decisions` bodies; same key hits L0. Optional
+same-team hit / cross-team miss for `cache_scope=team`. Covered by
+`tests/unit/test_decisions_cache_scope.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

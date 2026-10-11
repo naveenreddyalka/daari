@@ -1102,6 +1102,8 @@ class Router:
             response.daari_meta.reasoning_effort = request.sampling.reasoning_effort
         if request.sampling.service_tier and response.daari_meta.service_tier is None:
             response.daari_meta.service_tier = request.sampling.service_tier
+        if getattr(request.meta, "region_pin", None) and response.daari_meta.region_pin is None:
+            response.daari_meta.region_pin = request.meta.region_pin
         add_step(
             "served",
             tier=response.daari_meta.tier,
@@ -1185,6 +1187,7 @@ class Router:
                 request_id=request_id or "",
                 requested_model=request.model or "",
                 service_tier=getattr(request.sampling, "service_tier", None),
+                region_pin=getattr(meta, "region_pin", None),
                 pricing=self.pricing,
                 fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
             )
@@ -5355,6 +5358,11 @@ class Router:
             model = served.daari_meta.model or served.model
             cached = int(served.daari_meta.cached_tokens or 0)
             billed = served.daari_meta.tier or billed
+        region_pin = None
+        service_tier = None
+        if served is not None:
+            region_pin = served.daari_meta.region_pin
+            service_tier = served.daari_meta.service_tier
         return stream_usage_cost(
             tier=billed,
             model=model,
@@ -5364,6 +5372,8 @@ class Router:
             fallback_per_1k=self.frontier_price_per_1k_tokens,
             cached_input_tokens=cached,
             reported_cost=reported,
+            service_tier=service_tier,
+            region_pin=region_pin,
         )
 
     def _stream_cached_tokens(

@@ -403,6 +403,7 @@ def _bind_spend_context(
             user_id=(user_id or "").strip(),
             request_id=str(getattr(request.state, "request_id", None) or ""),
             requested_model=model,
+            region_pin=region_pin_from_request(request),
             pricing=pricing,
             fallback_per_1k=fallback,
             reported_cost=0.0,
@@ -1095,6 +1096,7 @@ async def _handle_frontier(
             cached_input_tokens=int(cached_tokens or 0),
             cache_write_tokens=int(cache_write_tokens or 0),
             billing_path="decisions",
+            region_pin=region_pin_from_request(request),
         )
         caller = _caller_client_id(request)
         _bind_spend_context(
