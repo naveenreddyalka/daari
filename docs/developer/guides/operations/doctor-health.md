@@ -43,6 +43,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
 | doctor `model_lifecycle` | Required when a configured tier/frontier/pool model has `lifecycle=retired`; optional tip when `deprecated` |
 | doctor `key_expiry` | Optional: virtual keys expiring within `alerts.key_expiry_warn_days` (default 14) or expired-but-not-revoked — rotate before production 401s |
+| doctor `vk_empty_allowlist` | Optional tip: active virtual key `allowed_models` / `model_groups` match zero cards in the effective `/v1/models` catalog (typo or stale pattern) |
 | doctor `budget_webhook_secret` | Optional: `alerts.budget_webhook_url` set without `alerts.budget_webhook_secret` — spoofable pages |
 | doctor `key_expiry_webhook_secret` | Optional: `alerts.key_expiry_webhook_url` set without `alerts.key_expiry_webhook_secret` — spoofable pages |
 | doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
