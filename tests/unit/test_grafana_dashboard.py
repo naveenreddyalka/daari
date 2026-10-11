@@ -411,3 +411,12 @@ def test_grafana_dashboard_includes_retired_rejects_series():
     assert any('kind="retired"' in expr for expr in exprs)
     assert any("rate(" in expr for expr in exprs)
 
+
+def test_grafana_dashboard_panel_ids_are_unique() -> None:
+    """Duplicate panel ids break Grafana import silently (#1574)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    ids = [p.get("id") for p in payload["panels"]]
+    assert ids, "expected at least one panel"
+    assert None not in ids, "every panel must have an id"
+    assert len(ids) == len(set(ids)), f"duplicate panel ids: {ids}"
+
