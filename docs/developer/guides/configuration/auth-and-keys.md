@@ -56,6 +56,12 @@ daari keys revoke <key_id>
 
 Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, TPM, tier caps, and an optional expiry (`--expires 30d|12h|45m` or an ISO-8601 timestamp). Existing keys with no expiry never expire. An expired key is a 401 `key_expired` (distinct from invalid/revoked) and writes an `auth.key_expired` audit row. `daari keys list` shows `expires`, `grace_until` (pending rotation), and a `status` of `active` / `expired` / `revoked`.
 
+Proactive expiry (before that 401): `alerts.key_expiry_warn_days` (default 14)
+drives `daari doctor` warnings, the scrape gauge `daari_virtual_keys{status}`,
+and an optional `alerts.key_expiry_webhook_url` POST with
+`event: key_expiry` (same `X-Daari-Signature` scheme as budget webhooks).
+Recipe and payload: [budgets and frontier](budgets-frontier.md#key-expiry-alerts).
+
 `daari keys rotate` mints a new secret for the **same** `key_id` — budgets, team, policies, RPM/TPM, and usage history are untouched. The old secret keeps authenticating until the grace window ends (default 24h; `--grace 0` cuts over immediately), then is rejected as expired. Both secrets share one budget and rate-limit bucket. Rotation writes a `keys.rotate` audit row (key_id + grace deadline; never the secret).
 
 ```bash

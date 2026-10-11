@@ -184,6 +184,49 @@ replicas can notify twice. A Redis error still delivers the alert and logs
 is down). Each fire writes a `budget.alert` audit row and increments
 `daari_budget_alerts_total{scope,threshold}`.
 
+### Key expiry alerts
+
+Budget pages catch spend cliffs; key-expiry alerts catch credential rotation
+before a 90-day key goes dark. The same `alerts` block opts in a proactive
+plane (doctor + Prometheus + webhook) that does **not** wait for a 401
+`key_expired` at request time:
+
+```yaml
+alerts:
+  key_expiry_webhook_url: https://hooks.example/daari-key-expiry   # empty disables
+  key_expiry_webhook_secret: secret://env-file/~/.daari/secrets.env#KEY_EXPIRY_WEBHOOK  # optional
+  key_expiry_warn_days: 14   # doctor / gauge / webhook window (env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS)
+```
+
+- `daari doctor` warns on keys entering the warn window and counts
+  expired-but-not-revoked (`key_expiry` check). When a webhook URL is set
+  without a signing secret, doctor tips `key_expiry_webhook_secret`.
+- Scrape-time gauge `daari_virtual_keys{status}` exposes `active`,
+  `expired`, `expiring_soon`, and `revoked` (stock Grafana: **Virtual keys
+  by status**). See [Prometheus metrics](../observability/metrics-prometheus.md).
+- When `key_expiry_webhook_url` is set, each scrape that sees a key enter
+  `expiring_soon` POSTs once (Redis `SET NX` dedupe when available; fail-open
+  on Redis errors). Down hooks log `key_expiry.alert_failed` and never delay
+  the scrape.
+
+Payload (never includes key material or the secret prefix):
+
+```json
+{
+  "event": "key_expiry",
+  "status": "expiring_soon",
+  "key_id": "a1b2c3d4",
+  "name": "ci-bot",
+  "expires_at": "2026-10-24T12:00:00+00:00",
+  "warn_days": 14
+}
+```
+
+`key_expiry_webhook_secret` reuses the budget signing headers:
+`X-Daari-Timestamp` + `X-Daari-Signature` (HMAC-SHA256 of
+`timestamp + "." + body`). Verify with the same helper as budget webhooks
+above. Unset keeps an unsigned POST.
+
 Existing keys that only have `daily_budget_usd` / `monthly_budget_usd` are
 migrated to `day` / `month` windows on first open; behavior is unchanged.
 
