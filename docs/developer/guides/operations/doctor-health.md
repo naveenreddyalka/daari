@@ -30,6 +30,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `tts` | Optional: `tts.base_url` unreachable. Empty TTS config is quiet (POST `/v1/audio/speech` returns 501) |
 | doctor `images_generations` | Optional: when `frontier.enabled` and a key resolves, dry-checks OpenAPI for `POST /v1/images/generations`; frontier on without a key warns that the route returns 501. Frontier off skips quietly |
 | doctor `ocr` | Optional: both `ocr.base_url` and `ocr.vision_model` unset — `POST /v1/ocr` falls through to frontier L6; tip points at [clients-and-gateways.md](../../concepts/clients-and-gateways.md) / config.md |
+| doctor `decisions` | Optional: `systemone.enabled=false` and/or frontier on without an API key — `POST /v1/decisions` lacks a local (clef/nimble/tev1) or gpt-6-luna path; tip points at clients-and-gateways / http-api |
 | doctor `policy_status` | Optional: when `enterprise.policy_sync_url` is set, warns if policy-sync never applied; ok detail includes last hash — same signal as `daari enterprise policy-status` |
 | doctor `cors_origins` | Optional: empty allowlist is an advisory tip for `daari web-ui` (`http://127.0.0.1:11437`); a non-empty list that omits that origin (or `DAARI_WEB_UI_ORIGIN`) warns — browsers will block credentialed dashboard calls |
 | doctor `request_deadline` | Optional: `upstream.request_deadline_seconds` unset or `<= 0` — per-tier timeouts only; set a positive budget (or send `X-Daari-Deadline-Ms`) so escalation stops with 504 |
@@ -40,6 +41,8 @@ package `version` for upgrade/rollback discovery.
 | doctor `fleet_cache` | Optional: `DAARI_FLEET_REPLICAS` > 1 without `cache.backend=redis` — L0 / session pins / singleflight stay per-pod |
 | doctor `scoped_cache_fleet` | Optional: `DAARI_FLEET_REPLICAS` > 1 with `cache.backend` not `redis` and any virtual key/team `cache_scope` other than `global` — tenant L0/L1 stays per-pod |
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
+| doctor `model_lifecycle` | Required when a configured tier/frontier/pool model has `lifecycle=retired`; optional tip when `deprecated` |
+| doctor `key_expiry` | Optional: virtual keys expiring within `alerts.key_expiry_warn_days` (default 14) or expired-but-not-revoked — rotate before production 401s |
 | doctor `budget_webhook_secret` | Optional: `alerts.budget_webhook_url` set without `alerts.budget_webhook_secret` — spoofable pages |
 | doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
 | doctor `backup` | Optional: no recent archive under `~/.daari/backups`, or recent backups are all **plaintext** — tip suggests `daari backup create … --encrypt openssl` (or `age`); see [backup-restore.md](backup-restore.md#optional-encryption-1176) |

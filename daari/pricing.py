@@ -15,13 +15,34 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # OpenAI / Anthropic / OpenRouter service_tier multipliers (#430).
+# `fast` is OpenAI's 30 Jul 2026 rename of Priority (same 2× Standard) (#1527).
+# `ultrafast` is 6× Standard for gpt-6.1-sol / gpt-6-astra (#1519).
 _SERVICE_TIER_FACTORS = {
     "flex": 0.5,
     "priority": 2.0,
+    "fast": 2.0,
+    "ultrafast": 6.0,
     "standard": 1.0,
     "default": 1.0,
     "auto": 1.0,
 }
+
+# OpenAI Ultrafast is only published for these Responses models (#1519).
+_ULTRAFAST_MODELS = ("gpt-6.1-sol", "gpt-6-astra")
+# Astra Ultrafast supports US residency + global only; EU pin is unsupported.
+_ULTRAFAST_EU_UNSUPPORTED = frozenset({"gpt-6-astra"})
+
+# OpenAI regional processing (data residency) is 1.10× for models released on
+# or after 2026-03-05 when a us/eu pin is active (#1531). FedRAMP is out of scope.
+_REGIONAL_PROCESSING_FACTOR = 1.10
+_REGIONAL_PROCESSING_PINS = frozenset({"us", "eu"})
+_REGIONAL_PREMIUM_MODEL_KEYS = (
+    "gpt-5.4",
+    "gpt-5.5",
+    "gpt-5.6",
+    "gpt-6",
+    "chat-latest",
+)
 
 
 def service_tier_factor(tier: str | None) -> float:
@@ -37,14 +58,75 @@ def service_tier_factor(tier: str | None) -> float:
     return 1.0
 
 
+def regional_processing_factor(region_pin: str | None, model: str | None) -> float:
+    """1.10× when us/eu pin is set on a post-2026-03-05 OpenAI model (#1531)."""
+    pin = (region_pin or "").strip().lower()
+    if pin not in _REGIONAL_PROCESSING_PINS:
+        return 1.0
+    if not model or matching_model_key(model, _REGIONAL_PREMIUM_MODEL_KEYS) is None:
+        return 1.0
+    return _REGIONAL_PROCESSING_FACTOR
+
+
+@dataclass(frozen=True)
+class ServiceTierDecision:
+    """Effective service_tier after Ultrafast model/residency gating (#1519)."""
+
+    service_tier: str | None
+    warning: str | None = None
+
+
+def resolve_service_tier_for_request(
+    *,
+    model: str | None,
+    service_tier: str | None,
+    region_pin: str | None = None,
+) -> ServiceTierDecision:
+    """Keep Ultrafast only for supported model + residency; else clear + warn.
+
+    Unsupported model or EU-pinned Astra must not silently bill at 1.0× while
+    still advertising ultrafast upstream — clear the tier and set a warning.
+    """
+    if service_tier is None or not str(service_tier).strip():
+        return ServiceTierDecision(service_tier=None)
+    key = str(service_tier).strip().lower()
+    if key != "ultrafast":
+        return ServiceTierDecision(service_tier=key)
+    matched = matching_model_key(model or "", _ULTRAFAST_MODELS) if model else None
+    if matched is None:
+        return ServiceTierDecision(
+            service_tier=None, warning="ultrafast_unsupported_model"
+        )
+    pin = (region_pin or "").strip().lower()
+    if pin == "eu" and matched in _ULTRAFAST_EU_UNSUPPORTED:
+        return ServiceTierDecision(
+            service_tier=None, warning="ultrafast_eu_unsupported"
+        )
+    return ServiceTierDecision(service_tier="ultrafast")
+
+
 @dataclass(frozen=True)
 class ResolvedPrice:
     input_per_1m: float
     output_per_1m: float
     cached_input_per_1m: float | None = None
     cache_write_1h_per_1m: float | None = None
+    cache_write_per_1m: float | None = None
     is_fallback: bool = False
     input_threshold_tokens: int | None = None
+
+
+# Decisions API reuses the chat model id but bills input-only (#1484).
+# Chat/Responses stay on pricing.models; this overlay must not leak the other way.
+_DECISIONS_MODEL_PRICES: dict[str, dict[str, float]] = {
+    "gpt-6-luna": {
+        "input_per_1m": 0.10,
+        "output_per_1m": 0.0,
+        "cached_input_per_1m": 0.0,
+        "cache_write_per_1m": 0.0,
+        "cache_write_1h_per_1m": 0.0,
+    },
+}
 
 
 def matching_model_key(model: str, keys: object) -> str | None:
@@ -89,12 +171,20 @@ def resolve_price(
     *,
     fallback_per_1k: float,
     input_tokens: int = 0,
+    billing_path: str | None = None,
 ) -> ResolvedPrice:
     """Price for `model`, falling back to the flat per-1k rate when unknown.
 
     When the model defines ``input_threshold_tokens`` and ``input_tokens``
     reaches that threshold, the above-* rates apply to the whole request (#411).
+
+    ``billing_path="decisions"`` uses the Decisions card for ids that OpenAI
+    bills differently on ``POST /v1/decisions`` than on Chat/Responses (#1484).
     """
+    if (billing_path or "").strip().lower() == "decisions" and model:
+        decisions_key = matching_model_key(model, _DECISIONS_MODEL_PRICES)
+        if decisions_key is not None:
+            return _resolved_from_entry(_DECISIONS_MODEL_PRICES[decisions_key])
     table = getattr(pricing, "models", None) or {}
     entry = None
     if model:
@@ -102,34 +192,7 @@ def resolve_price(
         if key is not None:
             entry = table[key]
     if entry is not None:
-        input_rate = float(_field(entry, "input_per_1m"))
-        output_rate = float(_field(entry, "output_per_1m"))
-        cached_rate = _optional_field(entry, "cached_input_per_1m")
-        write_1h = _optional_field(entry, "cache_write_1h_per_1m")
-        threshold = _optional_int_field(entry, "input_threshold_tokens")
-        above_input = _optional_field(entry, "above_input_per_1m")
-        above_output = _optional_field(entry, "above_output_per_1m")
-        if (
-            threshold is not None
-            and threshold > 0
-            and int(input_tokens) >= threshold
-            and above_input is not None
-        ):
-            if cached_rate is not None and input_rate > 0:
-                cached_rate = cached_rate * (above_input / input_rate)
-            if write_1h is not None and input_rate > 0:
-                write_1h = write_1h * (above_input / input_rate)
-            input_rate = above_input
-            if above_output is not None:
-                output_rate = above_output
-        return ResolvedPrice(
-            input_per_1m=input_rate,
-            output_per_1m=output_rate,
-            cached_input_per_1m=cached_rate,
-            cache_write_1h_per_1m=write_1h,
-            is_fallback=False,
-            input_threshold_tokens=threshold,
-        )
+        return _resolved_from_entry(entry, input_tokens=input_tokens)
     flat_per_1m = float(fallback_per_1k) * 1000.0
     return ResolvedPrice(
         input_per_1m=flat_per_1m, output_per_1m=flat_per_1m, is_fallback=True
@@ -147,12 +210,15 @@ def cost_usd(
     cache_write_tokens: int = 0,
     cache_ttl: str | None = None,
     service_tier: str | None = None,
+    region_pin: str | None = None,
+    billing_path: str | None = None,
 ) -> float:
     price = resolve_price(
         model,
         pricing,
         fallback_per_1k=fallback_per_1k,
         input_tokens=input_tokens,
+        billing_path=billing_path,
     )
     write_tokens = max(0, int(cache_write_tokens))
     billable_input = max(0, input_tokens - cached_input_tokens)
@@ -164,18 +230,63 @@ def cost_usd(
         total += cached_input_tokens / 1_000_000 * price.input_per_1m
     if write_tokens:
         total += write_tokens / 1_000_000 * _cache_write_rate(price, cache_ttl)
-    return total * service_tier_factor(service_tier)
+    return (
+        total
+        * service_tier_factor(service_tier)
+        * regional_processing_factor(region_pin, model)
+    )
 
 
 def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:
-    """1h TTL uses cache_write_1h_per_1m; missing/5m keeps today's input rate."""
+    """1h TTL uses cache_write_1h_per_1m; missing/5m keeps today's input rate.
+
+    ``cache_write_per_1m`` (including 0) overrides the non-1h write rate so a
+    path can bill cache writes at $0 without changing chat models.
+    """
     ttl = (cache_ttl or "").strip().lower()
     if ttl in {"1h", "1hr", "60m"}:
         if price.cache_write_1h_per_1m is not None:
             return float(price.cache_write_1h_per_1m)
         # Configured models should set the field; fall back to 2× input.
         return float(price.input_per_1m) * 2.0
+    if price.cache_write_per_1m is not None:
+        return float(price.cache_write_per_1m)
     return float(price.input_per_1m)
+
+
+def _resolved_from_entry(entry: object, *, input_tokens: int = 0) -> ResolvedPrice:
+    input_rate = float(_field(entry, "input_per_1m"))
+    output_rate = float(_field(entry, "output_per_1m"))
+    cached_rate = _optional_field(entry, "cached_input_per_1m")
+    write_1h = _optional_field(entry, "cache_write_1h_per_1m")
+    write_rate = _optional_field(entry, "cache_write_per_1m")
+    threshold = _optional_int_field(entry, "input_threshold_tokens")
+    above_input = _optional_field(entry, "above_input_per_1m")
+    above_output = _optional_field(entry, "above_output_per_1m")
+    if (
+        threshold is not None
+        and threshold > 0
+        and int(input_tokens) >= threshold
+        and above_input is not None
+    ):
+        if cached_rate is not None and input_rate > 0:
+            cached_rate = cached_rate * (above_input / input_rate)
+        if write_1h is not None and input_rate > 0:
+            write_1h = write_1h * (above_input / input_rate)
+        if write_rate is not None and input_rate > 0:
+            write_rate = write_rate * (above_input / input_rate)
+        input_rate = above_input
+        if above_output is not None:
+            output_rate = above_output
+    return ResolvedPrice(
+        input_per_1m=input_rate,
+        output_per_1m=output_rate,
+        cached_input_per_1m=cached_rate,
+        cache_write_1h_per_1m=write_1h,
+        cache_write_per_1m=write_rate,
+        is_fallback=False,
+        input_threshold_tokens=threshold,
+    )
 
 
 def pricing_warnings(settings: object) -> list[str]:

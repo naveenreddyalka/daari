@@ -9,11 +9,16 @@ daari keys team-create eng --daily-budget 5 --rpm 120 --tpm 80000 --rpd 5000
 daari keys create ci --daily-budget 2 --rpm 60 --tpm 40000 --rpd 2000 --team eng --window 7d=10
 daari keys create shared-agent --user-daily-cap 2
 daari keys list
+daari keys list --status active
+daari keys list --idle-days 90
 daari report --by-team
 daari usage --by-user
 ```
 
 `--rpd` is requests per UTC day on the key or team. `0`, or omitting the flag, means unlimited.
+`daari keys list --status` filters `active` / `expired` / `revoked`. `--idle-days N`
+returns keys whose `last_used_at` is older than N days (or never used). Successful
+auth updates `last_used_at` (throttled to once per 60s per key).
 
 Enable in config:
 
@@ -52,6 +57,13 @@ A request whose model is outside the allowlist is HTTP 403
 `model_not_allowed` (the body names the model, never the key) and writes an
 `auth.model_denied` audit row. Router fallback will not send that key to a
 frontier model outside the allowlist.
+
+`GET /v1/models` (OpenAI and Anthropic facades) returns only cards that match
+the key ∪ team allowlist when either side is set — same patterns as inference.
+Master key and unrestricted virtual keys still see the full catalog.
+`GET /v1/models/{id}` returns **404** for ids outside the allowlist. Lifecycle
+query filters compose with the allowlist (retired models stay omitted by
+default).
 
 ## Admission priority
 

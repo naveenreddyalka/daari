@@ -133,6 +133,15 @@ def render_api_reference() -> str:
     lines.extend(
         [
             "",
+            "## Admin keys / teams inventory",
+            "",
+            "`GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return "
+            "redacted rows plus pagination metadata: query `limit` (default **100**, "
+            "max **500**) and `offset` (default **0**); response includes `total`, "
+            "`has_more`, `limit`, and `offset`. Successful reads emit "
+            "`admin.keys.list` / `admin.teams.list` audit events "
+            "(`limit` / `offset` / `total` / `returned` — never secrets).",
+            "",
             "## Config editor ownership",
             "",
             "`GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) "

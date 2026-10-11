@@ -11,31 +11,26 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-07 evening)
+## Where daari stands (verified in-tree, 2026-10-10)
 
-**Loop velocity.** Morning rows 44–48 (Decisions facade, MCP OAuth
-scope/revoke, new-surface hardening, web-ui admin plane, Responses multi-agent
-honesty) plus `/mcp/proxy` cost headers and hot-reload remain the open
-execution stack. Catalog/pricing for sonnet-5-5 / grok-4.7 / opus-5-5 and MCP
-OAuth mint audit are on `main`.
+**Loop velocity.** Key/user lifecycle feeder (rows 60–64) still open from the
+pm scan; hot-reload (6) and parked Messages tool-allowlist (7) unchanged.
+This eve run does not wait on that drain — never-empty contract: file the next
+admin-plane / FinOps / catalog gaps now.
 
-**Outward.** **Vercel AI Gateway added OpenAI-compatible `/v1/decisions` today
-(7 Oct)** with slug `openai/gpt-6-luna-decisions` (distinct from the LM
-`openai/gpt-6-luna`). OpenAI Decisions beta pricing clarified: **$0.10 / 1M
-input, $0 output / $0 cache on the Decisions path** — not the chat rate card.
-LiteLLM published **v1.106.0-dev.1** (M365 Graph MCP catalog, scoped-SQL
-tracing); stable bar remains **1.104.0 GA** (1.105 still RC). Anthropic
-`capabilities.thinking.types.disabled` (5 Oct) still absent from daari's
-Anthropic `/v1/models` cards. Ollama 0.40.0 / Portkey / Kong / OpenRouter flat
-vs morning.
+**Outward.** Gateways still flat at stable bars: LiteLLM **v1.104.2** (1.105
+at rc.3 with Lens/Agent Traces + `litellm.agent()` — file compare refresh at
+GA; 1.106 still dev), Portkey **v2.28.0**, Kong **2.2.0**, vLLM **0.31.0**,
+Ollama **0.40.2**. OpenRouter admin-plane wave (keys `last_used_at`, end-users,
+guardrail→key assign) already drove rows 60–64; remaining OpenRouter parity is
+**filtered model catalog** (`is_filtered_model_catalog_enabled`). LiteLLM RC
+theme (agent traces + paged usage UIs) validates our report/web-ui bounds work.
 
-**Inward theme: Decisions FinOps honesty + catalog/ops depth.** Code audit:
-Anthropic model cards emit `line` but no `capabilities` object; age-encrypt
-backup has no round-trip test (openssl covered); Grafana dashboard lacks
-panels for shipped `daari_decision_classifier_*` series; pricing is
-path-agnostic so a Decisions facade would over-bill if it reused chat
-`gpt-6-luna` rates; Vercel-style `*-decisions` model aliases have no
-normalizer.
+**Inward theme: admin-plane honesty + FinOps depth + catalog ACL.** Code audit:
+web-ui ignores `has_more` on keys/teams and never renders `report.users`;
+report `clients`/`users` rollups are unbounded; `nested_agent_usages` omits
+`model` so multi_agent subagents bill at parent price; decisions L0 has no
+hermetic `cache_scope` tenancy test; `GET /v1/models` ignores VK allowlists.
 
 ---
 
@@ -43,66 +38,84 @@ normalizer.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 49 | Anthropic `capabilities.thinking.types.disabled` on native `/v1/models` | 3 | 1 | Anthropic Models API (5 Oct) | On-box catalog honesty for Claude clients | Filed [#1481](https://github.com/naveenreddyalka/daari/issues/1481) |
-| 50 | age-encrypt backup create/restore round-trip test | 3 | 1 | — (ops testability) | Prove both encrypt backends before restore day | Filed [#1482](https://github.com/naveenreddyalka/daari/issues/1482) |
-| 51 | Grafana panels for decision classifier Prom series | 3 | 1 | LiteLLM / Kong decision dashboards | Stock dashboard proves on-box classifier SLO | Filed [#1483](https://github.com/naveenreddyalka/daari/issues/1483) |
-| 52 | Decisions-path input-only pricing for gpt-6-luna (≠ chat rates) | 4 | 2 | OpenAI Decisions beta rate card | Cost-true FinOps when frontier Decisions is used | Filed [#1484](https://github.com/naveenreddyalka/daari/issues/1484) |
-| 53 | Normalize `gpt-6-luna-decisions` / `openai/gpt-6-luna-decisions` aliases | 3 | 1 | Vercel AI Gateway Decisions (7 Oct) | One localhost URL accepts OpenAI + gateway slugs | Filed [#1485](https://github.com/naveenreddyalka/daari/issues/1485) |
-| 44 | OpenAI-compatible `/v1/decisions` on local decision models + gpt-6-luna fallback | 5 | 2 | OpenAI Decisions beta; Vercel AI Gateway; Portkey/Kong Jev | Typed judgments on-box at $0, frontier only on miss | Filed (morning) |
-| 45 | MCP OAuth AS: scope enforcement + RFC 7009 revocation | 4 | 2 | LiteLLM 1.103 token-exchange; Kong Token Vault | On-box revoke/scope check = zero network hops | Filed (morning) |
-| 46 | OTel spans + guardrails + retry on `/mcp/proxy` and `/v1/systemone` | 4 | 2 | Kong W3C trace on MCP; Portkey guardrails | Local policy checks add near-zero latency | Filed (morning) |
-| 47 | Web-ui read-only keys/teams/spend admin plane | 4 | 3 | LiteLLM proxy admin UI | Same-box console, no SaaS, reuses existing stores | Filed (morning) |
-| 48 | Responses multi-agent beta fields forwarded or honest 400 | 3 | 2 | OpenAI gpt-6.1-sol multi-agent beta | Transparent delegation passthrough with budgets intact | Filed (morning) |
-| 37 | Web-ui hardening: escape DOM, CSP, no localStorage keys | 4 | 3 | LiteLLM proxy UI | Static page — escaping + CSP are cheap | Shipped |
-| 38 | OCR Prometheus modality + output guardrails + OTel | 4 | 2 | Kong per-modality costs | Local OCR pitch needs honest FinOps + redaction | Shipped |
-| 39 | claude-sonnet-5-5 pricing / capabilities / param compat | 4 | 1 | LiteLLM 1.105 RC day-one catalog | Cost-true L6 when agents already pick the new ID | Shipped |
-| 40 | Anthropic Models API `line` on native `/v1/models` | 3 | 1 | Anthropic Models API (1 Oct) | Local catalog parity for Claude-native clients | Shipped |
-| 41 | Decision classifier Prometheus latency + outcome series | 4 | 2 | LiteLLM / Kong decision metrics | Prove on-box classifier SLO vs hosted Jev | Shipped |
-| 42 | Watchdog fatal-config classifier + stop KeepAlive spam | 4 | 2 | — (ops honesty) | Autonomous loop must not file daemon-unreachable forever | Shipped |
-| 43 | compact_to_fit counts images/audio; protect image-only turns | 3 | 2 | LiteLLM multimodal compact | FinOps + vision context honesty before L6 | Shipped |
-| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — in flight | Open |
-| 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked |
-| 8 | Full DCR; A2A; Realtime/WS; group-scoped priority; stdio MCP; M365 catalog; Skills API; FIPS/distroless; HIPAA BAA program | 2–4 | 3–5 | Portkey / Kong / LiteLLM 1.104–1.106 / OpenAI | Demand-triggered | Watch |
+| 69 | Filter `GET /v1/models` by VK `allowed_models` | 5 | 2 | OpenRouter filtered catalog | Same allowlist as inference | Filed [#1555](https://github.com/naveenreddyalka/daari/issues/1555) |
+| 65 | Web-ui: honor keys/teams `has_more` + render `report.users` | 4 | 2 | LiteLLM admin UI | Same-box console finishes the job | Filed [#1551](https://github.com/naveenreddyalka/daari/issues/1551) |
+| 66 | Bound/paginate report `clients`/`users` rollups | 4 | 2 | LiteLLM paged usage | Fleet-safe JSON on-box | Filed [#1552](https://github.com/naveenreddyalka/daari/issues/1552) |
+| 67 | multi_agent nested usage: per-subagent `model` for cost-true pricing | 4 | 2 | OpenAI / LiteLLM FinOps | Ledger already meters nested tokens | Filed [#1553](https://github.com/naveenreddyalka/daari/issues/1553) |
+| 68 | Hermetic decisions L0 `cache_scope` tenancy test | 3 | 1 | — (testability) | Prove typed-judgment isolation | Filed [#1554](https://github.com/naveenreddyalka/daari/issues/1554) |
+| 60 | `last_used_at` on virtual keys + status/idle list filters | 4 | 2 | OpenRouter keys API | Key hygiene on-box, air-gapped | Filed [#1545](https://github.com/naveenreddyalka/daari/issues/1545) |
+| 61 | Proactive key-expiry signals: doctor scan, Prom gauge, signed webhook | 4 | 2 | OpenRouter / LiteLLM alerts | Same store that enforces warns | Filed [#1546](https://github.com/naveenreddyalka/daari/issues/1546) |
+| 62 | End-user inventory + per-user block/cap overrides | 5 | 3 | OpenRouter end-users / LiteLLM | Ledger already knows every user | Filed [#1547](https://github.com/naveenreddyalka/daari/issues/1547) |
+| 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter guardrail assign / Portkey | Per-tenant policy, zero hops | Filed [#1548](https://github.com/naveenreddyalka/daari/issues/1548) |
+| 64 | Audit + metric on retired-model blocks; doctor lifecycle check | 3 | 2 | LiteLLM audit planes | Catalog + router + audit in one box | Filed [#1549](https://github.com/naveenreddyalka/daari/issues/1549) |
+| 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface | Shipped [#1544](https://github.com/naveenreddyalka/daari/pull/1544) |
+| 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open [#1234](https://github.com/naveenreddyalka/daari/issues/1234) |
+| 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked [#1288](https://github.com/naveenreddyalka/daari/issues/1288) |
+| 55 | Model/user budget 402 pre-checks + `user_id` ledger on `/v1/decisions` | 5 | 2 | LiteLLM model budgets | Typed judgments meter like chat | Shipped [#1524](https://github.com/naveenreddyalka/daari/pull/1524) |
+| 56 | Ultrafast service tier: true pricing + model/residency gating | 4 | 2 | OpenAI Ultrafast pricing | Bill premium tier honestly on-box | Shipped [#1535](https://github.com/naveenreddyalka/daari/pull/1535) |
+| 57 | claude-haiku-5-5 fidelity: budget_tokens→400, 5m write, cards | 4 | 2 | Anthropic migration guide | Absorb provider breaking change | Shipped [#1536](https://github.com/naveenreddyalka/daari/pull/1536) |
+| 58 | Lifecycle + server_tools on OpenAI `/v1/models`; fail-closed retirement | 4 | 2 | Anthropic Models API | One catalog, two facades | Shipped [#1537](https://github.com/naveenreddyalka/daari/pull/1537) |
+| 59 | Pooled connections for Postgres revoked-jti denylist | 4 | 2 | Kong Token Vault | Fleet revoke stays cheap | Shipped [#1538](https://github.com/naveenreddyalka/daari/pull/1538) |
+| 54 | claude-haiku-5-5 catalog + sonnet/opus-5-5 cache-read reprice | 5 | 1 | Anthropic pricing page | Cost-true routing | Shipped |
+| 49 | Guardrails + OTel + retry + `user` spend on `/v1/decisions` | 5 | 2 | Portkey/Kong decisions policy | Same on-box policy engine | Shipped |
+| 50 | Fleet-durable MCP OAuth revoked-jti denylist | 5 | 3 | Kong Token Vault | Revoke sticks across replicas | Shipped |
+| 51 | Paginate + audit `GET /v1/daari/keys` and `/teams` | 4 | 2 | LiteLLM admin UI | Control-plane honesty | Shipped |
+| 52 | Meter multi_agent subagent token usage / spend on L6 | 4 | 2 | OpenAI aggregated usage | FinOps for delegated agents | Shipped |
+| 44 | OpenAI-compatible `/v1/decisions` + gpt-6-luna | 5 | 2 | OpenAI Decisions beta | Typed judgments on-box | Shipped |
+| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
+| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
+| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
+| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
+| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
+| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
+| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
+| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
+| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
+| 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365 catalog; Skills; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM / OpenAI | Demand-triggered | Watch |
 
-Shipped since the 2026-10-06 evening scan — do not re-file: web-ui
-escape/CSP/key-storage; OCR modality/guardrails/OTel; claude-sonnet-5-5,
-grok-4.7, claude-opus-5-5 pricing/compat; Anthropic `line` on `/v1/models`;
-classifier Prometheus series; watchdog fatal-config classifier; compact
-images/audio estimates; MCP OAuth mint audit events. Earlier shipped (do not
-re-file): master-key config gate; gpt-6.1-sol pricing; systemone images +
-rate family; compact-to-fit + MCP grant fail-closed full stacks; OBO;
-refuse-weak-master-key; decision classifier; `/v1/ocr`; `/v1/systemone`;
-MCP registry/proxy/OAuth mint; watchdog dedupe + hatch docs.
+Shipped this week (do not re-file): rows 55–59; decisions L0 cache;
+`chat-latest` alias; Fast service_tier 2×; Idempotency-Key + stream reject on
+decisions; audit `limit`/`offset` pagination; regional-processing 1.10× uplift;
+haiku-5-5 catalog + cache-read reprice; gpt-6-luna cached-input + decisions
+input-only; fleet revoked-jti; admin keys/teams pagination; multi_agent nested
+metering; Anthropic + OpenAI lifecycle/`server_tools`; ops-docs for decisions.
 
-Watch rows (audit-verified 2026-10-07 evening — file on trigger): LiteLLM
-1.105 RC → GA and 1.106-dev M365 MCP catalog + scoped-SQL / Lens agent
-traces (file at GA); gpt-6-luna Decisions schema drift while the beta
-hardens; `GET /v1/mcp/registry.json` auth-open by design; OpenAI in-product
-HIPAA BAA (compliance non-goal until buyer demand); vLLM Semantic Router
-Decision/Vela 2.0 open routing models (demand-triggered). Verified fine —
-don't re-audit: hosted Responses tool types 400 honestly; `/mcp/proxy` +
-systemone use pooled httpx; OCR has `post_l6` retry + output policy + span;
-MCP OAuth enforces `exp` and audits mint/deny; web-ui binds 127.0.0.1 and
-escapes DOM; openssl backup encrypt round-trip tested; Anthropic `line` on
-catalog.
+Watch rows (do not file yet): gpt-6-luna Decisions schema drift while the beta
+hardens; OpenRouter BYOK `declared_region` (daari `region_pin` covers routing;
+file only if clients want declared-region metadata on stored provider keys);
+OpenRouter enterprise IP allowlists (file at buyer ask); Anthropic Managed
+Agents dynamic workflows (platform-side, non-goal); Anthropic Compliance API
+chat export (org-level, non-goal); Claude Max/Team monthly API credits;
+LiteLLM 1.105/1.106 Lens + agent traces + M365 MCP catalog (file compare +
+scoped features at GA); Portkey v2.28.0 JWT JIT access (operator ask); OpenAI
+in-product HIPAA BAA (compliance non-goal).
+
+Verified fine this run — don't re-audit: regional-processing 1.10× wired into
+cost headers, stream usage, spend ledger, and decisions billing; decisions L0
+honors `X-Daari-No-Cache` + builds tenancy-scoped keys via
+`apply_auth_claims_to_meta` (hermetic cross-key miss still missing — row 68);
+retired-model 410 enforcement on inference facades; key expiry enforcement +
+rotation grace + SSO key TTL; end-user spend attribution (`--by-user`, report
+`users`, key-level `user_daily_usd_cap` 402s); MCP per-key/team tool/server
+governance; decisions rate family + budget 402s; Ultrafast/Fast tier factors;
+audit/keys/teams list pagination (API done; UI follow-through is row 65).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Local-first Decisions API** — `/v1/decisions` facade (row 44) plus
-   input-only FinOps (row 52) and gateway model aliases (row 53) so OpenAI-
-   and Vercel-shaped clients bill correctly on-box.
-2. **MCP OAuth lifecycle** — scope enforcement + revocation (row 45) so the
-   on-box AS is credible against LiteLLM token-exchange and Kong Token Vault.
-3. **New-surface hardening parity** — spans/guardrails/retry on `/mcp/proxy`
-   and `/v1/systemone` (row 46), closing the gap to the OCR treatment.
-4. **Operator console + classifier visibility** — web-ui admin read plane
-   (row 47) and Grafana classifier panels (row 51); LiteLLM's admin UI +
-   decision metrics are sticky adoption levers.
-5. **Catalog / client honesty** — Anthropic `thinking.types.disabled` (row
-   49), multi-agent beta passthrough (row 48), then hot-reload (row 6) and
-   the parked Messages tool allowlist (row 7).
+1. **Catalog ACL honesty** — filter `/v1/models` by VK allowlist (row 69) so
+   clients never advertise models the key will 403.
+2. **Admin plane at fleet scale** — web-ui `has_more` + `report.users` (row 65)
+   and bounded report rollups (row 66); finish what keys/teams pagination started.
+3. **Credential + end-user lifecycle** — drain rows 60–62 (`last_used_at`,
+   expiry signals, end-user registry/block/cap) from the pm feeder.
+4. **Per-tenant policy + FinOps depth** — guardrail profiles (row 63),
+   cost-true multi_agent models (row 67), retired-block observability (row 64).
+5. **Operate without restart** — hermetic decisions tenancy proof (row 68),
+   then config hot-reload (row 6) and parked Messages tool allowlist (row 7)
+   when a long session is available.
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, Realtime/WS, FIPS
 builds, HIPAA BAA) stay deferred until buyer demand.
@@ -111,33 +124,31 @@ builds, HIPAA BAA) stay deferred until buyer demand.
 
 ## Changelog
 
-- **2026-10-07 evening (Decisions FinOps + catalog/ops depth)** — Outward:
-  Vercel AI Gateway `/v1/decisions` (7 Oct) with `openai/gpt-6-luna-decisions`;
-  OpenAI Decisions input-only pricing clarified; LiteLLM 1.106.0-dev.1
-  published (stable bar still 1.104 GA). Inward: filed rows 49–53 —
-  Anthropic `thinking.types.disabled`, age-encrypt backup test, Grafana
-  classifier panels, Decisions-path input-only pricing, Decisions model
-  aliases. Morning rows 44–48 remain the active Decisions/lifecycle stack.
+- **2026-10-10 eve (admin-plane honesty + FinOps + catalog ACL)** — Filed
+  rows 65–69: web-ui pagination/`users`, bounded report rollups, multi_agent
+  per-subagent model pricing, decisions L0 cache_scope hermetic test, filtered
+  `/v1/models` catalog. Outward: LiteLLM 1.105 still RC (Lens/agent traces —
+  watch for GA); OpenRouter filtered-catalog parity; gateways otherwise flat.
+  Compact/MCP grant pin rows 19–28 retained as Shipped; watch list drops the
+  four gaps now filed.
 
-- **2026-10-07 (decisions surface + lifecycle depth)** — Rows 37–43 all
-  Shipped within a day (plus grok-4.7 / claude-opus-5-5 pricing and MCP OAuth
-  mint audit). Outward: OpenAI Decisions API beta with gpt-6-luna (6 Oct);
-  Ollama 0.40.0 stable (MLX default); Anthropic `thinking.types.disabled`
-  Models field; LiteLLM bar unchanged at 1.104 GA. Inward: filed rows 44–48
-  — local-first `/v1/decisions`, MCP OAuth scope/revocation, new-surface
-  spans/guardrails/retry, web-ui admin read plane, Responses multi-agent
-  honesty.
+- **2026-10-10 pm (key + end-user lifecycle governance)** — Row 53 marked
+  Shipped (same-day drain). Filed rows 60–64 after a code audit of key/user
+  lifecycle: `last_used_at`, expiry signals, end-user registry, per-tenant
+  guardrail profiles, retired-block observability. Outward: OpenRouter Oct
+  6–9 admin-plane wave (end-user CRUD, guardrail→key assignment, key
+  `last_used_at`); gateways otherwise flat.
 
-- **2026-10-06 evening (catalog + classifier/watchdog ops)** — Filed rows
-  39–43 (sonnet-5-5 catalog, Anthropic `line`, classifier Prom series,
-  watchdog fatal-config backoff, multimodal compact estimates); rows 34–36
-  marked Shipped.
+- **2026-10-10 (Oct 7–10 drain: mark shipped, re-aim path)** — Rows 55–59
+  marked Shipped with PR links. Stand/path rewritten for current `main`:
+  ops-docs (53), hot-reload (6), Messages tool allowlist (7) are the open
+  feeder; watch rows drop decisions streaming/idempotency/audit-offset (all
+  shipped). Changelog keeps the file under ~300 lines.
 
-- **2026-10-06 (admin-plane + new-surface governance)** — Kong 2.2.0, Portkey
-  v2.27.0, Ollama 0.35.1, gpt-6.1-sol, Anthropic `line`. Filed rows 34–38;
-  three shipped same day.
+- **2026-10-09 (governance parity + billing truth on newest surfaces)** —
+  Rows 49–52 and 54 marked Shipped. Filed rows 55–59. Outward: OpenAI
+  Ultrafast; Anthropic haiku `budget_tokens` 400; Ollama 0.40.2.
 
-- **2026-10-05 → 08-28** — Condensed: operate-gates + FinOps surface;
-  LiteLLM 1.104 GA; OBO + refuse-weak-key + classifier; decision models +
-  MCP OAuth; structured outputs; client honesty; MCP ops; Apache 2.0; this
-  PRD's creation.
+- **2026-10-08 → 08-28** — Condensed: depth on Decisions/OAuth/admin/
+  multi-agent; governance parity; catalog + classifier; LiteLLM 1.104;
+  OBO/classifier; MCP OAuth; Apache 2.0; this PRD's creation.

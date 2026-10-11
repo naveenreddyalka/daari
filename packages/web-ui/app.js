@@ -33,8 +33,14 @@ const reportHitRateNode = document.getElementById("report-hit-rate");
 const reportLocalNode = document.getElementById("report-local");
 const reportSavingsNode = document.getElementById("report-savings");
 const reportTableNode = document.getElementById("report-table");
+const reportTeamsTableNode = document.getElementById("report-teams-table");
+const reportModelGroupSpendTableNode = document.getElementById("report-model-group-spend-table");
 const cacheTrustTableNode = document.getElementById("cache-trust-table");
 const reportStatusNode = document.getElementById("report-status");
+const adminKeysTableNode = document.getElementById("admin-keys-table");
+const adminKeysStatusNode = document.getElementById("admin-keys-status");
+const adminTeamsTableNode = document.getElementById("admin-teams-table");
+const adminTeamsStatusNode = document.getElementById("admin-teams-status");
 const tracesTableNode = document.getElementById("traces-table");
 const traceDetailNode = document.getElementById("trace-detail");
 const tracesStatusNode = document.getElementById("traces-status");
@@ -313,6 +319,119 @@ async function fetchJson(url, init = {}) {
   return response.json();
 }
 
+function formatSpendSummary(spend) {
+  if (!Array.isArray(spend) || spend.length === 0) {
+    return "-";
+  }
+  return spend
+    .map((entry) => {
+      const quota = entry.quota === "requests" ? "req" : "$";
+      if (quota === "req") {
+        return `${entry.spend}/${entry.limit} req (${entry.window})`;
+      }
+      const spendVal = typeof entry.spend === "number" ? entry.spend.toFixed(2) : entry.spend;
+      const limitVal = typeof entry.limit === "number" ? entry.limit.toFixed(2) : entry.limit;
+      return `$${spendVal}/$${limitVal} (${entry.window})`;
+    })
+    .join("; ");
+}
+
+function renderReportTeams(teams) {
+  if (!reportTeamsTableNode) {
+    return;
+  }
+  const rows = Array.isArray(teams) ? teams : [];
+  if (rows.length === 0) {
+    setEmptyRow(reportTeamsTableNode, 4, "No team spend in this window.");
+    return;
+  }
+  clearNode(reportTeamsTableNode);
+  for (const team of rows) {
+    const savings = team.estimated_saved_usd;
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      team.team || "-",
+      formatNumber(team.requests),
+      formatNumber(team.cache_hits),
+      typeof savings === "number" ? `$${savings.toFixed(4)}` : "-",
+    ]);
+    reportTeamsTableNode.appendChild(row);
+  }
+}
+
+function renderModelGroupSpend(rows) {
+  if (!reportModelGroupSpendTableNode) {
+    return;
+  }
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length === 0) {
+    setEmptyRow(reportModelGroupSpendTableNode, 4, "No model-group spend recorded.");
+    return;
+  }
+  clearNode(reportModelGroupSpendTableNode);
+  for (const entry of list) {
+    const spend = entry.spend_usd;
+    const budget = entry.budget_usd;
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      entry.model_group || "-",
+      entry.window || "-",
+      typeof spend === "number" ? `$${spend.toFixed(4)}` : "-",
+      typeof budget === "number" && budget > 0 ? `$${budget.toFixed(4)}` : "-",
+    ]);
+    reportModelGroupSpendTableNode.appendChild(row);
+  }
+}
+
+function renderAdminKeys(keys) {
+  if (!adminKeysTableNode) {
+    return;
+  }
+  const list = Array.isArray(keys) ? keys : [];
+  if (list.length === 0) {
+    setEmptyRow(adminKeysTableNode, 7, "No virtual keys.");
+    return;
+  }
+  clearNode(adminKeysTableNode);
+  for (const key of list) {
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      key.key_id || "-",
+      key.name || "-",
+      key.team || key.team_id || "-",
+      key.tier_cap || "-",
+      key.expires_at || "never",
+      key.status || "-",
+      formatSpendSummary(key.spend),
+    ]);
+    adminKeysTableNode.appendChild(row);
+  }
+}
+
+function renderAdminTeams(teams) {
+  if (!adminTeamsTableNode) {
+    return;
+  }
+  const list = Array.isArray(teams) ? teams : [];
+  if (list.length === 0) {
+    setEmptyRow(adminTeamsTableNode, 6, "No teams.");
+    return;
+  }
+  clearNode(adminTeamsTableNode);
+  for (const team of list) {
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      team.team_id || "-",
+      team.name || "-",
+      formatNumber(team.key_count),
+      formatNumber(team.rpm),
+      formatNumber(team.rpd),
+      formatSpendSummary(team.spend),
+    ]);
+    adminTeamsTableNode.appendChild(row);
+  }
+}
+
 function renderReport(report) {
   const totals = report.totals || {};
   const requests = totals.requests || 0;
@@ -323,6 +442,9 @@ function renderReport(report) {
     requests > 0 ? `${(((totals.local_requests || 0) / requests) * 100).toFixed(1)}%` : "-";
   const savings = totals.estimated_saved_usd;
   reportSavingsNode.textContent = typeof savings === "number" ? `$${savings.toFixed(4)}` : "-";
+
+  renderReportTeams(report.teams);
+  renderModelGroupSpend(report.model_group_spend);
 
   const days = Array.isArray(report.days) ? [...report.days].reverse() : [];
   if (days.length === 0) {
@@ -381,7 +503,7 @@ async function loadReport() {
     const report = await fetchJson(`${apiBaseUrl}/v1/daari/report?days=${days}`);
     if (report.enabled === false) {
       reportStatusNode.textContent = "Usage ledger is disabled on the daemon.";
-      renderReport({ totals: {}, days: [] });
+      renderReport({ totals: {}, days: [], teams: [], model_group_spend: [] });
       renderCacheTrust(report.cache_trust || null);
       return;
     }
@@ -389,9 +511,37 @@ async function loadReport() {
     renderCacheTrust(report.cache_trust || null);
     reportStatusNode.textContent = `Window: last ${days} days.`;
   } catch (error) {
-    renderReport({ totals: {}, days: [] });
+    renderReport({ totals: {}, days: [], teams: [], model_group_spend: [] });
     renderCacheTrust(null);
     reportStatusNode.textContent = `Report unavailable (${error.message}).`;
+  }
+}
+
+async function loadAdminKeys() {
+  if (!adminKeysTableNode || !adminKeysStatusNode) {
+    return;
+  }
+  try {
+    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/keys`);
+    renderAdminKeys(payload.keys);
+    adminKeysStatusNode.textContent = `${Array.isArray(payload.keys) ? payload.keys.length : 0} key(s).`;
+  } catch (error) {
+    renderAdminKeys([]);
+    adminKeysStatusNode.textContent = `Keys unavailable (${error.message}).`;
+  }
+}
+
+async function loadAdminTeams() {
+  if (!adminTeamsTableNode || !adminTeamsStatusNode) {
+    return;
+  }
+  try {
+    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/teams`);
+    renderAdminTeams(payload.teams);
+    adminTeamsStatusNode.textContent = `${Array.isArray(payload.teams) ? payload.teams.length : 0} team(s).`;
+  } catch (error) {
+    renderAdminTeams([]);
+    adminTeamsStatusNode.textContent = `Teams unavailable (${error.message}).`;
   }
 }
 
@@ -511,6 +661,8 @@ async function loadStats() {
 
     statusNode.textContent = `Last refreshed: ${new Date().toLocaleTimeString()}`;
     void loadReport();
+    void loadAdminKeys();
+    void loadAdminTeams();
     void loadTraces();
   } catch (error) {
     latestStats = null;

@@ -30,6 +30,10 @@ models:
 ollama:
   base_url: http://127.0.0.1:11434
 
+# POST /v1/decisions L0 exact cache (default on; X-Daari-No-Cache bypasses).
+decisions:
+  cache_enabled: true
+
 # Local speech-to-text. Empty base_url + frontier_fallback false → 501.
 # Audio is never sent to a cloud endpoint unless frontier_fallback is true.
 asr:

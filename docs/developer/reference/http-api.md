@@ -34,6 +34,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/config` | Daari Config Get |
 | `PATCH` | `/v1/daari/config` | Daari Config Patch |
 | `POST` | `/v1/daari/feedback` | Daari Feedback |
+| `GET` | `/v1/daari/keys` | Daari Keys List |
 | `GET` | `/v1/daari/learn/stats` | Daari Learn Stats |
 | `GET` | `/v1/daari/mcp/activity` | Daari Mcp Activity List |
 | `POST` | `/v1/daari/mcp/activity/{request_id}/abort` | Daari Mcp Activity Abort |
@@ -43,6 +44,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/daari/route/preview` | Daari Route Preview Post |
 | `POST` | `/v1/daari/sso/session` | Daari Sso Session |
 | `GET` | `/v1/daari/stats` | Daari Stats |
+| `GET` | `/v1/daari/teams` | Daari Teams List |
 | `GET` | `/v1/daari/traces` | Daari Traces |
 | `GET` | `/v1/daari/traces/{trace_id}` | Daari Trace Detail |
 | `POST` | `/v1/decisions` | Decisions |
@@ -74,6 +76,10 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/responses/{response_id}` | Get Response |
 | `POST` | `/v1/responses/{response_id}/cancel` | Cancel Response |
 | `POST` | `/v1/systemone` | Systemone |
+
+## Admin keys / teams inventory
+
+`GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return redacted rows plus pagination metadata: query `limit` (default **100**, max **500**) and `offset` (default **0**); response includes `total`, `has_more`, `limit`, and `offset`. Successful reads emit `admin.keys.list` / `admin.teams.list` audit events (`limit` / `offset` / `total` / `returned` — never secrets).
 
 ## Config editor ownership
 

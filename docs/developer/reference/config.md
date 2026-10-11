@@ -46,9 +46,12 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `models.l5` | str | `'llama3.1:70b'` |  |
 | `models.weights` | dict | `{}` |  |
 | `models.capabilities` | dict | `{}` |  |
+| `models.lifecycle` | dict | `{}` |  |
+| `models.reject_retired` | bool | `True` | When true (default), chat/messages/responses to a model whose catalog lifecycle is retired return HTTP 410 instead of routing (fail-closed). |
 | `models.timeout_s` | dict | `{}` | Optional per-tier request timeout in seconds (keys L3/L4/L5). Unset tiers use `upstream.local_timeout_seconds`. |
 | `ollama.base_url` | str | `'http://127.0.0.1:11434'` |  |
 | `systemone.enabled` | bool | `True` | When true, POST /v1/systemone proxies to ollama.base_url. When false, the route returns 501 not_implemented. |
+| `decisions.cache_enabled` | bool | `True` | When true (default), identical typed decision requests are served from the L0 exact cache. Requires cache.l0.enabled. Clients can bypass with X-Daari-No-Cache: true. |
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
 | `mlx.models` | dict | `{}` |  |
@@ -167,11 +170,11 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `batches.idle_poll_seconds` | float | `0.25` | How often to re-check interactive load while yielding. |
 | `responses.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) so store:true / previous_response_id / background polling work across replicas (#481). |
 | `responses.retention_days` | int | `0` | Delete stored responses older than this many days (#497). 0 keeps them forever. |
-| `idempotency.enabled` | bool | `True` | When true, honor Idempotency-Key on chat completions and Responses. A missing header is always a no-op. |
+| `idempotency.enabled` | bool | `True` | When true, honor Idempotency-Key on chat completions, Responses, modality routes, and decisions. A missing header is always a no-op. |
 | `idempotency.backend` | Literal | `'sqlite'` | sqlite (default, path next to traces) or postgres (observability.postgres_url) for multi-replica fleets. |
 | `idempotency.ttl_seconds` | int | `86400` | How long completed idempotency records are kept (default 24h). |
 | `idempotency.wait_seconds` | float | `60.0` | How long an in-flight duplicate waits for the first request. |
-| `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'input_threshold_tokens'…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
+| `pricing.models` | dict | `{'gpt-4o': {'input_per_1m': 2.5, 'output_per_1m': 10.0, 'cached_input_per_1m': 1.25, 'cache_write_1h_per_1m': None, 'cache_write_per_1m': No…` | Per-model, per-direction USD rates per 1M tokens. Keys match on longest prefix, so `gpt-4o` also prices `gpt-4o-2024-08-06` and a vendor prefix (`anthropic.claude-fable-5-1`) resolves the same way. Models absent here fall back to `usage.frontier_price_per_1k_tokens`; run `daari doctor` to list models being billed at the fallback rate. |
 | `upstream.local_timeout_seconds` | float | `120.0` | Request timeout for local backends (Ollama, MLX). Generous because a large local model on a cold start can be genuinely slow. |
 | `upstream.frontier_timeout_seconds` | float | `90.0` | Request timeout for frontier (L6) providers. Lower than local, since a hosted API that has not answered in 90s is usually not going to. |
 | `upstream.request_deadline_seconds` | float | None | `None` | Optional wall-clock budget for one request across cache, local, and frontier hops. Each upstream call uses min(tier timeout, remaining). Unset or 0 keeps per-tier timeouts only. The X-Daari-Deadline-Ms header overrides this. |
@@ -350,6 +353,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `alerts.budget_webhook_url` | str | `''` |  |
 | `alerts.budget_webhook_secret` | str | `''` |  |
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
+| `alerts.key_expiry_webhook_url` | str | `''` | Opt-in webhook for virtual keys entering the expiring-soon window (#1546). Empty disables. |
+| `alerts.key_expiry_webhook_secret` | str | `''` | HMAC secret for key_expiry webhooks (X-Daari-Signature). Supports secret:// refs (#1546). |
+| `alerts.key_expiry_warn_days` | int | `14` | Days before expires_at for doctor warnings, Prometheus expiring_soon gauge, and key_expiry webhooks (#1546). Env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS. |
 | `skills_system_prefix` | str | `''` |  |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |
 

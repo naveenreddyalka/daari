@@ -126,18 +126,40 @@ def usage_cost_and_cache(
 
     OpenAI/OpenRouter: ``prompt_tokens_details.cached_tokens`` is cache read.
     Anthropic: ``cache_read_input_tokens`` / ``cache_creation_input_tokens``.
+    Multi-agent (#1500): when nested agent costs exist and top-level ``usage.cost``
+    already covers them, keep the aggregated cost; otherwise sum parent + nested.
     """
     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
     cost_raw = usage.get("cost")
     cost = float(cost_raw) if isinstance(cost_raw, (int, float)) else None
+    try:
+        from daari.observability.tokens import nested_agent_usages
+
+        agents = nested_agent_usages(data)
+    except Exception:
+        agents = []
+    nested_costs = [float(a["cost"]) for a in agents if isinstance(a.get("cost"), (int, float))]
+    if nested_costs:
+        nested_sum = sum(nested_costs)
+        if cost is not None and cost + 1e-12 >= nested_sum:
+            pass  # aggregated top-level already includes subagents
+        else:
+            cost = (cost or 0.0) + nested_sum
     details = usage.get("prompt_tokens_details")
     details = details if isinstance(details, dict) else {}
+    input_details = usage.get("input_tokens_details")
+    input_details = input_details if isinstance(input_details, dict) else {}
     cached_raw = (
         details.get("cached_tokens")
+        or input_details.get("cached_tokens")
         or usage.get("cached_tokens")
         or usage.get("cache_read_input_tokens")
     )
     cached = int(cached_raw) if isinstance(cached_raw, (int, float)) and cached_raw >= 0 else None
-    write_raw = usage.get("cache_creation_input_tokens") or usage.get("cache_write_tokens")
+    write_raw = (
+        usage.get("cache_creation_input_tokens")
+        or usage.get("cache_write_tokens")
+        or input_details.get("cache_write_tokens")
+    )
     write = int(write_raw) if isinstance(write_raw, (int, float)) and write_raw >= 0 else 0
     return cost, cached, write

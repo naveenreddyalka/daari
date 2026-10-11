@@ -239,6 +239,16 @@ class ModelsSettings(BaseModel):
     # Per-model capability tags (tools/json/vision/long_context). Empty →
     # stock defaults in CapabilityCatalog (issue #113).
     capabilities: dict[str, list[str]] = Field(default_factory=dict)
+    # Per-model lifecycle overrides for /v1/models + retired routing (#1507 / #1521).
+    # Shape: {model_id: {lifecycle: active|deprecated|retired, deprecated_at?, retires_at?}}.
+    lifecycle: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    reject_retired: bool = Field(
+        default=True,
+        description=(
+            "When true (default), chat/messages/responses to a model whose catalog "
+            "lifecycle is retired return HTTP 410 instead of routing (fail-closed)."
+        ),
+    )
     timeout_s: dict[str, float] = Field(
         default_factory=dict,
         description=(
@@ -271,6 +281,19 @@ class SystemOneSettings(BaseModel):
         description=(
             "When true, POST /v1/systemone proxies to ollama.base_url. "
             "When false, the route returns 501 not_implemented."
+        ),
+    )
+
+
+class DecisionsSettings(BaseModel):
+    """POST /v1/decisions behavior (#1508)."""
+
+    cache_enabled: bool = Field(
+        default=True,
+        description=(
+            "When true (default), identical typed decision requests are served "
+            "from the L0 exact cache. Requires cache.l0.enabled. Clients can "
+            "bypass with X-Daari-No-Cache: true."
         ),
     )
 
@@ -989,8 +1012,11 @@ class ModelPrice(BaseModel):
     # Providers discount cached prompt prefixes; None means bill at input rate.
     cached_input_per_1m: float | None = None
     # Anthropic prompt-cache write at 1h TTL (2× base input). Missing TTL / 5m
-    # keeps today's rate (input_per_1m for write tokens) (#434).
+    # keeps today's rate (input_per_1m for write tokens) unless
+    # cache_write_per_1m is set (#434 / #1520).
     cache_write_1h_per_1m: float | None = None
+    # Explicit 5m / default cache-write rate (e.g. Haiku 5.5 $0.125 = 1.25×).
+    cache_write_per_1m: float | None = None
     # Long-context tier: once prompt tokens reach the threshold, the whole
     # request is billed at the above-* rates (#411 / gpt-6-astra >272K).
     input_threshold_tokens: int | None = None
@@ -1023,13 +1049,14 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cache_write_1h_per_1m": 10.00,
     },
     # Anthropic Claude Opus 5.5 (LiteLLM 1.104, 2026-10-03): $4/$20;
-    # cache read 0.1× ($0.40), 1h cache write 2× ($8.00).
+    # cache read halved 2026-10-07 ($0.20), 1h cache write 2× ($8.00).
     # Longer key must win over claude-opus-5 for dated/vendor ids.
     # https://docs.litellm.ai/release_notes/v1.104.0/v1-104-0
+    # https://platform.claude.com/docs/en/about-claude/pricing
     "claude-opus-5-5": {
         "input_per_1m": 4.00,
         "output_per_1m": 20.00,
-        "cached_input_per_1m": 0.40,
+        "cached_input_per_1m": 0.20,
         "cache_write_1h_per_1m": 8.00,
     },
     "claude-sonnet-5": {
@@ -1039,14 +1066,14 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cache_write_1h_per_1m": 4.00,
     },
     # Anthropic Claude Sonnet 5.5 (2026-09-28): same $2/$10 as Sonnet 5;
-    # cache read 0.1× ($0.20), 1h cache write 2× ($4.00).
+    # cache read halved 2026-10-07 ($0.10), 1h cache write 2× ($4.00).
     # https://www.anthropic.com/claude-sonnet-5-5
     # https://platform.claude.com/docs/en/about-claude/pricing
     # Longer key must win over claude-sonnet-5 for dated/vendor ids.
     "claude-sonnet-5-5": {
         "input_per_1m": 2.00,
         "output_per_1m": 10.00,
-        "cached_input_per_1m": 0.20,
+        "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 4.00,
     },
     "claude-haiku-4-5": {
@@ -1054,6 +1081,21 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "output_per_1m": 5.00,
         "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 2.00,
+    },
+    # Anthropic Claude Haiku 5.5 (2026-10-07): ≤100K $0.10/$0.50;
+    # cache read $0.01, 5m write $0.125 (1.25×), 1h write $0.20. Above 100K
+    # → 5× via threshold ratio: cache $0.05 / 5m write $0.625 / 1h write $1.00.
+    # https://www.anthropic.com/claude-haiku-5-5
+    # https://platform.claude.com/docs/en/about-claude/pricing
+    "claude-haiku-5-5": {
+        "input_per_1m": 0.10,
+        "output_per_1m": 0.50,
+        "cached_input_per_1m": 0.01,
+        "cache_write_per_1m": 0.125,
+        "cache_write_1h_per_1m": 0.20,
+        "input_threshold_tokens": 100_000,
+        "above_input_per_1m": 0.50,
+        "above_output_per_1m": 2.50,
     },
     # OpenAI standard short-context tier. gpt-5.6 is the Sol alias.
     # Sol is the promotional rate published through 2026-11-21 ($4/$20).
@@ -1075,12 +1117,25 @@ _DEFAULT_MODEL_PRICES: dict[str, dict[str, float | int]] = {
         "cached_input_per_1m": 0.10,
         "cache_write_1h_per_1m": 2.50,
     },
-    # OpenAI Decisions API gpt-6-luna (2026-10-06 public beta): $0.10 / 1M input;
-    # no cache-read, cache-write, or output-token charges.
+    # OpenAI chat-latest — rolling alias for ChatGPT Instant (updated 2026-10-07).
+    # Published rates $5 / $0.50 cached / $30; underlying snapshot moves — do not
+    # treat as a production pin (prefer gpt-6-astra). See OpenAI model page.
+    # https://developers.openai.com/api/docs/models/chat-latest
+    "chat-latest": {
+        "input_per_1m": 5.00,
+        "output_per_1m": 30.00,
+        "cached_input_per_1m": 0.50,
+    },
+    # OpenAI gpt-6-luna chat/responses: $0.10 / 1M input, $0.01 cached,
+    # $0.50 / 1M output. POST /v1/decisions bills the same id input-only
+    # ($0.10, $0 out, $0 cache) via daari.pricing billing_path="decisions" —
+    # do not put those zeros here.
     # https://developers.openai.com/api/docs/guides/decisions
+    # https://developers.openai.com/api/docs/changelog
     "gpt-6-luna": {
         "input_per_1m": 0.10,
-        "output_per_1m": 0.0,
+        "output_per_1m": 0.50,
+        "cached_input_per_1m": 0.01,
     },
     "gpt-5.6": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
     "gpt-5.6-sol": {"input_per_1m": 4.00, "output_per_1m": 20.00, "cached_input_per_1m": 0.40},
@@ -1248,8 +1303,8 @@ class IdempotencySettings(BaseModel):
     enabled: bool = Field(
         default=True,
         description=(
-            "When true, honor Idempotency-Key on chat completions and Responses. "
-            "A missing header is always a no-op."
+            "When true, honor Idempotency-Key on chat completions, Responses, "
+            "modality routes, and decisions. A missing header is always a no-op."
         ),
     )
     backend: Literal["sqlite", "postgres"] = Field(
@@ -1944,6 +1999,29 @@ class AlertSettings(BaseModel):
     budget_webhook_url: str = ""
     budget_webhook_secret: str = ""
     budget_thresholds: list[float] = Field(default_factory=lambda: [0.8, 1.0])
+    key_expiry_webhook_url: str = Field(
+        default="",
+        description=(
+            "Opt-in webhook for virtual keys entering the expiring-soon window "
+            "(#1546). Empty disables."
+        ),
+    )
+    key_expiry_webhook_secret: str = Field(
+        default="",
+        description=(
+            "HMAC secret for key_expiry webhooks (X-Daari-Signature). "
+            "Supports secret:// refs (#1546)."
+        ),
+    )
+    key_expiry_warn_days: int = Field(
+        default=14,
+        ge=0,
+        description=(
+            "Days before expires_at for doctor warnings, Prometheus "
+            "expiring_soon gauge, and key_expiry webhooks (#1546). "
+            "Env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS."
+        ),
+    )
 
     @field_validator("budget_thresholds")
     @classmethod
@@ -2003,6 +2081,7 @@ class Settings(BaseSettings):
     models: ModelsSettings = Field(default_factory=ModelsSettings)
     ollama: OllamaSettings = Field(default_factory=OllamaSettings)
     systemone: SystemOneSettings = Field(default_factory=SystemOneSettings)
+    decisions: DecisionsSettings = Field(default_factory=DecisionsSettings)
     mlx: MLXSettings = Field(default_factory=MLXSettings)
     asr: AsrSettings = Field(default_factory=AsrSettings)
     ocr: OcrSettings = Field(default_factory=OcrSettings)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -258,6 +259,113 @@ def test_encrypted_restore_refuses_without_passphrase(tmp_path, monkeypatch):
     dst.mkdir()
     with pytest.raises(BackupError, match="passphrase"):
         restore_backup(_settings(dst), enc, allow_running_server=True)
+
+
+def _age_identity(tmp_path: Path) -> tuple[Path, str]:
+    identity = tmp_path / "age-identity.txt"
+    proc = subprocess.run(
+        ["age-keygen", "-o", str(identity)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        pytest.fail(f"age-keygen failed: {(proc.stderr or proc.stdout).strip()}")
+    recipient = ""
+    for line in identity.read_text(encoding="utf-8").splitlines():
+        if "public key:" in line:
+            recipient = line.split("public key:", 1)[1].strip()
+            break
+    if not recipient:
+        pytest.fail("age-keygen did not write a public key")
+    return identity, recipient
+
+
+@pytest.mark.skipif(
+    shutil.which("age") is None or shutil.which("age-keygen") is None,
+    reason="age not on PATH",
+)
+def test_age_encrypt_restore_round_trip(tmp_path, monkeypatch):
+    from daari.ops.backup import encrypt_backup_archive
+
+    identity, recipient = _age_identity(tmp_path)
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _settings(src)
+    _seed(settings)
+    archive = tmp_path / "secret.tar.gz"
+    create_backup(settings, archive)
+    monkeypatch.delenv("DAARI_BACKUP_AGE_RECIPIENT", raising=False)
+    enc = encrypt_backup_archive(archive, "age", age_recipient=recipient)
+    assert enc.name.endswith(".tar.gz.age")
+    assert enc.is_file()
+    assert not archive.exists()
+
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", dst / "requests.log")
+    monkeypatch.delenv("DAARI_BACKUP_AGE_IDENTITY", raising=False)
+    restored = _settings(dst)
+    restore_backup(
+        restored,
+        enc,
+        age_identity=str(identity),
+        allow_running_server=True,
+    )
+    keys = VirtualKeyStore(restored.server.virtual_keys.path, enabled=True)
+    assert any(k.name == "alpha" for k in keys.list())
+    audit = AuditLog(restored.enterprise.audit_path)
+    assert any(r["action"] == "test.seed" for r in audit.list())
+    spend = SpendLedger(restored.usage.spend.path, enabled=True)
+    rows = list(spend.iter_rows(since="1970-01-01"))
+    assert len(rows) == 1
+    assert rows[0]["cost_usd"] == pytest.approx(0.42)
+
+
+@pytest.mark.skipif(shutil.which("age") is None, reason="age not on PATH")
+def test_age_encrypt_requires_recipient(tmp_path, monkeypatch):
+    from daari.ops.backup import encrypt_backup_archive
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    archive = tmp_path / "plain.tar.gz"
+    create_backup(_settings(src), archive)
+    monkeypatch.delenv("DAARI_BACKUP_AGE_RECIPIENT", raising=False)
+    with pytest.raises(BackupError, match="age-recipient"):
+        encrypt_backup_archive(archive, "age")
+
+
+@pytest.mark.skipif(
+    shutil.which("age") is None or shutil.which("age-keygen") is None,
+    reason="age not on PATH",
+)
+def test_age_restore_requires_identity(tmp_path, monkeypatch):
+    from daari.ops.backup import encrypt_backup_archive
+
+    _identity, recipient = _age_identity(tmp_path)
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    archive = tmp_path / "locked.tar.gz"
+    create_backup(_settings(src), archive)
+    enc = encrypt_backup_archive(archive, "age", age_recipient=recipient)
+    monkeypatch.delenv("DAARI_BACKUP_AGE_IDENTITY", raising=False)
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    with pytest.raises(BackupError, match="age-identity"):
+        restore_backup(_settings(dst), enc, allow_running_server=True)
+    with pytest.raises(BackupError, match="identity file not found"):
+        restore_backup(
+            _settings(dst),
+            enc,
+            age_identity=str(tmp_path / "missing-identity.txt"),
+            allow_running_server=True,
+        )
 
 
 def test_doctor_hints_plaintext_when_encrypt_available(tmp_path, monkeypatch):

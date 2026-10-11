@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,7 @@ def run_doctor(
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_images_generations(cfg))
     results.append(_check_ocr(cfg))
+    results.append(_check_decisions(cfg))
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -101,15 +103,18 @@ def run_doctor(
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
+    results.append(_check_model_lifecycle(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
     results.append(_check_policy_status(cfg))
     results.append(_check_fleet_artifacts(cfg))
     results.append(_check_fleet_cache(cfg))
+    results.append(_check_mcp_oauth_revoke_fleet(cfg))
     results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
+    results.append(_check_key_expiry(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
@@ -199,9 +204,7 @@ def _check_weak_or_unset_master_key(settings: Settings) -> CheckResult | None:
     server = settings.server
     hatch = bool(getattr(server, "dangerously_permit_weak_or_unset_api_key", False))
     keys = server.master_keys()
-    local_as = bool(
-        getattr(getattr(settings.integrations, "mcp_oauth", None), "local_as", False)
-    )
+    local_as = bool(getattr(getattr(settings.integrations, "mcp_oauth", None), "local_as", False))
     vk_path = str(getattr(getattr(server, "virtual_keys", None), "path", "") or "")
     # Virtual-key store exists on disk when operators have minted keys.
     vk_implied = False
@@ -592,10 +595,7 @@ def _check_responses_stream_resume(
     return CheckResult(
         name="responses_stream_resume",
         ok=False,
-        detail=(
-            f"OpenAPI GET {path} incomplete stream resume docs "
-            f"(missing {', '.join(missing)})"
-        ),
+        detail=(f"OpenAPI GET {path} incomplete stream resume docs (missing {', '.join(missing)})"),
         optional=True,
     )
 
@@ -626,6 +626,50 @@ def _check_ocr(settings: Settings) -> CheckResult:
             "ocr.base_url and ocr.vision_model unset — POST /v1/ocr falls through "
             "to frontier L6; set a local OCR root or multimodal vision model "
             "(see clients-and-gateways.md / config.md)"
+        ),
+        optional=True,
+    )
+
+
+def _check_decisions(settings: Settings) -> CheckResult:
+    """Tip when POST /v1/decisions lacks a local or gpt-6-luna path (#1501)."""
+    systemone_on = bool(getattr(getattr(settings, "systemone", None), "enabled", True))
+    frontier = getattr(settings, "frontier", None)
+    frontier_on = bool(getattr(frontier, "enabled", False))
+    frontier_key = bool(settings.resolve_frontier_api_key()) if frontier_on else False
+    local_ok = systemone_on
+    frontier_ok = frontier_on and frontier_key
+    # Misconfigured frontier key is always actionable even when local works.
+    if frontier_on and not frontier_key:
+        return CheckResult(
+            name="decisions",
+            ok=False,
+            detail=(
+                "POST /v1/decisions: frontier enabled but no API key "
+                "(gpt-6-luna L6 blocked) — set DAARI_FRONTIER_API_KEY or "
+                "OPENAI_API_KEY (see clients-and-gateways.md / http-api)"
+            ),
+            optional=True,
+        )
+    if local_ok or frontier_ok:
+        parts: list[str] = []
+        if local_ok:
+            parts.append("local models via systemone (clef/nimble/tev1)")
+        if frontier_ok:
+            parts.append("gpt-6-luna via frontier L6")
+        return CheckResult(
+            name="decisions",
+            ok=True,
+            detail=f"POST /v1/decisions available ({'; '.join(parts)})",
+            optional=True,
+        )
+    return CheckResult(
+        name="decisions",
+        ok=False,
+        detail=(
+            "POST /v1/decisions: systemone.enabled=false and frontier.enabled=false "
+            "(no local clef/nimble/tev1 or gpt-6-luna path) — enable systemone "
+            "and/or frontier + API key (see clients-and-gateways.md / http-api)"
         ),
         optional=True,
     )
@@ -896,10 +940,7 @@ def _check_warm_models(
         return CheckResult(
             name="warm_models",
             ok=False,
-            detail=(
-                "daemon up but no configured models in /api/ps — "
-                "run: daari models warm"
-            ),
+            detail=("daemon up but no configured models in /api/ps — run: daari models warm"),
             optional=True,
         )
     except Exception as exc:
@@ -1212,6 +1253,63 @@ def _check_fleet_cache(settings: Settings) -> CheckResult:
     )
 
 
+def _check_mcp_oauth_revoke_fleet(settings: Settings) -> CheckResult:
+    """Warn when local AS revoke denylist is process-local on a multi-replica fleet (#1498)."""
+    oauth = getattr(getattr(settings, "integrations", None), "mcp_oauth", None)
+    if not bool(getattr(oauth, "local_as", False)):
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=True,
+            detail="mcp_oauth.local_as off (revoke denylist unused)",
+            optional=True,
+        )
+    raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
+    try:
+        replicas = int(raw)
+    except ValueError:
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=False,
+            detail=f"DAARI_FLEET_REPLICAS={raw!r} is not an integer",
+            optional=True,
+        )
+    cache_backend = str(getattr(settings.cache, "backend", "disk") or "disk").strip().lower()
+    redis_url = str(getattr(settings.cache, "redis_url", "") or "").strip()
+    pg_url = str(getattr(settings.observability, "postgres_url", "") or "").strip()
+    shared = (cache_backend == "redis" and bool(redis_url)) or bool(pg_url)
+    if replicas <= 1:
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=True,
+            detail=(
+                "single replica: in-process revoked-jti denylist is fine "
+                "(not backup-critical; TTL = token exp)"
+                if not shared
+                else "single replica with shared Redis/Postgres revoke store"
+            ),
+            optional=True,
+        )
+    if shared:
+        backend = "redis" if cache_backend == "redis" and redis_url else "postgres"
+        return CheckResult(
+            name="mcp_oauth_revoke_fleet",
+            ok=True,
+            detail=f"fleet_replicas={replicas}; revoked jtis via {backend}",
+            optional=True,
+        )
+    return CheckResult(
+        name="mcp_oauth_revoke_fleet",
+        ok=False,
+        detail=(
+            f"DAARI_FLEET_REPLICAS={replicas} with mcp_oauth.local_as but no shared "
+            "store — POST /oauth/revoke only sticks on one pod; set "
+            "cache.backend=redis or observability.postgres_url so revoked jtis "
+            "are readable from every replica (denylist is TTL-bound, not backed up)"
+        ),
+        optional=True,
+    )
+
+
 def _check_scoped_cache_fleet(settings: Settings) -> CheckResult:
     """Warn when tenant cache_scope meets disk cache on a multi-replica fleet (#891)."""
     raw = os.environ.get("DAARI_FLEET_REPLICAS", "1").strip() or "1"
@@ -1440,6 +1538,141 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
     )
 
 
+def _check_model_lifecycle(settings: Settings) -> CheckResult:
+    """Error on configured retired models; tip on deprecated (#1549)."""
+    from daari.router.capabilities import anthropic_lifecycle_fields
+
+    configured: list[tuple[str, str]] = []
+    models = settings.models
+    for label, name in (
+        ("models.l3", models.l3),
+        ("models.l4", models.l4),
+        ("models.l5", models.l5),
+    ):
+        text = (name or "").strip()
+        if text:
+            configured.append((label, text))
+    frontier = settings.frontier
+    if getattr(frontier, "enabled", False):
+        text = (getattr(frontier, "model", "") or "").strip()
+        if text:
+            configured.append(("frontier.model", text))
+    pool = getattr(settings.routing, "local_pool", None)
+    backends = list(getattr(pool, "backends", None) or []) if pool is not None else []
+    for index, backend in enumerate(backends):
+        text = (getattr(backend, "model", "") or "").strip()
+        if text:
+            bid = (getattr(backend, "id", "") or "").strip() or str(index)
+            configured.append((f"routing.local_pool.backends[{bid}].model", text))
+
+    retired: list[str] = []
+    deprecated: list[str] = []
+    seen: set[str] = set()
+    for label, name in configured:
+        key = f"{label}:{name}"
+        if key in seen:
+            continue
+        seen.add(key)
+        stage = str(
+            anthropic_lifecycle_fields(name, settings).get("lifecycle") or "active"
+        ).lower()
+        if stage == "retired":
+            retired.append(f"{label}={name}")
+        elif stage == "deprecated":
+            deprecated.append(f"{label}={name}")
+
+    if retired:
+        return CheckResult(
+            name="model_lifecycle",
+            ok=False,
+            detail=(
+                "configured models marked lifecycle=retired: "
+                + ", ".join(retired[:8])
+                + (f" (+{len(retired) - 8} more)" if len(retired) > 8 else "")
+                + " — rotate tier/frontier/pool models or clear models.lifecycle"
+            ),
+            optional=False,
+        )
+    if deprecated:
+        return CheckResult(
+            name="model_lifecycle",
+            ok=False,
+            detail=(
+                "configured models marked lifecycle=deprecated: "
+                + ", ".join(deprecated[:8])
+                + (f" (+{len(deprecated) - 8} more)" if len(deprecated) > 8 else "")
+                + " — plan a cutover before retires_at"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="model_lifecycle",
+        ok=True,
+        detail="configured tier/frontier/pool models are active",
+        optional=True,
+    )
+
+
+def _check_key_expiry(
+    settings: Settings, *, now: datetime | None = None
+) -> CheckResult:
+    """Warn on keys expiring soon; count expired-but-not-revoked (#1546)."""
+    from daari.auth.virtual_keys import key_expiry_bucket
+
+    warn_days = int(getattr(settings.alerts, "key_expiry_warn_days", 14) or 0)
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail="virtual keys disabled",
+            optional=True,
+        )
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    expiring: list[str] = []
+    expired = 0
+    for key in store.list():
+        bucket = key_expiry_bucket(key, now=moment, warn_days=warn_days)
+        if bucket == "expired":
+            expired += 1
+        elif bucket == "expiring_soon":
+            expiring.append(key.name)
+    if not expiring and expired == 0:
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail=(
+                f"no keys expiring within {warn_days}d; expired=0 "
+                f"(alerts.key_expiry_warn_days={warn_days})"
+            ),
+            optional=True,
+        )
+    shown = ", ".join(expiring[:8])
+    extra = f" (+{len(expiring) - 8} more)" if len(expiring) > 8 else ""
+    parts: list[str] = []
+    if expiring:
+        parts.append(f"expiring within {warn_days}d: {shown}{extra}")
+    parts.append(f"expired={expired}")
+    return CheckResult(
+        name="key_expiry",
+        ok=False,
+        detail="; ".join(parts),
+        optional=True,
+    )
+
+
 def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
     """Warn when a budget webhook URL is set without a signing secret (#496)."""
     url = (settings.alerts.budget_webhook_url or "").strip()
@@ -1502,9 +1735,7 @@ def _check_recent_backup(settings: Settings) -> CheckResult:
     if found:
         detail = f"recent backup: {found[-1].name}"
         if recent_backups_all_plaintext(found):
-            detail += (
-                " (all plaintext — consider: daari backup create … --encrypt openssl)"
-            )
+            detail += " (all plaintext — consider: daari backup create … --encrypt openssl)"
         return CheckResult(
             name="backup",
             ok=True,
@@ -1891,7 +2122,9 @@ def _check_header_policy(settings: Settings) -> CheckResult:
             detail="server.header_policy disabled (default)",
             optional=True,
         )
-    required = [str(name).strip() for name in (getattr(policy, "required", None) or []) if str(name).strip()]
+    required = [
+        str(name).strip() for name in (getattr(policy, "required", None) or []) if str(name).strip()
+    ]
     deny = list(getattr(policy, "deny", None) or [])
     allow = getattr(policy, "allow", None) or {}
     allow_keys = [str(name).strip() for name in allow if str(name).strip()]
@@ -2128,7 +2361,9 @@ def _check_mcp_server_policy(settings: Settings) -> CheckResult:
     team_policies = getattr(settings.integrations, "mcp_team_policies", None) or {}
     team_bits: list[str] = []
     for name, block in team_policies.items():
-        t_servers = getattr(block, "servers", None) if not isinstance(block, dict) else block.get("servers")
+        t_servers = (
+            getattr(block, "servers", None) if not isinstance(block, dict) else block.get("servers")
+        )
         if isinstance(t_servers, dict):
             t_allow, t_deny = t_servers.get("allow") or [], t_servers.get("deny") or []
         else:
@@ -2278,8 +2513,7 @@ def _check_mcp_token_exchange(settings: Settings) -> CheckResult | None:
     obo = [
         s
         for s in servers
-        if str(getattr(s, "auth_type", "") or "").strip().lower()
-        == "oauth2_token_exchange"
+        if str(getattr(s, "auth_type", "") or "").strip().lower() == "oauth2_token_exchange"
     ]
     if not obo:
         return None
@@ -2392,13 +2626,9 @@ def _check_decision_classifier_model(
         except ValueError:
             return None
         names = [
-            str(m.get("name") or "")
-            for m in (data.get("models") or [])
-            if isinstance(m, dict)
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
         ]
-        present = any(
-            name == model or name.startswith(f"{model}:") for name in names if name
-        )
+        present = any(name == model or name.startswith(f"{model}:") for name in names if name)
         if present:
             return None
         return CheckResult(

@@ -200,8 +200,13 @@ class DaariMeta(BaseModel):
     reasoning_effort: str | None = None
     # Client service_tier when present (#430).
     service_tier: str | None = None
+    # Key/team residency pin for regional-processing cost uplift (#1531).
+    region_pin: str | None = None
     # True when tools / tool history make this an agent turn (ADR-0004 / #604).
     agent_turn: bool | None = None
+    # Per-agent usage breakdown for multi_agent L6 (attribution only; totals
+    # stay on input_tokens/output_tokens/cost_usd — never double-billed) (#1500).
+    agent_usage: list[dict] | None = None
     # GenAI operation.name override for non-chat modalities (#1106).
     operation_name: str | None = None
 

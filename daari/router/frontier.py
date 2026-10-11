@@ -13,7 +13,7 @@ from daari.gateway.provider_prefs import (
     is_openrouter_base,
     usage_cost_and_cache,
 )
-from daari.observability.tokens import openai_token_usage
+from daari.observability.tokens import nested_agent_usages, openai_token_usage
 from daari.router.anthropic_messages import (
     anthropic_headers_for_request,
     anthropic_messages_path,
@@ -190,6 +190,16 @@ class FrontierExecutor:
             return inject_trace_headers(openrouter_headers(self.api_key or ""))
         return inject_trace_headers({"Authorization": f"Bearer {self.api_key}"})
 
+    def _openai_headers_for_request(self, request: InternalRequest) -> dict[str, str]:
+        """OpenAI headers plus Responses multi-agent beta when requested (#1478)."""
+        headers = dict(self._openai_headers())
+        multi = getattr(request.sampling, "multi_agent", None)
+        if isinstance(multi, dict) and multi.get("enabled"):
+            existing = str(headers.get("OpenAI-Beta") or "").strip()
+            tag = "responses_multi_agent=v1"
+            headers["OpenAI-Beta"] = f"{existing}, {tag}" if existing else tag
+        return headers
+
     async def stream(
         self,
         request: InternalRequest,
@@ -224,7 +234,7 @@ class FrontierExecutor:
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=True)
-            headers = self._openai_headers()
+            headers = self._openai_headers_for_request(request)
             path = "/chat/completions"
 
         from daari.router.deadline import (
@@ -316,7 +326,7 @@ class FrontierExecutor:
             path = anthropic_messages_path(self.base_url)
         else:
             payload = self._openai_payload(request, stream=False)
-            headers = self._openai_headers()
+            headers = self._openai_headers_for_request(request)
             path = "/chat/completions"
 
         from daari.router.deadline import nonstream_timeout
@@ -350,6 +360,7 @@ class FrontierExecutor:
             data, prompt_chars, content
         )
         cost_usd, cached_tokens, cache_write_tokens = usage_cost_and_cache(data)
+        agent_usage = nested_agent_usages(data) or None
         provider_prefs = (
             as_openrouter_payload(request.provider) if request.provider is not None else None
         )
@@ -371,6 +382,7 @@ class FrontierExecutor:
             provider_prefs=provider_prefs,
             daari_cost_usd=0.0,
             service_tier=request.sampling.service_tier,
+            agent_usage=agent_usage,
         )
         self._apply_param_compat_meta(meta)
         return InternalResponse(

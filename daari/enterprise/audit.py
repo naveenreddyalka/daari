@@ -197,17 +197,61 @@ class AuditLog:
         except Exception:
             pass
 
-    def list(
+    def count(
         self,
-        limit: int = 100,
         *,
         actor: str | None = None,
         action: str | None = None,
         since: str | None = None,
+    ) -> int:
+        """Total matching rows for admin pagination (#1530)."""
+        if not self.enabled:
+            return 0
+        clauses = ["1=1"]
+        params: list[Any] = []
+        action_prefix = (action or "").strip()
+        actor_filter = (actor or "").strip() or None
+        if actor_filter:
+            clauses.append("actor = ?")
+            params.append(actor_filter)
+        if action_prefix:
+            clauses.append("action LIKE ?")
+            params.append(f"{action_prefix}%")
+        if since:
+            clauses.append("ts >= ?")
+            params.append(since)
+        sql = "SELECT COUNT(*) FROM audit WHERE " + " AND ".join(clauses)
+        try:
+            with self._lock, self._connect() as conn:
+                row = conn.execute(sql, params).fetchone()
+        except Exception:
+            return 0
+        return int(row[0] or 0) if row else 0
+
+    def list(
+        self,
+        limit: int = 100,
+        *,
+        offset: int = 0,
+        actor: str | None = None,
+        action: str | None = None,
+        since: str | None = None,
     ) -> list[dict[str, Any]]:
-        return list(
-            self.iter_rows(limit=limit, actor=actor, action=action, since=since, batch_size=limit)
+        off = max(0, int(offset or 0))
+        lim = max(0, int(limit))
+        fetch = off + lim if lim else None
+        rows = list(
+            self.iter_rows(
+                limit=fetch,
+                actor=actor,
+                action=action,
+                since=since,
+                batch_size=max(lim, 1) if lim else 500,
+            )
         )
+        if lim:
+            return rows[off : off + lim]
+        return rows[off:]
 
     def iter_rows(
         self,

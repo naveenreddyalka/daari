@@ -35,8 +35,9 @@ class FrontierParamCompatResult:
 # gpt-6-astra / gpt-6.1-sol: no custom temperature/top_p/logprobs;
 # no reasoning_effort=none; tool calling requires the Responses API
 # (chat completions tools unsupported). Same GPT-6 restriction family.
-# claude-sonnet-5-5 / claude-opus-5-5: adaptive thinking on by default;
-# non-default temperature/top_p/top_k → 400 (strip like gpt-6.1-sol).
+# claude-sonnet-5-5 / claude-opus-5-5 / claude-haiku-5-5: adaptive thinking
+# (and haiku effort) on by default; non-default temperature/top_p/top_k → 400
+# (strip like gpt-6.1-sol).
 _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
     "gpt-6-astra": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "logprobs"}),
@@ -58,6 +59,9 @@ _FRONTIER_PARAM_COMPAT: dict[str, FrontierParamCompat] = {
         unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
     ),
     "claude-opus-5-5": FrontierParamCompat(
+        unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
+    ),
+    "claude-haiku-5-5": FrontierParamCompat(
         unsupported_params=frozenset({"temperature", "top_p", "top_k"}),
     ),
 }
@@ -159,4 +163,40 @@ def apply_frontier_param_compat(
             f"(requires Responses API)"
         )
 
+    # Haiku 5.5: manual budget_tokens thinking 400s — map to adaptive + effort (#1520).
+    from daari.pricing import matching_model_key
+
+    if matching_model_key(model, ("claude-haiku-5-5",)) is not None:
+        warning = _map_haiku_55_budget_thinking(payload)
+        if warning:
+            result.warnings.append(warning)
+            if "budget_tokens" not in result.dropped_params:
+                result.dropped_params.append("budget_tokens")
+
     return result
+
+
+def _map_haiku_55_budget_thinking(payload: dict[str, Any]) -> str | None:
+    """Rewrite ``thinking.budget_tokens`` to adaptive + output_config.effort."""
+    thinking = payload.get("thinking")
+    if not isinstance(thinking, dict):
+        return None
+    budget = thinking.get("budget_tokens")
+    if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+        return None
+    from daari.gateway.sampling import reasoning_effort_from_thinking
+
+    effort = reasoning_effort_from_thinking(dict(thinking)) or "medium"
+    payload["thinking"] = {"type": "adaptive"}
+    output_config = payload.get("output_config")
+    if not isinstance(output_config, dict):
+        output_config = {}
+    else:
+        output_config = dict(output_config)
+    if not output_config.get("effort"):
+        output_config["effort"] = effort
+    payload["output_config"] = output_config
+    return (
+        "thinking budget_tokens is not supported by claude-haiku-5-5; "
+        f"mapped to adaptive thinking with effort '{output_config['effort']}'"
+    )

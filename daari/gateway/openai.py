@@ -76,7 +76,11 @@ OPENAI_SSE_HEADERS = {
 def _web_search_unavailable_response(exc: WebSearchUnavailable) -> JSONResponse:
     """Map web_search fail-closed reasons to gateway status codes (#1295)."""
     reason = exc.reason or "web_search_required"
-    if reason == "no_frontier" or reason.startswith("tier_cap:") or reason == "frontier_not_allowed":
+    if (
+        reason == "no_frontier"
+        or reason.startswith("tier_cap:")
+        or reason == "frontier_not_allowed"
+    ):
         status = 403
     elif reason == "frontier_budget_exceeded":
         status = 402
@@ -885,11 +889,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 reject_disallowed_model,
                 reject_model_group_budget,
                 reject_model_max_budget,
+                reject_retired_model,
             )
 
             denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
             if denied is not None:
                 return denied
+            retired = reject_retired_model(request, body.model, ctx.settings)
+            if retired is not None:
+                return retired
             group_denied = reject_model_group_budget(request, body.model, ctx.settings)
             if group_denied is not None:
                 return group_denied
@@ -944,9 +952,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
             from daari.gateway.idempotency import resolve_idempotency
 
-            idem_kind, idem_response, idem_slot = await resolve_idempotency(
-                request, ctx, body
-            )
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
 
@@ -1190,9 +1196,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     },
                 )
             ctx: AppContext = request.app.state.ctx
-            idem_kind, idem_response, idem_slot = await resolve_idempotency(
-                request, ctx, body
-            )
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
             try:
@@ -1297,7 +1301,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.post("/v1/decisions", response_model=None)
         async def decisions(body: dict[str, Any], request: Request) -> Any:
-            """OpenAI Decisions beta via local models or gpt-6-luna (#1474)."""
+            """OpenAI Decisions beta via local models or gpt-6-luna (#1474).
+
+            Streaming is unsupported: ``stream: true`` returns 400 (#1529).
+            """
             from daari.gateway.decisions import handle_decisions, parse_decisions_body
             from fastapi.responses import JSONResponse
 
@@ -1348,9 +1355,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 resolve_idempotency,
             )
 
-            idem_kind, idem_response, idem_slot = await resolve_idempotency(
-                request, ctx, body
-            )
+            idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
             if idem_kind in {"replay", "conflict"} and idem_response is not None:
                 return idem_response
 
@@ -1421,25 +1426,55 @@ class OpenAIGatewayAdapter(GatewayAdapter):
 
         @router.get("/v1/models")
         async def list_models(request: Request) -> dict[str, Any]:
+            from daari.auth.model_access import patterns_from_claims
             from daari.gateway.anthropic import wants_anthropic_models
-            from daari.router.capabilities import anthropic_models_payload, openai_model_cards
+            from daari.router.capabilities import (
+                anthropic_models_payload,
+                openai_models_payload,
+            )
 
             ctx: AppContext = request.app.state.ctx
+            # Lifecycle filter (repeatable / comma) on both facades (#1507 / #1521).
+            lifecycle_vals = list(request.query_params.getlist("lifecycle"))
+            claims = getattr(request.state, "auth_claims", None)
+            catalog = getattr(ctx.settings, "model_groups", None) or {}
+            key_patterns, team_patterns = patterns_from_claims(claims, catalog)
             # Claude Code / Desktop send anthropic-version and/or x-api-key (#454).
             if wants_anthropic_models(request):
-                return anthropic_models_payload(ctx.settings)
-            return {"object": "list", "data": openai_model_cards(ctx.settings)}
+                return anthropic_models_payload(
+                    ctx.settings,
+                    lifecycle=lifecycle_vals or None,
+                    key_patterns=key_patterns,
+                    team_patterns=team_patterns,
+                )
+            return openai_models_payload(
+                ctx.settings,
+                lifecycle=lifecycle_vals or None,
+                key_patterns=key_patterns,
+                team_patterns=team_patterns,
+            )
 
         @router.get("/v1/models/{model_id}")
         async def retrieve_model(model_id: str, request: Request) -> dict[str, Any]:
+            from daari.auth.model_access import model_permitted, patterns_from_claims
             from daari.gateway.anthropic import wants_anthropic_models
             from daari.router.capabilities import (
+                anthropic_capabilities,
+                anthropic_lifecycle_fields,
                 anthropic_model_cards,
                 anthropic_model_line,
+                anthropic_server_tools,
                 openai_model_cards,
             )
 
             ctx: AppContext = request.app.state.ctx
+            claims = getattr(request.state, "auth_claims", None)
+            catalog = getattr(ctx.settings, "model_groups", None) or {}
+            key_patterns, team_patterns = patterns_from_claims(claims, catalog)
+            if not model_permitted(
+                model_id, key_patterns=key_patterns, team_patterns=team_patterns
+            ):
+                raise HTTPException(status_code=404, detail="model not found")
             if wants_anthropic_models(request):
                 for card in anthropic_model_cards(ctx.settings):
                     if card["id"] == model_id:
@@ -1454,6 +1489,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         int(time.time()), tz=timezone.utc
                     ).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "line": anthropic_model_line(model_id),
+                    "capabilities": anthropic_capabilities(model_id),
+                    **anthropic_lifecycle_fields(model_id, ctx.settings),
                 }
             for card in openai_model_cards(ctx.settings):
                 if card["id"] == model_id:
@@ -1464,6 +1501,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "created": int(time.time()),
                 "owned_by": "daari" if model_id == "daari" else "ollama",
                 "capabilities": [],
+                **anthropic_lifecycle_fields(model_id, ctx.settings),
+                "server_tools": anthropic_server_tools(model_id),
             }
 
         @router.get("/health")
@@ -1499,9 +1538,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             coordinated shutdown, returns 503 ``shutting_down`` immediately
             so load balancers stop sending traffic (#1104)."""
             if getattr(request.app.state, "shutting_down", False):
-                return JSONResponse(
-                    status_code=503, content={"status": "shutting_down"}
-                )
+                return JSONResponse(status_code=503, content={"status": "shutting_down"})
             ctx: AppContext = request.app.state.ctx
             cache_ok = ctx.cache is not None
             pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
@@ -1730,7 +1767,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
             )
-            from daari.auth.budgets import model_group_spend_report_rows, team_model_spend_report_rows
+            from daari.auth.budgets import (
+                model_group_spend_report_rows,
+                team_model_spend_report_rows,
+            )
 
             payload["model_group_spend"] = model_group_spend_report_rows(
                 store,
@@ -1897,26 +1937,20 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             if key_id is not None and not isinstance(key_id, str):
                 raise HTTPException(status_code=422, detail="key_id must be a string")
             model_s = model.strip() if isinstance(model, str) and model.strip() else None
-            hash_s = entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
+            hash_s = (
+                entry_hash.strip() if isinstance(entry_hash, str) and entry_hash.strip() else None
+            )
             team_s = team_id.strip() if isinstance(team_id, str) and team_id.strip() else None
             key_s = key_id.strip() if isinstance(key_id, str) and key_id.strip() else None
             l0 = getattr(ctx.router, "cache", None)
             l1 = getattr(ctx.router, "semantic_cache", None)
             l0_removed = (
-                int(
-                    l0.invalidate(
-                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
-                    )
-                )
+                int(l0.invalidate(model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s))
                 if l0 is not None and hasattr(l0, "invalidate")
                 else 0
             )
             l1_removed = (
-                int(
-                    l1.invalidate(
-                        model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
-                    )
-                )
+                int(l1.invalidate(model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s))
                 if l1 is not None and hasattr(l1, "invalidate")
                 else 0
             )
@@ -1971,9 +2005,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     # Viewer-style: virtual keys may satisfy analyst/read minimums.
                     if role_at_least("analyst", minimum):
                         return "analyst"
-                    raise HTTPException(
-                        status_code=403, detail="master key required"
-                    )
+                    raise HTTPException(status_code=403, detail="master key required")
                 return "admin"
 
             from daari.enterprise.sso import verify_access_token
@@ -2166,18 +2198,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.settings.integrations.mcp_registry.enabled = mcp_reg["enabled"]
             mcp_policy = integrations.get("mcp_policy") or {}
             if "require_key_access_defined" in mcp_policy:
-                ctx.settings.integrations.mcp_policy.require_key_access_defined = (
-                    mcp_policy["require_key_access_defined"]
-                )
+                ctx.settings.integrations.mcp_policy.require_key_access_defined = mcp_policy[
+                    "require_key_access_defined"
+                ]
             if "structured_json_logs" in observability:
                 ctx.settings.observability.structured_json_logs = observability[
                     "structured_json_logs"
                 ]
                 from daari.gateway.request_log import configure_request_log
 
-                configure_request_log(
-                    structured_json_logs=observability["structured_json_logs"]
-                )
+                configure_request_log(structured_json_logs=observability["structured_json_logs"])
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,
@@ -2252,13 +2282,110 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             return result
 
         @router.get("/v1/daari/audit")
-        async def daari_audit_list(request: Request) -> dict[str, Any]:
+        async def daari_audit_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+        ) -> dict[str, Any]:
+            """Hash-chained audit feed with keys/teams pagination (#1530)."""
             ctx: AppContext = request.app.state.ctx
             _require_role(request, ctx, "analyst")
             from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import _clamp_page, _page_meta
 
-            entries = audit_log_from_settings(ctx.settings).list(limit=100)
-            return {"entries": entries}
+            lim, off = _clamp_page(limit=limit, offset=offset)
+            log = audit_log_from_settings(ctx.settings)
+            total = log.count()
+            entries = log.list(limit=lim, offset=off)
+            return {
+                "entries": entries,
+                **_page_meta(total, limit=lim, offset=off, returned=len(entries)),
+            }
+
+        @router.get("/v1/daari/keys")
+        async def daari_keys_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+            status: str | None = None,
+            idle_days: int | None = None,
+        ) -> dict[str, Any]:
+            """Redacted virtual-key inventory for the local admin plane (#1477/#1499/#1545)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import keys_inventory
+
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            ledger = getattr(ctx.router, "usage_ledger", None)
+            try:
+                result = keys_inventory(
+                    store,
+                    ledger=ledger,
+                    pricing=getattr(ctx.settings, "pricing", None),
+                    fallback_per_1k=float(
+                        getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                    ),
+                    limit=limit,
+                    offset=offset,
+                    status=status,
+                    idle_days=idle_days,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.keys.list",
+                detail={
+                    "limit": result.get("limit"),
+                    "offset": result.get("offset"),
+                    "total": result.get("total"),
+                    "returned": len(result.get("keys") or []),
+                },
+            )
+            return result
+
+        @router.get("/v1/daari/teams")
+        async def daari_teams_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+        ) -> dict[str, Any]:
+            """Redacted team inventory for the local admin plane (#1477/#1499)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+            from daari.gateway.admin_read import teams_inventory
+
+            store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+                ctx, "virtual_key_store", None
+            )
+            ledger = getattr(ctx.router, "usage_ledger", None)
+            result = teams_inventory(
+                store,
+                ledger=ledger,
+                pricing=getattr(ctx.settings, "pricing", None),
+                fallback_per_1k=float(
+                    getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
+                ),
+                limit=limit,
+                offset=offset,
+            )
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.teams.list",
+                detail={
+                    "limit": result.get("limit"),
+                    "offset": result.get("offset"),
+                    "total": result.get("total"),
+                    "returned": len(result.get("teams") or []),
+                },
+            )
+            return result
 
         @router.post("/v1/org-learning/sync")
         async def org_learning_sync(request: Request) -> dict[str, Any]:

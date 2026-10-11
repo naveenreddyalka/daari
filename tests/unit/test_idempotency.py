@@ -695,3 +695,190 @@ async def test_images_missing_idempotency_key_is_noop(settings, monkeypatch, tmp
         await client.post("/v1/images/generations", json=body)
         await client.post("/v1/images/generations", json=body)
     assert len(seen) == 2
+
+
+_DECISIONS_BODY = {
+    "model": "nimble",
+    "input": "I was charged twice for my order.",
+    "questions": [
+        {
+            "type": "choice",
+            "name": "department",
+            "instructions": "Which department should handle this complaint?",
+            "choices": [
+                {"value": "billing", "description": "Payments and refunds"},
+                {"value": "technical", "description": "Product problems"},
+            ],
+        }
+    ],
+}
+
+_DECISIONS_LOCAL_OK = {
+    "model": "nimble",
+    "answers": {
+        "department": {
+            "type": "choice",
+            "choice": "billing",
+            "probabilities": {"billing": 0.95, "technical": 0.05},
+            "confidence": 0.93,
+        }
+    },
+    "usage": {"input_tokens": 120, "output_tokens": 1},
+}
+
+_DECISIONS_FRONTIER_OK = {
+    "id": "dec_idem",
+    "model": "gpt-6-luna",
+    "answers": [
+        {
+            "type": "choice",
+            "name": "department",
+            "choice": "billing",
+            "probabilities": [{"value": "billing", "probability": 0.95}],
+            "confidence": 0.93,
+        }
+    ],
+    "usage": {"input_tokens": 80, "output_tokens": 0},
+}
+
+
+def _patch_decisions_local(monkeypatch, handler):
+    import httpx
+    from daari.gateway import systemone
+
+    systemone._http = None
+    real = httpx.AsyncClient
+
+    class Patched(real):
+        def __init__(self, *args, **kwargs):
+            if kwargs.get("transport") is None:
+                kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", Patched)
+    monkeypatch.setattr("daari.gateway.systemone.httpx.AsyncClient", Patched)
+
+
+@pytest.mark.asyncio
+async def test_decisions_idempotency_replays_local_without_second_upstream(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    settings.decisions.cache_enabled = False
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_DECISIONS_LOCAL_OK)
+
+    _patch_decisions_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    headers = {"Idempotency-Key": "dec-local-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/decisions", json=_DECISIONS_BODY, headers=headers)
+        second = await client.post("/v1/decisions", json=_DECISIONS_BODY, headers=headers)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_decisions_idempotency_replays_frontier_without_second_upstream(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+    from daari.config.settings import FrontierProviderConfig
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    settings.decisions.cache_enabled = False
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_DECISIONS_FRONTIER_OK)
+
+    _patch_httpx(monkeypatch, "daari.gateway.decisions", handler)
+    settings.frontier.enabled = True
+    settings.frontier.providers = [
+        FrontierProviderConfig(
+            id="openai",
+            base_url="https://api.openai.com/v1",
+            model="gpt-4o",
+            keys=["sk-test"],
+        )
+    ]
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    body = {**_DECISIONS_BODY, "model": "gpt-6-luna"}
+    headers = {"Idempotency-Key": "dec-frontier-1"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/decisions", json=body, headers=headers)
+        second = await client.post("/v1/decisions", json=body, headers=headers)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_decisions_idempotency_conflict_on_body_mismatch(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    settings.decisions.cache_enabled = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_DECISIONS_LOCAL_OK)
+
+    _patch_decisions_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    headers = {"Idempotency-Key": "dec-conflict"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/decisions", json=_DECISIONS_BODY, headers=headers
+        )
+        second = await client.post(
+            "/v1/decisions",
+            json={**_DECISIONS_BODY, "input": "different complaint"},
+            headers=headers,
+        )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 409
+    assert second.json()["error"]["type"] == CONFLICT_TYPE
+
+
+@pytest.mark.asyncio
+async def test_decisions_missing_idempotency_key_is_noop(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    settings.decisions.cache_enabled = False
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_DECISIONS_LOCAL_OK)
+
+    _patch_decisions_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/v1/decisions", json=_DECISIONS_BODY)
+        await client.post("/v1/decisions", json=_DECISIONS_BODY)
+    assert len(seen) == 2

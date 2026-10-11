@@ -69,7 +69,9 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
     team_budgets: list[dict[str, Any]] | None = None
     team_rate_limits: list[dict[str, Any]] | None = None
     key_rate_limits: list[dict[str, Any]] | None = None
+    virtual_keys: dict[str, Any] | None = None
     store = getattr(app.state, "virtual_key_store", None) or getattr(ctx, "virtual_key_store", None)
+    listed_keys: list[Any] | None = None
     if store is not None and ledger is not None and getattr(ledger, "enabled", False):
         try:
             from daari.auth.budgets import collect_team_budget_gauges
@@ -86,14 +88,34 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
             team_rate_limits = rl_rows or None
         except Exception:
             team_rate_limits = None
-    if store is not None and limiter is not None and hasattr(limiter, "key_rate_gauges"):
+    if store is not None:
         try:
             list_keys = getattr(store, "list", None)
-            keys = list_keys() if callable(list_keys) else []
-            key_rows = limiter.key_rate_gauges(keys)
+            listed_keys = list(list_keys()) if callable(list_keys) else []
+        except Exception:
+            listed_keys = None
+    if (
+        store is not None
+        and listed_keys is not None
+        and limiter is not None
+        and hasattr(limiter, "key_rate_gauges")
+    ):
+        try:
+            key_rows = limiter.key_rate_gauges(listed_keys)
             key_rate_limits = key_rows or None
         except Exception:
             key_rate_limits = None
+    if store is not None and listed_keys is not None:
+        try:
+            from daari.auth.virtual_keys import count_key_expiry_buckets
+
+            warn_days = int(getattr(settings.alerts, "key_expiry_warn_days", 14) or 0)
+            virtual_keys = count_key_expiry_buckets(listed_keys, warn_days=warn_days)
+            alerter = getattr(app.state, "key_expiry_alerter", None)
+            if alerter is not None and getattr(alerter, "enabled", False):
+                alerter.notify(listed_keys)
+        except Exception:
+            virtual_keys = None
     return render_prometheus(
         ctx.metrics,
         budget_state=budget_state,
@@ -103,6 +125,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         team_budgets=team_budgets,
         team_rate_limits=team_rate_limits,
         key_rate_limits=key_rate_limits,
+        virtual_keys=virtual_keys,
     )
 
 

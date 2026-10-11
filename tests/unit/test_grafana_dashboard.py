@@ -314,6 +314,40 @@ def test_grafana_dashboard_includes_compact_to_fit_tokens_dropped_panel():
     assert any("rate(" in expr for expr in exprs)
 
 
+def test_grafana_dashboard_includes_decision_classifier_panels():
+    """Classifier outcome rate and latency should chart on the overview (#1483)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    outcome = next(
+        (
+            p
+            for p in payload["panels"]
+            if "decision classifier" in p.get("title", "").lower()
+            and "latency" not in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert outcome is not None, "expected a decision-classifier outcome panel"
+    outcome_exprs = [t.get("expr", "") for t in outcome.get("targets", [])]
+    assert any("daari_decision_classifier_total" in expr for expr in outcome_exprs)
+    assert any("outcome" in expr for expr in outcome_exprs)
+    assert any("rate(" in expr for expr in outcome_exprs)
+
+    latency = next(
+        (
+            p
+            for p in payload["panels"]
+            if "decision classifier" in p.get("title", "").lower()
+            and "latency" in p.get("title", "").lower()
+        ),
+        None,
+    )
+    assert latency is not None, "expected a decision-classifier latency panel"
+    latency_exprs = [t.get("expr", "") for t in latency.get("targets", [])]
+    assert any("daari_decision_classifier_latency_ms" in expr for expr in latency_exprs)
+    assert any("histogram_quantile(0.50" in expr for expr in latency_exprs)
+    assert any("histogram_quantile(0.95" in expr for expr in latency_exprs)
+
+
 def test_grafana_dashboard_includes_mcp_grant_denied_panel():
     """MCP grant fail-closed denials should chart on the overview (#1401)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
