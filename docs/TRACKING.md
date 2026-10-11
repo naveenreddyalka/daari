@@ -6509,6 +6509,15 @@ signed `key_expiry` webhook (Redis-deduped, fail-open). Covered by
 `tests/unit/test_doctor_key_expiry.py` and `tests/unit/test_key_expiry_alerts.py`.
 
 
+### Retired-model audit, reject metric, doctor lifecycle ([#1549](https://github.com/naveenreddyalka/daari/issues/1549))
+
+<!-- tracking:#1549 -->
+**Status:** Done (2026-10-10). Retired 410s write `models.retired_denied` audit
+rows and increment `daari_rejects_total{kind="retired"}`. `daari doctor`
+errors on configured retired tier/frontier/pool models and tips on deprecated.
+Covered by `tests/unit/test_model_lifecycle_signals.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

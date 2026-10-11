@@ -204,3 +204,28 @@ def record_model_denial(
             "path": path,
         },
     )
+
+
+def record_retired_denial(
+    settings: Any,
+    *,
+    model: str,
+    key_id: str | None,
+    client_id: str | None,
+    team_id: str | None,
+    path: str,
+) -> None:
+    """Audit a fail-closed retired-model 410 (#1549)."""
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    audit_log_from_settings(settings).record(
+        actor=client_id or key_id or "anonymous",
+        role="key" if (key_id or client_id) else "system",
+        action="models.retired_denied",
+        detail={
+            "model": (model or "").strip(),
+            "key_id": key_id,
+            "team_id": team_id,
+            "path": path,
+        },
+    )

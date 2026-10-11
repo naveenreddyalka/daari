@@ -103,6 +103,7 @@ def run_doctor(
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
+    results.append(_check_model_lifecycle(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
@@ -1533,6 +1534,81 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
             "402/429 warnings are disabled while hard caps remain; set "
             "soft_budget_ratio (e.g. 0.8) so agents can back off before cliffs"
         ),
+        optional=True,
+    )
+
+
+def _check_model_lifecycle(settings: Settings) -> CheckResult:
+    """Error on configured retired models; tip on deprecated (#1549)."""
+    from daari.router.capabilities import anthropic_lifecycle_fields
+
+    configured: list[tuple[str, str]] = []
+    models = settings.models
+    for label, name in (
+        ("models.l3", models.l3),
+        ("models.l4", models.l4),
+        ("models.l5", models.l5),
+    ):
+        text = (name or "").strip()
+        if text:
+            configured.append((label, text))
+    frontier = settings.frontier
+    if getattr(frontier, "enabled", False):
+        text = (getattr(frontier, "model", "") or "").strip()
+        if text:
+            configured.append(("frontier.model", text))
+    pool = getattr(settings.routing, "local_pool", None)
+    backends = list(getattr(pool, "backends", None) or []) if pool is not None else []
+    for index, backend in enumerate(backends):
+        text = (getattr(backend, "model", "") or "").strip()
+        if text:
+            bid = (getattr(backend, "id", "") or "").strip() or str(index)
+            configured.append((f"routing.local_pool.backends[{bid}].model", text))
+
+    retired: list[str] = []
+    deprecated: list[str] = []
+    seen: set[str] = set()
+    for label, name in configured:
+        key = f"{label}:{name}"
+        if key in seen:
+            continue
+        seen.add(key)
+        stage = str(
+            anthropic_lifecycle_fields(name, settings).get("lifecycle") or "active"
+        ).lower()
+        if stage == "retired":
+            retired.append(f"{label}={name}")
+        elif stage == "deprecated":
+            deprecated.append(f"{label}={name}")
+
+    if retired:
+        return CheckResult(
+            name="model_lifecycle",
+            ok=False,
+            detail=(
+                "configured models marked lifecycle=retired: "
+                + ", ".join(retired[:8])
+                + (f" (+{len(retired) - 8} more)" if len(retired) > 8 else "")
+                + " — rotate tier/frontier/pool models or clear models.lifecycle"
+            ),
+            optional=False,
+        )
+    if deprecated:
+        return CheckResult(
+            name="model_lifecycle",
+            ok=False,
+            detail=(
+                "configured models marked lifecycle=deprecated: "
+                + ", ".join(deprecated[:8])
+                + (f" (+{len(deprecated) - 8} more)" if len(deprecated) > 8 else "")
+                + " — plan a cutover before retires_at"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="model_lifecycle",
+        ok=True,
+        detail="configured tier/frontier/pool models are active",
         optional=True,
     )
 

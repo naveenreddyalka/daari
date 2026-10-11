@@ -369,8 +369,8 @@ def render_prometheus(
     rejects = snap.get("rejects") or {}
     if rejects:
         lines.append(
-            "# HELP daari_rejects_total Hard 402/429/413 denials, by kind "
-            "(budget, request_quota, rate_limit, body_too_large, auth_throttled)."
+            "# HELP daari_rejects_total Hard 402/429/410/413 denials, by kind "
+            "(budget, request_quota, rate_limit, body_too_large, auth_throttled, retired)."
         )
         lines.append("# TYPE daari_rejects_total counter")
         for kind, count in rejects.items():
