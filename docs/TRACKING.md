@@ -6595,6 +6595,14 @@ Docs: metrics-prometheus / traces-stats. Covered by
 `tests/unit/test_grafana_dashboard.py`.
 
 
+### Doctor-health docs name key_expiry checks ([#1575](https://github.com/naveenreddyalka/daari/issues/1575))
+
+<!-- tracking:#1575 -->
+**Status:** Done (2026-10-11). Doc pin asserts `doctor-health.md` names
+`key_expiry` and `key_expiry_webhook_secret`. Covered by
+`tests/unit/test_doctor_key_expiry_docs.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
