@@ -520,6 +520,49 @@
           "refId": "B"
         }
       ]
+    },
+    {
+      "id": 35,
+      "title": "Virtual keys by status",
+      "description": "Scrape-time key lifecycle counts (`daari_virtual_keys{status}`). Watch expired and expiring_soon before credentials go dark.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 136 },
+      "targets": [
+        {
+          "expr": "daari_virtual_keys{status=\"active\"}",
+          "legendFormat": "active",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_virtual_keys{status=\"expired\"}",
+          "legendFormat": "expired",
+          "refId": "B"
+        },
+        {
+          "expr": "daari_virtual_keys{status=\"expiring_soon\"}",
+          "legendFormat": "expiring_soon",
+          "refId": "C"
+        },
+        {
+          "expr": "daari_virtual_keys{status=\"revoked\"}",
+          "legendFormat": "revoked",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "title": "Retired model rejects",
+      "description": "Hard denials when clients call a retired model (`daari_rejects_total{kind=\"retired\"}`).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 136 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_rejects_total{kind=\"retired\"}[5m]))",
+          "legendFormat": "retired rejects/s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

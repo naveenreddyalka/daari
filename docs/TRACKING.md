@@ -6535,6 +6535,15 @@ warns when `alerts.key_expiry_webhook_url` is set without a signing secret.
 Covered by `tests/test_doctor.py`.
 
 
+### Grafana panels for virtual_keys lifecycle and retired rejects ([#1564](https://github.com/naveenreddyalka/daari/issues/1564))
+
+<!-- tracking:#1564 -->
+**Status:** Done (2026-10-11). Stock Grafana overview adds **Virtual keys by
+status** (`daari_virtual_keys{status}`) and **Retired model rejects**
+(`daari_rejects_total{kind="retired"}`). Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

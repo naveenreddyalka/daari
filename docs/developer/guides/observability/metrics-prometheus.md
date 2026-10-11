@@ -34,9 +34,11 @@ a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
 `daari_compact_to_fit_tokens_dropped_total`, an **MCP grant denied** panel on
 `daari_mcp_grant_denied_total`, a **Decision classifier by outcome** panel on
 `daari_decision_classifier_total` and a **Decision classifier latency p50 / p95**
-panel on `daari_decision_classifier_latency_ms`, and an **Escalations & errors** panel on
+panel on `daari_decision_classifier_latency_ms`, a **Virtual keys by status** panel on
+`daari_virtual_keys{status}`, a **Retired model rejects** panel on
+`daari_rejects_total{kind="retired"}`, and an **Escalations & errors** panel on
 `daari_escalations_total` / `daari_errors_total` so operators see flake / false-hit / budget /
-MCP deny / routing-shadow / compact-to-fit pressure without raw PromQL).
+MCP deny / key-lifecycle / retired-model / routing-shadow / compact-to-fit pressure without raw PromQL).
 
 Useful series: request latency histograms by tier (`daari_request_latency_ms`),
 stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
@@ -50,7 +52,8 @@ Two counters worth alerting on:
 | `daari_upstream_retries_total` | Transient upstream failures absorbed by backoff. Rising here while errors stay flat means clients never saw the instability. Rising alongside errors means the failures are not retryable — check for 401s or malformed requests. |
 | `daari_cache_false_hits_avoided_total` | L1 hits vetoed by verification. Steady growth is the cache working; a spike suggests the similarity threshold is too loose. |
 | `daari_soft_warnings_total{kind}` | Soft-band pressure before hard rejects: `kind="budget"` (`x-daari-budget-warning`), `kind="request_quota"` (`x-daari-quota-requests-warning`), or `kind="rate_limit"` (`x-daari-ratelimit-warning`). Rising here while 402/429 stay flat means agents are hovering in the soft band — scale Ollama or widen caps before hard rejects start. Hard 402/429 do not increment this counter. Overview Grafana charts all kinds under **Soft warnings by kind** and isolates USD soft pressure under **Soft USD budget warnings**. |
-| `daari_rejects_total{kind}` | Hard denials only: `kind="budget"` (USD 402), `kind="request_quota"` (request-cap 402), or `kind="rate_limit"` (429). Soft warning headers never increment this. Rising rejects after soft warnings means caps are undersized relative to demand. |
+| `daari_rejects_total{kind}` | Hard denials only: `kind="budget"` (USD 402), `kind="request_quota"` (request-cap 402), `kind="rate_limit"` (429), or `kind="retired"` (retired-model 410). Soft warning headers never increment this. Rising rejects after soft warnings means caps are undersized relative to demand. Overview Grafana isolates retired blocks under **Retired model rejects**; all kinds also chart under **Hard rejects by kind**. |
+| `daari_virtual_keys{status}` | Scrape-time virtual-key lifecycle counts (`active`, `expired`, `expiring_soon`, `revoked`). Flat when no keys are stored. Rising `expired` / `expiring_soon` means credential rotation pressure. Overview Grafana charts under **Virtual keys by status**. |
 | `daari_ttft_preference_total{from,to}` | When `routing.ttft_aware` rewrites the heuristic local tier (e.g. L4→L3). Flat while TTFT bias is idle; rising means the preference path is active. Off / no-op picks do not increment. |
 | `daari_rate_limit_degraded{mode}` | `1` while Redis rate-limit counting is degraded (`mode="sqlite_fallback"` or `mode="fail_open"`); clears to `0` when Redis answers again. Page when any pod stays at `1` — fleet RPM/TPM is no longer shared. |
 | `daari_mcp_tool_calls_total{tool,outcome}` | MCP ingress `tools/call` (and legacy `/v1/mcp/query`) by tool name and `outcome` (`ok`, `deny`, `error`, `guardrail`). No-op when `observability.prometheus=false`. Rising `deny` vs `ok` is policy pressure on agent traffic. |
