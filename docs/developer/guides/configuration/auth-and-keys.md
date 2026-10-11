@@ -147,6 +147,7 @@ and attribution apply.
 | Surface | Minimum role |
 |---------|----------------|
 | `GET /v1/daari/stats`, `traces`, `report`, `audit`, `config` | `analyst` |
+| `GET/POST /v1/daari/route/preview`, `GET /v1/daari/cache/diversity`, `GET /v1/daari/learn/stats`, `POST /v1/daari/feedback` | `analyst` |
 | `PATCH /v1/daari/config` | `enterprise.sso.admin_min_role` (default `admin`) |
 | `POST /v1/daari/reload-caches`, `POST /v1/org-learning/sync` | `admin_min_role` |
 

@@ -6610,6 +6610,15 @@ Docs: metrics-prometheus / traces-stats. Covered by
 docs default). Docs: virtual-keys.md backup section. Covered by
 `tests/unit/test_keys_export_import.py`.
 
+### RBAC analyst floors on route preview / diversity / learn / feedback ([#1588](https://github.com/naveenreddyalka/daari/issues/1588))
+
+<!-- tracking:#1588 -->
+**Status:** Done (2026-10-11). `GET/POST /v1/daari/route/preview`,
+`GET /v1/daari/cache/diversity`, `GET /v1/daari/learn/stats`, and
+`POST /v1/daari/feedback` require `analyst` via `_require_role` (same SSO-off
+viewer convention as stats). Docs: auth-and-keys role matrix. Covered by
+`tests/unit/test_daari_admin_role_floors.py` and SSO RBAC matrix.
+
 
 ## How to update
 

@@ -1611,6 +1611,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             model: str | None = None,
         ) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             text = (prompt or "").strip() or "hi"
             internal = InternalRequest(
                 messages=[Message(role="user", content=text)],
@@ -1621,6 +1622,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/daari/route/preview")
         async def daari_route_preview_post(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             payload = {}
             try:
                 payload = await request.json()
@@ -1836,6 +1838,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/cache/diversity")
         async def daari_cache_diversity(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             try:
                 categories = ctx.router.semantic_cache.diversity_stats()
             except Exception:
@@ -1845,6 +1848,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/learn/stats")
         async def daari_learn_stats(request: Request, days: int = 7) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             store = ctx.router.feedback_store
             if store is None:
                 raise HTTPException(status_code=404, detail="feedback store is not configured")
@@ -1866,6 +1870,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/daari/feedback")
         async def daari_feedback(request: Request, body: FeedbackBody) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
+            _require_role(request, ctx, "analyst")
             store = ctx.router.feedback_store
             if store is None:
                 raise HTTPException(status_code=404, detail="feedback store is not configured")
