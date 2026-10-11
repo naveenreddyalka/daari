@@ -1547,7 +1547,8 @@ class VirtualKeyStore:
                 " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                 " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
                 " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
-                " allowed_models_json, model_groups_json, rpd"
+                " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                " last_used_at"
                 " FROM virtual_keys ORDER BY created_at ASC, key_id ASC"
             ).fetchall()
         teams = [
@@ -1601,6 +1602,13 @@ class VirtualKeyStore:
                     if len(row) > 22 and row[22] is not None
                     else None,
                     "rpd": int(row[23] or 0) if len(row) > 23 else 0,
+                    "cache_scope": coerce_cache_scope(row[24])
+                    if len(row) > 24 and row[24] is not None
+                    else "global",
+                    "priority": coerce_priority(row[25])
+                    if len(row) > 25 and row[25] is not None
+                    else "normal",
+                    "last_used_at": row[26] if len(row) > 26 else None,
                 }
             )
         return {
@@ -1734,12 +1742,20 @@ class VirtualKeyStore:
                 if not key_id or not key_hash or not name or not prefix:
                     raise ValueError("key entries require key_id, key_hash, name, and prefix")
                 windows = _windows_payload(key.get("budget_windows"))
-                meta = key.get("metadata") if isinstance(key.get("metadata"), dict) else {}
+                meta = dict(key.get("metadata")) if isinstance(key.get("metadata"), dict) else {}
                 region_pin = key.get("region_pin") or None
                 if isinstance(region_pin, str):
                     region_pin = region_pin.strip() or None
                 key_models = decode_names(key.get("allowed_models"))
                 key_groups = decode_names(key.get("model_groups"))
+                # Additive fields (#1581); missing keys in older docs keep defaults.
+                scope = normalize_cache_scope(key.get("cache_scope") or "global")
+                prio = coerce_priority(key.get("priority") or "normal")
+                if "priority" in meta or prio != "normal":
+                    meta["priority"] = prio
+                last_used = key.get("last_used_at")
+                if last_used is not None:
+                    last_used = str(last_used).strip() or None
                 values = (
                     key_hash,
                     name,
@@ -1764,13 +1780,17 @@ class VirtualKeyStore:
                     encode_names(key_models),
                     encode_names(key_groups),
                     max(0, int(key.get("rpd") or 0)),
+                    scope,
+                    prio,
+                    last_used,
                 )
                 existing = conn.execute(
                     "SELECT key_hash, name, prefix, created_at, revoked_at, expires_at,"
                     " daily_budget_usd, monthly_budget_usd, rpm, tpm, tier_cap, client_id,"
                     " team_id, budget_windows_json, metadata_json, user_daily_usd_cap,"
                     " previous_key_hash, previous_prefix, previous_expires_at, region_pin,"
-                    " allowed_models_json, model_groups_json, rpd"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                    " last_used_at"
                     " FROM virtual_keys WHERE key_id = ?",
                     (key_id,),
                 ).fetchone()
@@ -1783,9 +1803,10 @@ class VirtualKeyStore:
                             " monthly_budget_usd, rpm, tpm, tier_cap, client_id, team_id,"
                             " budget_windows_json, metadata_json, user_daily_usd_cap,"
                             " previous_key_hash, previous_prefix, previous_expires_at,"
-                            " region_pin, allowed_models_json, model_groups_json, rpd)"
+                            " region_pin, allowed_models_json, model_groups_json, rpd,"
+                            " cache_scope, priority, last_used_at)"
                             " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                            " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (
                                 values[0],
                                 key_id,
@@ -1811,6 +1832,9 @@ class VirtualKeyStore:
                                 values[20],
                                 values[21],
                                 values[22],
+                                values[23],
+                                values[24],
+                                values[25],
                             ),
                         )
                 else:
@@ -1837,6 +1861,13 @@ class VirtualKeyStore:
                         decode_names(existing[20]) if len(existing) > 20 else None,
                         decode_names(existing[21]) if len(existing) > 21 else None,
                         int(existing[22] or 0) if len(existing) > 22 else 0,
+                        coerce_cache_scope(existing[23])
+                        if len(existing) > 23 and existing[23] is not None
+                        else "global",
+                        coerce_priority(existing[24])
+                        if len(existing) > 24 and existing[24] is not None
+                        else "normal",
+                        existing[25] if len(existing) > 25 else None,
                     )
                     desired_cmp = (
                         values[0],
@@ -1861,6 +1892,9 @@ class VirtualKeyStore:
                         key_models,
                         key_groups,
                         values[22],
+                        values[23],
+                        values[24],
+                        values[25],
                     )
                     if current == desired_cmp:
                         summary["keys"]["skipped"] += 1
@@ -1884,7 +1918,8 @@ class VirtualKeyStore:
                                 " metadata_json = ?, user_daily_usd_cap = ?,"
                                 " previous_key_hash = ?, previous_prefix = ?,"
                                 " previous_expires_at = ?, region_pin = ?,"
-                                " allowed_models_json = ?, model_groups_json = ?, rpd = ?"
+                                " allowed_models_json = ?, model_groups_json = ?, rpd = ?,"
+                                " cache_scope = ?, priority = ?, last_used_at = ?"
                                 " WHERE key_id = ?",
                                 (
                                     values[0],
@@ -1909,6 +1944,9 @@ class VirtualKeyStore:
                                     values[20],
                                     values[21],
                                     values[22],
+                                    values[23],
+                                    values[24],
+                                    values[25],
                                     key_id,
                                 ),
                             )
