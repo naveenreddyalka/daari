@@ -6570,6 +6570,14 @@ and `--idle-days` plus `last_used_at` throttle. Covered by
 `tests/unit/test_keys_list_cli_docs.py`.
 
 
+### Pin keys list --help for --status and --idle-days ([#1572](https://github.com/naveenreddyalka/daari/issues/1572))
+
+<!-- tracking:#1572 -->
+**Status:** Done (2026-10-11). Unit test asserts `daari keys list --help`
+mentions `--status` and `--idle-days`. Covered by
+`tests/unit/test_keys_list_cli_help.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
