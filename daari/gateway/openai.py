@@ -2140,6 +2140,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ConfigValidationError,
                 merged_boundaries,
                 validated_cache,
+                validated_decisions,
                 validated_frontier,
                 validated_integrations,
                 validated_observability,
@@ -2154,6 +2155,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 cache = validated_cache(body.get("cache") or {})
                 integrations = validated_integrations(body.get("integrations") or {})
                 observability = validated_observability(body.get("observability") or {})
+                decisions = validated_decisions(body.get("decisions") or {})
                 raw_boundaries = body.get("boundaries") or {}
                 new_boundaries = (
                     merged_boundaries(ctx.settings.boundaries, raw_boundaries)
@@ -2234,6 +2236,8 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 from daari.gateway.request_log import configure_request_log
 
                 configure_request_log(structured_json_logs=observability["structured_json_logs"])
+            if "local_models" in decisions:
+                ctx.settings.decisions.local_models = list(decisions["local_models"])
             if new_boundaries is not None:
                 from daari.gateway.boundaries import (
                     copy_runtime_hooks,
@@ -2260,6 +2264,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "boundaries": boundaries,
                     "integrations": integrations,
                     "observability": observability,
+                    "decisions": decisions,
                 }
             )
             overrides = getattr(request.app.state, "config_runtime_overrides", None)
@@ -2279,6 +2284,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             "boundaries": boundaries,
                             "integrations": integrations,
                             "observability": observability,
+                            "decisions": decisions,
                         }
                     )
                 )

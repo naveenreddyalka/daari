@@ -44,11 +44,21 @@ routing:
 
 `GET /ready` succeeds; chat completions return local tiers. `daari_meta.backend_id` names the host that served.
 
-## Decision models (`POST /v1/systemone`)
+## Decision models (`POST /v1/systemone` / `POST /v1/decisions`)
 
 Ollama 0.35+ exposes TypeSafe/Jev-style decision models at `/v1/systemone`.
-daari proxies the same shape through the gateway so clients keep API-key auth,
-spend metering, and `daari_meta`:
+daari proxies the same shape through the gateway (and OpenAI-shaped
+`POST /v1/decisions`) so clients keep API-key auth, spend metering, and
+`daari_meta`.
+
+Built-in local catalog: `clef`, `clef-flash`, `nimble`, `tev1`, `drex-1.5`,
+`microsoft-decision-1` (vendor/`:tag` variants accepted). Extend via
+`decisions.local_models` without a daari release:
+
+```yaml
+decisions:
+  local_models: [my-judge, org/custom-decision]
+```
 
 ```bash
 curl -s http://127.0.0.1:11435/v1/systemone -d '{
@@ -69,7 +79,8 @@ alongside `state`; daari forwards them verbatim when present.
 
 Opt out with `systemone.enabled: false` (returns 501). Upstream is
 `ollama.base_url`; when Ollama is down the route returns typed
-`backend_unavailable` (503).
+`backend_unavailable` (503). Doctor tip `decisions_local_models` fires when
+systemone is on but none of the catalog models appear in Ollama tags.
 
 ## Next
 

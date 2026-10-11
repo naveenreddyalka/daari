@@ -193,6 +193,30 @@ def validated_observability(patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def validated_decisions(patch: dict[str, Any]) -> dict[str, Any]:
+    """Safe local decisions catalog extension (#1590)."""
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("decisions must be an object")
+    allowed = {"local_models"}
+    unknown = sorted(set(patch) - allowed)
+    if unknown:
+        raise ConfigValidationError(f"unknown decisions keys: {unknown}")
+    out: dict[str, Any] = {}
+    if "local_models" in patch:
+        raw = patch["local_models"]
+        if raw is None:
+            out["local_models"] = []
+        elif not isinstance(raw, list):
+            raise ConfigValidationError("decisions.local_models must be a list of strings")
+        models: list[str] = []
+        for item in raw:
+            text = str(item).strip()
+            if text:
+                models.append(text)
+        out["local_models"] = models
+    return out
+
+
 def validated_routing(patch: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     if "confidence_threshold" in patch:

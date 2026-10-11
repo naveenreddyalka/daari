@@ -6635,6 +6635,14 @@ zero effective catalog cards. Covered by
 Docs: guardrails.md decision-model checks. Covered by
 `tests/unit/test_guardrails_decision.py`.
 
+### Configurable local decisions catalog ([#1590](https://github.com/naveenreddyalka/daari/issues/1590))
+
+<!-- tracking:#1590 -->
+**Status:** Done (2026-10-11). Built-in local decisions catalog adds
+`drex-1.5` / `microsoft-decision-1`; `decisions.local_models` extends it
+(PATCH/ownership). Doctor tip `decisions_local_models`. Docs: ollama.md.
+Covered by `tests/unit/test_decisions_local_catalog.py`.
+
 
 ## How to update
 
