@@ -353,6 +353,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `alerts.budget_webhook_url` | str | `''` |  |
 | `alerts.budget_webhook_secret` | str | `''` |  |
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
+| `alerts.key_expiry_webhook_url` | str | `''` | Opt-in webhook for virtual keys entering the expiring-soon window (#1546). Empty disables. |
+| `alerts.key_expiry_webhook_secret` | str | `''` | HMAC secret for key_expiry webhooks (X-Daari-Signature). Supports secret:// refs (#1546). |
+| `alerts.key_expiry_warn_days` | int | `14` | Days before expires_at for doctor warnings, Prometheus expiring_soon gauge, and key_expiry webhooks (#1546). Env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS. |
 | `skills_system_prefix` | str | `''` |  |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |
 

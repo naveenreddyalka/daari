@@ -41,6 +41,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `fleet_cache` | Optional: `DAARI_FLEET_REPLICAS` > 1 without `cache.backend=redis` — L0 / session pins / singleflight stay per-pod |
 | doctor `scoped_cache_fleet` | Optional: `DAARI_FLEET_REPLICAS` > 1 with `cache.backend` not `redis` and any virtual key/team `cache_scope` other than `global` — tenant L0/L1 stays per-pod |
 | doctor `soft_budget_ratio` | Optional: `frontier.soft_budget_ratio=0` while request quotas, USD budget windows, or `rate_limit` RPM/TPM are set — soft 402/429 warnings disabled |
+| doctor `key_expiry` | Optional: virtual keys expiring within `alerts.key_expiry_warn_days` (default 14) or expired-but-not-revoked — rotate before production 401s |
 | doctor `budget_webhook_secret` | Optional: `alerts.budget_webhook_url` set without `alerts.budget_webhook_secret` — spoofable pages |
 | doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
 | doctor `backup` | Optional: no recent archive under `~/.daari/backups`, or recent backups are all **plaintext** — tip suggests `daari backup create … --encrypt openssl` (or `age`); see [backup-restore.md](backup-restore.md#optional-encryption-1176) |

@@ -61,6 +61,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from daari.enterprise.postgres_audit import audit_log_from_settings
         from daari.gateway.pg_pool import close_postgres_pools, configure_postgres_pool
         from daari.observability.budget_alerts import BudgetAlerter
+        from daari.observability.key_expiry_alerts import KeyExpiryAlerter
 
         obs = resolved.observability
         configure_postgres_pool(
@@ -73,11 +74,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if getattr(cache, "backend", "disk") == "redis":
             redis_url = getattr(cache, "redis_url", "") or ""
             redis_timeout = float(getattr(cache, "redis_timeout_seconds", 2.0) or 2.0)
+        audit = audit_log_from_settings(resolved)
         app.state.budget_alerter = BudgetAlerter(
             webhook_url=resolved.alerts.budget_webhook_url,
             thresholds=tuple(resolved.alerts.budget_thresholds),
             webhook_secret=resolved.alerts.budget_webhook_secret,
-            audit=audit_log_from_settings(resolved),
+            audit=audit,
+            metrics=app.state.ctx.metrics,
+            redis_url=redis_url,
+            redis_timeout_seconds=redis_timeout,
+        )
+        app.state.key_expiry_alerter = KeyExpiryAlerter(
+            webhook_url=resolved.alerts.key_expiry_webhook_url,
+            webhook_secret=resolved.alerts.key_expiry_webhook_secret,
+            warn_days=int(resolved.alerts.key_expiry_warn_days or 14),
+            audit=audit,
             metrics=app.state.ctx.metrics,
             redis_url=redis_url,
             redis_timeout_seconds=redis_timeout,

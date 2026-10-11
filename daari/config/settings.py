@@ -1999,6 +1999,29 @@ class AlertSettings(BaseModel):
     budget_webhook_url: str = ""
     budget_webhook_secret: str = ""
     budget_thresholds: list[float] = Field(default_factory=lambda: [0.8, 1.0])
+    key_expiry_webhook_url: str = Field(
+        default="",
+        description=(
+            "Opt-in webhook for virtual keys entering the expiring-soon window "
+            "(#1546). Empty disables."
+        ),
+    )
+    key_expiry_webhook_secret: str = Field(
+        default="",
+        description=(
+            "HMAC secret for key_expiry webhooks (X-Daari-Signature). "
+            "Supports secret:// refs (#1546)."
+        ),
+    )
+    key_expiry_warn_days: int = Field(
+        default=14,
+        ge=0,
+        description=(
+            "Days before expires_at for doctor warnings, Prometheus "
+            "expiring_soon gauge, and key_expiry webhooks (#1546). "
+            "Env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS."
+        ),
+    )
 
     @field_validator("budget_thresholds")
     @classmethod

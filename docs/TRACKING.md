@@ -6499,6 +6499,16 @@ and `GET /v1/daari/keys`; `--status` / `?status=` and `--idle-days` /
 `tests/unit/test_vk_last_used.py`.
 
 
+### Proactive key-expiry signals — doctor, Prometheus, webhook ([#1546](https://github.com/naveenreddyalka/daari/issues/1546))
+
+<!-- tracking:#1546 -->
+**Status:** Done (2026-10-10). `daari doctor` warns on keys expiring within
+`alerts.key_expiry_warn_days` (default 14) and counts expired-but-not-revoked.
+Prometheus `daari_virtual_keys{status=...}` gauge refreshes on scrape. Opt-in
+signed `key_expiry` webhook (Redis-deduped, fail-open). Covered by
+`tests/unit/test_doctor_key_expiry.py` and `tests/unit/test_key_expiry_alerts.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
