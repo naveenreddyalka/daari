@@ -52,6 +52,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `ollama.base_url` | str | `'http://127.0.0.1:11434'` |  |
 | `systemone.enabled` | bool | `True` | When true, POST /v1/systemone proxies to ollama.base_url. When false, the route returns 501 not_implemented. |
 | `decisions.cache_enabled` | bool | `True` | When true (default), identical typed decision requests are served from the L0 exact cache. Requires cache.l0.enabled. Clients can bypass with X-Daari-No-Cache: true. |
+| `decisions.local_models` | list | `[]` | Extra local decisions model ids that extend the built-in catalog (clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). Operators can add future Ollama judge models without a daari release. |
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
 | `mlx.models` | dict | `{}` |  |

@@ -68,6 +68,7 @@ def persist_safe_config(
         "boundaries",
         "integrations",
         "observability",
+        "decisions",
     ):
         if section not in patch or not isinstance(patch[section], dict):
             continue

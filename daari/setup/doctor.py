@@ -63,6 +63,9 @@ def run_doctor(
     results.append(_check_images_generations(cfg))
     results.append(_check_ocr(cfg))
     results.append(_check_decisions(cfg))
+    decisions_models_tip = _check_decisions_local_models(cfg, httpx_client)
+    if decisions_models_tip is not None:
+        results.append(decisions_models_tip)
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -656,7 +659,10 @@ def _check_decisions(settings: Settings) -> CheckResult:
     if local_ok or frontier_ok:
         parts: list[str] = []
         if local_ok:
-            parts.append("local models via systemone (clef/nimble/tev1)")
+            parts.append(
+                "local models via systemone "
+                "(clef/nimble/tev1/drex-1.5/microsoft-decision-1 + decisions.local_models)"
+            )
         if frontier_ok:
             parts.append("gpt-6-luna via frontier L6")
         return CheckResult(
@@ -675,6 +681,59 @@ def _check_decisions(settings: Settings) -> CheckResult:
         ),
         optional=True,
     )
+
+
+def _check_decisions_local_models(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when systemone is on but no local decisions catalog model is tagged (#1590)."""
+    if not bool(getattr(getattr(settings, "systemone", None), "enabled", True)):
+        return None
+    from daari.gateway.decisions import local_decisions_models
+
+    catalog = sorted(local_decisions_models(settings))
+    if not catalog:
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        names = [
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
+        ]
+        present = [
+            model
+            for model in catalog
+            if any(name == model or name.startswith(f"{model}:") for name in names if name)
+        ]
+        if present:
+            return None
+        shown = ", ".join(catalog[:8])
+        extra = f" (+{len(catalog) - 8} more)" if len(catalog) > 8 else ""
+        return CheckResult(
+            name="decisions_local_models",
+            ok=False,
+            detail=(
+                "POST /v1/decisions local catalog models not in Ollama tags at "
+                f"{base}: {shown}{extra} — pull one (e.g. `ollama pull nimble`) "
+                "or extend decisions.local_models (see ollama.md)"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
 
 
 def _check_images_generations(

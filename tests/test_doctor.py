@@ -52,7 +52,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
 
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
@@ -138,7 +138,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
 
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
@@ -170,7 +170,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
 
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
@@ -198,7 +198,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
 
         results = run_doctor(settings, httpx_client=mock, cursor_configured=False)
         by_name = {r.name: r for r in results}
@@ -223,7 +223,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
         return mock
 
     def test_l4_missing_required_when_cursor_configured(self, settings):
@@ -268,7 +268,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
 
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
@@ -298,7 +298,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
 
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
@@ -320,7 +320,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
         assert by_name["org"].ok is True
@@ -343,7 +343,7 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, stats_response, ready_response]
+        mock.get.side_effect = [tags_response, tags_response, stats_response, ready_response]
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}
         assert by_name["org"].ok is False
@@ -374,7 +374,13 @@ class TestDoctor:
         ready_response = MagicMock()
         ready_response.status_code = 200
         ready_response.json.return_value = {"status": "ready", "checks": {"cache": "ok"}}
-        mock.get.side_effect = [tags_response, org_cache_response, stats_response, ready_response]
+        mock.get.side_effect = [
+            tags_response,
+            tags_response,
+            org_cache_response,
+            stats_response,
+            ready_response,
+        ]
 
         results = run_doctor(settings, httpx_client=mock)
         by_name = {r.name: r for r in results}

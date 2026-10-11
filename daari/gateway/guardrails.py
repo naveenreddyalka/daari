@@ -129,6 +129,7 @@ class GuardrailEngine:
                 model=model,
                 base_url=base,
                 client=self.decision_client,
+                settings=settings,
             )
         except Exception as exc:
             detail = str(exc) or type(exc).__name__

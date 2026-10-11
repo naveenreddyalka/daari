@@ -286,7 +286,7 @@ class SystemOneSettings(BaseModel):
 
 
 class DecisionsSettings(BaseModel):
-    """POST /v1/decisions behavior (#1508)."""
+    """POST /v1/decisions behavior (#1508 / #1590)."""
 
     cache_enabled: bool = Field(
         default=True,
@@ -294,6 +294,14 @@ class DecisionsSettings(BaseModel):
             "When true (default), identical typed decision requests are served "
             "from the L0 exact cache. Requires cache.l0.enabled. Clients can "
             "bypass with X-Daari-No-Cache: true."
+        ),
+    )
+    local_models: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra local decisions model ids that extend the built-in catalog "
+            "(clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). "
+            "Operators can add future Ollama judge models without a daari release."
         ),
     )
 

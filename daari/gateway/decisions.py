@@ -23,7 +23,18 @@ from daari.gateway.l6_passthrough import (
 from daari.gateway.request_log import log_gateway_event
 from daari.pricing import cost_usd, matching_model_key
 
-_LOCAL_MODELS = frozenset({"clef", "clef-flash", "nimble", "tev1"})
+BUILTIN_LOCAL_MODELS = frozenset(
+    {
+        "clef",
+        "clef-flash",
+        "nimble",
+        "tev1",
+        "drex-1.5",
+        "microsoft-decision-1",
+    }
+)
+# Back-compat alias for importers/tests that still reference the old name.
+_LOCAL_MODELS = BUILTIN_LOCAL_MODELS
 _FRONTIER_DECISIONS_KEYS = ("gpt-6-luna",)
 
 _DATA_URI_RE = re.compile(
@@ -128,35 +139,68 @@ def is_frontier_decisions_model(model: str) -> bool:
     return key is not None
 
 
-def is_local_decisions_model(model: str) -> bool:
+def local_decisions_models(settings: Any = None) -> frozenset[str]:
+    """Built-in local catalog plus ``decisions.local_models`` extensions (#1590)."""
+    extra: list[str] = []
+    if settings is not None:
+        block = getattr(settings, "decisions", None)
+        raw = getattr(block, "local_models", None) if block is not None else None
+        if raw:
+            extra = [str(item).strip().lower() for item in raw if str(item).strip()]
+    return frozenset(BUILTIN_LOCAL_MODELS | set(extra))
+
+
+def _local_model_candidates(model: str) -> list[str]:
+    """Lowercased id forms: full, no-tag, and after last vendor slash."""
     name = (model or "").strip().lower()
     if not name:
+        return []
+    no_tag = name.split(":", 1)[0]
+    after_slash = no_tag.split("/")[-1]
+    out: list[str] = []
+    for item in (name, no_tag, after_slash):
+        if item and item not in out:
+            out.append(item)
+    return out
+
+
+def is_local_decisions_model(model: str, *, settings: Any = None) -> bool:
+    catalog = local_decisions_models(settings)
+    candidates = _local_model_candidates(model)
+    if not candidates:
         return False
-    # Strip vendor / dated suffixes for local catalog ids.
-    base = name.split("/", 1)[-1]
-    if "." in base:
-        base = base.rsplit(".", 1)[-1]
-    for local in _LOCAL_MODELS:
-        if base == local or base.startswith(f"{local}-") or base.startswith(f"{local}:"):
+    for candidate in candidates:
+        if candidate in catalog:
             return True
-    return name in _LOCAL_MODELS
+        for local in catalog:
+            if candidate.startswith(f"{local}-") or candidate.startswith(f"{local}:"):
+                return True
+    return False
 
 
-def normalize_decisions_model(model: str) -> str | None:
-    """Map Decisions model ids to a canonical local or frontier target (#1485).
+def normalize_decisions_model(model: str, *, settings: Any = None) -> str | None:
+    """Map Decisions model ids to a canonical local or frontier target (#1485 / #1590).
 
     Frontier aliases (`gpt-6-luna`, `gpt-6-luna-decisions`,
     `openai/gpt-6-luna-decisions`, dated/vendor variants) collapse to
-    ``gpt-6-luna``. Local catalog ids pass through. Unknown ids → ``None``.
+    ``gpt-6-luna``. Local catalog ids (built-in + ``decisions.local_models``)
+    collapse to the matching catalog entry. Unknown ids → ``None``.
     """
     name = (model or "").strip()
     if not name:
         return None
     if is_frontier_decisions_model(name):
         return _FRONTIER_DECISIONS_KEYS[0]
-    if is_local_decisions_model(name):
-        return name
-    return None
+    if not is_local_decisions_model(name, settings=settings):
+        return None
+    catalog = local_decisions_models(settings)
+    candidates = _local_model_candidates(name)
+    # Prefer longest catalog match so microsoft-decision-1 beats shorter prefixes.
+    for local in sorted(catalog, key=len, reverse=True):
+        for candidate in candidates:
+            if candidate == local or candidate.startswith(f"{local}-"):
+                return local
+    return candidates[-1] if candidates else None
 
 
 def default_local_model(settings: Any) -> str:
@@ -174,6 +218,7 @@ def evaluate_guardrail_predicate(
     base_url: str,
     client: httpx.Client | None = None,
     timeout_seconds: float = 5.0,
+    settings: Any = None,
 ) -> float:
     """Sync local `/v1/systemone` predicate for decision guardrails (#1589).
 
@@ -188,7 +233,7 @@ def evaluate_guardrail_predicate(
         raise ValueError(
             f"decision guardrails require a local decisions model, not frontier {name!r}"
         )
-    if not is_local_decisions_model(name):
+    if not is_local_decisions_model(name, settings=settings):
         raise ValueError(f"decision guardrails require a local decisions model, got {name!r}")
     base = (base_url or "").strip().rstrip("/")
     if not base:
@@ -1259,7 +1304,7 @@ async def _dispatch_decisions(request: Request, body: DecisionsRequest) -> Any:
     if not requested:
         return await _handle_local(request, body, model=default_local_model(settings))
 
-    canonical = normalize_decisions_model(requested)
+    canonical = normalize_decisions_model(requested, settings=settings)
     if canonical is None:
         return _error(
             400,

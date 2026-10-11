@@ -31,8 +31,10 @@ ollama:
   base_url: http://127.0.0.1:11434
 
 # POST /v1/decisions L0 exact cache (default on; X-Daari-No-Cache bypasses).
+# local_models extends the built-in catalog (clef/nimble/tev1/drex-1.5/…).
 decisions:
   cache_enabled: true
+  local_models: []
 
 # Local speech-to-text. Empty base_url + frontier_fallback false → 501.
 # Audio is never sent to a cloud endpoint unless frontier_fallback is true.
