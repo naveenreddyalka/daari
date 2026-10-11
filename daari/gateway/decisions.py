@@ -166,6 +166,74 @@ def default_local_model(settings: Any) -> str:
     return model or "nimble"
 
 
+def evaluate_guardrail_predicate(
+    *,
+    text: str,
+    statement: str,
+    model: str,
+    base_url: str,
+    client: httpx.Client | None = None,
+    timeout_seconds: float = 5.0,
+) -> float:
+    """Sync local `/v1/systemone` predicate for decision guardrails (#1589).
+
+    Returns probability in ``[0, 1]``. Raises ``ValueError`` when ``model`` is a
+    frontier decisions id (no silent egress). Raises ``RuntimeError`` on transport
+    / shape failures so callers can apply ``on_error``.
+    """
+    name = (model or "").strip()
+    if not name:
+        raise RuntimeError("decision guardrail model is empty")
+    if is_frontier_decisions_model(name):
+        raise ValueError(
+            f"decision guardrails require a local decisions model, not frontier {name!r}"
+        )
+    if not is_local_decisions_model(name):
+        raise ValueError(f"decision guardrails require a local decisions model, got {name!r}")
+    base = (base_url or "").strip().rstrip("/")
+    if not base:
+        raise RuntimeError("ollama.base_url is empty")
+    url = f"{base}/v1/systemone"
+    payload = {
+        "model": name,
+        "state": text or "",
+        "questions": {
+            "guardrail": {
+                "type": "boolean",
+                "instructions": (statement or "").strip() or "Is this a policy violation?",
+            }
+        },
+    }
+    owns = client is None
+    http = client or httpx.Client(timeout=timeout_seconds)
+    try:
+        response = http.post(url, json=payload, timeout=timeout_seconds)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        raise RuntimeError(summarize_upstream_failure(exc)) from exc
+    finally:
+        if owns:
+            http.close()
+    if not isinstance(data, dict):
+        raise RuntimeError("systemone returned non-object JSON")
+    answers = data.get("answers")
+    if not isinstance(answers, dict) or not answers:
+        raise RuntimeError("systemone response missing answers")
+    answer = answers.get("guardrail") or next(iter(answers.values()))
+    if not isinstance(answer, dict):
+        raise RuntimeError("systemone answer is not an object")
+    for key in ("probability", "confidence"):
+        if key in answer and answer[key] is not None:
+            try:
+                return max(0.0, min(1.0, float(answer[key])))
+            except (TypeError, ValueError):
+                break
+    if "value" in answer:
+        return 1.0 if bool(answer["value"]) else 0.0
+    raise RuntimeError("systemone answer missing probability")
+
+
 def _caller_client_id(request: Request) -> str | None:
     claims = getattr(request.state, "auth_claims", None)
     if claims is None or getattr(claims, "kind", None) != "virtual":

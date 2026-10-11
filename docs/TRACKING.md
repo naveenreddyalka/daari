@@ -6627,6 +6627,14 @@ when an active virtual key's non-empty `allowed_models` / `model_groups` match
 zero effective catalog cards. Covered by
 `tests/unit/test_doctor_vk_empty_allowlist.py`.
 
+### Local decision-model guardrail check ([#1589](https://github.com/naveenreddyalka/daari/issues/1589))
+
+<!-- tracking:#1589 -->
+**Status:** Done (2026-10-11). Guardrail `kind: decision` evaluates a local
+`/v1/systemone` predicate (no frontier egress); `on_error` warn/block.
+Docs: guardrails.md decision-model checks. Covered by
+`tests/unit/test_guardrails_decision.py`.
+
 
 ## How to update
 
