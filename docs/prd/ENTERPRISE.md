@@ -11,24 +11,28 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-11)
+## Where daari stands (verified in-tree, 2026-10-11 eve)
 
 **Loop velocity.** Eve feeder rows 65–67 (web-ui / report bounds / multi_agent
-model pricing) and end-user/guardrail rows 62–63 remain open with
-`agent:working` from prior sessions. Catalog ACL (69), key hygiene (60–61),
-retired observability (64), and decisions L0 tenancy pin (68) drained on
-main. Hot-reload (6) and parked Messages tool-allowlist (7) unchanged.
+pricing) and end-user/guardrail rows 62–63 still `agent:working`. Midday
+filed doctor/stats/compare pins (71–74) plus guardrail/decisions catalog /
+Helm NetworkPolicy / per-key in-flight (separate midday refill) remain open.
+Keys export lifecycle fields (70) and RBAC analyst floors on ungated
+`/v1/daari` read surfaces shipped. Hot-reload (6) and parked Messages
+tool-allowlist (7) unchanged.
 
-**Outward.** LiteLLM stable bar still **v1.104.x**; **1.105** at rc.3 adds
-proxy Decisions (`/v1/decisions` + `/v1/systemone`) — daari already ships both
-on-box (compare refresh filed). Ollama **0.40.3** (launcher warning cleanup +
-paused background model upgrades). Portkey / Kong / vLLM flat vs prior scan.
+**Outward.** LiteLLM stable bar still **v1.104.x**; **1.105** at rc.3
+(Decisions on proxy); **1.106** RC/backport adds decision-model guardrail
+(compare note filed). Ollama **0.40.3** flat. Kong AI Gateway **2.2** GA
+(MCP bundling, modality-aware cost, identity-keyed policies) — watch only
+until buyer ask. llama.cpp **0.6.0** ships `/v1/systemone` (daari already
+has the facade). Portkey / OpenRouter / vLLM / GPTCache flat vs prior scan.
 
-**Inward theme: export honesty + doctor ACL + docs pins.** Code audit: keys
-export omits `last_used_at` / `priority` / `cache_scope`; doctor never tips
-when a VK allowlist matches zero catalog cards; `daari stats --help` omits
-`virtual_keys`; compare-litellm still watches RC.1 only; virtual-keys catalog
-ACL doc has no hermetic pin.
+**Inward theme: team DR honesty + admin-console lifecycle + Decisions
+bench.** Code audit: teams export omits `cache_scope`/`priority` (keys fixed);
+web-ui ignores inventory fields and `status`/`idle_days` query params;
+compare-litellm still watches 1.105-rc.1 only; `bench_vs_litellm` has no
+Decisions/System One rows.
 
 ---
 
@@ -36,11 +40,16 @@ ACL doc has no hermetic pin.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 70 | Keys export/import round-trip `last_used_at` + priority + cache_scope | 4 | 2 | LiteLLM key backup | Air-gapped restore keeps idle/admission | Shipped [#1586](https://github.com/naveenreddyalka/daari/pull/1586) |
-| 71 | Doctor tip when VK allowlist matches zero catalog cards | 3 | 2 | — (ops honesty) | Catch typo before BYOK clients 404 | Filed [#1582](https://github.com/naveenreddyalka/daari/issues/1582) |
-| 72 | `daari stats --help` mentions `virtual_keys` | 2 | 1 | — (CLI honesty) | Same JSON operators already dump | Filed [#1583](https://github.com/naveenreddyalka/daari/issues/1583) |
-| 73 | compare-litellm: LiteLLM 1.105 RC Decisions vs daari | 2 | 1 | LiteLLM release notes | On-box Decisions already ship | Filed [#1584](https://github.com/naveenreddyalka/daari/issues/1584) |
-| 74 | Hermetic pin: virtual-keys.md documents `/v1/models` allowlist | 2 | 1 | — (docs regression) | Keep ACL sentence in CI | Filed [#1585](https://github.com/naveenreddyalka/daari/issues/1585) |
+| 75 | Teams export/import round-trip `cache_scope` + `priority` | 4 | 2 | LiteLLM key/team backup | Air-gapped restore keeps team tenancy | Filed [#1595](https://github.com/naveenreddyalka/daari/issues/1595) |
+| 76 | Web-ui: render `last_used_at` / priority / `cache_scope` on keys+teams | 3 | 2 | OpenRouter / LiteLLM admin UI | Same-box console shows inventory fields | Filed [#1596](https://github.com/naveenreddyalka/daari/issues/1596) |
+| 77 | Web-ui: honor keys `status` + `idle_days` filters | 3 | 2 | LiteLLM key hygiene UI | CLI/API filters reachable in console | Filed [#1597](https://github.com/naveenreddyalka/daari/issues/1597) |
+| 78 | compare-litellm: LiteLLM 1.106 decision-model guardrail watch | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Filed [#1598](https://github.com/naveenreddyalka/daari/issues/1598) |
+| 79 | bench_vs_litellm: `/v1/decisions` + `/v1/systemone` scenarios | 3 | 2 | — (benchmarking) | Measure on-box Decisions vs proxy | Filed [#1599](https://github.com/naveenreddyalka/daari/issues/1599) |
+| 70 | Keys export/import round-trip `last_used_at` + priority + cache_scope | 4 | 2 | LiteLLM key backup | Air-gapped restore keeps idle/admission | Shipped |
+| 71 | Doctor tip when VK allowlist matches zero catalog cards | 3 | 2 | — (ops honesty) | Catch typo before BYOK clients 404 | Open |
+| 72 | `daari stats --help` mentions `virtual_keys` | 2 | 1 | — (CLI honesty) | Same JSON operators already dump | Open |
+| 73 | compare-litellm: LiteLLM 1.105 RC Decisions vs daari | 2 | 1 | LiteLLM release notes | On-box Decisions already ship | Open |
+| 74 | Hermetic pin: virtual-keys.md documents `/v1/models` allowlist | 2 | 1 | — (docs regression) | Keep ACL sentence in CI | Open |
 | 69 | Filter `GET /v1/models` by VK `allowed_models` | 5 | 2 | OpenRouter filtered catalog | Same allowlist as inference | Shipped |
 | 65 | Web-ui: honor keys/teams `has_more` + render `report.users` | 4 | 2 | LiteLLM admin UI | Same-box console finishes the job | Open |
 | 66 | Bound/paginate report `clients`/`users` rollups | 4 | 2 | LiteLLM paged usage | Fleet-safe JSON on-box | Open |
@@ -54,8 +63,6 @@ ACL doc has no hermetic pin.
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked |
 | 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface | Shipped |
-| 55–59 | Decisions budgets; Ultrafast; haiku fidelity; lifecycle; revoked-jti pool | 4–5 | 2 | LiteLLM / OpenAI / Kong | On-box parity | Shipped |
-| 44–52 | Decisions facade; MCP OAuth denylist; admin pagination; multi_agent meter | 4–5 | 2–3 | Portkey / Kong / LiteLLM | On-box parity | Shipped |
 | 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
 | 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
 | 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
@@ -72,33 +79,37 @@ Shipped this week (do not re-file): filtered `/v1/models` catalog; key
 `last_used_at` + idle filters; key-expiry doctor/gauge/webhook; retired-block
 audit/metric/doctor; decisions L0 `cache_scope` hermetic pin; stats
 `virtual_keys`; Grafana virtual_keys + retired panels; keys list CLI
-`--status`/`--idle-days` docs/help pins; regional-processing 1.10×; audit
-pagination; Ultrafast/Fast tiers; Anthropic lifecycle cards.
+`--status`/`--idle-days` docs/help pins; keys export lifecycle fields;
+analyst role floors on ungated `/v1/daari` read/feedback; regional-processing
+1.10×; audit pagination; Ultrafast/Fast tiers; Anthropic lifecycle cards.
 
 Watch rows (do not file yet): gpt-6-luna Decisions schema drift; OpenRouter
 BYOK `declared_region` / IP allowlists (buyer ask); Anthropic Managed Agents
-/ Compliance API (non-goal); LiteLLM 1.105 GA Lens + M365 MCP catalog (file
-compare features at GA — Decisions RC note already filed); Portkey JWT JIT
+/ Compliance API (non-goal); Kong 2.2 MCP bundling + modality cost (buyer
+ask); LiteLLM 1.105/1.106 GA Lens + M365 MCP catalog (file compare features
+at GA — Decisions RC + 1.106 guardrail notes already filed); Portkey JWT JIT
 (operator ask); OpenAI in-product HIPAA BAA (compliance non-goal).
 
 Verified fine this run — don't re-audit: filtered catalog on OpenAI facade;
-`last_used_at` touch + CLI filters; key_expiry doctor + Prom + webhook;
-retired rejects metric + doctor; decisions L0 tenancy hermetic; stats
-`virtual_keys` + Grafana panels; regional-processing uplift; MCP grant
-fail-closed; compact-to-fit telemetry.
+`last_used_at` touch + CLI filters; key export key-row fields; key_expiry
+doctor + Prom + webhook; retired rejects metric + doctor; decisions L0
+tenancy hermetic; stats `virtual_keys` + Grafana panels; analyst floors on
+route/preview / cache/diversity / learn/stats / feedback; MCP grant
+fail-closed; compact-to-fit telemetry; `/v1/systemone` facade.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Credential backup honesty** — export/import lifecycle + admission fields
-   (row 70) so DR keeps idle hygiene and priority.
+1. **Credential backup honesty (teams)** — export/import team
+   `cache_scope`/`priority` (row 75) so DR matches key-row lifecycle fields.
 2. **Admin plane at fleet scale** — drain web-ui `has_more` / `report.users`
-   (65) and bounded report rollups (66) still open from the eve feeder.
+   (65), bounded report rollups (66), and console lifecycle columns/filters
+   (76–77).
 3. **End-user + per-tenant policy** — rows 62–63 (inventory/block/cap,
    guardrail profiles) when prior sessions clear `agent:working`.
-4. **FinOps depth** — cost-true multi_agent nested models (67); doctor empty
-   allowlist tip (71).
+4. **FinOps + Decisions proof** — cost-true multi_agent nested models (67);
+   Decisions/System One bench rows (79).
 5. **Operate without restart** — config hot-reload (6) and parked Messages
    tool allowlist (7) when a long session is available.
 
@@ -108,6 +119,14 @@ builds, HIPAA BAA) stay deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-11 eve (team DR + console lifecycle + Decisions bench)** — Marked
+  row 70 Shipped. Filed rows 75–79: teams export `cache_scope`/`priority`,
+  web-ui lifecycle columns, web-ui status/idle filters, compare-litellm 1.106
+  decision-model guardrail watch, bench_vs_litellm Decisions/System One.
+  Outward: LiteLLM 1.106 guardrail RC; Kong AI Gateway 2.2 GA (watch);
+  llama.cpp 0.6.0 `/v1/systemone`. Pruned dense shipped summary; kept open
+  midday rows 71–74.
 
 - **2026-10-11 (export honesty + doctor ACL + docs pins)** — Marked rows
   60–61, 64, 68–69 Shipped after Oct 10–11 drain. Filed rows 70–74: keys
