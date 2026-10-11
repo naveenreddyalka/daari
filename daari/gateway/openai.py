@@ -751,6 +751,26 @@ def _stats_key_rate_limits(request: Request) -> list[dict[str, Any]]:
         return []
 
 
+def _stats_virtual_keys(request: Request) -> dict[str, int]:
+    """Lifecycle counts matching ``daari_virtual_keys{status}`` (#1573)."""
+    from daari.auth.virtual_keys import KEY_EXPIRY_BUCKETS, count_key_expiry_buckets
+
+    empty = {name: 0 for name in KEY_EXPIRY_BUCKETS}
+    ctx = getattr(request.app.state, "ctx", None)
+    store = getattr(request.app.state, "virtual_key_store", None) or getattr(
+        ctx, "virtual_key_store", None
+    )
+    list_keys = getattr(store, "list", None)
+    if not callable(list_keys):
+        return empty
+    try:
+        settings = getattr(ctx, "settings", None)
+        warn_days = int(getattr(getattr(settings, "alerts", None), "key_expiry_warn_days", 14) or 0)
+        return count_key_expiry_buckets(list_keys(), warn_days=warn_days)
+    except Exception:
+        return empty
+
+
 class OpenAIGatewayAdapter(GatewayAdapter):
     id = "openai"
 
@@ -1679,6 +1699,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "rejects": full.get("rejects") or {},
                 "team_rate_limits": _stats_team_rate_limits(request),
                 "key_rate_limits": _stats_key_rate_limits(request),
+                "virtual_keys": _stats_virtual_keys(request),
                 "mcp_tool_calls": full.get("mcp_tool_calls") or {},
                 "mcp_tasks": mcp_tasks,
                 "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),

@@ -6578,6 +6578,15 @@ mentions `--status` and `--idle-days`. Covered by
 `tests/unit/test_keys_list_cli_help.py`.
 
 
+### Stats virtual_keys lifecycle counts ([#1573](https://github.com/naveenreddyalka/daari/issues/1573))
+
+<!-- tracking:#1573 -->
+**Status:** Done (2026-10-11). `GET /v1/daari/stats` includes `virtual_keys`
+(`active` / `expired` / `expiring_soon` / `revoked`) matching the Prom gauge.
+Docs: metrics-prometheus / traces-stats. Covered by
+`tests/unit/test_stats_virtual_keys.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

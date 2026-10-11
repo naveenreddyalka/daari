@@ -71,7 +71,14 @@ async def test_full_stack_l0_after_l3(app, monkeypatch):
     assert first.status_code == 200
     assert first.json()["daari_meta"]["tier"] == "L3"
     assert second.json()["daari_meta"]["tier"] == "L0"
-    assert stats.json()["total_requests"] == 2
+    body = stats.json()
+    assert body["total_requests"] == 2
+    assert body["virtual_keys"] == {
+        "active": 0,
+        "expired": 0,
+        "expiring_soon": 0,
+        "revoked": 0,
+    }
 
 
 @pytest.mark.asyncio
