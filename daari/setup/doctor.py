@@ -116,6 +116,7 @@ def run_doctor(
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_key_expiry(cfg))
     results.append(_check_budget_webhook_secret(cfg))
+    results.append(_check_key_expiry_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
     results.append(_check_store_migrate(cfg, strict=strict))
@@ -1693,6 +1694,30 @@ def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
     else:
         detail = "budget webhook disabled (empty URL)"
     return CheckResult(name="budget_webhook_secret", ok=True, detail=detail, optional=True)
+
+
+def _check_key_expiry_webhook_secret(settings: Settings) -> CheckResult:
+    """Warn when a key_expiry webhook URL is set without a signing secret (#1563)."""
+    url = (settings.alerts.key_expiry_webhook_url or "").strip()
+    secret = (settings.alerts.key_expiry_webhook_secret or "").strip()
+    if url and not secret:
+        return CheckResult(
+            name="key_expiry_webhook_secret",
+            ok=False,
+            detail=(
+                "alerts.key_expiry_webhook_url is set but "
+                "alerts.key_expiry_webhook_secret is empty — receivers cannot "
+                "verify origin; set a secret (secret:// ok) or clear the URL"
+            ),
+            optional=True,
+        )
+    if url:
+        detail = "key_expiry webhook URL + secret configured"
+    else:
+        detail = "key_expiry webhook disabled (empty URL)"
+    return CheckResult(
+        name="key_expiry_webhook_secret", ok=True, detail=detail, optional=True
+    )
 
 
 def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckResult:
