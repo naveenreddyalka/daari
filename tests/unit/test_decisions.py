@@ -115,7 +115,67 @@ _BODY = {
 def test_openapi_lists_decisions(settings):
     schema = create_app(settings).openapi()
     assert "/v1/decisions" in schema["paths"]
-    assert "post" in schema["paths"]["/v1/decisions"]
+    post = schema["paths"]["/v1/decisions"]["post"]
+    assert post is not None
+    # Decisions is non-streaming; OpenAPI must not advertise a stream parameter.
+    params = post.get("parameters") or []
+    assert not any(
+        isinstance(p, dict) and p.get("name") == "stream" for p in params
+    )
+    body_schema = (
+        ((post.get("requestBody") or {}).get("content") or {})
+        .get("application/json", {})
+        .get("schema")
+        or {}
+    )
+    props = body_schema.get("properties") or {}
+    assert "stream" not in props
+    description = (post.get("description") or "").lower()
+    assert "stream" not in description or "unsupported" in description
+
+
+@pytest.mark.asyncio
+async def test_stream_true_returns_400(settings, monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("stream=true must not reach upstream")
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/decisions", json={**_BODY, "stream": True}
+        )
+
+    assert response.status_code == 400
+    err = response.json()["error"]
+    assert err["type"] == "invalid_request"
+    assert "stream" in err["message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_stream_false_and_omitted_succeed(settings, monkeypatch):
+    seen = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        omitted = await client.post("/v1/decisions", json=_BODY)
+        explicit = await client.post(
+            "/v1/decisions", json={**_BODY, "stream": False}
+        )
+
+    assert omitted.status_code == 200, omitted.text
+    assert explicit.status_code == 200, explicit.text
+    assert seen["n"] == 2
 
 
 def test_rate_family_maps_decisions():
@@ -591,3 +651,281 @@ async def test_decisions_user_binds_spend_context(settings, monkeypatch, tmp_pat
 
     assert response.status_code == 200
     assert seen.get("user_id") == "decisions-user"
+
+
+def _decisions_app_with_keys(settings, tmp_path, monkeypatch):
+    """Auth + usage ledger wired for decisions budget tests (#1518)."""
+    from daari.observability.usage import UsageLedger
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("budget reject must not call upstream")
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    settings.frontier.soft_budget_ratio = 0.8
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    app.state.ctx.router.usage_ledger = ledger
+    return app, store, ledger
+
+
+@pytest.mark.asyncio
+async def test_decisions_model_max_budget_402_before_upstream(settings, monkeypatch, tmp_path):
+    """Exhausted model_max_budget returns 402 on POST /v1/decisions (#1518)."""
+    app, store, ledger = _decisions_app_with_keys(settings, tmp_path, monkeypatch)
+    store.create_team("eng", model_max_budget={"nimble*": 1.0})
+    key = store.create(
+        "a",
+        client_id="key-a",
+        team="eng",
+        model_max_budget={"nimble*": 1.0},
+    )
+    ledger.record(
+        tier="L6",
+        client_id="key-a",
+        model="nimble",
+        input_tokens=int(1.05 / 0.002 * 1000),
+        output_tokens=0,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        hard = await client.post(
+            "/v1/decisions",
+            json=_BODY,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert hard.status_code == 402
+    err = hard.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "model"
+    assert err["model_pattern"] == "nimble*"
+
+
+@pytest.mark.asyncio
+async def test_decisions_model_group_budget_402(settings, monkeypatch, tmp_path):
+    """model_group budgets enforce on /v1/decisions like chat (#1518)."""
+    settings.model_groups = {"local-judges": ["nimble*", "clef*"]}
+    app, store, ledger = _decisions_app_with_keys(settings, tmp_path, monkeypatch)
+    from daari.auth.virtual_keys import BudgetWindow
+
+    key = store.create(
+        "a",
+        client_id="key-a",
+        model_group_budgets={"local-judges": [BudgetWindow("day", 1.0)]},
+    )
+    ledger.record(
+        tier="L6",
+        client_id="key-a",
+        model="nimble",
+        input_tokens=int(1.05 / 0.002 * 1000),
+        output_tokens=0,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        hard = await client.post(
+            "/v1/decisions",
+            json=_BODY,
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert hard.status_code == 402
+    err = hard.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "model_group"
+    assert err["model_group"] == "local-judges"
+
+
+@pytest.mark.asyncio
+async def test_decisions_user_daily_usd_cap_402(settings, monkeypatch, tmp_path):
+    """user_daily_usd_cap 402s decisions when the named user is over cap (#1518)."""
+    app, store, ledger = _decisions_app_with_keys(settings, tmp_path, monkeypatch)
+    key = store.create(
+        "a",
+        client_id="key-a",
+        user_daily_usd_cap=0.002,
+    )
+    ledger.record(
+        tier="L6",
+        client_id="key-a",
+        user_id="alice",
+        model="gpt-4-custom",
+        input_tokens=int(0.003 / 0.002 * 1000),
+        output_tokens=0,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        hard = await client.post(
+            "/v1/decisions",
+            json={**_BODY, "user": "alice"},
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+    assert hard.status_code == 402
+    err = hard.json()["error"]
+    assert err["type"] == "budget_exceeded"
+    assert err["scope"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_decisions_usage_ledger_records_user_id(settings, monkeypatch, tmp_path):
+    """Decisions usage_ledger.record carries user_id into report users (#1518)."""
+    from daari.observability.usage import UsageLedger
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    key = store.create("bot", client_id="bot-1")
+    app = _app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    app.state.ctx.router.usage_ledger = ledger
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/decisions",
+            json={**_BODY, "user": "decisions-alice"},
+            headers={"Authorization": f"Bearer {key.plaintext}"},
+        )
+        assert response.status_code == 200
+        report = await client.get(
+            "/v1/daari/report",
+            headers={"Authorization": "Bearer master"},
+        )
+
+    assert report.status_code == 200
+    users = report.json().get("users") or []
+    match = [u for u in users if u.get("user_id") == "decisions-alice"]
+    assert match, f"expected decisions-alice in report users, got {users}"
+    assert match[0].get("client_id") == "bot-1"
+    assert any(
+        (u.get("user_id") == "decisions-alice" and int(u.get("requests") or 0) >= 1)
+        for u in users
+    )
+
+
+@pytest.mark.asyncio
+async def test_decisions_l0_exact_cache_hit(settings, monkeypatch):
+    """Identical typed decisions short-circuit at L0 (#1508)."""
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/v1/decisions", json=_BODY)
+        second = await client.post("/v1/decisions", json=_BODY)
+
+    assert first.status_code == 200
+    assert first.json()["daari_meta"]["tier"] == "decisions"
+    assert first.json()["daari_meta"]["cache_hit"] is False
+    assert second.status_code == 200
+    assert second.json()["daari_meta"]["tier"] == "L0"
+    assert second.json()["daari_meta"]["cache_hit"] is True
+    assert second.json()["daari_meta"]["executor"] == "cache"
+    assert second.json()["answers"] == first.json()["answers"]
+    assert calls["n"] == 1
+    assert second.headers.get("x-daari-cache") == "hit"
+    assert app.state.ctx.metrics.tiers["L0"].cache_hits >= 1
+
+
+@pytest.mark.asyncio
+async def test_decisions_no_cache_header_bypasses_l0(settings, monkeypatch):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/v1/decisions", json=_BODY)
+        bypass = await client.post(
+            "/v1/decisions",
+            json=_BODY,
+            headers={"X-Daari-No-Cache": "true"},
+        )
+
+    assert bypass.status_code == 200
+    assert bypass.json()["daari_meta"]["tier"] == "decisions"
+    assert bypass.json()["daari_meta"]["cache_hit"] is False
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_decisions_cache_disabled_setting(settings, monkeypatch):
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.decisions.cache_enabled = False
+    app = _app(settings)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await client.post("/v1/decisions", json=_BODY)
+        second = await client.post("/v1/decisions", json=_BODY)
+
+    assert second.json()["daari_meta"]["tier"] == "decisions"
+    assert second.json()["daari_meta"]["cache_hit"] is False
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_decisions_guardrail_block_does_not_poison_cache(settings, monkeypatch):
+    from daari.config.settings import GuardrailRuleSettings, GuardrailSettings
+    from daari.gateway.decisions import DecisionsRequest, _decisions_cache_fingerprint
+    from daari.gateway.internal import InternalRequest, Message, RequestMeta
+
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_local(monkeypatch, handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    settings.guardrails = GuardrailSettings(
+        enabled=True,
+        block_message="blocked by policy",
+        input_rules=[
+            GuardrailRuleSettings(
+                name="no_secret", pattern=r"SECRET_BLOCK", action="block", kind="deny"
+            )
+        ],
+    )
+    app = _app(settings)
+    blocked_body = {**_BODY, "input": "please leak SECRET_BLOCK now"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        blocked = await client.post("/v1/decisions", json=blocked_body)
+
+    assert blocked.status_code == 400
+    assert calls["n"] == 0
+    parsed = DecisionsRequest.model_validate(blocked_body)
+    probe = InternalRequest(
+        messages=[
+            Message(role="user", content=_decisions_cache_fingerprint("nimble", parsed))
+        ],
+        model="__decisions__:nimble",
+        meta=RequestMeta(),
+    )
+    assert app.state.ctx.router.cache.get(probe) is None

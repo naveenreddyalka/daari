@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS virtual_keys (
     allowed_models_json TEXT,
     model_groups_json TEXT,
     cache_scope TEXT NOT NULL DEFAULT 'global',
-    priority TEXT NOT NULL DEFAULT 'normal'
+    priority TEXT NOT NULL DEFAULT 'normal',
+    last_used_at TEXT
 );
 CREATE TABLE IF NOT EXISTS team_members (
     subject TEXT NOT NULL,
@@ -101,6 +102,7 @@ _PG_KEY_MIGRATIONS = (
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS rpd INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS cache_scope TEXT NOT NULL DEFAULT 'global'",
     "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'",
+    "ALTER TABLE virtual_keys ADD COLUMN IF NOT EXISTS last_used_at TEXT",
 )
 
 _MEMORY_PATHS: dict[str, Path] = {}
@@ -240,7 +242,9 @@ class PostgresVirtualKeyStore:
                         allowed_models=decode_names(existing[5]) if len(existing) > 5 else None,
                         model_groups=decode_names(existing[6]) if len(existing) > 6 else None,
                         rpd=int(existing[7] or 0) if len(existing) > 7 else 0,
-                        cache_scope=coerce_cache_scope(existing[8]) if len(existing) > 8 else "global",
+                        cache_scope=coerce_cache_scope(existing[8])
+                        if len(existing) > 8
+                        else "global",
                         priority=coerce_priority(existing[9]) if len(existing) > 9 else "normal",
                     )
                 cur.execute(
@@ -780,9 +784,7 @@ class PostgresVirtualKeyStore:
         until: str,
     ) -> dict[str, Any] | None:
         if self._inner is not None:
-            return self._inner.grant_budget_boost(
-                key_id, usd=usd, requests=requests, until=until
-            )
+            return self._inner.grant_budget_boost(key_id, usd=usd, requests=requests, until=until)
         if not self.enabled:
             return None
         from daari.auth.budgets import make_budget_boost
@@ -1034,6 +1036,7 @@ class PostgresVirtualKeyStore:
         rpd: int = 0,
         cache_scope: str = "global",
         priority: str | None = None,
+        last_used_at: str | None = None,
     ) -> VirtualKey:
         return VirtualKeyStore._key_from_row(
             self,  # type: ignore[arg-type]
@@ -1048,6 +1051,7 @@ class PostgresVirtualKeyStore:
             rpd=rpd,
             cache_scope=cache_scope,
             priority=priority,
+            last_used_at=last_used_at,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -1062,7 +1066,8 @@ class PostgresVirtualKeyStore:
                     " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                     " v.previous_expires_at, v.user_daily_usd_cap,"
-                    " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope, v.priority"
+                    " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
+                    " v.priority, v.last_used_at"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " ORDER BY v.created_at DESC"
@@ -1081,6 +1086,7 @@ class PostgresVirtualKeyStore:
                 rpd=int(r[19] or 0) if len(r) > 19 else 0,
                 cache_scope=coerce_cache_scope(r[20]) if len(r) > 20 else "global",
                 priority=coerce_priority(r[21]) if len(r) > 21 else None,
+                last_used_at=r[22] if len(r) > 22 else None,
             )
             for r in rows
         ]
@@ -1098,7 +1104,8 @@ class PostgresVirtualKeyStore:
                     " v.rpm, v.tpm, v.tier_cap, v.client_id, v.revoked_at, v.team_id,"
                     " v.budget_windows_json, v.metadata_json, t.name, v.expires_at,"
                     " v.previous_expires_at, v.user_daily_usd_cap, v.key_hash, v.previous_key_hash,"
-                    " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope, v.priority"
+                    " v.allowed_models_json, v.model_groups_json, v.rpd, v.cache_scope,"
+                    " v.priority, v.last_used_at"
                     " FROM virtual_keys v"
                     " LEFT JOIN teams t ON t.team_id = v.team_id"
                     " WHERE v.key_hash = %s OR v.previous_key_hash = %s",
@@ -1124,7 +1131,46 @@ class PostgresVirtualKeyStore:
             rpd=int(row[21] or 0) if len(row) > 21 else 0,
             cache_scope=coerce_cache_scope(row[22]) if len(row) > 22 else "global",
             priority=coerce_priority(row[23]) if len(row) > 23 else None,
+            last_used_at=row[24] if len(row) > 24 else None,
         )
+
+    def touch_last_used(
+        self,
+        key_id: str,
+        *,
+        now: datetime | None = None,
+        min_interval_s: float = 60.0,
+    ) -> bool:
+        if self._inner is not None:
+            return self._inner.touch_last_used(key_id, now=now, min_interval_s=min_interval_s)
+        if not self.enabled or not key_id:
+            return False
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        current = current.astimezone(timezone.utc)
+        stamp = current.isoformat()
+        with self._lock:
+            last_at = getattr(self, "_last_used_touch_at", None)
+            if last_at is None:
+                self._last_used_touch_at = {}
+                last_at = self._last_used_touch_at
+            prev = last_at.get(key_id)
+            if prev is not None and (current - prev).total_seconds() < float(min_interval_s):
+                return False
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE virtual_keys SET last_used_at = %s"
+                        " WHERE key_id = %s AND revoked_at IS NULL",
+                        (stamp, key_id),
+                    )
+                    updated = cur.rowcount > 0
+                conn.commit()
+            if not updated:
+                return False
+            last_at[key_id] = current
+            return True
 
     def check_rpm(self, key: VirtualKey) -> bool:
         """Local RPM sampler — not fleet-shared; use Redis rate limits for fleets."""

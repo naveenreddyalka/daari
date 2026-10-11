@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,7 @@ def run_doctor(
     results.append(_check_tts(cfg, httpx_client))
     results.append(_check_images_generations(cfg))
     results.append(_check_ocr(cfg))
+    results.append(_check_decisions(cfg))
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -101,6 +103,7 @@ def run_doctor(
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
+    results.append(_check_model_lifecycle(cfg))
     results.append(_check_l1_diversity(cfg))
     results.append(_check_org(cfg))
     results.append(_check_org_cache(cfg, httpx_client))
@@ -111,6 +114,7 @@ def run_doctor(
     results.append(_check_scoped_cache_fleet(cfg))
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
+    results.append(_check_key_expiry(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
@@ -622,6 +626,50 @@ def _check_ocr(settings: Settings) -> CheckResult:
             "ocr.base_url and ocr.vision_model unset — POST /v1/ocr falls through "
             "to frontier L6; set a local OCR root or multimodal vision model "
             "(see clients-and-gateways.md / config.md)"
+        ),
+        optional=True,
+    )
+
+
+def _check_decisions(settings: Settings) -> CheckResult:
+    """Tip when POST /v1/decisions lacks a local or gpt-6-luna path (#1501)."""
+    systemone_on = bool(getattr(getattr(settings, "systemone", None), "enabled", True))
+    frontier = getattr(settings, "frontier", None)
+    frontier_on = bool(getattr(frontier, "enabled", False))
+    frontier_key = bool(settings.resolve_frontier_api_key()) if frontier_on else False
+    local_ok = systemone_on
+    frontier_ok = frontier_on and frontier_key
+    # Misconfigured frontier key is always actionable even when local works.
+    if frontier_on and not frontier_key:
+        return CheckResult(
+            name="decisions",
+            ok=False,
+            detail=(
+                "POST /v1/decisions: frontier enabled but no API key "
+                "(gpt-6-luna L6 blocked) — set DAARI_FRONTIER_API_KEY or "
+                "OPENAI_API_KEY (see clients-and-gateways.md / http-api)"
+            ),
+            optional=True,
+        )
+    if local_ok or frontier_ok:
+        parts: list[str] = []
+        if local_ok:
+            parts.append("local models via systemone (clef/nimble/tev1)")
+        if frontier_ok:
+            parts.append("gpt-6-luna via frontier L6")
+        return CheckResult(
+            name="decisions",
+            ok=True,
+            detail=f"POST /v1/decisions available ({'; '.join(parts)})",
+            optional=True,
+        )
+    return CheckResult(
+        name="decisions",
+        ok=False,
+        detail=(
+            "POST /v1/decisions: systemone.enabled=false and frontier.enabled=false "
+            "(no local clef/nimble/tev1 or gpt-6-luna path) — enable systemone "
+            "and/or frontier + API key (see clients-and-gateways.md / http-api)"
         ),
         optional=True,
     )
@@ -1486,6 +1534,141 @@ def _check_soft_budget_ratio(settings: Settings) -> CheckResult:
             "402/429 warnings are disabled while hard caps remain; set "
             "soft_budget_ratio (e.g. 0.8) so agents can back off before cliffs"
         ),
+        optional=True,
+    )
+
+
+def _check_model_lifecycle(settings: Settings) -> CheckResult:
+    """Error on configured retired models; tip on deprecated (#1549)."""
+    from daari.router.capabilities import anthropic_lifecycle_fields
+
+    configured: list[tuple[str, str]] = []
+    models = settings.models
+    for label, name in (
+        ("models.l3", models.l3),
+        ("models.l4", models.l4),
+        ("models.l5", models.l5),
+    ):
+        text = (name or "").strip()
+        if text:
+            configured.append((label, text))
+    frontier = settings.frontier
+    if getattr(frontier, "enabled", False):
+        text = (getattr(frontier, "model", "") or "").strip()
+        if text:
+            configured.append(("frontier.model", text))
+    pool = getattr(settings.routing, "local_pool", None)
+    backends = list(getattr(pool, "backends", None) or []) if pool is not None else []
+    for index, backend in enumerate(backends):
+        text = (getattr(backend, "model", "") or "").strip()
+        if text:
+            bid = (getattr(backend, "id", "") or "").strip() or str(index)
+            configured.append((f"routing.local_pool.backends[{bid}].model", text))
+
+    retired: list[str] = []
+    deprecated: list[str] = []
+    seen: set[str] = set()
+    for label, name in configured:
+        key = f"{label}:{name}"
+        if key in seen:
+            continue
+        seen.add(key)
+        stage = str(
+            anthropic_lifecycle_fields(name, settings).get("lifecycle") or "active"
+        ).lower()
+        if stage == "retired":
+            retired.append(f"{label}={name}")
+        elif stage == "deprecated":
+            deprecated.append(f"{label}={name}")
+
+    if retired:
+        return CheckResult(
+            name="model_lifecycle",
+            ok=False,
+            detail=(
+                "configured models marked lifecycle=retired: "
+                + ", ".join(retired[:8])
+                + (f" (+{len(retired) - 8} more)" if len(retired) > 8 else "")
+                + " — rotate tier/frontier/pool models or clear models.lifecycle"
+            ),
+            optional=False,
+        )
+    if deprecated:
+        return CheckResult(
+            name="model_lifecycle",
+            ok=False,
+            detail=(
+                "configured models marked lifecycle=deprecated: "
+                + ", ".join(deprecated[:8])
+                + (f" (+{len(deprecated) - 8} more)" if len(deprecated) > 8 else "")
+                + " — plan a cutover before retires_at"
+            ),
+            optional=True,
+        )
+    return CheckResult(
+        name="model_lifecycle",
+        ok=True,
+        detail="configured tier/frontier/pool models are active",
+        optional=True,
+    )
+
+
+def _check_key_expiry(
+    settings: Settings, *, now: datetime | None = None
+) -> CheckResult:
+    """Warn on keys expiring soon; count expired-but-not-revoked (#1546)."""
+    from daari.auth.virtual_keys import key_expiry_bucket
+
+    warn_days = int(getattr(settings.alerts, "key_expiry_warn_days", 14) or 0)
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail="virtual keys disabled",
+            optional=True,
+        )
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    expiring: list[str] = []
+    expired = 0
+    for key in store.list():
+        bucket = key_expiry_bucket(key, now=moment, warn_days=warn_days)
+        if bucket == "expired":
+            expired += 1
+        elif bucket == "expiring_soon":
+            expiring.append(key.name)
+    if not expiring and expired == 0:
+        return CheckResult(
+            name="key_expiry",
+            ok=True,
+            detail=(
+                f"no keys expiring within {warn_days}d; expired=0 "
+                f"(alerts.key_expiry_warn_days={warn_days})"
+            ),
+            optional=True,
+        )
+    shown = ", ".join(expiring[:8])
+    extra = f" (+{len(expiring) - 8} more)" if len(expiring) > 8 else ""
+    parts: list[str] = []
+    if expiring:
+        parts.append(f"expiring within {warn_days}d: {shown}{extra}")
+    parts.append(f"expired={expired}")
+    return CheckResult(
+        name="key_expiry",
+        ok=False,
+        detail="; ".join(parts),
         optional=True,
     )
 

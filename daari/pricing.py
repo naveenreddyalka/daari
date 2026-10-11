@@ -15,13 +15,34 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 # OpenAI / Anthropic / OpenRouter service_tier multipliers (#430).
+# `fast` is OpenAI's 30 Jul 2026 rename of Priority (same 2× Standard) (#1527).
+# `ultrafast` is 6× Standard for gpt-6.1-sol / gpt-6-astra (#1519).
 _SERVICE_TIER_FACTORS = {
     "flex": 0.5,
     "priority": 2.0,
+    "fast": 2.0,
+    "ultrafast": 6.0,
     "standard": 1.0,
     "default": 1.0,
     "auto": 1.0,
 }
+
+# OpenAI Ultrafast is only published for these Responses models (#1519).
+_ULTRAFAST_MODELS = ("gpt-6.1-sol", "gpt-6-astra")
+# Astra Ultrafast supports US residency + global only; EU pin is unsupported.
+_ULTRAFAST_EU_UNSUPPORTED = frozenset({"gpt-6-astra"})
+
+# OpenAI regional processing (data residency) is 1.10× for models released on
+# or after 2026-03-05 when a us/eu pin is active (#1531). FedRAMP is out of scope.
+_REGIONAL_PROCESSING_FACTOR = 1.10
+_REGIONAL_PROCESSING_PINS = frozenset({"us", "eu"})
+_REGIONAL_PREMIUM_MODEL_KEYS = (
+    "gpt-5.4",
+    "gpt-5.5",
+    "gpt-5.6",
+    "gpt-6",
+    "chat-latest",
+)
 
 
 def service_tier_factor(tier: str | None) -> float:
@@ -35,6 +56,53 @@ def service_tier_factor(tier: str | None) -> float:
 
     log_gateway_event("service_tier_ignored", {"tier": key})
     return 1.0
+
+
+def regional_processing_factor(region_pin: str | None, model: str | None) -> float:
+    """1.10× when us/eu pin is set on a post-2026-03-05 OpenAI model (#1531)."""
+    pin = (region_pin or "").strip().lower()
+    if pin not in _REGIONAL_PROCESSING_PINS:
+        return 1.0
+    if not model or matching_model_key(model, _REGIONAL_PREMIUM_MODEL_KEYS) is None:
+        return 1.0
+    return _REGIONAL_PROCESSING_FACTOR
+
+
+@dataclass(frozen=True)
+class ServiceTierDecision:
+    """Effective service_tier after Ultrafast model/residency gating (#1519)."""
+
+    service_tier: str | None
+    warning: str | None = None
+
+
+def resolve_service_tier_for_request(
+    *,
+    model: str | None,
+    service_tier: str | None,
+    region_pin: str | None = None,
+) -> ServiceTierDecision:
+    """Keep Ultrafast only for supported model + residency; else clear + warn.
+
+    Unsupported model or EU-pinned Astra must not silently bill at 1.0× while
+    still advertising ultrafast upstream — clear the tier and set a warning.
+    """
+    if service_tier is None or not str(service_tier).strip():
+        return ServiceTierDecision(service_tier=None)
+    key = str(service_tier).strip().lower()
+    if key != "ultrafast":
+        return ServiceTierDecision(service_tier=key)
+    matched = matching_model_key(model or "", _ULTRAFAST_MODELS) if model else None
+    if matched is None:
+        return ServiceTierDecision(
+            service_tier=None, warning="ultrafast_unsupported_model"
+        )
+    pin = (region_pin or "").strip().lower()
+    if pin == "eu" and matched in _ULTRAFAST_EU_UNSUPPORTED:
+        return ServiceTierDecision(
+            service_tier=None, warning="ultrafast_eu_unsupported"
+        )
+    return ServiceTierDecision(service_tier="ultrafast")
 
 
 @dataclass(frozen=True)
@@ -142,6 +210,7 @@ def cost_usd(
     cache_write_tokens: int = 0,
     cache_ttl: str | None = None,
     service_tier: str | None = None,
+    region_pin: str | None = None,
     billing_path: str | None = None,
 ) -> float:
     price = resolve_price(
@@ -161,7 +230,11 @@ def cost_usd(
         total += cached_input_tokens / 1_000_000 * price.input_per_1m
     if write_tokens:
         total += write_tokens / 1_000_000 * _cache_write_rate(price, cache_ttl)
-    return total * service_tier_factor(service_tier)
+    return (
+        total
+        * service_tier_factor(service_tier)
+        * regional_processing_factor(region_pin, model)
+    )
 
 
 def _cache_write_rate(price: ResolvedPrice, cache_ttl: str | None) -> float:

@@ -11,6 +11,7 @@ from daari.auth.model_access import (
     model_permitted,
     patterns_from_claims,
     record_model_denial,
+    record_retired_denial,
 )
 from daari.gateway.request_log import log_gateway_event
 
@@ -95,6 +96,61 @@ def reject_disallowed_model(
         {"model": name, "key_id": key_id, "path": path},
     )
     return JSONResponse(status_code=403, content=denial_body(name))
+
+
+def reject_retired_model(
+    request: Any,
+    model: str,
+    settings: Any,
+) -> JSONResponse | None:
+    """410 when catalog lifecycle is retired and models.reject_retired (#1521)."""
+    models = getattr(settings, "models", None)
+    if models is not None and getattr(models, "reject_retired", True) is False:
+        return None
+    from daari.router.capabilities import anthropic_lifecycle_fields
+
+    name = (model or "").strip()
+    if not name:
+        return None
+    stage = anthropic_lifecycle_fields(name, settings).get("lifecycle") or "active"
+    if stage != "retired":
+        return None
+    path = getattr(getattr(request, "url", None), "path", "") or ""
+    claims = getattr(getattr(request, "state", None), "auth_claims", None)
+    key_id = getattr(claims, "key_id", None) if claims is not None else None
+    client_id = getattr(claims, "client_id", None) if claims is not None else None
+    team_id = None
+    if claims is not None:
+        team_id = getattr(claims, "selected_team_id", None)
+        if not team_id:
+            virtual_key = getattr(claims, "virtual_key", None)
+            team_id = getattr(virtual_key, "team_id", None) if virtual_key is not None else None
+    record_retired_denial(
+        settings,
+        model=name,
+        key_id=key_id,
+        client_id=client_id,
+        team_id=team_id,
+        path=path,
+    )
+    app_state = getattr(getattr(request, "app", None), "state", None)
+    metrics = getattr(getattr(app_state, "ctx", None), "metrics", None) if app_state else None
+    if metrics is not None and hasattr(metrics, "record_reject"):
+        metrics.record_reject("retired")
+    log_gateway_event(
+        "model_retired",
+        {"model": name, "path": path, "key_id": key_id, "team_id": team_id},
+    )
+    return JSONResponse(
+        status_code=410,
+        content={
+            "error": {
+                "type": "model_retired",
+                "code": "model_retired",
+                "message": f"Model '{name}' is retired and cannot be used.",
+            }
+        },
+    )
 
 
 def reject_model_group_budget(

@@ -540,6 +540,7 @@ class Router:
         decision_classifier_model: str = "nimble",
         decision_classifier_timeout_seconds: float = 5.0,
         decision_classifier_agent_turns: bool = False,
+        models_lifecycle: dict[str, Any] | None = None,
     ) -> None:
         self.cache = cache
         self._l0_singleflight = SingleFlight()
@@ -664,12 +665,38 @@ class Router:
         self.decision_classifier_model = (decision_classifier_model or "nimble").strip() or "nimble"
         self.decision_classifier_timeout_seconds = float(decision_classifier_timeout_seconds or 5.0)
         self.decision_classifier_agent_turns = bool(decision_classifier_agent_turns)
+        self.models_lifecycle = dict(models_lifecycle) if models_lifecycle else {}
         self.local_pool = local_pool
         self.local_pool_frontier_fallback = bool(local_pool_frontier_fallback)
 
     @property
     def ollama(self) -> OllamaExecutor:
         return self.ollama_l3
+
+    def _apply_lifecycle_warning(
+        self, request: InternalRequest, response: InternalResponse
+    ) -> None:
+        """Attach daari_meta.warning when the requested model is deprecated (#1521)."""
+        if not self.models_lifecycle:
+            return
+        from types import SimpleNamespace
+
+        from daari.router.capabilities import anthropic_lifecycle_fields
+
+        settings = SimpleNamespace(
+            models=SimpleNamespace(lifecycle=self.models_lifecycle)
+        )
+        stage = anthropic_lifecycle_fields(request.model or "", settings).get(
+            "lifecycle"
+        )
+        if stage != "deprecated":
+            return
+        existing = response.daari_meta.warning
+        if existing and "model_deprecated" in existing:
+            return
+        response.daari_meta.warning = (
+            f"{existing}; model_deprecated" if existing else "model_deprecated"
+        )
 
     def _tier_models(self) -> dict[str, str]:
         return {
@@ -965,6 +992,7 @@ class Router:
             deadline_active,
             resolve_deadline_seconds,
         )
+        from daari.pricing import resolve_service_tier_for_request
 
         if not deadline_active():
             seconds = resolve_deadline_seconds(
@@ -974,6 +1002,15 @@ class Router:
             if seconds is not None:
                 with bind_request_deadline(seconds, metrics=self.metrics):
                     return await self.route(request)
+        # Ultrafast: gate to published models/residency before L6 / cost (#1519).
+        tier_decision = resolve_service_tier_for_request(
+            model=request.model,
+            service_tier=getattr(request.sampling, "service_tier", None),
+            region_pin=getattr(request.meta, "region_pin", None),
+        )
+        if request.sampling.service_tier != tier_decision.service_tier:
+            request.sampling.service_tier = tier_decision.service_tier
+        ultrafast_warning = tier_decision.warning
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         if reused:
@@ -997,7 +1034,9 @@ class Router:
             self._remember_user_turn_profile(request, profile)
         policy = await self._apply_input_policy(request, profile)
         boundary_meta = policy.boundary_meta
-        input_warning = policy.warning
+        input_warning = policy.warning or ultrafast_warning
+        if ultrafast_warning and policy.warning and policy.warning != ultrafast_warning:
+            input_warning = f"{policy.warning}; {ultrafast_warning}"
         if policy.refusal is not None:
             response = policy.refusal
             if response.daari_meta.task_type is None:
@@ -1020,6 +1059,7 @@ class Router:
         response = self._apply_output_policy(response)
         if input_warning and not response.daari_meta.warning:
             response.daari_meta.warning = input_warning
+        self._apply_lifecycle_warning(request, response)
         # Say so when a requested parameter could not be honored, rather than
         # returning 200 as though it had been (#161). Frontier answers come from a
         # provider that does support them, so only local tiers warn. Appended
@@ -1062,6 +1102,8 @@ class Router:
             response.daari_meta.reasoning_effort = request.sampling.reasoning_effort
         if request.sampling.service_tier and response.daari_meta.service_tier is None:
             response.daari_meta.service_tier = request.sampling.service_tier
+        if getattr(request.meta, "region_pin", None) and response.daari_meta.region_pin is None:
+            response.daari_meta.region_pin = request.meta.region_pin
         add_step(
             "served",
             tier=response.daari_meta.tier,
@@ -1145,6 +1187,7 @@ class Router:
                 request_id=request_id or "",
                 requested_model=request.model or "",
                 service_tier=getattr(request.sampling, "service_tier", None),
+                region_pin=getattr(meta, "region_pin", None),
                 pricing=self.pricing,
                 fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
             )
@@ -5315,6 +5358,11 @@ class Router:
             model = served.daari_meta.model or served.model
             cached = int(served.daari_meta.cached_tokens or 0)
             billed = served.daari_meta.tier or billed
+        region_pin = None
+        service_tier = None
+        if served is not None:
+            region_pin = served.daari_meta.region_pin
+            service_tier = served.daari_meta.service_tier
         return stream_usage_cost(
             tier=billed,
             model=model,
@@ -5324,6 +5372,8 @@ class Router:
             fallback_per_1k=self.frontier_price_per_1k_tokens,
             cached_input_tokens=cached,
             reported_cost=reported,
+            service_tier=service_tier,
+            region_pin=region_pin,
         )
 
     def _stream_cached_tokens(
@@ -6125,6 +6175,7 @@ class AppContext:
             decision_classifier_model=settings.routing.decision_classifier.model,
             decision_classifier_timeout_seconds=settings.routing.decision_classifier.timeout_seconds,
             decision_classifier_agent_turns=settings.routing.decision_classifier.agent_turns,
+            models_lifecycle=dict(settings.models.lifecycle or {}),
         )
         from daari.observability.spend import install_spend_hook, spend_ledger_from_settings
 

@@ -37,6 +37,7 @@ def render_prometheus(
     team_budgets: list[dict[str, Any]] | None = None,
     team_rate_limits: list[dict[str, Any]] | None = None,
     key_rate_limits: list[dict[str, Any]] | None = None,
+    virtual_keys: dict[str, Any] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
     snap = metrics.snapshot(include_histograms=True)
@@ -302,6 +303,20 @@ def render_prometheus(
             lines.append(f"daari_key_rate_limit_remaining{labels} {int(row.get('remaining') or 0)}")
             lines.append(f"daari_key_rate_limit_limit{labels} {int(row.get('limit') or 0)}")
 
+    if virtual_keys is not None:
+        from daari.auth.virtual_keys import KEY_EXPIRY_BUCKETS
+
+        lines.append(
+            "# HELP daari_virtual_keys Virtual keys by lifecycle status "
+            "(active|expired|expiring_soon|revoked)."
+        )
+        lines.append("# TYPE daari_virtual_keys gauge")
+        for status in KEY_EXPIRY_BUCKETS:
+            lines.append(
+                f"daari_virtual_keys{_labels(status=status)} "
+                f"{int(virtual_keys.get(status) or 0)}"
+            )
+
     pool = backend_pool or {}
     backends = list(pool.get("backends") or [])
     recorded = snap.get("backends") or {}
@@ -354,8 +369,8 @@ def render_prometheus(
     rejects = snap.get("rejects") or {}
     if rejects:
         lines.append(
-            "# HELP daari_rejects_total Hard 402/429/413 denials, by kind "
-            "(budget, request_quota, rate_limit, body_too_large, auth_throttled)."
+            "# HELP daari_rejects_total Hard 402/429/410/413 denials, by kind "
+            "(budget, request_quota, rate_limit, body_too_large, auth_throttled, retired)."
         )
         lines.append("# TYPE daari_rejects_total counter")
         for kind, count in rejects.items():

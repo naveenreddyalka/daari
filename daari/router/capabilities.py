@@ -34,6 +34,8 @@ _FRONTIER_CAPABILITIES: dict[str, frozenset[str]] = {
         "claude-haiku-5-5",
         "gpt-6-astra",
         "gpt-6.1-sol",
+        # Rolling ChatGPT Instant alias (rates in pricing; snapshot moves).
+        "chat-latest",
         "gpt-5.6",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
@@ -157,6 +159,9 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         # Omit unknown windows — never invent 0 (#400).
         if context_length is not None and int(context_length) > 0:
             card["context_length"] = int(context_length)
+        # OpenAI facade shares Anthropic lifecycle + server_tools data (#1521).
+        card.update(anthropic_lifecycle_fields(model_id, settings))
+        card["server_tools"] = anthropic_server_tools(model_id)
         cards.append(card)
 
     local_union: set[str] = set()
@@ -272,17 +277,77 @@ def anthropic_thinking_disabled_supported(model_id: str) -> bool:
     return matching_model_key(model_id, {k: True for k in _THINKING_DISABLED_UNSUPPORTED}) is None
 
 
-def anthropic_capabilities(model_id: str) -> dict[str, Any]:
-    """Anthropic Models API ``capabilities`` object (#1481)."""
+def _anthropic_claude_5x(model_id: str) -> bool:
+    """True for catalog Claude 5.x ids (server_tools hosts); not Claude 3/4 or locals."""
+    from daari.pricing import matching_model_key
+
+    key = matching_model_key(model_id, _ANTHROPIC_MODEL_LINES)
+    if key is None:
+        return False
+    if key.startswith("claude-3") or key.startswith("claude-haiku-4"):
+        return False
+    return True
+
+
+def anthropic_server_tools(model_id: str) -> dict[str, Any]:
+    """Anthropic ``capabilities.server_tools`` (#1507)."""
+    supported = _anthropic_claude_5x(model_id)
     return {
-        "thinking": {
-            "types": {
-                "disabled": {
-                    "supported": anthropic_thinking_disabled_supported(model_id),
-                }
-            }
+        "supported": supported,
+        "web_search": {"supported": supported},
+        "code_execution": {"supported": supported},
+    }
+
+
+def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, Any]:
+    """Lifecycle stage + optional dates for Anthropic model cards (#1507)."""
+    overrides = {}
+    raw = getattr(getattr(settings, "models", None), "lifecycle", None) or {}
+    if isinstance(raw, dict):
+        from daari.pricing import matching_model_key
+
+        key = matching_model_key(model_id, raw) if raw else None
+        if key is not None and isinstance(raw.get(key), dict):
+            overrides = raw[key]
+    stage = str(overrides.get("lifecycle") or "active").strip().lower() or "active"
+    if stage not in ("active", "deprecated", "retired"):
+        stage = "active"
+    deprecated_at = overrides.get("deprecated_at")
+    retires_at = overrides.get("retires_at")
+    return {
+        "lifecycle": stage,
+        "deprecated_at": deprecated_at if deprecated_at else None,
+        "retires_at": retires_at if retires_at else None,
+    }
+
+
+def anthropic_capabilities(model_id: str) -> dict[str, Any]:
+    """Anthropic Models API ``capabilities`` object (#1481 / #1507)."""
+    thinking_types: dict[str, Any] = {
+        "disabled": {
+            "supported": anthropic_thinking_disabled_supported(model_id),
         }
     }
+    caps: dict[str, Any] = {
+        "thinking": {"types": thinking_types},
+        "server_tools": anthropic_server_tools(model_id),
+    }
+    # Haiku 5.5: adaptive thinking on by default at medium effort (#1520).
+    from daari.pricing import matching_model_key
+
+    if matching_model_key(model_id, ("claude-haiku-5-5",)) is not None:
+        thinking_types["adaptive"] = {"supported": True, "default": True}
+        caps["thinking"]["default_effort"] = "medium"
+    return caps
+
+
+def anthropic_model_limits(model_id: str) -> dict[str, int]:
+    """Published context / max-output limits for Anthropic model cards (#1520)."""
+    from daari.pricing import matching_model_key
+
+    if matching_model_key(model_id, ("claude-haiku-5-5",)) is not None:
+        return {"context_window": 1_000_000, "max_output_tokens": 128_000}
+    return {}
 
 
 def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
@@ -292,32 +357,100 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
     cards: list[dict[str, Any]] = []
     for card in openai_model_cards(settings):
         created = int(card.get("created") or 0)
-        created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         model_id = str(card["id"])
-        cards.append(
-            {
-                "id": model_id,
-                "type": "model",
-                "display_name": _anthropic_display_name(model_id),
-                "created_at": created_at,
-                "line": anthropic_model_line(model_id),
-                "capabilities": anthropic_capabilities(model_id),
-            }
-        )
+        row: dict[str, Any] = {
+            "id": model_id,
+            "type": "model",
+            "display_name": _anthropic_display_name(model_id),
+            "created_at": created_at,
+            "line": anthropic_model_line(model_id),
+            "capabilities": anthropic_capabilities(model_id),
+            **anthropic_lifecycle_fields(model_id, settings),
+        }
+        row.update(anthropic_model_limits(model_id))
+        cards.append(row)
     return cards
 
 
-def anthropic_models_payload(settings: Any) -> dict[str, Any]:
-    """Full Anthropic list-models response body (#454)."""
-    data = anthropic_model_cards(settings)
+def _parse_lifecycle_filter(lifecycle: Any) -> frozenset[str]:
+    """Parse lifecycle query (repeatable / comma). Default: active+deprecated."""
+    if lifecycle is None:
+        return frozenset({"active", "deprecated"})
+    parts: list[str] = []
+    if isinstance(lifecycle, str):
+        parts = [p.strip() for p in lifecycle.split(",")]
+    elif isinstance(lifecycle, (list, tuple, set, frozenset)):
+        for item in lifecycle:
+            parts.extend(str(item).split(","))
+    else:
+        return frozenset({"active", "deprecated"})
+    stages = {p.strip().lower() for p in parts if p and p.strip()}
+    stages &= {"active", "deprecated", "retired"}
+    return frozenset(stages) if stages else frozenset({"active", "deprecated"})
+
+
+def _filter_cards_by_allowlist(
+    cards: list[dict[str, Any]],
+    *,
+    key_patterns: list[str] | tuple[str, ...] | None,
+    team_patterns: list[str] | tuple[str, ...] | None,
+) -> list[dict[str, Any]]:
+    """Drop cards outside the VK allowlist. Unset patterns → no filter (#1555)."""
+    if key_patterns is None and team_patterns is None:
+        return cards
+    from daari.auth.model_access import model_permitted
+
+    return [
+        card
+        for card in cards
+        if model_permitted(
+            str(card.get("id") or ""),
+            key_patterns=key_patterns,
+            team_patterns=team_patterns,
+        )
+    ]
+
+
+def anthropic_models_payload(
+    settings: Any,
+    *,
+    lifecycle: Any = None,
+    key_patterns: list[str] | tuple[str, ...] | None = None,
+    team_patterns: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    """Full Anthropic list-models response body (#454 / #1507 / #1555)."""
+    allowed = _parse_lifecycle_filter(lifecycle)
+    data = [
+        card
+        for card in anthropic_model_cards(settings)
+        if str(card.get("lifecycle") or "active") in allowed
+    ]
+    data = _filter_cards_by_allowlist(data, key_patterns=key_patterns, team_patterns=team_patterns)
     return {
         "data": data,
         "has_more": False,
         "first_id": data[0]["id"] if data else None,
         "last_id": data[-1]["id"] if data else None,
     }
+
+
+def openai_models_payload(
+    settings: Any,
+    *,
+    lifecycle: Any = None,
+    key_patterns: list[str] | tuple[str, ...] | None = None,
+    team_patterns: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    """OpenAI list-models body with lifecycle + VK allowlist (#1521 / #1555)."""
+    allowed = _parse_lifecycle_filter(lifecycle)
+    data = [
+        card
+        for card in openai_model_cards(settings)
+        if str(card.get("lifecycle") or "active") in allowed
+    ]
+    data = _filter_cards_by_allowlist(data, key_patterns=key_patterns, team_patterns=team_patterns)
+    return {"object": "list", "data": data}
 
 
 def _context_windows(settings: Any) -> dict[str, int]:

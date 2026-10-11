@@ -318,7 +318,7 @@ class SamplingParams(BaseModel):
     logprobs: bool | None = None
     # Client reasoning_effort (minimal|low|medium|high); forwarded / mapped (#297).
     reasoning_effort: str | None = None
-    # Client service_tier (flex|standard|priority|fast); forwarded / mapped (#430).
+    # Client service_tier (flex|standard|priority|fast|ultrafast); forwarded / mapped (#430, #1519).
     service_tier: str | None = None
     # Agent SDK / OpenAI chat knobs (#940).
     parallel_tool_calls: bool | None = None

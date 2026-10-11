@@ -379,11 +379,17 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             meta.authorization_bearer = bearer_from_authorization(
                 request.headers.get("authorization")
             )
-            from daari.gateway.model_access import reject_disallowed_model
+            from daari.gateway.model_access import (
+                reject_disallowed_model,
+                reject_retired_model,
+            )
 
             denied = reject_disallowed_model(request, body.model, ctx.settings, meta)
             if denied is not None:
                 return denied
+            retired = reject_retired_model(request, body.model, ctx.settings)
+            if retired is not None:
+                return retired
             # Per-project profile defaults (issue #91); headers keep precedence.
             apply_profile_to_meta(meta, load_project_profile(x_daari_project))
             if (

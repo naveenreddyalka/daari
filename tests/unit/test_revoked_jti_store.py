@@ -144,3 +144,74 @@ def test_doctor_ok_single_replica_documents_ephemeral(monkeypatch):
     result = _check_mcp_oauth_revoke_fleet(settings)
     assert result.ok is True
     assert "not backup-critical" in result.detail or "single replica" in result.detail
+
+
+def test_postgres_is_revoked_one_pooled_checkout_no_raw_connect(monkeypatch):
+    """Hot path: ≤1 pooled checkout per is_revoked; never raw psycopg.connect (#1522)."""
+    import threading
+    from contextlib import contextmanager
+    from unittest.mock import MagicMock
+
+    checkouts: list[str] = []
+    raw_connects: list[str] = []
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, *args, **kwargs):
+            return None
+
+        def fetchone(self):
+            return None
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    @contextmanager
+    def fake_pooled(dsn: str):
+        checkouts.append(dsn)
+        yield FakeConn()
+
+    def raw_connect(*_a, **_k):
+        raw_connects.append("psycopg")
+        raise AssertionError("raw psycopg.connect must not be used on hot path")
+
+    monkeypatch.setattr("daari.gateway.pg_pool.pooled_connection", fake_pooled)
+    fake_psycopg = MagicMock()
+    fake_psycopg.connect = raw_connect
+    monkeypatch.setitem(__import__("sys").modules, "psycopg", fake_psycopg)
+    monkeypatch.setitem(__import__("sys").modules, "psycopg2", MagicMock(connect=raw_connect))
+
+    store = PostgresRevokedJtiStore.__new__(PostgresRevokedJtiStore)
+    store.dsn = "postgresql://fleet/revoked"
+    store._memory = False
+    store.enabled = True
+    store._lock = threading.Lock()
+    store._last_prune_at = 0.0
+
+    n = 5
+    for _ in range(n):
+        assert store.is_revoked("jti-hot") is False
+
+    assert len(checkouts) == n, f"expected ≤1 checkout per call, got {len(checkouts)} for {n}"
+    assert checkouts == ["postgresql://fleet/revoked"] * n
+    assert raw_connects == []
+    assert store._connect is not None
+    # _connect itself must resolve to the pool helper.
+    with store._connect() as conn:
+        assert conn is not None
+    assert len(checkouts) == n + 1

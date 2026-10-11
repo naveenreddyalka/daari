@@ -682,11 +682,18 @@ def _reject_responses_model(
     meta: RequestMeta,
 ) -> JSONResponse | None:
     """Allowlist + model_max_budget (same 402 as chat) for Responses surfaces (#1169)."""
-    from daari.gateway.model_access import reject_disallowed_model, reject_model_max_budget
+    from daari.gateway.model_access import (
+        reject_disallowed_model,
+        reject_model_max_budget,
+        reject_retired_model,
+    )
 
     denied = reject_disallowed_model(request, model, ctx.settings, meta)
     if denied is not None:
         return denied
+    retired = reject_retired_model(request, model, ctx.settings)
+    if retired is not None:
+        return retired
     return reject_model_max_budget(request, model, ctx.settings)
 
 

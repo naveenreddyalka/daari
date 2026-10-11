@@ -6310,6 +6310,223 @@ denylist is TTL-bound and not backup-critical. Covered by
 `tests/unit/test_revoked_jti_store.py`.
 
 
+### Paginate + audit GET /v1/daari/keys and /teams ([#1499](https://github.com/naveenreddyalka/daari/issues/1499))
+
+<!-- tracking:#1499 -->
+**Status:** Done (2026-10-09). Admin inventories accept `limit`/`offset`
+(default cap 100, max 500) and return `total`/`has_more`; successful GETs
+emit `admin.keys.list` / `admin.teams.list` audit events. Covered by
+`tests/unit/test_admin_read_plane.py`.
+
+
+### Meter multi_agent subagent token usage on L6 ([#1500](https://github.com/naveenreddyalka/daari/issues/1500))
+
+<!-- tracking:#1500 -->
+**Status:** Done (2026-10-09). OpenAI aggregated top-level `usage` (includes
+subagents) stays the metered total; when nested `agent_usages` /
+`usage_by_agent` under-count relative to top-level, parent+nested tokens and
+cost are summed before ledger write. Per-agent rows land on
+`daari_meta.agent_usage` for attribution without double-billing. Covered by
+`tests/unit/test_responses_multi_agent.py`.
+
+
+### Anthropic server_tools + lifecycle on /v1/models ([#1507](https://github.com/naveenreddyalka/daari/issues/1507))
+
+<!-- tracking:#1507 -->
+**Status:** Done (2026-10-09). Anthropic-native model cards expose
+`lifecycle` / `deprecated_at` / `retires_at` and
+`capabilities.server_tools` (Claude 5.x true; locals false). List honors
+`lifecycle` query (default active+deprecated; `retired` only when requested).
+Covered by `tests/unit/test_anthropic_gateway.py`.
+
+
+### Decisions model/user budget 402 + user_id ledger ([#1518](https://github.com/naveenreddyalka/daari/issues/1518))
+
+<!-- tracking:#1518 -->
+**Status:** Done (2026-10-09). `POST /v1/decisions` applies the same
+`model_group` / `model_max_budget` / `user_daily_usd_cap` 402 pre-checks as
+chat before any local or frontier call. `usage_ledger.record` carries
+`user_id` from the request body so `/v1/daari/report` `users` attributes
+decisions traffic. Covered by `tests/unit/test_decisions.py`.
+
+
+### Decisions L0 exact cache for typed judgments ([#1508](https://github.com/naveenreddyalka/daari/issues/1508))
+
+<!-- tracking:#1508 -->
+**Status:** Done (2026-10-09). Identical `POST /v1/decisions` requests
+(normalized model + input + questions) hit the shared L0 exact cache with
+`daari_meta.tier=L0` / `cache_hit=true`. Default-on via
+`decisions.cache_enabled` (requires `cache.l0.enabled`);
+`X-Daari-No-Cache: true` bypasses. Guardrail blocks never write. Prom
+records L0 hits with `modality=decisions`. Covered by
+`tests/unit/test_decisions.py` and
+`tests/integration/test_gateway_flow.py`.
+
+
+### Map OpenAI chat-latest rolling alias in catalog ([#1509](https://github.com/naveenreddyalka/daari/issues/1509))
+
+<!-- tracking:#1509 -->
+**Status:** Done (2026-10-09). `chat-latest` prices at the published ChatGPT
+Instant rates ($5 / $0.50 cached / $30) as a rolling alias (snapshot moves;
+prefer `gpt-6-astra` for pins). Capabilities + `/v1/models` when configured
+as a frontier provider. Covered by `tests/unit/test_chat_latest_pricing.py`.
+
+
+### Alias service_tier fast to 2.0× (OpenAI Fast mode) ([#1527](https://github.com/naveenreddyalka/daari/issues/1527))
+
+<!-- tracking:#1527 -->
+**Status:** Done (2026-10-09). `service_tier: "fast"` (OpenAI Fast mode,
+former Priority) multiplies `cost_usd` at 2.0× like `priority`; no
+`service_tier_ignored`. Chat + Responses HTTP models forward `fast`
+unchanged. Docs: budgets-frontier service-tier note. Covered by
+`tests/unit/test_service_tier.py`.
+
+
+### Ultrafast service_tier (6×) with model + EU gating ([#1519](https://github.com/naveenreddyalka/daari/issues/1519))
+
+<!-- tracking:#1519 -->
+**Status:** Done (2026-10-09). `service_tier: "ultrafast"` bills at 6×
+Standard for `gpt-6.1-sol` / `gpt-6-astra`; unsupported models and
+EU-pinned Astra clear the tier with `daari_meta.warning`
+(`ultrafast_unsupported_model` / `ultrafast_eu_unsupported`). Docs:
+budgets-frontier. Covered by `tests/unit/test_service_tier.py`.
+
+
+### claude-haiku-5-5 fidelity (budget_tokens, 5m write, cards) ([#1520](https://github.com/naveenreddyalka/daari/issues/1520))
+
+<!-- tracking:#1520 -->
+**Status:** Done (2026-10-09). Haiku 5.5 egress maps `budget_tokens`
+thinking to adaptive + `output_config.effort` with a `daari_meta` warning;
+5m cache writes bill $0.125 / $0.625 (above 100K); Anthropic `/v1/models`
+cards advertise 1M context, 128K max output, adaptive default medium.
+Covered by `tests/unit/test_claude_haiku_5_5_pricing.py`.
+
+
+### OpenAI /v1/models lifecycle + server_tools and retired routing ([#1521](https://github.com/naveenreddyalka/daari/issues/1521))
+
+<!-- tracking:#1521 -->
+**Status:** Done (2026-10-10). OpenAI-shaped list/retrieve cards expose the
+same `lifecycle` / `server_tools` data as the Anthropic facade; `lifecycle`
+query filter works on both shapes. Catalog `retired` models fail closed with
+HTTP 410 (`models.reject_retired`, default true); `deprecated` models still
+serve with `daari_meta.warning=model_deprecated`. Covered by
+`tests/unit/test_openai_models_lifecycle.py`.
+
+
+### Pooled Postgres revoked-jti denylist hot path ([#1522](https://github.com/naveenreddyalka/daari/issues/1522))
+
+<!-- tracking:#1522 -->
+**Status:** Done (2026-10-10). `PostgresRevokedJtiStore` uses the shared
+`psycopg_pool` (#975); `is_revoked` / `revoke` prune on the same checkout
+(interval-throttled DELETE) so MCP token validation no longer opens two raw
+connections per lookup. Redis + in-process backends unchanged. Covered by
+`tests/unit/test_revoked_jti_store.py`.
+
+
+### Honor Idempotency-Key on POST /v1/decisions ([#1528](https://github.com/naveenreddyalka/daari/issues/1528))
+
+<!-- tracking:#1528 -->
+**Status:** Done (2026-10-10). `Idempotency-Key` replays local and frontier
+`POST /v1/decisions` responses from the on-box store without a second
+route/upstream call; same key + different body → 409 `idempotency_conflict`;
+missing key is a no-op. Docs: headers.md, config.md. Covered by
+`tests/unit/test_idempotency.py`.
+
+
+### Reject stream=true on POST /v1/decisions ([#1529](https://github.com/naveenreddyalka/daari/issues/1529))
+
+<!-- tracking:#1529 -->
+**Status:** Done (2026-10-10). `stream: true` on Decisions returns HTTP 400
+(`invalid_request`) stating streaming is unsupported; `stream: false` /
+omitted continue to succeed. OpenAPI does not advertise a stream field.
+Covered by `tests/unit/test_decisions.py`.
+
+
+### Paginate GET /v1/daari/audit with limit/offset ([#1530](https://github.com/naveenreddyalka/daari/issues/1530))
+
+<!-- tracking:#1530 -->
+**Status:** Done (2026-10-10). Audit list clamps `limit`/`offset` like keys/teams
+and returns `entries`, `total`, `limit`, `offset`, `has_more` (default cap 100).
+SQLite + Postgres audit stores gain `count()` and `list(offset=)`. Covered by
+`tests/unit/test_admin_read_plane.py`.
+
+
+### OpenAI regional-processing 10% uplift when region_pin set ([#1531](https://github.com/naveenreddyalka/daari/issues/1531))
+
+<!-- tracking:#1531 -->
+**Status:** Done (2026-10-10). `cost_usd` applies 1.10× for us/eu `region_pin`
+on OpenAI models released on or after 2026-03-05 (chat, Responses headers,
+Decisions input-only, spend ledger). Unset pin unchanged. Docs:
+budgets-frontier, data-residency. Covered by
+`tests/unit/test_regional_pricing.py`.
+
+
+### Refresh ENTERPRISE.md after Oct 7–10 drain ([#1470](https://github.com/naveenreddyalka/daari/issues/1470))
+
+<!-- tracking:#1470 -->
+**Status:** Done (2026-10-10). Living PRD marks rows 55–59 Shipped, rewrites
+stand + next-5 for ops-docs / hot-reload / MCP allowlist, and drops watch
+rows that already landed. Covered by `tests/unit/test_enterprise_prd_docs.py`.
+
+
+### Doctor + Helm + auth-and-keys coverage for /v1/decisions ([#1501](https://github.com/naveenreddyalka/daari/issues/1501))
+
+<!-- tracking:#1501 -->
+**Status:** Done (2026-10-10). Doctor `decisions` tip for systemone/frontier
+gaps; Helm values comment for decisions/systemone via ollama+frontier;
+auth-and-keys lists `decisions` rate family. Covered by
+`tests/unit/test_doctor_decisions.py`, `test_doctor_health_decisions_docs.py`,
+`test_auth_and_keys_decisions_family.py`.
+
+
+### Filter GET /v1/models by virtual-key allowlist ([#1555](https://github.com/naveenreddyalka/daari/issues/1555))
+
+<!-- tracking:#1555 -->
+**Status:** Done (2026-10-10). OpenAI and Anthropic `/v1/models` list payloads
+honor key ∪ team `allowed_models` / model groups (master / unrestricted VK
+unchanged). Retrieve returns 404 outside the allowlist; lifecycle filters
+compose. Docs: virtual-keys. Covered by
+`tests/unit/test_models_catalog_allowlist.py`.
+
+
+### Track last_used_at on virtual keys + status/idle filters ([#1545](https://github.com/naveenreddyalka/daari/issues/1545))
+
+<!-- tracking:#1545 -->
+**Status:** Done (2026-10-10). SQLite + Postgres VK stores gain nullable
+`last_used_at` (throttled touch on successful auth). Surfaced on CLI list/show
+and `GET /v1/daari/keys`; `--status` / `?status=` and `--idle-days` /
+`?idle_days=` filter inventory. Docs: virtual-keys. Covered by
+`tests/unit/test_vk_last_used.py`.
+
+
+### Proactive key-expiry signals — doctor, Prometheus, webhook ([#1546](https://github.com/naveenreddyalka/daari/issues/1546))
+
+<!-- tracking:#1546 -->
+**Status:** Done (2026-10-10). `daari doctor` warns on keys expiring within
+`alerts.key_expiry_warn_days` (default 14) and counts expired-but-not-revoked.
+Prometheus `daari_virtual_keys{status=...}` gauge refreshes on scrape. Opt-in
+signed `key_expiry` webhook (Redis-deduped, fail-open). Covered by
+`tests/unit/test_doctor_key_expiry.py` and `tests/unit/test_key_expiry_alerts.py`.
+
+
+### Retired-model audit, reject metric, doctor lifecycle ([#1549](https://github.com/naveenreddyalka/daari/issues/1549))
+
+<!-- tracking:#1549 -->
+**Status:** Done (2026-10-10). Retired 410s write `models.retired_denied` audit
+rows and increment `daari_rejects_total{kind="retired"}`. `daari doctor`
+errors on configured retired tier/frontier/pool models and tips on deprecated.
+Covered by `tests/unit/test_model_lifecycle_signals.py`.
+
+
+### Decisions L0 cache_scope tenancy isolation test ([#1554](https://github.com/naveenreddyalka/daari/issues/1554))
+
+<!-- tracking:#1554 -->
+**Status:** Done (2026-10-10). Hermetic ASGI test: two `cache_scope=key` VKs
+miss each other's identical `/v1/decisions` bodies; same key hits L0. Optional
+same-team hit / cross-team miss for `cache_scope=team`. Covered by
+`tests/unit/test_decisions_cache_scope.py`.
+
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

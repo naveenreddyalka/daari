@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS daari_mcp_revoked_jti (
 )
 """
 
+# Throttle DELETE prune so MCP validation does not rewrite the table every hit.
+_PRUNE_INTERVAL_S = 30.0
+
 _MEMORY: dict[str, dict[str, int]] = {}
 _MEMORY_LOCKS: dict[str, threading.Lock] = {}
 _MEMORY_META_LOCK = threading.Lock()
@@ -87,6 +90,7 @@ class PostgresRevokedJtiStore:
         self._lock = threading.Lock()
         self._memory = dsn.startswith("memory:")
         self.enabled = True
+        self._last_prune_at = 0.0
         if not self._memory:
             try:
                 with self._connect() as conn:
@@ -97,14 +101,19 @@ class PostgresRevokedJtiStore:
                 self.enabled = False
 
     def _connect(self) -> Any:
-        try:
-            import psycopg
+        from daari.gateway.pg_pool import pooled_connection
 
-            return psycopg.connect(self.dsn)
-        except Exception:
-            import psycopg2
+        return pooled_connection(self.dsn)
 
-            return psycopg2.connect(self.dsn)
+    def _prune_on_conn(self, conn: Any, *, ts: int, force: bool = False) -> None:
+        """DELETE expired rows on an already-checked-out connection (#1522)."""
+        now_mono = time.monotonic()
+        if not force and (now_mono - self._last_prune_at) < _PRUNE_INTERVAL_S:
+            return
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM daari_mcp_revoked_jti WHERE exp < %s", (ts,))
+        conn.commit()
+        self._last_prune_at = now_mono
 
     def prune(self, *, now: int | None = None) -> None:
         ts = int(time.time()) if now is None else int(now)
@@ -118,21 +127,22 @@ class PostgresRevokedJtiStore:
         if not self.enabled:
             return
         with self._lock, self._connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM daari_mcp_revoked_jti WHERE exp < %s", (ts,))
-            conn.commit()
+            self._prune_on_conn(conn, ts=ts, force=True)
 
     def is_revoked(self, jti: str, *, now: int | None = None) -> bool:
         if not jti:
             return False
-        self.prune(now=now)
+        ts = int(time.time()) if now is None else int(now)
         if self._memory:
+            self.prune(now=ts)
             bucket, lock = _memory_bucket(self.dsn)
             with lock:
                 return jti in bucket
         if not self.enabled:
             return False
+        # One pooled checkout: optional interval prune + SELECT (#1522).
         with self._lock, self._connect() as conn:
+            self._prune_on_conn(conn, ts=ts)
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT 1 FROM daari_mcp_revoked_jti WHERE jti = %s",
@@ -160,7 +170,7 @@ class PostgresRevokedJtiStore:
                     (jti, int(exp)),
                 )
             conn.commit()
-        self.prune(now=ts)
+            self._prune_on_conn(conn, ts=ts)
 
     def clear(self) -> None:
         if self._memory:

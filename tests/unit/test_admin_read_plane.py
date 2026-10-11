@@ -171,11 +171,211 @@ async def test_keys_empty_when_store_missing(settings):
             headers={"Authorization": "Bearer master-sekret"},
         )
         assert ok.status_code == 200
-        assert ok.json() == {"keys": []}
+        keys_body = ok.json()
+        assert keys_body["keys"] == []
+        assert keys_body["total"] == 0
+        assert keys_body["has_more"] is False
+        assert "limit" in keys_body
+        assert keys_body["offset"] == 0
 
         teams = await client.get(
             "/v1/daari/teams",
             headers={"Authorization": "Bearer master-sekret"},
         )
         assert teams.status_code == 200
-        assert teams.json() == {"teams": []}
+        teams_body = teams.json()
+        assert teams_body["teams"] == []
+        assert teams_body["total"] == 0
+        assert teams_body["has_more"] is False
+        assert "limit" in teams_body
+        assert teams_body["offset"] == 0
+
+
+@pytest.mark.asyncio
+async def test_keys_pagination_truncates_large_store(settings, tmp_path):
+    settings.server.api_key = "master-sekret"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.sso.enabled = False
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    for i in range(5):
+        store.create(f"user-{i}", client_id=f"user-{i}", daily_budget_usd=1.0)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        page = await client.get(
+            "/v1/daari/keys",
+            params={"limit": 2, "offset": 0},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page.status_code == 200
+        body = page.json()
+        assert body["total"] == 5
+        assert body["limit"] == 2
+        assert body["offset"] == 0
+        assert len(body["keys"]) == 2
+        assert body["has_more"] is True
+        _assert_no_secrets(body)
+
+        page2 = await client.get(
+            "/v1/daari/keys",
+            params={"limit": 2, "offset": 4},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page2.status_code == 200
+        body2 = page2.json()
+        assert body2["total"] == 5
+        assert len(body2["keys"]) == 1
+        assert body2["has_more"] is False
+        _assert_no_secrets(body2)
+
+
+@pytest.mark.asyncio
+async def test_teams_pagination_truncates_large_store(settings, tmp_path):
+    settings.server.api_key = "master-sekret"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.sso.enabled = False
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    for i in range(4):
+        store.create_team(f"team-{i}", rpm=10)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        page = await client.get(
+            "/v1/daari/teams",
+            params={"limit": 2, "offset": 1},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page.status_code == 200
+        body = page.json()
+        assert body["total"] == 4
+        assert body["limit"] == 2
+        assert body["offset"] == 1
+        assert len(body["teams"]) == 2
+        assert body["has_more"] is True
+        _assert_no_secrets(body)
+
+
+@pytest.mark.asyncio
+async def test_audit_pagination_has_more_second_page(settings, tmp_path):
+    """GET /v1/daari/audit?limit=&offset= matches keys/teams page meta (#1530)."""
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    settings.server.api_key = "master-sekret"
+    settings.enterprise.sso.enabled = False
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    log = audit_log_from_settings(settings)
+    for i in range(5):
+        log.record(
+            actor="seed",
+            role="admin",
+            action="test.seed",
+            detail={"i": i},
+        )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        page = await client.get(
+            "/v1/daari/audit",
+            params={"limit": 2, "offset": 0},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page.status_code == 200
+        body = page.json()
+        assert body["total"] == 5
+        assert body["limit"] == 2
+        assert body["offset"] == 0
+        assert len(body["entries"]) == 2
+        assert body["has_more"] is True
+
+        page2 = await client.get(
+            "/v1/daari/audit",
+            params={"limit": 2, "offset": 2},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page2.status_code == 200
+        body2 = page2.json()
+        assert body2["total"] == 5
+        assert body2["offset"] == 2
+        assert len(body2["entries"]) == 2
+        assert body2["has_more"] is True
+
+        page3 = await client.get(
+            "/v1/daari/audit",
+            params={"limit": 2, "offset": 4},
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert page3.status_code == 200
+        body3 = page3.json()
+        assert len(body3["entries"]) == 1
+        assert body3["has_more"] is False
+
+        defaulted = await client.get(
+            "/v1/daari/audit",
+            headers={"Authorization": "Bearer master-sekret"},
+        )
+        assert defaulted.status_code == 200
+        dbody = defaulted.json()
+        assert dbody["limit"] == 100
+        assert dbody["offset"] == 0
+        assert dbody["total"] == 5
+        assert len(dbody["entries"]) == 5
+        assert dbody["has_more"] is False
+
+
+@pytest.mark.asyncio
+async def test_keys_list_emits_audit_entry(settings, tmp_path):
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    app, _store, _created, _team = _app_with_keys(settings, tmp_path)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        ok = await client.get(
+            "/v1/daari/keys",
+            params={"limit": 10, "offset": 0},
+            headers={
+                "Authorization": "Bearer master-sekret",
+                "x-daari-actor": "ops-alice",
+            },
+        )
+        assert ok.status_code == 200
+    rows = audit_log_from_settings(settings).list(action="admin.keys.list")
+    assert len(rows) >= 1
+    row = rows[0]
+    assert row["actor"] == "ops-alice"
+    assert row["role"] == "admin"
+    detail = row.get("detail") or {}
+    if isinstance(detail, str):
+        import json
+
+        detail = json.loads(detail)
+    assert detail.get("total") == 1
+    assert detail.get("returned") == 1
+
+
+@pytest.mark.asyncio
+async def test_teams_list_emits_audit_entry(settings, tmp_path):
+    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+    app, _store, _created, _team = _app_with_keys(settings, tmp_path)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        ok = await client.get(
+            "/v1/daari/teams",
+            headers={
+                "Authorization": "Bearer master-sekret",
+                "x-daari-actor": "ops-bob",
+            },
+        )
+        assert ok.status_code == 200
+    rows = audit_log_from_settings(settings).list(action="admin.teams.list")
+    assert len(rows) >= 1
+    row = rows[0]
+    assert row["actor"] == "ops-bob"
+    assert row["role"] == "admin"
