@@ -20,6 +20,8 @@ Web UI: `daari web-ui serve` → `http://127.0.0.1:11437`.
 The same payload includes `soft_warnings` and `rejects` kind maps (cliff
 pressure before and after the soft band) — the Prometheus counterparts are
 documented in [metrics-prometheus.md](metrics-prometheus.md).
+`virtual_keys` mirrors scrape-time `daari_virtual_keys{status}` counts
+(`active` / `expired` / `expiring_soon` / `revoked`; zeros when none stored).
 `team_rate_limits` lists each team's `rpm`, `tpm`, and `rpd` remaining
 (`team`, `kind`, `limit`, `remaining`); it is `[]` when no team has a ceiling.
 `key_rate_limits` is the same shape for virtual keys with `rpd > 0` (`key` is the name, never the secret) and is `[]` otherwise.
