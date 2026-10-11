@@ -6619,6 +6619,14 @@ docs default). Docs: virtual-keys.md backup section. Covered by
 viewer convention as stats). Docs: auth-and-keys role matrix. Covered by
 `tests/unit/test_daari_admin_role_floors.py` and SSO RBAC matrix.
 
+### Doctor tip for empty VK allowlist∩catalog ([#1582](https://github.com/naveenreddyalka/daari/issues/1582))
+
+<!-- tracking:#1582 -->
+**Status:** Done (2026-10-11). `daari doctor` emits optional `vk_empty_allowlist`
+when an active virtual key's non-empty `allowed_models` / `model_groups` match
+zero effective catalog cards. Covered by
+`tests/unit/test_doctor_vk_empty_allowlist.py`.
+
 
 ## How to update
 
