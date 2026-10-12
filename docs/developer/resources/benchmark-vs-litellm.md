@@ -47,3 +47,14 @@ daari's recorded tokens.
 LiteLLM here is the SDK `ollama_chat` adapter (same translation the proxy uses).
 daari's wins are the $0 tiers (L0/L1/L2/Lt/CCS),
 not a faster llama3.2:3b. Rows marked `excluded` expect frontier.
+
+## Decisions / System One
+
+Typed-judgment routes (`POST /v1/decisions`, `POST /v1/systemone`).
+LiteLLM rows are skipped with a note when that build lacks the path.
+Re-run `python scripts/bench_vs_litellm.py --spawn` to refresh live ms.
+
+| ID | Path | LiteLLM ms | daari ms | speedup | note |
+|----|------|------------|----------|---------|------|
+| DEC-01 | /v1/decisions | — | — | — | stub — re-run bench for live numbers |
+| SYS-01 | /v1/systemone | — | — | — | stub — re-run bench for live numbers |
