@@ -6659,6 +6659,14 @@ capacity-helm.md. Covered by `tests/unit/test_helm_chart.py`.
 rejects kinds `concurrency` vs `key_concurrency`/`team_concurrency`.
 Docs: auth-and-keys.md. Covered by `tests/unit/test_rate_limit.py`.
 
+### Team cache_scope/priority in keys export/import ([#1595](https://github.com/naveenreddyalka/daari/issues/1595))
+
+<!-- tracking:#1595 -->
+**Status:** Done (2026-10-12). `export_document` / `import_document` round-trip
+team `cache_scope` and `priority` (SQLite + Postgres); legacy docs default
+to global/normal. Docs: virtual-keys.md Backup. Covered by
+`tests/unit/test_keys_export_import.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -128,11 +128,12 @@ secret is set). Full recipe: [budgets and frontier](../configuration/budgets-fro
 
 `daari keys export --json` / `daari keys import` round-trip key hashes (never
 plaintext) plus teams. The document also carries lifecycle and admission
-fields so host migration keeps idle hygiene and gate behavior: `last_used_at`,
-`priority`, and `cache_scope`. Older export files without those keys import
-with today's defaults (`last_used_at` null, `priority=normal`,
-`cache_scope=global`). Prefer export/import over copying the SQLite file when
-moving hosts — see [upgrade](../operations/upgrade.md).
+fields so host migration keeps idle hygiene and gate behavior: keys keep
+`last_used_at`, `priority`, and `cache_scope`; teams carry `cache_scope` and
+`priority` too (team-scoped L0/L1 isolation and admission class). Older export
+files without those keys import with today's defaults (`last_used_at` null,
+`priority=normal`, `cache_scope=global`). Prefer export/import over copying the
+SQLite file when moving hosts — see [upgrade](../operations/upgrade.md).
 
 ## Verify
 

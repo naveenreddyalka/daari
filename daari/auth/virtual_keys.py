@@ -1568,7 +1568,7 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             team_rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd"
+                " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
             key_rows = conn.execute(
@@ -1596,6 +1596,12 @@ class VirtualKeyStore:
                 if len(row) > 8 and row[8] is not None
                 else None,
                 "rpd": int(row[9] or 0) if len(row) > 9 else 0,
+                "cache_scope": coerce_cache_scope(row[10])
+                if len(row) > 10 and row[10] is not None
+                else "global",
+                "priority": coerce_priority(row[11])
+                if len(row) > 11 and row[11] is not None
+                else "normal",
             }
             for row in team_rows
         ]
@@ -1693,12 +1699,14 @@ class VirtualKeyStore:
                 rpm = max(0, int(team.get("rpm") or 0))
                 tpm = max(0, int(team.get("tpm") or 0))
                 rpd = max(0, int(team.get("rpd") or 0))
+                team_scope = coerce_cache_scope(team.get("cache_scope") or "global")
+                team_prio = coerce_priority(team.get("priority") or "normal")
                 team_models = decode_names(team.get("allowed_models"))
                 team_groups = decode_names(team.get("model_groups"))
                 created_at = team.get("created_at") or datetime.now(timezone.utc).isoformat()
                 existing = conn.execute(
                     "SELECT name, budget_windows_json, region_pin, rpm, tpm, created_at,"
-                    " allowed_models_json, model_groups_json, rpd"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
                     " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
@@ -1711,6 +1719,8 @@ class VirtualKeyStore:
                     encode_names(team_models),
                     encode_names(team_groups),
                     rpd,
+                    team_scope,
+                    team_prio,
                 )
                 if existing is None:
                     summary["teams"]["created"] += 1
@@ -1718,7 +1728,8 @@ class VirtualKeyStore:
                         conn.execute(
                             "INSERT INTO teams (team_id, name, budget_windows_json,"
                             " created_at, region_pin, rpm, tpm, allowed_models_json,"
-                            " model_groups_json, rpd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            " model_groups_json, rpd, cache_scope, priority)"
+                            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (team_id, *desired[:2], created_at, *desired[2:]),
                         )
                 else:
@@ -1739,6 +1750,12 @@ class VirtualKeyStore:
                         decode_names(existing[6]) if len(existing) > 6 else None,
                         decode_names(existing[7]) if len(existing) > 7 else None,
                         int(existing[8] or 0) if len(existing) > 8 else 0,
+                        coerce_cache_scope(existing[9])
+                        if len(existing) > 9 and existing[9] is not None
+                        else "global",
+                        coerce_priority(existing[10])
+                        if len(existing) > 10 and existing[10] is not None
+                        else "normal",
                     )
                     desired_norm = (
                         desired[0],
@@ -1749,6 +1766,8 @@ class VirtualKeyStore:
                         team_models,
                         team_groups,
                         rpd,
+                        team_scope,
+                        team_prio,
                     )
                     if current_norm == desired_norm:
                         summary["teams"]["skipped"] += 1
@@ -1758,7 +1777,8 @@ class VirtualKeyStore:
                             conn.execute(
                                 "UPDATE teams SET name = ?, budget_windows_json = ?,"
                                 " region_pin = ?, rpm = ?, tpm = ?,"
-                                " allowed_models_json = ?, model_groups_json = ?, rpd = ?"
+                                " allowed_models_json = ?, model_groups_json = ?, rpd = ?,"
+                                " cache_scope = ?, priority = ?"
                                 " WHERE team_id = ?",
                                 (*desired, team_id),
                             )
