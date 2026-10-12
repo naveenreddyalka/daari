@@ -26,6 +26,7 @@ from daari.auth.virtual_keys import (
     VirtualKey,
     VirtualKeyStore,
     _UNSET,
+    _max_in_flight_from_meta,
     _parse_metadata,
     coerce_cache_scope,
     coerce_priority,
@@ -182,6 +183,7 @@ class PostgresVirtualKeyStore:
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
         priority: str = "normal",
+        max_in_flight: int = 0,
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
         model_max_budget: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
@@ -200,13 +202,19 @@ class PostgresVirtualKeyStore:
                 model_groups=model_groups,
                 cache_scope=cache_scope,
                 priority=priority,
+                max_in_flight=max_in_flight,
                 model_group_budgets=model_group_budgets,
                 model_max_budget=model_max_budget,
                 metadata=metadata,
             )
         if not self.enabled:
             raise RuntimeError("virtual key store is disabled")
-        from daari.auth.budgets import coalesce_windows, windows_from_flat
+        from daari.auth.budgets import (
+            coalesce_windows,
+            encode_model_group_budgets,
+            encode_model_max_budget,
+            windows_from_flat,
+        )
 
         windows = coalesce_windows(
             list(budget_windows or ())
@@ -216,22 +224,34 @@ class PostgresVirtualKeyStore:
         team_rpm = max(0, int(rpm))
         team_tpm = max(0, int(tpm))
         team_rpd = max(0, int(rpd))
+        team_mif = max(0, int(max_in_flight))
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
         prio = coerce_priority(priority)
+        meta = dict(metadata or {})
+        if team_mif > 0:
+            meta["max_in_flight"] = team_mif
+        if model_group_budgets:
+            meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
+        if model_max_budget:
+            meta["model_max_budget"] = encode_model_max_budget(model_max_budget)
         team_id = secrets.token_hex(8)
         created = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT team_id, budget_windows_json, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                    " metadata_json"
                     " FROM teams WHERE name = %s",
                     (name,),
                 )
                 existing = cur.fetchone()
                 if existing:
+                    existing_meta = (
+                        _parse_metadata(existing[10]) if len(existing) > 10 else {}
+                    )
                     return Team(
                         team_id=existing[0],
                         name=name,
@@ -246,12 +266,14 @@ class PostgresVirtualKeyStore:
                         if len(existing) > 8
                         else "global",
                         priority=coerce_priority(existing[9]) if len(existing) > 9 else "normal",
+                        max_in_flight=_max_in_flight_from_meta(existing_meta),
+                        metadata=existing_meta,
                     )
                 cur.execute(
                     "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
                     " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
-                    " cache_scope, priority)"
-                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                    " cache_scope, priority, metadata_json)"
+                    " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                     (
                         team_id,
                         name,
@@ -265,6 +287,7 @@ class PostgresVirtualKeyStore:
                         team_rpd,
                         scope,
                         prio,
+                        json.dumps(meta),
                     ),
                 )
             conn.commit()
@@ -280,6 +303,8 @@ class PostgresVirtualKeyStore:
             rpd=team_rpd,
             cache_scope=scope,
             priority=prio,
+            max_in_flight=team_mif,
+            metadata=meta,
         )
 
     def update_team(
@@ -396,6 +421,7 @@ class PostgresVirtualKeyStore:
                 row = cur.fetchone()
         if row is None:
             return None
+        team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
         return Team(
             team_id=row[0],
             name=row[1],
@@ -408,7 +434,8 @@ class PostgresVirtualKeyStore:
             rpd=int(row[8] or 0) if len(row) > 8 else 0,
             cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
-            metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
+            max_in_flight=_max_in_flight_from_meta(team_meta),
+            metadata=team_meta,
         )
 
     def list_teams(self) -> list[Team]:
@@ -424,23 +451,27 @@ class PostgresVirtualKeyStore:
                     " FROM teams ORDER BY created_at ASC, team_id ASC"
                 )
                 rows = cur.fetchall()
-        return [
-            Team(
-                team_id=row[0],
-                name=row[1],
-                budget_windows=self._parse_windows(row[2]),
-                region_pin=row[3],
-                rpm=int(row[4] or 0),
-                tpm=int(row[5] or 0),
-                allowed_models=decode_names(row[6]) if len(row) > 6 else None,
-                model_groups=decode_names(row[7]) if len(row) > 7 else None,
-                rpd=int(row[8] or 0) if len(row) > 8 else 0,
-                cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
-                priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
-                metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
+        out: list[Team] = []
+        for row in rows:
+            team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
+            out.append(
+                Team(
+                    team_id=row[0],
+                    name=row[1],
+                    budget_windows=self._parse_windows(row[2]),
+                    region_pin=row[3],
+                    rpm=int(row[4] or 0),
+                    tpm=int(row[5] or 0),
+                    allowed_models=decode_names(row[6]) if len(row) > 6 else None,
+                    model_groups=decode_names(row[7]) if len(row) > 7 else None,
+                    rpd=int(row[8] or 0) if len(row) > 8 else 0,
+                    cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
+                    priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
+                    max_in_flight=_max_in_flight_from_meta(team_meta),
+                    metadata=team_meta,
+                )
             )
-            for row in rows
-        ]
+        return out
 
     def team_client_ids(self, team_id: str) -> list[str]:
         if self._inner is not None:
@@ -1252,7 +1283,8 @@ class PostgresVirtualKeyStore:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                    " metadata_json"
                     " FROM teams ORDER BY created_at ASC, team_id ASC"
                 )
                 team_rows = cur.fetchall()
@@ -1289,6 +1321,7 @@ class PostgresVirtualKeyStore:
                 "priority": coerce_priority(row[11])
                 if len(row) > 11 and row[11] is not None
                 else "normal",
+                "metadata": _parse_metadata(row[12]) if len(row) > 12 else {},
             }
             for row in team_rows
         ]
@@ -1376,11 +1409,16 @@ class PostgresVirtualKeyStore:
                         )
                         team_scope = normalize_cache_scope(team.get("cache_scope") or "global")
                         team_prio = coerce_priority(team.get("priority") or "normal")
+                        team_meta = (
+                            dict(team.get("metadata"))
+                            if isinstance(team.get("metadata"), dict)
+                            else {}
+                        )
                         cur.execute(
                             "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
                             " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
-                            " cache_scope, priority)"
-                            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                            " cache_scope, priority, metadata_json)"
+                            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
                             " ON CONFLICT (team_id) DO UPDATE SET"
                             " name = EXCLUDED.name,"
                             " budget_windows_json = EXCLUDED.budget_windows_json,"
@@ -1391,7 +1429,8 @@ class PostgresVirtualKeyStore:
                             " model_groups_json = EXCLUDED.model_groups_json,"
                             " rpd = EXCLUDED.rpd,"
                             " cache_scope = EXCLUDED.cache_scope,"
-                            " priority = EXCLUDED.priority",
+                            " priority = EXCLUDED.priority,"
+                            " metadata_json = EXCLUDED.metadata_json",
                             (
                                 team["team_id"],
                                 team["name"],
@@ -1405,6 +1444,7 @@ class PostgresVirtualKeyStore:
                                 int(team.get("rpd") or 0),
                                 team_scope,
                                 team_prio,
+                                json.dumps(team_meta),
                             ),
                         )
                     for key in doc["keys"]:

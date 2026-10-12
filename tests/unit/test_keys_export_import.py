@@ -273,3 +273,82 @@ def test_virtual_keys_guide_mentions_team_cache_scope_export():
     assert "Backup export" in text or "Backup" in text
     assert "team" in text.lower() and "cache_scope" in text
     assert "priority" in text
+
+
+def test_round_trip_preserves_team_metadata_caps(tmp_path):
+    """Team max_in_flight + model budgets survive export/import (#1611)."""
+    from daari.auth.budgets import model_max_budget_of
+    from daari.auth.virtual_keys import BudgetWindow
+
+    src = VirtualKeyStore(tmp_path / "src.sqlite3")
+    team = src.create_team(
+        "fleet",
+        max_in_flight=3,
+        model_max_budget={"gpt-4o": 1.5},
+        model_group_budgets={"coding": [BudgetWindow("day", 2.0)]},
+    )
+    assert team.max_in_flight == 3
+    doc = src.export_document()
+    meta = doc["teams"][0]["metadata"]
+    assert meta.get("max_in_flight") == 3
+    assert "model_max_budget" in meta
+    assert "model_group_budgets" in meta
+
+    dst = VirtualKeyStore(tmp_path / "dst.sqlite3")
+    dst.import_document(doc)
+    restored = dst.get_team(team.team_id)
+    assert restored is not None
+    assert restored.max_in_flight == 3
+    assert restored.metadata.get("max_in_flight") == 3
+    assert model_max_budget_of(restored)
+    assert "coding" in (restored.metadata.get("model_group_budgets") or {})
+
+    legacy = {
+        "schema": KEYS_EXPORT_SCHEMA,
+        "teams": [{k: v for k, v in doc["teams"][0].items() if k != "metadata"}],
+        "keys": [],
+    }
+    dst2 = VirtualKeyStore(tmp_path / "dst2.sqlite3")
+    dst2.import_document(legacy)
+    legacy_team = dst2.get_team(team.team_id)
+    assert legacy_team is not None
+    assert legacy_team.max_in_flight == 0
+    assert legacy_team.metadata == {}
+
+
+def test_postgres_memory_round_trip_team_metadata():
+    from daari.auth.postgres_virtual_keys import PostgresVirtualKeyStore
+    from daari.auth.virtual_keys import BudgetWindow
+
+    src = PostgresVirtualKeyStore("memory:team-meta-src")
+    team = src.create_team(
+        "fleet",
+        max_in_flight=2,
+        model_max_budget={"gpt-4o": 0.5},
+        model_group_budgets={"ops": [BudgetWindow("day", 1.0)]},
+    )
+    doc = src.export_document()
+    assert doc["teams"][0]["metadata"].get("max_in_flight") == 2
+    dst = PostgresVirtualKeyStore("memory:team-meta-dst")
+    dst.import_document(doc)
+    restored = dst.get_team(team.team_id)
+    assert restored is not None
+    assert restored.max_in_flight == 2
+    assert restored.metadata.get("model_max_budget")
+
+
+def test_restored_team_max_in_flight_feeds_admission(tmp_path):
+    """Restored team cap is visible to concurrency gauge resolution (#1611)."""
+    src = VirtualKeyStore(tmp_path / "src.sqlite3")
+    team = src.create_team("fleet", max_in_flight=1)
+    src.create("member", team="fleet")
+    doc = src.export_document()
+    dst = VirtualKeyStore(tmp_path / "dst.sqlite3")
+    dst.import_document(doc)
+    restored = dst.get_team(team.team_id)
+    assert restored is not None
+    assert restored.max_in_flight == 1
+    # RateLimiter gauge tuple shape used by chat admission (scope, limit, kind).
+    gauge = (f"inflight:team:{restored.team_id}", restored.max_in_flight, "team_concurrency")
+    assert gauge[1] == 1
+    assert gauge[2] == "team_concurrency"
