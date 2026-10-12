@@ -39,6 +39,8 @@ const cacheTrustTableNode = document.getElementById("cache-trust-table");
 const reportStatusNode = document.getElementById("report-status");
 const adminKeysTableNode = document.getElementById("admin-keys-table");
 const adminKeysStatusNode = document.getElementById("admin-keys-status");
+const adminKeysStatusFilterNode = document.getElementById("admin-keys-status-filter");
+const adminKeysIdleDaysNode = document.getElementById("admin-keys-idle-days");
 const adminTeamsTableNode = document.getElementById("admin-teams-table");
 const adminTeamsStatusNode = document.getElementById("admin-teams-status");
 const tracesTableNode = document.getElementById("traces-table");
@@ -522,14 +524,60 @@ async function loadReport() {
   }
 }
 
+function adminKeysFilterParams() {
+  const params = new URLSearchParams();
+  const status =
+    adminKeysStatusFilterNode && typeof adminKeysStatusFilterNode.value === "string"
+      ? adminKeysStatusFilterNode.value.trim()
+      : "";
+  if (status) {
+    params.set("status", status);
+  }
+  const idleRaw =
+    adminKeysIdleDaysNode && typeof adminKeysIdleDaysNode.value === "string"
+      ? adminKeysIdleDaysNode.value.trim()
+      : "";
+  if (idleRaw !== "") {
+    const idle = Number(idleRaw);
+    if (Number.isFinite(idle) && idle >= 0) {
+      params.set("idle_days", String(Math.trunc(idle)));
+    }
+  }
+  return params;
+}
+
+function adminKeysUrl() {
+  const params = adminKeysFilterParams();
+  const qs = params.toString();
+  return qs ? `${apiBaseUrl}/v1/daari/keys?${qs}` : `${apiBaseUrl}/v1/daari/keys`;
+}
+
+function formatAdminKeysStatus(payload) {
+  const count = Array.isArray(payload?.keys) ? payload.keys.length : 0;
+  const params = adminKeysFilterParams();
+  const status = params.get("status");
+  const idle = params.get("idle_days");
+  let noun = "key(s)";
+  if (idle != null) {
+    noun = "idle key(s)";
+  } else if (status) {
+    noun = `${status} key(s)`;
+  }
+  let text = `${count} ${noun}.`;
+  if (payload && payload.has_more) {
+    text += " More available.";
+  }
+  return text;
+}
+
 async function loadAdminKeys() {
   if (!adminKeysTableNode || !adminKeysStatusNode) {
     return;
   }
   try {
-    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/keys`);
+    const payload = await fetchJson(adminKeysUrl());
     renderAdminKeys(payload.keys);
-    adminKeysStatusNode.textContent = `${Array.isArray(payload.keys) ? payload.keys.length : 0} key(s).`;
+    adminKeysStatusNode.textContent = formatAdminKeysStatus(payload);
   } catch (error) {
     renderAdminKeys([]);
     adminKeysStatusNode.textContent = `Keys unavailable (${error.message}).`;
@@ -751,6 +799,16 @@ function configureAutoRefresh() {
 
 refreshButton.addEventListener("click", loadStats);
 reportDaysNode.addEventListener("change", loadReport);
+if (adminKeysStatusFilterNode) {
+  adminKeysStatusFilterNode.addEventListener("change", () => {
+    void loadAdminKeys();
+  });
+}
+if (adminKeysIdleDaysNode) {
+  adminKeysIdleDaysNode.addEventListener("change", () => {
+    void loadAdminKeys();
+  });
+}
 tracesTableNode.addEventListener("click", (event) => {
   const target = event.target.closest("button.trace-link");
   if (target) {

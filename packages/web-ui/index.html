@@ -293,7 +293,32 @@
       </section>
 
       <section class="card">
-        <h2>Virtual keys</h2>
+        <div class="card-heading">
+          <h2>Virtual keys</h2>
+          <div class="controls">
+            <label>
+              Status
+              <select id="admin-keys-status-filter" aria-label="Key status filter">
+                <option value="">all</option>
+                <option value="active">active</option>
+                <option value="expired">expired</option>
+                <option value="expiring_soon">expiring_soon</option>
+                <option value="revoked">revoked</option>
+              </select>
+            </label>
+            <label>
+              Idle days
+              <input
+                id="admin-keys-idle-days"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="optional"
+                aria-label="Idle days threshold"
+              />
+            </label>
+          </div>
+        </div>
         <p class="subtle">Read-only inventory from <code>GET /v1/daari/keys</code> (admin / master key). Secrets never leave the store.</p>
         <table>
           <thead>

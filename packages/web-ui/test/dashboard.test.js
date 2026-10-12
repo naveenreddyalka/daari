@@ -613,6 +613,54 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.match(doc.getElementById("admin-teams-status").textContent, /1 team/);
 });
 
+test("admin keys status and idle_days filters build query and render rows", async (t) => {
+  const filteredKeys = {
+    keys: [
+      { ...ADMIN_KEYS.keys[0], name: "idle-alice" },
+      { ...ADMIN_KEYS.keys[0], key_id: "def456", name: "idle-bob" },
+      { ...ADMIN_KEYS.keys[0], key_id: "ghi789", name: "idle-carol" },
+    ],
+    has_more: true,
+  };
+  const base = fakeFetch(routes());
+  const fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes("/v1/daari/keys?") && u.includes("status=active") && u.includes("idle_days=30")) {
+      fetch.calls.push({ url: u, init });
+      return { ok: true, status: 200, statusText: "OK", json: async () => filteredKeys };
+    }
+    return base(url, init);
+  };
+  fetch.calls = base.calls;
+
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  doc.getElementById("admin-keys-status-filter").value = "active";
+  doc.getElementById("admin-keys-idle-days").value = "30";
+  doc.getElementById("admin-keys-status-filter").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+
+  const filteredCalls = fetch.calls.filter(
+    (c) => c.url.includes("/v1/daari/keys?") && c.url.includes("status=active") && c.url.includes("idle_days=30")
+  );
+  assert.ok(filteredCalls.length >= 1, `expected filtered keys fetch, got ${JSON.stringify(fetch.calls)}`);
+  const keyRows = [...doc.querySelectorAll("#admin-keys-table tr")];
+  assert.equal(keyRows.length, 3);
+  assert.match(doc.getElementById("admin-keys-status").textContent, /3 idle key/);
+  assert.match(doc.getElementById("admin-keys-status").textContent, /More available/);
+
+  doc.getElementById("admin-keys-status-filter").value = "";
+  doc.getElementById("admin-keys-idle-days").value = "";
+  doc.getElementById("admin-keys-idle-days").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+  const cleared = fetch.calls.filter((c) => /\/v1\/daari\/keys$/.test(c.url) || c.url.endsWith("/v1/daari/keys"));
+  assert.ok(cleared.length >= 1, "clearing filters restores unfiltered URL");
+  assert.equal([...doc.querySelectorAll("#admin-keys-table tr")].length, 1);
+});
+
 test("admin keys show never when last_used_at is null", async (t) => {
   const fetch = fakeFetch(
     routes({
