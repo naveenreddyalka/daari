@@ -19,6 +19,8 @@ from daari.gateway.internal import InternalRequest, InternalResponse
 from daari.gateway.pii import scrub_pii
 
 Action = Literal["block", "warn", "redact"]
+OnError = Literal["warn", "block"]
+RuleKind = Literal["deny", "allow", "max_length", "injection", "secret", "pii", "decision"]
 
 # Heuristic phrases that often precede prompt-injection attempts.
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
@@ -72,8 +74,13 @@ class GuardrailRule:
     pattern: str | None = None
     action: Action = "block"
     # allow rules short-circuit deny when matched (input only).
-    kind: Literal["deny", "allow", "max_length", "injection", "secret", "pii"] = "deny"
+    kind: RuleKind = "deny"
     max_chars: int | None = None
+    # Decision-model guardrail (#1589).
+    statement: str | None = None
+    threshold: float = 0.5
+    model: str | None = None
+    on_error: OnError = "warn"
 
 
 @dataclass
@@ -89,6 +96,58 @@ class GuardrailEngine:
     stream_holdback_chars: int = 256
     # When on, scan role=tool messages with output rules before the model hop (#387).
     scan_tool_results: bool = False
+    # Settings + optional sync httpx client for kind=decision (#1589).
+    settings: Any = None
+    decision_client: Any = None
+
+    def _apply_decision_rule(
+        self, text: str, rule: GuardrailRule, *, stage: str
+    ) -> GuardrailHit | None:
+        """Evaluate a kind=decision rule; return a hit or None when below threshold."""
+        from daari.gateway.decisions import (
+            default_local_model,
+            evaluate_guardrail_predicate,
+            is_frontier_decisions_model,
+        )
+
+        settings = self.settings
+        model = (rule.model or "").strip() or (
+            default_local_model(settings) if settings is not None else "nimble"
+        )
+        on_error: OnError = rule.on_error if rule.on_error in ("warn", "block") else "warn"
+        action: Action = rule.action if rule.action in ("block", "warn") else "block"
+        try:
+            if is_frontier_decisions_model(model):
+                raise ValueError(
+                    f"decision guardrails require a local model, not frontier {model!r}"
+                )
+            ollama = getattr(settings, "ollama", None) if settings is not None else None
+            base = str(getattr(ollama, "base_url", "") or "").strip()
+            probability = evaluate_guardrail_predicate(
+                text=text,
+                statement=rule.statement or "",
+                model=model,
+                base_url=base,
+                client=self.decision_client,
+                settings=settings,
+            )
+        except Exception as exc:
+            detail = str(exc) or type(exc).__name__
+            return GuardrailHit(
+                stage=stage,
+                rule=rule.name,
+                action="block" if on_error == "block" else "warn",
+                detail=f"backend:{detail}",
+            )
+        threshold = float(rule.threshold)
+        if probability < threshold:
+            return None
+        return GuardrailHit(
+            stage=stage,
+            rule=rule.name,
+            action=action,
+            detail=f"p={probability:.2f}>={threshold:.2f}",
+        )
 
     def check_input(self, request: InternalRequest) -> GuardrailResult:
         text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
@@ -179,6 +238,20 @@ class GuardrailEngine:
                 if rule.action == "redact":
                     rewritten = re.sub(rule.pattern, "<redacted>", rewritten, flags=re.I)
 
+        for rule in self.input_rules:
+            if rule.kind != "decision":
+                continue
+            hit = self._apply_decision_rule(rewritten, rule, stage="input")
+            if hit is None:
+                continue
+            result.hits.append(hit)
+            if hit.action == "block":
+                result.blocked = True
+                return result
+            if hit.action == "warn":
+                suffix = ":backend" if hit.detail.startswith("backend:") else ""
+                result.warning = f"guardrail:{rule.name}{suffix}"
+
         for pattern in _INJECTION_PATTERNS:
             if pattern.search(rewritten):
                 hit = GuardrailHit(
@@ -256,6 +329,17 @@ class GuardrailEngine:
                     result.warning = f"guardrail:{rule.name}"
                 if rule.action == "redact":
                     rewritten = re.sub(rule.pattern, "<redacted>", rewritten, flags=re.I)
+            if rule.kind == "decision":
+                hit = self._apply_decision_rule(rewritten, rule, stage="output")
+                if hit is None:
+                    continue
+                result.hits.append(hit)
+                if hit.action == "block":
+                    result.blocked = True
+                    return self.block_message, result
+                if hit.action == "warn":
+                    suffix = ":backend" if hit.detail.startswith("backend:") else ""
+                    result.warning = f"guardrail:{rule.name}{suffix}"
         return rewritten, result
 
 
@@ -373,31 +457,37 @@ class IncrementalOutputScanner:
 
 
 def engine_from_settings(settings: Any) -> GuardrailEngine | None:
-    return engine_from_block(getattr(settings, "guardrails", None))
+    return engine_from_block(getattr(settings, "guardrails", None), settings=settings)
 
 
-def engine_from_block(block: Any) -> GuardrailEngine | None:
+def _rule_from_settings(row: Any) -> GuardrailRule:
+    kind = str(getattr(row, "kind", None) or "deny")
+    on_error_raw = str(getattr(row, "on_error", None) or "warn").strip().lower()
+    on_error: OnError = "block" if on_error_raw == "block" else "warn"
+    threshold_raw = getattr(row, "threshold", 0.5)
+    try:
+        threshold = float(threshold_raw)
+    except (TypeError, ValueError):
+        threshold = 0.5
+    threshold = max(0.0, min(1.0, threshold))
+    return GuardrailRule(
+        name=row.name,
+        pattern=row.pattern,
+        action=row.action,  # type: ignore[arg-type]
+        kind=kind,  # type: ignore[arg-type]
+        statement=getattr(row, "statement", None),
+        threshold=threshold,
+        model=getattr(row, "model", None),
+        on_error=on_error,
+    )
+
+
+def engine_from_block(block: Any, *, settings: Any = None) -> GuardrailEngine | None:
     """Build an engine from any `GuardrailSettings`-shaped block (chat or MCP)."""
     if block is None or not getattr(block, "enabled", False):
         return None
-    input_rules = [
-        GuardrailRule(
-            name=r.name,
-            pattern=r.pattern,
-            action=r.action,  # type: ignore[arg-type]
-            kind=r.kind,  # type: ignore[arg-type]
-        )
-        for r in (block.input_rules or [])
-    ]
-    output_rules = [
-        GuardrailRule(
-            name=r.name,
-            pattern=r.pattern,
-            action=r.action,  # type: ignore[arg-type]
-            kind=r.kind,  # type: ignore[arg-type]
-        )
-        for r in (block.output_rules or [])
-    ]
+    input_rules = [_rule_from_settings(r) for r in (block.input_rules or [])]
+    output_rules = [_rule_from_settings(r) for r in (block.output_rules or [])]
     # Sensible defaults when enabled with empty rule lists.
     if not output_rules:
         output_rules = [
@@ -417,6 +507,7 @@ def engine_from_block(block: Any) -> GuardrailEngine | None:
         stream_mode=stream_mode,  # type: ignore[arg-type]
         stream_holdback_chars=max(0, holdback),
         scan_tool_results=scan_tool,
+        settings=settings,
     )
 
 

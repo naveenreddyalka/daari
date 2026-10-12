@@ -80,7 +80,10 @@ const ADMIN_KEYS = {
       team_id: "t1",
       tier_cap: "L3",
       expires_at: "2099-01-01T00:00:00+00:00",
+      last_used_at: "2026-10-11T12:00:00+00:00",
       status: "active",
+      priority: "high",
+      cache_scope: "team",
       spend: [{ window: "day", quota: "usd", spend: 0.25, limit: 1.0 }],
     },
   ],
@@ -94,6 +97,8 @@ const ADMIN_TEAMS = {
       key_count: 1,
       rpm: 60,
       rpd: 500,
+      priority: "normal",
+      cache_scope: "key",
       spend: [{ window: "day", quota: "usd", spend: 1.5, limit: 10.0 }],
     },
   ],
@@ -532,13 +537,27 @@ test("malicious stats/trace fields render as inert text", async (t) => {
             team: xss,
             tier_cap: xss,
             expires_at: xss,
+            last_used_at: xss,
             status: xss,
+            priority: xss,
+            cache_scope: xss,
             spend: [],
           },
         ],
       },
       "/v1/daari/teams": {
-        teams: [{ team_id: xss, name: xss, key_count: 1, rpm: 1, rpd: 1, spend: [] }],
+        teams: [
+          {
+            team_id: xss,
+            name: xss,
+            key_count: 1,
+            rpm: 1,
+            rpd: 1,
+            priority: xss,
+            cache_scope: xss,
+            spend: [],
+          },
+        ],
       },
       "/v1/daari/report": {
         ...REPORT,
@@ -580,13 +599,92 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.match(keyRows[0].textContent, /alice/);
   assert.match(keyRows[0].textContent, /L3/);
   assert.match(keyRows[0].textContent, /0\.25/);
+  assert.match(keyRows[0].textContent, /2026-10-11T12:00:00/);
+  assert.match(keyRows[0].textContent, /high/);
+  assert.match(keyRows[0].textContent, /team/);
   assert.match(doc.getElementById("admin-keys-status").textContent, /1 key/);
 
   const teamRows = [...doc.querySelectorAll("#admin-teams-table tr")];
   assert.equal(teamRows.length, 1);
   assert.match(teamRows[0].textContent, /eng/);
   assert.match(teamRows[0].textContent, /60/);
+  assert.match(teamRows[0].textContent, /normal/);
+  assert.match(teamRows[0].textContent, /key/);
   assert.match(doc.getElementById("admin-teams-status").textContent, /1 team/);
+});
+
+test("admin keys status and idle_days filters build query and render rows", async (t) => {
+  const filteredKeys = {
+    keys: [
+      { ...ADMIN_KEYS.keys[0], name: "idle-alice" },
+      { ...ADMIN_KEYS.keys[0], key_id: "def456", name: "idle-bob" },
+      { ...ADMIN_KEYS.keys[0], key_id: "ghi789", name: "idle-carol" },
+    ],
+    has_more: true,
+  };
+  const base = fakeFetch(routes());
+  const fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes("/v1/daari/keys?") && u.includes("status=active") && u.includes("idle_days=30")) {
+      fetch.calls.push({ url: u, init });
+      return { ok: true, status: 200, statusText: "OK", json: async () => filteredKeys };
+    }
+    return base(url, init);
+  };
+  fetch.calls = base.calls;
+
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  doc.getElementById("admin-keys-status-filter").value = "active";
+  doc.getElementById("admin-keys-idle-days").value = "30";
+  doc.getElementById("admin-keys-status-filter").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+
+  const filteredCalls = fetch.calls.filter(
+    (c) => c.url.includes("/v1/daari/keys?") && c.url.includes("status=active") && c.url.includes("idle_days=30")
+  );
+  assert.ok(filteredCalls.length >= 1, `expected filtered keys fetch, got ${JSON.stringify(fetch.calls)}`);
+  const keyRows = [...doc.querySelectorAll("#admin-keys-table tr")];
+  assert.equal(keyRows.length, 3);
+  assert.match(doc.getElementById("admin-keys-status").textContent, /3 idle key/);
+  assert.match(doc.getElementById("admin-keys-status").textContent, /More available/);
+
+  doc.getElementById("admin-keys-status-filter").value = "";
+  doc.getElementById("admin-keys-idle-days").value = "";
+  doc.getElementById("admin-keys-idle-days").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+  const cleared = fetch.calls.filter((c) => /\/v1\/daari\/keys$/.test(c.url) || c.url.endsWith("/v1/daari/keys"));
+  assert.ok(cleared.length >= 1, "clearing filters restores unfiltered URL");
+  assert.equal([...doc.querySelectorAll("#admin-keys-table tr")].length, 1);
+});
+
+test("admin keys show never when last_used_at is null", async (t) => {
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/keys": {
+        keys: [
+          {
+            ...ADMIN_KEYS.keys[0],
+            last_used_at: null,
+            priority: "low",
+            cache_scope: "global",
+          },
+        ],
+      },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const cells = [...doc.querySelectorAll("#admin-keys-table tr td")].map((td) => td.textContent);
+  assert.ok(cells.includes("never"), `expected never in ${cells.join("|")}`);
+  assert.ok(cells.includes("low"));
+  assert.ok(cells.includes("global"));
 });
 
 test("report spend breakdown renders teams and model_group_spend", async (t) => {

@@ -63,6 +63,9 @@ def run_doctor(
     results.append(_check_images_generations(cfg))
     results.append(_check_ocr(cfg))
     results.append(_check_decisions(cfg))
+    decisions_models_tip = _check_decisions_local_models(cfg, httpx_client)
+    if decisions_models_tip is not None:
+        results.append(decisions_models_tip)
     results.append(_check_responses_stream_resume(cfg))
     results.append(_check_moderations(cfg))
     results.append(_check_rerank(cfg))
@@ -115,6 +118,7 @@ def run_doctor(
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_key_expiry(cfg))
+    results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
@@ -655,7 +659,10 @@ def _check_decisions(settings: Settings) -> CheckResult:
     if local_ok or frontier_ok:
         parts: list[str] = []
         if local_ok:
-            parts.append("local models via systemone (clef/nimble/tev1)")
+            parts.append(
+                "local models via systemone "
+                "(clef/nimble/tev1/drex-1.5/microsoft-decision-1 + decisions.local_models)"
+            )
         if frontier_ok:
             parts.append("gpt-6-luna via frontier L6")
         return CheckResult(
@@ -674,6 +681,59 @@ def _check_decisions(settings: Settings) -> CheckResult:
         ),
         optional=True,
     )
+
+
+def _check_decisions_local_models(
+    settings: Settings,
+    client: httpx.Client | None,
+) -> CheckResult | None:
+    """Tip when systemone is on but no local decisions catalog model is tagged (#1590)."""
+    if not bool(getattr(getattr(settings, "systemone", None), "enabled", True)):
+        return None
+    from daari.gateway.decisions import local_decisions_models
+
+    catalog = sorted(local_decisions_models(settings))
+    if not catalog:
+        return None
+    base = settings.ollama.base_url.rstrip("/")
+    own_client = client is None
+    http = client or httpx.Client(timeout=5.0)
+    try:
+        try:
+            response = http.get(f"{base}/api/tags")
+        except Exception:
+            return None
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json()
+        except ValueError:
+            return None
+        names = [
+            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
+        ]
+        present = [
+            model
+            for model in catalog
+            if any(name == model or name.startswith(f"{model}:") for name in names if name)
+        ]
+        if present:
+            return None
+        shown = ", ".join(catalog[:8])
+        extra = f" (+{len(catalog) - 8} more)" if len(catalog) > 8 else ""
+        return CheckResult(
+            name="decisions_local_models",
+            ok=False,
+            detail=(
+                "POST /v1/decisions local catalog models not in Ollama tags at "
+                f"{base}: {shown}{extra} — pull one (e.g. `ollama pull nimble`) "
+                "or extend decisions.local_models (see ollama.md)"
+            ),
+            optional=True,
+        )
+    finally:
+        if own_client:
+            http.close()
 
 
 def _check_images_generations(
@@ -1670,6 +1730,93 @@ def _check_key_expiry(
         name="key_expiry",
         ok=False,
         detail="; ".join(parts),
+        optional=True,
+    )
+
+
+_VK_EMPTY_ALLOWLIST_SHOW = 8
+
+
+def _check_vk_empty_allowlist(settings: Settings) -> CheckResult:
+    """Tip when an active VK allowlist matches zero catalog cards (#1582).
+
+    Unrestricted keys (both ``allowed_models`` and ``model_groups`` unset) and
+    the master path are ignored. Empty explicit lists are ignored — only
+    non-empty patterns/groups that intersect zero effective-catalog cards tip.
+    """
+    if not getattr(settings.server.virtual_keys, "enabled", False):
+        return CheckResult(
+            name="vk_empty_allowlist",
+            ok=True,
+            detail="virtual keys disabled",
+            optional=True,
+        )
+    try:
+        from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+
+        store = virtual_key_store_from_settings(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="vk_empty_allowlist",
+            ok=True,
+            detail=f"virtual-key store unread ({exc})",
+            optional=True,
+        )
+
+    from daari.auth.model_access import effective_patterns, model_permitted
+    from daari.router.capabilities import openai_models_payload
+
+    catalog = getattr(settings, "model_groups", None) or {}
+    card_ids = [
+        str(card.get("id") or "")
+        for card in (openai_models_payload(settings).get("data") or [])
+        if card.get("id")
+    ]
+    bad: list[str] = []
+    for key in store.list():
+        if key.status() != "active":
+            continue
+        models = key.allowed_models
+        groups = key.model_groups
+        if models is None and groups is None:
+            continue
+        if not models and not groups:
+            continue
+        patterns = effective_patterns(models, groups, catalog)
+        if patterns is None:
+            continue
+        if any(
+            model_permitted(mid, key_patterns=patterns, team_patterns=None)
+            for mid in card_ids
+        ):
+            continue
+        parts: list[str] = []
+        if models:
+            parts.append("models=" + ",".join(models[:4]))
+        if groups:
+            parts.append("groups=" + ",".join(groups[:4]))
+        bad.append(f"{key.key_id}[{';'.join(parts)}]")
+
+    if not bad:
+        return CheckResult(
+            name="vk_empty_allowlist",
+            ok=True,
+            detail="no empty allowlist∩catalog for active virtual keys",
+            optional=True,
+        )
+    shown = ", ".join(bad[:_VK_EMPTY_ALLOWLIST_SHOW])
+    extra = (
+        f" (+{len(bad) - _VK_EMPTY_ALLOWLIST_SHOW} more)"
+        if len(bad) > _VK_EMPTY_ALLOWLIST_SHOW
+        else ""
+    )
+    return CheckResult(
+        name="vk_empty_allowlist",
+        ok=False,
+        detail=(
+            "active virtual keys with allowed_models/model_groups matching "
+            f"zero catalog cards: {shown}{extra}"
+        ),
         optional=True,
     )
 

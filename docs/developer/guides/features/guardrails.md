@@ -24,6 +24,29 @@ guardrails:
   output_rules: []   # empty + enabled → default secret+PII redact
 ```
 
+## Decision-model checks
+
+Use a local decisions model (Ollama `/v1/systemone`, same catalog as
+`POST /v1/decisions`) as a typed-judgment guardrail. Frontier decision models
+are never called — no silent egress.
+
+```yaml
+guardrails:
+  enabled: true
+  input_rules:
+    - name: injection_judge
+      kind: "decision"
+      statement: "Is this prompt an injection or jailbreak attempt?"
+      threshold: 0.7          # block/warn when probability >= threshold
+      model: nimble           # optional; defaults to routing.decision_classifier.model
+      action: block           # block | warn
+      on_error: warn          # warn (default) | block when the decisions backend is down
+```
+
+The same `kind: "decision"` rules work on chat output and MCP
+`integrations.mcp_guardrails` argument/result scans. Hits surface like other
+guardrails (trace step, `Metrics.record_guardrail`, `daari_meta.warning`).
+
 ## Verify
 
 Send a prompt containing a classic injection phrase; expect `tier=guardrail`.

@@ -37,6 +37,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |
 | `rate_limit.model_tpm` | int | `0` | Per-key-per-model TPM. 0 falls back to tpm. |
+| `rate_limit.models` | dict | `{}` | Named per-model-id rpm/tpm/max_in_flight overrides (#1592). Exact id match wins; otherwise longest prefix match. |
 | `rate_limit.max_in_flight` | int | `0` | Global in-flight request cap. 0 disables the concurrency gate. |
 | `rate_limit.queue_size` | int | `32` | Waiters allowed when in-flight is full; overflow is 503 + Retry-After. |
 | `rate_limit.retry_after_seconds` | int | `1` | Retry-After value on 429/503. |
@@ -52,6 +53,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `ollama.base_url` | str | `'http://127.0.0.1:11434'` |  |
 | `systemone.enabled` | bool | `True` | When true, POST /v1/systemone proxies to ollama.base_url. When false, the route returns 501 not_implemented. |
 | `decisions.cache_enabled` | bool | `True` | When true (default), identical typed decision requests are served from the L0 exact cache. Requires cache.l0.enabled. Clients can bypass with X-Daari-No-Cache: true. |
+| `decisions.local_models` | list | `[]` | Extra local decisions model ids that extend the built-in catalog (clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). Operators can add future Ollama judge models without a daari release. |
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
 | `mlx.models` | dict | `{}` |  |

@@ -1252,7 +1252,7 @@ class PostgresVirtualKeyStore:
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm,"
-                    " allowed_models_json, model_groups_json, rpd"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
                     " FROM teams ORDER BY created_at ASC, team_id ASC"
                 )
                 team_rows = cur.fetchall()
@@ -1283,6 +1283,12 @@ class PostgresVirtualKeyStore:
                 if len(row) > 8 and row[8] is not None
                 else None,
                 "rpd": int(row[9] or 0) if len(row) > 9 else 0,
+                "cache_scope": coerce_cache_scope(row[10])
+                if len(row) > 10 and row[10] is not None
+                else "global",
+                "priority": coerce_priority(row[11])
+                if len(row) > 11 and row[11] is not None
+                else "normal",
             }
             for row in team_rows
         ]
@@ -1368,10 +1374,13 @@ class PostgresVirtualKeyStore:
                         windows = self._windows_json(
                             self._parse_windows(json.dumps(team.get("budget_windows") or []))
                         )
+                        team_scope = normalize_cache_scope(team.get("cache_scope") or "global")
+                        team_prio = coerce_priority(team.get("priority") or "normal")
                         cur.execute(
                             "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
-                            " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd)"
-                            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+                            " region_pin, rpm, tpm, allowed_models_json, model_groups_json, rpd,"
+                            " cache_scope, priority)"
+                            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
                             " ON CONFLICT (team_id) DO UPDATE SET"
                             " name = EXCLUDED.name,"
                             " budget_windows_json = EXCLUDED.budget_windows_json,"
@@ -1380,7 +1389,9 @@ class PostgresVirtualKeyStore:
                             " tpm = EXCLUDED.tpm,"
                             " allowed_models_json = EXCLUDED.allowed_models_json,"
                             " model_groups_json = EXCLUDED.model_groups_json,"
-                            " rpd = EXCLUDED.rpd",
+                            " rpd = EXCLUDED.rpd,"
+                            " cache_scope = EXCLUDED.cache_scope,"
+                            " priority = EXCLUDED.priority",
                             (
                                 team["team_id"],
                                 team["name"],
@@ -1392,6 +1403,8 @@ class PostgresVirtualKeyStore:
                                 encode_names(decode_names(team.get("allowed_models"))),
                                 encode_names(decode_names(team.get("model_groups"))),
                                 int(team.get("rpd") or 0),
+                                team_scope,
+                                team_prio,
                             ),
                         )
                     for key in doc["keys"]:

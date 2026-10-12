@@ -6610,6 +6610,86 @@ Docs: metrics-prometheus / traces-stats. Covered by
 docs default). Docs: virtual-keys.md backup section. Covered by
 `tests/unit/test_keys_export_import.py`.
 
+### RBAC analyst floors on route preview / diversity / learn / feedback ([#1588](https://github.com/naveenreddyalka/daari/issues/1588))
+
+<!-- tracking:#1588 -->
+**Status:** Done (2026-10-11). `GET/POST /v1/daari/route/preview`,
+`GET /v1/daari/cache/diversity`, `GET /v1/daari/learn/stats`, and
+`POST /v1/daari/feedback` require `analyst` via `_require_role` (same SSO-off
+viewer convention as stats). Docs: auth-and-keys role matrix. Covered by
+`tests/unit/test_daari_admin_role_floors.py` and SSO RBAC matrix.
+
+### Doctor tip for empty VK allowlist∩catalog ([#1582](https://github.com/naveenreddyalka/daari/issues/1582))
+
+<!-- tracking:#1582 -->
+**Status:** Done (2026-10-11). `daari doctor` emits optional `vk_empty_allowlist`
+when an active virtual key's non-empty `allowed_models` / `model_groups` match
+zero effective catalog cards. Covered by
+`tests/unit/test_doctor_vk_empty_allowlist.py`.
+
+### Local decision-model guardrail check ([#1589](https://github.com/naveenreddyalka/daari/issues/1589))
+
+<!-- tracking:#1589 -->
+**Status:** Done (2026-10-11). Guardrail `kind: decision` evaluates a local
+`/v1/systemone` predicate (no frontier egress); `on_error` warn/block.
+Docs: guardrails.md decision-model checks. Covered by
+`tests/unit/test_guardrails_decision.py`.
+
+### Configurable local decisions catalog ([#1590](https://github.com/naveenreddyalka/daari/issues/1590))
+
+<!-- tracking:#1590 -->
+**Status:** Done (2026-10-11). Built-in local decisions catalog adds
+`drex-1.5` / `microsoft-decision-1`; `decisions.local_models` extends it
+(PATCH/ownership). Doctor tip `decisions_local_models`. Docs: ollama.md.
+Covered by `tests/unit/test_decisions_local_catalog.py`.
+
+### Helm NetworkPolicy + topology spread ([#1591](https://github.com/naveenreddyalka/daari/issues/1591))
+
+<!-- tracking:#1591 -->
+**Status:** Done (2026-10-12). Optional `networkPolicy.enabled` (default
+off) renders ingress/egress NetworkPolicy; `affinity` /
+`topologySpreadConstraints` pass through to the Deployment. Docs:
+capacity-helm.md. Covered by `tests/unit/test_helm_chart.py`.
+
+### Per-key concurrency + named per-model rate map ([#1592](https://github.com/naveenreddyalka/daari/issues/1592))
+
+<!-- tracking:#1592 -->
+**Status:** Done (2026-10-12). `VirtualKey`/`Team.max_in_flight` and
+`rate_limit.models` (exact/longest-prefix) with Redis/SQLite gauges;
+rejects kinds `concurrency` vs `key_concurrency`/`team_concurrency`.
+Docs: auth-and-keys.md. Covered by `tests/unit/test_rate_limit.py`.
+
+### Team cache_scope/priority in keys export/import ([#1595](https://github.com/naveenreddyalka/daari/issues/1595))
+
+<!-- tracking:#1595 -->
+**Status:** Done (2026-10-12). `export_document` / `import_document` round-trip
+team `cache_scope` and `priority` (SQLite + Postgres); legacy docs default
+to global/normal. Docs: virtual-keys.md Backup. Covered by
+`tests/unit/test_keys_export_import.py`.
+
+### Web UI keys/teams last_used_at, priority, cache_scope ([#1596](https://github.com/naveenreddyalka/daari/issues/1596))
+
+<!-- tracking:#1596 -->
+**Status:** Done (2026-10-12). Admin keys table shows `last_used_at` (or
+"never"), `priority`, and `cache_scope`; teams table shows `priority` and
+`cache_scope`. XSS-safe text cells. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
+### Web UI keys status and idle_days filters ([#1597](https://github.com/naveenreddyalka/daari/issues/1597))
+
+<!-- tracking:#1597 -->
+**Status:** Done (2026-10-12). Virtual keys section filters via
+`status` / `idle_days` query params on `GET /v1/daari/keys`; status line
+reflects filter and `has_more`. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
+### Bench Decisions / System One vs LiteLLM ([#1599](https://github.com/naveenreddyalka/daari/issues/1599))
+
+<!-- tracking:#1599 -->
+**Status:** Done (2026-10-12). `bench_vs_litellm` corpus adds `/v1/decisions`
+and `/v1/systemone` scenarios; skips LiteLLM when the peer lacks the route;
+report section with ms + speedup. Covered by
+`tests/unit/test_bench_vs_litellm.py`.
 
 ## How to update
 

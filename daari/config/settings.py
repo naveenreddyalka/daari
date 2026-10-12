@@ -34,6 +34,17 @@ class VirtualKeysSettings(BaseModel):
     )
 
 
+class ModelRateLimitSettings(BaseModel):
+    """Per-model-id overrides for RPM/TPM/concurrency (#1592). 0 = fall through."""
+
+    rpm: int = Field(default=0, description="RPM for this model id (0 = use model_rpm).")
+    tpm: int = Field(default=0, description="TPM for this model id (0 = use model_tpm).")
+    max_in_flight: int = Field(
+        default=0,
+        description="In-flight cap for this model id (0 = unlimited for this scope).",
+    )
+
+
 class RateLimitSettings(BaseModel):
     """Global request / token / concurrency caps (issue #169). 0 = unlimited."""
 
@@ -46,6 +57,13 @@ class RateLimitSettings(BaseModel):
     model_tpm: int = Field(
         default=0,
         description="Per-key-per-model TPM. 0 falls back to tpm.",
+    )
+    models: dict[str, ModelRateLimitSettings] = Field(
+        default_factory=dict,
+        description=(
+            "Named per-model-id rpm/tpm/max_in_flight overrides (#1592). "
+            "Exact id match wins; otherwise longest prefix match."
+        ),
     )
     max_in_flight: int = Field(
         default=0,
@@ -286,7 +304,7 @@ class SystemOneSettings(BaseModel):
 
 
 class DecisionsSettings(BaseModel):
-    """POST /v1/decisions behavior (#1508)."""
+    """POST /v1/decisions behavior (#1508 / #1590)."""
 
     cache_enabled: bool = Field(
         default=True,
@@ -294,6 +312,14 @@ class DecisionsSettings(BaseModel):
             "When true (default), identical typed decision requests are served "
             "from the L0 exact cache. Requires cache.l0.enabled. Clients can "
             "bypass with X-Daari-No-Cache: true."
+        ),
+    )
+    local_models: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra local decisions model ids that extend the built-in catalog "
+            "(clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). "
+            "Operators can add future Ollama judge models without a daari release."
         ),
     )
 
@@ -1469,7 +1495,12 @@ class GuardrailRuleSettings(BaseModel):
     name: str = "rule"
     pattern: str | None = None
     action: str = "block"  # block | warn | redact
-    kind: str = "deny"  # deny | allow | secret | pii
+    kind: str = "deny"  # deny | allow | secret | pii | decision
+    # Decision-model guardrail (#1589). Used when kind=decision.
+    statement: str | None = None
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    model: str | None = None  # local decisions catalog id; default decision_classifier
+    on_error: str = "warn"  # warn (default) | block when decisions backend is down
 
 
 class GuardrailSettings(BaseModel):

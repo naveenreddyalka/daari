@@ -107,7 +107,8 @@ body[data-theme="light"] button {
   background: #2563eb;
 }
 
-select {
+select,
+.controls input[type="number"] {
   border: 1px solid #334155;
   background: #0b1225;
   color: #e5e7eb;
@@ -115,7 +116,20 @@ select {
   padding: 7px 8px;
 }
 
-body[data-theme="light"] select {
+.controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.controls input[type="number"] {
+  width: 5.5rem;
+}
+
+body[data-theme="light"] select,
+body[data-theme="light"] .controls input[type="number"] {
   border-color: #94a3b8;
   background: #ffffff;
   color: #0f172a;
