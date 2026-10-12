@@ -6667,6 +6667,14 @@ team `cache_scope` and `priority` (SQLite + Postgres); legacy docs default
 to global/normal. Docs: virtual-keys.md Backup. Covered by
 `tests/unit/test_keys_export_import.py`.
 
+### Web UI keys/teams last_used_at, priority, cache_scope ([#1596](https://github.com/naveenreddyalka/daari/issues/1596))
+
+<!-- tracking:#1596 -->
+**Status:** Done (2026-10-12). Admin keys table shows `last_used_at` (or
+"never"), `priority`, and `cache_scope`; teams table shows `priority` and
+`cache_scope`. XSS-safe text cells. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

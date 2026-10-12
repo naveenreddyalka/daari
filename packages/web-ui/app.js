@@ -389,7 +389,7 @@ function renderAdminKeys(keys) {
   }
   const list = Array.isArray(keys) ? keys : [];
   if (list.length === 0) {
-    setEmptyRow(adminKeysTableNode, 7, "No virtual keys.");
+    setEmptyRow(adminKeysTableNode, 10, "No virtual keys.");
     return;
   }
   clearNode(adminKeysTableNode);
@@ -401,6 +401,9 @@ function renderAdminKeys(keys) {
       key.team || key.team_id || "-",
       key.tier_cap || "-",
       key.expires_at || "never",
+      key.last_used_at || "never",
+      key.priority || "normal",
+      key.cache_scope || "global",
       key.status || "-",
       formatSpendSummary(key.spend),
     ]);
@@ -414,7 +417,7 @@ function renderAdminTeams(teams) {
   }
   const list = Array.isArray(teams) ? teams : [];
   if (list.length === 0) {
-    setEmptyRow(adminTeamsTableNode, 6, "No teams.");
+    setEmptyRow(adminTeamsTableNode, 8, "No teams.");
     return;
   }
   clearNode(adminTeamsTableNode);
@@ -426,6 +429,8 @@ function renderAdminTeams(teams) {
       formatNumber(team.key_count),
       formatNumber(team.rpm),
       formatNumber(team.rpd),
+      team.priority || "normal",
+      team.cache_scope || "global",
       formatSpendSummary(team.spend),
     ]);
     adminTeamsTableNode.appendChild(row);
