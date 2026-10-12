@@ -75,26 +75,33 @@ bench DEC-01/SYS-01; doctor empty-allowlist tip; filtered `/v1/models`;
 key lifecycle signals; analyst role floors; compact-to-fit + MCP
 fail-closed suite from prior days.
 
-Watch rows (do not file yet): BENCHMARKS.md cross-link of DEC/SYS rows +
-decisions L0 cache-hit bench scenario; unknown-model error string still
-lists only clef/nimble/tev1 (file next if not folded into catalog
-discovery); Postgres `VirtualKeyStore.create` omits `max_in_flight` kwarg
-(sibling of team-metadata Postgres gap — file after that lands);
-Prom/Grafana modality-labeled Decisions L0 panel; doctor tip for
-`kind=decision` guardrails without a runnable local path; gpt-6-luna
-Decisions schema drift; OpenRouter BYOK `declared_region` / IP allowlists
-(buyer ask);
-Anthropic Managed Agents / Compliance API (non-goal); Kong 2.2 MCP
-bundling + modality cost (buyer ask); LiteLLM 1.106 GA Lens + M365 MCP
-catalog (file compare at GA); Portkey JWT JIT (operator ask); OpenAI
-HIPAA BAA / 128-char safety identifiers (non-goal / client-side).
+Watch rows (do not file yet — next cycle fodder from late code audits):
+keys JSON export/import omits `team_members` (SSO membership silent-break
+on DR; ops `backup.py` dumps the table, JSON path does not); MCP
+fail-closed grant denial is metrics-only (no audit row alongside
+`mcp.tools/call` policy denies); per-user daily USD cap `402` omits
+budget headers on chat + decisions (middleware key/team hard `402` and
+model-group/max paths attach them); `/v1/embeddings` skips
+model_group/model_max budget fences that chat enforces; HTTP tests missing
+for `drex-1.5`/`microsoft-decision-1` proxy + `kind=decision` on
+`/v1/decisions` and `/v1/systemone`; BENCHMARKS.md + `bench.sh` omit
+Decisions L0 warm+repeat; unknown-model error string still lists only
+clef/nimble/tev1; Postgres `VirtualKeyStore.create` omits `max_in_flight`
+kwarg (sibling of team-metadata Postgres gap); Prom/Grafana
+modality-labeled Decisions L0 panel; doctor tip for `kind=decision`
+guardrails without a runnable local path; gpt-6-luna Decisions schema
+drift; OpenRouter BYOK region/IP allowlists (buyer ask); Anthropic
+Managed Agents / Compliance API (non-goal); Kong 2.2 MCP bundling +
+modality cost (buyer ask); LiteLLM 1.106 GA Lens + M365 MCP catalog
+(file compare at GA); Portkey JWT JIT (operator ask); OpenAI HIPAA BAA /
+128-char safety identifiers (non-goal / client-side).
 
 Verified fine this run — don't re-audit: midday rows 80–84 still correctly
-scoped (async guardrail, team PG metadata, concurrency ops surfaces, Helm
-egress, hermetic RPM clock); local drex/microsoft billing intentionally
-`$0`; key export already round-trips key `metadata_json` incl.
-`max_in_flight`; family-level `mcp` RPM exists (gap is per-server only);
-chat guardrail audit depth stays under row 80.
+scoped; local drex/microsoft billing intentionally `$0`; key export
+round-trips key `metadata_json` incl. `max_in_flight` (membership is the
+hole); family-level `mcp` RPM exists (gap is per-server + grant-audit);
+chat guardrail audit depth stays under row 80; budget/rate/concurrency
+audit hole covered by row 85.
 
 ---
 
@@ -125,10 +132,11 @@ builds, HIPAA BAA) stay deferred until buyer demand.
   budget/rate/concurrency rejects, soft warning vs concurrency binding,
   systemone Idempotency-Key parity, decisions catalog on `/v1/models` +
   Ollama tags, per-server MCP rpm/tpm. Promoted prior watch
-  (catalog visibility) into row 88; left BENCHMARKS DEC/SYS, PG key
-  `max_in_flight` create kwarg, Prom Decisions L0, and doctor
-  `kind=decision` tip as watch. Pruned compact-to-fit shipped rows 19–28
-  into the weekly shipped blurb.
+  (catalog visibility) into row 88. Late audits added watch fodder:
+  `team_members` JSON export, MCP grant-denied audit, user-daily `402`
+  header parity, embeddings model-group/max fences, Decisions HTTP test
+  holes, BENCHMARKS L0. Pruned compact-to-fit shipped rows 19–28 into
+  the weekly shipped blurb.
 
 - **2026-10-12 (concurrency + decision-guardrail depth)** — Marked rows 71,
   75–77, 79 Shipped. Filed rows 80–84. Outward flat (LiteLLM 1.105.0 /
