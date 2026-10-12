@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -214,3 +215,61 @@ def test_postgres_memory_round_trip():
     dst.import_document(doc)
     assert dst.resolve(created.plaintext, now=NOW) is not None
     assert dst.resolve(rotated.plaintext, now=NOW) is not None
+
+
+def test_round_trip_preserves_team_cache_scope_and_priority(tmp_path):
+    """Team tenancy + admission class survive export/import (#1595)."""
+    src = VirtualKeyStore(tmp_path / "src.sqlite3")
+    team = src.create_team("fleet", cache_scope="team", priority="high")
+    assert team.cache_scope == "team"
+    assert team.priority == "high"
+    doc = src.export_document()
+    assert doc["teams"][0]["cache_scope"] == "team"
+    assert doc["teams"][0]["priority"] == "high"
+
+    dst = VirtualKeyStore(tmp_path / "dst.sqlite3")
+    dst.import_document(doc)
+    restored = dst.get_team(team.team_id)
+    assert restored is not None
+    assert restored.cache_scope == "team"
+    assert restored.priority == "high"
+
+    legacy = {
+        "schema": KEYS_EXPORT_SCHEMA,
+        "teams": [
+            {k: v for k, v in doc["teams"][0].items() if k not in {"cache_scope", "priority"}}
+        ],
+        "keys": [],
+    }
+    dst2 = VirtualKeyStore(tmp_path / "dst2.sqlite3")
+    dst2.import_document(legacy)
+    legacy_team = dst2.get_team(team.team_id)
+    assert legacy_team is not None
+    assert legacy_team.cache_scope == "global"
+    assert legacy_team.priority == "normal"
+
+
+def test_postgres_memory_round_trip_team_cache_scope_priority():
+    from daari.auth.postgres_virtual_keys import PostgresVirtualKeyStore
+
+    src = PostgresVirtualKeyStore("memory:team-scope-src")
+    team = src.create_team("fleet", cache_scope="team", priority="high")
+    doc = src.export_document()
+    assert doc["teams"][0]["cache_scope"] == "team"
+    assert doc["teams"][0]["priority"] == "high"
+    dst = PostgresVirtualKeyStore("memory:team-scope-dst")
+    dst.import_document(doc)
+    restored = dst.get_team(team.team_id)
+    assert restored is not None
+    assert restored.cache_scope == "team"
+    assert restored.priority == "high"
+
+
+def test_virtual_keys_guide_mentions_team_cache_scope_export():
+    text = (
+        Path(__file__).resolve().parents[2]
+        / "docs/developer/guides/features/virtual-keys.md"
+    ).read_text(encoding="utf-8")
+    assert "Backup export" in text or "Backup" in text
+    assert "team" in text.lower() and "cache_scope" in text
+    assert "priority" in text
