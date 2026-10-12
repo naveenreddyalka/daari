@@ -39,6 +39,50 @@ _spec.loader.exec_module(bench_live)
 # Tiers that never call a model. These are the comparison, not L3 vs L3.
 FAST_TIERS = {"L0", "L1", "L1-org", "L2", "Lt", "CCS"}
 
+# Typed-judgment scenarios (#1599). Paths match OpenAI Decisions + Ollama System One.
+JUDGMENT_CORPUS: list[dict[str, Any]] = [
+    {
+        "id": "DEC-01",
+        "kind": "decisions",
+        "body": {
+            "model": "nimble",
+            "input": "I was charged twice for my order.",
+            "questions": [
+                {
+                    "type": "choice",
+                    "name": "department",
+                    "instructions": "Which department should handle this complaint?",
+                    "choices": [
+                        {"value": "billing", "description": "Payments and refunds"},
+                        {"value": "technical", "description": "Product problems"},
+                        {"value": "shipping", "description": "Delivery"},
+                        {"value": "other", "description": "Everything else"},
+                    ],
+                }
+            ],
+        },
+    },
+    {
+        "id": "SYS-01",
+        "kind": "systemone",
+        "body": {
+            "model": "nimble",
+            "state": "Our checkout has returned 500 errors since 9am.",
+            "questions": {
+                "label": {
+                    "type": "choice",
+                    "instructions": "Which label fits this ticket?",
+                    "criteria": {
+                        "billing": "Payments and refunds",
+                        "bug": "Software errors",
+                        "account": "Login and account access",
+                    },
+                }
+            },
+        },
+    },
+]
+
 
 def ollama_version(url: str) -> str:
     return httpx.get(f"{url}/api/version", timeout=5).json()["version"]
@@ -46,6 +90,39 @@ def ollama_version(url: str) -> str:
 
 def litellm_available() -> bool:
     return shutil.which("litellm") is not None or importlib.util.find_spec("litellm") is not None
+
+
+def judgment_path(scenario: dict[str, Any]) -> str:
+    """Map a judgment corpus row to its HTTP path."""
+    explicit = scenario.get("path")
+    if isinstance(explicit, str) and explicit.strip():
+        path = explicit.strip()
+        return path if path.startswith("/") else f"/{path}"
+    kind = str(scenario.get("kind") or "").strip().lower()
+    if kind in {"decisions", "decision"}:
+        return "/v1/decisions"
+    if kind in {"systemone", "system_one", "system-one"}:
+        return "/v1/systemone"
+    raise ValueError(f"unknown judgment scenario kind/path: {scenario.get('id')!r}")
+
+
+def load_judgment_corpus(rows: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    """Validate and normalize typed-judgment scenarios."""
+    out: list[dict[str, Any]] = []
+    for row in rows if rows is not None else JUDGMENT_CORPUS:
+        path = judgment_path(row)
+        body = row.get("body")
+        if not isinstance(body, dict):
+            raise ValueError(f"judgment scenario {row.get('id')!r} needs a body object")
+        out.append(
+            {
+                "id": str(row.get("id") or path),
+                "kind": "decisions" if path.endswith("/decisions") else "systemone",
+                "path": path,
+                "body": body,
+            }
+        )
+    return out
 
 
 def openai_chat(base_url: str, model: str, prompt: str, timeout: float, *, api_key: str = "sk-daari-bench") -> dict[str, Any]:
@@ -62,6 +139,44 @@ def openai_chat(base_url: str, model: str, prompt: str, timeout: float, *, api_k
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "ms": (time.perf_counter() - started) * 1000}
     return {"ok": True, "ms": (time.perf_counter() - started) * 1000}
+
+
+def post_json_path(
+    base_url: str,
+    path: str,
+    body: dict[str, Any],
+    timeout: float,
+    *,
+    api_key: str = "sk-daari-bench",
+) -> dict[str, Any]:
+    """POST JSON to an absolute API path; 404 → skipped (peer lacks the route)."""
+    started = time.perf_counter()
+    url = f"{base_url.rstrip('/')}{path}"
+    try:
+        response = httpx.post(
+            url,
+            json=body,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            timeout=timeout,
+        )
+        ms = (time.perf_counter() - started) * 1000
+        if response.status_code == 404:
+            return {
+                "ok": False,
+                "skipped": True,
+                "error": f"peer lacks {path}",
+                "ms": ms,
+            }
+        response.raise_for_status()
+        response.json()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "skipped": False,
+            "error": str(exc)[:200],
+            "ms": (time.perf_counter() - started) * 1000,
+        }
+    return {"ok": True, "skipped": False, "ms": (time.perf_counter() - started) * 1000}
 
 
 def _free_port() -> int:
@@ -183,6 +298,12 @@ def _usd(value: float | None) -> str:
     return f"${value:.5f}" if value is not None else "—"
 
 
+def _speedup(litellm_ms: float | None, daari_ms: float | None) -> str:
+    if litellm_ms is None or daari_ms is None or daari_ms <= 0:
+        return "—"
+    return f"{litellm_ms / daari_ms:.2f}x"
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     overall = report["overall_speedup_median"]
     hit = report["cache_hit_speedup_median"]
@@ -233,11 +354,73 @@ def render_markdown(report: dict[str, Any]) -> str:
         "daari's wins are the $0 tiers (L0/L1/L2/Lt/CCS),",
         "not a faster llama3.2:3b. Rows marked `excluded` expect frontier.",
         "",
+        "## Decisions / System One",
+        "",
+        "Typed-judgment routes (`POST /v1/decisions`, `POST /v1/systemone`).",
+        "LiteLLM rows are skipped with a note when that build lacks the path.",
+        "",
+        "| ID | Path | LiteLLM ms | daari ms | speedup | note |",
+        "|----|------|------------|----------|---------|------|",
     ]
+    judgment_rows = report.get("judgment_rows") or []
+    if not judgment_rows:
+        lines.append("| — | — | — | — | — | no judgment rows in this run |")
+    for row in judgment_rows:
+        note = row.get("note") or ""
+        lines.append(
+            f"| {row['id']} | {row.get('path') or '—'} | {_ms(row.get('litellm_ms'))} "
+            f"| {_ms(row.get('daari_ms'))} | {_speedup(row.get('litellm_ms'), row.get('daari_ms'))} "
+            f"| {note} |"
+        )
+    lines.append("")
     return "\n".join(lines)
 
 
-def run(ollama: str, model: str, litellm_url: str, timeout: float, allow_frontier: bool) -> list[dict[str, Any]]:
+def run_judgment(
+    litellm_url: str,
+    daari_url: str,
+    timeout: float,
+    *,
+    model: str,
+    corpus: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Time /v1/decisions and /v1/systemone on both peers; skip missing LiteLLM routes."""
+    scenarios = load_judgment_corpus(corpus)
+    rows: list[dict[str, Any]] = []
+    for scenario in scenarios:
+        path = scenario["path"]
+        body = {**scenario["body"], "model": scenario["body"].get("model") or model}
+        lite = post_json_path(litellm_url, path, body, timeout)
+        daari = post_json_path(daari_url, path, body, timeout)
+        note = ""
+        if lite.get("skipped"):
+            note = f"LiteLLM build lacks {path}"
+        elif not lite.get("ok"):
+            note = f"LiteLLM error: {lite.get('error') or 'failed'}"
+        if not daari.get("ok") and not note:
+            note = f"daari error: {daari.get('error') or 'failed'}"
+        elif not daari.get("ok") and note:
+            note = f"{note}; daari error: {daari.get('error') or 'failed'}"
+        rows.append(
+            {
+                "id": scenario["id"],
+                "kind": scenario["kind"],
+                "path": path,
+                "litellm_ms": lite["ms"] if lite.get("ok") else None,
+                "daari_ms": daari["ms"] if daari.get("ok") else None,
+                "note": note,
+            }
+        )
+    return rows
+
+
+def run(
+    ollama: str,
+    model: str,
+    litellm_url: str,
+    timeout: float,
+    allow_frontier: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     corpus = bench_live.load_jsonl(bench_live.ROUTING_CORPUS)
     print("path 1/2: LiteLLM ...", flush=True)
     lite: dict[str, float | None] = {}
@@ -253,6 +436,7 @@ def run(ollama: str, model: str, litellm_url: str, timeout: float, allow_frontie
     client = bench_live.BenchClient(daemon.url, "", timeout, allow_frontier)
     price = bench_live.reference_price("gpt-4o")
     rows: list[dict[str, Any]] = []
+    judgment_rows: list[dict[str, Any]] = []
     try:
         for row in corpus:
             if "L6" in row["expected_tier_v1"].split("/") and not allow_frontier:
@@ -287,9 +471,11 @@ def run(ollama: str, model: str, litellm_url: str, timeout: float, allow_frontie
                     ),
                 }
             )
+        print("path judgment: Decisions / System One ...", flush=True)
+        judgment_rows = run_judgment(litellm_url, daemon.url, timeout, model=model)
     finally:
         daemon.stop()
-    return rows
+    return rows, judgment_rows
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -356,7 +542,9 @@ def main(argv: list[str] | None = None) -> int:
                 litellm_version = "installed"
 
         assert litellm_url is not None
-        rows = run(args.ollama, args.model, litellm_url, args.timeout, args.allow_frontier)
+        rows, judgment_rows = run(
+            args.ollama, args.model, litellm_url, args.timeout, args.allow_frontier
+        )
     except RuntimeError as exc:
         print(f"ERROR: {exc}")
         return 1
@@ -374,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
         "model": args.model,
         "litellm_version": litellm_version,
         "rows": rows,
+        "judgment_rows": judgment_rows,
         **aggregate(rows),
     }
     text = render_markdown(report)

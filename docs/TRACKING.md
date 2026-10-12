@@ -6683,6 +6683,14 @@ to global/normal. Docs: virtual-keys.md Backup. Covered by
 reflects filter and `has_more`. Covered by
 `packages/web-ui/test/dashboard.test.js`.
 
+### Bench Decisions / System One vs LiteLLM ([#1599](https://github.com/naveenreddyalka/daari/issues/1599))
+
+<!-- tracking:#1599 -->
+**Status:** Done (2026-10-12). `bench_vs_litellm` corpus adds `/v1/decisions`
+and `/v1/systemone` scenarios; skips LiteLLM when the peer lacks the route;
+report section with ms + speedup. Covered by
+`tests/unit/test_bench_vs_litellm.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
