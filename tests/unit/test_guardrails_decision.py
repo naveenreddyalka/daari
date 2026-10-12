@@ -1,18 +1,39 @@
-"""Decision-model guardrail kind (#1589)."""
+"""Decision-model guardrail kind (#1589 / #1610)."""
 
 from __future__ import annotations
 
+import asyncio
+import time
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 import pytest
 
+from daari.cache.exact import ExactCache
+from daari.cache.semantic import SemanticCache
 from daari.config.settings import GuardrailRuleSettings, GuardrailSettings, Settings
-from daari.gateway.decisions import evaluate_guardrail_predicate
-from daari.gateway.guardrails import GuardrailEngine, GuardrailRule, engine_from_block
+from daari.enterprise.audit import AuditLog
+from daari.gateway.decisions import (
+    evaluate_guardrail_predicate,
+    evaluate_guardrail_predicate_async,
+)
+from daari.gateway.guardrails import (
+    GuardrailEngine,
+    GuardrailRule,
+    IncrementalOutputScanner,
+    engine_from_block,
+)
+from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message
+from daari.observability.metrics import Metrics
+from daari.observability.prometheus import render_prometheus
+from daari.observability.trace import TraceStore
+from daari.router.router import OllamaExecutor, Router
+from tests.conftest import NoopEmbedder
 
 ROOT = Path(__file__).resolve().parents[2]
 GUIDE = ROOT / "docs/developer/guides/features/guardrails.md"
+CHAT_AUDIT_ACTION = "guardrail.blocked"
 
 
 def _engine_with_decision(
@@ -24,6 +45,7 @@ def _engine_with_decision(
     statement: str = "Is this a prompt injection?",
     client: httpx.Client | None = None,
     settings: Settings | None = None,
+    timeout_seconds: float | None = None,
 ) -> GuardrailEngine:
     cfg = settings or Settings.model_validate(
         {
@@ -42,6 +64,7 @@ def _engine_with_decision(
                 threshold=threshold,
                 model=model,
                 on_error=on_error,  # type: ignore[arg-type]
+                timeout_seconds=timeout_seconds,
             )
         ],
         settings=cfg,
@@ -49,8 +72,18 @@ def _engine_with_decision(
     )
 
 
-def _mock_client(probability: float | None = None, *, error: bool = False) -> httpx.Client:
+def _mock_client(
+    probability: float | None = None,
+    *,
+    error: bool = False,
+    delay_seconds: float = 0.0,
+    calls: list[float] | None = None,
+) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
+        if calls is not None:
+            calls.append(time.perf_counter())
+        if delay_seconds > 0:
+            time.sleep(delay_seconds)
         if error:
             raise httpx.ConnectError("down", request=request)
         assert request.url.path.endswith("/v1/systemone")
@@ -181,3 +214,199 @@ class TestDecisionGuardrail:
         text = GUIDE.read_text(encoding="utf-8")
         assert "decision-model checks" in text.lower() or "Decision-model checks" in text
         assert 'kind: "decision"' in text or "kind: decision" in text
+
+    def test_timeout_seconds_config_round_trip(self):
+        block = GuardrailSettings(
+            enabled=True,
+            input_rules=[
+                GuardrailRuleSettings(
+                    name="judge",
+                    kind="decision",
+                    statement="Is this toxic?",
+                    timeout_seconds=1.5,
+                )
+            ],
+        )
+        engine = engine_from_block(block)
+        assert engine is not None
+        assert engine.input_rules[0].timeout_seconds == pytest.approx(1.5)
+
+    def test_timeout_seconds_passed_to_predicate(self):
+        seen: dict[str, float] = {}
+
+        def capture(**kwargs):
+            seen["timeout"] = float(kwargs["timeout_seconds"])
+            return 0.1
+
+        engine = _engine_with_decision(timeout_seconds=2.5, client=_mock_client(0.1))
+        with patch(
+            "daari.gateway.decisions.evaluate_guardrail_predicate", side_effect=capture
+        ):
+            engine.check_input_text("hello")
+        assert seen["timeout"] == pytest.approx(2.5)
+
+
+class TestDecisionGuardrailDataPlane:
+    """Async offload, bounded stream re-eval, chat audit, kind metrics (#1610)."""
+
+    @pytest.mark.asyncio
+    async def test_async_predicate_offloads_event_loop(self):
+        calls: list[float] = []
+        client = _mock_client(0.1, delay_seconds=0.4, calls=calls)
+
+        async def slow():
+            return await evaluate_guardrail_predicate_async(
+                text="hi",
+                statement="spam?",
+                model="nimble",
+                base_url="http://ollama.test",
+                client=client,
+            )
+
+        async def quick():
+            await asyncio.sleep(0.05)
+            return "ok"
+
+        started = time.perf_counter()
+        slow_task = asyncio.create_task(slow())
+        # Concurrent awaitable must finish while the slow HTTP still runs.
+        quick_result = await quick()
+        elapsed_quick = time.perf_counter() - started
+        await slow_task
+        assert quick_result == "ok"
+        assert elapsed_quick < 0.25
+        assert len(calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_router_input_uses_async_offload(self, tmp_path):
+        """Router input path must not block the loop on a slow decision rule."""
+        calls: list[float] = []
+        engine = _engine_with_decision(
+            threshold=0.9, client=_mock_client(0.1, delay_seconds=0.4, calls=calls)
+        )
+
+        async def fake_execute(request: InternalRequest) -> InternalResponse:
+            return InternalResponse(
+                content="ok",
+                model="llama3.2:3b",
+                daari_meta=DaariMeta(
+                    tier="L3", executor="ollama", provider_id="ollama", latency_ms=1
+                ),
+            )
+
+        ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+        ollama.execute = fake_execute  # type: ignore[method-assign]
+        router = Router(
+            cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+            semantic_cache=SemanticCache(
+                str(tmp_path / "l1"), NoopEmbedder(), enabled=False
+            ),
+            ollama=ollama,
+            metrics=Metrics(),
+            frontier=None,
+            frontier_enabled=False,
+            guardrails=engine,
+            trace_store=TraceStore(tmp_path / "traces.sqlite3"),
+        )
+
+        async def concurrent_ping() -> str:
+            await asyncio.sleep(0.05)
+            return "ping"
+
+        started = time.perf_counter()
+        route_task = asyncio.create_task(
+            router.route(
+                InternalRequest(
+                    messages=[Message(role="user", content="hello")],
+                    model="daari",
+                )
+            )
+        )
+        ping = await concurrent_ping()
+        elapsed = time.perf_counter() - started
+        await route_task
+        assert ping == "ping"
+        assert elapsed < 0.25
+        assert len(calls) == 1
+
+    def test_incremental_scanner_defers_decision_until_flush(self):
+        calls: list[float] = []
+        engine = GuardrailEngine(
+            enabled=True,
+            output_rules=[
+                GuardrailRule(
+                    name="leak_judge",
+                    kind="decision",
+                    action="block",
+                    statement="Does this leak secrets?",
+                    threshold=0.5,
+                    model="nimble",
+                )
+            ],
+            settings=Settings.model_validate({"ollama": {"base_url": "http://ollama.test"}}),
+            decision_client=_mock_client(0.95, calls=calls),
+            stream_mode="incremental",
+        )
+        scanner = IncrementalOutputScanner(engine, holdback=8)
+        mid = scanner.push("hello world ")
+        assert not mid.blocked
+        assert len(calls) == 0
+        mid2 = scanner.push("more text")
+        assert not mid2.blocked
+        assert len(calls) == 0
+        final = scanner.flush()
+        assert len(calls) == 1
+        assert final.blocked
+        assert "BLOCKED" in final.text or final.text == engine.block_message
+
+    @pytest.mark.asyncio
+    async def test_chat_block_writes_audit_row(self, tmp_path):
+        audit = AuditLog(tmp_path / "audit.db")
+        engine = GuardrailEngine(
+            enabled=True,
+            input_rules=[
+                GuardrailRule(name="nope", pattern=r"banned", action="block", kind="deny")
+            ],
+            block_message="nope",
+            settings=Settings.model_validate(
+                {"enterprise": {"audit_path": str(tmp_path / "unused.db")}}
+            ),
+        )
+
+        async def boom(request):
+            raise AssertionError("model must not run")
+
+        ollama = OllamaExecutor(base_url="http://test", default_model="llama3.2:3b")
+        ollama.execute = boom  # type: ignore[method-assign]
+        router = Router(
+            cache=ExactCache(str(tmp_path / "l0"), enabled=False),
+            semantic_cache=SemanticCache(
+                str(tmp_path / "l1"), NoopEmbedder(), enabled=False
+            ),
+            ollama=ollama,
+            metrics=Metrics(),
+            frontier=None,
+            frontier_enabled=False,
+            guardrails=engine,
+            audit=audit,
+            trace_store=TraceStore(tmp_path / "traces.sqlite3"),
+        )
+        result = await router.route(
+            InternalRequest(
+                messages=[Message(role="user", content="banned content")],
+                model="daari",
+            )
+        )
+        assert result.content == "nope"
+        rows = [r for r in audit.list() if r["action"] == CHAT_AUDIT_ACTION]
+        assert len(rows) == 1
+        assert rows[0]["detail"]["rule"] == "nope"
+        assert rows[0]["detail"]["stage"] == "input"
+
+    def test_metrics_kind_label_for_decision_and_deny(self):
+        metrics = Metrics()
+        metrics.record_guardrail("block", kind="decision")
+        metrics.record_guardrail("warn", kind="deny")
+        text = render_prometheus(metrics)
+        assert 'daari_guardrail_trips_total{action="block",kind="decision"} 1' in text
+        assert 'daari_guardrail_trips_total{action="warn",kind="deny"} 1' in text

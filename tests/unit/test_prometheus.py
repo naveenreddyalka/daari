@@ -69,8 +69,8 @@ class TestRenderPrometheus:
         metrics.record_guardrail("block")
         metrics.record_guardrail("warn")
         text = render_prometheus(metrics)
-        assert 'daari_guardrail_trips_total{action="block"} 1' in text
-        assert 'daari_guardrail_trips_total{action="warn"} 1' in text
+        assert 'daari_guardrail_trips_total{action="block",kind="deny"} 1' in text
+        assert 'daari_guardrail_trips_total{action="warn",kind="deny"} 1' in text
 
     def test_boundary_decisions_counter(self):
         """Prometheus must export boundary decisions with stage/label (#691)."""

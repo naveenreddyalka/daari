@@ -137,7 +137,7 @@ class TestRouterIntegration:
         assert called is False
         assert result.content == "nope"
         assert result.daari_meta.tier == "guardrail"
-        assert metrics.guardrails.get("block") == 1
+        assert metrics.guardrails.get("block:deny") == 1
 
     @pytest.mark.asyncio
     async def test_output_redact_rewrites_answer(self, tmp_path):
@@ -323,4 +323,7 @@ class TestScanToolResults:
         assert called is False
         assert result.content == "tool blocked"
         assert result.daari_meta.tier == "guardrail"
-        assert metrics.guardrails.get("block") == 1
+        assert (
+            metrics.guardrails.get("block:secret") == 1
+            or metrics.guardrails.get("block:deny") == 1
+        )

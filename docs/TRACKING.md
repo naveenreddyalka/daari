@@ -6691,6 +6691,15 @@ and `/v1/systemone` scenarios; skips LiteLLM when the peer lacks the route;
 report section with ms + speedup. Covered by
 `tests/unit/test_bench_vs_litellm.py`.
 
+### Guardrails decision-rule data plane ([#1610](https://github.com/naveenreddyalka/daari/issues/1610))
+
+<!-- tracking:#1610 -->
+**Status:** Done (2026-10-12). Decision predicates offload via
+`asyncio.to_thread` / async client; incremental streams defer decision rules
+to final flush; chat blocks write `guardrail.blocked` audit rows;
+`daari_guardrail_trips_total` gains a `kind` label; optional per-rule
+`timeout_seconds`. Covered by `tests/unit/test_guardrails_decision.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

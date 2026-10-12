@@ -1501,6 +1501,15 @@ class GuardrailRuleSettings(BaseModel):
     threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     model: str | None = None  # local decisions catalog id; default decision_classifier
     on_error: str = "warn"  # warn (default) | block when decisions backend is down
+    timeout_seconds: float | None = Field(
+        default=None,
+        ge=0.1,
+        le=120.0,
+        description=(
+            "Per-rule HTTP timeout for kind=decision predicates (#1610). "
+            "None uses the evaluator default (5s)."
+        ),
+    )
 
 
 class GuardrailSettings(BaseModel):
