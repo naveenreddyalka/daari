@@ -6708,6 +6708,14 @@ to final flush; chat blocks write `guardrail.blocked` audit rows;
 export/import; Postgres `create_team` / export / import persist the same
 fields. Covered by `tests/unit/test_keys_export_import.py`.
 
+### Audit budget / rate-limit / concurrency rejects ([#1616](https://github.com/naveenreddyalka/daari/issues/1616))
+
+<!-- tracking:#1616 -->
+**Status:** Done (2026-10-12). Hard 402/429/503 control-plane rejects write
+`budget.exceeded`, `rate_limit.exceeded`, and `concurrency.exceeded` audit
+rows (scope detail, no prompts/secrets). Covered by
+`tests/unit/test_reject_audit.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
