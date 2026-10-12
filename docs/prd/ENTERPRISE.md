@@ -11,28 +11,29 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-11 eve)
+## Where daari stands (verified in-tree, 2026-10-12)
 
-**Loop velocity.** Eve feeder rows 65–67 (web-ui / report bounds / multi_agent
-pricing) and end-user/guardrail rows 62–63 still `agent:working`. Midday
-filed doctor/stats/compare pins (71–74) plus guardrail/decisions catalog /
-Helm NetworkPolicy / per-key in-flight (separate midday refill) remain open.
-Keys export lifecycle fields (70) and RBAC analyst floors on ungated
-`/v1/daari` read surfaces shipped. Hot-reload (6) and parked Messages
+**Loop velocity.** The whole 10-11 table drained in <24h again: rows 71 and
+75–77/79 shipped plus the midday refill (decision guardrail kind, decisions
+catalog, Helm NetworkPolicy/spread, per-key in-flight + named model map).
+End-user/guardrail-profile/web-ui/report/multi-agent rows 62–63/65–67 still
+`agent:working`; docs pins 72–74/78 open. Hot-reload (6) and parked Messages
 tool-allowlist (7) unchanged.
 
-**Outward.** LiteLLM stable bar still **v1.104.x**; **1.105** at rc.3
-(Decisions on proxy); **1.106** RC/backport adds decision-model guardrail
-(compare note filed). Ollama **0.40.3** flat. Kong AI Gateway **2.2** GA
-(MCP bundling, modality-aware cost, identity-keyed policies) — watch only
-until buyer ask. llama.cpp **0.6.0** ships `/v1/systemone` (daari already
-has the facade). Portkey / OpenRouter / vLLM / GPTCache flat vs prior scan.
+**Outward.** Flat everywhere: LiteLLM **v1.105.0** stable / 1.106.0-rc.1;
+Portkey v2.28.0; Kong 2.2.0; Ollama 0.40.3; vLLM 0.31.0; OpenRouter last
+entry Oct 9; MCP blog Aug 22. Provider side quiet since Oct 8–9 (OpenAI
+Ultrafast + SDK 3.29.0 doc chores; Anthropic Managed Agents workflows =
+non-goal).
 
-**Inward theme: team DR honesty + admin-console lifecycle + Decisions
-bench.** Code audit: teams export omits `cache_scope`/`priority` (keys fixed);
-web-ui ignores inventory fields and `status`/`idle_days` query params;
-compare-litellm still watches 1.105-rc.1 only; `bench_vs_litellm` has no
-Decisions/System One rows.
+**Inward theme: depth on the 48h-old concurrency + decision-guardrail
+surfaces.** Code audit verified: decision guardrails run a **sync** httpx
+judgment on the event loop (and re-judge the full stream on every chunk);
+chat guardrail blocks never audit; Postgres `create_team` silently drops
+`max_in_flight`/model budgets that SQLite keeps; teams export omits
+`metadata_json`; `max_in_flight` is settable/visible nowhere (CLI, admin
+API, web-ui, Helm, Prom); Helm netpol cuts off external Redis/Postgres;
+baseline suite flaked once on a wall-clock minute boundary.
 
 ---
 
@@ -40,29 +41,27 @@ Decisions/System One rows.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 75 | Teams export/import round-trip `cache_scope` + `priority` | 4 | 2 | LiteLLM key/team backup | Air-gapped restore keeps team tenancy | Filed [#1595](https://github.com/naveenreddyalka/daari/issues/1595) |
-| 76 | Web-ui: render `last_used_at` / priority / `cache_scope` on keys+teams | 3 | 2 | OpenRouter / LiteLLM admin UI | Same-box console shows inventory fields | Filed [#1596](https://github.com/naveenreddyalka/daari/issues/1596) |
-| 77 | Web-ui: honor keys `status` + `idle_days` filters | 3 | 2 | LiteLLM key hygiene UI | CLI/API filters reachable in console | Filed [#1597](https://github.com/naveenreddyalka/daari/issues/1597) |
-| 78 | compare-litellm: LiteLLM 1.106 decision-model guardrail watch | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Filed [#1598](https://github.com/naveenreddyalka/daari/issues/1598) |
-| 79 | bench_vs_litellm: `/v1/decisions` + `/v1/systemone` scenarios | 3 | 2 | — (benchmarking) | Measure on-box Decisions vs proxy | Filed [#1599](https://github.com/naveenreddyalka/daari/issues/1599) |
-| 70 | Keys export/import round-trip `last_used_at` + priority + cache_scope | 4 | 2 | LiteLLM key backup | Air-gapped restore keeps idle/admission | Shipped |
-| 71 | Doctor tip when VK allowlist matches zero catalog cards | 3 | 2 | — (ops honesty) | Catch typo before BYOK clients 404 | Open |
+| 80 | Decision-guardrail data plane: async offload, bounded stream re-eval, chat audit, kind-labeled metrics | 5 | 2 | Portkey/LiteLLM guardrail hooks | $0 local judge only wins if it never stalls the loop | Filed [#1610](https://github.com/naveenreddyalka/daari/issues/1610) |
+| 81 | Teams metadata parity: Postgres `create_team` + export/import round-trip (`max_in_flight`, model budgets) | 5 | 2 | LiteLLM team backup | Air-gapped restore must be the whole truth | Filed [#1611](https://github.com/naveenreddyalka/daari/issues/1611) |
+| 82 | Set & see concurrency caps: CLI/admin/web-ui/Helm + per-scope in-flight gauges | 4 | 3 | LiteLLM `max_parallel_requests` admin | Watch GPU saturation on the same box | Filed [#1612](https://github.com/naveenreddyalka/daari/issues/1612) |
+| 83 | Helm netpol egress for external Redis/Postgres + priorityClass/nodeSelector/tolerations/initContainers/extraEnv | 4 | 2 | Kong chart | Survive default-deny + tainted GPU pools | Filed [#1613](https://github.com/naveenreddyalka/daari/issues/1613) |
+| 84 | Hermetic clock for RPM-window tests (minute-boundary flake) | 3 | 1 | — (CI trust) | Red CI must mean something | Filed [#1614](https://github.com/naveenreddyalka/daari/issues/1614) |
 | 72 | `daari stats --help` mentions `virtual_keys` | 2 | 1 | — (CLI honesty) | Same JSON operators already dump | Open |
 | 73 | compare-litellm: LiteLLM 1.105 RC Decisions vs daari | 2 | 1 | LiteLLM release notes | On-box Decisions already ship | Open |
 | 74 | Hermetic pin: virtual-keys.md documents `/v1/models` allowlist | 2 | 1 | — (docs regression) | Keep ACL sentence in CI | Open |
-| 69 | Filter `GET /v1/models` by VK `allowed_models` | 5 | 2 | OpenRouter filtered catalog | Same allowlist as inference | Shipped |
+| 78 | compare-litellm: LiteLLM 1.106 decision-model guardrail watch | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Open |
+| 62 | End-user inventory + per-user block/cap overrides | 5 | 3 | OpenRouter end-users / LiteLLM | Ledger already knows every user | Open |
+| 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter guardrail assign / Portkey | Per-tenant policy, zero hops | Open |
 | 65 | Web-ui: honor keys/teams `has_more` + render `report.users` | 4 | 2 | LiteLLM admin UI | Same-box console finishes the job | Open |
 | 66 | Bound/paginate report `clients`/`users` rollups | 4 | 2 | LiteLLM paged usage | Fleet-safe JSON on-box | Open |
 | 67 | multi_agent nested usage: per-subagent `model` for cost-true pricing | 4 | 2 | OpenAI / LiteLLM FinOps | Ledger already meters nested tokens | Open |
-| 68 | Hermetic decisions L0 `cache_scope` tenancy test | 3 | 1 | — (testability) | Prove typed-judgment isolation | Shipped |
-| 60 | `last_used_at` on virtual keys + status/idle list filters | 4 | 2 | OpenRouter keys API | Key hygiene on-box, air-gapped | Shipped |
-| 61 | Proactive key-expiry signals: doctor scan, Prom gauge, signed webhook | 4 | 2 | OpenRouter / LiteLLM alerts | Same store that enforces warns | Shipped |
-| 62 | End-user inventory + per-user block/cap overrides | 5 | 3 | OpenRouter end-users / LiteLLM | Ledger already knows every user | Open |
-| 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter guardrail assign / Portkey | Per-tenant policy, zero hops | Open |
-| 64 | Audit + metric on retired-model blocks; doctor lifecycle check | 3 | 2 | LiteLLM audit planes | Catalog + router + audit in one box | Shipped |
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked |
-| 53 | Doctor + Helm + auth-and-keys coverage for `/v1/decisions` | 3 | 1 | — (ops honesty) | Operators discover the surface | Shipped |
+| 71 | Doctor tip when VK allowlist matches zero catalog cards | 3 | 2 | — (ops honesty) | Catch typo before BYOK clients 404 | Shipped |
+| 75 | Teams export/import round-trip `cache_scope` + `priority` | 4 | 2 | LiteLLM key/team backup | Air-gapped restore keeps team tenancy | Shipped |
+| 76 | Web-ui: render `last_used_at` / priority / `cache_scope` on keys+teams | 3 | 2 | OpenRouter / LiteLLM admin UI | Same-box console shows inventory fields | Shipped |
+| 77 | Web-ui: honor keys `status` + `idle_days` filters | 3 | 2 | LiteLLM key hygiene UI | CLI/API filters reachable in console | Shipped |
+| 79 | bench_vs_litellm: `/v1/decisions` + `/v1/systemone` scenarios | 3 | 2 | — (benchmarking) | Measure on-box Decisions vs proxy | Shipped |
 | 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
 | 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
 | 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
@@ -75,43 +74,49 @@ Decisions/System One rows.
 | 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
 | 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365 catalog; Skills; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM / OpenAI | Demand-triggered | Watch |
 
-Shipped this week (do not re-file): filtered `/v1/models` catalog; key
-`last_used_at` + idle filters; key-expiry doctor/gauge/webhook; retired-block
-audit/metric/doctor; decisions L0 `cache_scope` hermetic pin; stats
-`virtual_keys`; Grafana virtual_keys + retired panels; keys list CLI
-`--status`/`--idle-days` docs/help pins; keys export lifecycle fields;
-analyst role floors on ungated `/v1/daari` read/feedback; regional-processing
-1.10×; audit pagination; Ultrafast/Fast tiers; Anthropic lifecycle cards.
+Shipped this week (do not re-file): per-key/team/model `max_in_flight` +
+named `rate_limit.models` map with 503/`Retry-After`/`X-RateLimit-Scope`;
+decision-model guardrail kind; configurable decisions catalog (drex-1.5 /
+microsoft-decision-1); Helm NetworkPolicy + topologySpread; teams export
+`cache_scope`/`priority`; web-ui lifecycle columns + status/idle filters;
+bench DEC-01/SYS-01; doctor empty-allowlist tip; filtered `/v1/models`;
+key lifecycle signals; analyst role floors.
 
-Watch rows (do not file yet): gpt-6-luna Decisions schema drift; OpenRouter
-BYOK `declared_region` / IP allowlists (buyer ask); Anthropic Managed Agents
-/ Compliance API (non-goal); Kong 2.2 MCP bundling + modality cost (buyer
-ask); LiteLLM 1.105/1.106 GA Lens + M365 MCP catalog (file compare features
-at GA — Decisions RC + 1.106 guardrail notes already filed); Portkey JWT JIT
-(operator ask); OpenAI in-product HIPAA BAA (compliance non-goal).
+Watch rows (do not file yet): decisions catalog pricing/capabilities +
+Ollama-facade visibility for drex/microsoft ids ($0 local billing is by
+design — file if a hosted variant routes); BENCHMARKS.md cross-link of
+DEC/SYS rows + decisions L0 cache-hit bench scenario; gpt-6-luna Decisions
+schema drift; OpenRouter BYOK `declared_region` / IP allowlists (buyer
+ask); Anthropic Managed Agents / Compliance API (non-goal); Kong 2.2 MCP
+bundling + modality cost (buyer ask); LiteLLM 1.105/1.106 GA Lens + M365
+MCP catalog (file compare features at GA); Portkey JWT JIT (operator ask);
+OpenAI in-product HIPAA BAA (compliance non-goal); OpenAI 128-char safety
+identifiers doc (client-side).
 
-Verified fine this run — don't re-audit: filtered catalog on OpenAI facade;
-`last_used_at` touch + CLI filters; key export key-row fields; key_expiry
-doctor + Prom + webhook; retired rejects metric + doctor; decisions L0
-tenancy hermetic; stats `virtual_keys` + Grafana panels; analyst floors on
-route/preview / cache/diversity / learn/stats / feedback; MCP grant
-fail-closed; compact-to-fit telemetry; `/v1/systemone` facade.
+Verified fine this run — don't re-audit: #1605 enforcement headers + scope
+labels + reject metrics + auth-and-keys/config docs; key `max_in_flight`
+export via key `metadata`; keys/teams import schema refusal + CLI audit
+rows; decision rules run on chat + endpoint modality paths incl. OCR/MCP;
+frontier decisions ids refused for guardrails; doctor `decisions_local_models`
+tip; netpol/topology chart tests; web-ui XSS-safe cells on new fields;
+bench DEC/SYS unit tests + compare-doc stubs; team `max_in_flight`
+enforced on SQLite path (gap is DR/Postgres/CLI/UI only).
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Credential backup honesty (teams)** — export/import team
-   `cache_scope`/`priority` (row 75) so DR matches key-row lifecycle fields.
-2. **Admin plane at fleet scale** — drain web-ui `has_more` / `report.users`
-   (65), bounded report rollups (66), and console lifecycle columns/filters
-   (76–77).
-3. **End-user + per-tenant policy** — rows 62–63 (inventory/block/cap,
+1. **Guardrail data plane you can run in prod** — async decision judgments,
+   bounded stream re-eval, chat-block audit parity (row 80).
+2. **Fleet-store honesty** — Postgres team metadata parity + export/import
+   round-trip (row 81) so #544-era Postgres fleets keep every cap.
+3. **Operable concurrency** — set & observe `max_in_flight` everywhere
+   (row 82) and a chart that survives real clusters (row 83).
+4. **End-user + per-tenant policy** — rows 62–63 (inventory/block/cap,
    guardrail profiles) when prior sessions clear `agent:working`.
-4. **FinOps + Decisions proof** — cost-true multi_agent nested models (67);
-   Decisions/System One bench rows (79).
-5. **Operate without restart** — config hot-reload (6) and parked Messages
-   tool allowlist (7) when a long session is available.
+5. **Admin plane at fleet scale + FinOps truth** — web-ui pagination and
+   report bounds (65–66), cost-true multi_agent pricing (67), CI trust via
+   hermetic RPM windows (84).
 
 Compliance non-goals (WIF depth, A2A, SOC 2 program, Realtime/WS, FIPS
 builds, HIPAA BAA) stay deferred until buyer demand.
@@ -120,26 +125,24 @@ builds, HIPAA BAA) stay deferred until buyer demand.
 
 ## Changelog
 
-- **2026-10-11 eve (team DR + console lifecycle + Decisions bench)** — Marked
-  row 70 Shipped. Filed rows 75–79: teams export `cache_scope`/`priority`,
-  web-ui lifecycle columns, web-ui status/idle filters, compare-litellm 1.106
-  decision-model guardrail watch, bench_vs_litellm Decisions/System One.
-  Outward: LiteLLM 1.106 guardrail RC; Kong AI Gateway 2.2 GA (watch);
-  llama.cpp 0.6.0 `/v1/systemone`. Pruned dense shipped summary; kept open
-  midday rows 71–74.
+- **2026-10-12 (concurrency + decision-guardrail depth)** — Marked rows 71,
+  75–77, 79 Shipped after the overnight drain. Filed rows 80–84: decision
+  guardrail async/audit/metrics data plane, teams metadata Postgres +
+  export parity, concurrency-cap ops surfaces, Helm external-backend netpol
+  egress + scheduling knobs, hermetic RPM-window tests. Outward flat
+  (LiteLLM 1.105.0 / Portkey 2.28.0 / Kong 2.2.0 / Ollama 0.40.3 / vLLM
+  0.31.0 / OpenRouter Oct 9). Drained stale sibling PRD PR by resolving it
+  to main. New watch rows: decisions catalog pricing/facade visibility,
+  BENCHMARKS.md DEC/SYS cross-link.
+
+- **2026-10-11 eve (team DR + console lifecycle + Decisions bench)** — Filed
+  rows 75–79. Outward: LiteLLM 1.106 guardrail RC; Kong 2.2 GA (watch);
+  llama.cpp 0.6.0 `/v1/systemone`.
 
 - **2026-10-11 (export honesty + doctor ACL + docs pins)** — Marked rows
-  60–61, 64, 68–69 Shipped after Oct 10–11 drain. Filed rows 70–74: keys
-  export lifecycle fields, doctor empty-allowlist tip, stats help
-  `virtual_keys`, compare-litellm Decisions RC note, virtual-keys catalog
-  ACL hermetic pin. Outward: LiteLLM 1.105 rc.3 Decisions; Ollama 0.40.3.
-  Pruned dense shipped rows 49–59 into summary lines to stay under ~300.
+  60–61, 64, 68–69 Shipped. Filed rows 70–74. Outward: LiteLLM 1.105 rc.3
+  Decisions; Ollama 0.40.3.
 
-- **2026-10-10 eve (admin-plane honesty + FinOps + catalog ACL)** — Filed
-  rows 65–69. Outward: LiteLLM 1.105 RC; OpenRouter filtered-catalog parity.
-
-- **2026-10-10 pm (key + end-user lifecycle governance)** — Filed rows
-  60–64 after OpenRouter admin-plane wave; row 53 Shipped.
-
-- **2026-10-10 → 08-28** — Condensed: Decisions/OAuth/admin/multi-agent;
-  governance parity; LiteLLM 1.104; Apache 2.0; this PRD's creation.
+- **2026-10-10 → 08-28** — Condensed: key/end-user lifecycle; admin-plane
+  honesty; Decisions/OAuth/multi-agent; governance parity; LiteLLM 1.104;
+  Apache 2.0; this PRD's creation.
