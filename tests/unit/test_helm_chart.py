@@ -926,3 +926,170 @@ class TestHelmHeaderPolicy:
         assert "BadBot/1.0" in rendered
         assert "DAARI_SERVER__HEADER_POLICY__ALLOW" in rendered
         assert "x-daari-env" in rendered
+
+
+def _docs_by_kind(rendered: str) -> dict[str, list[dict]]:
+    """Split helm template output into documents keyed by kind."""
+    out: dict[str, list[dict]] = {}
+    for doc in yaml.safe_load_all(rendered):
+        if not doc or not isinstance(doc, dict):
+            continue
+        kind = doc.get("kind")
+        if not kind:
+            continue
+        out.setdefault(kind, []).append(doc)
+    return out
+
+
+class TestHelmNetworkPolicy:
+    def test_networkpolicy_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "kind: NetworkPolicy" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["networkPolicy"]["enabled"] is False
+
+    def test_networkpolicy_renders_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set-json",
+            'networkPolicy.ingress.from=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"ingress-nginx"}}}]',
+        )
+        docs = _docs_by_kind(rendered)
+        assert "NetworkPolicy" in docs
+        np = docs["NetworkPolicy"][0]
+        assert np["apiVersion"] == "networking.k8s.io/v1"
+        assert np["spec"]["podSelector"]["matchLabels"]["app.kubernetes.io/name"] == "daari"
+        assert "Ingress" in np["spec"]["policyTypes"]
+        assert "Egress" in np["spec"]["policyTypes"]
+        ingress_from = np["spec"]["ingress"][0]["from"]
+        assert any(
+            peer.get("namespaceSelector", {})
+            .get("matchLabels", {})
+            .get("kubernetes.io/metadata.name")
+            == "ingress-nginx"
+            for peer in ingress_from
+        )
+        # DNS egress (UDP/TCP 53) always when enabled
+        egress_ports = [
+            (p.get("protocol"), p.get("port"))
+            for rule in np["spec"]["egress"]
+            for p in rule.get("ports") or []
+        ]
+        assert ("UDP", 53) in egress_ports
+        assert ("TCP", 53) in egress_ports
+
+    def test_networkpolicy_egress_redis_postgres_frontier(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "redis.enabled=true",
+            "--set",
+            "postgres.enabled=true",
+            "--set",
+            "postgres.url=postgresql://daari:daari@postgres:5432/daari",
+            "--set",
+            "frontier.enabled=true",
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        egress_ports = {
+            (p.get("protocol"), p.get("port"))
+            for rule in np["spec"]["egress"]
+            for p in rule.get("ports") or []
+        }
+        assert ("TCP", 6379) in egress_ports
+        assert ("TCP", 5432) in egress_ports
+        assert ("TCP", 443) in egress_ports
+
+    def test_networkpolicy_egress_local_backends_when_ollama_set(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "ollama.baseUrl=http://ollama:11434",
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        egress_ports = {
+            (p.get("protocol"), p.get("port"))
+            for rule in np["spec"]["egress"]
+            for p in rule.get("ports") or []
+        }
+        assert ("TCP", 11434) in egress_ports
+
+    def test_networkpolicy_prometheus_ingress_when_servicemonitor(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "serviceMonitor.enabled=true",
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        peers = [peer for rule in np["spec"]["ingress"] for peer in rule.get("from") or []]
+        assert any(
+            peer.get("namespaceSelector", {})
+            .get("matchLabels", {})
+            .get("kubernetes.io/metadata.name")
+            == "monitoring"
+            for peer in peers
+        )
+
+    def test_networkpolicy_extra_rules(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set-json",
+            'networkPolicy.ingress.extra=[{"from":[{"ipBlock":{"cidr":"10.0.0.0/8"}}],"ports":[{"protocol":"TCP","port":11435}]}]',
+            "--set-json",
+            'networkPolicy.egress.extra=[{"to":[{"ipBlock":{"cidr":"10.1.0.0/16"}}],"ports":[{"protocol":"TCP","port":9000}]}]',
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        ingress_cidrs = [
+            peer.get("ipBlock", {}).get("cidr")
+            for rule in np["spec"]["ingress"]
+            for peer in rule.get("from") or []
+        ]
+        assert "10.0.0.0/8" in ingress_cidrs
+        egress_cidrs = [
+            peer.get("ipBlock", {}).get("cidr")
+            for rule in np["spec"]["egress"]
+            for peer in rule.get("to") or []
+        ]
+        assert "10.1.0.0/16" in egress_cidrs
+
+
+class TestHelmSchedulingSpread:
+    def test_affinity_and_spread_absent_by_default(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template()
+        dep = _docs_by_kind(rendered)["Deployment"][0]
+        pod_spec = dep["spec"]["template"]["spec"]
+        assert "affinity" not in pod_spec
+        assert "topologySpreadConstraints" not in pod_spec
+        values = _load_yaml(VALUES)
+        assert values.get("affinity") in (None, {})
+        assert values.get("topologySpreadConstraints") in (None, [])
+
+    def test_affinity_and_topology_spread_passthrough(
+        self, helm_available: None
+    ) -> None:
+        rendered = _helm_template(
+            "--set-json",
+            'affinity={"podAntiAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":100,"podAffinityTerm":{"labelSelector":{"matchLabels":{"app.kubernetes.io/name":"daari"}},"topologyKey":"kubernetes.io/hostname"}}]}}',
+            "--set-json",
+            'topologySpreadConstraints=[{"maxSkew":1,"topologyKey":"topology.kubernetes.io/zone","whenUnsatisfiable":"ScheduleAnyway","labelSelector":{"matchLabels":{"app.kubernetes.io/name":"daari"}}}]',
+        )
+        dep = _docs_by_kind(rendered)["Deployment"][0]
+        pod_spec = dep["spec"]["template"]["spec"]
+        assert "podAntiAffinity" in pod_spec["affinity"]
+        spreads = pod_spec["topologySpreadConstraints"]
+        assert len(spreads) == 1
+        assert spreads[0]["topologyKey"] == "topology.kubernetes.io/zone"
+        assert spreads[0]["maxSkew"] == 1

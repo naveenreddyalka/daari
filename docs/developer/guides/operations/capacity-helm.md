@@ -113,6 +113,55 @@ replica and still want a PDB (minAvailable=1 blocks draining the only pod).
 PDB and HPA compose: HPA sets desired replicas; the PDB only constrains
 voluntary evictions during drains/upgrades.
 
+### NetworkPolicy and topology spread
+
+`networkPolicy` defaults to **disabled** so existing installs keep open
+cluster networking. Enable it for platform baseline reviews (restricted
+ingress/egress). Ingress peers come from `networkPolicy.ingress.from`
+(namespaceSelector / podSelector / ipBlock). When `serviceMonitor.enabled`
+is also true, the chart adds scrape peers from
+`networkPolicy.ingress.prometheusFrom` (default: namespace
+`kubernetes.io/metadata.name=monitoring`). Egress always allows DNS (UDP/TCP
+53); Redis (6379) / Postgres (5432) / frontier HTTPS (443) / local-inference
+ports (11434, 8000, 8080) turn on when the matching values knobs are set.
+Append full rules with `ingress.extra` / `egress.extra`.
+
+```yaml
+networkPolicy:
+  enabled: true
+  ingress:
+    from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: ingress-nginx
+serviceMonitor:
+  enabled: true
+```
+
+`affinity` and `topologySpreadConstraints` pass through to the Deployment
+pod template. Empty defaults (`{}` / `[]`) leave rendering unchanged. For
+multi-AZ fleets, prefer zone spread (and optional pod anti-affinity) so HPA
+replicas do not pack onto one node:
+
+```yaml
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: daari
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: daari
+          topologyKey: kubernetes.io/hostname
+```
+
 ### Prometheus ServiceMonitor
 
 `serviceMonitor` defaults to **disabled**. On clusters with the Prometheus

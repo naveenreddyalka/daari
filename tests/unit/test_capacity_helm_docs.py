@@ -61,3 +61,11 @@ def test_capacity_helm_documents_header_policy() -> None:
     assert "server.headerPolicy" in text
     assert "DAARI_SERVER__HEADER_POLICY__ENABLED" in text
     assert "header_policy" in text
+
+
+def test_capacity_helm_documents_networkpolicy_and_spread() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "networkPolicy" in text
+    assert "topologySpreadConstraints" in text
+    assert "affinity" in text
+    assert "prometheusFrom" in text or "serviceMonitor.enabled" in text

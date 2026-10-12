@@ -86,6 +86,34 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1
 
+# NetworkPolicy (#1591). Off by default (open cluster networking). When
+# enabled, ingress is limited to networkPolicy.ingress.from plus Prometheus
+# scrape peers when serviceMonitor.enabled (default: namespace
+# kubernetes.io/metadata.name=monitoring). Egress allows DNS, Redis/Postgres
+# ports when those backends are enabled, HTTPS when frontier.enabled, and
+# common local-inference ports when ollama/orgPool/asr/tts are configured.
+# Append full rules via ingress.extra / egress.extra.
+networkPolicy:
+  enabled: false
+  ingress:
+    from: []
+    # Override auto Prometheus peers (used only when serviceMonitor.enabled).
+    # Empty list uses the monitoring-namespace default above.
+    prometheusFrom: []
+    extra: []
+  egress:
+    dns: true
+    redis: true
+    postgres: true
+    frontierHTTPS: true
+    localBackends: true
+    extra: []
+
+# Scheduling pass-through (#1591). Empty defaults keep the Deployment
+# byte-identical to charts without affinity / topology spread.
+affinity: {}
+topologySpreadConstraints: []
+
 # Prometheus Operator ServiceMonitor for GET /metrics.
 # Default endpoint is the API `http` Service port (may need bearerTokenSecret
 # when server.api_key protects /metrics). When observability.metricsPort > 0,

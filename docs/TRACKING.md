@@ -6643,6 +6643,13 @@ Docs: guardrails.md decision-model checks. Covered by
 (PATCH/ownership). Doctor tip `decisions_local_models`. Docs: ollama.md.
 Covered by `tests/unit/test_decisions_local_catalog.py`.
 
+### Helm NetworkPolicy + topology spread ([#1591](https://github.com/naveenreddyalka/daari/issues/1591))
+
+<!-- tracking:#1591 -->
+**Status:** Done (2026-10-12). Optional `networkPolicy.enabled` (default
+off) renders ingress/egress NetworkPolicy; `affinity` /
+`topologySpreadConstraints` pass through to the Deployment. Docs:
+capacity-helm.md. Covered by `tests/unit/test_helm_chart.py`.
 
 ## How to update
 
