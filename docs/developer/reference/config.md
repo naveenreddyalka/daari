@@ -37,6 +37,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `rate_limit.tpm` | int | `0` | Default tokens per minute per key (0=unlimited). |
 | `rate_limit.model_rpm` | int | `0` | Per-key-per-model RPM. 0 falls back to rpm. |
 | `rate_limit.model_tpm` | int | `0` | Per-key-per-model TPM. 0 falls back to tpm. |
+| `rate_limit.models` | dict | `{}` | Named per-model-id rpm/tpm/max_in_flight overrides (#1592). Exact id match wins; otherwise longest prefix match. |
 | `rate_limit.max_in_flight` | int | `0` | Global in-flight request cap. 0 disables the concurrency gate. |
 | `rate_limit.queue_size` | int | `32` | Waiters allowed when in-flight is full; overflow is 503 + Retry-After. |
 | `rate_limit.retry_after_seconds` | int | `1` | Retry-After value on 429/503. |

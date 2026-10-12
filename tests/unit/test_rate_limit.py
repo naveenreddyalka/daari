@@ -51,6 +51,10 @@ class FakeRedis:
         value = self.store.get(key)
         return None if value is None else str(value)
 
+    def set(self, key: str, value: int | str) -> bool:
+        self.store[key] = int(value)
+        return True
+
     def ttl(self, key: str) -> int:
         return self.ttls.get(key, -1)
 
@@ -799,3 +803,138 @@ async def test_post_still_estimates_tokens_for_tpm(settings):
         response = await client.post("/v1/chat/completions", json=fat)
     assert response.status_code == 429
     assert response.json()["error"]["type"] == "rate_limit_error"
+
+
+class TestPerModelMapAndKeyConcurrency:
+    """Per-key/team max_in_flight + rate_limit.models map (#1592)."""
+
+    def test_models_map_overrides_global_model_rpm(self):
+        from daari.config.settings import ModelRateLimitSettings
+
+        limiter = RateLimiter(
+            MemoryCounterBackend(),
+            default_rpm=100,
+            model_rpm=50,
+            models={"llama3-70b": ModelRateLimitSettings(rpm=2)},
+        )
+        assert limiter.check(key_id="k", model="llama3-70b", tokens=1).allowed
+        assert limiter.check(key_id="k", model="llama3-70b", tokens=1).allowed
+        denied = limiter.check(key_id="k", model="llama3-70b", tokens=1)
+        assert not denied.allowed
+        assert denied.bucket == "model"
+        assert denied.limit == 2
+        # Unlisted model keeps global model_rpm.
+        other = limiter.check(key_id="k", model="other", tokens=1)
+        assert other.allowed
+        assert other.limit == 50
+
+    def test_models_map_longest_prefix_match(self):
+        from daari.config.settings import ModelRateLimitSettings
+
+        limiter = RateLimiter(
+            MemoryCounterBackend(),
+            model_rpm=100,
+            models={
+                "llama3": ModelRateLimitSettings(rpm=3),
+                "llama3-70b": ModelRateLimitSettings(rpm=1),
+            },
+        )
+        assert limiter.resolve_model_limits("llama3-70b-q4") == (1, 0, 0)
+        assert limiter.resolve_model_limits("llama3-8b") == (3, 0, 0)
+
+    def test_key_gauge_cap_memory_and_release(self):
+        limiter = RateLimiter(MemoryCounterBackend(), retry_after_seconds=2)
+        first, held = limiter.try_acquire_gauges([("inflight:key:a", 1, "key_concurrency")])
+        assert first.allowed
+        second, held2 = limiter.try_acquire_gauges([("inflight:key:a", 1, "key_concurrency")])
+        assert not second.allowed
+        assert second.bucket == "key_concurrency"
+        assert second.retry_after == 2
+        assert held2 == []
+        limiter.release_gauges(held)
+        third, held3 = limiter.try_acquire_gauges([("inflight:key:a", 1, "key_concurrency")])
+        assert third.allowed
+        limiter.release_gauges(held3)
+
+    def test_team_gauge_cap(self):
+        limiter = RateLimiter(MemoryCounterBackend())
+        ok, held = limiter.try_acquire_gauges([("inflight:team:t1", 1, "team_concurrency")])
+        assert ok.allowed
+        denied, _ = limiter.try_acquire_gauges([("inflight:team:t1", 1, "team_concurrency")])
+        assert not denied.allowed
+        assert denied.bucket == "team_concurrency"
+        limiter.release_gauges(held)
+
+    def test_redis_and_sqlite_gauge_paths(self, tmp_path):
+        fake = FakeRedis()
+        redis_backend = RedisCounterBackend(client=fake, prefix="daari:rl:")
+        sqlite_backend = SqliteCounterBackend(tmp_path / "rl.sqlite3")
+        for backend in (redis_backend, sqlite_backend):
+            limiter = RateLimiter(backend)
+            d1, h1 = limiter.try_acquire_gauges([("inflight:key:x", 1, "key_concurrency")])
+            d2, h2 = limiter.try_acquire_gauges([("inflight:key:x", 1, "key_concurrency")])
+            assert d1.allowed and not d2.allowed and h2 == []
+            limiter.release_gauges(h1)
+
+    @pytest.mark.asyncio
+    async def test_key_max_in_flight_is_503_with_reject_kind(self, settings, tmp_path):
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        settings.server.virtual_keys.enabled = True
+        settings.server.virtual_keys.path = str(tmp_path / "keys.sqlite3")
+        settings.server.api_key = ""
+        store = VirtualKeyStore(tmp_path / "keys.sqlite3", enabled=True)
+        created = store.create("agent", max_in_flight=1)
+        settings.rate_limit.queue_size = 0
+        app = _app(settings)
+        app.state.virtual_key_store = store
+        limiter = app.state.rate_limiter
+        # Hold the key gauge so the next request is denied at scoped admission.
+        _ok, held = limiter.try_acquire_gauges(
+            [(f"inflight:key:{created.key.key_id}", 1, "key_concurrency")]
+        )
+        headers = {"Authorization": f"Bearer {created.plaintext}"}
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            overflow = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        limiter.release_gauges(held)
+        assert overflow.status_code == 503
+        assert overflow.headers.get("retry-after")
+        assert overflow.headers.get("x-ratelimit-scope") == "key_concurrency"
+        assert app.state.ctx.metrics.rejects.get("key_concurrency", 0) >= 1
+
+    @pytest.mark.asyncio
+    async def test_team_max_in_flight_is_503(self, settings, tmp_path):
+        from daari.auth.virtual_keys import VirtualKeyStore
+
+        settings.server.virtual_keys.enabled = True
+        settings.server.virtual_keys.path = str(tmp_path / "keys.sqlite3")
+        settings.server.api_key = ""
+        store = VirtualKeyStore(tmp_path / "keys.sqlite3", enabled=True)
+        team = store.create_team("fleet", max_in_flight=1)
+        created = store.create("member", team="fleet")
+        app = _app(settings)
+        app.state.virtual_key_store = store
+        limiter = app.state.rate_limiter
+        _ok, held = limiter.try_acquire_gauges(
+            [(f"inflight:team:{team.team_id}", 1, "team_concurrency")]
+        )
+        headers = {"Authorization": f"Bearer {created.plaintext}"}
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            overflow = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        limiter.release_gauges(held)
+        assert overflow.status_code == 503
+        assert overflow.headers.get("x-ratelimit-scope") == "team_concurrency"
+        assert app.state.ctx.metrics.rejects.get("team_concurrency", 0) >= 1
+
+    @pytest.mark.asyncio
+    async def test_global_concurrency_reject_kind_distinct(self, settings):
+        settings.rate_limit.max_in_flight = 1
+        settings.rate_limit.queue_size = 0
+        app = _app(settings)
+        await app.state.rate_limiter.acquire()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            overflow = await client.post("/v1/chat/completions", json=CHAT)
+        await app.state.rate_limiter.release()
+        assert overflow.status_code == 503
+        assert app.state.ctx.metrics.rejects.get("concurrency", 0) >= 1
+        assert app.state.ctx.metrics.rejects.get("key_concurrency", 0) == 0

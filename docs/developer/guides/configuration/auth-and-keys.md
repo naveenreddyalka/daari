@@ -102,11 +102,36 @@ rate_limit:
   queue_size: 32        # waiters before 503 + Retry-After
   retry_after_seconds: 1
   fail_open: false      # true = allow (uncounted) if Redis is down
+  # Named per-model overrides (#1592). Exact id wins; else longest prefix.
+  models:
+    llama3-70b:
+      rpm: 10
+      tpm: 20000
+      max_in_flight: 2
 ```
+
+### Per-key / per-team concurrency
+
+Virtual keys and teams accept optional `max_in_flight` (0 = unlimited). When
+set, admission tracks a scoped gauge (`inflight:key:{id}` /
+`inflight:team:{id}`) on the same Redis/SQLite counter backend as RPM/TPM.
+Overflow is `503` + `Retry-After` with `X-RateLimit-Scope` of
+`key_concurrency` or `team_concurrency` (global gate stays `concurrency`).
+`daari_rejects_total` uses those same kind labels so dashboards can separate
+key monopolization from fleet-wide admission pressure.
+
+### Named per-model map
+
+`rate_limit.models` maps a model id (or prefix) to `rpm` / `tpm` /
+`max_in_flight`. Matching is exact id first, then **longest prefix**. A
+positive map value overrides the global `model_rpm` / `model_tpm` defaults
+for that model; `0` falls through. Model-scoped `max_in_flight` uses gauge
+`inflight:model:{model}` with scope `model_concurrency`.
 
 Counters live in Redis when `cache.backend: redis` (`daari:rl:` prefix); otherwise SQLite next to the virtual-key store. Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`,
 `X-RateLimit-Reset`, `X-RateLimit-Backend`, and `X-RateLimit-Scope`
-(`key` / `team` / `model` — which counter was tightest). When usage crosses
+(`key` / `team` / `model` / `key_concurrency` / `team_concurrency` /
+`model_concurrency` — which counter was tightest). When usage crosses
 `frontier.soft_budget_ratio` (default 0.8) but is still under the hard RPM/TPM
 cap, responses also carry `x-daari-ratelimit-warning: soft` and (with
 `X-Daari-Meta`) `daari_meta.warning=rate_limit_warning` so agents can back off
