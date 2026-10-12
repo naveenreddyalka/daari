@@ -76,12 +76,19 @@ class RateLimitDecision:
         return headers
 
 
+# Gauge keys use a sentinel window so RPM windows cannot delete in-flight rows.
+_GAUGE_WINDOW = -1
+_GAUGE_TTL_SECONDS = 3600
+
+
 class CounterBackend(Protocol):
     name: str
 
     def increment(
         self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS
     ) -> int: ...
+
+    def adjust_gauge(self, key: str, delta: int) -> int: ...
 
 
 class MemoryCounterBackend:
@@ -90,6 +97,7 @@ class MemoryCounterBackend:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._counts: dict[str, tuple[int, int]] = {}
+        self._gauges: dict[str, int] = {}
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
         window = int(time.time() // window_seconds)
@@ -100,6 +108,12 @@ class MemoryCounterBackend:
             count += amount
             self._counts[key] = (count, window)
             return count
+
+    def adjust_gauge(self, key: str, delta: int) -> int:
+        with self._lock:
+            value = max(0, self._gauges.get(key, 0) + int(delta))
+            self._gauges[key] = value
+            return value
 
 
 class SqliteCounterBackend:
@@ -132,7 +146,7 @@ class SqliteCounterBackend:
             with self._connect() as conn:
                 # Scope cleanup to this key so a 60s window cannot wipe an 86400s rpd row.
                 conn.execute(
-                    "DELETE FROM counters WHERE key = ? AND window < ?",
+                    "DELETE FROM counters WHERE key = ? AND window < ? AND window >= 0",
                     (key, window),
                 )
                 conn.execute(
@@ -145,6 +159,21 @@ class SqliteCounterBackend:
                     (key, window),
                 ).fetchone()
                 return int(row[0]) if row else amount
+
+    def adjust_gauge(self, key: str, delta: int) -> int:
+        with self._lock:
+            self._ensure()
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO counters (key, window, count) VALUES (?, ?, ?)"
+                    " ON CONFLICT(key, window) DO UPDATE SET count = MAX(0, count + ?)",
+                    (key, _GAUGE_WINDOW, max(0, int(delta)), int(delta)),
+                )
+                row = conn.execute(
+                    "SELECT count FROM counters WHERE key = ? AND window = ?",
+                    (key, _GAUGE_WINDOW),
+                ).fetchone()
+                return max(0, int(row[0]) if row else 0)
 
 
 class RedisCounterBackend:
@@ -181,6 +210,38 @@ class RedisCounterBackend:
         results = pipe.execute()
         return int(results[0])
 
+    def adjust_gauge(self, key: str, delta: int) -> int:
+        full = f"{self.prefix}gauge:{key}"
+        client = self._store()
+        pipe = client.pipeline()
+        pipe.incrby(full, int(delta))
+        pipe.expire(full, _GAUGE_TTL_SECONDS)
+        results = pipe.execute()
+        value = int(results[0])
+        if value < 0:
+            client.set(full, 0)
+            return 0
+        return value
+
+
+def match_model_limits(
+    models: dict[str, Any], model: str
+) -> Any | None:
+    """Exact model id wins; otherwise longest prefix match (#1592)."""
+    if not models:
+        return None
+    text = str(model or "").strip()
+    if not text:
+        return None
+    if text in models:
+        return models[text]
+    best_key = ""
+    for key in models:
+        name = str(key or "").strip()
+        if name and text.startswith(name) and len(name) > len(best_key):
+            best_key = name
+    return models.get(best_key) if best_key else None
+
 
 class RateLimiter:
     def __init__(
@@ -191,6 +252,7 @@ class RateLimiter:
         default_tpm: int = 0,
         model_rpm: int = 0,
         model_tpm: int = 0,
+        models: dict[str, Any] | None = None,
         max_in_flight: int = 0,
         queue_size: int = 32,
         retry_after_seconds: int = 1,
@@ -206,6 +268,7 @@ class RateLimiter:
         self.default_tpm = default_tpm
         self.model_rpm = model_rpm
         self.model_tpm = model_tpm
+        self.models = dict(models or {})
         self.max_in_flight = max_in_flight
         self.queue_size = queue_size
         self.retry_after_seconds = retry_after_seconds
@@ -350,6 +413,102 @@ class RateLimiter:
         # No fallback configured — still must not 500.
         return 0
 
+    def resolve_model_limits(self, model: str) -> tuple[int, int, int]:
+        """Return (rpm, tpm, max_in_flight) for ``model`` from ``rate_limit.models``."""
+        entry = match_model_limits(self.models, model)
+        if entry is None:
+            return self.model_rpm, self.model_tpm, 0
+        if isinstance(entry, dict):
+            return (
+                int(entry.get("rpm") or 0),
+                int(entry.get("tpm") or 0),
+                int(entry.get("max_in_flight") or 0),
+            )
+        return (
+            int(getattr(entry, "rpm", 0) or 0),
+            int(getattr(entry, "tpm", 0) or 0),
+            int(getattr(entry, "max_in_flight", 0) or 0),
+        )
+
+    def _adjust_gauge(self, key: str, delta: int) -> int:
+        """Adjust a non-windowed in-flight gauge with the same degrade path as counters."""
+        with self._state_lock:
+            degraded = self._degraded
+        if degraded:
+            self._maybe_recover()
+            with self._state_lock:
+                degraded = self._degraded
+        if not degraded:
+            try:
+                return int(self._primary.adjust_gauge(key, delta))
+            except Exception as exc:
+                self._enter_degraded(exc)
+        if self.fail_open:
+            return 0
+        fallback = self._fallback
+        if fallback is not None:
+            with self._state_lock:
+                self.backend = fallback
+            return int(fallback.adjust_gauge(key, delta))
+        return 0
+
+    def try_acquire_gauges(
+        self, leases: list[tuple[str, int, str]]
+    ) -> tuple[RateLimitDecision, list[str]]:
+        """Acquire scoped in-flight gauges; rollback all on any overflow (#1592).
+
+        Each lease is ``(gauge_key, limit, bucket)``. ``limit <= 0`` is skipped.
+        """
+        held: list[str] = []
+        tightest = RateLimitDecision(
+            allowed=True,
+            limit=0,
+            remaining=0,
+            reset_epoch=int(time.time()) + self.retry_after_seconds,
+            backend=self.backend.name,
+            scope="concurrency",
+        )
+        for gauge_key, limit, bucket in leases:
+            cap = int(limit or 0)
+            if cap <= 0:
+                continue
+            count = self._adjust_gauge(gauge_key, 1)
+            if count > cap:
+                self._adjust_gauge(gauge_key, -1)
+                for prior in held:
+                    self._adjust_gauge(prior, -1)
+                return (
+                    RateLimitDecision(
+                        allowed=False,
+                        limit=cap,
+                        remaining=0,
+                        reset_epoch=int(time.time()) + self.retry_after_seconds,
+                        retry_after=self.retry_after_seconds,
+                        scope="concurrency",
+                        backend=self.backend.name,
+                        bucket=bucket,
+                    ),
+                    [],
+                )
+            held.append(gauge_key)
+            remaining = max(0, cap - count)
+            decision = RateLimitDecision(
+                allowed=True,
+                limit=cap,
+                remaining=remaining,
+                reset_epoch=int(time.time()) + self.retry_after_seconds,
+                backend=self.backend.name,
+                scope="concurrency",
+                bucket=bucket,
+            )
+            if tightest.limit <= 0 or remaining < tightest.remaining:
+                tightest = decision
+        return tightest, held
+
+    def release_gauges(self, held: list[str]) -> None:
+        for gauge_key in held:
+            self._adjust_gauge(gauge_key, -1)
+
     def check(
         self,
         *,
@@ -371,8 +530,15 @@ class RateLimiter:
     ) -> RateLimitDecision:
         key_rpm = self.default_rpm if rpm is None else rpm
         key_tpm = self.default_tpm if tpm is None else tpm
-        per_model_rpm = self.model_rpm if model_rpm is None else model_rpm
-        per_model_tpm = self.model_tpm if model_tpm is None else model_tpm
+        map_rpm, map_tpm, _map_mif = self.resolve_model_limits(model)
+        if model_rpm is None:
+            per_model_rpm = map_rpm if map_rpm > 0 else self.model_rpm
+        else:
+            per_model_rpm = model_rpm
+        if model_tpm is None:
+            per_model_tpm = map_tpm if map_tpm > 0 else self.model_tpm
+        else:
+            per_model_tpm = model_tpm
         if per_model_rpm <= 0:
             per_model_rpm = key_rpm
         if per_model_tpm <= 0:
@@ -719,6 +885,7 @@ def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLi
     default_tpm = int(getattr(rl, "tpm", 0) or 0)
     model_rpm = int(getattr(rl, "model_rpm", 0) or 0)
     model_tpm = int(getattr(rl, "model_tpm", 0) or 0)
+    models = dict(getattr(rl, "models", None) or {})
     max_in_flight = int(getattr(rl, "max_in_flight", 0) or 0)
     raw_queue = getattr(rl, "queue_size", 32)
     queue_size = 32 if raw_queue is None else int(raw_queue)
@@ -748,6 +915,7 @@ def build_rate_limiter(settings: Any, redis_client: Any | None = None) -> RateLi
         default_tpm=default_tpm,
         model_rpm=model_rpm,
         model_tpm=model_tpm,
+        models=models,
         max_in_flight=max_in_flight,
         queue_size=queue_size,
         retry_after_seconds=retry_after,

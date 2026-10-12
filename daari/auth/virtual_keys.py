@@ -324,6 +324,8 @@ class Team:
     cache_scope: str = "global"
     # In-flight admission class (#848). high | normal | low.
     priority: str = "normal"
+    # Per-team concurrent request cap (0 = unlimited) (#1592). Mirrored in metadata.
+    max_in_flight: int = 0
     # Temporary budget boosts and other team-scoped extras (#936).
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -363,6 +365,8 @@ class VirtualKey:
     priority: str = "normal"
     # ISO-8601 UTC of last successful auth; None = never used (#1545).
     last_used_at: str | None = None
+    # Per-key concurrent request cap (0 = unlimited) (#1592). Mirrored in metadata.
+    max_in_flight: int = 0
 
     def is_expired(self, now: datetime | None = None) -> bool:
         return _is_past(self.expires_at, now)
@@ -567,6 +571,7 @@ class VirtualKeyStore:
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
         priority: str = "normal",
+        max_in_flight: int = 0,
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
         model_max_budget: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
@@ -588,11 +593,14 @@ class VirtualKeyStore:
         team_rpm = max(0, int(rpm))
         team_tpm = max(0, int(tpm))
         team_rpd = max(0, int(rpd))
+        team_mif = max(0, int(max_in_flight))
         models = coerce_names(allowed_models)
         groups = coerce_names(model_groups)
         scope = normalize_cache_scope(cache_scope)
         prio = coerce_priority(priority)
         meta = dict(metadata or {})
+        if team_mif > 0:
+            meta["max_in_flight"] = team_mif
         if model_group_budgets:
             meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
         if model_max_budget:
@@ -608,6 +616,7 @@ class VirtualKeyStore:
                 (name,),
             ).fetchone()
             if existing:
+                existing_meta = _parse_metadata(existing[10]) if len(existing) > 10 else {}
                 return Team(
                     team_id=existing[0],
                     name=name,
@@ -620,7 +629,8 @@ class VirtualKeyStore:
                     rpd=int(existing[7] or 0) if len(existing) > 7 else 0,
                     cache_scope=coerce_cache_scope(existing[8]) if len(existing) > 8 else "global",
                     priority=coerce_priority(existing[9]) if len(existing) > 9 else "normal",
-                    metadata=_parse_metadata(existing[10]) if len(existing) > 10 else {},
+                    max_in_flight=_max_in_flight_from_meta(existing_meta),
+                    metadata=existing_meta,
                 )
             conn.execute(
                 "INSERT INTO teams (team_id, name, budget_windows_json, created_at,"
@@ -655,6 +665,7 @@ class VirtualKeyStore:
             rpd=team_rpd,
             cache_scope=scope,
             priority=prio,
+            max_in_flight=team_mif,
             metadata=meta,
         )
 
@@ -755,6 +766,7 @@ class VirtualKeyStore:
                 ).fetchone()
         if row is None:
             return None
+        team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
         return Team(
             team_id=row[0],
             name=row[1],
@@ -767,7 +779,8 @@ class VirtualKeyStore:
             rpd=int(row[8] or 0) if len(row) > 8 else 0,
             cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
             priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
-            metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
+            max_in_flight=_max_in_flight_from_meta(team_meta),
+            metadata=team_meta,
         )
 
     def list_teams(self) -> list[Team]:
@@ -781,23 +794,27 @@ class VirtualKeyStore:
                 " metadata_json"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
-        return [
-            Team(
-                team_id=row[0],
-                name=row[1],
-                budget_windows=self._parse_windows(row[2]),
-                region_pin=row[3] if len(row) > 3 else None,
-                rpm=int(row[4] or 0) if len(row) > 4 else 0,
-                tpm=int(row[5] or 0) if len(row) > 5 else 0,
-                allowed_models=decode_names(row[6]) if len(row) > 6 else None,
-                model_groups=decode_names(row[7]) if len(row) > 7 else None,
-                rpd=int(row[8] or 0) if len(row) > 8 else 0,
-                cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
-                priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
-                metadata=_parse_metadata(row[11]) if len(row) > 11 else {},
+        out: list[Team] = []
+        for row in rows:
+            team_meta = _parse_metadata(row[11]) if len(row) > 11 else {}
+            out.append(
+                Team(
+                    team_id=row[0],
+                    name=row[1],
+                    budget_windows=self._parse_windows(row[2]),
+                    region_pin=row[3] if len(row) > 3 else None,
+                    rpm=int(row[4] or 0) if len(row) > 4 else 0,
+                    tpm=int(row[5] or 0) if len(row) > 5 else 0,
+                    allowed_models=decode_names(row[6]) if len(row) > 6 else None,
+                    model_groups=decode_names(row[7]) if len(row) > 7 else None,
+                    rpd=int(row[8] or 0) if len(row) > 8 else 0,
+                    cache_scope=coerce_cache_scope(row[9]) if len(row) > 9 else "global",
+                    priority=coerce_priority(row[10]) if len(row) > 10 else "normal",
+                    max_in_flight=_max_in_flight_from_meta(team_meta),
+                    metadata=team_meta,
+                )
             )
-            for row in rows
-        ]
+        return out
 
     def team_client_ids(self, team_id: str) -> list[str]:
         if not self.enabled:
@@ -887,6 +904,7 @@ class VirtualKeyStore:
         model_groups: list[str] | tuple[str, ...] | None = None,
         cache_scope: str = "global",
         priority: str = "normal",
+        max_in_flight: int = 0,
         model_group_budgets: dict[str, list[BudgetWindow] | tuple[BudgetWindow, ...]] | None = None,
         model_max_budget: dict[str, Any] | None = None,
     ) -> CreatedKey:
@@ -912,6 +930,9 @@ class VirtualKeyStore:
             + list(windows_from_flat(daily_usd=daily_budget_usd, monthly_usd=monthly_budget_usd))
         )
         meta = dict(metadata or {})
+        key_mif = max(0, int(max_in_flight))
+        if key_mif > 0:
+            meta["max_in_flight"] = key_mif
         if model_group_budgets:
             meta["model_group_budgets"] = encode_model_group_budgets(model_group_budgets)
         if model_max_budget:
@@ -981,6 +1002,7 @@ class VirtualKeyStore:
                 model_groups=groups,
                 cache_scope=scope,
                 priority=prio,
+                max_in_flight=key_mif,
             ),
             plaintext=plaintext,
         )
@@ -1291,6 +1313,7 @@ class VirtualKeyStore:
         cache_scope: str = "global",
         priority: str | None = None,
         last_used_at: str | None = None,
+        max_in_flight: int | None = None,
     ) -> VirtualKey:
         windows = self._parse_windows(row[11] if len(row) > 11 else None)
         if not windows:
@@ -1309,6 +1332,11 @@ class VirtualKeyStore:
         prio = priority
         if prio is None and isinstance(parsed, dict):
             prio = parsed.get("priority")
+        mif = (
+            max(0, int(max_in_flight))
+            if max_in_flight is not None
+            else _max_in_flight_from_meta(parsed)
+        )
         return VirtualKey(
             key_id=row[0],
             name=row[1],
@@ -1334,6 +1362,7 @@ class VirtualKeyStore:
             cache_scope=coerce_cache_scope(cache_scope),
             priority=coerce_priority(prio),
             last_used_at=last_used_at,
+            max_in_flight=mif,
         )
 
     def list(self) -> list[VirtualKey]:
@@ -1961,3 +1990,12 @@ def _parse_metadata(raw: str | None) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _max_in_flight_from_meta(metadata: dict[str, Any] | None) -> int:
+    if not isinstance(metadata, dict):
+        return 0
+    try:
+        return max(0, int(metadata.get("max_in_flight") or 0))
+    except (TypeError, ValueError):
+        return 0

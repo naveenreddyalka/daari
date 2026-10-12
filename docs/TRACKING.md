@@ -6651,6 +6651,14 @@ off) renders ingress/egress NetworkPolicy; `affinity` /
 `topologySpreadConstraints` pass through to the Deployment. Docs:
 capacity-helm.md. Covered by `tests/unit/test_helm_chart.py`.
 
+### Per-key concurrency + named per-model rate map ([#1592](https://github.com/naveenreddyalka/daari/issues/1592))
+
+<!-- tracking:#1592 -->
+**Status:** Done (2026-10-12). `VirtualKey`/`Team.max_in_flight` and
+`rate_limit.models` (exact/longest-prefix) with Redis/SQLite gauges;
+rejects kinds `concurrency` vs `key_concurrency`/`team_concurrency`.
+Docs: auth-and-keys.md. Covered by `tests/unit/test_rate_limit.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

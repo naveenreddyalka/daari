@@ -34,6 +34,17 @@ class VirtualKeysSettings(BaseModel):
     )
 
 
+class ModelRateLimitSettings(BaseModel):
+    """Per-model-id overrides for RPM/TPM/concurrency (#1592). 0 = fall through."""
+
+    rpm: int = Field(default=0, description="RPM for this model id (0 = use model_rpm).")
+    tpm: int = Field(default=0, description="TPM for this model id (0 = use model_tpm).")
+    max_in_flight: int = Field(
+        default=0,
+        description="In-flight cap for this model id (0 = unlimited for this scope).",
+    )
+
+
 class RateLimitSettings(BaseModel):
     """Global request / token / concurrency caps (issue #169). 0 = unlimited."""
 
@@ -46,6 +57,13 @@ class RateLimitSettings(BaseModel):
     model_tpm: int = Field(
         default=0,
         description="Per-key-per-model TPM. 0 falls back to tpm.",
+    )
+    models: dict[str, ModelRateLimitSettings] = Field(
+        default_factory=dict,
+        description=(
+            "Named per-model-id rpm/tpm/max_in_flight overrides (#1592). "
+            "Exact id match wins; otherwise longest prefix match."
+        ),
     )
     max_in_flight: int = Field(
         default=0,

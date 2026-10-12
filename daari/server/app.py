@@ -775,6 +775,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         slot = await limiter.acquire(priority=admission_priority_for(virtual, team))
         if not slot.allowed:
+            metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+            if metrics is not None and hasattr(metrics, "record_reject"):
+                metrics.record_reject("concurrency")
             headers = slot.headers()
             headers.setdefault("Retry-After", str(limiter.retry_after_seconds))
             return JSONResponse(
@@ -787,6 +790,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 },
                 headers=headers,
             )
+
+        from daari.auth.virtual_keys import _max_in_flight_from_meta
+
+        gauge_leases: list[tuple[str, int, str]] = []
+        key_mif = 0
+        if virtual is not None:
+            key_mif = int(getattr(virtual, "max_in_flight", 0) or 0) or _max_in_flight_from_meta(
+                getattr(virtual, "metadata", None)
+            )
+        if key_mif > 0:
+            gauge_leases.append((f"inflight:key:{key_id}", key_mif, "key_concurrency"))
+        team_mif = 0
+        if team is not None:
+            team_mif = int(getattr(team, "max_in_flight", 0) or 0) or _max_in_flight_from_meta(
+                getattr(team, "metadata", None)
+            )
+        if team_id and team_mif > 0:
+            gauge_leases.append((f"inflight:team:{team_id}", team_mif, "team_concurrency"))
+        _map_rpm, _map_tpm, model_mif = limiter.resolve_model_limits(model)
+        if model_mif > 0:
+            gauge_leases.append((f"inflight:model:{model}", model_mif, "model_concurrency"))
+        gauge_decision, held_gauges = limiter.try_acquire_gauges(gauge_leases)
+        if not gauge_decision.allowed:
+            await limiter.release()
+            metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+            reject_kind = gauge_decision.bucket or "key_concurrency"
+            if metrics is not None and hasattr(metrics, "record_reject"):
+                metrics.record_reject(reject_kind)
+            headers = gauge_decision.headers()
+            headers.setdefault("Retry-After", str(limiter.retry_after_seconds))
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {
+                        "type": "rate_limit_error",
+                        "message": "In-flight concurrency limit exceeded.",
+                    }
+                },
+                headers=headers,
+            )
+
         path = request.url.path
         track_interactive = not path.startswith(non_interactive_prefixes)
         if track_interactive:
@@ -796,8 +840,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             if track_interactive:
                 limiter.end_interactive()
+            limiter.release_gauges(held_gauges)
             await limiter.release()
-        soft_headers = decision.headers(soft=rate_soft)
+        # Prefer the tightest binding limit among RPM/TPM and scoped concurrency.
+        binding = decision
+        if gauge_decision.limit > 0 and (
+            binding.limit <= 0 or gauge_decision.remaining < binding.remaining
+        ):
+            binding = gauge_decision
+        soft_headers = binding.headers(soft=rate_soft and binding is decision)
         for header, value in soft_headers.items():
             response.headers.setdefault(header, value)
         if soft_headers.get(RATELIMIT_WARNING_HEADER) == "soft":
