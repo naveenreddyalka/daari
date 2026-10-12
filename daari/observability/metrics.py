@@ -222,9 +222,12 @@ class Metrics:
         with self._lock:
             self.escalations += 1
 
-    def record_guardrail(self, action: str) -> None:
+    def record_guardrail(self, action: str, *, kind: str = "deny") -> None:
+        """Count a guardrail trip keyed as ``action:kind`` for Prometheus (#1610)."""
+        label_kind = (kind or "deny").strip() or "deny"
+        key = f"{action}:{label_kind}"
         with self._lock:
-            self.guardrails[action] = self.guardrails.get(action, 0) + 1
+            self.guardrails[key] = self.guardrails.get(key, 0) + 1
 
     def record_boundary(self, label: str, stage: str) -> None:
         key = f"{stage}:{label}"

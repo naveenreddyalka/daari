@@ -50,6 +50,7 @@ class GuardrailHit:
     rule: str
     action: Action
     detail: str = ""
+    kind: str = "deny"
 
 
 @dataclass
@@ -81,6 +82,7 @@ class GuardrailRule:
     threshold: float = 0.5
     model: str | None = None
     on_error: OnError = "warn"
+    timeout_seconds: float | None = None
 
 
 @dataclass
@@ -99,6 +101,46 @@ class GuardrailEngine:
     # Settings + optional sync httpx client for kind=decision (#1589).
     settings: Any = None
     decision_client: Any = None
+
+    def _decision_timeout(self, rule: GuardrailRule) -> float:
+        raw = getattr(rule, "timeout_seconds", None)
+        if raw is None:
+            return 5.0
+        try:
+            return max(0.1, float(raw))
+        except (TypeError, ValueError):
+            return 5.0
+
+    def _decision_hit_from_probability(
+        self,
+        rule: GuardrailRule,
+        *,
+        stage: str,
+        probability: float,
+        action: Action,
+    ) -> GuardrailHit | None:
+        threshold = float(rule.threshold)
+        if probability < threshold:
+            return None
+        return GuardrailHit(
+            stage=stage,
+            rule=rule.name,
+            action=action,
+            detail=f"p={probability:.2f}>={threshold:.2f}",
+            kind="decision",
+        )
+
+    def _decision_backend_hit(
+        self, rule: GuardrailRule, *, stage: str, on_error: OnError, exc: BaseException
+    ) -> GuardrailHit:
+        detail = str(exc) or type(exc).__name__
+        return GuardrailHit(
+            stage=stage,
+            rule=rule.name,
+            action="block" if on_error == "block" else "warn",
+            detail=f"backend:{detail}",
+            kind="decision",
+        )
 
     def _apply_decision_rule(
         self, text: str, rule: GuardrailRule, *, stage: str
@@ -129,29 +171,62 @@ class GuardrailEngine:
                 model=model,
                 base_url=base,
                 client=self.decision_client,
+                timeout_seconds=self._decision_timeout(rule),
                 settings=settings,
             )
         except Exception as exc:
-            detail = str(exc) or type(exc).__name__
-            return GuardrailHit(
-                stage=stage,
-                rule=rule.name,
-                action="block" if on_error == "block" else "warn",
-                detail=f"backend:{detail}",
+            return self._decision_backend_hit(rule, stage=stage, on_error=on_error, exc=exc)
+        return self._decision_hit_from_probability(
+            rule, stage=stage, probability=probability, action=action
+        )
+
+    async def _apply_decision_rule_async(
+        self, text: str, rule: GuardrailRule, *, stage: str
+    ) -> GuardrailHit | None:
+        """Async offload of kind=decision so the event loop stays free (#1610)."""
+        from daari.gateway.decisions import (
+            default_local_model,
+            evaluate_guardrail_predicate_async,
+            is_frontier_decisions_model,
+        )
+
+        settings = self.settings
+        model = (rule.model or "").strip() or (
+            default_local_model(settings) if settings is not None else "nimble"
+        )
+        on_error: OnError = rule.on_error if rule.on_error in ("warn", "block") else "warn"
+        action: Action = rule.action if rule.action in ("block", "warn") else "block"
+        try:
+            if is_frontier_decisions_model(model):
+                raise ValueError(
+                    f"decision guardrails require a local model, not frontier {model!r}"
+                )
+            ollama = getattr(settings, "ollama", None) if settings is not None else None
+            base = str(getattr(ollama, "base_url", "") or "").strip()
+            probability = await evaluate_guardrail_predicate_async(
+                text=text,
+                statement=rule.statement or "",
+                model=model,
+                base_url=base,
+                client=self.decision_client,
+                timeout_seconds=self._decision_timeout(rule),
+                settings=settings,
             )
-        threshold = float(rule.threshold)
-        if probability < threshold:
-            return None
-        return GuardrailHit(
-            stage=stage,
-            rule=rule.name,
-            action=action,
-            detail=f"p={probability:.2f}>={threshold:.2f}",
+        except Exception as exc:
+            return self._decision_backend_hit(rule, stage=stage, on_error=on_error, exc=exc)
+        return self._decision_hit_from_probability(
+            rule, stage=stage, probability=probability, action=action
         )
 
     def check_input(self, request: InternalRequest) -> GuardrailResult:
         text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
         result = self.check_input_text(text)
+        result.request = request
+        return result
+
+    async def check_input_async(self, request: InternalRequest) -> GuardrailResult:
+        text = "\n".join(m.content or "" for m in request.messages if m.role != "system")
+        result = await self.check_input_text_async(text)
         result.request = request
         return result
 
@@ -192,7 +267,9 @@ class GuardrailEngine:
             result.request = request
         return result
 
-    def check_input_text(self, text: str) -> GuardrailResult:
+    def check_input_text(
+        self, text: str, *, skip_decision: bool = False
+    ) -> GuardrailResult:
         """Run the input rules over raw text (chat prompts, MCP tool arguments).
 
         When a deny rule uses action=redact, matching spans are rewritten and the
@@ -217,6 +294,7 @@ class GuardrailEngine:
                 rule="max_length",
                 action="block",
                 detail=f"{len(rewritten)}>{self.max_prompt_chars}",
+                kind="max_length",
             )
             result.hits.append(hit)
             result.blocked = True
@@ -227,7 +305,11 @@ class GuardrailEngine:
                 continue
             if re.search(rule.pattern, rewritten, re.I):
                 hit = GuardrailHit(
-                    stage="input", rule=rule.name, action=rule.action, detail=rule.pattern
+                    stage="input",
+                    rule=rule.name,
+                    action=rule.action,
+                    detail=rule.pattern,
+                    kind="deny",
                 )
                 result.hits.append(hit)
                 if rule.action == "block":
@@ -238,19 +320,20 @@ class GuardrailEngine:
                 if rule.action == "redact":
                     rewritten = re.sub(rule.pattern, "<redacted>", rewritten, flags=re.I)
 
-        for rule in self.input_rules:
-            if rule.kind != "decision":
-                continue
-            hit = self._apply_decision_rule(rewritten, rule, stage="input")
-            if hit is None:
-                continue
-            result.hits.append(hit)
-            if hit.action == "block":
-                result.blocked = True
-                return result
-            if hit.action == "warn":
-                suffix = ":backend" if hit.detail.startswith("backend:") else ""
-                result.warning = f"guardrail:{rule.name}{suffix}"
+        if not skip_decision:
+            for rule in self.input_rules:
+                if rule.kind != "decision":
+                    continue
+                hit = self._apply_decision_rule(rewritten, rule, stage="input")
+                if hit is None:
+                    continue
+                result.hits.append(hit)
+                if hit.action == "block":
+                    result.blocked = True
+                    return result
+                if hit.action == "warn":
+                    suffix = ":backend" if hit.detail.startswith("backend:") else ""
+                    result.warning = f"guardrail:{rule.name}{suffix}"
 
         for pattern in _INJECTION_PATTERNS:
             if pattern.search(rewritten):
@@ -259,6 +342,7 @@ class GuardrailEngine:
                     rule="prompt_injection",
                     action=self.injection_action,
                     detail=pattern.pattern,
+                    kind="injection",
                 )
                 result.hits.append(hit)
                 if self.injection_action == "block":
@@ -270,6 +354,28 @@ class GuardrailEngine:
         result.rewritten = rewritten
         return result
 
+    async def check_input_text_async(self, text: str) -> GuardrailResult:
+        """Async input path: decision rules are offloaded off the event loop (#1610)."""
+        result = self.check_input_text(text, skip_decision=True)
+        if not self.enabled or result.blocked:
+            return result
+        rewritten = result.rewritten if result.rewritten is not None else text
+        for rule in self.input_rules:
+            if rule.kind != "decision":
+                continue
+            hit = await self._apply_decision_rule_async(rewritten, rule, stage="input")
+            if hit is None:
+                continue
+            result.hits.append(hit)
+            if hit.action == "block":
+                result.blocked = True
+                return result
+            if hit.action == "warn":
+                suffix = ":backend" if hit.detail.startswith("backend:") else ""
+                result.warning = f"guardrail:{rule.name}{suffix}"
+        result.rewritten = rewritten
+        return result
+
     def check_output(self, response: InternalResponse) -> GuardrailResult:
         text = response.content or ""
         rewritten, result = self.check_output_text(text)
@@ -278,7 +384,17 @@ class GuardrailEngine:
         )
         return result
 
-    def check_output_text(self, text: str) -> tuple[str, GuardrailResult]:
+    async def check_output_async(self, response: InternalResponse) -> GuardrailResult:
+        text = response.content or ""
+        rewritten, result = await self.check_output_text_async(text)
+        result.response = (
+            response.model_copy(update={"content": rewritten}) if rewritten != text else response
+        )
+        return result
+
+    def check_output_text(
+        self, text: str, *, skip_decision: bool = False
+    ) -> tuple[str, GuardrailResult]:
         """Run the output rules over raw text. Returns (rewritten_text, result);
         a block returns `block_message` as the text."""
         result = GuardrailResult()
@@ -290,7 +406,10 @@ class GuardrailEngine:
                 for kind, pattern in _SECRET_PATTERNS:
                     if pattern.search(rewritten):
                         hit = GuardrailHit(
-                            stage="output", rule=f"secret:{kind}", action=rule.action
+                            stage="output",
+                            rule=f"secret:{kind}",
+                            action=rule.action,
+                            kind="secret",
                         )
                         result.hits.append(hit)
                         if rule.action == "block":
@@ -308,6 +427,7 @@ class GuardrailEngine:
                         rule="pii",
                         action=rule.action,
                         detail=",".join(f"{k}:{v}" for k, v in counts.items()),
+                        kind="pii",
                     )
                     result.hits.append(hit)
                     if rule.action == "block":
@@ -319,7 +439,11 @@ class GuardrailEngine:
                         rewritten = scrubbed
             if rule.kind == "deny" and rule.pattern and re.search(rule.pattern, rewritten, re.I):
                 hit = GuardrailHit(
-                    stage="output", rule=rule.name, action=rule.action, detail=rule.pattern
+                    stage="output",
+                    rule=rule.name,
+                    action=rule.action,
+                    detail=rule.pattern,
+                    kind="deny",
                 )
                 result.hits.append(hit)
                 if rule.action == "block":
@@ -329,7 +453,7 @@ class GuardrailEngine:
                     result.warning = f"guardrail:{rule.name}"
                 if rule.action == "redact":
                     rewritten = re.sub(rule.pattern, "<redacted>", rewritten, flags=re.I)
-            if rule.kind == "decision":
+            if rule.kind == "decision" and not skip_decision:
                 hit = self._apply_decision_rule(rewritten, rule, stage="output")
                 if hit is None:
                     continue
@@ -340,6 +464,26 @@ class GuardrailEngine:
                 if hit.action == "warn":
                     suffix = ":backend" if hit.detail.startswith("backend:") else ""
                     result.warning = f"guardrail:{rule.name}{suffix}"
+        return rewritten, result
+
+    async def check_output_text_async(self, text: str) -> tuple[str, GuardrailResult]:
+        """Async output path with decision rules offloaded (#1610)."""
+        rewritten, result = self.check_output_text(text, skip_decision=True)
+        if not self.enabled or result.blocked:
+            return rewritten, result
+        for rule in self.output_rules:
+            if rule.kind != "decision":
+                continue
+            hit = await self._apply_decision_rule_async(rewritten, rule, stage="output")
+            if hit is None:
+                continue
+            result.hits.append(hit)
+            if hit.action == "block":
+                result.blocked = True
+                return self.block_message, result
+            if hit.action == "warn":
+                suffix = ":backend" if hit.detail.startswith("backend:") else ""
+                result.warning = f"guardrail:{rule.name}{suffix}"
         return rewritten, result
 
 
@@ -409,7 +553,11 @@ class IncrementalOutputScanner:
         return self._blocked
 
     def _release(self, *, final: bool) -> StreamScanRelease:
-        rewritten, result = self.engine.check_output_text(self._raw)
+        # Defer kind=decision until the final flush so each stream does one
+        # predicate call instead of one per chunk (#1610).
+        rewritten, result = self.engine.check_output_text(
+            self._raw, skip_decision=not final
+        )
         if result.hits:
             # Keep first-seen hits; avoid duplicates on every push.
             seen = {(h.stage, h.rule, h.action, h.detail) for h in self._hits}
@@ -470,6 +618,15 @@ def _rule_from_settings(row: Any) -> GuardrailRule:
     except (TypeError, ValueError):
         threshold = 0.5
     threshold = max(0.0, min(1.0, threshold))
+    timeout_raw = getattr(row, "timeout_seconds", None)
+    timeout_seconds: float | None
+    if timeout_raw is None:
+        timeout_seconds = None
+    else:
+        try:
+            timeout_seconds = max(0.1, float(timeout_raw))
+        except (TypeError, ValueError):
+            timeout_seconds = None
     return GuardrailRule(
         name=row.name,
         pattern=row.pattern,
@@ -479,6 +636,7 @@ def _rule_from_settings(row: Any) -> GuardrailRule:
         threshold=threshold,
         model=getattr(row, "model", None),
         on_error=on_error,
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -557,7 +715,7 @@ def _record_endpoint_guardrail_hits(
             },
         )
         if metrics is not None and hasattr(metrics, "record_guardrail"):
-            metrics.record_guardrail(hit.action)
+            metrics.record_guardrail(hit.action, kind=getattr(hit, "kind", None) or "deny")
     if warning:
         log_gateway_event("guardrail_warning", {"warning": warning})
 

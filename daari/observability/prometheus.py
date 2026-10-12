@@ -138,8 +138,15 @@ def render_prometheus(
 
     lines.append("# HELP daari_guardrail_trips_total Guardrail actions taken.")
     lines.append("# TYPE daari_guardrail_trips_total counter")
-    for action, count in snap["guardrails"].items():
-        lines.append(f"daari_guardrail_trips_total{_labels(action=action)} {count}")
+    for key, count in snap["guardrails"].items():
+        if ":" in str(key):
+            action, kind = str(key).split(":", 1)
+        else:
+            # Legacy action-only keys from older snapshots / callers.
+            action, kind = str(key), "deny"
+        lines.append(
+            f"daari_guardrail_trips_total{_labels(action=action, kind=kind)} {count}"
+        )
 
     lines.append("# HELP daari_boundary_decisions_total Product-boundary classifications.")
     lines.append("# TYPE daari_boundary_decisions_total counter")
