@@ -489,6 +489,96 @@ def record_tenancy_denied(
     )
 
 
+def record_budget_exceeded(
+    audit: AuditLog,
+    *,
+    key_id: str | None = None,
+    team_id: str | None = None,
+    scope: str | None = None,
+    window: str | None = None,
+    remaining: float | int | None = None,
+    limit: float | int | None = None,
+    quota: str | None = None,
+) -> None:
+    """Record ``budget.exceeded`` on a hard 402 spend/quota deny (#1616)."""
+    actor = (key_id or team_id or "anonymous")[:64]
+    detail: dict[str, Any] = {}
+    if key_id:
+        detail["key_id"] = str(key_id)[:64]
+    if team_id:
+        detail["team_id"] = str(team_id)[:64]
+    if scope:
+        detail["scope"] = str(scope)[:32]
+    if window:
+        detail["window"] = str(window)[:32]
+    if remaining is not None:
+        detail["remaining"] = remaining
+    if limit is not None:
+        detail["limit"] = limit
+    if quota:
+        detail["quota"] = str(quota)[:32]
+    audit.record(actor=actor, role="key", action="budget.exceeded", detail=detail)
+
+
+def record_rate_limit_exceeded(
+    audit: AuditLog,
+    *,
+    key_id: str | None = None,
+    team_id: str | None = None,
+    model: str | None = None,
+    scope: str | None = None,
+    bucket: str | None = None,
+    remaining: int | None = None,
+    limit: int | None = None,
+) -> None:
+    """Record ``rate_limit.exceeded`` on a hard 429 RPM/TPM/RPD deny (#1616)."""
+    actor = (key_id or team_id or "anonymous")[:64]
+    detail: dict[str, Any] = {}
+    if key_id:
+        detail["key_id"] = str(key_id)[:64]
+    if team_id:
+        detail["team_id"] = str(team_id)[:64]
+    if model:
+        detail["model"] = str(model)[:128]
+    if scope:
+        detail["scope"] = str(scope)[:32]
+    if bucket:
+        detail["bucket"] = str(bucket)[:64]
+    if remaining is not None:
+        detail["remaining"] = int(remaining)
+    if limit is not None:
+        detail["limit"] = int(limit)
+    audit.record(actor=actor, role="key", action="rate_limit.exceeded", detail=detail)
+
+
+def record_concurrency_exceeded(
+    audit: AuditLog,
+    *,
+    key_id: str | None = None,
+    team_id: str | None = None,
+    model: str | None = None,
+    scope: str | None = None,
+    remaining: int | None = None,
+    limit: int | None = None,
+) -> None:
+    """Record ``concurrency.exceeded`` on a hard 503 in-flight deny (#1616)."""
+    actor = (key_id or team_id or "anonymous")[:64]
+    detail: dict[str, Any] = {}
+    if key_id:
+        detail["key_id"] = str(key_id)[:64]
+    if team_id:
+        detail["team_id"] = str(team_id)[:64]
+    if model:
+        detail["model"] = str(model)[:128]
+    if scope:
+        detail["scope"] = str(scope)[:64]
+    if remaining is not None:
+        detail["remaining"] = int(remaining)
+    if limit is not None:
+        detail["limit"] = int(limit)
+    audit.record(actor=actor, role="key", action="concurrency.exceeded", detail=detail)
+
+
 def maybe_audit_tenancy_denied(
     settings: Any,
     *,
