@@ -1,0 +1,84 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $np := .Values.networkPolicy | default dict }}
+{{- $ingress := $np.ingress | default dict }}
+{{- $egress := $np.egress | default dict }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "daari.fullname" . }}
+  labels:
+    app.kubernetes.io/name: daari
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: daari
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- $from := $ingress.from | default list }}
+    {{- if or $from .Values.serviceMonitor.enabled }}
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.service.port }}
+        {{- $metricsPort := int ((.Values.observability).metricsPort | default 0) }}
+        {{- if gt $metricsPort 0 }}
+        - protocol: TCP
+          port: {{ $metricsPort }}
+        {{- end }}
+      from:
+        {{- with $from }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.serviceMonitor.enabled }}
+        {{- $promFrom := $ingress.prometheusFrom | default list }}
+        {{- if $promFrom }}
+        {{- toYaml $promFrom | nindent 8 }}
+        {{- else }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+        {{- end }}
+        {{- end }}
+    {{- end }}
+    {{- with $ingress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  egress:
+    {{- if ne $egress.dns false }}
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- if and (ne $egress.redis false) .Values.redis.enabled }}
+    - ports:
+        - protocol: TCP
+          port: 6379
+    {{- end }}
+    {{- if and (ne $egress.postgres false) .Values.postgres.enabled }}
+    - ports:
+        - protocol: TCP
+          port: 5432
+    {{- end }}
+    {{- if and (ne $egress.frontierHTTPS false) .Values.frontier.enabled }}
+    - ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
+    {{- $localBackends := ne $egress.localBackends false }}
+    {{- $wantLocal := or .Values.ollama.baseUrl .Values.orgPool.enabled .Values.asr.baseUrl .Values.tts.baseUrl }}
+    {{- if and $localBackends $wantLocal }}
+    - ports:
+        - protocol: TCP
+          port: 11434
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+    {{- with $egress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
