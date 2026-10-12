@@ -6675,6 +6675,14 @@ to global/normal. Docs: virtual-keys.md Backup. Covered by
 `cache_scope`. XSS-safe text cells. Covered by
 `packages/web-ui/test/dashboard.test.js`.
 
+### Web UI keys status and idle_days filters ([#1597](https://github.com/naveenreddyalka/daari/issues/1597))
+
+<!-- tracking:#1597 -->
+**Status:** Done (2026-10-12). Virtual keys section filters via
+`status` / `idle_days` query params on `GET /v1/daari/keys`; status line
+reflects filter and `has_more`. Covered by
+`packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
