@@ -6700,6 +6700,14 @@ to final flush; chat blocks write `guardrail.blocked` audit rows;
 `daari_guardrail_trips_total` gains a `kind` label; optional per-rule
 `timeout_seconds`. Covered by `tests/unit/test_guardrails_decision.py`.
 
+### Teams metadata export/import + Postgres parity ([#1611](https://github.com/naveenreddyalka/daari/issues/1611))
+
+<!-- tracking:#1611 -->
+**Status:** Done (2026-10-12). Team `metadata_json` (`max_in_flight`,
+`model_group_budgets`, `model_max_budget`) round-trips through keys
+export/import; Postgres `create_team` / export / import persist the same
+fields. Covered by `tests/unit/test_keys_export_import.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
