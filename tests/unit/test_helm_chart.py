@@ -307,6 +307,88 @@ class TestHelmServiceMonitor:
         assert "bearerTokenSecret:" not in sm
 
 
+# Exact metric names from daari/observability/prometheus.py — rename fails CI.
+_PROMETHEUS_RULE_METRICS = (
+    "daari_backend_up",
+    "daari_team_budget_remaining_usd",
+    "daari_team_budget_limit_usd",
+    "daari_errors_total",
+    "daari_rate_limit_queued",
+    "daari_guardrail_trips_total",
+    "daari_virtual_keys",
+)
+
+
+class TestHelmPrometheusRules:
+    def test_prometheusrule_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "kind: PrometheusRule" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["prometheusRules"]["enabled"] is False
+
+    def test_prometheusrule_pack_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "prometheusRules.enabled=true")
+        assert "kind: PrometheusRule" in rendered
+        assert "apiVersion: monitoring.coreos.com/v1" in rendered
+        docs = _docs_by_kind(rendered)
+        rule = docs["PrometheusRule"][0]
+        groups = rule["spec"]["groups"]
+        assert groups
+        all_expr = "\n".join(
+            alert.get("expr", "")
+            for group in groups
+            for alert in group.get("rules") or []
+        )
+        for metric in _PROMETHEUS_RULE_METRICS:
+            assert metric in all_expr, f"missing metric {metric} in alert exprs"
+        alert_names = {
+            alert["alert"]
+            for group in groups
+            for alert in group.get("rules") or []
+            if "alert" in alert
+        }
+        assert "DaariBackendDown" in alert_names
+        assert "DaariBudgetLow" in alert_names
+        assert "DaariErrorRateHigh" in alert_names
+        assert "DaariAdmissionQueueDeep" in alert_names
+        assert "DaariGuardrailTripSpike" in alert_names
+        assert "DaariKeysExpiringSoon" in alert_names
+        for group in groups:
+            for alert in group.get("rules") or []:
+                if "alert" not in alert:
+                    continue
+                labels = alert.get("labels") or {}
+                annotations = alert.get("annotations") or {}
+                assert "severity" in labels
+                assert annotations.get("runbook_url") or annotations.get("description")
+
+    def test_prometheusrule_thresholds_from_values(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "prometheusRules.enabled=true",
+            "--set",
+            "prometheusRules.budget.fraction=0.25",
+            "--set",
+            "prometheusRules.queue.threshold=42",
+            "--set",
+            "prometheusRules.errors.rateThreshold=0.2",
+            "--set",
+            "prometheusRules.guardrails.rateThreshold=3",
+            "--set",
+            "prometheusRules.backend.for=2m",
+        )
+        pr = rendered.split("kind: PrometheusRule")[1]
+        assert "0.25" in pr
+        assert "42" in pr
+        assert "0.2" in pr
+        assert "3" in pr
+        assert "for: 2m" in pr
+        values = _load_yaml(VALUES)
+        pr_vals = values["prometheusRules"]
+        assert pr_vals["budget"]["fraction"] == 0.1
+        assert pr_vals["queue"]["threshold"] == 10
+
+
 class TestHelmMetricsPort:
     def test_metrics_port_off_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
