@@ -1,0 +1,86 @@
+{{- if .Values.prometheusRules.enabled }}
+{{- $pr := .Values.prometheusRules }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "daari.fullname" . }}
+  labels:
+    app.kubernetes.io/name: daari
+    {{- with $pr.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: daari.alerts
+      rules:
+        {{- if ($pr.backend).enabled | default true }}
+        - alert: DaariBackendDown
+          expr: daari_backend_up == 0
+          for: {{ ($pr.backend).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.backend).severity | default "critical" | quote }}
+          annotations:
+            summary: "daari backend unhealthy or circuit open"
+            description: "Backend {{`{{ $labels.backend }}`}} reports daari_backend_up=0 (circuit={{`{{ $labels.circuit }}`}})."
+            runbook_url: {{ ($pr.backend).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.budget).enabled | default true }}
+        - alert: DaariBudgetLow
+          expr: |
+            (
+              daari_team_budget_remaining_usd
+              / clamp_min(daari_team_budget_limit_usd, 1e-9)
+            ) < {{ ($pr.budget).fraction | default 0.1 }}
+          for: {{ ($pr.budget).for | default "10m" }}
+          labels:
+            severity: {{ ($pr.budget).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari team budget remaining below fraction"
+            description: "Team {{`{{ $labels.team }}`}} window {{`{{ $labels.window }}`}} remaining/limit is below {{ ($pr.budget).fraction | default 0.1 }}."
+            runbook_url: {{ ($pr.budget).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.errors).enabled | default true }}
+        - alert: DaariErrorRateHigh
+          expr: rate(daari_errors_total[{{ ($pr.errors).window | default "5m" }}]) > {{ ($pr.errors).rateThreshold | default 0.05 }}
+          for: {{ ($pr.errors).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.errors).severity | default "critical" | quote }}
+          annotations:
+            summary: "daari error rate elevated"
+            description: "rate(daari_errors_total) exceeds {{ ($pr.errors).rateThreshold | default 0.05 }}."
+            runbook_url: {{ ($pr.errors).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.queue).enabled | default true }}
+        - alert: DaariAdmissionQueueDeep
+          expr: daari_rate_limit_queued > {{ ($pr.queue).threshold | default 10 }}
+          for: {{ ($pr.queue).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.queue).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari admission queue depth high"
+            description: "daari_rate_limit_queued is above {{ ($pr.queue).threshold | default 10 }}."
+            runbook_url: {{ ($pr.queue).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.guardrails).enabled | default true }}
+        - alert: DaariGuardrailTripSpike
+          expr: sum(rate(daari_guardrail_trips_total[{{ ($pr.guardrails).window | default "5m" }}])) > {{ ($pr.guardrails).rateThreshold | default 1 }}
+          for: {{ ($pr.guardrails).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.guardrails).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari guardrail trips spiking"
+            description: "sum(rate(daari_guardrail_trips_total)) exceeds {{ ($pr.guardrails).rateThreshold | default 1 }}."
+            runbook_url: {{ ($pr.guardrails).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+        {{- if ($pr.keys).enabled | default true }}
+        - alert: DaariKeysExpiringSoon
+          expr: daari_virtual_keys{status="expiring_soon"} > 0
+          for: {{ ($pr.keys).for | default "1h" }}
+          labels:
+            severity: {{ ($pr.keys).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari virtual keys expiring soon"
+            description: "One or more virtual keys are in status=expiring_soon; rotate before expiry."
+            runbook_url: {{ ($pr.keys).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
+{{- end }}

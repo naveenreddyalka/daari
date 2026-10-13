@@ -6760,6 +6760,13 @@ same semantics as `/v1/decisions` (identical body replay, 409 on mismatch,
 in-flight wait). Docs: headers.md, http-api.md. Covered by
 `tests/unit/test_idempotency.py`.
 
+### Helm PrometheusRule alert pack ([#1630](https://github.com/naveenreddyalka/daari/issues/1630))
+
+<!-- tracking:#1630 -->
+**Status:** Done (2026-10-13). Opt-in `prometheusRules` PrometheusRule for
+backend/budget/errors/queue/guardrails/key-expiry; thresholds in values.
+Docs: metrics-prometheus.md. Covered by `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

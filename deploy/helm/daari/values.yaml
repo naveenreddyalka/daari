@@ -137,6 +137,45 @@ serviceMonitor:
   # Optional: { name, key } — used only when scraping the API http port.
   bearerTokenSecret: {}
 
+# Prometheus Operator PrometheusRule alert pack (#1630). Opt-in; requires the
+# same monitoring.coreos.com CRDs as serviceMonitor. Metric names match
+# daari/observability/prometheus.py. See metrics-prometheus.md#alert-pack.
+prometheusRules:
+  enabled: false
+  # Extra labels for operator/Alertmanager selectors.
+  labels: {}
+  backend:
+    enabled: true
+    for: 5m
+    severity: critical
+  budget:
+    enabled: true
+    # Alert when remaining_usd / limit_usd is below this fraction.
+    fraction: 0.1
+    for: 10m
+    severity: warning
+  errors:
+    enabled: true
+    window: 5m
+    rateThreshold: 0.05
+    for: 5m
+    severity: critical
+  queue:
+    enabled: true
+    threshold: 10
+    for: 5m
+    severity: warning
+  guardrails:
+    enabled: true
+    window: 5m
+    rateThreshold: 1
+    for: 5m
+    severity: warning
+  keys:
+    enabled: true
+    for: 1h
+    severity: warning
+
 # Optional private Prometheus scrape listener (app observability.metrics_port).
 # 0 / unset = off (scrape API port /metrics). Non-zero binds 127.0.0.1-style
 # scrape-only /metrics without inference API key auth — wire containerPort +
