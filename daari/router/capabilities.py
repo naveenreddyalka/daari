@@ -220,6 +220,13 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
                 catalog.for_model(entry.model),
                 context_length=max(lengths) if lengths else None,
             )
+    # Local decisions judges when systemone path is live (#1619).
+    systemone = getattr(settings, "systemone", None)
+    if bool(getattr(systemone, "enabled", True)):
+        from daari.gateway.decisions import local_decisions_models
+
+        for model_id in sorted(local_decisions_models(settings)):
+            add(model_id, "ollama", ("decision",))
     return cards
 
 
@@ -503,6 +510,8 @@ def ollama_facade_capabilities(model: str, catalog: CapabilityCatalog) -> list[s
 
 def ollama_facade_capabilities_for_name(name: str, settings: Any) -> list[str]:
     """Capabilities for a facade model name, including virtual ``daari``."""
+    from daari.gateway.decisions import is_local_decisions_model
+
     catalog = catalog_from_settings(settings)
     if name == "daari":
         union: set[str] = set()
@@ -515,6 +524,8 @@ def ollama_facade_capabilities_for_name(name: str, settings: Any) -> list[str]:
             if cap in union:
                 ordered.append(cap)
         return ordered
+    if is_local_decisions_model(name, settings=settings):
+        return ["completion", "decision"]
     return ollama_facade_capabilities(name, catalog)
 
 
