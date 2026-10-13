@@ -16,7 +16,7 @@
 | `X-Daari-Tools` | Tool-related client hints |
 | `X-Daari-Confirm*` / `X-Daari-ReRun-Command` | Lt ask-gate confirmation |
 | `X-Request-ID` | Correlation id: sanitized inbound value or a generated 16-char hex id. Echoed on every gateway response (chat, Anthropic Messages, Responses, Ollama facade, embeddings, audio) and forwarded on upstream hops (Ollama, OpenAI-compat, MLX, frontier, ASR, TTS, embeddings, MCP egress) as `X-Request-ID`. |
-| `Idempotency-Key` | Replay-safe retries for `POST /v1/chat/completions`, `POST /v1/responses` (stream and non-stream), `POST /v1/embeddings`, `POST /v1/audio/speech`, `POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `POST /v1/moderations`, `POST /v1/rerank`, `POST /v1/images/generations`, and `POST /v1/decisions`. Scoped to the authenticated principal (virtual key id, or master/anonymous). Same key + same body hash within `idempotency.ttl_seconds` (default 24h) returns the original status/body without calling upstream again (binary TTS replays the audio bytes). Multipart ASR/translations hash stable form fields plus the file sha256. Same key + different body returns **409** `idempotency_conflict`. In-flight duplicates wait for the first request (bounded by `idempotency.wait_seconds`). Missing header is a no-op. |
+| `Idempotency-Key` | Replay-safe retries for `POST /v1/chat/completions`, `POST /v1/responses` (stream and non-stream), `POST /v1/embeddings`, `POST /v1/audio/speech`, `POST /v1/audio/transcriptions`, `POST /v1/audio/translations`, `POST /v1/moderations`, `POST /v1/rerank`, `POST /v1/images/generations`, `POST /v1/decisions`, and `POST /v1/systemone`. Scoped to the authenticated principal (virtual key id, or master/anonymous). Same key + same body hash within `idempotency.ttl_seconds` (default 24h) returns the original status/body without calling upstream again (binary TTS replays the audio bytes). Multipart ASR/translations hash stable form fields plus the file sha256. Same key + different body returns **409** `idempotency_conflict`. In-flight duplicates wait for the first request (bounded by `idempotency.wait_seconds`). Missing header is a no-op. |
 
 Explicit headers win over project profiles and most config defaults.
 
@@ -61,7 +61,7 @@ remaining across key and team scopes.
 | `x-daari-quota-requests-remaining` | Billable requests left in the tightest request-count window (`0` when exhausted). |
 | `x-daari-quota-requests-limit` | That window's request cap. |
 | `x-daari-quota-requests-warning` | `soft` when used/cap ≥ `frontier.soft_budget_ratio` but under the hard cap (#498). Omitted otherwise. |
-| `x-daari-ratelimit-warning` | `soft` when RPM/TPM usage ≥ `frontier.soft_budget_ratio` but under the hard cap (#518). Omitted on hard `429`. |
+| `x-daari-ratelimit-warning` | `soft` when RPM/TPM usage ≥ `frontier.soft_budget_ratio` but under the hard cap (#518). Still emitted when a tighter concurrency gauge wins `X-RateLimit-*` (#1617). Omitted on hard `429`. |
 | `X-RateLimit-Scope` | `key` / `team` / `model` — which rate-limit counter was tightest on this response (also on hard `429`). |
 
 Rules:
@@ -83,7 +83,7 @@ Rules:
 
 Safe client retries for chat completions, Responses, embeddings, audio
 (speech / transcriptions / translations), moderations, rerank, images
-generations, and decisions. Scope is the authenticated principal plus the header value;
+generations, decisions, and systemone. Scope is the authenticated principal plus the header value;
 records expire after `idempotency.ttl_seconds` (default 86400) and are deleted
 by `daari prune`. TTS (`/v1/audio/speech`) replays the original binary audio
 body. Multipart ASR uploads are hashed from stable form fields plus the

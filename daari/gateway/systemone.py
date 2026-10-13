@@ -260,7 +260,7 @@ async def _post_systemone(
     )
 
 
-async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
+async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
     ctx = request.app.state.ctx
     settings = ctx.settings
     systemone = getattr(settings, "systemone", None)
@@ -426,3 +426,40 @@ async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
         savings=getattr(getattr(ctx, "router", None), "session_savings", None),
     )
     return JSONResponse(data, headers=headers)
+
+
+async def handle_systemone(request: Request, body: SystemOneRequest) -> Any:
+    """POST /v1/systemone with Idempotency-Key replay (#1618)."""
+    from daari.gateway.idempotency import (
+        abandon_slot,
+        complete_json_slot,
+        resolve_idempotency,
+    )
+
+    ctx = request.app.state.ctx
+    idem_kind, idem_response, idem_slot = await resolve_idempotency(request, ctx, body)
+    if idem_kind in {"replay", "conflict"} and idem_response is not None:
+        return idem_response
+
+    try:
+        response = await _dispatch_systemone(request, body)
+    except Exception:
+        abandon_slot(idem_slot)
+        raise
+
+    if isinstance(response, JSONResponse) and 200 <= response.status_code < 300:
+        try:
+            payload = json.loads(response.body)
+        except Exception:
+            abandon_slot(idem_slot)
+            return response
+        if isinstance(payload, dict):
+            complete_json_slot(
+                idem_slot, status_code=response.status_code, payload=payload
+            )
+        else:
+            abandon_slot(idem_slot)
+        return response
+
+    abandon_slot(idem_slot)
+    return response

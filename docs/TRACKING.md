@@ -6744,6 +6744,22 @@ rows (scope detail, no prompts/secrets). Covered by
 Covered by `tests/unit/test_rate_limit_clock.py`,
 `tests/unit/test_virtual_keys.py`.
 
+### Soft rate-limit warning with concurrency gauge binding ([#1617](https://github.com/naveenreddyalka/daari/issues/1617))
+
+<!-- tracking:#1617 -->
+**Status:** Done (2026-10-13). Soft RPM/TPM warning header and metric stay
+when a tighter per-key/team/model `max_in_flight` gauge wins
+`X-RateLimit-*` headers. Docs: headers.md. Covered by
+`tests/unit/test_soft_warning_metrics.py`.
+
+### Idempotency-Key on POST /v1/systemone ([#1618](https://github.com/naveenreddyalka/daari/issues/1618))
+
+<!-- tracking:#1618 -->
+**Status:** Done (2026-10-13). `Idempotency-Key` replays systemone with the
+same semantics as `/v1/decisions` (identical body replay, 409 on mismatch,
+in-flight wait). Docs: headers.md, http-api.md. Covered by
+`tests/unit/test_idempotency.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
