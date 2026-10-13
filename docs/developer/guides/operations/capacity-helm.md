@@ -227,6 +227,12 @@ rateLimit:
   enabled: true
   rpm: 600
   tpm: 200000
+  maxInFlight: 8          # DAARI_RATE_LIMIT__MAX_IN_FLIGHT
+  models:                 # DAARI_RATE_LIMIT__MODELS (JSON)
+    llama3-70b:
+      rpm: 10
+      tpm: 20000
+      max_in_flight: 2
   # Prefer redis.enabled so L0/L1 and RPM/TPM share one Redis:
 redis:
   enabled: true

@@ -792,6 +792,73 @@ class RateLimiter:
             )
         return rows
 
+    def in_flight_gauges(
+        self,
+        *,
+        keys: list[Any] | None = None,
+        teams: list[Any] | None = None,
+        models: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Scrape-time used/limit for scoped in-flight caps (#1612).
+
+        Zero-delta gauge read so scrapes do not change admission. Labels use
+        key/team names (never secrets) and model ids.
+        """
+        rows: list[dict[str, Any]] = []
+        for key in keys or []:
+            cap = int(getattr(key, "max_in_flight", 0) or 0)
+            key_id = str(getattr(key, "key_id", "") or "")
+            if cap <= 0 or not key_id:
+                continue
+            name = str(getattr(key, "name", "") or "").strip() or key_id
+            used = int(self._adjust_gauge(f"inflight:key:{key_id}", 0))
+            rows.append(
+                {
+                    "scope": "key",
+                    "id": name,
+                    "used": used,
+                    "limit": cap,
+                    "remaining": max(0, cap - used),
+                }
+            )
+        for team in teams or []:
+            cap = int(getattr(team, "max_in_flight", 0) or 0)
+            team_id = str(getattr(team, "team_id", "") or "")
+            if cap <= 0 or not team_id:
+                continue
+            name = str(getattr(team, "name", "") or "").strip() or team_id
+            used = int(self._adjust_gauge(f"inflight:team:{team_id}", 0))
+            rows.append(
+                {
+                    "scope": "team",
+                    "id": name,
+                    "used": used,
+                    "limit": cap,
+                    "remaining": max(0, cap - used),
+                }
+            )
+        for model_id, entry in (models or {}).items():
+            mid = str(model_id or "").strip()
+            if not mid:
+                continue
+            if isinstance(entry, dict):
+                cap = int(entry.get("max_in_flight") or 0)
+            else:
+                cap = int(getattr(entry, "max_in_flight", 0) or 0)
+            if cap <= 0:
+                continue
+            used = int(self._adjust_gauge(f"inflight:model:{mid}", 0))
+            rows.append(
+                {
+                    "scope": "model",
+                    "id": mid,
+                    "used": used,
+                    "limit": cap,
+                    "remaining": max(0, cap - used),
+                }
+            )
+        return rows
+
     def snapshot(self) -> dict[str, Any]:
         with self._state_lock:
             degraded = self._degraded

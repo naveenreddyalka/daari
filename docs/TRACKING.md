@@ -6716,6 +6716,17 @@ fields. Covered by `tests/unit/test_keys_export_import.py`.
 rows (scope detail, no prompts/secrets). Covered by
 `tests/unit/test_reject_audit.py`.
 
+### Operable concurrency caps — CLI/admin/Helm/gauges ([#1612](https://github.com/naveenreddyalka/daari/issues/1612))
+
+<!-- tracking:#1612 -->
+**Status:** Done (2026-10-13). `--max-in-flight` on `keys create` /
+`team-create`; list/`export --json` + admin/web-ui expose the cap; Helm
+`rateLimit.maxInFlight` / `rateLimit.models`; scrape
+`daari_in_flight{scope,id}` / `_max`. Covered by
+`tests/unit/test_keys_max_in_flight_cli.py`,
+`tests/unit/test_metrics_in_flight_scopes.py`,
+`tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

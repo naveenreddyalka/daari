@@ -37,6 +37,7 @@ def render_prometheus(
     team_budgets: list[dict[str, Any]] | None = None,
     team_rate_limits: list[dict[str, Any]] | None = None,
     key_rate_limits: list[dict[str, Any]] | None = None,
+    in_flight_scopes: list[dict[str, Any]] | None = None,
     virtual_keys: dict[str, Any] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
@@ -309,6 +310,22 @@ def render_prometheus(
             labels = _labels(key=key, kind=kind)
             lines.append(f"daari_key_rate_limit_remaining{labels} {int(row.get('remaining') or 0)}")
             lines.append(f"daari_key_rate_limit_limit{labels} {int(row.get('limit') or 0)}")
+
+    if in_flight_scopes:
+        lines.append(
+            "# HELP daari_in_flight Current in-flight requests for a scoped concurrency cap."
+        )
+        lines.append("# TYPE daari_in_flight gauge")
+        lines.append(
+            "# HELP daari_in_flight_max Configured in-flight cap for a key, team, or model."
+        )
+        lines.append("# TYPE daari_in_flight_max gauge")
+        for row in in_flight_scopes:
+            scope = str(row.get("scope") or "unknown")
+            sid = str(row.get("id") or "unknown")
+            labels = _labels(scope=scope, id=sid)
+            lines.append(f"daari_in_flight{labels} {int(row.get('used') or 0)}")
+            lines.append(f"daari_in_flight_max{labels} {int(row.get('limit') or 0)}")
 
     if virtual_keys is not None:
         from daari.auth.virtual_keys import KEY_EXPIRY_BUCKETS

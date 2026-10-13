@@ -222,6 +222,11 @@ def keys_create(
         "--priority",
         help="Admission priority at the in-flight gate: high, normal, or low.",
     ),
+    max_in_flight: int = typer.Option(
+        0,
+        "--max-in-flight",
+        help="Per-key in-flight concurrency cap (0=unlimited).",
+    ),
     rate_family: list[str] = typer.Option(
         [],
         "--rate-family",
@@ -304,6 +309,7 @@ def keys_create(
         model_groups=model_group or None,
         cache_scope=scope,
         priority=prio,
+        max_in_flight=max_in_flight,
     )
     typer.echo(f"key_id: {created.key.key_id}")
     typer.echo(f"name:   {created.key.name}")
@@ -317,6 +323,7 @@ def keys_create(
         typer.echo(f"groups:  {', '.join(created.key.model_groups)}")
     typer.echo(f"cache_scope: {created.key.cache_scope}")
     typer.echo(f"priority: {created.key.priority}")
+    typer.echo(f"max_in_flight: {created.key.max_in_flight}")
     typer.echo("")
     typer.echo("Store this token now — it will not be shown again:")
     typer.echo(created.plaintext)
@@ -433,8 +440,8 @@ def keys_list(
     ledger = UsageLedger(settings.usage.path, enabled=settings.usage.enabled)
     typer.echo(
         f"{'key_id':<18} {'name':<16} {'prefix':<12} {'rpm':>5} {'tpm':>7} {'rpd':>5} "
-        f"{'tier':<4} {'scope':<6} {'prio':<6} {'expires':<25} {'last_used':<25} "
-        f"{'grace_until':<25} status"
+        f"{'mif':>4} {'tier':<4} {'scope':<6} {'prio':<6} {'expires':<25} "
+        f"{'last_used':<25} {'grace_until':<25} status"
     )
     for key in keys:
         team = store.get_team(key.team_id) if key.team_id else None
@@ -443,7 +450,8 @@ def keys_list(
         )
         typer.echo(
             f"{key.key_id:<18} {key.name:<16} {key.prefix + '…':<12} {key.rpm:>5} "
-            f"{key.tpm:>7} {key.rpd:>5} {(key.tier_cap or '-'):<4} {scope:<6} "
+            f"{key.tpm:>7} {key.rpd:>5} {int(key.max_in_flight or 0):>4} "
+            f"{(key.tier_cap or '-'):<4} {scope:<6} "
             f"{key.priority:<6} {(key.expires_at or 'never'):<25} "
             f"{(key.last_used_at or 'never'):<25} "
             f"{(key.previous_expires_at or '-'):<25} {key.status()}"
@@ -502,6 +510,7 @@ def keys_show(key_id: str = typer.Argument(..., help="key_id from `daari keys li
     typer.echo(f"status:  {key.status()}")
     typer.echo(f"last_used: {key.last_used_at or 'never'}")
     typer.echo(f"team:    {key.team_name or key.team_id or '-'}")
+    typer.echo(f"max_in_flight: {int(getattr(key, 'max_in_flight', 0) or 0)}")
     mcp_meta = (key.metadata or {}).get("mcp") if isinstance(key.metadata, dict) else None
     if isinstance(mcp_meta, dict):
         allow = mcp_meta.get("allow") or []
@@ -733,6 +742,11 @@ def keys_team_create(
         "--priority",
         help="Default admission priority for keys on this team: high, normal, or low.",
     ),
+    max_in_flight: int = typer.Option(
+        0,
+        "--max-in-flight",
+        help="Team aggregate in-flight concurrency cap (0=unlimited).",
+    ),
 ) -> None:
     """Create a team whose caps apply to every key that joins it."""
     import os
@@ -771,6 +785,7 @@ def keys_team_create(
         model_groups=model_group or None,
         cache_scope=scope,
         priority=prio,
+        max_in_flight=max_in_flight,
     )
     typer.echo(f"team_id: {team.team_id}")
     typer.echo(f"name:    {team.name}")
@@ -787,6 +802,7 @@ def keys_team_create(
         typer.echo(f"rpd:     {team.rpd}")
     typer.echo(f"cache_scope: {team.cache_scope}")
     typer.echo(f"priority: {team.priority}")
+    typer.echo(f"max_in_flight: {team.max_in_flight}")
     for item in team.budget_windows:
         bits = []
         if item.max_usd > 0:
