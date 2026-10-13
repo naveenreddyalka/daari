@@ -6767,6 +6767,15 @@ in-flight wait). Docs: headers.md, http-api.md. Covered by
 backend/budget/errors/queue/guardrails/key-expiry; thresholds in values.
 Docs: metrics-prometheus.md. Covered by `tests/unit/test_helm_chart.py`.
 
+### Local decisions catalog on /v1/models and /api/tags ([#1619](https://github.com/naveenreddyalka/daari/issues/1619))
+
+<!-- tracking:#1619 -->
+**Status:** Done (2026-10-13). When `systemone.enabled`, built-in +
+`decisions.local_models` ids appear on OpenAI `/v1/models` and Ollama
+`/api/tags` with capability `decision`; VK allowlists still filter.
+Docs: ollama.md, config.md. Covered by `tests/unit/test_models_catalog.py`,
+`tests/unit/test_ollama_decisions_tags.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
