@@ -126,9 +126,7 @@ class TestHelmNotesAndFleetEnv:
         assert "daari.dev/fleet-sqlite-warning" in rendered
         assert "per-pod SQLite" in rendered
 
-    def test_annotation_warns_when_hpa_min_without_postgres(
-        self, helm_available: None
-    ) -> None:
+    def test_annotation_warns_when_hpa_min_without_postgres(self, helm_available: None) -> None:
         rendered = _helm_template(
             "--set",
             "replicaCount=1",
@@ -174,15 +172,9 @@ class TestHelmNotesAndFleetEnv:
         assert re.search(r"name: DAARI_BATCHES__BACKEND\s+value: postgres", rendered)
         assert re.search(r"name: DAARI_FILES__BACKEND\s+value: postgres", rendered)
         assert re.search(r"name: DAARI_RESPONSES__BACKEND\s+value: postgres", rendered)
-        assert re.search(
-            r"name: DAARI_ENTERPRISE__AUDIT_BACKEND\s+value: postgres", rendered
-        )
-        assert re.search(
-            r"name: DAARI_SERVER__VIRTUAL_KEYS__BACKEND\s+value: postgres", rendered
-        )
-        assert re.search(
-            r"name: DAARI_OBSERVABILITY__BACKEND\s+value: postgres", rendered
-        )
+        assert re.search(r"name: DAARI_ENTERPRISE__AUDIT_BACKEND\s+value: postgres", rendered)
+        assert re.search(r"name: DAARI_SERVER__VIRTUAL_KEYS__BACKEND\s+value: postgres", rendered)
+        assert re.search(r"name: DAARI_OBSERVABILITY__BACKEND\s+value: postgres", rendered)
 
 
 class TestHelmGracefulRollout:
@@ -264,9 +256,7 @@ class TestHelmServiceMonitor:
         values = _load_yaml(VALUES)
         assert values["serviceMonitor"]["enabled"] is False
 
-    def test_servicemonitor_scrapes_metrics_when_enabled(
-        self, helm_available: None
-    ) -> None:
+    def test_servicemonitor_scrapes_metrics_when_enabled(self, helm_available: None) -> None:
         rendered = _helm_template("--set", "serviceMonitor.enabled=true")
         assert "kind: ServiceMonitor" in rendered
         assert "apiVersion: monitoring.coreos.com/v1" in rendered
@@ -279,9 +269,7 @@ class TestHelmServiceMonitor:
         values = _load_yaml(VALUES)
         assert values["serviceMonitor"].get("bearerTokenSecret") in (None, {})
 
-    def test_servicemonitor_bearer_token_secret_when_set(
-        self, helm_available: None
-    ) -> None:
+    def test_servicemonitor_bearer_token_secret_when_set(self, helm_available: None) -> None:
         rendered = _helm_template(
             "--set",
             "serviceMonitor.enabled=true",
@@ -297,14 +285,10 @@ class TestHelmServiceMonitor:
             r"name:\s+daari-metrics-token\s+key:\s+token",
             sm,
         ) or (
-            "bearerTokenSecret:" in sm
-            and "name: daari-metrics-token" in sm
-            and "key: token" in sm
+            "bearerTokenSecret:" in sm and "name: daari-metrics-token" in sm and "key: token" in sm
         )
 
-    def test_servicemonitor_targets_metrics_port_when_set(
-        self, helm_available: None
-    ) -> None:
+    def test_servicemonitor_targets_metrics_port_when_set(self, helm_available: None) -> None:
         """Private scrape listener needs no bearer (#602)."""
         rendered = _helm_template(
             "--set",
@@ -331,16 +315,12 @@ class TestHelmMetricsPort:
         values = _load_yaml(VALUES)
         assert int(values.get("observability", {}).get("metricsPort") or 0) == 0
 
-    def test_metrics_port_wires_env_container_and_service(
-        self, helm_available: None
-    ) -> None:
+    def test_metrics_port_wires_env_container_and_service(self, helm_available: None) -> None:
         rendered = _helm_template("--set", "observability.metricsPort=9090")
-        assert re.search(
-            r'name: DAARI_OBSERVABILITY__METRICS_PORT\s+value: "9090"', rendered
+        assert re.search(r'name: DAARI_OBSERVABILITY__METRICS_PORT\s+value: "9090"', rendered)
+        assert re.search(r"name: metrics\s+containerPort: 9090", rendered) or (
+            "containerPort: 9090" in rendered and "name: metrics" in rendered
         )
-        assert re.search(
-            r"name: metrics\s+containerPort: 9090", rendered
-        ) or ("containerPort: 9090" in rendered and "name: metrics" in rendered)
         svc = rendered.split("kind: Service")[1].split("---")[0]
         assert "name: metrics" in svc
         assert "port: 9090" in svc
@@ -389,9 +369,7 @@ class TestHelmOrgPool:
             "--set",
             "orgPool.baseUrl=http://gpu-pool:11434",
         )
-        assert re.search(
-            r'name: DAARI_ROUTING__ORG_POOL__ENABLED\s+value: "true"', rendered
-        )
+        assert re.search(r'name: DAARI_ROUTING__ORG_POOL__ENABLED\s+value: "true"', rendered)
         assert re.search(
             r'name: DAARI_ROUTING__ORG_POOL__BASE_URL\s+value: "http://gpu-pool:11434"',
             rendered,
@@ -399,9 +377,7 @@ class TestHelmOrgPool:
 
 
 class TestHelmSessionAffinityAndPolicySync:
-    def test_affinity_and_policy_sync_absent_by_default(
-        self, helm_available: None
-    ) -> None:
+    def test_affinity_and_policy_sync_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
         assert "DAARI_ROUTING__SESSION_AFFINITY" not in rendered
         assert "DAARI_ROUTING__SESSION_AFFINITY_TTL_SECONDS" not in rendered
@@ -420,9 +396,7 @@ class TestHelmSessionAffinityAndPolicySync:
             "--set",
             "routing.sessionAffinityTtlSeconds=900",
         )
-        assert re.search(
-            r'name: DAARI_ROUTING__SESSION_AFFINITY\s+value: "true"', rendered
-        )
+        assert re.search(r'name: DAARI_ROUTING__SESSION_AFFINITY\s+value: "true"', rendered)
         assert re.search(
             r'name: DAARI_ROUTING__SESSION_AFFINITY_TTL_SECONDS\s+value: "900"',
             rendered,
@@ -566,9 +540,7 @@ class TestHelmAsrModel:
 
 
 class TestHelmRequestDeadlineAndRetention:
-    def test_deadline_and_request_log_absent_by_default(
-        self, helm_available: None
-    ) -> None:
+    def test_deadline_and_request_log_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
         assert "DAARI_UPSTREAM__REQUEST_DEADLINE_SECONDS" not in rendered
         assert "DAARI_OBSERVABILITY__RETENTION__REQUEST_LOG_DAYS" not in rendered
@@ -594,16 +566,12 @@ class TestHelmRequestDeadlineAndRetention:
 
 
 class TestHelmNotesServiceMonitorAndOrgPool:
-    def test_notes_omit_servicemonitor_and_org_pool_by_default(
-        self, helm_available: None
-    ) -> None:
+    def test_notes_omit_servicemonitor_and_org_pool_by_default(self, helm_available: None) -> None:
         notes = _helm_notes()
         assert "ServiceMonitor enabled" not in notes
         assert "Org pool enabled" not in notes
 
-    def test_notes_servicemonitor_scrape_and_bearer_hint(
-        self, helm_available: None
-    ) -> None:
+    def test_notes_servicemonitor_scrape_and_bearer_hint(self, helm_available: None) -> None:
         notes = _helm_notes("--set", "serviceMonitor.enabled=true")
         assert "ServiceMonitor enabled" in notes
         assert "/metrics" in notes
@@ -633,9 +601,7 @@ class TestHelmBackupCronJob:
         assert values["backup"]["encrypt"] == "openssl"
         assert values["backup"]["retain"] == 7
 
-    def test_cronjob_renders_when_enabled_with_encrypt_secret(
-        self, helm_available: None
-    ) -> None:
+    def test_cronjob_renders_when_enabled_with_encrypt_secret(self, helm_available: None) -> None:
         rendered = _helm_template(
             "--set",
             "backup.enabled=true",
@@ -680,9 +646,7 @@ class TestHelmKedaRequestRate:
         assert values["autoscaling"]["keda"]["enabled"] is False
         assert "kind: HorizontalPodAutoscaler" in rendered
 
-    def test_enabled_render_has_query_threshold_and_cpu_hpa(
-        self, helm_available: None
-    ) -> None:
+    def test_enabled_render_has_query_threshold_and_cpu_hpa(self, helm_available: None) -> None:
         rendered = _helm_template("--set", "autoscaling.keda.enabled=true")
         assert "kind: ScaledObject" in rendered
         assert "apiVersion: keda.sh/v1alpha1" in rendered
@@ -692,9 +656,7 @@ class TestHelmKedaRequestRate:
         assert "averageUtilization: 70" in rendered
         assert "minReplicaCount: 1" in rendered
 
-    def test_keda_min_above_one_without_postgres_is_refused(
-        self, helm_available: None
-    ) -> None:
+    def test_keda_min_above_one_without_postgres_is_refused(self, helm_available: None) -> None:
         with pytest.raises(subprocess.CalledProcessError) as exc:
             _helm_template(
                 "--set",
@@ -792,9 +754,7 @@ class TestHelmAuthRateLimitFrontier:
             "--set-json",
             'rateLimit.models={"llama3-70b":{"rpm":10,"tpm":20000,"max_in_flight":2}}',
         )
-        assert re.search(
-            r"name: DAARI_RATE_LIMIT__MAX_IN_FLIGHT\s+value: \"8\"", rendered
-        )
+        assert re.search(r"name: DAARI_RATE_LIMIT__MAX_IN_FLIGHT\s+value: \"8\"", rendered)
         assert "DAARI_RATE_LIMIT__MODELS" in rendered
         assert "llama3-70b" in rendered
         assert "max_in_flight" in rendered
@@ -998,9 +958,7 @@ class TestHelmNetworkPolicy:
         assert ("UDP", 53) in egress_ports
         assert ("TCP", 53) in egress_ports
 
-    def test_networkpolicy_egress_redis_postgres_frontier(
-        self, helm_available: None
-    ) -> None:
+    def test_networkpolicy_egress_redis_postgres_frontier(self, helm_available: None) -> None:
         rendered = _helm_template(
             "--set",
             "networkPolicy.enabled=true",
@@ -1082,11 +1040,61 @@ class TestHelmNetworkPolicy:
         ]
         assert "10.1.0.0/16" in egress_cidrs
 
+    def test_networkpolicy_egress_external_redis_url(self, helm_available: None) -> None:
+        """Managed Redis via rateLimit.redisUrl (bundled redis.enabled=false) (#1613)."""
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "redis.enabled=false",
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.redisUrl=redis://managed-redis.example:6379/0",
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        egress_ports = {
+            (p.get("protocol"), p.get("port"))
+            for rule in np["spec"]["egress"]
+            for p in rule.get("ports") or []
+        }
+        assert ("TCP", 6379) in egress_ports
+
+    def test_networkpolicy_egress_external_postgres_url(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "postgres.enabled=false",
+            "--set",
+            "postgres.url=postgresql://daari:daari@managed-pg.example:5432/daari",
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        egress_ports = {
+            (p.get("protocol"), p.get("port"))
+            for rule in np["spec"]["egress"]
+            for p in rule.get("ports") or []
+        }
+        assert ("TCP", 5432) in egress_ports
+
+    def test_networkpolicy_extra_egress_top_level(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set-json",
+            'networkPolicy.extraEgress=[{"to":[{"ipBlock":{"cidr":"10.9.0.0/16"}}],"ports":[{"protocol":"TCP","port":5432}]}]',
+        )
+        np = _docs_by_kind(rendered)["NetworkPolicy"][0]
+        egress_cidrs = [
+            peer.get("ipBlock", {}).get("cidr")
+            for rule in np["spec"]["egress"]
+            for peer in rule.get("to") or []
+        ]
+        assert "10.9.0.0/16" in egress_cidrs
+
 
 class TestHelmSchedulingSpread:
-    def test_affinity_and_spread_absent_by_default(
-        self, helm_available: None
-    ) -> None:
+    def test_affinity_and_spread_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()
         dep = _docs_by_kind(rendered)["Deployment"][0]
         pod_spec = dep["spec"]["template"]["spec"]
@@ -1096,9 +1104,7 @@ class TestHelmSchedulingSpread:
         assert values.get("affinity") in (None, {})
         assert values.get("topologySpreadConstraints") in (None, [])
 
-    def test_affinity_and_topology_spread_passthrough(
-        self, helm_available: None
-    ) -> None:
+    def test_affinity_and_topology_spread_passthrough(self, helm_available: None) -> None:
         rendered = _helm_template(
             "--set-json",
             'affinity={"podAntiAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":100,"podAffinityTerm":{"labelSelector":{"matchLabels":{"app.kubernetes.io/name":"daari"}},"topologyKey":"kubernetes.io/hostname"}}]}}',
@@ -1112,3 +1118,42 @@ class TestHelmSchedulingSpread:
         assert len(spreads) == 1
         assert spreads[0]["topologyKey"] == "topology.kubernetes.io/zone"
         assert spreads[0]["maxSkew"] == 1
+
+    def test_scheduling_knobs_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        dep = _docs_by_kind(rendered)["Deployment"][0]
+        pod_spec = dep["spec"]["template"]["spec"]
+        assert "priorityClassName" not in pod_spec
+        assert "nodeSelector" not in pod_spec
+        assert "tolerations" not in pod_spec
+        assert "initContainers" not in pod_spec
+        env_names = {e.get("name") for e in pod_spec["containers"][0].get("env") or []}
+        assert "FROM_SECRET" not in env_names
+        values = _load_yaml(VALUES)
+        assert values.get("priorityClassName") in (None, "")
+        assert values.get("nodeSelector") in (None, {})
+        assert values.get("tolerations") in (None, [])
+        assert values.get("initContainers") in (None, [])
+        assert values.get("extraEnv") in (None, [])
+
+    def test_scheduling_knobs_and_extra_env_passthrough(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "priorityClassName=gpu-high",
+            "--set-json",
+            'nodeSelector={"nvidia.com/gpu":"true"}',
+            "--set-json",
+            'tolerations=[{"key":"nvidia.com/gpu","operator":"Exists","effect":"NoSchedule"}]',
+            "--set-json",
+            'initContainers=[{"name":"wait","image":"busybox:1.36","command":["sh","-c","true"]}]',
+            "--set-json",
+            'extraEnv=[{"name":"FROM_SECRET","valueFrom":{"secretKeyRef":{"name":"daari-extra","key":"token"}}}]',
+        )
+        dep = _docs_by_kind(rendered)["Deployment"][0]
+        pod_spec = dep["spec"]["template"]["spec"]
+        assert pod_spec["priorityClassName"] == "gpu-high"
+        assert pod_spec["nodeSelector"] == {"nvidia.com/gpu": "true"}
+        assert pod_spec["tolerations"][0]["key"] == "nvidia.com/gpu"
+        assert pod_spec["initContainers"][0]["name"] == "wait"
+        env = {e["name"]: e for e in pod_spec["containers"][0]["env"]}
+        assert env["FROM_SECRET"]["valueFrom"]["secretKeyRef"]["name"] == "daari-extra"

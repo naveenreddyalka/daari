@@ -26,16 +26,31 @@ spec:
         app.kubernetes.io/name: daari
     spec:
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 60 }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
       {{- with .Values.podSecurityContext }}
       securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.topologySpreadConstraints }}
       topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.initContainers }}
+      initContainers:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
@@ -63,6 +78,9 @@ spec:
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- if gt $metricsPort 0 }}
             - name: DAARI_OBSERVABILITY__METRICS_PORT

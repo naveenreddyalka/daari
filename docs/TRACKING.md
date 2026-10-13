@@ -6727,6 +6727,15 @@ rows (scope detail, no prompts/secrets). Covered by
 `tests/unit/test_metrics_in_flight_scopes.py`,
 `tests/unit/test_helm_chart.py`.
 
+### Helm external netpol egress + scheduling knobs ([#1613](https://github.com/naveenreddyalka/daari/issues/1613))
+
+<!-- tracking:#1613 -->
+**Status:** Done (2026-10-13). NetworkPolicy Redis/Postgres egress when
+`rateLimit.redisUrl` / `postgres.url` are set; `extraEgress`; Deployment
+`priorityClassName` / `nodeSelector` / `tolerations` / `initContainers` /
+`extraEnv`. Docs: capacity-helm.md. Covered by
+`tests/unit/test_helm_chart.py`, `tests/unit/test_capacity_helm_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

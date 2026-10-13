@@ -69,3 +69,15 @@ def test_capacity_helm_documents_networkpolicy_and_spread() -> None:
     assert "topologySpreadConstraints" in text
     assert "affinity" in text
     assert "prometheusFrom" in text or "serviceMonitor.enabled" in text
+
+
+def test_capacity_helm_documents_external_egress_and_scheduling() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "rateLimit.redisUrl" in text
+    assert "extraEgress" in text
+    assert "priorityClassName" in text
+    assert "nodeSelector" in text
+    assert "tolerations" in text
+    assert "initContainers" in text
+    assert "extraEnv" in text
+    assert "valueFrom" in text or "secretKeyRef" in text
