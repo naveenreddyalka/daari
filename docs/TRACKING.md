@@ -6736,6 +6736,14 @@ rows (scope detail, no prompts/secrets). Covered by
 `extraEnv`. Docs: capacity-helm.md. Covered by
 `tests/unit/test_helm_chart.py`, `tests/unit/test_capacity_helm_docs.py`.
 
+### Hermetic RPM window clock for flake-free tests ([#1614](https://github.com/naveenreddyalka/daari/issues/1614))
+
+<!-- tracking:#1614 -->
+**Status:** Done (2026-10-13). Counter backends bucket via `_wall_time()`
+(monkeypatchable); `test_rpm_returns_429` freezes mid-window and at :59.9.
+Covered by `tests/unit/test_rate_limit_clock.py`,
+`tests/unit/test_virtual_keys.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

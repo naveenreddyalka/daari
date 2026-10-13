@@ -23,6 +23,12 @@ DAY_SECONDS = 86400
 DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
 RATELIMIT_WARNING_HEADER = "x-daari-ratelimit-warning"
 
+
+def _wall_time() -> float:
+    """Clock for RPM/TPM/RPD window buckets. Tests may monkeypatch this (#1614)."""
+    return time.time()
+
+
 # Lower rank wakes first at the in-flight gate (#848).
 PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
 
@@ -100,7 +106,7 @@ class MemoryCounterBackend:
         self._gauges: dict[str, int] = {}
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
-        window = int(time.time() // window_seconds)
+        window = int(_wall_time() // window_seconds)
         with self._lock:
             count, stored_window = self._counts.get(key, (0, window))
             if stored_window != window:
@@ -140,7 +146,7 @@ class SqliteCounterBackend:
         self._ready = True
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
-        window = int(time.time() // window_seconds)
+        window = int(_wall_time() // window_seconds)
         with self._lock:
             self._ensure()
             with self._connect() as conn:
@@ -201,7 +207,7 @@ class RedisCounterBackend:
         return bool(self._store().ping())
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
-        window = int(time.time() // window_seconds)
+        window = int(_wall_time() // window_seconds)
         full = f"{self.prefix}{key}:{window}"
         client = self._store()
         pipe = client.pipeline()

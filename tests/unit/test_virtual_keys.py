@@ -114,7 +114,33 @@ async def test_virtual_key_accepted_alongside_master(settings, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_rpm_returns_429(settings, tmp_path):
+async def test_rpm_returns_429(settings, tmp_path, monkeypatch):
+    # Freeze mid-window so two requests cannot straddle a 60s RPM boundary (#1614).
+    monkeypatch.setattr("daari.auth.rate_limit._wall_time", lambda: 1_700_000_030.0)
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create("burst", rpm=1)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    _mock_execute(app)
+    transport = ASGITransport(app=app)
+    headers = {"Authorization": f"Bearer {created.plaintext}"}
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+        second = await client.post("/v1/chat/completions", json=CHAT, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_rpm_returns_429_across_minute_boundary_when_clock_frozen(
+    settings, tmp_path, monkeypatch
+):
+    """Regression: wall clock at :59.9 must still 429 the second request (#1614)."""
+    # 59.9s into a 60s window — without a frozen clock the next call could roll over.
+    monkeypatch.setattr("daari.auth.rate_limit._wall_time", lambda: 1_700_000_059.9)
     settings.server.api_key = "master"
     settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
     store = VirtualKeyStore(settings.virtual_keys_path)
