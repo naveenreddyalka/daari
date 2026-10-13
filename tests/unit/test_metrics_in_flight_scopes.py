@@ -42,10 +42,10 @@ def test_prometheus_text_exposes_scoped_in_flight_gauges(settings, tmp_path):
     assert text is not None
     assert "# TYPE daari_in_flight gauge" in text
     assert "# TYPE daari_in_flight_max gauge" in text
-    assert f'daari_in_flight{{scope="key",id="agent"}} 1' in text
-    assert f'daari_in_flight_max{{scope="key",id="agent"}} 1' in text
-    assert f'daari_in_flight{{scope="team",id="fleet"}} 2' in text
-    assert f'daari_in_flight_max{{scope="team",id="fleet"}} 3' in text
+    assert 'daari_in_flight{scope="key",id="agent"} 1' in text
+    assert 'daari_in_flight_max{scope="key",id="agent"} 1' in text
+    assert 'daari_in_flight{scope="team",id="fleet"} 2' in text
+    assert 'daari_in_flight_max{scope="team",id="fleet"} 3' in text
     assert 'daari_in_flight{scope="model",id="llama3-70b"} 1' in text
     assert 'daari_in_flight_max{scope="model",id="llama3-70b"} 2' in text
     # Never label with secrets / key ids when a name exists.

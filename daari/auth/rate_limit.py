@@ -224,9 +224,7 @@ class RedisCounterBackend:
         return value
 
 
-def match_model_limits(
-    models: dict[str, Any], model: str
-) -> Any | None:
+def match_model_limits(models: dict[str, Any], model: str) -> Any | None:
     """Exact model id wins; otherwise longest prefix match (#1592)."""
     if not models:
         return None

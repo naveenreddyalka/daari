@@ -17,9 +17,7 @@ def test_cli_create_and_list_max_in_flight(tmp_path, monkeypatch):
     settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
     monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
     runner = CliRunner()
-    created = runner.invoke(
-        cli_app, ["keys", "create", "agent", "--max-in-flight", "3"]
-    )
+    created = runner.invoke(cli_app, ["keys", "create", "agent", "--max-in-flight", "3"])
     assert created.exit_code == 0, created.output
     assert "max_in_flight: 3" in created.output
     listed = runner.invoke(cli_app, ["keys", "list"])
@@ -38,9 +36,7 @@ def test_cli_team_create_max_in_flight(tmp_path, monkeypatch):
     settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
     monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
     runner = CliRunner()
-    team = runner.invoke(
-        cli_app, ["keys", "team-create", "fleet", "--max-in-flight", "2"]
-    )
+    team = runner.invoke(cli_app, ["keys", "team-create", "fleet", "--max-in-flight", "2"])
     assert team.exit_code == 0, team.output
     assert "max_in_flight: 2" in team.output
     store = VirtualKeyStore(settings.virtual_keys_path)
