@@ -6716,6 +6716,34 @@ fields. Covered by `tests/unit/test_keys_export_import.py`.
 rows (scope detail, no prompts/secrets). Covered by
 `tests/unit/test_reject_audit.py`.
 
+### Operable concurrency caps — CLI/admin/Helm/gauges ([#1612](https://github.com/naveenreddyalka/daari/issues/1612))
+
+<!-- tracking:#1612 -->
+**Status:** Done (2026-10-13). `--max-in-flight` on `keys create` /
+`team-create`; list/`export --json` + admin/web-ui expose the cap; Helm
+`rateLimit.maxInFlight` / `rateLimit.models`; scrape
+`daari_in_flight{scope,id}` / `_max`. Covered by
+`tests/unit/test_keys_max_in_flight_cli.py`,
+`tests/unit/test_metrics_in_flight_scopes.py`,
+`tests/unit/test_helm_chart.py`.
+
+### Helm external netpol egress + scheduling knobs ([#1613](https://github.com/naveenreddyalka/daari/issues/1613))
+
+<!-- tracking:#1613 -->
+**Status:** Done (2026-10-13). NetworkPolicy Redis/Postgres egress when
+`rateLimit.redisUrl` / `postgres.url` are set; `extraEgress`; Deployment
+`priorityClassName` / `nodeSelector` / `tolerations` / `initContainers` /
+`extraEnv`. Docs: capacity-helm.md. Covered by
+`tests/unit/test_helm_chart.py`, `tests/unit/test_capacity_helm_docs.py`.
+
+### Hermetic RPM window clock for flake-free tests ([#1614](https://github.com/naveenreddyalka/daari/issues/1614))
+
+<!-- tracking:#1614 -->
+**Status:** Done (2026-10-13). Counter backends bucket via `_wall_time()`
+(monkeypatchable); `test_rpm_returns_429` freezes mid-window and at :59.9.
+Covered by `tests/unit/test_rate_limit_clock.py`,
+`tests/unit/test_virtual_keys.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

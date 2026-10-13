@@ -23,6 +23,12 @@ DAY_SECONDS = 86400
 DEFAULT_PROBE_INTERVAL_SECONDS = 5.0
 RATELIMIT_WARNING_HEADER = "x-daari-ratelimit-warning"
 
+
+def _wall_time() -> float:
+    """Clock for RPM/TPM/RPD window buckets. Tests may monkeypatch this (#1614)."""
+    return time.time()
+
+
 # Lower rank wakes first at the in-flight gate (#848).
 PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2}
 
@@ -100,7 +106,7 @@ class MemoryCounterBackend:
         self._gauges: dict[str, int] = {}
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
-        window = int(time.time() // window_seconds)
+        window = int(_wall_time() // window_seconds)
         with self._lock:
             count, stored_window = self._counts.get(key, (0, window))
             if stored_window != window:
@@ -140,7 +146,7 @@ class SqliteCounterBackend:
         self._ready = True
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
-        window = int(time.time() // window_seconds)
+        window = int(_wall_time() // window_seconds)
         with self._lock:
             self._ensure()
             with self._connect() as conn:
@@ -201,7 +207,7 @@ class RedisCounterBackend:
         return bool(self._store().ping())
 
     def increment(self, key: str, amount: int = 1, *, window_seconds: int = WINDOW_SECONDS) -> int:
-        window = int(time.time() // window_seconds)
+        window = int(_wall_time() // window_seconds)
         full = f"{self.prefix}{key}:{window}"
         client = self._store()
         pipe = client.pipeline()
@@ -224,9 +230,7 @@ class RedisCounterBackend:
         return value
 
 
-def match_model_limits(
-    models: dict[str, Any], model: str
-) -> Any | None:
+def match_model_limits(models: dict[str, Any], model: str) -> Any | None:
     """Exact model id wins; otherwise longest prefix match (#1592)."""
     if not models:
         return None
@@ -788,6 +792,73 @@ class RateLimiter:
                     "kind": "rpd",
                     "limit": rpd,
                     "remaining": max(0, rpd - used),
+                }
+            )
+        return rows
+
+    def in_flight_gauges(
+        self,
+        *,
+        keys: list[Any] | None = None,
+        teams: list[Any] | None = None,
+        models: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Scrape-time used/limit for scoped in-flight caps (#1612).
+
+        Zero-delta gauge read so scrapes do not change admission. Labels use
+        key/team names (never secrets) and model ids.
+        """
+        rows: list[dict[str, Any]] = []
+        for key in keys or []:
+            cap = int(getattr(key, "max_in_flight", 0) or 0)
+            key_id = str(getattr(key, "key_id", "") or "")
+            if cap <= 0 or not key_id:
+                continue
+            name = str(getattr(key, "name", "") or "").strip() or key_id
+            used = int(self._adjust_gauge(f"inflight:key:{key_id}", 0))
+            rows.append(
+                {
+                    "scope": "key",
+                    "id": name,
+                    "used": used,
+                    "limit": cap,
+                    "remaining": max(0, cap - used),
+                }
+            )
+        for team in teams or []:
+            cap = int(getattr(team, "max_in_flight", 0) or 0)
+            team_id = str(getattr(team, "team_id", "") or "")
+            if cap <= 0 or not team_id:
+                continue
+            name = str(getattr(team, "name", "") or "").strip() or team_id
+            used = int(self._adjust_gauge(f"inflight:team:{team_id}", 0))
+            rows.append(
+                {
+                    "scope": "team",
+                    "id": name,
+                    "used": used,
+                    "limit": cap,
+                    "remaining": max(0, cap - used),
+                }
+            )
+        for model_id, entry in (models or {}).items():
+            mid = str(model_id or "").strip()
+            if not mid:
+                continue
+            if isinstance(entry, dict):
+                cap = int(entry.get("max_in_flight") or 0)
+            else:
+                cap = int(getattr(entry, "max_in_flight", 0) or 0)
+            if cap <= 0:
+                continue
+            used = int(self._adjust_gauge(f"inflight:model:{mid}", 0))
+            rows.append(
+                {
+                    "scope": "model",
+                    "id": mid,
+                    "used": used,
+                    "limit": cap,
+                    "remaining": max(0, cap - used),
                 }
             )
         return rows

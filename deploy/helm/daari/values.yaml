@@ -86,13 +86,14 @@ podDisruptionBudget:
   minAvailable: 1
   # maxUnavailable: 1
 
-# NetworkPolicy (#1591). Off by default (open cluster networking). When
+# NetworkPolicy (#1591 / #1613). Off by default (open cluster networking). When
 # enabled, ingress is limited to networkPolicy.ingress.from plus Prometheus
 # scrape peers when serviceMonitor.enabled (default: namespace
 # kubernetes.io/metadata.name=monitoring). Egress allows DNS, Redis/Postgres
-# ports when those backends are enabled, HTTPS when frontier.enabled, and
+# ports when those backends are enabled OR external URLs are set
+# (rateLimit.redisUrl / postgres.url), HTTPS when frontier.enabled, and
 # common local-inference ports when ollama/orgPool/asr/tts are configured.
-# Append full rules via ingress.extra / egress.extra.
+# Append full rules via ingress.extra / egress.extra / extraEgress.
 networkPolicy:
   enabled: false
   ingress:
@@ -108,11 +109,19 @@ networkPolicy:
     frontierHTTPS: true
     localBackends: true
     extra: []
+  # Top-level egress rules rendered verbatim (CIDR/port peers for managed DBs).
+  extraEgress: []
 
-# Scheduling pass-through (#1591). Empty defaults keep the Deployment
-# byte-identical to charts without affinity / topology spread.
+# Scheduling pass-through (#1591 / #1613). Empty defaults keep the Deployment
+# byte-identical to charts without these knobs.
 affinity: {}
 topologySpreadConstraints: []
+priorityClassName: ""
+nodeSelector: {}
+tolerations: []
+initContainers: []
+# Raw env entries (supports valueFrom / secretKeyRef). Appended after env map.
+extraEnv: []
 
 # Prometheus Operator ServiceMonitor for GET /metrics.
 # Default endpoint is the API `http` Service port (may need bearerTokenSecret
@@ -228,6 +237,11 @@ rateLimit:
   tpm: 0
   modelRpm: 0
   modelTpm: 0
+  # Global in-flight concurrency cap (0 = unlimited). Env: DAARI_RATE_LIMIT__MAX_IN_FLIGHT.
+  maxInFlight: 0
+  # Named per-model-id overrides (rpm/tpm/max_in_flight). Rendered as JSON env.
+  # Example: { llama3-70b: { rpm: 10, tpm: 20000, max_in_flight: 2 } }
+  models: {}
   # Used only when redis.enabled=false; otherwise cache Redis is reused.
   redisUrl: ""
 

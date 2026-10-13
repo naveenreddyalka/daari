@@ -69,9 +69,11 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
     team_budgets: list[dict[str, Any]] | None = None
     team_rate_limits: list[dict[str, Any]] | None = None
     key_rate_limits: list[dict[str, Any]] | None = None
+    in_flight_scopes: list[dict[str, Any]] | None = None
     virtual_keys: dict[str, Any] | None = None
     store = getattr(app.state, "virtual_key_store", None) or getattr(ctx, "virtual_key_store", None)
     listed_keys: list[Any] | None = None
+    listed_teams: list[Any] | None = None
     if store is not None and ledger is not None and getattr(ledger, "enabled", False):
         try:
             from daari.auth.budgets import collect_team_budget_gauges
@@ -80,10 +82,15 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
             team_budgets = rows or None
         except Exception:
             team_budgets = None
-    if store is not None and limiter is not None and hasattr(limiter, "team_rate_gauges"):
+    if store is not None:
         try:
             list_teams = getattr(store, "list_teams", None)
-            teams = list_teams() if callable(list_teams) else []
+            listed_teams = list(list_teams()) if callable(list_teams) else []
+        except Exception:
+            listed_teams = None
+    if store is not None and limiter is not None and hasattr(limiter, "team_rate_gauges"):
+        try:
+            teams = listed_teams if listed_teams is not None else []
             rl_rows = limiter.team_rate_gauges(teams)
             team_rate_limits = rl_rows or None
         except Exception:
@@ -105,6 +112,17 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
             key_rate_limits = key_rows or None
         except Exception:
             key_rate_limits = None
+    if limiter is not None and hasattr(limiter, "in_flight_gauges"):
+        try:
+            model_map = getattr(getattr(settings, "rate_limit", None), "models", None) or {}
+            if_rows = limiter.in_flight_gauges(
+                keys=listed_keys or [],
+                teams=listed_teams or [],
+                models=model_map,
+            )
+            in_flight_scopes = if_rows or None
+        except Exception:
+            in_flight_scopes = None
     if store is not None and listed_keys is not None:
         try:
             from daari.auth.virtual_keys import count_key_expiry_buckets
@@ -125,6 +143,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
         team_budgets=team_budgets,
         team_rate_limits=team_rate_limits,
         key_rate_limits=key_rate_limits,
+        in_flight_scopes=in_flight_scopes,
         virtual_keys=virtual_keys,
     )
 

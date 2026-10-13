@@ -52,12 +52,15 @@ spec:
         - protocol: TCP
           port: 53
     {{- end }}
-    {{- if and (ne $egress.redis false) .Values.redis.enabled }}
+    {{- /* Bundled toggles OR external URLs (managed Redis/Postgres) (#1613). */}}
+    {{- $wantRedis := or .Values.redis.enabled (and (not .Values.redis.enabled) .Values.rateLimit.redisUrl) }}
+    {{- if and (ne $egress.redis false) $wantRedis }}
     - ports:
         - protocol: TCP
           port: 6379
     {{- end }}
-    {{- if and (ne $egress.postgres false) .Values.postgres.enabled }}
+    {{- $wantPostgres := or .Values.postgres.enabled .Values.postgres.url }}
+    {{- if and (ne $egress.postgres false) $wantPostgres }}
     - ports:
         - protocol: TCP
           port: 5432
@@ -79,6 +82,9 @@ spec:
           port: 8080
     {{- end }}
     {{- with $egress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with $np.extraEgress }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 {{- end }}
