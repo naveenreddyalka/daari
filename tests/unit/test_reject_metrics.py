@@ -93,7 +93,7 @@ async def test_hard_budget_402_bumps_budget_reject(settings, tmp_path):
     assert metrics.status_code == 200
     assert 'daari_rejects_total{kind="budget"} 1' in metrics.text
     assert 'daari_rejects_total{kind="request_quota"}' not in metrics.text
-    assert 'daari_soft_warnings_total' not in metrics.text or (
+    assert "daari_soft_warnings_total" not in metrics.text or (
         'daari_soft_warnings_total{kind="request_quota"}' not in metrics.text
     )
 
@@ -153,9 +153,7 @@ async def test_hard_request_quota_402_bumps_request_quota_reject(settings, tmp_p
 
 @pytest.mark.asyncio
 async def test_hard_429_bumps_rate_limit_reject(settings, monkeypatch):
-    import time
-
-    monkeypatch.setattr(time, "time", lambda: 1_700_000_030.0)
+    monkeypatch.setattr("daari.auth.rate_limit._wall_time", lambda: 1_700_000_030.0)
     settings.frontier.soft_budget_ratio = 0.0
     settings.observability.prometheus = True
     app = create_app(settings)
