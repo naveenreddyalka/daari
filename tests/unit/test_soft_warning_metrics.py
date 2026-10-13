@@ -198,3 +198,50 @@ async def test_rate_limit_soft_increments_counter_hard_429_does_not(settings, mo
         after = await client.get("/metrics")
     assert 'daari_soft_warnings_total{kind="rate_limit"} 2' in after.text
     assert 'daari_soft_warnings_total{kind="request_quota"}' not in after.text
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_soft_survives_tighter_concurrency_gauge(
+    settings, tmp_path, monkeypatch
+):
+    """Soft RPM warning stays when max_in_flight binding wins headers (#1617)."""
+    import time
+
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_030.0)
+    settings.frontier.soft_budget_ratio = 0.8
+    settings.observability.prometheus = True
+    settings.server.virtual_keys.enabled = True
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.server.api_key = "master"
+    settings.usage.path = str(tmp_path / "usage.sqlite3")
+    store = VirtualKeyStore(settings.virtual_keys_path, enabled=True)
+    # RPM remaining after soft trip (4/5) is 1; key gauge remaining is 0 → tighter.
+    key = store.create("agent", max_in_flight=1)
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    app.state.rate_limiter = RateLimiter(MemoryCounterBackend(), default_rpm=5)
+    _mock_execute(app)
+
+    auth = {
+        "Authorization": f"Bearer {key.plaintext}",
+        "X-Daari-No-Cache": "true",
+    }
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for i in range(4):
+            response = await client.post(
+                "/v1/chat/completions",
+                json=CHAT,
+                headers=auth,
+            )
+            assert response.status_code == 200
+            if i >= 3:
+                assert response.headers[RATELIMIT_WARNING_HEADER] == "soft"
+                assert response.headers.get("x-ratelimit-scope") == "key_concurrency"
+                assert int(response.headers.get("x-ratelimit-remaining", "99")) == 0
+
+        metrics = await client.get("/metrics", headers={"Authorization": "Bearer master"})
+        assert metrics.status_code == 200
+        assert 'daari_soft_warnings_total{kind="rate_limit"} 1' in metrics.text

@@ -907,7 +907,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             binding.limit <= 0 or gauge_decision.remaining < binding.remaining
         ):
             binding = gauge_decision
-        soft_headers = binding.headers(soft=rate_soft and binding is decision)
+        # Soft is orthogonal to which binding wins limit/remaining/scope (#1617).
+        soft_headers = binding.headers(soft=rate_soft)
         for header, value in soft_headers.items():
             response.headers.setdefault(header, value)
         if soft_headers.get(RATELIMIT_WARNING_HEADER) == "soft":

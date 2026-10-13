@@ -6744,6 +6744,14 @@ rows (scope detail, no prompts/secrets). Covered by
 Covered by `tests/unit/test_rate_limit_clock.py`,
 `tests/unit/test_virtual_keys.py`.
 
+### Soft rate-limit warning with concurrency gauge binding ([#1617](https://github.com/naveenreddyalka/daari/issues/1617))
+
+<!-- tracking:#1617 -->
+**Status:** Done (2026-10-13). Soft RPM/TPM warning header and metric stay
+when a tighter per-key/team/model `max_in_flight` gauge wins
+`X-RateLimit-*` headers. Docs: headers.md. Covered by
+`tests/unit/test_soft_warning_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
