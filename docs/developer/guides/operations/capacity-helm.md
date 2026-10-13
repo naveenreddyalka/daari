@@ -124,7 +124,10 @@ is also true, the chart adds scrape peers from
 `kubernetes.io/metadata.name=monitoring`). Egress always allows DNS (UDP/TCP
 53); Redis (6379) / Postgres (5432) / frontier HTTPS (443) / local-inference
 ports (11434, 8000, 8080) turn on when the matching values knobs are set.
-Append full rules with `ingress.extra` / `egress.extra`.
+Redis egress also opens when `rateLimit.redisUrl` points at managed Redis
+(even with `redis.enabled=false`); Postgres egress opens when `postgres.url`
+is set (even with `postgres.enabled=false`). Append full rules with
+`ingress.extra` / `egress.extra` / `networkPolicy.extraEgress`.
 
 ```yaml
 networkPolicy:
@@ -134,14 +137,24 @@ networkPolicy:
       - namespaceSelector:
           matchLabels:
             kubernetes.io/metadata.name: ingress-nginx
+  # CIDR peers for managed DBs when URL-aware ports are not enough:
+  extraEgress:
+    - to:
+        - ipBlock:
+            cidr: 10.9.0.0/16
+      ports:
+        - protocol: TCP
+          port: 5432
 serviceMonitor:
   enabled: true
 ```
 
-`affinity` and `topologySpreadConstraints` pass through to the Deployment
-pod template. Empty defaults (`{}` / `[]`) leave rendering unchanged. For
-multi-AZ fleets, prefer zone spread (and optional pod anti-affinity) so HPA
-replicas do not pack onto one node:
+`affinity`, `topologySpreadConstraints`, `priorityClassName`, `nodeSelector`,
+`tolerations`, and `initContainers` pass through to the Deployment pod
+template. `extraEnv` appends raw env entries (supports `valueFrom` /
+`secretKeyRef`) after the string-only `env` map. Empty defaults leave
+rendering unchanged. For multi-AZ fleets, prefer zone spread (and optional
+pod anti-affinity) so HPA replicas do not pack onto one node:
 
 ```yaml
 topologySpreadConstraints:
