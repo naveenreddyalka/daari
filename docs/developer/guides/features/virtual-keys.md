@@ -79,6 +79,19 @@ daari keys create ide --priority high --team eng
 daari keys list   # prio column
 ```
 
+## Concurrency caps
+
+`--max-in-flight N` on `keys create` / `keys team-create` sets a per-key or
+team in-flight gate (0 = unlimited). `keys list` shows a `mif` column;
+`keys export --json` round-trips the cap in metadata. Admin
+`GET /v1/daari/keys|teams` and the web-ui inventory expose the same field.
+
+```bash
+daari keys team-create fleet --max-in-flight 4
+daari keys create agent --max-in-flight 2 --team fleet
+daari keys list   # mif column
+```
+
 ## Cache scope
 
 The org-shared cache is the default: identical prompts (L0) and similar prompts

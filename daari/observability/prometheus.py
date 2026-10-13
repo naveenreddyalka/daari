@@ -37,6 +37,7 @@ def render_prometheus(
     team_budgets: list[dict[str, Any]] | None = None,
     team_rate_limits: list[dict[str, Any]] | None = None,
     key_rate_limits: list[dict[str, Any]] | None = None,
+    in_flight_scopes: list[dict[str, Any]] | None = None,
     virtual_keys: dict[str, Any] | None = None,
 ) -> str:
     """Render the current Metrics snapshot (plus optional gauges) as exposition text."""
@@ -64,9 +65,7 @@ def render_prometheus(
         lines.append(f"daari_cache_hits_total{_labels(tier=tier)} {stats['cache_hits']}")
 
     tokens = snap.get("tokens") or {}
-    lines.append(
-        "# HELP daari_tokens_total Tokens handled by modality, tier, and direction."
-    )
+    lines.append("# HELP daari_tokens_total Tokens handled by modality, tier, and direction.")
     lines.append("# TYPE daari_tokens_total counter")
     if not tokens:
         lines.append("daari_tokens_total 0")
@@ -99,25 +98,20 @@ def render_prometheus(
         "Requests that hit the wall-clock deadline before a tier succeeded."
     )
     lines.append("# TYPE daari_request_deadline_exceeded_total counter")
-    lines.append(
-        f"daari_request_deadline_exceeded_total {snap.get('deadline_exhausted', 0)}"
-    )
+    lines.append(f"daari_request_deadline_exceeded_total {snap.get('deadline_exhausted', 0)}")
     lines.append(
         "# HELP daari_compact_to_fit_applied_total Chat histories actually "
         "trimmed before L6 (messages_before != messages_after)."
     )
     lines.append("# TYPE daari_compact_to_fit_applied_total counter")
-    lines.append(
-        f"daari_compact_to_fit_applied_total {snap.get('compact_to_fit_applied', 0)}"
-    )
+    lines.append(f"daari_compact_to_fit_applied_total {snap.get('compact_to_fit_applied', 0)}")
     lines.append(
         "# HELP daari_compact_to_fit_tokens_dropped_total Estimated tokens "
         "removed by compact-to-fit before L6 (tokens_before - tokens_after)."
     )
     lines.append("# TYPE daari_compact_to_fit_tokens_dropped_total counter")
     lines.append(
-        "daari_compact_to_fit_tokens_dropped_total "
-        f"{snap.get('compact_to_fit_tokens_dropped', 0)}"
+        f"daari_compact_to_fit_tokens_dropped_total {snap.get('compact_to_fit_tokens_dropped', 0)}"
     )
     lines.append(
         "# HELP daari_mcp_grant_denied_total MCP initialize, tools/list, or "
@@ -144,9 +138,7 @@ def render_prometheus(
         else:
             # Legacy action-only keys from older snapshots / callers.
             action, kind = str(key), "deny"
-        lines.append(
-            f"daari_guardrail_trips_total{_labels(action=action, kind=kind)} {count}"
-        )
+        lines.append(f"daari_guardrail_trips_total{_labels(action=action, kind=kind)} {count}")
 
     lines.append("# HELP daari_boundary_decisions_total Product-boundary classifications.")
     lines.append("# TYPE daari_boundary_decisions_total counter")
@@ -310,6 +302,22 @@ def render_prometheus(
             lines.append(f"daari_key_rate_limit_remaining{labels} {int(row.get('remaining') or 0)}")
             lines.append(f"daari_key_rate_limit_limit{labels} {int(row.get('limit') or 0)}")
 
+    if in_flight_scopes:
+        lines.append(
+            "# HELP daari_in_flight Current in-flight requests for a scoped concurrency cap."
+        )
+        lines.append("# TYPE daari_in_flight gauge")
+        lines.append(
+            "# HELP daari_in_flight_max Configured in-flight cap for a key, team, or model."
+        )
+        lines.append("# TYPE daari_in_flight_max gauge")
+        for row in in_flight_scopes:
+            scope = str(row.get("scope") or "unknown")
+            sid = str(row.get("id") or "unknown")
+            labels = _labels(scope=scope, id=sid)
+            lines.append(f"daari_in_flight{labels} {int(row.get('used') or 0)}")
+            lines.append(f"daari_in_flight_max{labels} {int(row.get('limit') or 0)}")
+
     if virtual_keys is not None:
         from daari.auth.virtual_keys import KEY_EXPIRY_BUCKETS
 
@@ -320,8 +328,7 @@ def render_prometheus(
         lines.append("# TYPE daari_virtual_keys gauge")
         for status in KEY_EXPIRY_BUCKETS:
             lines.append(
-                f"daari_virtual_keys{_labels(status=status)} "
-                f"{int(virtual_keys.get(status) or 0)}"
+                f"daari_virtual_keys{_labels(status=status)} {int(virtual_keys.get(status) or 0)}"
             )
 
     pool = backend_pool or {}
@@ -428,14 +435,10 @@ def render_prometheus(
 
     cancelled = snap.get("cancelled") or {}
     if cancelled:
-        lines.append(
-            "# HELP daari_cancelled_requests_total Client-abandoned requests, by phase."
-        )
+        lines.append("# HELP daari_cancelled_requests_total Client-abandoned requests, by phase.")
         lines.append("# TYPE daari_cancelled_requests_total counter")
         for phase, count in sorted(cancelled.items()):
-            lines.append(
-                f"daari_cancelled_requests_total{_labels(phase=phase)} {int(count)}"
-            )
+            lines.append(f"daari_cancelled_requests_total{_labels(phase=phase)} {int(count)}")
 
     classifier = snap.get("decision_classifier") or {}
     if classifier:
@@ -447,8 +450,7 @@ def render_prometheus(
         lines.append("# TYPE daari_decision_classifier_total counter")
         for outcome, count in sorted(classifier.items()):
             lines.append(
-                f"daari_decision_classifier_total{_labels(outcome=str(outcome))} "
-                f"{int(count)}"
+                f"daari_decision_classifier_total{_labels(outcome=str(outcome))} {int(count)}"
             )
 
     clf_latency = snap.get("decision_classifier_latency") or {}
@@ -463,17 +465,14 @@ def render_prometheus(
         for bound in DECISION_CLASSIFIER_LATENCY_BUCKETS_MS:
             cumulative += buckets.get(bound, 0)
             lines.append(
-                f"daari_decision_classifier_latency_ms_bucket{_labels(le=str(bound))} "
-                f"{cumulative}"
+                f"daari_decision_classifier_latency_ms_bucket{_labels(le=str(bound))} {cumulative}"
             )
         cumulative += buckets.get("+Inf", 0)
         lines.append(
-            f"daari_decision_classifier_latency_ms_bucket{_labels(le='+Inf')} "
-            f"{cumulative}"
+            f"daari_decision_classifier_latency_ms_bucket{_labels(le='+Inf')} {cumulative}"
         )
         lines.append(
-            "daari_decision_classifier_latency_ms_sum "
-            f"{int(clf_latency.get('total_ttft_ms') or 0)}"
+            f"daari_decision_classifier_latency_ms_sum {int(clf_latency.get('total_ttft_ms') or 0)}"
         )
         lines.append(
             f"daari_decision_classifier_latency_ms_count {int(clf_latency.get('count') or 0)}"

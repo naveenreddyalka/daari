@@ -228,6 +228,11 @@ rateLimit:
   tpm: 0
   modelRpm: 0
   modelTpm: 0
+  # Global in-flight concurrency cap (0 = unlimited). Env: DAARI_RATE_LIMIT__MAX_IN_FLIGHT.
+  maxInFlight: 0
+  # Named per-model-id overrides (rpm/tpm/max_in_flight). Rendered as JSON env.
+  # Example: { llama3-70b: { rpm: 10, tpm: 20000, max_in_flight: 2 } }
+  models: {}
   # Used only when redis.enabled=false; otherwise cache Redis is reused.
   redisUrl: ""
 

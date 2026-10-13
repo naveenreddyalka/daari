@@ -172,6 +172,14 @@ spec:
               value: {{ .Values.rateLimit.modelRpm | default 0 | quote }}
             - name: DAARI_RATE_LIMIT__MODEL_TPM
               value: {{ .Values.rateLimit.modelTpm | default 0 | quote }}
+            {{- if .Values.rateLimit.maxInFlight }}
+            - name: DAARI_RATE_LIMIT__MAX_IN_FLIGHT
+              value: {{ .Values.rateLimit.maxInFlight | quote }}
+            {{- end }}
+            {{- with .Values.rateLimit.models }}
+            - name: DAARI_RATE_LIMIT__MODELS
+              value: {{ . | toJson | quote }}
+            {{- end }}
             {{- if and (not .Values.redis.enabled) .Values.rateLimit.redisUrl }}
             - name: DAARI_CACHE__BACKEND
               value: redis

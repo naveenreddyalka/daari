@@ -84,6 +84,7 @@ const ADMIN_KEYS = {
       status: "active",
       priority: "high",
       cache_scope: "team",
+      max_in_flight: 3,
       spend: [{ window: "day", quota: "usd", spend: 0.25, limit: 1.0 }],
     },
   ],
@@ -99,6 +100,7 @@ const ADMIN_TEAMS = {
       rpd: 500,
       priority: "normal",
       cache_scope: "key",
+      max_in_flight: 5,
       spend: [{ window: "day", quota: "usd", spend: 1.5, limit: 10.0 }],
     },
   ],
@@ -541,6 +543,7 @@ test("malicious stats/trace fields render as inert text", async (t) => {
             status: xss,
             priority: xss,
             cache_scope: xss,
+            max_in_flight: 1,
             spend: [],
           },
         ],
@@ -555,6 +558,7 @@ test("malicious stats/trace fields render as inert text", async (t) => {
             rpd: 1,
             priority: xss,
             cache_scope: xss,
+            max_in_flight: 1,
             spend: [],
           },
         ],
@@ -602,6 +606,8 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.match(keyRows[0].textContent, /2026-10-11T12:00:00/);
   assert.match(keyRows[0].textContent, /high/);
   assert.match(keyRows[0].textContent, /team/);
+  const keyCells = [...keyRows[0].querySelectorAll("td")].map((td) => td.textContent);
+  assert.ok(keyCells.includes("3"), `expected max_in_flight 3 in ${keyCells.join("|")}`);
   assert.match(doc.getElementById("admin-keys-status").textContent, /1 key/);
 
   const teamRows = [...doc.querySelectorAll("#admin-teams-table tr")];
@@ -610,6 +616,8 @@ test("admin keys and teams tables render from inventory endpoints", async (t) =>
   assert.match(teamRows[0].textContent, /60/);
   assert.match(teamRows[0].textContent, /normal/);
   assert.match(teamRows[0].textContent, /key/);
+  const teamCells = [...teamRows[0].querySelectorAll("td")].map((td) => td.textContent);
+  assert.ok(teamCells.includes("5"), `expected max_in_flight 5 in ${teamCells.join("|")}`);
   assert.match(doc.getElementById("admin-teams-status").textContent, /1 team/);
 });
 

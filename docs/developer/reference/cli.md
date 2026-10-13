@@ -74,7 +74,7 @@ Encryption env / flags: `DAARI_BACKUP_PASS` (or `--passphrase-env`),
 | `org-learning` | `stats`, `sync`, `export` |
 | `web-ui` | `serve` |
 | `project` | `init`, `show` |
-| `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` (`--priority high\|normal\|low` on create / team-create for admission QoS; see [`keys`](#keys) for list filters) |
+| `keys` | `create`, `update`, `list`, `revoke`, `rotate`, `team-create`, `team-update`, `export`, `import` (`--priority high\|normal\|low` and `--max-in-flight N` on create / team-create; see [`keys`](#keys) for list filters) |
 | `enterprise` | `bootstrap`, `policy-sync`, `policy-status` |
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 | `audit` | `list`, `export`, `verify` |

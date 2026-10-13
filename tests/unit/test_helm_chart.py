@@ -783,6 +783,25 @@ class TestHelmAuthRateLimitFrontier:
         assert 'name: "daari-frontier"' in rendered
         assert 'key: "token"' in rendered
 
+    def test_rate_limit_max_in_flight_and_models_env(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "rateLimit.enabled=true",
+            "--set",
+            "rateLimit.maxInFlight=8",
+            "--set-json",
+            'rateLimit.models={"llama3-70b":{"rpm":10,"tpm":20000,"max_in_flight":2}}',
+        )
+        assert re.search(
+            r"name: DAARI_RATE_LIMIT__MAX_IN_FLIGHT\s+value: \"8\"", rendered
+        )
+        assert "DAARI_RATE_LIMIT__MODELS" in rendered
+        assert "llama3-70b" in rendered
+        assert "max_in_flight" in rendered
+        values = _load_yaml(VALUES)
+        assert values["rateLimit"].get("maxInFlight", 0) == 0
+        assert values["rateLimit"].get("models", {}) == {}
+
     def test_rate_limit_reuses_cache_redis_without_duplicate_url(
         self, helm_available: None
     ) -> None:

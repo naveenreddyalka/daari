@@ -34,6 +34,7 @@ def _app_with_keys(settings, tmp_path, *, master: str = "master-sekret"):
         rpm=60,
         tpm=10000,
         rpd=500,
+        max_in_flight=4,
     )
     created = store.create(
         "alice",
@@ -45,6 +46,7 @@ def _app_with_keys(settings, tmp_path, *, master: str = "master-sekret"):
         rpm=10,
         tpm=1000,
         rpd=50,
+        max_in_flight=2,
         expires_at="2099-01-01T00:00:00+00:00",
     )
     app = create_app(settings)
@@ -90,6 +92,7 @@ async def test_keys_requires_master_when_sso_off(settings, tmp_path):
         assert row["team_id"] == created.key.team_id
         assert row["tier_cap"] == "L3"
         assert row["expires_at"] == "2099-01-01T00:00:00+00:00"
+        assert row["max_in_flight"] == 2
         assert "budgets" in row or "budget_windows" in row or "daily_budget_usd" in row
         assert "spend" in row
         _assert_no_secrets(body)
@@ -119,6 +122,7 @@ async def test_teams_requires_master_when_sso_off(settings, tmp_path):
         assert row["team_id"] == team.team_id
         assert row["name"] == "eng"
         assert row["rpm"] == 60
+        assert row["max_in_flight"] == 4
         assert "spend" in row
         _assert_no_secrets(body)
 

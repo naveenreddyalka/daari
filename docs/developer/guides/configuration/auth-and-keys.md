@@ -112,13 +112,16 @@ rate_limit:
 
 ### Per-key / per-team concurrency
 
-Virtual keys and teams accept optional `max_in_flight` (0 = unlimited). When
-set, admission tracks a scoped gauge (`inflight:key:{id}` /
-`inflight:team:{id}`) on the same Redis/SQLite counter backend as RPM/TPM.
-Overflow is `503` + `Retry-After` with `X-RateLimit-Scope` of
-`key_concurrency` or `team_concurrency` (global gate stays `concurrency`).
+Virtual keys and teams accept optional `max_in_flight` (0 = unlimited) via
+`daari keys create --max-in-flight N` / `daari keys team-create --max-in-flight N`
+(also on the store API). When set, admission tracks a scoped gauge
+(`inflight:key:{id}` / `inflight:team:{id}`) on the same Redis/SQLite counter
+backend as RPM/TPM. Overflow is `503` + `Retry-After` with `X-RateLimit-Scope`
+of `key_concurrency` or `team_concurrency` (global gate stays `concurrency`).
 `daari_rejects_total` uses those same kind labels so dashboards can separate
-key monopolization from fleet-wide admission pressure.
+key monopolization from fleet-wide admission pressure. Scrapes expose
+`daari_in_flight{scope,id}` / `daari_in_flight_max{scope,id}` for keys, teams,
+and named `rate_limit.models` with active caps.
 
 ### Named per-model map
 
