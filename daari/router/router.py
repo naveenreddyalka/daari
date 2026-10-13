@@ -512,6 +512,7 @@ class Router:
         frontier_slim_prompts: bool = True,
         frontier_max_history: int = 8,
         guardrails: Any | None = None,
+        audit: Any | None = None,
         boundaries: Any | None = None,
         capability_catalog: Any | None = None,
         otel_enabled: bool = False,
@@ -621,6 +622,7 @@ class Router:
         self.frontier_slim_prompts = frontier_slim_prompts
         self.frontier_max_history = frontier_max_history
         self.guardrails = guardrails
+        self.audit = audit
         self.boundaries = boundaries
         self.capability_catalog = capability_catalog
         self.otel_enabled = otel_enabled
@@ -866,9 +868,42 @@ class Router:
                 detail=hit.detail,
             )
             if hasattr(self.metrics, "record_guardrail"):
-                self.metrics.record_guardrail(hit.action)
+                self.metrics.record_guardrail(
+                    hit.action, kind=getattr(hit, "kind", None) or "deny"
+                )
+            if hit.action == "block":
+                self._audit_guardrail_block(hit)
         if warning:
             add_step("guardrail_warning", warning=warning)
+
+    def _audit_guardrail_block(self, hit: Any) -> None:
+        """Write a chat guardrail block to the audit ledger (#1610)."""
+        audit = self.audit
+        if audit is None:
+            settings = getattr(self.guardrails, "settings", None)
+            if settings is not None:
+                try:
+                    from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                    audit = audit_log_from_settings(settings)
+                except Exception:
+                    return
+        if audit is None or not getattr(audit, "enabled", True):
+            return
+        try:
+            audit.record(
+                actor="anonymous",
+                role="system",
+                action="guardrail.blocked",
+                detail={
+                    "rule": hit.rule,
+                    "stage": hit.stage,
+                    "action": hit.action,
+                    "kind": getattr(hit, "kind", None) or "deny",
+                },
+            )
+        except Exception:
+            return
 
     def _incremental_output_scanner(self) -> Any | None:
         """Holdback scanner when guardrails.stream_mode=incremental (#375)."""
@@ -950,7 +985,11 @@ class Router:
                     return policy
                 policy.warning = f"boundary_out:{decision.reason}"
         if self.guardrails is not None and getattr(self.guardrails, "enabled", False):
-            inbound = self.guardrails.check_input(request)
+            check_input = getattr(self.guardrails, "check_input_async", None)
+            if check_input is not None:
+                inbound = await check_input(request)
+            else:
+                inbound = self.guardrails.check_input(request)
             if inbound.hits:
                 self._apply_guardrail_hits(inbound.hits, warning=inbound.warning)
             if inbound.blocked:
@@ -978,6 +1017,25 @@ class Router:
         if self.guardrails is None or not getattr(self.guardrails, "enabled", False):
             return response
         outbound = self.guardrails.check_output(response)
+        if outbound.hits:
+            self._apply_guardrail_hits(outbound.hits, warning=outbound.warning)
+        if outbound.response is not None:
+            response = outbound.response
+        if outbound.warning and not response.daari_meta.warning:
+            response.daari_meta.warning = outbound.warning
+        return response
+
+    async def _apply_output_policy_async(
+        self, response: InternalResponse
+    ) -> InternalResponse:
+        """Async output guardrails with decision-rule offload (#1610)."""
+        if self.guardrails is None or not getattr(self.guardrails, "enabled", False):
+            return response
+        check_output = getattr(self.guardrails, "check_output_async", None)
+        if check_output is not None:
+            outbound = await check_output(response)
+        else:
+            outbound = self.guardrails.check_output(response)
         if outbound.hits:
             self._apply_guardrail_hits(outbound.hits, warning=outbound.warning)
         if outbound.response is not None:
@@ -1056,7 +1114,7 @@ class Router:
             raise
         if boundary_meta is not None:
             response.daari_meta.boundary = boundary_meta
-        response = self._apply_output_policy(response)
+        response = await self._apply_output_policy_async(response)
         if input_warning and not response.daari_meta.warning:
             response.daari_meta.warning = input_warning
         self._apply_lifecycle_warning(request, response)
@@ -2999,7 +3057,7 @@ class Router:
                     served = served.model_copy(update={"content": scanner.scanned_text})
                     incremental_emitted = True
                 elif not tool_calls_sent and served.content.strip():
-                    served = self._apply_output_policy(served)
+                    served = await self._apply_output_policy_async(served)
 
                 served_tier = served.daari_meta.tier or tier
                 served_model = served.daari_meta.model or served.model or ollama_model
@@ -3894,7 +3952,7 @@ class Router:
                     self._record_stream_guardrail(scanner)
                     served = served.model_copy(update={"content": scanner.scanned_text})
                 else:
-                    served = self._apply_output_policy(served)
+                    served = await self._apply_output_policy_async(served)
 
             if served.content != streamed_text and not tool_use_sent:
                 outcome.note(served.daari_meta.tier or tier)
@@ -6136,6 +6194,7 @@ class AppContext:
             frontier_compress_ratio=settings.frontier.compress_target_ratio,
             max_tier_for_chat=settings.routing.max_tier_for_chat,
             guardrails=_guardrails_from_settings(settings),
+            audit=audit_log_from_settings(settings),
             boundaries=_boundaries_from_settings(settings, embedder=embedder),
             capability_catalog=_catalog_from_settings(settings),
             otel_enabled=bool(settings.observability.otel),

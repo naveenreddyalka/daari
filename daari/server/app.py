@@ -551,6 +551,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         if metrics is not None and hasattr(metrics, "record_reject"):
                             kind = "request_quota" if exceeded.quota == "requests" else "budget"
                             metrics.record_reject(kind)
+                        from daari.enterprise.audit import record_budget_exceeded
+                        from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                        record_budget_exceeded(
+                            audit_log_from_settings(resolved),
+                            key_id=getattr(key, "key_id", None) if key is not None else None,
+                            team_id=getattr(team, "team_id", None) if team is not None else None,
+                            scope=str(getattr(exceeded, "scope", None) or ""),
+                            window=str(getattr(exceeded, "window", None) or ""),
+                            remaining=getattr(exceeded, "remaining", None),
+                            limit=getattr(exceeded, "limit", None),
+                            quota=str(getattr(exceeded, "quota", None) or "") or None,
+                        )
                         return JSONResponse(
                             status_code=402,
                             content={"error": budget_error(**err_kwargs)},
@@ -749,6 +762,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 message = f"{bucket} {scope} limit exceeded."
             else:
                 message = f"{scope} limit exceeded."
+            ctx = getattr(request.app.state, "ctx", None)
+            settings = getattr(ctx, "settings", None) if ctx is not None else None
+            if settings is not None:
+                from daari.enterprise.audit import record_rate_limit_exceeded
+                from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                record_rate_limit_exceeded(
+                    audit_log_from_settings(settings),
+                    key_id=str(key_id) if key_id else None,
+                    team_id=str(team_id) if team_id else None,
+                    model=model,
+                    scope=scope,
+                    bucket=bucket or None,
+                    remaining=int(getattr(decision, "remaining", 0) or 0),
+                    limit=int(getattr(decision, "limit", 0) or 0),
+                )
             return JSONResponse(
                 status_code=429,
                 content={
@@ -778,6 +807,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
             if metrics is not None and hasattr(metrics, "record_reject"):
                 metrics.record_reject("concurrency")
+            ctx = getattr(request.app.state, "ctx", None)
+            settings = getattr(ctx, "settings", None) if ctx is not None else None
+            if settings is not None:
+                from daari.enterprise.audit import record_concurrency_exceeded
+                from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                record_concurrency_exceeded(
+                    audit_log_from_settings(settings),
+                    key_id=str(key_id) if key_id else None,
+                    team_id=str(team_id) if team_id else None,
+                    model=model,
+                    scope="concurrency",
+                    remaining=int(getattr(slot, "remaining", 0) or 0),
+                    limit=int(getattr(slot, "limit", 0) or 0),
+                )
             headers = slot.headers()
             headers.setdefault("Retry-After", str(limiter.retry_after_seconds))
             return JSONResponse(
@@ -818,6 +862,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             reject_kind = gauge_decision.bucket or "key_concurrency"
             if metrics is not None and hasattr(metrics, "record_reject"):
                 metrics.record_reject(reject_kind)
+            ctx = getattr(request.app.state, "ctx", None)
+            settings = getattr(ctx, "settings", None) if ctx is not None else None
+            if settings is not None:
+                from daari.enterprise.audit import record_concurrency_exceeded
+                from daari.enterprise.postgres_audit import audit_log_from_settings
+
+                record_concurrency_exceeded(
+                    audit_log_from_settings(settings),
+                    key_id=str(key_id) if key_id else None,
+                    team_id=str(team_id) if team_id else None,
+                    model=model,
+                    scope=reject_kind,
+                    remaining=int(getattr(gauge_decision, "remaining", 0) or 0),
+                    limit=int(getattr(gauge_decision, "limit", 0) or 0),
+                )
             headers = gauge_decision.headers()
             headers.setdefault("Retry-After", str(limiter.retry_after_seconds))
             return JSONResponse(

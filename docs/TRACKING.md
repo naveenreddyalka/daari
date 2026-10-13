@@ -6691,6 +6691,31 @@ and `/v1/systemone` scenarios; skips LiteLLM when the peer lacks the route;
 report section with ms + speedup. Covered by
 `tests/unit/test_bench_vs_litellm.py`.
 
+### Guardrails decision-rule data plane ([#1610](https://github.com/naveenreddyalka/daari/issues/1610))
+
+<!-- tracking:#1610 -->
+**Status:** Done (2026-10-12). Decision predicates offload via
+`asyncio.to_thread` / async client; incremental streams defer decision rules
+to final flush; chat blocks write `guardrail.blocked` audit rows;
+`daari_guardrail_trips_total` gains a `kind` label; optional per-rule
+`timeout_seconds`. Covered by `tests/unit/test_guardrails_decision.py`.
+
+### Teams metadata export/import + Postgres parity ([#1611](https://github.com/naveenreddyalka/daari/issues/1611))
+
+<!-- tracking:#1611 -->
+**Status:** Done (2026-10-12). Team `metadata_json` (`max_in_flight`,
+`model_group_budgets`, `model_max_budget`) round-trips through keys
+export/import; Postgres `create_team` / export / import persist the same
+fields. Covered by `tests/unit/test_keys_export_import.py`.
+
+### Audit budget / rate-limit / concurrency rejects ([#1616](https://github.com/naveenreddyalka/daari/issues/1616))
+
+<!-- tracking:#1616 -->
+**Status:** Done (2026-10-12). Hard 402/429/503 control-plane rejects write
+`budget.exceeded`, `rate_limit.exceeded`, and `concurrency.exceeded` audit
+rows (scope detail, no prompts/secrets). Covered by
+`tests/unit/test_reject_audit.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

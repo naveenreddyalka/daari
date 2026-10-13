@@ -1568,7 +1568,8 @@ class VirtualKeyStore:
         with self._lock, self._connect() as conn:
             team_rows = conn.execute(
                 "SELECT team_id, name, budget_windows_json, created_at, region_pin, rpm, tpm,"
-                " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                " metadata_json"
                 " FROM teams ORDER BY created_at ASC, team_id ASC"
             ).fetchall()
             key_rows = conn.execute(
@@ -1602,6 +1603,7 @@ class VirtualKeyStore:
                 "priority": coerce_priority(row[11])
                 if len(row) > 11 and row[11] is not None
                 else "normal",
+                "metadata": _parse_metadata(row[12]) if len(row) > 12 else {},
             }
             for row in team_rows
         ]
@@ -1703,13 +1705,21 @@ class VirtualKeyStore:
                 team_prio = coerce_priority(team.get("priority") or "normal")
                 team_models = decode_names(team.get("allowed_models"))
                 team_groups = decode_names(team.get("model_groups"))
+                team_meta = (
+                    dict(team.get("metadata"))
+                    if isinstance(team.get("metadata"), dict)
+                    else {}
+                )
+                # Legacy docs may omit metadata; keep empty defaults (#1611).
                 created_at = team.get("created_at") or datetime.now(timezone.utc).isoformat()
                 existing = conn.execute(
                     "SELECT name, budget_windows_json, region_pin, rpm, tpm, created_at,"
-                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority"
+                    " allowed_models_json, model_groups_json, rpd, cache_scope, priority,"
+                    " metadata_json"
                     " FROM teams WHERE team_id = ?",
                     (team_id,),
                 ).fetchone()
+                meta_json = json.dumps(team_meta)
                 desired = (
                     name,
                     self._windows_json(windows),
@@ -1721,6 +1731,7 @@ class VirtualKeyStore:
                     rpd,
                     team_scope,
                     team_prio,
+                    meta_json,
                 )
                 if existing is None:
                     summary["teams"]["created"] += 1
@@ -1728,8 +1739,8 @@ class VirtualKeyStore:
                         conn.execute(
                             "INSERT INTO teams (team_id, name, budget_windows_json,"
                             " created_at, region_pin, rpm, tpm, allowed_models_json,"
-                            " model_groups_json, rpd, cache_scope, priority)"
-                            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            " model_groups_json, rpd, cache_scope, priority, metadata_json)"
+                            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             (team_id, *desired[:2], created_at, *desired[2:]),
                         )
                 else:
@@ -1741,6 +1752,9 @@ class VirtualKeyStore:
                         int(existing[4] or 0),
                     )
                     # Normalize window JSON for comparison.
+                    current_meta = (
+                        _parse_metadata(existing[11]) if len(existing) > 11 else {}
+                    )
                     current_norm = (
                         current[0],
                         self._windows_json(self._parse_windows(current[1])),
@@ -1756,6 +1770,7 @@ class VirtualKeyStore:
                         coerce_priority(existing[10])
                         if len(existing) > 10 and existing[10] is not None
                         else "normal",
+                        current_meta,
                     )
                     desired_norm = (
                         desired[0],
@@ -1768,6 +1783,7 @@ class VirtualKeyStore:
                         rpd,
                         team_scope,
                         team_prio,
+                        team_meta,
                     )
                     if current_norm == desired_norm:
                         summary["teams"]["skipped"] += 1
@@ -1778,7 +1794,7 @@ class VirtualKeyStore:
                                 "UPDATE teams SET name = ?, budget_windows_json = ?,"
                                 " region_pin = ?, rpm = ?, tpm = ?,"
                                 " allowed_models_json = ?, model_groups_json = ?, rpd = ?,"
-                                " cache_scope = ?, priority = ?"
+                                " cache_scope = ?, priority = ?, metadata_json = ?"
                                 " WHERE team_id = ?",
                                 (*desired, team_id),
                             )

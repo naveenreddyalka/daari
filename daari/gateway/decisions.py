@@ -210,56 +210,7 @@ def default_local_model(settings: Any) -> str:
     return model or "nimble"
 
 
-def evaluate_guardrail_predicate(
-    *,
-    text: str,
-    statement: str,
-    model: str,
-    base_url: str,
-    client: httpx.Client | None = None,
-    timeout_seconds: float = 5.0,
-    settings: Any = None,
-) -> float:
-    """Sync local `/v1/systemone` predicate for decision guardrails (#1589).
-
-    Returns probability in ``[0, 1]``. Raises ``ValueError`` when ``model`` is a
-    frontier decisions id (no silent egress). Raises ``RuntimeError`` on transport
-    / shape failures so callers can apply ``on_error``.
-    """
-    name = (model or "").strip()
-    if not name:
-        raise RuntimeError("decision guardrail model is empty")
-    if is_frontier_decisions_model(name):
-        raise ValueError(
-            f"decision guardrails require a local decisions model, not frontier {name!r}"
-        )
-    if not is_local_decisions_model(name, settings=settings):
-        raise ValueError(f"decision guardrails require a local decisions model, got {name!r}")
-    base = (base_url or "").strip().rstrip("/")
-    if not base:
-        raise RuntimeError("ollama.base_url is empty")
-    url = f"{base}/v1/systemone"
-    payload = {
-        "model": name,
-        "state": text or "",
-        "questions": {
-            "guardrail": {
-                "type": "boolean",
-                "instructions": (statement or "").strip() or "Is this a policy violation?",
-            }
-        },
-    }
-    owns = client is None
-    http = client or httpx.Client(timeout=timeout_seconds)
-    try:
-        response = http.post(url, json=payload, timeout=timeout_seconds)
-        response.raise_for_status()
-        data = response.json()
-    except Exception as exc:
-        raise RuntimeError(summarize_upstream_failure(exc)) from exc
-    finally:
-        if owns:
-            http.close()
+def _parse_guardrail_probability(data: Any) -> float:
     if not isinstance(data, dict):
         raise RuntimeError("systemone returned non-object JSON")
     answers = data.get("answers")
@@ -277,6 +228,112 @@ def evaluate_guardrail_predicate(
     if "value" in answer:
         return 1.0 if bool(answer["value"]) else 0.0
     raise RuntimeError("systemone answer missing probability")
+
+
+def _guardrail_predicate_payload(*, text: str, statement: str, model: str) -> dict[str, Any]:
+    return {
+        "model": model,
+        "state": text or "",
+        "questions": {
+            "guardrail": {
+                "type": "boolean",
+                "instructions": (statement or "").strip() or "Is this a policy violation?",
+            }
+        },
+    }
+
+
+def _resolve_guardrail_predicate_target(
+    *,
+    model: str,
+    base_url: str,
+    settings: Any = None,
+) -> tuple[str, str]:
+    name = (model or "").strip()
+    if not name:
+        raise RuntimeError("decision guardrail model is empty")
+    if is_frontier_decisions_model(name):
+        raise ValueError(
+            f"decision guardrails require a local decisions model, not frontier {name!r}"
+        )
+    if not is_local_decisions_model(name, settings=settings):
+        raise ValueError(f"decision guardrails require a local decisions model, got {name!r}")
+    base = (base_url or "").strip().rstrip("/")
+    if not base:
+        raise RuntimeError("ollama.base_url is empty")
+    return name, f"{base}/v1/systemone"
+
+
+def evaluate_guardrail_predicate(
+    *,
+    text: str,
+    statement: str,
+    model: str,
+    base_url: str,
+    client: httpx.Client | None = None,
+    timeout_seconds: float = 5.0,
+    settings: Any = None,
+) -> float:
+    """Sync local `/v1/systemone` predicate for decision guardrails (#1589).
+
+    Returns probability in ``[0, 1]``. Raises ``ValueError`` when ``model`` is a
+    frontier decisions id (no silent egress). Raises ``RuntimeError`` on transport
+    / shape failures so callers can apply ``on_error``.
+    """
+    name, url = _resolve_guardrail_predicate_target(
+        model=model, base_url=base_url, settings=settings
+    )
+    payload = _guardrail_predicate_payload(text=text, statement=statement, model=name)
+    owns = client is None
+    http = client or httpx.Client(timeout=timeout_seconds)
+    try:
+        response = http.post(url, json=payload, timeout=timeout_seconds)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        raise RuntimeError(summarize_upstream_failure(exc)) from exc
+    finally:
+        if owns:
+            http.close()
+    return _parse_guardrail_probability(data)
+
+
+async def evaluate_guardrail_predicate_async(
+    *,
+    text: str,
+    statement: str,
+    model: str,
+    base_url: str,
+    client: httpx.Client | httpx.AsyncClient | None = None,
+    timeout_seconds: float = 5.0,
+    settings: Any = None,
+) -> float:
+    """Async / thread-offloaded predicate so decision rules never stall the loop (#1610)."""
+    import asyncio
+
+    if isinstance(client, httpx.AsyncClient):
+        name, url = _resolve_guardrail_predicate_target(
+            model=model, base_url=base_url, settings=settings
+        )
+        payload = _guardrail_predicate_payload(text=text, statement=statement, model=name)
+        try:
+            response = await client.post(url, json=payload, timeout=timeout_seconds)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            raise RuntimeError(summarize_upstream_failure(exc)) from exc
+        return _parse_guardrail_probability(data)
+
+    return await asyncio.to_thread(
+        evaluate_guardrail_predicate,
+        text=text,
+        statement=statement,
+        model=model,
+        base_url=base_url,
+        client=client,
+        timeout_seconds=timeout_seconds,
+        settings=settings,
+    )
 
 
 def _caller_client_id(request: Request) -> str | None:
