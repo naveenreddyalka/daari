@@ -882,3 +882,118 @@ async def test_decisions_missing_idempotency_key_is_noop(
         await client.post("/v1/decisions", json=_DECISIONS_BODY)
         await client.post("/v1/decisions", json=_DECISIONS_BODY)
     assert len(seen) == 2
+
+
+_SYSTEMONE_BODY = {
+    "model": "nimble",
+    "state": "Our checkout has returned 500 errors since 9am.",
+    "questions": {
+        "label": {
+            "type": "choice",
+            "instructions": "Which label fits this ticket?",
+            "criteria": {
+                "billing": "Payments and refunds",
+                "bug": "Software errors",
+                "account": "Login and account access",
+            },
+        }
+    },
+}
+
+_SYSTEMONE_OK = {
+    "model": "nimble",
+    "answers": {
+        "label": {
+            "type": "choice",
+            "choice": "bug",
+            "probabilities": {"billing": 0.01, "bug": 0.98, "account": 0.01},
+            "confidence": 0.9,
+        }
+    },
+    "usage": {"input_tokens": 174, "output_tokens": 1},
+}
+
+
+@pytest.mark.asyncio
+async def test_systemone_idempotency_replays_without_second_upstream(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_httpx(monkeypatch, "daari.gateway.systemone", handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    headers = {"Idempotency-Key": "sys1-replay"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post("/v1/systemone", json=_SYSTEMONE_BODY, headers=headers)
+        second = await client.post(
+            "/v1/systemone", json=_SYSTEMONE_BODY, headers=headers
+        )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200
+    assert first.content == second.content
+    assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_systemone_idempotency_conflict_on_body_mismatch(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_httpx(monkeypatch, "daari.gateway.systemone", handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    headers = {"Idempotency-Key": "sys1-conflict"}
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        first = await client.post(
+            "/v1/systemone", json=_SYSTEMONE_BODY, headers=headers
+        )
+        second = await client.post(
+            "/v1/systemone",
+            json={**_SYSTEMONE_BODY, "state": "different ticket text"},
+            headers=headers,
+        )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 409
+    assert second.json()["error"]["type"] == CONFLICT_TYPE
+
+
+@pytest.mark.asyncio
+async def test_systemone_missing_idempotency_key_is_noop(
+    settings, monkeypatch, tmp_path
+):
+    import httpx
+
+    settings.trace.path = str(tmp_path / "traces.sqlite3")
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_SYSTEMONE_OK)
+
+    _patch_httpx(monkeypatch, "daari.gateway.systemone", handler)
+    settings.ollama.base_url = "http://ollama.local:11434"
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+        await client.post("/v1/systemone", json=_SYSTEMONE_BODY)
+    assert len(seen) == 2

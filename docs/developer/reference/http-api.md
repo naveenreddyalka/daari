@@ -104,4 +104,4 @@ Non-terminal (in-flight / `queued`) responses return **409** when `stream=true`.
 
 ## Systemone
 
-`POST /v1/systemone` proxies Ollama decision models. The body accepts optional `images` (list of base64 strings, Ollama 0.35.1+ Clef multimodal) forwarded verbatim when present; omit the field for text-only scoring.
+`POST /v1/systemone` proxies Ollama decision models. The body accepts optional `images` (list of base64 strings, Ollama 0.35.1+ Clef multimodal) forwarded verbatim when present; omit the field for text-only scoring. Honors `Idempotency-Key` with the same replay / 409 conflict / in-flight wait semantics as `POST /v1/decisions`.
