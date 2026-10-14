@@ -16,6 +16,7 @@ def test_infer_modality_from_tier():
     assert infer_modality("moderations") == "moderations"
     assert infer_modality("rerank") == "rerank"
     assert infer_modality("ocr") == "ocr"
+    assert infer_modality("mcp") == "mcp"
     assert infer_modality("L3", modality="ocr") == "ocr"
 
 
@@ -28,6 +29,7 @@ def test_genai_operation_names():
     assert genai_operation_name("moderations") == "moderation"
     assert genai_operation_name("rerank") == "rerank"
     assert genai_operation_name("ocr") == "ocr"
+    assert genai_operation_name("mcp") == "mcp"
 
 
 def test_tokens_and_modality_request_series():

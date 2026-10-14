@@ -269,6 +269,26 @@ def _meter_proxy_call(ctx: Any, request: Request, *, tool: str, arguments: dict[
     )
 
 
+def _record_proxy_call(ctx: Any, *, tool: str, outcome: str) -> None:
+    """Bump Prom series for /mcp/proxy tools/call outcomes (#1632)."""
+    metrics = getattr(ctx, "metrics", None)
+    if metrics is None:
+        metrics = getattr(getattr(ctx, "router", None), "metrics", None)
+    if metrics is None:
+        return
+    tool_label = f"proxy.{(tool or 'unknown').strip()}"
+    if hasattr(metrics, "record_mcp_tool_call"):
+        try:
+            metrics.record_mcp_tool_call(tool=tool_label, outcome=outcome)
+        except Exception:
+            pass
+    if outcome == "ok" and hasattr(metrics, "record"):
+        try:
+            metrics.record("mcp", modality="mcp", latency_ms=0)
+        except Exception:
+            pass
+
+
 async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
     ctx = request.app.state.ctx
     settings = ctx.settings
@@ -334,6 +354,7 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
     policy = _resolve_tool_policy(request, ctx)
     if policy is not None and hasattr(policy, "allows") and not policy.allows(name):
         log_gateway_event("mcp_openapi_proxy_denied", {"spec_id": spec_id, "tool": name})
+        _record_proxy_call(ctx, tool=name, outcome="deny")
         return _error(403, "tool_denied", f"tool {name!r} denied by mcp policy")
 
     from daari.enterprise.postgres_audit import audit_log_from_settings
@@ -352,6 +373,7 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
             "mcp_openapi_proxy_guardrail",
             {"spec_id": spec_id, "tool": name, "rule": rule, "direction": "input"},
         )
+        _record_proxy_call(ctx, tool=name, outcome="guardrail")
         return _error(
             403,
             "guardrail_blocked",
@@ -360,6 +382,7 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
 
     match = next((tool for tool in tools if tool["name"] == name), None)
     if match is None:
+        _record_proxy_call(ctx, tool=name, outcome="error")
         return _error(404, "not_found", f"tool {name!r} not in spec {spec_id!r}")
 
     meta = match.get("_daari") if isinstance(match.get("_daari"), dict) else {}
@@ -400,6 +423,7 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
             "mcp_openapi_proxy_call_error",
             {"spec_id": spec_id, "tool": name, "error": str(exc)[:200]},
         )
+        _record_proxy_call(ctx, tool=name, outcome="error")
         return _error(503, "upstream_error", f"upstream request failed: {exc}")
 
     _meter_proxy_call(ctx, request, tool=name, arguments=arguments)
@@ -413,6 +437,8 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         "status_code": upstream.status_code,
     }
     result, _ = guardrails.check_tool_result(name, result)
+    outcome = "error" if upstream.status_code >= 400 or result.get("isError") else "ok"
+    _record_proxy_call(ctx, tool=name, outcome=outcome)
     log_gateway_event(
         "mcp_openapi_proxy_call",
         {"spec_id": spec_id, "tool": name, "status": upstream.status_code},

@@ -1195,6 +1195,8 @@ async def _handle_tasks_get(
             request,
             _jsonrpc_error(rpc_id, INVALID_PARAMS, f"Unknown taskId: {task_id}"),
         )
+    if hasattr(store, "_record"):
+        store._record("polled", tool=task.tool, task_id=task.task_id)
     return _rpc_response(request, _jsonrpc_result(rpc_id, store.as_public(task)))
 
 

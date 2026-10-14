@@ -6796,6 +6796,16 @@ Retention prune, backup catalog, doctor fleet warnings, and Helm
 `postgres.enabled` cover the shared backend. Covered by
 `tests/unit/test_postgres_request_log.py`.
 
+### MCP proxy/task Prometheus parity ([#1632](https://github.com/naveenreddyalka/daari/issues/1632))
+
+<!-- tracking:#1632 -->
+**Status:** Done (2026-10-14). Register `mcp` modality so `/mcp/proxy`
+spans use `gen_ai.operation.name=mcp`; proxy tools/call bumps
+`daari_mcp_tool_calls_total` (`proxy.<name>`) and modality request
+series; MCP tasks emit `daari_mcp_tasks_total` + OTel spans; Grafana
+MCP panel includes proxy/task queries. Covered by
+`tests/unit/test_mcp_proxy_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
