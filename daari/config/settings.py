@@ -1631,6 +1631,22 @@ class McpServerSettings(BaseModel):
             "standard URN (#1319)."
         ),
     )
+    rpm: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Per-server egress RPM ceiling shared across callers (0 = unlimited). "
+            "Independent of key-family ``mcp`` RPM; both counters apply (#1620)."
+        ),
+    )
+    tpm: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Per-server egress TPM ceiling shared across callers (0 = unlimited). "
+            "Independent of key-family ``mcp`` TPM; both counters apply (#1620)."
+        ),
+    )
 
 
 class McpServerPolicySettings(BaseModel):
@@ -1958,7 +1974,10 @@ class IntegrationsSettings(BaseModel):
         default_factory=list,
         description=(
             "External MCP servers daari can call. Each entry: id, url, optional "
-            "token/triggers. Opt-in OBO (#1319): auth_type=oauth2_token_exchange "
+            "token/triggers; optional rpm/tpm (0=unlimited) per-server egress "
+            "ceilings on tools/call and tools/list (429 + Retry-After + "
+            "X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; "
+            "both apply) (#1620). Opt-in OBO (#1319): auth_type=oauth2_token_exchange "
             "with token_exchange_endpoint, client_id, client_secret; optional "
             "audience, scopes, subject_token_type (default access_token)."
         ),

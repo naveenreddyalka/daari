@@ -641,6 +641,57 @@ class RateLimiter:
                 return decision
         return tightest
 
+    def check_mcp_server(
+        self,
+        *,
+        server_id: str,
+        tokens: int = 1,
+        rpm: int = 0,
+        tpm: int = 0,
+    ) -> RateLimitDecision:
+        """Server-scoped egress RPM/TPM independent of key-family mcp (#1620)."""
+        sid = str(server_id or "").strip()
+        server_rpm = max(0, int(rpm or 0))
+        server_tpm = max(0, int(tpm or 0))
+        now = time.time()
+        reset = (int(now // WINDOW_SECONDS) + 1) * WINDOW_SECONDS
+        tightest = RateLimitDecision(
+            allowed=True,
+            limit=0,
+            remaining=0,
+            reset_epoch=reset,
+            backend=self.backend.name,
+        )
+        if not sid or (server_rpm <= 0 and server_tpm <= 0):
+            return tightest
+        bucket = f"mcp_server:{sid}"
+        checks: list[tuple[str, str, int, int]] = []
+        if server_rpm > 0:
+            checks.append((f"rpm:mcp_server:{sid}", "rpm", 1, server_rpm))
+        if server_tpm > 0:
+            checks.append(
+                (f"tpm:mcp_server:{sid}", "tpm", max(1, int(tokens)), server_tpm)
+            )
+        for counter_key, scope, amount, limit in checks:
+            count = self._increment(counter_key, amount, window_seconds=WINDOW_SECONDS)
+            remaining = max(0, limit - count)
+            denied = count > limit
+            decision = RateLimitDecision(
+                allowed=not denied,
+                limit=limit,
+                remaining=remaining,
+                reset_epoch=reset,
+                retry_after=self.retry_after_seconds if denied else None,
+                scope=scope,
+                backend=self.backend.name,
+                bucket=bucket,
+            )
+            if tightest.limit <= 0 or remaining < tightest.remaining or not decision.allowed:
+                tightest = decision
+            if not decision.allowed:
+                return decision
+        return tightest
+
     def _wake_next_locked(self) -> None:
         while self._waiters and self.in_flight < self.max_in_flight:
             _rank, _seq, fut = heapq.heappop(self._waiters)

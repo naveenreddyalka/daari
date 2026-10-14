@@ -297,6 +297,13 @@ egress `mcp_*` tools write a zero-cost count row when no model cost is known
 key can set `--rate-family mcp:30` without starving `chat`. Unset families
 keep the global key rpm/tpm only.
 
+Each `integrations.mcp_servers[]` entry may also set optional `rpm` / `tpm`
+(0 = unlimited) ceilings that apply to **egress** `tools/call` and
+`tools/list` for that server id across all callers. Exhaustion returns HTTP
+**429** with `Retry-After` and `X-RateLimit-Scope: mcp_server:<id>`. These
+counters are independent of the key-family `mcp` budget — both are enforced
+(whichever is tighter denies first).
+
 daari's MCP egress client sends the MCP 2026-07-28 routing headers
 `Mcp-Method` and `Mcp-Name` on outbound requests, and the ingress honours the
 same headers for policy when a client supplies them. When those headers are
