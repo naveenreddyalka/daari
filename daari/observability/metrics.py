@@ -28,6 +28,7 @@ MODALITIES = frozenset(
         "systemone",
         "decisions",
         "ocr",
+        "mcp",
     }
 )
 
@@ -43,6 +44,7 @@ GENAI_OPERATION_NAMES: dict[str, str] = {
     "systemone": "systemone",
     "decisions": "decisions",
     "ocr": "ocr",
+    "mcp": "mcp",
 }
 
 
@@ -69,6 +71,8 @@ def infer_modality(tier: str, modality: str | None = None) -> str:
         return "decisions"
     if t == "ocr":
         return "ocr"
+    if t == "mcp":
+        return "mcp"
     return "chat"
 
 
@@ -166,6 +170,7 @@ class Metrics:
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
     mcp_tool_calls: dict[str, int] = field(default_factory=dict)
+    mcp_tasks: dict[str, int] = field(default_factory=dict)
     # server:outcome:circuit → count for MCP egress resilience (#1203).
     mcp_egress: dict[str, int] = field(default_factory=dict)
     cancelled: dict[str, int] = field(default_factory=dict)
@@ -281,6 +286,12 @@ class Metrics:
         with self._lock:
             self.mcp_tool_calls[key] = self.mcp_tool_calls.get(key, 0) + 1
 
+    def record_mcp_task(self, *, outcome: str) -> None:
+        """MCP task create/poll/cancel/complete/fail outcomes (#1632)."""
+        label = (outcome or "").strip().lower() or "error"
+        with self._lock:
+            self.mcp_tasks[label] = self.mcp_tasks.get(label, 0) + 1
+
     def record_mcp_egress(self, *, server: str, outcome: str, circuit: str = "closed") -> None:
         """MCP egress call outcome with circuit-breaker state (#1203)."""
         key = f"{server}:{outcome}:{circuit}"
@@ -359,6 +370,7 @@ class Metrics:
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
+                "mcp_tasks": dict(self.mcp_tasks),
                 "mcp_egress": dict(self.mcp_egress),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,

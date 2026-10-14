@@ -407,7 +407,7 @@ def render_prometheus(
     mcp_calls = snap.get("mcp_tool_calls") or {}
     if mcp_calls:
         lines.append(
-            "# HELP daari_mcp_tool_calls_total MCP ingress tools/call outcomes "
+            "# HELP daari_mcp_tool_calls_total MCP ingress/proxy tools/call outcomes "
             "by tool and outcome (ok, deny, error, guardrail)."
         )
         lines.append("# TYPE daari_mcp_tool_calls_total counter")
@@ -415,6 +415,18 @@ def render_prometheus(
             tool, _, outcome = str(key).partition(":")
             lines.append(
                 f"daari_mcp_tool_calls_total{_labels(tool=tool, outcome=outcome)} {int(count)}"
+            )
+
+    mcp_tasks = snap.get("mcp_tasks") or {}
+    if mcp_tasks:
+        lines.append(
+            "# HELP daari_mcp_tasks_total MCP task lifecycle outcomes "
+            "(created, polled, cancelled, completed, failed)."
+        )
+        lines.append("# TYPE daari_mcp_tasks_total counter")
+        for outcome, count in sorted(mcp_tasks.items()):
+            lines.append(
+                f"daari_mcp_tasks_total{_labels(outcome=str(outcome))} {int(count)}"
             )
 
     mcp_egress = snap.get("mcp_egress") or {}

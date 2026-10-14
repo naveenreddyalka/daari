@@ -6255,7 +6255,10 @@ class AppContext:
 
         mcp_task_store = None
         if settings.integrations.mcp_tasks.enabled:
-            mcp_task_store = McpTaskStore(settings.integrations.mcp_tasks.path)
+            mcp_task_store = McpTaskStore(
+                settings.integrations.mcp_tasks.path,
+                metrics=getattr(router, "metrics", None),
+            )
         mcp_activity = McpActivityRegistry()
         pg_url = (settings.observability.postgres_url or "").strip()
         file_store = None
