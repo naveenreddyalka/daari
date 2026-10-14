@@ -50,6 +50,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ctx = AppContext.from_settings(resolved)
         app.state.ctx.virtual_key_store = vk_store
         app.state.ctx.rate_limiter = getattr(app.state, "rate_limiter", None)
+        from daari.providers.mcp_egress import wire_mcp_egress_rate_limiters
+
+        wire_mcp_egress_rate_limiters(app.state.ctx.providers, app.state.ctx.rate_limiter)
         from daari.gateway.boundaries import startup_warnings
         from daari.gateway.request_log import log_gateway_event
 

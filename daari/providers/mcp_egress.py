@@ -36,6 +36,20 @@ class McpServerConfig:
     audience: str = ""
     scopes: list[str] = field(default_factory=list)
     subject_token_type: str = "access_token"
+    rpm: int = 0
+    tpm: int = 0
+
+
+WARNING_SERVER_RATE_LIMITED = "mcp_server_rate_limited"
+
+
+class McpServerRateLimited(Exception):
+    """Egress per-server rpm/tpm ceiling tripped (#1620)."""
+
+    def __init__(self, decision: Any, server_id: str) -> None:
+        self.decision = decision
+        self.server_id = server_id
+        super().__init__(f"mcp_server:{server_id} rate limited")
 
 
 # A misbehaving upstream that always returns nextCursor must not hang listing.
@@ -57,6 +71,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         retry: RetryPolicy | None = None,
         breaker: CircuitBreaker | None = None,
         metrics: Any = None,
+        rate_limiter: Any = None,
     ) -> None:
         super().__init__(
             id=f"mcp:{server.id}",
@@ -79,6 +94,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.retry = retry or RetryPolicy()
         self.breaker = breaker or CircuitBreaker()
         self.metrics = metrics
+        self.rate_limiter = rate_limiter
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
         from daari.providers.mcp_token_exchange import TokenExchangeCache
@@ -262,12 +278,31 @@ class McpEgressProvider(HttpIntegrationProvider):
             None,
         )
 
+    def _enforce_server_rate_limit(self, *, tokens: int = 1) -> None:
+        """Raise when per-server rpm/tpm is exhausted (#1620)."""
+        rpm = int(getattr(self.server, "rpm", 0) or 0)
+        tpm = int(getattr(self.server, "tpm", 0) or 0)
+        if rpm <= 0 and tpm <= 0:
+            return
+        limiter = self.rate_limiter
+        if limiter is None or not hasattr(limiter, "check_mcp_server"):
+            return
+        decision = limiter.check_mcp_server(
+            server_id=self.server.id,
+            tokens=max(1, int(tokens)),
+            rpm=rpm,
+            tpm=tpm,
+        )
+        if not decision.allowed:
+            raise McpServerRateLimited(decision, self.server.id)
+
     async def _prepare_egress(
-        self, request: InternalRequest, *, tool: str
+        self, request: InternalRequest, *, tool: str, tokens: int = 1
     ) -> tuple[dict[str, str] | None, InternalResponse | None]:
         denied = self._policy_denied_response(request)
         if denied is not None:
             return None, denied
+        self._enforce_server_rate_limit(tokens=tokens)
         headers, auth_err = await self._request_headers(request)
         if auth_err is not None:
             return None, auth_err
@@ -280,11 +315,27 @@ class McpEgressProvider(HttpIntegrationProvider):
             return None, self._circuit_open(request, tool)
         return headers, None
 
+    def _rate_limited_response(self, request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content=f"{self.id} rate limited (mcp_server:{self.server.id}).",
+            model=request.model,
+            daari_meta=DaariMeta(
+                tier=self.tier,
+                executor="integration",
+                provider_id=self.id,
+                task_type="tool",
+                warning=WARNING_SERVER_RATE_LIMITED,
+            ),
+        )
+
     async def list_tools_catalog(
         self, request: InternalRequest
     ) -> tuple[list[dict[str, Any]] | None, InternalResponse | None]:
         """Structured tools/list for Responses server-side MCP (#1232)."""
-        headers, err = await self._prepare_egress(request, tool="tools/list")
+        try:
+            headers, err = await self._prepare_egress(request, tool="tools/list")
+        except McpServerRateLimited:
+            return None, self._rate_limited_response(request)
         if err is not None:
             return None, err
         assert headers is not None
@@ -321,7 +372,13 @@ class McpEgressProvider(HttpIntegrationProvider):
         arguments: dict[str, Any] | None = None,
     ) -> InternalResponse:
         """Structured tools/call for Responses server-side MCP (#1232)."""
-        headers, err = await self._prepare_egress(request, tool=tool)
+        import json as _json
+
+        args = dict(arguments or {})
+        token_est = max(1, len(_json.dumps(args, default=str)) // 4)
+        headers, err = await self._prepare_egress(
+            request, tool=tool, tokens=token_est
+        )
         if err is not None:
             return err
         assert headers is not None
@@ -333,7 +390,7 @@ class McpEgressProvider(HttpIntegrationProvider):
             return await self._call_tool_under_span(
                 request,
                 tool=tool,
-                arguments=dict(arguments or {}),
+                arguments=args,
                 headers=headers,
             )
 
@@ -353,7 +410,10 @@ class McpEgressProvider(HttpIntegrationProvider):
             tool = match.group(1)
             arg_text = (match.group(2) or "").strip()
 
-        headers, err = await self._prepare_egress(request, tool=tool)
+        try:
+            headers, err = await self._prepare_egress(request, tool=tool)
+        except McpServerRateLimited:
+            return self._rate_limited_response(request)
         if err is not None:
             return err
         assert headers is not None
@@ -491,6 +551,20 @@ def _entry_get(entry: Any, key: str, default: Any = None) -> Any:
     return getattr(entry, key, default)
 
 
+def wire_mcp_egress_rate_limiters(providers: Any, rate_limiter: Any) -> None:
+    """Attach the gateway rate limiter to MCP egress providers (#1620)."""
+    if rate_limiter is None or providers is None:
+        return
+    list_ids = getattr(providers, "list_ids", None)
+    get = getattr(providers, "get", None)
+    if not callable(list_ids) or not callable(get):
+        return
+    for provider_id in list_ids():
+        provider = get(provider_id)
+        if isinstance(provider, McpEgressProvider):
+            provider.rate_limiter = rate_limiter
+
+
 def build_mcp_providers(
     servers: list[Any],
     guardrails: McpGuardrails | None = None,
@@ -504,6 +578,7 @@ def build_mcp_providers(
     failure_threshold: int = 3,
     cooldown_seconds: float = 30.0,
     metrics: Any = None,
+    rate_limiter: Any = None,
 ) -> list[McpEgressProvider]:
     providers: list[McpEgressProvider] = []
     policy = retry or RetryPolicy()
@@ -527,6 +602,8 @@ def build_mcp_providers(
                 subject_token_type=str(
                     _entry_get(entry, "subject_token_type") or "access_token"
                 ),
+                rpm=max(0, int(_entry_get(entry, "rpm") or 0)),
+                tpm=max(0, int(_entry_get(entry, "tpm") or 0)),
             )
         if not cfg.id or not cfg.url:
             continue
@@ -547,6 +624,7 @@ def build_mcp_providers(
                     cooldown_seconds=max(1.0, float(cooldown_seconds)),
                 ),
                 metrics=metrics,
+                rate_limiter=rate_limiter,
             )
         )
     return providers

@@ -89,6 +89,9 @@ def run_doctor(
     token_exchange_tip = _check_mcp_token_exchange(cfg)
     if token_exchange_tip is not None:
         results.append(token_exchange_tip)
+    server_rate_tip = _check_mcp_server_rate_limits(cfg)
+    if server_rate_tip is not None:
+        results.append(server_rate_tip)
     classifier_tip = _check_decision_classifier(cfg)
     if classifier_tip is not None:
         results.append(classifier_tip)
@@ -2697,6 +2700,40 @@ def _check_mcp_token_exchange(settings: Settings) -> CheckResult | None:
             f"integrations.mcp_servers auth_type=oauth2_token_exchange on [{ids}] "
             "exchanges the inbound Authorization bearer (RFC 8693) before egress; "
             "exchange endpoint is SSRF-checked; missing subject or exchange errors fail closed"
+        ),
+        optional=True,
+    )
+
+
+def _check_mcp_server_rate_limits(settings: Settings) -> CheckResult | None:
+    """Tip when any mcp_servers entry sets per-server rpm/tpm (#1620)."""
+    servers = list(getattr(settings.integrations, "mcp_servers", None) or [])
+    capped = [
+        s
+        for s in servers
+        if int(getattr(s, "rpm", 0) or 0) > 0 or int(getattr(s, "tpm", 0) or 0) > 0
+    ]
+    if not capped:
+        return None
+    parts: list[str] = []
+    for server in capped[:5]:
+        sid = str(getattr(server, "id", "") or "unnamed")
+        rpm = int(getattr(server, "rpm", 0) or 0)
+        tpm = int(getattr(server, "tpm", 0) or 0)
+        bits = []
+        if rpm > 0:
+            bits.append(f"rpm={rpm}")
+        if tpm > 0:
+            bits.append(f"tpm={tpm}")
+        parts.append(f"{sid} ({', '.join(bits)})")
+    return CheckResult(
+        name="mcp_server_rate_limits",
+        ok=True,
+        detail=(
+            "integrations.mcp_servers per-server ceilings on ["
+            + ", ".join(parts)
+            + "] apply on egress tools/call and tools/list independently of "
+            "key-family mcp RPM/TPM (both enforced; tighter wins)"
         ),
         optional=True,
     )

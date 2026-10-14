@@ -6776,6 +6776,16 @@ Docs: metrics-prometheus.md. Covered by `tests/unit/test_helm_chart.py`.
 Docs: ollama.md, config.md. Covered by `tests/unit/test_models_catalog.py`,
 `tests/unit/test_ollama_decisions_tags.py`.
 
+### Per-server MCP rpm/tpm ceilings ([#1620](https://github.com/naveenreddyalka/daari/issues/1620))
+
+<!-- tracking:#1620 -->
+**Status:** Done (2026-10-14). Optional `rpm` / `tpm` on each
+`integrations.mcp_servers[]` entry (0 = unlimited) enforced on egress
+`tools/call` and `tools/list` with 429, `Retry-After`, and
+`X-RateLimit-Scope: mcp_server:<id>`. Independent of key-family `mcp`
+ceilings (both apply). Doctor tip `mcp_server_rate_limits`; config.md +
+mcp.md. Covered by `tests/unit/test_mcp_server_rate_limits.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
