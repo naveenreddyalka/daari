@@ -463,6 +463,7 @@ class TestDoctorSecretRefs:
         settings.files.backend = "postgres"
         settings.responses.backend = "postgres"
         settings.observability.backend = "postgres"
+        settings.observability.request_log.backend = "postgres"
         settings.enterprise.audit_backend = "postgres"
         settings.server.virtual_keys.backend = "postgres"
         results = run_doctor(settings, httpx_client=self._down_client())
@@ -501,12 +502,28 @@ class TestDoctorSecretRefs:
         settings.files.backend = "postgres"
         settings.responses.backend = "postgres"
         settings.observability.backend = "postgres"
+        settings.observability.request_log.backend = "postgres"
         settings.enterprise.audit_backend = "sqlite"
         results = run_doctor(settings, httpx_client=self._down_client())
         by_name = {r.name: r for r in results}
         assert by_name["fleet_artifacts"].ok is False
         assert "enterprise.audit_backend=sqlite" in by_name["fleet_artifacts"].detail
         assert "enterprise.audit_backend=postgres" in by_name["fleet_artifacts"].detail
+
+    def test_fleet_signals_with_jsonl_request_log_warns(self, settings, monkeypatch):
+        monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")
+        settings.batches.backend = "postgres"
+        settings.files.backend = "postgres"
+        settings.responses.backend = "postgres"
+        settings.observability.backend = "postgres"
+        settings.observability.request_log.backend = "jsonl"
+        settings.enterprise.audit_backend = "postgres"
+        settings.server.virtual_keys.backend = "postgres"
+        results = run_doctor(settings, httpx_client=self._down_client())
+        by_name = {r.name: r for r in results}
+        assert by_name["fleet_artifacts"].ok is False
+        assert "observability.request_log.backend=jsonl" in by_name["fleet_artifacts"].detail
+        assert "observability.request_log.backend=postgres" in by_name["fleet_artifacts"].detail
 
     def test_fleet_replicas_without_redis_cache_warns(self, settings, monkeypatch):
         monkeypatch.setenv("DAARI_FLEET_REPLICAS", "2")

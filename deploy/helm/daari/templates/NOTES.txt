@@ -122,4 +122,9 @@ TLS enabled: DAARI_SERVER__TLS__CERT_FILE / KEY_FILE
   already terminates at the edge — see SECURITY.md.
 {{- end }}
 
-Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+Image: {{ include "daari.image" . }}
+{{- $digest := (.Values.image.digest | default "") | toString | trim }}
+{{- if $digest }}
+Digest pin active (image.digest); tag is ignored for pulls. Verify the blob with
+cosign before promote — see docs/RELEASING.md.
+{{- end }}

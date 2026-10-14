@@ -55,7 +55,7 @@ spec:
       {{- end }}
       containers:
         - name: daari
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ include "daari.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- $tls := .Values.tls | default dict }}
           {{- with .Values.securityContext }}
@@ -97,6 +97,8 @@ spec:
               value: postgres
             - name: DAARI_OBSERVABILITY__POSTGRES_URL
               value: {{ .Values.postgres.url | quote }}
+            - name: DAARI_OBSERVABILITY__REQUEST_LOG__BACKEND
+              value: postgres
             - name: DAARI_BATCHES__BACKEND
               value: postgres
             - name: DAARI_FILES__BACKEND
@@ -107,6 +109,12 @@ spec:
               value: postgres
             - name: DAARI_SERVER__VIRTUAL_KEYS__BACKEND
               value: postgres
+            {{- else }}
+            {{- $obs := .Values.observability | default dict }}
+            {{- if and $obs.requestLog (ne (toString $obs.requestLog.backend) "") }}
+            - name: DAARI_OBSERVABILITY__REQUEST_LOG__BACKEND
+              value: {{ $obs.requestLog.backend | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.orgPool.enabled }}
             - name: DAARI_ROUTING__ORG_POOL__ENABLED

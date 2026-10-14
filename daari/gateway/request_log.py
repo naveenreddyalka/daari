@@ -15,6 +15,8 @@ _max_bytes = DEFAULT_MAX_BYTES
 _backups = DEFAULT_BACKUPS
 _stdout_json = False
 _otlp_logs = False
+_backend = "jsonl"
+_pg_store: Any | None = None
 _lock = threading.Lock()
 
 
@@ -25,9 +27,11 @@ def configure_request_log(
     backups: int | None = None,
     structured_json_logs: bool | None = None,
     otlp_logs: bool | None = None,
+    backend: str | None = None,
+    postgres_url: str | None = None,
 ) -> None:
     """Apply settings at daemon startup; max_bytes=0 disables rotation."""
-    global LOG_PATH, _max_bytes, _backups, _stdout_json, _otlp_logs
+    global LOG_PATH, _max_bytes, _backups, _stdout_json, _otlp_logs, _backend, _pg_store
     if path is not None:
         LOG_PATH = Path(path)
     if max_bytes is not None:
@@ -38,6 +42,14 @@ def configure_request_log(
         _stdout_json = bool(structured_json_logs)
     if otlp_logs is not None:
         _otlp_logs = bool(otlp_logs)
+    if backend is not None:
+        _backend = (backend or "jsonl").strip().lower() or "jsonl"
+    if _backend == "postgres" and (postgres_url or "").strip():
+        from daari.gateway.postgres_request_log import PostgresRequestLogStore
+
+        _pg_store = PostgresRequestLogStore((postgres_url or "").strip())
+    elif backend is not None or postgres_url is not None:
+        _pg_store = None
 
 
 def _rotate_if_needed() -> None:
@@ -72,11 +84,18 @@ def log_gateway_event(event: str, payload: dict[str, Any]) -> None:
         line = redact_secrets(json.dumps(record, default=str)) + "\n"
         if _stdout_json:
             print(line, end="", flush=True)
-        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with _lock:
-            _rotate_if_needed()
-            with LOG_PATH.open("a", encoding="utf-8") as handle:
-                handle.write(line)
+        if _backend == "postgres" and _pg_store is not None:
+            try:
+                body = {k: v for k, v in record.items() if k not in {"ts", "event"}}
+                _pg_store.append(event, body, ts=record["ts"])
+            except Exception:
+                pass
+        else:
+            LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with _lock:
+                _rotate_if_needed()
+                with LOG_PATH.open("a", encoding="utf-8") as handle:
+                    handle.write(line)
     except OSError:
         pass
     if _otlp_logs:
@@ -144,12 +163,18 @@ def prune_request_log(path: Path | str, *, cutoff: datetime, dry_run: bool = Fal
 
     Rotated backups that contain only old lines are deleted. The active file
     is rewritten (or truncated) so newer lines stay. Returns the number of
-    lines removed. `cutoff` must be timezone-aware.
+    lines removed. `cutoff` must be timezone-aware. When the configured
+    backend is postgres, prunes the shared table instead of local JSONL.
     """
-    target = Path(path)
     if cutoff.tzinfo is None:
         cutoff = cutoff.replace(tzinfo=UTC)
     cutoff = cutoff.astimezone(UTC)
+    if _backend == "postgres" and _pg_store is not None:
+        try:
+            return int(_pg_store.prune_before(cutoff, dry_run=dry_run) or 0)
+        except Exception:
+            return 0
+    target = Path(path)
     removed = 0
     with _lock:
         for backup in _rotated_logs(target):

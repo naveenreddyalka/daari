@@ -1970,15 +1970,38 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             key_s = key_id.strip() if isinstance(key_id, str) and key_id.strip() else None
             l0 = getattr(ctx.router, "cache", None)
             l1 = getattr(ctx.router, "semantic_cache", None)
-            l0_removed = (
-                int(l0.invalidate(model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s))
-                if l0 is not None and hasattr(l0, "invalidate")
-                else 0
+            from daari.observability.metrics import cache_invalidate_scope
+
+            scope = cache_invalidate_scope(
+                model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
             )
-            l1_removed = (
-                int(l1.invalidate(model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s))
-                if l1 is not None and hasattr(l1, "invalidate")
-                else 0
+            try:
+                l0_removed = (
+                    int(
+                        l0.invalidate(
+                            model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                        )
+                    )
+                    if l0 is not None and hasattr(l0, "invalidate")
+                    else 0
+                )
+                l1_removed = (
+                    int(
+                        l1.invalidate(
+                            model=model_s, entry_hash=hash_s, team_id=team_s, key_id=key_s
+                        )
+                    )
+                    if l1 is not None and hasattr(l1, "invalidate")
+                    else 0
+                )
+            except Exception:
+                ctx.metrics.record_cache_invalidate(scope=scope, result="error")
+                raise
+            ctx.metrics.record_cache_invalidate(
+                scope=scope,
+                result="ok",
+                l0_removed=l0_removed,
+                l1_removed=l1_removed,
             )
             log_gateway_event(
                 "cache_invalidate",

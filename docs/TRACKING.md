@@ -6786,6 +6786,57 @@ Docs: ollama.md, config.md. Covered by `tests/unit/test_models_catalog.py`,
 ceilings (both apply). Doctor tip `mcp_server_rate_limits`; config.md +
 mcp.md. Covered by `tests/unit/test_mcp_server_rate_limits.py`.
 
+### Fleet-durable request/event log backend ([#1631](https://github.com/naveenreddyalka/daari/issues/1631))
+
+<!-- tracking:#1631 -->
+**Status:** Done (2026-10-14). `observability.request_log.backend`
+`jsonl|postgres` (default jsonl); postgres writes land in
+`daari_request_log` via `observability.postgres_url`, best-effort.
+Retention prune, backup catalog, doctor fleet warnings, and Helm
+`postgres.enabled` cover the shared backend. Covered by
+`tests/unit/test_postgres_request_log.py`.
+
+### MCP proxy/task Prometheus parity ([#1632](https://github.com/naveenreddyalka/daari/issues/1632))
+
+<!-- tracking:#1632 -->
+**Status:** Done (2026-10-14). Register `mcp` modality so `/mcp/proxy`
+spans use `gen_ai.operation.name=mcp`; proxy tools/call bumps
+`daari_mcp_tool_calls_total` (`proxy.<name>`) and modality request
+series; MCP tasks emit `daari_mcp_tasks_total` + OTel spans; Grafana
+MCP panel includes proxy/task queries. Covered by
+`tests/unit/test_mcp_proxy_metrics.py`.
+
+### Helm Grafana overview dashboard ConfigMap ([#1636](https://github.com/naveenreddyalka/daari/issues/1636))
+
+<!-- tracking:#1636 -->
+**Status:** Done (2026-10-14). Opt-in `grafanaDashboard.enabled` renders a
+ConfigMap embedding `files/grafana/daari-dashboard.json` with
+`grafana_dashboard: "1"` sidecar labels; capacity-helm + metrics docs.
+Covered by `tests/unit/test_helm_chart.py`.
+
+### Helm optional image.digest pin ([#1637](https://github.com/naveenreddyalka/daari/issues/1637))
+
+<!-- tracking:#1637 -->
+**Status:** Done (2026-10-14). Optional `image.digest` (empty default); when set,
+Deployment + backup CronJob use `repository@sha256:…` (digest wins over tag).
+NOTES + capacity-helm document cosign verify via RELEASING.md. Covered by
+`tests/unit/test_helm_chart.py`.
+
+### Grafana scoped in-flight panels ([#1638](https://github.com/naveenreddyalka/daari/issues/1638))
+
+<!-- tracking:#1638 -->
+**Status:** Done (2026-10-14). Overview dashboard panel for
+`daari_in_flight` / `daari_in_flight_max` with legend by `scope`/`id`;
+metrics-prometheus docs list the series next to the global gate. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+### Prometheus cache invalidate counters ([#1639](https://github.com/naveenreddyalka/daari/issues/1639))
+
+<!-- tracking:#1639 -->
+**Status:** Done (2026-10-14). `daari_cache_invalidate_total{scope,result}` plus
+`daari_cache_invalidate_entries_removed_total{layer}` on admin invalidate;
+metrics-prometheus.md. Covered by `tests/unit/test_cache_invalidate_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

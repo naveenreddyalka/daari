@@ -227,8 +227,15 @@ def prune_all(
 
     request_log_days = int(getattr(retention, "request_log_days", 0) or 0)
     if request_log_days:
-        from daari.gateway.request_log import LOG_PATH, prune_request_log
+        from daari.gateway.request_log import LOG_PATH, configure_request_log, prune_request_log
 
+        # Ensure prune sees the configured backend (daemon and CLI both call prune_all).
+        rl_cfg = getattr(settings.observability, "request_log", None)
+        rl_backend = getattr(rl_cfg, "backend", "jsonl") if rl_cfg is not None else "jsonl"
+        configure_request_log(
+            backend=rl_backend,
+            postgres_url=getattr(settings.observability, "postgres_url", "") or "",
+        )
         cutoff_dt = current - timedelta(days=request_log_days)
         deleted = prune_request_log(LOG_PATH, cutoff=cutoff_dt, dry_run=dry_run)
         results.append(PruneResult("request_log", deleted, False, cutoff_dt.isoformat()))

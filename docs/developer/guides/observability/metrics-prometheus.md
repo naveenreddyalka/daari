@@ -15,7 +15,10 @@ private scrape network, set `observability.metrics_port` (e.g. `9090`) so daari
 also binds `127.0.0.1:<port>/metrics` **without** API key auth — keep that port
 off public ingress. Main-port `/metrics` auth is unchanged.
 
-Import Grafana dashboard: `deploy/grafana/daari-dashboard.json` (includes a
+Import Grafana dashboard: `deploy/grafana/daari-dashboard.json`, or enable Helm
+`grafanaDashboard.enabled` so the chart ships the same JSON as a labeled
+ConfigMap (see [Capacity and Helm](../operations/capacity-helm.md#grafana-overview-dashboard)).
+The dashboard includes a
 **TTFT p50 / p95 by tier** panel on `daari_ttft_ms` for stream startup health,
 a **Soft warnings by kind** panel on `daari_soft_warnings_total` for soft-band
 pressure before hard 402/429, a **Hard rejects by kind** panel on
@@ -25,7 +28,8 @@ a **TTFT preference by from→to** panel on `daari_ttft_preference_total`
 for TTFT-aware local tier bias, a **Backend pool health & outstanding**
 panel on `daari_backend_up` / `daari_backend_outstanding` (and request rate),
 a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
-`_in_flight_max` / `_queued`, alert-series panels for
+`_in_flight_max` / `_queued`, a **Scoped in-flight by key/team/model** panel on
+`daari_in_flight` / `daari_in_flight_max` (labels `scope` + `id`), alert-series panels for
 `daari_upstream_retries_total`, `daari_cache_false_hits_avoided_total`, and
 `daari_budget_alerts_total`, an **MCP tool ingress by outcome** panel on
 `daari_mcp_tool_calls_total`, a **Tier shadow agree/disagree** panel on
@@ -82,6 +86,8 @@ prometheus-operator), same as `ServiceMonitor`.
 |--------|-----------|
 | `daari_upstream_retries_total` | Transient upstream failures absorbed by backoff. Rising here while errors stay flat means clients never saw the instability. Rising alongside errors means the failures are not retryable — check for 401s or malformed requests. |
 | `daari_cache_false_hits_avoided_total` | L1 hits vetoed by verification. Steady growth is the cache working; a spike suggests the similarity threshold is too loose. |
+| `daari_cache_invalidate_total{scope,result}` | Admin `POST /v1/daari/cache/invalidate` (and daemon CLI via that path). `scope` is `model`\|`hash`\|`team`\|`key`\|`all`; `result` is `ok`\|`error`. Alert on surprise mass `rate(...[5m])` spikes. No per-hash labels. |
+| `daari_cache_invalidate_entries_removed_total{layer}` | Entries removed by those ops (`layer="l0"` or `l1`). Bounded cardinality companion to the op counter. |
 | `daari_soft_warnings_total{kind}` | Soft-band pressure before hard rejects: `kind="budget"` (`x-daari-budget-warning`), `kind="request_quota"` (`x-daari-quota-requests-warning`), or `kind="rate_limit"` (`x-daari-ratelimit-warning`). Rising here while 402/429 stay flat means agents are hovering in the soft band — scale Ollama or widen caps before hard rejects start. Hard 402/429 do not increment this counter. Overview Grafana charts all kinds under **Soft warnings by kind** and isolates USD soft pressure under **Soft USD budget warnings**. |
 | `daari_rejects_total{kind}` | Hard denials only: `kind="budget"` (USD 402), `kind="request_quota"` (request-cap 402), `kind="rate_limit"` (429), or `kind="retired"` (retired-model 410). Soft warning headers never increment this. Rising rejects after soft warnings means caps are undersized relative to demand. Overview Grafana isolates retired blocks under **Retired model rejects**; all kinds also chart under **Hard rejects by kind**. |
 | `daari_virtual_keys{status}` | Scrape-time virtual-key lifecycle counts (`active`, `expired`, `expiring_soon`, `revoked`). Flat when no keys are stored. Rising `expired` / `expiring_soon` means credential rotation pressure. Stats counterpart: `virtual_keys` on `GET /v1/daari/stats`. Overview Grafana charts under **Virtual keys by status**. |

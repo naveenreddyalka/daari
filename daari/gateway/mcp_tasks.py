@@ -42,15 +42,43 @@ class McpTask:
 class McpTaskStore:
     """In-process task registry with optional diskcache durability."""
 
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        *,
+        metrics: Any | None = None,
+    ) -> None:
         self._tasks: dict[str, McpTask] = {}
         self._lock = asyncio.Lock()
         self._disk: Any = None
+        self.metrics = metrics
         if path:
             import diskcache
 
             Path(path).expanduser().mkdir(parents=True, exist_ok=True)
             self._disk = diskcache.Cache(str(Path(path).expanduser()))
+
+    def _record(self, outcome: str, *, tool: str = "", task_id: str = "") -> None:
+        if self.metrics is not None and hasattr(self.metrics, "record_mcp_task"):
+            try:
+                self.metrics.record_mcp_task(outcome=outcome)
+            except Exception:
+                pass
+        try:
+            from daari.observability.otel import modality_client_span
+
+            attrs = {
+                "daari.modality": "mcp",
+                "daari.mcp.task.outcome": outcome,
+            }
+            if tool:
+                attrs["mcp.tool.name"] = tool
+            if task_id:
+                attrs["daari.mcp.task.id"] = task_id
+            with modality_client_span("daari.mcp_task", attributes=attrs):
+                pass
+        except Exception:
+            pass
 
     def create(self, *, tool: str) -> McpTask:
         task = McpTask(task_id=f"task_{uuid.uuid4().hex}", tool=tool)
@@ -60,6 +88,7 @@ class McpTaskStore:
             "mcp.task_created",
             {"task_id": task.task_id, "tool": tool, "status": task.status},
         )
+        self._record("created", tool=tool, task_id=task.task_id)
         return task
 
     def get(self, task_id: str) -> McpTask | None:
@@ -98,6 +127,7 @@ class McpTaskStore:
             "mcp.task_cancelled",
             {"task_id": task.task_id, "tool": task.tool},
         )
+        self._record("cancelled", tool=task.tool, task_id=task.task_id)
         return task
 
     def complete(self, task_id: str, result: Any) -> None:
@@ -112,6 +142,7 @@ class McpTaskStore:
             "mcp.task_completed",
             {"task_id": task.task_id, "tool": task.tool},
         )
+        self._record("completed", tool=task.tool, task_id=task.task_id)
 
     def fail(self, task_id: str, error: str) -> None:
         task = self.get(task_id)
@@ -125,6 +156,7 @@ class McpTaskStore:
             "mcp.task_failed",
             {"task_id": task.task_id, "tool": task.tool, "error": error[:200]},
         )
+        self._record("failed", tool=task.tool, task_id=task.task_id)
 
     def as_public(self, task: McpTask) -> dict[str, Any]:
         payload: dict[str, Any] = {

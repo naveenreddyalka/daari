@@ -288,6 +288,7 @@
     {
       "id": 19,
       "title": "MCP tool ingress by outcome",
+      "description": "Ingress `/mcp` tools/call plus `/mcp/proxy` OpenAPI tools (tool label `proxy.<name>`). Also `daari_mcp_tasks_total` for task lifecycle.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
       "targets": [
@@ -295,6 +296,16 @@
           "expr": "sum by (outcome) (rate(daari_mcp_tool_calls_total[5m]))",
           "legendFormat": "{{outcome}}",
           "refId": "A"
+        },
+        {
+          "expr": "sum by (outcome) (rate(daari_mcp_tool_calls_total{tool=~\"proxy\\\\..*\"}[5m]))",
+          "legendFormat": "proxy {{outcome}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (outcome) (rate(daari_mcp_tasks_total[5m]))",
+          "legendFormat": "task {{outcome}}",
+          "refId": "C"
         }
       ]
     },
@@ -561,6 +572,25 @@
           "expr": "sum(rate(daari_rejects_total{kind=\"retired\"}[5m]))",
           "legendFormat": "retired rejects/s",
           "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "title": "Scoped in-flight by key/team/model",
+      "description": "Per-scope concurrency caps (`daari_in_flight` / `daari_in_flight_max` labeled by scope+id). Complements the global Concurrency gate panel.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 144 },
+      "targets": [
+        {
+          "expr": "daari_in_flight",
+          "legendFormat": "in_flight {{scope}}/{{id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_in_flight_max",
+          "legendFormat": "max {{scope}}/{{id}}",
+          "refId": "B"
         }
       ]
     }

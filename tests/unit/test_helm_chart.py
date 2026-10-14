@@ -43,6 +43,51 @@ class TestHelmChartReleasePin:
         assert chart["appVersion"] == __version__
         assert str(values["image"]["tag"]) == __version__
 
+    def test_image_digest_empty_by_default(self) -> None:
+        values = _load_yaml(VALUES)
+        assert values["image"].get("digest") in (None, "")
+
+
+class TestHelmImageDigest:
+    def test_digest_unset_uses_repository_tag(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        dep = _docs_by_kind(rendered)["Deployment"][0]
+        image = dep["spec"]["template"]["spec"]["containers"][0]["image"]
+        assert "@" not in image
+        assert image == f"ghcr.io/naveenreddyalka/daari:{__version__}"
+        assert f":{__version__}" in image
+
+    def test_digest_set_wins_over_tag_on_deployment_and_cronjob(
+        self, helm_available: None
+    ) -> None:
+        digest = "sha256:deadbeefcafef00d0123456789abcdef0123456789abcdef0123456789abcdef"
+        rendered = _helm_template(
+            "--set",
+            f"image.digest={digest}",
+            "--set",
+            "backup.enabled=true",
+            "--set",
+            "backup.encryptSecret.name=daari-backup",
+        )
+        docs = _docs_by_kind(rendered)
+        dep_image = docs["Deployment"][0]["spec"]["template"]["spec"]["containers"][0][
+            "image"
+        ]
+        cron_image = docs["CronJob"][0]["spec"]["jobTemplate"]["spec"]["template"][
+            "spec"
+        ]["containers"][0]["image"]
+        expected = f"ghcr.io/naveenreddyalka/daari@{digest}"
+        assert dep_image == expected
+        assert cron_image == expected
+        assert "@sha256:" in dep_image
+        assert f":{__version__}" not in dep_image
+
+    def test_notes_mention_digest_when_pinned(self, helm_available: None) -> None:
+        digest = "sha256:deadbeefcafef00d0123456789abcdef0123456789abcdef0123456789abcdef"
+        notes = _helm_notes("--set", f"image.digest={digest}")
+        assert "@sha256:" in notes or digest in notes
+        assert "digest" in notes.lower() or "pinned" in notes.lower()
+
     def test_values_comment_warns_about_sqlite_split_brain(self) -> None:
         text = VALUES.read_text(encoding="utf-8")
         assert re.search(r"per-pod|split", text, re.I)
@@ -175,6 +220,10 @@ class TestHelmNotesAndFleetEnv:
         assert re.search(r"name: DAARI_ENTERPRISE__AUDIT_BACKEND\s+value: postgres", rendered)
         assert re.search(r"name: DAARI_SERVER__VIRTUAL_KEYS__BACKEND\s+value: postgres", rendered)
         assert re.search(r"name: DAARI_OBSERVABILITY__BACKEND\s+value: postgres", rendered)
+        assert re.search(
+            r"name: DAARI_OBSERVABILITY__REQUEST_LOG__BACKEND\s+value: postgres",
+            rendered,
+        )
 
 
 class TestHelmGracefulRollout:
@@ -317,6 +366,41 @@ _PROMETHEUS_RULE_METRICS = (
     "daari_guardrail_trips_total",
     "daari_virtual_keys",
 )
+
+
+class TestHelmGrafanaDashboard:
+    def test_grafana_dashboard_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "grafana-dashboard" not in rendered
+        assert "daari-dashboard.json" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["grafanaDashboard"]["enabled"] is False
+        assert values["grafanaDashboard"]["labels"]["grafana_dashboard"] == "1"
+
+    def test_grafana_dashboard_configmap_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "grafanaDashboard.enabled=true")
+        assert "kind: ConfigMap" in rendered
+        assert "daari-dashboard.json" in rendered
+        assert '"title": "daari"' in rendered or '"title": "daari"' in rendered.replace(
+            "\n", ""
+        )
+        assert "Requests by tier" in rendered
+        assert "daari-overview" in rendered
+        assert 'grafana_dashboard: "1"' in rendered or "grafana_dashboard: '1'" in rendered
+        chart_file = CHART / "files" / "grafana" / "daari-dashboard.json"
+        source = ROOT / "deploy" / "grafana" / "daari-dashboard.json"
+        assert chart_file.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+
+    def test_grafana_dashboard_custom_labels(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "grafanaDashboard.enabled=true",
+            "--set",
+            "grafanaDashboard.labels.grafana_dashboard=1",
+            "--set",
+            "grafanaDashboard.labels.release=kube-prometheus-stack",
+        )
+        assert "release: kube-prometheus-stack" in rendered
 
 
 class TestHelmPrometheusRules:

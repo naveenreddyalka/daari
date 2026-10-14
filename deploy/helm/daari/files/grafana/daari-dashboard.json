@@ -1,0 +1,607 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Requests by tier",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (tier) (rate(daari_requests_total[5m]))",
+          "legendFormat": "{{tier}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Cache hit rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_cache_hits_total[5m])) / clamp_min(sum(rate(daari_requests_total[5m])), 1e-9)",
+          "legendFormat": "hit rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Latency p50 / p95 (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, tier) (rate(daari_request_latency_ms_bucket[5m])))",
+          "legendFormat": "p50 {{tier}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, tier) (rate(daari_request_latency_ms_bucket[5m])))",
+          "legendFormat": "p95 {{tier}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Escalations & errors",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(daari_escalations_total[5m])",
+          "legendFormat": "escalations",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(daari_errors_total[5m])",
+          "legendFormat": "errors",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Frontier spend vs budget (USD)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "daari_frontier_spend_usd{window=\"daily\"}",
+          "legendFormat": "daily spend",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_frontier_budget_usd{window=\"daily\"}",
+          "legendFormat": "daily budget",
+          "refId": "B"
+        },
+        {
+          "expr": "daari_frontier_spend_usd{window=\"monthly\"}",
+          "legendFormat": "monthly spend",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Cache false-hit rate (shadow sample)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "daari_cache_false_hit_rate",
+          "legendFormat": "false-hit",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Budget state",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 16 },
+      "targets": [
+        {
+          "expr": "daari_frontier_budget_state",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "TTFT p50 / p95 by tier (ms)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, tier) (rate(daari_ttft_ms_bucket[5m])))",
+          "legendFormat": "p50 {{tier}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, tier) (rate(daari_ttft_ms_bucket[5m])))",
+          "legendFormat": "p95 {{tier}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Guardrail trips",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "sum by (action) (rate(daari_guardrail_trips_total[5m]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Soft warnings by kind (before hard 402/429)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(daari_soft_warnings_total[5m]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Hard rejects by kind (402/429)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(daari_rejects_total[5m]))",
+          "legendFormat": "{{kind}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Rate-limit Redis degraded",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        {
+          "expr": "daari_rate_limit_degraded",
+          "legendFormat": "{{mode}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "TTFT preference by from→to",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        {
+          "expr": "sum by (from, to) (rate(daari_ttft_preference_total[5m]))",
+          "legendFormat": "{{from}}→{{to}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Backend pool health & outstanding",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "targets": [
+        {
+          "expr": "daari_backend_up",
+          "legendFormat": "up {{backend}} ({{circuit}})",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_backend_outstanding",
+          "legendFormat": "outstanding {{backend}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (backend) (rate(daari_backend_requests_total[5m]))",
+          "legendFormat": "req/s {{backend}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Concurrency gate (in-flight / max / queued)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },
+      "targets": [
+        {
+          "expr": "daari_rate_limit_in_flight",
+          "legendFormat": "in_flight",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_rate_limit_in_flight_max",
+          "legendFormat": "in_flight_max",
+          "refId": "B"
+        },
+        {
+          "expr": "daari_rate_limit_queued",
+          "legendFormat": "queued",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Upstream retries",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_upstream_retries_total[5m]))",
+          "legendFormat": "retries/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "False-hits avoided (L1 verification veto)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_cache_false_hits_avoided_total[5m]))",
+          "legendFormat": "avoided/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Budget alerts by scope",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "targets": [
+        {
+          "expr": "sum by (scope) (rate(daari_budget_alerts_total[5m]))",
+          "legendFormat": "{{scope}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "MCP tool ingress by outcome",
+      "description": "Ingress `/mcp` tools/call plus `/mcp/proxy` OpenAPI tools (tool label `proxy.<name>`). Also `daari_mcp_tasks_total` for task lifecycle.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(daari_mcp_tool_calls_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (outcome) (rate(daari_mcp_tool_calls_total{tool=~\"proxy\\\\..*\"}[5m]))",
+          "legendFormat": "proxy {{outcome}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (outcome) (rate(daari_mcp_tasks_total[5m]))",
+          "legendFormat": "task {{outcome}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "title": "Team budget remaining (USD)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
+      "targets": [
+        {
+          "expr": "daari_team_budget_remaining_usd",
+          "legendFormat": "remaining {{team}} {{window}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_team_budget_limit_usd",
+          "legendFormat": "limit {{team}} {{window}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Team rate-limit remaining",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 72 },
+      "targets": [
+        {
+          "expr": "daari_team_rate_limit_remaining",
+          "legendFormat": "remaining {{team}} {{kind}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_team_rate_limit_limit",
+          "legendFormat": "limit {{team}} {{kind}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Soft USD budget warnings",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 80 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_soft_warnings_total{kind=\"budget\"}[5m]))",
+          "legendFormat": "budget soft warn/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Tier shadow agree/disagree",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 80 },
+      "targets": [
+        {
+          "expr": "sum by (agreed) (rate(daari_tier_shadow_samples_total[5m]))",
+          "legendFormat": "agreed={{agreed}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "Boundary decisions by stage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 88 },
+      "targets": [
+        {
+          "expr": "sum by (stage, label) (rate(daari_boundary_decisions_total[5m]))",
+          "legendFormat": "{{stage}}/{{label}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Key rate-limit remaining",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 88 },
+      "targets": [
+        {
+          "expr": "daari_key_rate_limit_remaining",
+          "legendFormat": "remaining {{key}} {{kind}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_key_rate_limit_limit",
+          "legendFormat": "limit {{key}} {{kind}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Cancelled requests by phase",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 96 },
+      "targets": [
+        {
+          "expr": "sum by (phase) (rate(daari_cancelled_requests_total[5m]))",
+          "legendFormat": "{{phase}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "title": "Request deadline exceeded",
+      "description": "Wall-clock budget spent (`X-Daari-Deadline-Ms` / `upstream.request_deadline_seconds`) across chat, audio, embeddings, and MCP tools/call — not chat-only.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 96 },
+      "targets": [
+        {
+          "expr": "rate(daari_request_deadline_exceeded_total[5m])",
+          "legendFormat": "deadline exceeded",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "title": "Tokens by modality",
+      "description": "Per-modality input/output tokens (`daari_tokens_total`) for chat, embed, tts, asr, images, moderations, rerank (#1106).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 104 },
+      "targets": [
+        {
+          "expr": "sum by (modality, direction) (rate(daari_tokens_total[5m]))",
+          "legendFormat": "{{modality}} {{direction}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Requests by modality",
+      "description": "Request rate with the additive modality label on `daari_requests_total` (#1106).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 104 },
+      "targets": [
+        {
+          "expr": "sum by (modality) (rate(daari_requests_total{modality=~\".+\"}[5m]))",
+          "legendFormat": "{{modality}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "title": "Compact-to-fit applied",
+      "description": "Chat histories actually trimmed before L6 (`daari_compact_to_fit_applied_total`). Unchanged or fail-closed history does not increment.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 112 },
+      "targets": [
+        {
+          "expr": "rate(daari_compact_to_fit_applied_total[5m])",
+          "legendFormat": "compact-to-fit applied",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "Compact-to-fit tokens dropped",
+      "description": "Estimated tokens removed by compact-to-fit before L6 (`daari_compact_to_fit_tokens_dropped_total`). Increments only when a trim changes message count.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 112 },
+      "targets": [
+        {
+          "expr": "rate(daari_compact_to_fit_tokens_dropped_total[5m])",
+          "legendFormat": "compact-to-fit tokens dropped",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "MCP grant denied",
+      "description": "MCP initialize / tools/list / tools/call rejected when require_key_access_defined fail-closed applies (`daari_mcp_grant_denied_total`). Ordinary tool-name deny does not increment.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 120 },
+      "targets": [
+        {
+          "expr": "rate(daari_mcp_grant_denied_total[5m])",
+          "legendFormat": "mcp grant denied",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "title": "Decision classifier by outcome",
+      "description": "Optional /v1/systemone difficulty hop (`daari_decision_classifier_total`) by outcome: success, heuristic_fallback, error, skipped. Disabled classifier does not increment.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 128 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(daari_decision_classifier_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "title": "Decision classifier latency p50 / p95 (ms)",
+      "description": "Wall time of the classifier hop (`daari_decision_classifier_latency_ms`). Recorded for success, heuristic_fallback, and error — not skipped.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 128 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(daari_decision_classifier_latency_ms_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(daari_decision_classifier_latency_ms_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "title": "Virtual keys by status",
+      "description": "Scrape-time key lifecycle counts (`daari_virtual_keys{status}`). Watch expired and expiring_soon before credentials go dark.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 136 },
+      "targets": [
+        {
+          "expr": "daari_virtual_keys{status=\"active\"}",
+          "legendFormat": "active",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_virtual_keys{status=\"expired\"}",
+          "legendFormat": "expired",
+          "refId": "B"
+        },
+        {
+          "expr": "daari_virtual_keys{status=\"expiring_soon\"}",
+          "legendFormat": "expiring_soon",
+          "refId": "C"
+        },
+        {
+          "expr": "daari_virtual_keys{status=\"revoked\"}",
+          "legendFormat": "revoked",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "title": "Retired model rejects",
+      "description": "Hard denials when clients call a retired model (`daari_rejects_total{kind=\"retired\"}`).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 136 },
+      "targets": [
+        {
+          "expr": "sum(rate(daari_rejects_total{kind=\"retired\"}[5m]))",
+          "legendFormat": "retired rejects/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "title": "Scoped in-flight by key/team/model",
+      "description": "Per-scope concurrency caps (`daari_in_flight` / `daari_in_flight_max` labeled by scope+id). Complements the global Concurrency gate panel.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 144 },
+      "targets": [
+        {
+          "expr": "daari_in_flight",
+          "legendFormat": "in_flight {{scope}}/{{id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_in_flight_max",
+          "legendFormat": "max {{scope}}/{{id}}",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["daari"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "daari",
+  "uid": "daari-overview",
+  "version": 1
+}

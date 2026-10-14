@@ -92,7 +92,7 @@ def test_grafana_dashboard_includes_concurrency_gate_panel():
     """In-flight vs max (and queued) concurrency gauges from the rate limiter (#583)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
     panel = next(
-        (p for p in payload["panels"] if "Concurrency" in p.get("title", "")),
+        (p for p in payload["panels"] if "Concurrency gate" in p.get("title", "")),
         None,
     )
     assert panel is not None, "expected a concurrency gate panel in daari-dashboard.json"
@@ -100,6 +100,21 @@ def test_grafana_dashboard_includes_concurrency_gate_panel():
     assert any("daari_rate_limit_in_flight" in expr for expr in exprs)
     assert any("daari_rate_limit_in_flight_max" in expr for expr in exprs)
     assert any("daari_rate_limit_queued" in expr for expr in exprs)
+
+
+def test_grafana_dashboard_includes_scoped_in_flight_panel():
+    """Per-key/team/model in-flight gauges next to the global concurrency gate (#1638)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Scoped in-flight" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected a scoped in-flight panel in daari-dashboard.json"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    legends = [t.get("legendFormat", "") for t in panel.get("targets", [])]
+    assert any("daari_in_flight" in expr and "daari_in_flight_max" not in expr for expr in exprs)
+    assert any("daari_in_flight_max" in expr for expr in exprs)
+    assert any("{{scope}}" in leg and "{{id}}" in leg for leg in legends)
 
 
 def test_grafana_dashboard_includes_upstream_retries_panel():

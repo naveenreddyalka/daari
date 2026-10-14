@@ -28,6 +28,7 @@ MODALITIES = frozenset(
         "systemone",
         "decisions",
         "ocr",
+        "mcp",
     }
 )
 
@@ -43,7 +44,27 @@ GENAI_OPERATION_NAMES: dict[str, str] = {
     "systemone": "systemone",
     "decisions": "decisions",
     "ocr": "ocr",
+    "mcp": "mcp",
 }
+
+
+def cache_invalidate_scope(
+    *,
+    model: str | None = None,
+    entry_hash: str | None = None,
+    team_id: str | None = None,
+    key_id: str | None = None,
+) -> str:
+    """Bounded scope label for admin cache invalidate metrics (#1639)."""
+    if entry_hash:
+        return "hash"
+    if model:
+        return "model"
+    if team_id:
+        return "team"
+    if key_id:
+        return "key"
+    return "all"
 
 
 def infer_modality(tier: str, modality: str | None = None) -> str:
@@ -69,6 +90,8 @@ def infer_modality(tier: str, modality: str | None = None) -> str:
         return "decisions"
     if t == "ocr":
         return "ocr"
+    if t == "mcp":
+        return "mcp"
     return "chat"
 
 
@@ -166,6 +189,7 @@ class Metrics:
     rejects: dict[str, int] = field(default_factory=dict)
     ttft_preferences: dict[str, int] = field(default_factory=dict)
     mcp_tool_calls: dict[str, int] = field(default_factory=dict)
+    mcp_tasks: dict[str, int] = field(default_factory=dict)
     # server:outcome:circuit → count for MCP egress resilience (#1203).
     mcp_egress: dict[str, int] = field(default_factory=dict)
     cancelled: dict[str, int] = field(default_factory=dict)
@@ -176,6 +200,10 @@ class Metrics:
     # outcome → count for optional systemone decision classifier (#1452).
     decision_classifier: dict[str, int] = field(default_factory=dict)
     decision_classifier_latency: TtftStats = field(default_factory=TtftStats)
+    # scope:result → count for admin cache invalidate (#1639).
+    cache_invalidate: dict[str, int] = field(default_factory=dict)
+    # layer (l0|l1) → entries removed across invalidate calls (#1639).
+    cache_invalidate_entries_removed: dict[str, int] = field(default_factory=dict)
     _lock: Lock = field(default_factory=Lock, repr=False)
 
     def record(
@@ -281,6 +309,12 @@ class Metrics:
         with self._lock:
             self.mcp_tool_calls[key] = self.mcp_tool_calls.get(key, 0) + 1
 
+    def record_mcp_task(self, *, outcome: str) -> None:
+        """MCP task create/poll/cancel/complete/fail outcomes (#1632)."""
+        label = (outcome or "").strip().lower() or "error"
+        with self._lock:
+            self.mcp_tasks[label] = self.mcp_tasks.get(label, 0) + 1
+
     def record_mcp_egress(self, *, server: str, outcome: str, circuit: str = "closed") -> None:
         """MCP egress call outcome with circuit-breaker state (#1203)."""
         key = f"{server}:{outcome}:{circuit}"
@@ -307,6 +341,33 @@ class Metrics:
         """Fail-closed MCP grant missing on initialize / list / call (#1390)."""
         with self._lock:
             self.mcp_grant_denied += 1
+
+    def record_cache_invalidate(
+        self,
+        *,
+        scope: str,
+        result: str = "ok",
+        l0_removed: int = 0,
+        l1_removed: int = 0,
+    ) -> None:
+        """Admin cache invalidate op; labels stay bounded (no per-hash) (#1639)."""
+        scope_label = (scope or "all").strip().lower() or "all"
+        if scope_label not in ("model", "hash", "team", "key", "all"):
+            scope_label = "all"
+        result_label = (result or "ok").strip().lower() or "ok"
+        if result_label not in ("ok", "error"):
+            result_label = "error"
+        key = f"{scope_label}:{result_label}"
+        with self._lock:
+            self.cache_invalidate[key] = self.cache_invalidate.get(key, 0) + 1
+            if l0_removed:
+                self.cache_invalidate_entries_removed["l0"] = (
+                    self.cache_invalidate_entries_removed.get("l0", 0) + max(0, int(l0_removed))
+                )
+            if l1_removed:
+                self.cache_invalidate_entries_removed["l1"] = (
+                    self.cache_invalidate_entries_removed.get("l1", 0) + max(0, int(l1_removed))
+                )
 
     def record_decision_classifier(self, *, outcome: str, latency_ms: int = 0) -> None:
         """Optional /v1/systemone difficulty hop outcome + latency (#1452)."""
@@ -359,12 +420,15 @@ class Metrics:
                 "rejects": dict(self.rejects),
                 "ttft_preferences": dict(self.ttft_preferences),
                 "mcp_tool_calls": dict(self.mcp_tool_calls),
+                "mcp_tasks": dict(self.mcp_tasks),
                 "mcp_egress": dict(self.mcp_egress),
                 "cancelled": dict(self.cancelled),
                 "deadline_exhausted": self.deadline_exhausted,
                 "compact_to_fit_applied": self.compact_to_fit_applied,
                 "compact_to_fit_tokens_dropped": self.compact_to_fit_tokens_dropped,
                 "mcp_grant_denied": self.mcp_grant_denied,
+                "cache_invalidate": dict(self.cache_invalidate),
+                "cache_invalidate_entries_removed": dict(self.cache_invalidate_entries_removed),
                 "decision_classifier": dict(self.decision_classifier),
                 "decision_classifier_latency": {
                     "count": self.decision_classifier_latency.count,
