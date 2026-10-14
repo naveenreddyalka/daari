@@ -191,6 +191,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `trace.max_entries` | int | `200` |  |
 | `observability.request_log_max_bytes` | int | `5242880` |  |
 | `observability.request_log_backups` | int | `3` |  |
+| `observability.request_log.backend` | Literal | `'jsonl'` | jsonl (default, pod-local rotated file) or postgres (observability.postgres_url) so fleet replicas share one queryable event table (#1631). |
 | `observability.prometheus` | bool | `True` |  |
 | `observability.metrics_port` | int | `0` |  |
 | `observability.otel` | bool | `False` |  |

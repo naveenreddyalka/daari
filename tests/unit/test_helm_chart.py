@@ -175,6 +175,10 @@ class TestHelmNotesAndFleetEnv:
         assert re.search(r"name: DAARI_ENTERPRISE__AUDIT_BACKEND\s+value: postgres", rendered)
         assert re.search(r"name: DAARI_SERVER__VIRTUAL_KEYS__BACKEND\s+value: postgres", rendered)
         assert re.search(r"name: DAARI_OBSERVABILITY__BACKEND\s+value: postgres", rendered)
+        assert re.search(
+            r"name: DAARI_OBSERVABILITY__REQUEST_LOG__BACKEND\s+value: postgres",
+            rendered,
+        )
 
 
 class TestHelmGracefulRollout:
