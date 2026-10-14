@@ -28,7 +28,8 @@ a **TTFT preference by from→to** panel on `daari_ttft_preference_total`
 for TTFT-aware local tier bias, a **Backend pool health & outstanding**
 panel on `daari_backend_up` / `daari_backend_outstanding` (and request rate),
 a **Concurrency gate** panel on `daari_rate_limit_in_flight` vs
-`_in_flight_max` / `_queued`, alert-series panels for
+`_in_flight_max` / `_queued`, a **Scoped in-flight by key/team/model** panel on
+`daari_in_flight` / `daari_in_flight_max` (labels `scope` + `id`), alert-series panels for
 `daari_upstream_retries_total`, `daari_cache_false_hits_avoided_total`, and
 `daari_budget_alerts_total`, an **MCP tool ingress by outcome** panel on
 `daari_mcp_tool_calls_total`, a **Tier shadow agree/disagree** panel on
