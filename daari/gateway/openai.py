@@ -1599,6 +1599,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 checks["redis"] = redis_check
                 if redis_check != "ok" and http_status == 200 and status == "ready":
                     status = "degraded"
+            if _postgres_stores_configured(ctx.settings):
+                pg_check = await asyncio.to_thread(
+                    _probe_postgres_url,
+                    getattr(ctx.settings.observability, "postgres_url", "") or "",
+                )
+                checks["postgres"] = pg_check
+                if pg_check != "ok" and http_status == 200 and status in ("ready", "degraded"):
+                    status = "degraded"
             content: dict[str, Any] = {"status": status, "checks": checks}
             if backends:
                 content["backends"] = backends
@@ -2765,6 +2773,47 @@ def _probe_redis_url(redis_url: str, timeout_seconds: float = 2.0) -> str:
 
         client = connect_redis(redis_url, timeout_seconds=timeout_seconds)
         client.ping()
+        return "ok"
+    except Exception as exc:
+        return type(exc).__name__
+
+
+def _postgres_stores_configured(settings: Any) -> bool:
+    """True when any control-plane store is configured on Postgres (#1652)."""
+    pg_url = (getattr(getattr(settings, "observability", None), "postgres_url", "") or "").strip()
+    if not pg_url:
+        return False
+    vk = getattr(getattr(settings, "server", None), "virtual_keys", None)
+    if getattr(vk, "backend", "sqlite") == "postgres":
+        return True
+    obs = getattr(settings, "observability", None)
+    if getattr(obs, "backend", "sqlite") == "postgres":
+        return True
+    rl = getattr(obs, "request_log", None)
+    if getattr(rl, "backend", "jsonl") == "postgres":
+        return True
+    ent = getattr(settings, "enterprise", None)
+    if getattr(ent, "audit_backend", "sqlite") == "postgres":
+        return True
+    for attr in ("batches", "files", "responses"):
+        section = getattr(settings, attr, None)
+        if getattr(section, "backend", "sqlite") == "postgres":
+            return True
+    return False
+
+
+def _probe_postgres_url(postgres_url: str) -> str:
+    """Best-effort ``SELECT 1`` for ``/ready`` when any store uses Postgres (#1652)."""
+    if not (postgres_url or "").strip():
+        return "missing_url"
+    if postgres_url.startswith("memory:"):
+        return "ok"
+    try:
+        import psycopg
+
+        with psycopg.connect(postgres_url, connect_timeout=2) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
         return "ok"
     except Exception as exc:
         return type(exc).__name__

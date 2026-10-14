@@ -31,6 +31,7 @@ def render_prometheus(
     metrics: Metrics,
     *,
     budget_state: dict[str, Any] | None = None,
+    budget_degrade: dict[str, Any] | None = None,
     false_hit_rate: float | None = None,
     rate_limit: dict[str, Any] | None = None,
     backend_pool: dict[str, Any] | None = None,
@@ -303,6 +304,18 @@ def render_prometheus(
         for candidate in ("sqlite_fallback", "fail_open"):
             value = 1 if degraded and mode == candidate else 0
             lines.append(f"daari_rate_limit_degraded{_labels(mode=candidate)} {value}")
+
+    if budget_degrade is not None:
+        lines.append(
+            "# HELP daari_budget_degraded 1 when usage-ledger spend reads failed"
+            " and budget pre-checks soft-allow."
+        )
+        lines.append("# TYPE daari_budget_degraded gauge")
+        degraded_budget = bool(budget_degrade.get("degraded"))
+        budget_mode = str(budget_degrade.get("degrade_mode") or "")
+        for candidate in ("soft_allow",):
+            value = 1 if degraded_budget and budget_mode == candidate else 0
+            lines.append(f"daari_budget_degraded{_labels(mode=candidate)} {value}")
 
     if team_rate_limits:
         lines.append(

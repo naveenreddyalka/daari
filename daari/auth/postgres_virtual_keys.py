@@ -110,6 +110,18 @@ _MEMORY_PATHS: dict[str, Path] = {}
 _MEMORY_META = threading.Lock()
 
 
+class PostgresBackendUnavailable(RuntimeError):
+    """Postgres control-plane store is unreachable (fail-closed for auth, #1652)."""
+
+    def __init__(self, store: str, detail: str = "") -> None:
+        self.store = store
+        self.detail = detail
+        message = f"postgres backend unavailable ({store})"
+        if detail:
+            message = f"{message}: {detail}"
+        super().__init__(message)
+
+
 def _memory_sqlite_path(dsn: str) -> Path:
     with _MEMORY_META:
         if dsn not in _MEMORY_PATHS:
@@ -128,6 +140,9 @@ class PostgresVirtualKeyStore:
         self.dsn = dsn
         self.path = dsn
         self.enabled = enabled
+        self.backend_kind = "postgres"
+        self.unreachable = False
+        self._unreach_detail = ""
         self._lock = threading.Lock()
         self._memory = dsn.startswith("memory:")
         # Local RPM sampler — not fleet-shared (#544).
@@ -139,7 +154,7 @@ class PostgresVirtualKeyStore:
             return
         if self.enabled:
             try:
-                with self._connect() as conn:
+                with self._connect_raw() as conn:
                     with conn.cursor() as cur:
                         cur.execute(_PG_SCHEMA)
                         for stmt in _PG_TEAM_MIGRATIONS:
@@ -147,10 +162,12 @@ class PostgresVirtualKeyStore:
                         for stmt in _PG_KEY_MIGRATIONS:
                             cur.execute(stmt)
                     conn.commit()
-            except Exception:
-                self.enabled = False
+            except Exception as exc:
+                # Keep enabled=True so auth stays required (fail-closed, #1652).
+                self.unreachable = True
+                self._unreach_detail = f"{type(exc).__name__}: {exc}"
 
-    def _connect(self) -> Any:
+    def _connect_raw(self) -> Any:
         try:
             import psycopg
         except ImportError as exc:
@@ -159,6 +176,39 @@ class PostgresVirtualKeyStore:
                 "pip install 'psycopg[binary]>=3' (or daari[postgres])"
             ) from exc
         return psycopg.connect(self.dsn)
+
+    def _connect(self) -> Any:
+        if self.unreachable:
+            raise PostgresBackendUnavailable("virtual_keys", self._unreach_detail)
+        try:
+            return self._connect_raw()
+        except PostgresBackendUnavailable:
+            raise
+        except RuntimeError:
+            # Missing optional dependency — surface the install hint unchanged.
+            raise
+        except Exception as exc:
+            self.unreachable = True
+            self._unreach_detail = f"{type(exc).__name__}: {exc}"
+            raise PostgresBackendUnavailable(
+                "virtual_keys", self._unreach_detail
+            ) from exc
+
+    def probe(self) -> str:
+        """Return ``ok`` or the exception type name for ``/ready`` / doctor (#1652)."""
+        if self._memory or self._inner is not None:
+            return "ok"
+        try:
+            with self._connect_raw() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+            self.unreachable = False
+            self._unreach_detail = ""
+            return "ok"
+        except Exception as exc:
+            self.unreachable = True
+            self._unreach_detail = f"{type(exc).__name__}: {exc}"
+            return type(exc).__name__
 
     def _delegate(self) -> VirtualKeyStore | None:
         return self._inner
