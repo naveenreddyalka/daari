@@ -211,12 +211,20 @@ def erase_subject_from_logs(
     value: str,
     dry_run: bool = False,
 ) -> int:
-    """Remove JSONL request-log lines whose payload mentions the subject (#1130)."""
-    target = Path(path).expanduser()
+    """Remove request-log rows/lines whose payload mentions the subject (#1130, #1651)."""
     needle = (value or "").strip()
     kind_norm = (kind or "").strip().lower()
     if not needle or kind_norm not in {"key", "team", "user"}:
         return 0
+    if _backend == "postgres" and _pg_store is not None:
+        try:
+            return int(
+                _pg_store.erase_subject(kind=kind_norm, value=needle, dry_run=dry_run)
+                or 0
+            )
+        except Exception:
+            return 0
+    target = Path(path).expanduser()
     removed = 0
     with _lock:
         for backup in _rotated_logs(target):

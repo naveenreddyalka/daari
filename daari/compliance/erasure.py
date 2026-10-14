@@ -202,7 +202,28 @@ def _erase_request_log(
     settings: Any, subject: ErasureSubject, *, dry_run: bool
 ) -> ErasureStoreResult:
     from daari.gateway import request_log as rl
+    from daari.gateway.postgres_request_log import request_log_store_from_settings
 
+    pg = request_log_store_from_settings(settings)
+    if pg is not None:
+        matched = int(
+            pg.erase_subject(
+                kind=subject.kind, value=subject.value, dry_run=dry_run
+            )
+            or 0
+        )
+        return ErasureStoreResult("request_log", matched, 0 if dry_run else matched)
+
+    # Align module backend with settings so JSONL erase sees the right path.
+    rl_cfg = getattr(getattr(settings, "observability", None), "request_log", None)
+    rl_backend = getattr(rl_cfg, "backend", "jsonl") if rl_cfg is not None else "jsonl"
+    rl.configure_request_log(
+        backend=rl_backend,
+        postgres_url=getattr(
+            getattr(settings, "observability", None), "postgres_url", ""
+        )
+        or "",
+    )
     path = Path(getattr(rl, "LOG_PATH", rl.DEFAULT_LOG_PATH))
     matched = rl.erase_subject_from_logs(
         path,

@@ -177,6 +177,84 @@ class PostgresRequestLogStore:
         except Exception:
             return 0
 
+    def erase_subject(
+        self,
+        *,
+        kind: str,
+        value: str,
+        dry_run: bool = False,
+    ) -> int:
+        """Delete rows whose payload mentions the subject (#1651)."""
+        needle = (value or "").strip()
+        kind_norm = (kind or "").strip().lower()
+        if not needle or kind_norm not in {"key", "team", "user"}:
+            return 0
+        if self._memory:
+            rows, lock = _memory_bucket(self.dsn)
+            with lock:
+                keep: list[dict[str, Any]] = []
+                removed = 0
+                for r in rows:
+                    payload = r.get("payload") if isinstance(r.get("payload"), dict) else {}
+                    if _payload_matches_subject(payload, kind_norm, needle):
+                        removed += 1
+                    else:
+                        keep.append(r)
+                if dry_run or removed == 0:
+                    return removed
+                rows[:] = keep
+                return removed
+        if not self.enabled:
+            return 0
+        try:
+            with self._lock, self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT id, payload FROM daari_request_log ORDER BY id ASC"
+                    )
+                    doomed: list[int] = []
+                    for row_id, raw_payload in cur.fetchall():
+                        payload = raw_payload
+                        if isinstance(payload, str):
+                            try:
+                                payload = json.loads(payload)
+                            except json.JSONDecodeError:
+                                payload = {}
+                        if not isinstance(payload, dict):
+                            continue
+                        if _payload_matches_subject(payload, kind_norm, needle):
+                            doomed.append(int(row_id))
+                    if dry_run or not doomed:
+                        return len(doomed)
+                    cur.executemany(
+                        "DELETE FROM daari_request_log WHERE id = %s",
+                        [(i,) for i in doomed],
+                    )
+                conn.commit()
+                return len(doomed)
+        except Exception:
+            return 0
+
+
+def _payload_matches_subject(payload: dict[str, Any], kind: str, value: str) -> bool:
+    """Same subject rules as JSONL request-log erase (#1130 / #1651)."""
+    if kind == "key":
+        for field in ("key_id", "owner_key_id"):
+            if str(payload.get(field) or "") == value:
+                return True
+        principal = payload.get("principal")
+        if isinstance(principal, str) and (
+            principal == value or principal == f"vk:{value}"
+        ):
+            return True
+        return False
+    if kind == "team":
+        return str(payload.get("team_id") or "") == value
+    for field in ("user", "user_id", "client_id", "client"):
+        if str(payload.get(field) or "") == value:
+            return True
+    return False
+
 
 def _parse_ts(raw: Any) -> datetime | None:
     if not isinstance(raw, str):
