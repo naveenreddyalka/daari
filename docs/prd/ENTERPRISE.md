@@ -11,36 +11,30 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-14)
+## Where daari stands (verified in-tree, 2026-10-14 eve)
 
-**Loop velocity.** The whole 10-13 morning + eve tables drained in <24h yet
-again: rows 85–89 and 92–95 (decisions catalog discovery, per-MCP-server
-rpm/tpm, PrometheusRule alert pack, Postgres request/event log backend,
-/mcp/proxy + tasks Prom parity, Grafana dashboard ConfigMap, image.digest
-pin, scoped in-flight panels, cache-invalidate counters) all shipped via
-PRs #1642–#1650. Open: member budget webhooks (90), DEC/SYS bench docs (91),
-LiteLLM-GA compare row (96), docs pins 72–74/78, and `agent:working` rows
-62–63/65–67.
+**Loop velocity.** Morning PRD (#1656) filed compliance/ops rows 97–101; those
+stay open. Overnight wave (PRs #1642–#1650) still the last feature merge set.
+`agent:working` continues on admin-plane rows 62–63/65–67 + hot-reload / MCP
+tool allowlist / local E2E regression.
 
-**Outward.** LiteLLM v1.105.1 stable patch (10-14) + 1.106.0-rc.2; a noisy
-1.107.0-dev.1 carries watchables (Errors/failed-request observability tab,
-M365 + GitHub Copilot OAuth providers, detect-only guardrails streamed
-live, more /v1/decisions providers). **Headline: OpenAI announced the GPT-4
-series API shutdown on 10-14** (gpt-4o/4o-mini/4.1/4.1-mini removed
-2027-01-14 → gpt-6-luna) and a programmatic `shutdown_date` field on
-`GET /v1/models`. Portkey 2.28.0, Kong 2.2.0, vLLM 0.31.0, OpenRouter
-(Oct 9), MCP blog (Aug 22) flat; Ollama 0.40.4 stable is runtime-only
-(decision models in CLI, MLX Kev). Anthropic Dynamic Workflows beta stays a
-platform-side non-goal.
+**Outward.** LiteLLM **v1.107.0-dev.1** cut today (17:02 UTC): failed-request
+tracking by HTTP status + caller, Admin UI Errors tab, M365 Copilot + GitHub
+Copilot OAuth providers, detect-only guardrails streamed live when buffering
+is off, `hosted_vllm` + Databricks `ai_decide` Decisions providers, Azure
+Microsoft-Decision-1. Stable bar still 1.105.1; 1.106 remains rc.2. Ollama
+0.40.4, vLLM 0.31.0, Portkey, Kong, OpenRouter unchanged since morning.
+OpenAI GPT-4 series API shutdown (2027-01-14 → gpt-6-luna) + `shutdown_date`
+on `/v1/models` still the lifecycle headline; Oct-23 wave is nine days out.
 
-**Inward theme: parity depth on the overnight wave.** Code audit verified:
-`daari erase` never touches the new Postgres request-log table (JSONL-only
-erase path); Postgres outage semantics are inconsistent (VK store can go
-*open* after a boot-time connect failure, budgets fail open on silent 0.0
-spend, `/ready` never probes PG); per-server MCP 429s send Retry-After but
-write no audit row and no Prom reject; `daari migrate` inspects SQLite
-stores only; `models.lifecycle` ships empty defaults, so doctor/410 gates
-never fire on OpenAI's own retirement calendar.
+**Inward theme: admin-surface + day-2 packaging depth.** Code audit verified:
+cache invalidate has Prom + `log_gateway_event` but **no** enterprise audit
+row (unlike MCP activity abort); Anthropic-shaped `/v1/models` rebuilds
+`capabilities` via `anthropic_capabilities()` and drops the `decision` tag
+OpenAI/Ollama facades carry; `integrations.mcp_servers` rpm/tpm absent from
+config-editor ownership and Helm values; Grafana/PrometheusRule ignore the
+new `daari_cache_invalidate_*` series; `daari_errors_total` is an unlabeled
+scalar while LiteLLM 1.107-dev ships status/caller Errors breakdowns.
 
 ---
 
@@ -48,78 +42,58 @@ never fire on OpenAI's own retirement calendar.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 97 | Subject erasure for the Postgres request/event log backend | 5 | 2 | — (LiteLLM DB logs have no erase verb) | Air-gapped GDPR erase in one CLI run | Filed [#1651](https://github.com/naveenreddyalka/daari/issues/1651) |
-| 98 | Fail-closed auth + signalled budget degrade on PG outage; `/ready`+doctor PG probes; documented matrix | 5 | 4 | — (LiteLLM proxy-DB behavior opaque) | Explicit per-store fail-open/closed beats silent open | Filed [#1652](https://github.com/naveenreddyalka/daari/issues/1652) |
-| 99 | Ship default model lifecycle (OpenAI 10-23 + 2027-01-14 waves) + `shutdown_date` on /v1/models | 4 | 2 | LiteLLM cost-map `deprecation_date` strings | Doctor + fail-closed 410 light up on install | Filed [#1653](https://github.com/naveenreddyalka/daari/issues/1653) |
-| 100 | Audit + Prom reject parity for per-server MCP rpm/tpm 429s | 4 | 2 | Portkey cloud analytics | Greppable on-box proof a ceiling fired | Filed [#1654](https://github.com/naveenreddyalka/daari/issues/1654) |
-| 101 | `daari migrate` + doctor visibility for Postgres store schemas | 4 | 3 | LiteLLM boot-time Alembic | Dry-run SQLite **and** PG before a rolling upgrade | Filed [#1655](https://github.com/naveenreddyalka/daari/issues/1655) |
-| 90 | Per-member budget threshold webhooks on shared team keys | 3 | 3 | LiteLLM 1.105 member alerts | Catch a runaway agent via the on-box ledger | Open [#1633] |
+| 102 | Enterprise audit row for admin cache invalidate | 4 | 2 | LiteLLM / Portkey admin audit | Greppable on-box proof a purge fired | Filed [#1657](https://github.com/naveenreddyalka/daari/issues/1657) |
+| 103 | Carry `decision` capability on Anthropic-shaped `/v1/models` cards | 3 | 1 | LiteLLM Decisions UI | Same catalog truth on every facade | Filed [#1658](https://github.com/naveenreddyalka/daari/issues/1658) |
+| 104 | `mcp_servers` rpm/tpm in config-editor ownership + Helm values | 4 | 2 | LiteLLM MCP rate-limit UI | Fleet ceilings without hand-editing every pod | Filed [#1659](https://github.com/naveenreddyalka/daari/issues/1659) |
+| 105 | Grafana panels + PrometheusRule for `cache_invalidate` series | 3 | 2 | Kong / LiteLLM charts | One helm install lights purge ops | Filed [#1660](https://github.com/naveenreddyalka/daari/issues/1660) |
+| 106 | Label `daari_errors_total` by HTTP status + Errors breakdown (stats/web-ui) | 4 | 3 | LiteLLM 1.107-dev Errors tab | On-box failure forensics, no SaaS tab | Filed [#1661](https://github.com/naveenreddyalka/daari/issues/1661) |
+| 97 | Subject erasure for the Postgres request/event log backend | 5 | 2 | — (LiteLLM DB logs have no erase verb) | Air-gapped GDPR erase in one CLI run | Open [#1651] |
+| 98 | Fail-closed auth + signalled budget degrade on PG outage; `/ready`+doctor PG probes | 5 | 4 | — (LiteLLM proxy-DB behavior opaque) | Explicit per-store fail-open/closed | Open [#1652] |
+| 99 | Ship default model lifecycle (OpenAI waves) + `shutdown_date` on /v1/models | 4 | 2 | LiteLLM cost-map `deprecation_date` | Doctor + fail-closed 410 on install | Open [#1653] |
+| 100 | Audit + Prom reject parity for per-server MCP rpm/tpm 429s | 4 | 2 | Portkey cloud analytics | Greppable proof a ceiling fired | Open [#1654] |
+| 101 | `daari migrate` + doctor visibility for Postgres store schemas | 4 | 3 | LiteLLM boot-time Alembic | Dry-run SQLite **and** PG | Open [#1655] |
+| 90 | Per-member budget threshold webhooks on shared team keys | 3 | 3 | LiteLLM 1.105 member alerts | Catch a runaway agent on-box | Open [#1633] |
 | 91 | BENCHMARKS.md DEC/SYS cross-link + decisions L0 cache-hit scenario | 3 | 1 | — (benchmarking honesty) | Publish the on-box warm-judgment win | Open [#1634] |
-| 96 | compare-litellm: 1.105.0 GA framing + `litellm.agent()`/Lens vs on-box multi_agent | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Open [#1640] |
-| 72 | `daari stats --help` mentions `virtual_keys` | 2 | 1 | — (CLI honesty) | Same JSON operators already dump | Open |
-| 73 | compare-litellm: LiteLLM 1.105 RC Decisions vs daari | 2 | 1 | LiteLLM release notes | On-box Decisions already ship | Open |
-| 74 | Hermetic pin: virtual-keys.md documents `/v1/models` allowlist | 2 | 1 | — (docs regression) | Keep ACL sentence in CI | Open |
-| 78 | compare-litellm: LiteLLM 1.106 decision-model guardrail watch | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Open |
+| 96 | compare-litellm: 1.105.0 GA framing + `litellm.agent()`/Lens vs multi_agent | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Open [#1640] |
+| 72–74/78 | Docs pins: stats help, compare RC/1.106, virtual-keys hermetic | 2 | 1 | — | CLI/docs honesty | Open |
 | 62 | End-user inventory + per-user block/cap overrides | 5 | 3 | OpenRouter end-users / LiteLLM | Ledger already knows every user | Open |
-| 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter guardrail assign / Portkey | Per-tenant policy, zero hops | Open |
+| 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter / Portkey | Per-tenant policy, zero hops | Open |
 | 65 | Web-ui: honor keys/teams `has_more` + render `report.users` | 4 | 2 | LiteLLM admin UI | Same-box console finishes the job | Open |
 | 66 | Bound/paginate report `clients`/`users` rollups | 4 | 2 | LiteLLM paged usage | Fleet-safe JSON on-box | Open |
 | 67 | multi_agent nested usage: per-subagent `model` for cost-true pricing | 4 | 2 | OpenAI / LiteLLM FinOps | Ledger already meters nested tokens | Open |
 | 6 | Hot-reload `config.yaml` | 3 | 2 | LiteLLM config ownership | Open — needs long session | Open |
 | 7 | Per-key tool-name allowlist for Messages `mcp_servers` | 4 | 3 | LiteLLM `mcp_tool_permissions` | Parked (needs ≥60m session) | Parked |
-| 87 | Shipped PrometheusRule alert pack: breaker/budget/5xx/queue/guardrails/key-expiry | 5 | 2 | LiteLLM alerting docs / Kong | Batteries-included day-2 ops on-box | Shipped |
-| 88 | Fleet-durable request/event log backend (postgres) — was last per-pod store | 5 | 4 | LiteLLM DB spend logs | Air-gapped fleets need on-box durability | Shipped |
-| 89 | /mcp/proxy + MCP tasks Prom parity; `mcp` modality registered | 4 | 2 | Kong MCP analytics / LiteLLM | One governed MCP door must be observable | Shipped |
-| 85 | Advertise local decisions catalog on `/v1/models` + Ollama `/api/tags` | 3 | 2 | LiteLLM 1.106 decisions UI | BYOK clients discover on-box judges | Shipped |
-| 86 | Per-server rpm/tpm ceilings on `integrations.mcp_servers` | 4 | 2 | LiteLLM MCP limits | Protect small MCP backends from one tenant | Shipped |
-| 92–95 | Eve packaging set: Grafana ConfigMap; image.digest pin; scoped in-flight panels; cache-invalidate counters | 3–4 | 1–2 | Kong / LiteLLM charts | One `helm install` lights on-box panels | Shipped |
-| 24 | Grafana panel for `compact_to_fit_applied` | 2 | 1 | LiteLLM spend dashboards | Shipped | Shipped |
-| 25 | Dedicated stats/Prom counter for MCP grant fail-closed | 3 | 1 | LiteLLM MCP 403 metrics | Shipped | Shipped |
-| 26 | Refuse MCP `initialize` when key has no grant | 4 | 1 | LiteLLM initialize 403 | Shipped | Shipped |
-| 27 | Stats for estimated tokens dropped by compact-to-fit | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
-| 28 | Refresh compare-litellm for LiteLLM 1.104 GA | 2 | 1 | LiteLLM release notes | Shipped | Shipped |
-| 19 | Config ownership for `routing.compact_to_fit.*` | 3 | 2 | LiteLLM config ownership | Shipped | Shipped |
-| 20 | Doctor tip when compact_to_fit is enabled | 2 | 1 | — (ops honesty) | Shipped | Shipped |
-| 21 | Hermetic pin: compact_to_fit in config + routing-tiers | 2 | 1 | — (docs regression) | Shipped | Shipped |
-| 22 | `daari_meta` + stats when compact_to_fit actually trims | 3 | 2 | LiteLLM compact telemetry | Shipped | Shipped |
-| 23 | Opt-in fail-closed MCP when key has no MCP grant | 4 | 2 | LiteLLM `require_key_mcp_access_defined` | Shipped | Shipped |
+| 85–89 / 92–95 | Overnight wave: alert pack, PG request-log, MCP Prom/rpm, decisions catalog, Grafana/digest/panels/cache-invalidate counters | 3–5 | 1–4 | Kong / LiteLLM | Batteries-included day-2 on-box | Shipped |
 | 8 | Full DCR; A2A; Realtime/WS; stdio MCP; M365 catalog; Skills; FIPS; HIPAA BAA | 2–4 | 3–5 | Portkey / Kong / LiteLLM / OpenAI | Demand-triggered | Watch |
 
 Shipped this week (do not re-file): PrometheusRule alert pack; Postgres
 request/event log backend; /mcp/proxy + tasks Prom parity + `mcp` modality;
 per-server MCP rpm/tpm ceilings (Retry-After headers); decisions catalog on
-discovery facades; Helm Grafana ConfigMap + image.digest pin; scoped
+OpenAI/Ollama discovery; Helm Grafana ConfigMap + image.digest pin; scoped
 in-flight panels; cache-invalidate Prom counters; decision-guardrail async
-data plane; teams metadata Postgres/export parity; concurrency caps across
-CLI/admin/web-ui/Helm/Prom; hermetic RPM clock; audit reject rows.
+data plane; teams metadata Postgres/export parity; concurrency caps;
+hermetic RPM clock; audit reject rows.
 
-Watch rows (do not file yet): cache-invalidate enterprise audit row +
-stats/web-ui/Grafana/alert surface (Prom-only today — fold into next admin
-audit slice); alert-pack + dashboard coverage for the new mcp_egress /
-cache-invalidate series (file on operator ask); Anthropic-shaped /v1/models
-cards drop the `decision` capability tag local decisions carry on
-OpenAI/Ollama facades (fold into next catalog sweep); MCP server ceilings
-absent from config-editor PATCH subset + Helm values (file on fleet ask);
-LiteLLM 1.107-dev watchables at GA (failed-request Errors tab, M365/GitHub
-Copilot OAuth providers, detect-only guardrails streamed live vs daari's
-buffering scanner, hosted_vllm + Databricks decisions providers); SCIM +
-multi-issuer/audience SSO (regulated-buyer ask); `gen_ai.agent.*` semconv;
-per-user request-count RPD; Prometheus exemplars; decisions catalog
-pricing for drex/microsoft ids ($0 local by design); gpt-6-luna Decisions
-schema drift; OpenRouter BYOK `declared_region` / IP allowlists; Anthropic
-Managed Agents Dynamic Workflows + Compliance API (non-goal); Kong 2.2 MCP
-bundling + modality cost (buyer ask); Portkey JWT JIT (operator ask);
-OpenAI in-product HIPAA BAA (compliance non-goal).
+Watch rows (do not file yet): alert-pack coverage for mcp_egress / MCP
+server-reject series (file after reject-parity lands); LiteLLM 1.107 GA
+docs compare (Errors tab, M365/GitHub Copilot OAuth, detect-only stream vs
+buffering scanner, hosted_vllm + Databricks decisions) — stay watch until
+stable; SCIM + multi-issuer/audience SSO; `gen_ai.agent.*` semconv;
+per-user request-count RPD; Prometheus exemplars; decisions catalog pricing
+for drex/microsoft ids; gpt-6-luna Decisions schema drift; OpenRouter BYOK
+`declared_region` / IP allowlists; Anthropic Managed Agents Dynamic
+Workflows + Compliance API (non-goal); Kong MCP modality cost (buyer ask);
+Portkey JWT JIT (operator ask); OpenAI in-product HIPAA BAA (non-goal);
+web-ui cache_invalidate table (fold into row 105/stats if operators ask).
 
-Verified fine this run — don't re-audit: request-log PG backup catalog
-(`pg_dump --table=daari_request_log`) + retention prune on PG + Helm
-forced-backend env + doctor fleet-backend tip; PrometheusRule expressions
-all reference real series/labels (no phantoms); MCP server 429 Retry-After +
-X-RateLimit-Scope headers + doctor ceilings tip; decisions advertised on
-OpenAI /v1/models + Ollama /api/tags + /api/show with `decision` capability;
-cache-invalidate Prom counters + entries-removed series; scoped in-flight
-Grafana panels; Redis rate-limit outage contract (sqlite_fallback/fail_open
-+ /ready redis check + degraded gauge) — the gap is the **Postgres** side.
+Verified fine this run — don't re-audit: request-log PG backup catalog +
+retention prune + Helm forced-backend env + doctor fleet-backend tip;
+PrometheusRule expressions reference real series (no phantoms); MCP server
+429 Retry-After + X-RateLimit-Scope + doctor ceilings tip; decisions on
+OpenAI /v1/models + Ollama /api/tags + /api/show; cache-invalidate Prom
+counters; scoped in-flight Grafana panels; Redis rate-limit outage contract
+— the gap remains the **Postgres** fail-closed matrix (row 98) and erase
+(row 97).
 
 ---
 
@@ -131,10 +105,12 @@ Grafana panels; Redis rate-limit outage contract (sqlite_fallback/fail_open
    degrade + `/ready`/doctor PG probes + documented matrix (row 98).
 3. **Lifecycle out of the box** — shipped OpenAI retirement calendar +
    `shutdown_date` parity so doctor/410 gates fire on install (row 99).
-4. **Provable governance** — audit + Prom parity for per-server MCP 429s
-   (row 100), member budget webhooks (row 90).
-5. **Fleet upgrade confidence** — migrate/doctor PG schema visibility
-   (row 101), then the admin-plane rows (62–67) as sessions free up.
+4. **Provable admin + MCP governance** — cache-invalidate audit (row 102),
+   MCP 429 audit/Prom (row 100), member budget webhooks (row 90).
+5. **Day-2 packaging + Errors forensics** — Grafana/alert for
+   cache_invalidate (row 105), labeled errors by status (row 106),
+   mcp_servers ceilings via Helm/editor (row 104), migrate/doctor PG
+   (row 101); admin-plane rows 62–67 as sessions free up.
 
 Compliance non-goals (SCIM, WIF depth, A2A, SOC 2 program, Realtime/WS,
 FIPS builds, HIPAA BAA) stay deferred until buyer demand.
@@ -143,14 +119,20 @@ FIPS builds, HIPAA BAA) stay deferred until buyer demand.
 
 ## Changelog
 
+- **2026-10-14 eve (admin-surface + day-2 packaging)** — Outward: LiteLLM
+  v1.107.0-dev.1 (Errors tab, Copilot OAuth providers, detect-only stream,
+  hosted_vllm + Databricks decisions). Filed rows 102–106: cache-invalidate
+  enterprise audit, Anthropic `decision` capability parity, mcp_servers
+  rpm/tpm in config-editor + Helm, Grafana/PrometheusRule for
+  cache_invalidate, labeled errors-by-status for Errors-tab parity. Morning
+  rows 97–101 remain open (PG erase/outage/lifecycle/MCP reject/migrate).
+
 - **2026-10-14 (overnight-wave parity depth)** — Marked rows 85–89 + 92–95
-  Shipped (PRs #1642–#1650 drained both 10-13 tables in <24h). Drained the
-  dead 10-13 eve sibling PRD PR to main (pin-test failure; its rows adopted
-  here). Filed rows 97–101: PG request-log erasure, PG outage fail-closed
-  semantics + probes, shipped model lifecycle + `shutdown_date` parity
-  (OpenAI announced the GPT-4 API shutdown 10-14), MCP per-server 429
-  audit/Prom parity, migrate/doctor PG schema visibility. Outward: LiteLLM
-  1.105.1 stable patch; OpenAI GPT-4 retirement wave; all other bars flat.
+  Shipped (PRs #1642–#1650). Filed rows 97–101: PG request-log erasure, PG
+  outage fail-closed semantics + probes, shipped model lifecycle +
+  `shutdown_date` parity, MCP per-server 429 audit/Prom parity,
+  migrate/doctor PG schema visibility. Outward: LiteLLM 1.105.1; OpenAI
+  GPT-4 retirement wave.
 
 - **2026-10-13 (day-2 operations depth)** — Filed rows 87–91: PrometheusRule
   alert pack, fleet-durable request/event log backend, /mcp/proxy + tasks
@@ -158,9 +140,7 @@ FIPS builds, HIPAA BAA) stay deferred until buyer demand.
   Adopted eve-sibling rows 85–86.
 
 - **2026-10-13 eve (day-2 observability packaging)** — Sibling scan filed
-  rows 92–96 (Grafana ConfigMap, image.digest pin, scoped in-flight panels,
-  cache-invalidate counters, LiteLLM GA compare); its PRD PR failed the pin
-  test and was drained to main 10-14.
+  rows 92–96; PRD PR drained to main 10-14 after pin-test failure.
 
 - **2026-10-12 → 08-28** — Condensed: concurrency + decision-guardrail
   depth; control-plane honesty + MCP server rpm; export honesty + doctor
