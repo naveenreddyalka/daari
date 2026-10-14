@@ -1418,10 +1418,25 @@ class RetentionSettings(BaseModel):
         )
 
 
+class RequestLogSettings(BaseModel):
+    """Gateway request/event log durability (#1631)."""
+
+    backend: Literal["jsonl", "postgres"] = Field(
+        default="jsonl",
+        description=(
+            "jsonl (default, pod-local rotated file) or postgres "
+            "(observability.postgres_url) so fleet replicas share one "
+            "queryable event table (#1631)."
+        ),
+    )
+
+
 class ObservabilitySettings(RuntimeSettings):
     # Gateway request log rotation; 0 max bytes disables rotation.
     request_log_max_bytes: int = Field(default=5 * 1024 * 1024, ge=0)
     request_log_backups: int = Field(default=3, ge=0)
+    # Shared vs pod-local request/event log (#1631).
+    request_log: RequestLogSettings = Field(default_factory=RequestLogSettings)
     # F3: expose GET /metrics in Prometheus exposition format. Open when
     # server.api_key is unset; honors auth otherwise (issue #107).
     prometheus: bool = True

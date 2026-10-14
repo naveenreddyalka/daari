@@ -1218,6 +1218,12 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
     vk_backend = getattr(settings.server.virtual_keys, "backend", "sqlite") or "sqlite"
     if vk_backend == "sqlite":
         sqlite_artifacts.append("server.virtual_keys.backend=sqlite")
+    rl_cfg = getattr(settings.observability, "request_log", None)
+    rl_backend = (
+        getattr(rl_cfg, "backend", "jsonl") if rl_cfg is not None else "jsonl"
+    ) or "jsonl"
+    if rl_backend == "jsonl":
+        sqlite_artifacts.append("observability.request_log.backend=jsonl")
 
     signals: list[str] = []
     if replicas > 1:
@@ -1226,6 +1232,8 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
         signals.append("cache.backend=redis")
     if settings.observability.backend == "postgres":
         signals.append("observability.backend=postgres")
+    if rl_backend == "postgres":
+        signals.append("observability.request_log.backend=postgres")
 
     # Artifacts that must be shared across a fleet.
     needs_shared = [
@@ -1238,6 +1246,8 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
         needs_shared.append("observability.backend=sqlite")
     if audit_backend == "sqlite" and signals:
         needs_shared.append("enterprise.audit_backend=sqlite")
+    if rl_backend == "jsonl" and signals:
+        needs_shared.append("observability.request_log.backend=jsonl")
 
     if needs_shared and signals:
         return CheckResult(
@@ -1250,7 +1260,8 @@ def _check_fleet_artifacts(settings: Settings) -> CheckResult:
                 "audit export is incomplete; set batches.backend=postgres, "
                 "files.backend=postgres, responses.backend=postgres, "
                 "server.virtual_keys.backend=postgres, "
-                "observability.backend=postgres, and "
+                "observability.backend=postgres, "
+                "observability.request_log.backend=postgres, and "
                 "enterprise.audit_backend=postgres (with observability.postgres_url), "
                 "or keep a single replica"
             ),

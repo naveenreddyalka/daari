@@ -40,6 +40,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         backups=resolved.observability.request_log_backups,
         structured_json_logs=resolved.observability.structured_json_logs,
         otlp_logs=resolved.observability.otlp_logs,
+        backend=resolved.observability.request_log.backend,
+        postgres_url=resolved.observability.postgres_url,
     )
     vk_store: VirtualKeyStore | None = None
     if resolved.server.virtual_keys.enabled:

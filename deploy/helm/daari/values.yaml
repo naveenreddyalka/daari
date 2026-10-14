@@ -186,6 +186,10 @@ observability:
   # OTEL_EXPORTER_OTLP_ENDPOINT yourself). See otel-genai.md.
   otlpLogs: false
   otlpEndpoint: ""
+  # Gateway request/event log backend (#1631). Empty leaves app default
+  # (jsonl). When postgres.enabled, Deployment forces postgres.
+  requestLog:
+    backend: ""
   # Days to keep gateway request-log lines (#786). Empty leaves the app default
   # (0 = size-only rotation via request_log_max_bytes).
   retention:
@@ -196,10 +200,10 @@ redis:
   enabled: false
   url: redis://redis:6379/0
 
-# External Postgres for ledger/traces/batches/files (issues #116, #465).
+# External Postgres for ledger/traces/batches/files (issues #116, #465, #1631).
 # When enabled, the Deployment sets DAARI_OBSERVABILITY__BACKEND,
-# DAARI_BATCHES__BACKEND, DAARI_FILES__BACKEND, and DAARI_RESPONSES__BACKEND
-# to postgres (shared fleet).
+# DAARI_OBSERVABILITY__REQUEST_LOG__BACKEND, DAARI_BATCHES__BACKEND,
+# DAARI_FILES__BACKEND, and DAARI_RESPONSES__BACKEND to postgres (shared fleet).
 # Example multi-replica fleet:
 #   replicaCount: 2
 #   autoscaling.minReplicas: 2

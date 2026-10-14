@@ -6786,6 +6786,16 @@ Docs: ollama.md, config.md. Covered by `tests/unit/test_models_catalog.py`,
 ceilings (both apply). Doctor tip `mcp_server_rate_limits`; config.md +
 mcp.md. Covered by `tests/unit/test_mcp_server_rate_limits.py`.
 
+### Fleet-durable request/event log backend ([#1631](https://github.com/naveenreddyalka/daari/issues/1631))
+
+<!-- tracking:#1631 -->
+**Status:** Done (2026-10-14). `observability.request_log.backend`
+`jsonl|postgres` (default jsonl); postgres writes land in
+`daari_request_log` via `observability.postgres_url`, best-effort.
+Retention prune, backup catalog, doctor fleet warnings, and Helm
+`postgres.enabled` cover the shared backend. Covered by
+`tests/unit/test_postgres_request_log.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

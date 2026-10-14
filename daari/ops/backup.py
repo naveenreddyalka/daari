@@ -225,6 +225,21 @@ def catalog_stores(settings: Any, *, request_log_path: Path | None = None) -> li
             )
         )
 
+    rl_cfg = getattr(settings.observability, "request_log", None)
+    rl_backend = (
+        getattr(rl_cfg, "backend", "jsonl") if rl_cfg is not None else "jsonl"
+    ) or "jsonl"
+    if rl_backend == "postgres" and pg:
+        entries.append(
+            StoreEntry(
+                name="request-log",
+                backend="postgres",
+                schema_version=STORE_SCHEMA_VERSIONS["request-log"],
+                pg_dump=f'pg_dump --dbname="{pg}" --table=daari_request_log',
+            )
+        )
+        return entries
+
     log_path = Path(request_log_path or rl.LOG_PATH).expanduser()
     entries.append(
         StoreEntry(
