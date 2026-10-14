@@ -137,6 +137,15 @@ serviceMonitor:
   # Optional: { name, key } — used only when scraping the API http port.
   bearerTokenSecret: {}
 
+# Opt-in Grafana overview dashboard ConfigMap (#1636). Embeds
+# files/grafana/daari-dashboard.json (mirrors deploy/grafana/). Default labels
+# suit the grafana-sidecar / kube-prometheus-stack dashboard importer.
+grafanaDashboard:
+  enabled: false
+  labels:
+    grafana_dashboard: "1"
+  annotations: {}
+
 # Prometheus Operator PrometheusRule alert pack (#1630). Opt-in; requires the
 # same monitoring.coreos.com CRDs as serviceMonitor. Metric names match
 # daari/observability/prometheus.py. See metrics-prometheus.md#alert-pack.

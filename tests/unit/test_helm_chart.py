@@ -323,6 +323,41 @@ _PROMETHEUS_RULE_METRICS = (
 )
 
 
+class TestHelmGrafanaDashboard:
+    def test_grafana_dashboard_absent_by_default(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        assert "grafana-dashboard" not in rendered
+        assert "daari-dashboard.json" not in rendered
+        values = _load_yaml(VALUES)
+        assert values["grafanaDashboard"]["enabled"] is False
+        assert values["grafanaDashboard"]["labels"]["grafana_dashboard"] == "1"
+
+    def test_grafana_dashboard_configmap_when_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template("--set", "grafanaDashboard.enabled=true")
+        assert "kind: ConfigMap" in rendered
+        assert "daari-dashboard.json" in rendered
+        assert '"title": "daari"' in rendered or '"title": "daari"' in rendered.replace(
+            "\n", ""
+        )
+        assert "Requests by tier" in rendered
+        assert "daari-overview" in rendered
+        assert 'grafana_dashboard: "1"' in rendered or "grafana_dashboard: '1'" in rendered
+        chart_file = CHART / "files" / "grafana" / "daari-dashboard.json"
+        source = ROOT / "deploy" / "grafana" / "daari-dashboard.json"
+        assert chart_file.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
+
+    def test_grafana_dashboard_custom_labels(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "grafanaDashboard.enabled=true",
+            "--set",
+            "grafanaDashboard.labels.grafana_dashboard=1",
+            "--set",
+            "grafanaDashboard.labels.release=kube-prometheus-stack",
+        )
+        assert "release: kube-prometheus-stack" in rendered
+
+
 class TestHelmPrometheusRules:
     def test_prometheusrule_absent_by_default(self, helm_available: None) -> None:
         rendered = _helm_template()

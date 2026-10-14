@@ -15,7 +15,10 @@ private scrape network, set `observability.metrics_port` (e.g. `9090`) so daari
 also binds `127.0.0.1:<port>/metrics` **without** API key auth — keep that port
 off public ingress. Main-port `/metrics` auth is unchanged.
 
-Import Grafana dashboard: `deploy/grafana/daari-dashboard.json` (includes a
+Import Grafana dashboard: `deploy/grafana/daari-dashboard.json`, or enable Helm
+`grafanaDashboard.enabled` so the chart ships the same JSON as a labeled
+ConfigMap (see [Capacity and Helm](../operations/capacity-helm.md#grafana-overview-dashboard)).
+The dashboard includes a
 **TTFT p50 / p95 by tier** panel on `daari_ttft_ms` for stream startup health,
 a **Soft warnings by kind** panel on `daari_soft_warnings_total` for soft-band
 pressure before hard 402/429, a **Hard rejects by kind** panel on

@@ -6806,6 +6806,14 @@ series; MCP tasks emit `daari_mcp_tasks_total` + OTel spans; Grafana
 MCP panel includes proxy/task queries. Covered by
 `tests/unit/test_mcp_proxy_metrics.py`.
 
+### Helm Grafana overview dashboard ConfigMap ([#1636](https://github.com/naveenreddyalka/daari/issues/1636))
+
+<!-- tracking:#1636 -->
+**Status:** Done (2026-10-14). Opt-in `grafanaDashboard.enabled` renders a
+ConfigMap embedding `files/grafana/daari-dashboard.json` with
+`grafana_dashboard: "1"` sidecar labels; capacity-helm + metrics docs.
+Covered by `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

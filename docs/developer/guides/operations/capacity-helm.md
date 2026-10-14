@@ -216,6 +216,24 @@ adds a `metrics` containerPort / Service port, and points ServiceMonitor at
 
 See [Prometheus metrics](../observability/metrics-prometheus.md).
 
+### Grafana overview dashboard
+
+`grafanaDashboard` defaults to **disabled**. When enabled, the chart renders a
+ConfigMap embedding `deploy/grafana/daari-dashboard.json` (packaged under
+`files/grafana/` in the chart). Default labels include `grafana_dashboard: "1"`
+so the common Grafana sidecar / kube-prometheus-stack dashboard importer picks
+it up; override `grafanaDashboard.labels` / `annotations` for your operator.
+
+```yaml
+grafanaDashboard:
+  enabled: true
+  labels:
+    grafana_dashboard: "1"
+  # annotations: {}
+```
+
+See [Prometheus metrics](../observability/metrics-prometheus.md#grafana).
+
 ### Org GPU pool
 
 `orgPool` defaults to **disabled**. When enabled, the Deployment sets
