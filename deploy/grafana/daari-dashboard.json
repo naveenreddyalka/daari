@@ -574,6 +574,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 37,
+      "title": "Scoped in-flight by key/team/model",
+      "description": "Per-scope concurrency caps (`daari_in_flight` / `daari_in_flight_max` labeled by scope+id). Complements the global Concurrency gate panel.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 144 },
+      "targets": [
+        {
+          "expr": "daari_in_flight",
+          "legendFormat": "in_flight {{scope}}/{{id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "daari_in_flight_max",
+          "legendFormat": "max {{scope}}/{{id}}",
+          "refId": "B"
+        }
+      ]
     }
   ],
   "refresh": "30s",

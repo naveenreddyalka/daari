@@ -6822,6 +6822,14 @@ Deployment + backup CronJob use `repository@sha256:…` (digest wins over tag).
 NOTES + capacity-helm document cosign verify via RELEASING.md. Covered by
 `tests/unit/test_helm_chart.py`.
 
+### Grafana scoped in-flight panels ([#1638](https://github.com/naveenreddyalka/daari/issues/1638))
+
+<!-- tracking:#1638 -->
+**Status:** Done (2026-10-14). Overview dashboard panel for
+`daari_in_flight` / `daari_in_flight_max` with legend by `scope`/`id`;
+metrics-prometheus docs list the series next to the global gate. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
