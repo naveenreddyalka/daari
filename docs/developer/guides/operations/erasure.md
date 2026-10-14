@@ -24,7 +24,7 @@ Exactly one of `--key`, `--team`, or `--user` is required.
 |-------|--------|
 | Spend ledger | `key_id` / `team_id`; for `--user`, **`user_id` OR `client_id`** (legacy client mapping kept) |
 | Usage ledger | `client_usage` + `user_usage` (aggregate `usage` has no tenant column) |
-| Request log | JSONL lines whose payload mentions the subject |
+| Request log | JSONL lines **or** `daari_request_log` rows (`observability.request_log.backend=postgres`) whose payload mentions the subject |
 | Responses | `owner_key_id` (key; team expands to member keys) |
 | Files | `owner_key_id` (same) |
 | Batches | `governance.key_id` / `team_id` / `user` (sqlite **or** `batches.backend=postgres`) |
@@ -48,7 +48,8 @@ leaving an operator-visible trail of the erasure itself.
 
 SQLite is the default path. Fleet backends are included in the same sweep:
 
-- Postgres spend / usage / responses / files / idempotency / batches / traces
+- Postgres spend / usage / responses / files / idempotency / batches / traces /
+  request log (`observability.request_log.backend=postgres` → `daari_request_log`)
 - Redis L0 / L1 when `cache.backend=redis`
 
 Failures to reach a fleet store are logged (`erasure.cache_failed` and similar);

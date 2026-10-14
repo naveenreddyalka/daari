@@ -6837,6 +6837,14 @@ metrics-prometheus docs list the series next to the global gate. Covered by
 `daari_cache_invalidate_entries_removed_total{layer}` on admin invalidate;
 metrics-prometheus.md. Covered by `tests/unit/test_cache_invalidate_metrics.py`.
 
+### Subject erasure for Postgres request/event log ([#1651](https://github.com/naveenreddyalka/daari/issues/1651))
+
+<!-- tracking:#1651 -->
+**Status:** Done (2026-10-14). `daari erase` deletes matching `daari_request_log`
+rows when `observability.request_log.backend=postgres` (dry-run counts only);
+JSONL path unchanged. Covered by `tests/unit/test_erasure.py`,
+`tests/unit/test_postgres_request_log.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

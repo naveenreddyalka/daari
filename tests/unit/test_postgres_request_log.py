@@ -136,3 +136,39 @@ def test_backup_catalog_jsonl_default(tmp_path, monkeypatch):
     assert settings.observability.request_log.backend == "jsonl"
     by_name = {e.name: e for e in catalog_stores(settings, request_log_path=log)}
     assert by_name["request-log"].backend == "jsonl"
+
+
+def test_erase_subject_postgres_memory():
+    dsn = _dsn()
+    store = PostgresRequestLogStore(dsn)
+    store.append("a", {"key_id": "key-a", "model": "l3"})
+    store.append("b", {"key_id": "key-b", "model": "l3"})
+    store.append("c", {"team_id": "team-a"})
+    store.append("d", {"user_id": "alice", "client_id": "alice"})
+    assert store.erase_subject(kind="key", value="key-a", dry_run=True) == 1
+    assert len(store.list_events()) == 4
+    assert store.erase_subject(kind="key", value="key-a") == 1
+    assert [r["event"] for r in store.list_events()] == ["b", "c", "d"]
+    assert store.erase_subject(kind="team", value="team-a") == 1
+    assert store.erase_subject(kind="user", value="alice") == 1
+    assert len(store.list_events()) == 1
+    assert store.list_events()[0]["payload"]["key_id"] == "key-b"
+
+
+def test_erase_subject_from_logs_dispatches_to_postgres(tmp_path):
+    from daari.gateway.request_log import erase_subject_from_logs
+
+    dsn = _dsn()
+    configure_request_log(
+        path=tmp_path / "unused.log",
+        backend="postgres",
+        postgres_url=dsn,
+    )
+    log_gateway_event("chat", {"key_id": "key-a"})
+    log_gateway_event("chat", {"key_id": "key-b"})
+    assert erase_subject_from_logs(tmp_path / "unused.log", kind="key", value="key-a") == 1
+    store = PostgresRequestLogStore(dsn)
+    rows = store.list_events()
+    assert len(rows) == 1
+    assert rows[0]["payload"]["key_id"] == "key-b"
+    assert not (tmp_path / "unused.log").exists()
