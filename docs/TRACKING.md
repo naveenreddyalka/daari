@@ -6830,6 +6830,13 @@ NOTES + capacity-helm document cosign verify via RELEASING.md. Covered by
 metrics-prometheus docs list the series next to the global gate. Covered by
 `tests/unit/test_grafana_dashboard.py`.
 
+### Prometheus cache invalidate counters ([#1639](https://github.com/naveenreddyalka/daari/issues/1639))
+
+<!-- tracking:#1639 -->
+**Status:** Done (2026-10-14). `daari_cache_invalidate_total{scope,result}` plus
+`daari_cache_invalidate_entries_removed_total{layer}` on admin invalidate;
+metrics-prometheus.md. Covered by `tests/unit/test_cache_invalidate_metrics.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
