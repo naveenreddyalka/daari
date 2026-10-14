@@ -126,6 +126,7 @@ def run_doctor(
     results.append(_check_key_expiry_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
+    results.extend(_check_postgres_stores(cfg))
     results.append(_check_store_migrate(cfg, strict=strict))
     results.append(_check_recent_backup(cfg))
     daemon = _check_daemon(cfg, httpx_client)
@@ -1058,6 +1059,75 @@ def _check_redis(settings: Settings) -> CheckResult:
             ),
             optional=True,
         )
+
+
+def _postgres_store_backends(settings: Settings) -> list[tuple[str, str]]:
+    """Return ``(check_name, config_path)`` for stores on Postgres (#1652)."""
+    pg_url = (getattr(settings.observability, "postgres_url", "") or "").strip()
+    if not pg_url:
+        return []
+    stores: list[tuple[str, str]] = []
+    if getattr(settings.server.virtual_keys, "backend", "sqlite") == "postgres":
+        stores.append(("postgres.virtual_keys", "server.virtual_keys.backend"))
+    if getattr(settings.observability, "backend", "sqlite") == "postgres":
+        stores.append(("postgres.usage", "observability.backend"))
+    rl = getattr(settings.observability, "request_log", None)
+    if getattr(rl, "backend", "jsonl") == "postgres":
+        stores.append(("postgres.request_log", "observability.request_log.backend"))
+    if getattr(settings.enterprise, "audit_backend", "sqlite") == "postgres":
+        stores.append(("postgres.audit", "enterprise.audit_backend"))
+    for attr, label in (
+        ("batches", "batches.backend"),
+        ("files", "files.backend"),
+        ("responses", "responses.backend"),
+    ):
+        section = getattr(settings, attr, None)
+        if getattr(section, "backend", "sqlite") == "postgres":
+            stores.append((f"postgres.{attr}", label))
+    return stores
+
+
+def _check_postgres_stores(settings: Settings) -> list[CheckResult]:
+    """Per-store Postgres reachability for ``daari doctor`` (#1652)."""
+    stores = _postgres_store_backends(settings)
+    if not stores:
+        return [
+            CheckResult(
+                name="postgres",
+                ok=True,
+                detail="disabled (no store backend=postgres)",
+                optional=True,
+            )
+        ]
+    pg_url = (settings.observability.postgres_url or "").strip()
+    from daari.gateway.openai import _probe_postgres_url
+
+    probe = _probe_postgres_url(pg_url)
+    results: list[CheckResult] = []
+    for name, config_path in stores:
+        if probe == "ok":
+            results.append(
+                CheckResult(
+                    name=name,
+                    ok=True,
+                    detail=f"SELECT 1 ok ({config_path})",
+                    optional=True,
+                )
+            )
+        else:
+            results.append(
+                CheckResult(
+                    name=name,
+                    ok=False,
+                    detail=(
+                        f"unreachable ({config_path}): {probe} — "
+                        "auth fails closed; budgets soft-allow with "
+                        "X-Daari-Budget-Degraded; see auth-and-keys.md"
+                    ),
+                    optional=True,
+                )
+            )
+    return results
 
 
 def _check_ready(

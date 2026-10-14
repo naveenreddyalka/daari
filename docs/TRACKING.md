@@ -6845,6 +6845,15 @@ rows when `observability.request_log.backend=postgres` (dry-run counts only);
 JSONL path unchanged. Covered by `tests/unit/test_erasure.py`,
 `tests/unit/test_postgres_request_log.py`.
 
+### Postgres outage fail-closed auth + budget degrade ([#1652](https://github.com/naveenreddyalka/daari/issues/1652))
+
+<!-- tracking:#1652 -->
+**Status:** Done (2026-10-14). Postgres VK unreachable → `503` /
+`postgres_unavailable` (never open); usage-ledger spend errors soft-allow with
+`X-Daari-Budget-Degraded` + `daari_budget_degraded`; `/ready` + doctor PG
+probes; outage matrix in auth-and-keys.md. Covered by
+`tests/unit/test_postgres_outage.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -10,6 +10,27 @@ from typing import Any
 from daari.auth.virtual_keys import VirtualKey, VirtualKeyStore, effective_cache_scope
 
 
+def store_enforces_auth(store: VirtualKeyStore | None) -> bool:
+    """True when the VK store must not leave the gateway open (#1652).
+
+    An unreachable Postgres backend still enforces auth (fail-closed). An empty
+    healthy store does not.
+    """
+    if store is None or not getattr(store, "enabled", False):
+        return False
+    if getattr(store, "unreachable", False):
+        return True
+    try:
+        return bool(store.list())
+    except Exception as exc:
+        # Import locally to avoid a hard dependency cycle for sqlite-only paths.
+        from daari.auth.postgres_virtual_keys import PostgresBackendUnavailable
+
+        if isinstance(exc, PostgresBackendUnavailable):
+            return True
+        raise
+
+
 @dataclass
 class AuthClaims:
     kind: str  # master | virtual
@@ -203,7 +224,11 @@ def resolve_auth(
     master_key: str | list[str] | None,
     store: VirtualKeyStore | None,
 ) -> AuthClaims | None:
-    """Return claims when the key is valid, else None."""
+    """Return claims when the key is valid, else None.
+
+    Raises ``PostgresBackendUnavailable`` when the Postgres VK store is down
+    so the gateway can fail closed (#1652).
+    """
     if master_key_matches(supplied, master_key):
         return AuthClaims(kind="master")
     if store is not None and store.enabled and supplied:
@@ -245,7 +270,7 @@ def resolve_auth(
                 cache_scope=effective_cache_scope(key.cache_scope, team_scope),
             )
     # Auth required but nothing matched.
-    if normalize_master_keys(master_key) or (store is not None and store.enabled and store.list()):
+    if normalize_master_keys(master_key) or store_enforces_auth(store):
         return None
     # No master key and no virtual keys configured → open.
     return AuthClaims(kind="master")
