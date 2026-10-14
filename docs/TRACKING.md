@@ -6760,6 +6760,22 @@ same semantics as `/v1/decisions` (identical body replay, 409 on mismatch,
 in-flight wait). Docs: headers.md, http-api.md. Covered by
 `tests/unit/test_idempotency.py`.
 
+### Helm PrometheusRule alert pack ([#1630](https://github.com/naveenreddyalka/daari/issues/1630))
+
+<!-- tracking:#1630 -->
+**Status:** Done (2026-10-13). Opt-in `prometheusRules` PrometheusRule for
+backend/budget/errors/queue/guardrails/key-expiry; thresholds in values.
+Docs: metrics-prometheus.md. Covered by `tests/unit/test_helm_chart.py`.
+
+### Local decisions catalog on /v1/models and /api/tags ([#1619](https://github.com/naveenreddyalka/daari/issues/1619))
+
+<!-- tracking:#1619 -->
+**Status:** Done (2026-10-13). When `systemone.enabled`, built-in +
+`decisions.local_models` ids appear on OpenAI `/v1/models` and Ollama
+`/api/tags` with capability `decision`; VK allowlists still filter.
+Docs: ollama.md, config.md. Covered by `tests/unit/test_models_catalog.py`,
+`tests/unit/test_ollama_decisions_tags.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

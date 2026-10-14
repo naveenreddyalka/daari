@@ -90,3 +90,6 @@ def test_ollama_guide_documents_catalog_and_extension():
     assert "drex-1.5" in text
     assert "microsoft-decision-1" in text
     assert "decisions.local_models" in text
+    assert "/v1/models" in text
+    assert "/api/tags" in text
+    assert "decision" in text

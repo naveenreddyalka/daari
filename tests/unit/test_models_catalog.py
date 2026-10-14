@@ -1,7 +1,8 @@
 """G5: /v1/models cards include local + L6 capability tags."""
 
 from daari.config.settings import Settings
-from daari.router.capabilities import openai_model_cards
+from daari.gateway.decisions import BUILTIN_LOCAL_MODELS
+from daari.router.capabilities import openai_model_cards, openai_models_payload
 
 
 def test_openai_pool_slot_model_appears_with_capability_tags():
@@ -112,3 +113,32 @@ def test_frontier_cards_do_not_get_local_context_windows():
     cards = openai_model_cards(settings)
     card = next(item for item in cards if item["id"] == "claude-fable-5-1")
     assert "context_length" not in card
+
+
+def test_decisions_catalog_on_models_when_systemone_enabled():
+    settings = Settings.model_validate(
+        {"decisions": {"local_models": ["my-judge"]}}
+    )
+    cards = openai_model_cards(settings)
+    by_id = {card["id"]: card for card in cards}
+    for model_id in BUILTIN_LOCAL_MODELS:
+        assert model_id in by_id
+        assert "decision" in by_id[model_id]["capabilities"]
+    assert "my-judge" in by_id
+    assert "decision" in by_id["my-judge"]["capabilities"]
+
+
+def test_decisions_catalog_omitted_when_systemone_disabled():
+    settings = Settings.model_validate({"systemone": {"enabled": False}})
+    ids = {card["id"] for card in openai_model_cards(settings)}
+    assert "nimble" not in ids
+    assert "clef" not in ids
+
+
+def test_decisions_catalog_respects_vk_allowlist():
+    settings = Settings()
+    filtered = openai_models_payload(settings, key_patterns=["nimble"], team_patterns=None)
+    ids = {card["id"] for card in filtered["data"]}
+    assert "nimble" in ids
+    assert "clef" not in ids
+    assert "daari" not in ids

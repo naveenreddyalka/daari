@@ -45,7 +45,38 @@ stream time-to-first-token histograms by tier (`daari_ttft_ms` — stream path
 only; non-stream omits TTFT), `daari_guardrail_trips_total`,
 `daari_boundary_decisions_total`.
 
-Two counters worth alerting on:
+## Alert pack
+
+The Helm chart ships an opt-in Prometheus Operator `PrometheusRule` pack
+(`deploy/helm/daari/templates/prometheusrule.yaml`) gated on
+`prometheusRules.enabled` (default **false**). Enable with scrape already
+wired (`serviceMonitor.enabled=true` or an equivalent scrape of `/metrics`):
+
+```bash
+helm upgrade --install daari ./deploy/helm/daari \
+  --set serviceMonitor.enabled=true \
+  --set prometheusRules.enabled=true
+```
+
+Thresholds and `for` durations live under `prometheusRules.*` in
+`deploy/helm/daari/values.yaml` (`backend`, `budget.fraction`,
+`errors.rateThreshold`, `queue.threshold`, `guardrails.rateThreshold`,
+`keys`). Each alert carries a `severity` label and a `runbook_url`
+annotation pointing here.
+
+| Alert | Metric(s) | Default trigger |
+|-------|-----------|-----------------|
+| `DaariBackendDown` | `daari_backend_up` | `== 0` for 5m |
+| `DaariBudgetLow` | `daari_team_budget_remaining_usd` / `daari_team_budget_limit_usd` | remaining/limit &lt; 0.1 for 10m |
+| `DaariErrorRateHigh` | `daari_errors_total` | `rate(...) > 0.05` for 5m |
+| `DaariAdmissionQueueDeep` | `daari_rate_limit_queued` | `> 10` for 5m |
+| `DaariGuardrailTripSpike` | `daari_guardrail_trips_total` | `sum(rate(...)) > 1` for 5m |
+| `DaariKeysExpiringSoon` | `daari_virtual_keys{status="expiring_soon"}` | `> 0` for 1h |
+
+Requires the `monitoring.coreos.com` CRDs (kube-prometheus /
+prometheus-operator), same as `ServiceMonitor`.
+
+## Series worth watching
 
 | Series | Reading it |
 |--------|-----------|

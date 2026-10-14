@@ -249,10 +249,14 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
         @router.get("/api/tags")
         async def tags(request: Request) -> dict[str, Any]:
+            from daari.gateway.decisions import local_decisions_models
             from daari.router.capabilities import ollama_facade_capabilities_for_name
 
             ctx: AppContext = request.app.state.ctx
             names = ["daari", ctx.settings.models.l3, ctx.settings.models.l4, ctx.settings.models.l5]
+            systemone = getattr(ctx.settings, "systemone", None)
+            if bool(getattr(systemone, "enabled", True)):
+                names.extend(sorted(local_decisions_models(ctx.settings)))
             unique: list[str] = []
             for name in names:
                 if name and name not in unique:
