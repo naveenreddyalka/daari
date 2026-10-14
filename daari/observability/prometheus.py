@@ -90,6 +90,38 @@ def render_prometheus(
     lines.append("# HELP daari_cache_false_hits_avoided_total L1 hits vetoed by verification.")
     lines.append("# TYPE daari_cache_false_hits_avoided_total counter")
     lines.append(f"daari_cache_false_hits_avoided_total {snap.get('cache_false_hits_avoided', 0)}")
+
+    cache_invalidate = snap.get("cache_invalidate") or {}
+    lines.append(
+        "# HELP daari_cache_invalidate_total Admin cache invalidate ops "
+        "(scope=model|hash|team|key|all, result=ok|error)."
+    )
+    lines.append("# TYPE daari_cache_invalidate_total counter")
+    if not cache_invalidate:
+        lines.append("daari_cache_invalidate_total 0")
+    else:
+        for key, count in sorted(cache_invalidate.items()):
+            scope, _, result = str(key).partition(":")
+            if not scope or not result:
+                continue
+            lines.append(
+                f"daari_cache_invalidate_total{_labels(scope=scope, result=result)} {int(count)}"
+            )
+
+    entries_removed = snap.get("cache_invalidate_entries_removed") or {}
+    lines.append(
+        "# HELP daari_cache_invalidate_entries_removed_total "
+        "Entries removed by admin invalidate, by cache layer (l0|l1)."
+    )
+    lines.append("# TYPE daari_cache_invalidate_entries_removed_total counter")
+    if not entries_removed:
+        lines.append("daari_cache_invalidate_entries_removed_total 0")
+    else:
+        for layer, count in sorted(entries_removed.items()):
+            lines.append(
+                f"daari_cache_invalidate_entries_removed_total{_labels(layer=str(layer))} "
+                f"{int(count)}"
+            )
     lines.append("# HELP daari_upstream_retries_total Transient upstream failures retried.")
     lines.append("# TYPE daari_upstream_retries_total counter")
     lines.append(f"daari_upstream_retries_total {snap.get('upstream_retries', 0)}")
