@@ -55,7 +55,7 @@ spec:
       {{- end }}
       containers:
         - name: daari
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ include "daari.image" . }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- $tls := .Values.tls | default dict }}
           {{- with .Values.securityContext }}
