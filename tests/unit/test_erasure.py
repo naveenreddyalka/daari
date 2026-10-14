@@ -284,3 +284,38 @@ def test_docs_mention_user_id_and_fleet_backends():
     assert "postgres" in doc.lower()
     assert "traces" in doc.lower()
     assert "unknown" in doc.lower()
+    assert "request_log" in doc or "request log" in doc.lower()
+    assert "daari_request_log" in doc or "request_log.backend" in doc
+
+
+def test_erase_subject_postgres_request_log_orchestrator(tmp_path):
+    from daari.gateway.postgres_request_log import PostgresRequestLogStore
+
+    dsn = f"memory:erase-reqlog-{uuid.uuid4().hex}"
+    settings = _settings(tmp_path)
+    settings.observability.request_log.backend = "postgres"
+    settings.observability.postgres_url = dsn
+    store = PostgresRequestLogStore(dsn)
+    store.append("chat", {"key_id": "key-a", "model": "l3"})
+    store.append("chat", {"key_id": "key-b", "model": "l3"})
+
+    dry = erase_subject(settings, ErasureSubject("key", "key-a"), dry_run=True)
+    rl_row = next(r for r in dry.stores if r.store == "request_log")
+    assert rl_row.matched == 1
+    assert rl_row.deleted == 0
+    assert len(store.list_events()) == 2
+
+    applied = erase_subject(settings, ErasureSubject("key", "key-a"), dry_run=False)
+    rl_applied = next(r for r in applied.stores if r.store == "request_log")
+    assert rl_applied.matched == 1
+    assert rl_applied.deleted == 1
+    assert len(store.list_events()) == 1
+    assert store.list_events()[0]["payload"]["key_id"] == "key-b"
+
+    audit = AuditLog(settings.enterprise.audit_path)
+    rows = [r for r in audit.list() if r["action"] == "compliance.erase"]
+    assert len(rows) >= 1
+    assert any(
+        r["detail"].get("stores", {}).get("request_log", {}).get("deleted") == 1
+        for r in rows
+    )
