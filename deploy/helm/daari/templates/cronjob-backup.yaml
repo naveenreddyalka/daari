@@ -34,7 +34,7 @@ spec:
           {{- end }}
           containers:
             - name: backup
-              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              image: "{{ include "daari.image" . }}"
               imagePullPolicy: {{ .Values.image.pullPolicy }}
               {{- with .Values.securityContext }}
               securityContext:

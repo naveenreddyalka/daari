@@ -67,6 +67,22 @@ After a tagged release (e.g. `v1.4.0`), update **both** in the same change — d
 
 Keep them equal to `pyproject.toml` / `daari.__version__`. `tests/unit/test_helm_chart.py` fails if they drift.
 
+### Pinning `image.digest` (cosign-verified pulls)
+
+Tags are mutable. Regulated / air-gapped fleets should pin the exact blob they
+verified:
+
+```yaml
+image:
+  repository: ghcr.io/naveenreddyalka/daari
+  tag: "1.4.0"   # kept for Chart sync / docs; ignored when digest is set
+  digest: "sha256:…"  # Deployment + backup CronJob render repository@sha256:…
+```
+
+Leave `digest` empty (default) to keep `repository:tag`. When set, digest wins
+over tag. Verify with `cosign verify` against the digest (or tag that resolves
+to it) as documented in [RELEASING.md](../../../RELEASING.md#verify-a-signed-image-after-the-tag-push) — no chart-side signing workflow.
+
 ### Graceful rollouts / drains
 
 Defaults leave interactive SSE streams (chat, Responses, MCP) and in-flight

@@ -6814,6 +6814,14 @@ ConfigMap embedding `files/grafana/daari-dashboard.json` with
 `grafana_dashboard: "1"` sidecar labels; capacity-helm + metrics docs.
 Covered by `tests/unit/test_helm_chart.py`.
 
+### Helm optional image.digest pin ([#1637](https://github.com/naveenreddyalka/daari/issues/1637))
+
+<!-- tracking:#1637 -->
+**Status:** Done (2026-10-14). Optional `image.digest` (empty default); when set,
+Deployment + backup CronJob use `repository@sha256:…` (digest wins over tag).
+NOTES + capacity-helm document cosign verify via RELEASING.md. Covered by
+`tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

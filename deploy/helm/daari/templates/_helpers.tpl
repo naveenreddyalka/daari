@@ -2,6 +2,16 @@
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- /* repository@digest when image.digest is set; otherwise repository:tag. */ -}}
+{{- define "daari.image" -}}
+{{- $digest := (.Values.image.digest | default "") | toString | trim -}}
+{{- if $digest -}}
+{{- printf "%s@%s" .Values.image.repository $digest -}}
+{{- else -}}
+{{- printf "%s:%s" .Values.image.repository .Values.image.tag -}}
+{{- end -}}
+{{- end -}}
+
 {{- /* Effective replica floor: max(replicaCount, HPA min, KEDA min when those are on). */ -}}
 {{- define "daari.fleetReplicas" -}}
 {{- $replicas := int .Values.replicaCount -}}

@@ -43,6 +43,51 @@ class TestHelmChartReleasePin:
         assert chart["appVersion"] == __version__
         assert str(values["image"]["tag"]) == __version__
 
+    def test_image_digest_empty_by_default(self) -> None:
+        values = _load_yaml(VALUES)
+        assert values["image"].get("digest") in (None, "")
+
+
+class TestHelmImageDigest:
+    def test_digest_unset_uses_repository_tag(self, helm_available: None) -> None:
+        rendered = _helm_template()
+        dep = _docs_by_kind(rendered)["Deployment"][0]
+        image = dep["spec"]["template"]["spec"]["containers"][0]["image"]
+        assert "@" not in image
+        assert image == f"ghcr.io/naveenreddyalka/daari:{__version__}"
+        assert f":{__version__}" in image
+
+    def test_digest_set_wins_over_tag_on_deployment_and_cronjob(
+        self, helm_available: None
+    ) -> None:
+        digest = "sha256:deadbeefcafef00d0123456789abcdef0123456789abcdef0123456789abcdef"
+        rendered = _helm_template(
+            "--set",
+            f"image.digest={digest}",
+            "--set",
+            "backup.enabled=true",
+            "--set",
+            "backup.encryptSecret.name=daari-backup",
+        )
+        docs = _docs_by_kind(rendered)
+        dep_image = docs["Deployment"][0]["spec"]["template"]["spec"]["containers"][0][
+            "image"
+        ]
+        cron_image = docs["CronJob"][0]["spec"]["jobTemplate"]["spec"]["template"][
+            "spec"
+        ]["containers"][0]["image"]
+        expected = f"ghcr.io/naveenreddyalka/daari@{digest}"
+        assert dep_image == expected
+        assert cron_image == expected
+        assert "@sha256:" in dep_image
+        assert f":{__version__}" not in dep_image
+
+    def test_notes_mention_digest_when_pinned(self, helm_available: None) -> None:
+        digest = "sha256:deadbeefcafef00d0123456789abcdef0123456789abcdef0123456789abcdef"
+        notes = _helm_notes("--set", f"image.digest={digest}")
+        assert "@sha256:" in notes or digest in notes
+        assert "digest" in notes.lower() or "pinned" in notes.lower()
+
     def test_values_comment_warns_about_sqlite_split_brain(self) -> None:
         text = VALUES.read_text(encoding="utf-8")
         assert re.search(r"per-pod|split", text, re.I)
