@@ -1698,10 +1698,16 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
         if text:
             configured.append((label, text))
     frontier = settings.frontier
-    if getattr(frontier, "enabled", False):
-        text = (getattr(frontier, "model", "") or "").strip()
-        if text:
-            configured.append(("frontier.model", text))
+    # Always surface the configured frontier default (even when disabled) so
+    # stock gpt-4o* leftovers are flagged against shipped lifecycle (#1653).
+    text = (getattr(frontier, "model", "") or "").strip()
+    if text:
+        configured.append(("frontier.model", text))
+    for index, provider in enumerate(list(getattr(frontier, "providers", None) or [])):
+        pmodel = (getattr(provider, "model", "") or "").strip()
+        if pmodel:
+            pid = (getattr(provider, "id", "") or "").strip() or str(index)
+            configured.append((f"frontier.providers[{pid}].model", pmodel))
     pool = getattr(settings.routing, "local_pool", None)
     backends = list(getattr(pool, "backends", None) or []) if pool is not None else []
     for index, backend in enumerate(backends):
@@ -1718,13 +1724,16 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
         if key in seen:
             continue
         seen.add(key)
-        stage = str(
-            anthropic_lifecycle_fields(name, settings).get("lifecycle") or "active"
-        ).lower()
+        fields = anthropic_lifecycle_fields(name, settings)
+        stage = str(fields.get("lifecycle") or "active").lower()
+        retires = fields.get("retires_at")
         if stage == "retired":
             retired.append(f"{label}={name}")
         elif stage == "deprecated":
-            deprecated.append(f"{label}={name}")
+            if retires:
+                deprecated.append(f"{label}={name} (shutdown {retires})")
+            else:
+                deprecated.append(f"{label}={name}")
 
     if retired:
         return CheckResult(
@@ -1746,7 +1755,7 @@ def _check_model_lifecycle(settings: Settings) -> CheckResult:
                 "configured models marked lifecycle=deprecated: "
                 + ", ".join(deprecated[:8])
                 + (f" (+{len(deprecated) - 8} more)" if len(deprecated) > 8 else "")
-                + " — plan a cutover before retires_at"
+                + " — plan a cutover before retires_at / shutdown_date"
             ),
             optional=True,
         )

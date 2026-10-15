@@ -53,7 +53,7 @@ class TestSettings:
         settings = Settings.model_validate({})
         assert settings.frontier.enabled is False
         assert settings.frontier.provider == "openai"
-        assert settings.frontier.model == "gpt-4o-mini"
+        assert settings.frontier.model == "gpt-6-luna"
         assert settings.frontier.confidence_threshold == 0.7
 
     def test_resolve_frontier_api_key(self, monkeypatch):

@@ -259,6 +259,7 @@ class ModelsSettings(BaseModel):
     capabilities: dict[str, list[str]] = Field(default_factory=dict)
     # Per-model lifecycle overrides for /v1/models + retired routing (#1507 / #1521).
     # Shape: {model_id: {lifecycle: active|deprecated|retired, deprecated_at?, retires_at?}}.
+    # Merged over `_DEFAULT_MODEL_LIFECYCLE` (operator keys win) (#1653).
     lifecycle: dict[str, dict[str, Any]] = Field(default_factory=dict)
     reject_retired: bool = Field(
         default=True,
@@ -494,7 +495,7 @@ class FrontierProviderConfig(BaseModel):
 
     id: str = "openai"
     base_url: str = "https://api.openai.com/v1"
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-6-luna"
     # Explicit keys (rarely set in YAML — prefer api_key_env). Rotated by weight.
     keys: list[str] = Field(default_factory=list)
     api_key_env: str = ""
@@ -546,7 +547,7 @@ class FrontierParamCompatSettings(BaseModel):
 class FrontierSettings(RuntimeSettings):
     enabled: bool = False
     provider: str = "openai"
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-6-luna"
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     base_url: str = "https://api.openai.com/v1"
     # Ordered failover list (issue #109). Empty → use the scalar
@@ -1051,6 +1052,87 @@ class ModelPrice(BaseModel):
     input_threshold_tokens: int | None = None
     above_input_per_1m: float | None = None
     above_output_per_1m: float | None = None
+
+
+# OpenAI retirement calendar shipped so doctor / 410 / /v1/models light up
+# without operator config (#1653). Operator `models.lifecycle` keys win.
+# Dates from https://developers.openai.com/api/docs/deprecations (2026-10-14).
+_DEFAULT_MODEL_LIFECYCLE: dict[str, dict[str, Any]] = {
+    # 2027-01-14 wave (announced 2026-10-14) — still serving; replace with gpt-6-luna.
+    "gpt-4o": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-10-14",
+        "retires_at": "2027-01-14",
+    },
+    "gpt-4o-mini": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-10-14",
+        "retires_at": "2027-01-14",
+    },
+    "gpt-4.1": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-10-14",
+        "retires_at": "2027-01-14",
+    },
+    "gpt-4.1-mini": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-10-14",
+        "retires_at": "2027-01-14",
+    },
+    # 2026-10-23 wave (announced 2026-04-22).
+    "gpt-4-turbo": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-04-22",
+        "retires_at": "2026-10-23",
+    },
+    "gpt-4o-2024-05-13": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-04-22",
+        "retires_at": "2026-10-23",
+    },
+    "o1": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-04-22",
+        "retires_at": "2026-10-23",
+    },
+    "o3-mini": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-04-22",
+        "retires_at": "2026-10-23",
+    },
+    "o4-mini": {
+        "lifecycle": "deprecated",
+        "deprecated_at": "2026-04-22",
+        "retires_at": "2026-10-23",
+    },
+    # Already shut down — fail-closed 410 without operator config.
+    "chatgpt-4o-latest": {
+        "lifecycle": "retired",
+        "deprecated_at": "2025-11-18",
+        "retires_at": "2026-02-17",
+    },
+    "gpt-5.2-chat-latest": {
+        "lifecycle": "retired",
+        "deprecated_at": "2026-05-08",
+        "retires_at": "2026-08-10",
+    },
+}
+
+
+def merged_model_lifecycle(settings: Any = None) -> dict[str, dict[str, Any]]:
+    """Stock OpenAI waves under operator ``models.lifecycle`` overrides (#1653)."""
+    raw: dict[str, Any] = {}
+    if settings is not None:
+        raw = getattr(getattr(settings, "models", None), "lifecycle", None) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    merged: dict[str, dict[str, Any]] = {
+        key: dict(value) for key, value in _DEFAULT_MODEL_LIFECYCLE.items()
+    }
+    for key, value in raw.items():
+        if isinstance(value, dict):
+            merged[str(key)] = dict(value)
+    return merged
 
 
 # List prices captured 2026-09-07. These move, so treat the table as a
