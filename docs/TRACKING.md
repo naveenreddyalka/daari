@@ -6888,6 +6888,15 @@ writes `cache.invalidate` audit (actor, role, scope, l0/l1 removed); error
 path bumps Prom `result=error` without a success audit row; auth-and-keys
 catalog lists the action. Covered by `tests/unit/test_cache_invalidate.py`.
 
+### Anthropic /v1/models decision capability parity ([#1658](https://github.com/naveenreddyalka/daari/issues/1658))
+
+<!-- tracking:#1658 -->
+**Status:** Done (2026-10-15). Local decisions ids on Anthropic-shaped
+`GET /v1/models` (and retrieve) expose `capabilities.decision.supported`;
+OpenAI/Ollama tags unchanged; non-decision cards keep thinking/server_tools
+only. Docs: ollama.md, config.md. Covered by
+`tests/unit/test_models_catalog.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

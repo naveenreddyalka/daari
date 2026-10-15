@@ -1,8 +1,16 @@
 """G5: /v1/models cards include local + L6 capability tags."""
 
+from fastapi.testclient import TestClient
+
 from daari.config.settings import Settings
 from daari.gateway.decisions import BUILTIN_LOCAL_MODELS
-from daari.router.capabilities import openai_model_cards, openai_models_payload
+from daari.router.capabilities import (
+    anthropic_model_cards,
+    openai_model_cards,
+    openai_models_payload,
+)
+from daari.router.router import AppContext
+from daari.server.app import create_app
 
 
 def test_openai_pool_slot_model_appears_with_capability_tags():
@@ -142,3 +150,53 @@ def test_decisions_catalog_respects_vk_allowlist():
     assert "nimble" in ids
     assert "clef" not in ids
     assert "daari" not in ids
+
+
+def test_anthropic_decisions_catalog_includes_decision_capability():
+    """Anthropic-shaped cards carry decision for local judges (#1658)."""
+    settings = Settings.model_validate(
+        {"decisions": {"local_models": ["my-judge"]}}
+    )
+    cards = anthropic_model_cards(settings)
+    by_id = {card["id"]: card for card in cards}
+    for model_id in (*BUILTIN_LOCAL_MODELS, "my-judge"):
+        assert model_id in by_id
+        caps = by_id[model_id]["capabilities"]
+        assert caps.get("decision", {}).get("supported") is True
+        # Non-decision Anthropic fields remain.
+        assert "thinking" in caps
+        assert "server_tools" in caps
+
+    # Non-decision local card must not gain a decision flag.
+    daari_caps = by_id["daari"]["capabilities"]
+    assert "decision" not in daari_caps
+    assert "thinking" in daari_caps
+    assert "server_tools" in daari_caps
+
+
+def test_anthropic_decisions_catalog_omitted_when_systemone_disabled():
+    settings = Settings.model_validate({"systemone": {"enabled": False}})
+    ids = {card["id"] for card in anthropic_model_cards(settings)}
+    assert "nimble" not in ids
+    assert "clef" not in ids
+
+
+def test_anthropic_accept_path_lists_decision_capability():
+    """GET /v1/models with Anthropic headers exposes decision (#1658)."""
+    settings = Settings.model_validate(
+        {"decisions": {"local_models": ["my-judge"]}}
+    )
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    client = TestClient(app)
+    headers = {"anthropic-version": "2023-06-01"}
+    listed = client.get("/v1/models", headers=headers)
+    assert listed.status_code == 200
+    by_id = {card["id"]: card for card in listed.json()["data"]}
+    assert by_id["nimble"]["capabilities"]["decision"]["supported"] is True
+    assert by_id["my-judge"]["capabilities"]["decision"]["supported"] is True
+    assert "decision" not in by_id["daari"]["capabilities"]
+
+    single = client.get("/v1/models/nimble", headers=headers)
+    assert single.status_code == 200
+    assert single.json()["capabilities"]["decision"]["supported"] is True
