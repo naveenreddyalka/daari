@@ -1484,6 +1484,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 anthropic_model_cards,
                 anthropic_model_line,
                 anthropic_server_tools,
+                openai_lifecycle_fields,
                 openai_model_cards,
             )
 
@@ -1521,7 +1522,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "created": int(time.time()),
                 "owned_by": "daari" if model_id == "daari" else "ollama",
                 "capabilities": [],
-                **anthropic_lifecycle_fields(model_id, ctx.settings),
+                **openai_lifecycle_fields(model_id, ctx.settings),
                 "server_tools": anthropic_server_tools(model_id),
             }
 

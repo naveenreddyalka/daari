@@ -227,4 +227,8 @@ async def test_deprecated_model_attaches_daari_meta_warning(tmp_path):
 def test_reject_retired_defaults_true():
     settings = Settings()
     assert settings.models.reject_retired is True
+    # Operator map stays empty; shipped OpenAI waves merge at lookup (#1653).
     assert settings.models.lifecycle == {}
+    from daari.config.settings import merged_model_lifecycle
+
+    assert "gpt-4o" in merged_model_lifecycle(settings)

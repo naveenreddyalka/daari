@@ -159,8 +159,8 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         # Omit unknown windows — never invent 0 (#400).
         if context_length is not None and int(context_length) > 0:
             card["context_length"] = int(context_length)
-        # OpenAI facade shares Anthropic lifecycle + server_tools data (#1521).
-        card.update(anthropic_lifecycle_fields(model_id, settings))
+        # OpenAI facade: lifecycle + shutdown_date + server_tools (#1521 / #1653).
+        card.update(openai_lifecycle_fields(model_id, settings))
         card["server_tools"] = anthropic_server_tools(model_id)
         cards.append(card)
 
@@ -306,26 +306,69 @@ def anthropic_server_tools(model_id: str) -> dict[str, Any]:
     }
 
 
-def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, Any]:
-    """Lifecycle stage + optional dates for Anthropic model cards (#1507)."""
-    overrides = {}
-    raw = getattr(getattr(settings, "models", None), "lifecycle", None) or {}
-    if isinstance(raw, dict):
-        from daari.pricing import matching_model_key
+def _lifecycle_date_only(value: Any) -> str | None:
+    """Normalize retires_at / deprecated_at to ``YYYY-MM-DD`` for ``shutdown_date``."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if "T" in text:
+        text = text.split("T", 1)[0]
+    return text[:10] if len(text) >= 10 else text
 
-        key = matching_model_key(model_id, raw) if raw else None
-        if key is not None and isinstance(raw.get(key), dict):
-            overrides = raw[key]
+
+def _retirement_passed(retires_at: Any, *, today: Any = None) -> bool:
+    """True when ``retires_at`` is on or before UTC today (#1653)."""
+    from datetime import date, datetime, timezone
+
+    day = _lifecycle_date_only(retires_at)
+    if not day:
+        return False
+    try:
+        retire_day = date.fromisoformat(day)
+    except ValueError:
+        return False
+    if today is None:
+        today = datetime.now(timezone.utc).date()
+    elif isinstance(today, datetime):
+        today = today.date()
+    return retire_day <= today
+
+
+def anthropic_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, Any]:
+    """Lifecycle stage + optional dates for Anthropic model cards (#1507 / #1653).
+
+    Merges shipped OpenAI retirement defaults under operator ``models.lifecycle``.
+    When ``retires_at`` is on or before today, ``deprecated`` promotes to ``retired``.
+    """
+    from daari.config.settings import merged_model_lifecycle
+    from daari.pricing import matching_model_key
+
+    overrides: dict[str, Any] = {}
+    raw = merged_model_lifecycle(settings)
+    key = matching_model_key(model_id, raw) if raw else None
+    if key is not None and isinstance(raw.get(key), dict):
+        overrides = raw[key]
     stage = str(overrides.get("lifecycle") or "active").strip().lower() or "active"
     if stage not in ("active", "deprecated", "retired"):
         stage = "active"
     deprecated_at = overrides.get("deprecated_at")
     retires_at = overrides.get("retires_at")
+    if stage == "deprecated" and _retirement_passed(retires_at):
+        stage = "retired"
     return {
         "lifecycle": stage,
         "deprecated_at": deprecated_at if deprecated_at else None,
         "retires_at": retires_at if retires_at else None,
     }
+
+
+def openai_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, Any]:
+    """OpenAI-shaped lifecycle fields including ``shutdown_date`` (#1653)."""
+    fields = anthropic_lifecycle_fields(model_id, settings)
+    fields["shutdown_date"] = _lifecycle_date_only(fields.get("retires_at"))
+    return fields
 
 
 def anthropic_capabilities(model_id: str) -> dict[str, Any]:

@@ -6854,6 +6854,15 @@ JSONL path unchanged. Covered by `tests/unit/test_erasure.py`,
 probes; outage matrix in auth-and-keys.md. Covered by
 `tests/unit/test_postgres_outage.py`.
 
+### Default OpenAI model lifecycle + shutdown_date ([#1653](https://github.com/naveenreddyalka/daari/issues/1653))
+
+<!-- tracking:#1653 -->
+**Status:** Done (2026-10-14). Shipped `_DEFAULT_MODEL_LIFECYCLE` for the
+2026-10-23 and 2027-01-14 OpenAI waves (operator overrides win); OpenAI
+`/v1/models` cards expose `shutdown_date`; stock `frontier.model` →
+`gpt-6-luna`; doctor flags deprecated defaults; retired wave models 410
+without operator config. Covered by `tests/unit/test_default_model_lifecycle.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
