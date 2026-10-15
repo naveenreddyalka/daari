@@ -54,10 +54,11 @@ daari proxies the same shape through the gateway (and OpenAI-shaped
 Built-in local catalog: `clef`, `clef-flash`, `nimble`, `tev1`, `drex-1.5`,
 `microsoft-decision-1` (vendor/`:tag` variants accepted). Extend via
 `decisions.local_models` without a daari release. When `systemone.enabled`
-(default true), those ids also appear on OpenAI `GET /v1/models` and Ollama
-`/api/tags` (and `/api/show`) with capability tag `decision` so IDE/agents can
-discover on-box judges without hardcoding. Virtual-key `allowed_models`
-still filters `/v1/models`.
+(default true), those ids also appear on OpenAI `GET /v1/models`, Anthropic-shaped
+`GET /v1/models` (Accept / `anthropic-version` / `x-api-key` clients get
+`capabilities.decision.supported: true`), and Ollama `/api/tags` (and `/api/show`)
+with capability tag `decision` so IDE/agents can discover on-box judges without
+hardcoding. Virtual-key `allowed_models` still filters `/v1/models`.
 
 ```yaml
 decisions:
