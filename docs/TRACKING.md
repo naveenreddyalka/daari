@@ -6863,6 +6863,14 @@ probes; outage matrix in auth-and-keys.md. Covered by
 `gpt-6-luna`; doctor flags deprecated defaults; retired wave models 410
 without operator config. Covered by `tests/unit/test_default_model_lifecycle.py`.
 
+### MCP per-server 429 audit + reject metrics ([#1654](https://github.com/naveenreddyalka/daari/issues/1654))
+
+<!-- tracking:#1654 -->
+**Status:** Done (2026-10-15). Per-server MCP rpm/tpm 429s (ingress HTTP and
+chat soft path) bump `daari_rejects_total{kind="rate_limit"}` and write
+`rate_limit.exceeded` audit with `bucket=mcp_server:<id>`; Retry-After /
+X-RateLimit-Scope unchanged. Covered by `tests/unit/test_mcp_server_rate_limits.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -6049,6 +6049,7 @@ class AppContext:
             failure_threshold=int(getattr(mcp_egress, "failure_threshold", 3) or 3),
             cooldown_seconds=float(getattr(mcp_egress, "cooldown_seconds", 30.0) or 30.0),
             metrics=metrics,
+            settings=settings,
         )
         mcp_triggers: dict[str, list[str]] = {}
         for mcp_provider in mcp_providers:

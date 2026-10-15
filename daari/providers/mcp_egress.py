@@ -52,6 +52,37 @@ class McpServerRateLimited(Exception):
         super().__init__(f"mcp_server:{server_id} rate limited")
 
 
+def record_mcp_server_rate_limit_reject(
+    exc: McpServerRateLimited,
+    *,
+    metrics: Any = None,
+    settings: Any = None,
+) -> None:
+    """Bump ``daari_rejects_total`` + ``rate_limit.exceeded`` audit (#1654)."""
+    if metrics is not None and hasattr(metrics, "record_reject"):
+        try:
+            metrics.record_reject("rate_limit")
+        except Exception:  # noqa: BLE001 — metrics must never break a request
+            pass
+    if settings is None:
+        return
+    try:
+        from daari.enterprise.audit import record_rate_limit_exceeded
+        from daari.enterprise.postgres_audit import audit_log_from_settings
+
+        decision = exc.decision
+        bucket = getattr(decision, "bucket", None) or f"mcp_server:{exc.server_id}"
+        record_rate_limit_exceeded(
+            audit_log_from_settings(settings),
+            scope=getattr(decision, "scope", None) or None,
+            bucket=bucket,
+            remaining=int(getattr(decision, "remaining", 0) or 0),
+            limit=int(getattr(decision, "limit", 0) or 0),
+        )
+    except Exception:  # noqa: BLE001 — audit must never break a request
+        pass
+
+
 # A misbehaving upstream that always returns nextCursor must not hang listing.
 LIST_PAGE_CAP = 20
 LIST_TIMEOUT_SECONDS = 15.0
@@ -72,6 +103,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         breaker: CircuitBreaker | None = None,
         metrics: Any = None,
         rate_limiter: Any = None,
+        settings: Any = None,
     ) -> None:
         super().__init__(
             id=f"mcp:{server.id}",
@@ -95,6 +127,7 @@ class McpEgressProvider(HttpIntegrationProvider):
         self.breaker = breaker or CircuitBreaker()
         self.metrics = metrics
         self.rate_limiter = rate_limiter
+        self.settings = settings
         self._tool_embed_cache = ToolEmbeddingCache()
         self._http: httpx.AsyncClient | None = None
         from daari.providers.mcp_token_exchange import TokenExchangeCache
@@ -334,7 +367,10 @@ class McpEgressProvider(HttpIntegrationProvider):
         """Structured tools/list for Responses server-side MCP (#1232)."""
         try:
             headers, err = await self._prepare_egress(request, tool="tools/list")
-        except McpServerRateLimited:
+        except McpServerRateLimited as exc:
+            record_mcp_server_rate_limit_reject(
+                exc, metrics=self.metrics, settings=self.settings
+            )
             return None, self._rate_limited_response(request)
         if err is not None:
             return None, err
@@ -412,7 +448,10 @@ class McpEgressProvider(HttpIntegrationProvider):
 
         try:
             headers, err = await self._prepare_egress(request, tool=tool)
-        except McpServerRateLimited:
+        except McpServerRateLimited as exc:
+            record_mcp_server_rate_limit_reject(
+                exc, metrics=self.metrics, settings=self.settings
+            )
             return self._rate_limited_response(request)
         if err is not None:
             return err
@@ -579,6 +618,7 @@ def build_mcp_providers(
     cooldown_seconds: float = 30.0,
     metrics: Any = None,
     rate_limiter: Any = None,
+    settings: Any = None,
 ) -> list[McpEgressProvider]:
     providers: list[McpEgressProvider] = []
     policy = retry or RetryPolicy()
@@ -625,6 +665,7 @@ def build_mcp_providers(
                 ),
                 metrics=metrics,
                 rate_limiter=rate_limiter,
+                settings=settings,
             )
         )
     return providers
