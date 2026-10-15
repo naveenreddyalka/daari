@@ -100,8 +100,38 @@ def validated_compact_to_fit(patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def validated_mcp_server_ceilings(patch: Any) -> list[dict[str, Any]]:
+    """Validate editor-safe mcp_servers ceiling rows (id + rpm/tpm) (#1659)."""
+    if not isinstance(patch, list):
+        raise ConfigValidationError("mcp_servers must be a list")
+    allowed_entry = {"id", "rpm", "tpm"}
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for idx, raw in enumerate(patch):
+        if not isinstance(raw, dict):
+            raise ConfigValidationError(f"mcp_servers[{idx}] must be an object")
+        unknown = sorted(set(raw) - allowed_entry)
+        if unknown:
+            raise ConfigValidationError(
+                f"mcp_servers[{idx}] unknown keys (ceilings only): {unknown}"
+            )
+        server_id = str(raw.get("id") or "").strip()
+        if not server_id:
+            raise ConfigValidationError(f"mcp_servers[{idx}].id is required")
+        if server_id in seen:
+            raise ConfigValidationError(f"mcp_servers duplicate id: {server_id}")
+        seen.add(server_id)
+        row: dict[str, Any] = {"id": server_id}
+        if "rpm" in raw:
+            row["rpm"] = _int(raw["rpm"], f"mcp_servers[{idx}].rpm", low=0, high=10_000_000)
+        if "tpm" in raw:
+            row["tpm"] = _int(raw["tpm"], f"mcp_servers[{idx}].tpm", low=0, high=10_000_000)
+        out.append(row)
+    return out
+
+
 def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
-    """Safe MCP ownership leaves only — secrets stay non-editable (#1322)."""
+    """Safe MCP ownership leaves only — secrets stay non-editable (#1322 / #1659)."""
     if not isinstance(patch, dict):
         raise ConfigValidationError("integrations must be an object")
     allowed_top = {
@@ -109,6 +139,7 @@ def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
         "mcp_aggregate_egress",
         "mcp_registry",
         "mcp_policy",
+        "mcp_servers",
     }
     unknown_top = sorted(set(patch) - allowed_top)
     if unknown_top:
@@ -174,6 +205,8 @@ def validated_integrations(patch: dict[str, Any]) -> dict[str, Any]:
             )
         if policy_out:
             out["mcp_policy"] = policy_out
+    if "mcp_servers" in patch:
+        out["mcp_servers"] = validated_mcp_server_ceilings(patch["mcp_servers"])
     return out
 
 

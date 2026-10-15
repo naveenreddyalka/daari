@@ -2277,6 +2277,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.settings.integrations.mcp_policy.require_key_access_defined = mcp_policy[
                     "require_key_access_defined"
                 ]
+            if "mcp_servers" in integrations:
+                ceilings = {
+                    str(row["id"]): row for row in integrations["mcp_servers"] if "id" in row
+                }
+                known = {s.id for s in ctx.settings.integrations.mcp_servers}
+                unknown = sorted(set(ceilings) - known)
+                if unknown:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=safe_detail(
+                            ConfigValidationError(
+                                f"mcp_servers unknown ids (ceilings merge only): {unknown}"
+                            )
+                        ),
+                    )
+                for server in ctx.settings.integrations.mcp_servers:
+                    row = ceilings.get(server.id)
+                    if row is None:
+                        continue
+                    if "rpm" in row:
+                        server.rpm = row["rpm"]
+                    if "tpm" in row:
+                        server.tpm = row["tpm"]
             if "structured_json_logs" in observability:
                 ctx.settings.observability.structured_json_logs = observability[
                     "structured_json_logs"

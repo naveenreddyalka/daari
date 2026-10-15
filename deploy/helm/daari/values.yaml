@@ -283,6 +283,20 @@ tls:
   # Empty omits DAARI_SERVER__TLS__CLIENT_CA (no mTLS).
   clientCAFile: ""
 
+# Per-server MCP egress ceilings (#1659 / #1620). Rendered as
+# DAARI_INTEGRATIONS__MCP_SERVERS JSON when non-empty. Each entry needs id + url;
+# optional rpm/tpm (0 = unlimited), token, triggers. Chart install can set
+# ceilings without hand-editing config.yaml on every pod.
+# Example:
+#   integrations:
+#     mcpServers:
+#       - id: tools
+#         url: http://mcp-tools:8080/mcp
+#         rpm: 60
+#         tpm: 100000
+integrations:
+  mcpServers: []
+
 # Global RPM/TPM caps (#842). When enabled with redis.enabled (or rateLimit.redisUrl),
 # fleet counters share Redis via cache.backend=redis. Without Redis, limits are
 # per-pod SQLite only — fine for replicaCount=1.

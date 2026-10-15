@@ -56,9 +56,39 @@ _FIELD_PATHS: tuple[tuple[str, ...], ...] = (
     ("integrations", "mcp_aggregate_egress", "enabled"),
     ("integrations", "mcp_registry", "enabled"),
     ("integrations", "mcp_policy", "require_key_access_defined"),
+    ("integrations", "mcp_servers"),
     ("observability", "structured_json_logs"),
     ("decisions", "local_models"),
 )
+
+
+def mcp_server_ceiling_rows(servers: Any) -> list[dict[str, Any]]:
+    """Safe editor view of per-server rpm/tpm (no tokens/secrets) (#1659)."""
+    rows: list[dict[str, Any]] = []
+    for entry in list(servers or []):
+        if isinstance(entry, dict):
+            server_id = str(entry.get("id") or "").strip()
+            if not server_id:
+                continue
+            rows.append(
+                {
+                    "id": server_id,
+                    "rpm": int(entry.get("rpm") or 0),
+                    "tpm": int(entry.get("tpm") or 0),
+                }
+            )
+            continue
+        server_id = str(getattr(entry, "id", "") or "").strip()
+        if not server_id:
+            continue
+        rows.append(
+            {
+                "id": server_id,
+                "rpm": int(getattr(entry, "rpm", 0) or 0),
+                "tpm": int(getattr(entry, "tpm", 0) or 0),
+            }
+        )
+    return rows
 
 
 def config_file_path(settings: Any = None) -> Path:
@@ -105,6 +135,11 @@ def _file_leaf(doc: dict[str, Any], parts: tuple[str, ...]) -> Any:
         if key == "l1_similarity_threshold":
             l1 = cache.get("l1") if isinstance(cache.get("l1"), dict) else {}
             return l1.get("similarity_threshold", _MISSING)
+    if parts == ("integrations", "mcp_servers"):
+        integrations = doc.get("integrations") if isinstance(doc.get("integrations"), dict) else {}
+        if "mcp_servers" not in integrations:
+            return _MISSING
+        return mcp_server_ceiling_rows(integrations.get("mcp_servers"))
     return _get_nested(doc, parts)
 
 
@@ -191,6 +226,7 @@ def live_config_payload(settings: Any) -> dict[str, Any]:
                     s.integrations.mcp_policy.require_key_access_defined
                 ),
             },
+            "mcp_servers": mcp_server_ceiling_rows(s.integrations.mcp_servers),
         },
         "observability": {
             "structured_json_logs": s.observability.structured_json_logs,

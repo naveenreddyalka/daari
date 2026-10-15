@@ -264,7 +264,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.ghe.triggers` | list | `[]` |  |
 | `integrations.gitlab.url` | str | *(required)* |  |
 | `integrations.gitlab.triggers` | list | `[]` |  |
-| `integrations.mcp_servers` | list | `[]` | External MCP servers daari can call. Each entry: id, url, optional token/triggers; optional rpm/tpm (0=unlimited) per-server egress ceilings on tools/call and tools/list (429 + Retry-After + X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; both apply) (#1620). Opt-in OBO (#1319): auth_type=oauth2_token_exchange with token_exchange_endpoint, client_id, client_secret; optional audience, scopes, subject_token_type (default access_token). |
+| `integrations.mcp_servers` | list | `[]` | External MCP servers daari can call. Each entry: id, url, optional token/triggers; optional rpm/tpm (0=unlimited) per-server egress ceilings on tools/call and tools/list (429 + Retry-After + X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; both apply) (#1620). Per-server rpm/tpm are editable via GET/PATCH /v1/daari/config ownership (config editor; id + rpm/tpm only; secrets omitted) (#1659). Opt-in OBO (#1319): auth_type=oauth2_token_exchange with token_exchange_endpoint, client_id, client_secret; optional audience, scopes, subject_token_type (default access_token). |
 | `integrations.mcp_policy.allow` | list | `[]` | MCP tool names (glob) the caller may call. Empty = every tool not denied. |
 | `integrations.mcp_policy.deny` | list | `[]` | MCP tool names (glob) the caller may never call. Deny beats allow. |
 | `integrations.mcp_policy.servers.allow` | list | `[]` | MCP egress server ids (glob) the caller may reach. Empty = every server not denied. |
