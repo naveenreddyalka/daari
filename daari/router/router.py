@@ -1103,7 +1103,10 @@ class Router:
             if trace is not None:
                 response.daari_meta.trace_id = trace.trace_id
                 self.trace_store.save(
-                    trace, tier=policy.refusal_tier, category=profile.category
+                    trace,
+                    tier=policy.refusal_tier,
+                    category=profile.category,
+                    team_id=getattr(request.meta, "team_id", None) or "",
                 )
             end_trace()
             return self._stamp_agent_turn(request, response)
@@ -1170,7 +1173,12 @@ class Router:
         )
         if trace is not None:
             response.daari_meta.trace_id = trace.trace_id
-            self.trace_store.save(trace, tier=response.daari_meta.tier, category=profile.category)
+            self.trace_store.save(
+                trace,
+                tier=response.daari_meta.tier,
+                category=profile.category,
+                team_id=getattr(request.meta, "team_id", None) or "",
+            )
             if getattr(self, "otel_enabled", False):
                 from daari.observability.otel import export_trace
 
@@ -2175,7 +2183,12 @@ class Router:
 
         def finish_trace(tier: str | None) -> None:
             if trace is not None:
-                self.trace_store.save(trace, tier=tier, category=profile.category)
+                self.trace_store.save(
+                    trace,
+                    tier=tier,
+                    category=profile.category,
+                    team_id=getattr(request.meta, "team_id", None) or "",
+                )
             end_trace()
 
         await self._refresh_warm_models()

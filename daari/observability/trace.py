@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS traces (
     ts TEXT NOT NULL,
     tier TEXT,
     category TEXT,
-    steps TEXT NOT NULL
+    steps TEXT NOT NULL,
+    team_id TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -83,26 +84,48 @@ class TraceStore:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self._connect() as conn:
                     conn.execute(_SCHEMA)
+                    self._ensure_team_column(conn)
             except Exception:
                 self.enabled = False
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=5.0)
 
-    def save(self, trace: RequestTrace, *, tier: str | None = None, category: str | None = None) -> None:
+    @staticmethod
+    def _ensure_team_column(conn: sqlite3.Connection) -> None:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(traces)").fetchall()}
+        if "team_id" not in cols:
+            conn.execute(
+                "ALTER TABLE traces ADD COLUMN team_id TEXT NOT NULL DEFAULT ''"
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_traces_team ON traces (team_id)"
+        )
+
+    def save(
+        self,
+        trace: RequestTrace,
+        *,
+        tier: str | None = None,
+        category: str | None = None,
+        team_id: str | None = None,
+    ) -> None:
         if not self.enabled:
             return
         try:
             with self._lock, self._connect() as conn:
+                self._ensure_team_column(conn)
                 conn.execute(
-                    "INSERT OR REPLACE INTO traces (trace_id, ts, tier, category, steps)"
-                    " VALUES (?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO traces"
+                    " (trace_id, ts, tier, category, steps, team_id)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
                     (
                         trace.trace_id,
                         datetime.now(timezone.utc).isoformat(),
                         tier,
                         category,
                         json.dumps(trace.steps),
+                        (team_id or "").strip(),
                     ),
                 )
                 conn.execute(
@@ -118,8 +141,10 @@ class TraceStore:
             return None
         try:
             with self._lock, self._connect() as conn:
+                self._ensure_team_column(conn)
                 row = conn.execute(
-                    "SELECT trace_id, ts, tier, category, steps FROM traces WHERE trace_id = ?",
+                    "SELECT trace_id, ts, tier, category, steps, team_id"
+                    " FROM traces WHERE trace_id = ?",
                     (trace_id,),
                 ).fetchone()
         except Exception:
@@ -132,21 +157,38 @@ class TraceStore:
             "tier": row[2],
             "category": row[3],
             "steps": json.loads(row[4]),
+            "team_id": row[5] or "",
         }
 
-    def list(self, limit: int = 20) -> list[dict[str, Any]]:
+    def list(self, limit: int = 20, *, team_id: str | None = None) -> list[dict[str, Any]]:
         if not self.enabled:
             return []
         try:
             with self._lock, self._connect() as conn:
-                rows = conn.execute(
-                    "SELECT trace_id, ts, tier, category FROM traces ORDER BY seq DESC LIMIT ?",
-                    (max(1, limit),),
-                ).fetchall()
+                self._ensure_team_column(conn)
+                wanted = (team_id or "").strip()
+                if wanted:
+                    rows = conn.execute(
+                        "SELECT trace_id, ts, tier, category, team_id FROM traces"
+                        " WHERE team_id = ? ORDER BY seq DESC LIMIT ?",
+                        (wanted, max(1, limit)),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT trace_id, ts, tier, category, team_id FROM traces"
+                        " ORDER BY seq DESC LIMIT ?",
+                        (max(1, limit),),
+                    ).fetchall()
         except Exception:
             return []
         return [
-            {"trace_id": row[0], "ts": row[1], "tier": row[2], "category": row[3]}
+            {
+                "trace_id": row[0],
+                "ts": row[1],
+                "tier": row[2],
+                "category": row[3],
+                "team_id": row[4] or "",
+            }
             for row in rows
         ]
 

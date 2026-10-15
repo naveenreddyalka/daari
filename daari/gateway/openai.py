@@ -715,7 +715,44 @@ def _openai_completion_body(
     return payload.model_dump(exclude_none=True)
 
 
-def _stats_team_rate_limits(request: Request) -> list[dict[str, Any]]:
+def _caller_team_id(request: Request) -> str | None:
+    """Team bound to the bearer (VK pin / selected team / SSO claim) (#1677)."""
+    claims = getattr(request.state, "auth_claims", None)
+    if claims is not None:
+        selected = getattr(claims, "selected_team_id", None)
+        if selected:
+            text = str(selected).strip()
+            if text:
+                return text
+        vk = getattr(claims, "virtual_key", None)
+        pinned = getattr(vk, "team_id", None) if vk is not None else None
+        if pinned:
+            text = str(pinned).strip()
+            if text:
+                return text
+    from daari.enterprise.rbac import team_id_from_claims
+
+    sso = getattr(request.state, "sso_claims", None)
+    return team_id_from_claims(sso if isinstance(sso, dict) else None)
+
+
+def _admin_team_scope(request: Request, role: str, team_id: str | None) -> str | None:
+    """Resolve ``?team_id=`` for analyst read surfaces; 403 cross-team (#1677)."""
+    from daari.enterprise.rbac import resolve_team_read_filter
+
+    try:
+        return resolve_team_read_filter(
+            role=role,
+            caller_team_id=_caller_team_id(request),
+            requested=team_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="team scope denied") from exc
+
+
+def _stats_team_rate_limits(
+    request: Request, *, team_id: str | None = None
+) -> list[dict[str, Any]]:
     """Team rpm/tpm/rpd remaining for the dashboard. Empty when none are configured."""
     limiter = getattr(request.app.state, "rate_limiter", None)
     if limiter is None or not hasattr(limiter, "team_rate_gauges"):
@@ -728,12 +765,20 @@ def _stats_team_rate_limits(request: Request) -> list[dict[str, Any]]:
     if not callable(list_teams):
         return []
     try:
-        return list(limiter.team_rate_gauges(list_teams()) or [])
+        teams = list(list_teams() or [])
+        wanted = (team_id or "").strip()
+        if wanted:
+            teams = [
+                t for t in teams if str(getattr(t, "team_id", None) or "").strip() == wanted
+            ]
+        return list(limiter.team_rate_gauges(teams) or [])
     except Exception:
         return []
 
 
-def _stats_key_rate_limits(request: Request) -> list[dict[str, Any]]:
+def _stats_key_rate_limits(
+    request: Request, *, team_id: str | None = None
+) -> list[dict[str, Any]]:
     """Per-key rpd remaining. Empty when no key opted into a day cap."""
     limiter = getattr(request.app.state, "rate_limiter", None)
     if limiter is None or not hasattr(limiter, "key_rate_gauges"):
@@ -746,12 +791,16 @@ def _stats_key_rate_limits(request: Request) -> list[dict[str, Any]]:
     if not callable(list_keys):
         return []
     try:
-        return list(limiter.key_rate_gauges(list_keys()) or [])
+        keys = list(list_keys() or [])
+        wanted = (team_id or "").strip()
+        if wanted:
+            keys = [k for k in keys if str(getattr(k, "team_id", None) or "").strip() == wanted]
+        return list(limiter.key_rate_gauges(keys) or [])
     except Exception:
         return []
 
 
-def _stats_virtual_keys(request: Request) -> dict[str, int]:
+def _stats_virtual_keys(request: Request, *, team_id: str | None = None) -> dict[str, int]:
     """Lifecycle counts matching ``daari_virtual_keys{status}`` (#1573)."""
     from daari.auth.virtual_keys import KEY_EXPIRY_BUCKETS, count_key_expiry_buckets
 
@@ -766,7 +815,11 @@ def _stats_virtual_keys(request: Request) -> dict[str, int]:
     try:
         settings = getattr(ctx, "settings", None)
         warn_days = int(getattr(getattr(settings, "alerts", None), "key_expiry_warn_days", 14) or 0)
-        return count_key_expiry_buckets(list_keys(), warn_days=warn_days)
+        keys = list(list_keys() or [])
+        wanted = (team_id or "").strip()
+        if wanted:
+            keys = [k for k in keys if str(getattr(k, "team_id", None) or "").strip() == wanted]
+        return count_key_expiry_buckets(keys, warn_days=warn_days)
     except Exception:
         return empty
 
@@ -1666,9 +1719,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             return ctx.router.preview_initial_tier(internal)
 
         @router.get("/v1/daari/stats")
-        async def daari_stats(request: Request) -> dict[str, Any]:
+        async def daari_stats(
+            request: Request, team_id: str | None = None
+        ) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            _require_role(request, ctx, "analyst")
+            role = _require_role(request, ctx, "analyst")
+            scope = _admin_team_scope(request, role, team_id)
             from daari.observability.metrics import histogram_percentile_ms
 
             full = ctx.metrics.snapshot(include_histograms=True)
@@ -1706,7 +1762,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     mcp_tasks = dict(store.snapshot() or {})
                 except Exception:
                     mcp_tasks = {}
-            return {
+            payload: dict[str, Any] = {
                 "total_requests": total,
                 "errors": full["errors"],
                 "errors_by_status": full.get("errors_by_status") or {},
@@ -1715,9 +1771,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "backend_summary": backend_summary,
                 "soft_warnings": full.get("soft_warnings") or {},
                 "rejects": full.get("rejects") or {},
-                "team_rate_limits": _stats_team_rate_limits(request),
-                "key_rate_limits": _stats_key_rate_limits(request),
-                "virtual_keys": _stats_virtual_keys(request),
+                "team_rate_limits": _stats_team_rate_limits(request, team_id=scope),
+                "key_rate_limits": _stats_key_rate_limits(request, team_id=scope),
+                "virtual_keys": _stats_virtual_keys(request, team_id=scope),
                 "mcp_tool_calls": full.get("mcp_tool_calls") or {},
                 "mcp_tasks": mcp_tasks,
                 "compact_to_fit_applied": int(full.get("compact_to_fit_applied") or 0),
@@ -1726,15 +1782,26 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 "mcp_grant_denied": int(full.get("mcp_grant_denied") or 0),
             }
+            if scope:
+                payload["team_id"] = scope
+            return payload
 
         @router.get("/v1/daari/traces")
-        async def daari_traces(request: Request, limit: int = 20) -> dict[str, Any]:
+        async def daari_traces(
+            request: Request, limit: int = 20, team_id: str | None = None
+        ) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            _require_role(request, ctx, "analyst")
+            role = _require_role(request, ctx, "analyst")
+            scope = _admin_team_scope(request, role, team_id)
             store = ctx.router.trace_store
             if store is None:
                 raise HTTPException(status_code=404, detail="trace store is not configured")
-            return {"traces": store.list(limit=max(1, min(limit, 200)))}
+            payload: dict[str, Any] = {
+                "traces": store.list(limit=max(1, min(limit, 200)), team_id=scope)
+            }
+            if scope:
+                payload["team_id"] = scope
+            return payload
 
         @router.get("/v1/daari/traces/{trace_id}")
         async def daari_trace_detail(trace_id: str, request: Request) -> dict[str, Any]:
@@ -1749,9 +1816,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             return trace
 
         @router.get("/v1/daari/report")
-        async def daari_report(request: Request, days: int = 7) -> dict[str, Any]:
+        async def daari_report(
+            request: Request, days: int = 7, team_id: str | None = None
+        ) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            _require_role(request, ctx, "analyst")
+            role = _require_role(request, ctx, "analyst")
+            scope = _admin_team_scope(request, role, team_id)
             ledger = ctx.router.usage_ledger
             if ledger is None:
                 raise HTTPException(status_code=404, detail="usage ledger is not configured")
@@ -1795,6 +1865,34 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 payload["teams"] = store.report_by_team(payload["clients"])
             else:
                 payload["teams"] = []
+            if scope:
+                payload["team_id"] = scope
+                team_clients: set[str] = set()
+                if store is not None and hasattr(store, "team_client_ids"):
+                    try:
+                        team_clients = {
+                            str(c) for c in (store.team_client_ids(scope) or []) if c
+                        }
+                    except Exception:
+                        team_clients = set()
+                if team_clients:
+                    payload["clients"] = [
+                        row
+                        for row in payload["clients"]
+                        if str(row.get("client_id") or "") in team_clients
+                    ]
+                    payload["users"] = [
+                        row
+                        for row in payload["users"]
+                        if str(row.get("client_id") or "") in team_clients
+                    ]
+                else:
+                    payload["clients"] = []
+                    payload["users"] = []
+                if store is not None and getattr(store, "report_by_team", None):
+                    payload["teams"] = store.report_by_team(payload["clients"])
+                else:
+                    payload["teams"] = []
             from daari.auth.budgets import request_quota_report_rows
 
             payload["request_quotas"] = request_quota_report_rows(
