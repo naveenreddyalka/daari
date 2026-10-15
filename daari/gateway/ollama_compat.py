@@ -358,7 +358,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
             except BackendUnavailable as exc:
-                ctx.metrics.record_error()
+                ctx.metrics.record_error(status=503)
                 return JSONResponse(
                     status_code=503,
                     content={
@@ -373,9 +373,8 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
 
                 if isinstance(exc, RequestDeadlineExceeded):
                     return request_deadline_response(exc)
-                ctx.metrics.record_error()
+                ctx.metrics.record_error(status=503)
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
-
         @router.post("/api/chat", response_model=None)
         async def chat(
             body: OllamaChatRequest,

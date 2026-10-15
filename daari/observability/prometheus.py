@@ -81,9 +81,15 @@ def render_prometheus(
                 f"{_labels(modality=modality, tier=tier, direction=direction)} {int(count)}"
             )
 
-    lines.append("# HELP daari_errors_total Gateway/router errors.")
+    lines.append("# HELP daari_errors_total Gateway/router errors by HTTP status.")
     lines.append("# TYPE daari_errors_total counter")
-    lines.append(f"daari_errors_total {snap['errors']}")
+    errors_by_status = snap.get("errors_by_status") or {}
+    if not errors_by_status:
+        # Zero sample keeps the status label in the series set for scrapers (#1661).
+        lines.append(f'daari_errors_total{_labels(status="0")} 0')
+    else:
+        for status, count in sorted(errors_by_status.items(), key=lambda item: str(item[0])):
+            lines.append(f"daari_errors_total{_labels(status=str(status))} {int(count)}")
 
     lines.append("# HELP daari_escalations_total Local→frontier (L6) escalations.")
     lines.append("# TYPE daari_escalations_total counter")

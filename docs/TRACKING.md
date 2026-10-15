@@ -6914,6 +6914,15 @@ Covered by `tests/unit/test_config_ownership.py`, `tests/unit/test_helm_chart.py
 `DaariCacheInvalidateErrors` alert; metrics-prometheus.md alert-pack table.
 Covered by `tests/unit/test_grafana_dashboard.py`, `tests/unit/test_helm_chart.py`.
 
+### Label gateway errors by HTTP status ([#1661](https://github.com/naveenreddyalka/daari/issues/1661))
+
+<!-- tracking:#1661 -->
+**Status:** Done (2026-10-15). `record_error(status=…)` buckets into
+`errors_by_status`; Prometheus emits `daari_errors_total{status}`; stats +
+web-ui Errors breakdown; `DaariErrorRateHigh` uses `sum(rate(...))`.
+Covered by `tests/unit/test_metrics.py`, `tests/unit/test_prometheus.py`,
+web-ui dashboard tests.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

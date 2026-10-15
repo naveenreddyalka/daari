@@ -15,7 +15,7 @@ class TestRenderPrometheus:
     def test_empty_metrics_emits_zeros(self):
         text = render_prometheus(Metrics())
         assert "daari_requests_total" in text
-        assert "daari_errors_total 0" in text
+        assert 'daari_errors_total{status="0"} 0' in text
         assert "# HELP daari_requests_total" in text
         assert "# TYPE daari_requests_total counter" in text
 
@@ -30,11 +30,22 @@ class TestRenderPrometheus:
         assert 'daari_requests_total{tier="L3"} 2' in text
         assert 'daari_requests_total{tier="L0"} 1' in text
         assert 'daari_cache_hits_total{tier="L0"} 1' in text
-        assert "daari_errors_total 1" in text
+        assert 'daari_errors_total{status="0"} 1' in text
         assert "daari_escalations_total 1" in text
         assert "daari_request_latency_ms_sum" in text
         assert 'daari_request_latency_ms_bucket{tier="L3",le="250"}' in text
         assert 'daari_request_latency_ms_bucket{tier="L3",le="+Inf"} 2' in text
+
+    def test_errors_total_status_label(self):
+        """Labeled error counter for Errors-tab parity (#1661)."""
+        metrics = Metrics()
+        metrics.record_error(status=503)
+        metrics.record_error(status=503)
+        metrics.record_error(status=500)
+        text = render_prometheus(metrics)
+        assert 'daari_errors_total{status="503"} 2' in text
+        assert 'daari_errors_total{status="500"} 1' in text
+        assert "daari_errors_total 3" not in text  # unlabeled series retired
 
     def test_ttft_histogram_by_tier(self):
         metrics = Metrics()
