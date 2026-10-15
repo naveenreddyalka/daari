@@ -547,3 +547,127 @@ def test_docs_mention_embedded_pg_dump():
     assert "embedded" in doc.lower()
     assert "--require-pg-dump" in doc
     assert "stores/pg/" in doc
+
+
+def test_consistent_refuses_live_server(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _settings(src)
+    _seed(settings)
+    monkeypatch.setattr("daari.ops.backup.server_appears_running", lambda _s: True)
+    with pytest.raises(BackupError, match="--consistent"):
+        create_backup(settings, tmp_path / "live.tar.gz", consistent=True)
+
+
+def test_consistent_restore_drill_spend_keys_exist(tmp_path, monkeypatch):
+    """Every spend key_id must exist in the restored VK store (#1678)."""
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _settings(src)
+    keys = VirtualKeyStore(settings.server.virtual_keys.path, enabled=True)
+    created = keys.create(name="chargeback", daily_budget_usd=1.0)
+    key_id = created.key.key_id
+    SpendLedger(settings.usage.spend.path, enabled=True).record(
+        key_id=key_id, request_id="r-consistent", cost_usd=0.11
+    )
+    AuditLog(settings.enterprise.audit_path).record(
+        actor="op", role="admin", action="test.consistent"
+    )
+
+    archive = tmp_path / "consistent.tar.gz"
+    monkeypatch.setattr("daari.ops.backup.server_appears_running", lambda _s: False)
+    create_backup(settings, archive, consistent=True)
+
+    dst = tmp_path / "dst"
+    dst.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", dst / "requests.log")
+    restore_backup(_settings(dst), archive, allow_running_server=True)
+
+    restored_keys = {
+        k.key_id for k in VirtualKeyStore(_settings(dst).server.virtual_keys.path, enabled=True).list()
+    }
+    spend_rows = list(
+        SpendLedger(_settings(dst).usage.spend.path, enabled=True).iter_rows(since="1970-01-01")
+    )
+    assert spend_rows
+    for row in spend_rows:
+        kid = str(row.get("key_id") or "")
+        if kid:
+            assert kid in restored_keys, f"orphan spend key_id={kid}"
+
+
+def test_consistent_single_pg_dump_invocation(tmp_path, monkeypatch):
+    """Consistent mode issues one pg_dump covering every catalogued table (#1678)."""
+    calls: list[list[str]] = []
+
+    def fake_run(argv, capture_output=True, check=False):  # noqa: ARG001
+        calls.append(list(argv))
+
+        class Proc:
+            returncode = 0
+            stdout = b"-- consistent dump\n"
+            stderr = b""
+
+        return Proc()
+
+    monkeypatch.setattr("daari.ops.backup.shutil.which", lambda name: f"/bin/{name}")
+    monkeypatch.setattr("daari.ops.backup.subprocess.run", fake_run)
+    monkeypatch.setattr("daari.ops.backup.server_appears_running", lambda _s: False)
+
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = Settings.model_validate(
+        {
+            "observability": {
+                "backend": "postgres",
+                "postgres_url": "postgresql://localhost/daari",
+            },
+            "trace": {"path": str(src / "traces.sqlite3")},
+            "usage": {
+                "path": str(src / "usage.sqlite3"),
+                "spend": {"enabled": True, "path": str(src / "spend.sqlite3")},
+            },
+            "server": {
+                "virtual_keys": {
+                    "enabled": True,
+                    "backend": "postgres",
+                    "path": str(src / "keys.sqlite3"),
+                }
+            },
+            "enterprise": {
+                "audit_backend": "postgres",
+                "audit_path": str(src / "audit.sqlite3"),
+            },
+            "files": {"enabled": True, "backend": "postgres", "path": str(src / "files")},
+            "batches": {
+                "enabled": True,
+                "backend": "postgres",
+                "path": str(src / "batches.sqlite3"),
+            },
+            "responses": {"backend": "postgres"},
+            "idempotency": {"backend": "postgres"},
+        }
+    )
+    archive = tmp_path / "pg-consistent.tar.gz"
+    manifest = create_backup(settings, archive, consistent=True)
+    pg_calls = [c for c in calls if c and "pg_dump" in c[0]]
+    assert len(pg_calls) == 1
+    assert pg_calls[0].count("--table") >= 2
+    embedded = [s for s in manifest.stores if s.get("backend") == "embedded"]
+    assert embedded
+    assert all(s.get("archive_path") == "stores/pg/consistent.sql" for s in embedded)
+    assert all(s.get("consistent") for s in embedded)
+
+
+def test_docs_guarantees_matrix_mentions_consistent():
+    doc = Path("docs/developer/guides/operations/backup-restore.md").read_text(
+        encoding="utf-8"
+    )
+    assert "--consistent" in doc
+    assert "guarantees" in doc.lower() or "point-in-time" in doc.lower()
