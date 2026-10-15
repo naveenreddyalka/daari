@@ -6961,6 +6961,14 @@ deprecated ids keep working. Covered by
 exists; absent when otel off or no context. Docs: otel-genai.md. Covered by
 `tests/unit/test_otel_genai.py`, `tests/unit/test_otel_docs.py`.
 
+### Team-scoped admin reads ([#1677](https://github.com/naveenreddyalka/daari/issues/1677))
+
+<!-- tracking:#1677 -->
+**Status:** Done (2026-10-15). `?team_id=` on `/v1/daari/traces`, `/stats`,
+`/report`; VK/SSO analysts restricted to their team (cross-team → 403);
+SQLite + Postgres trace stores filter by `team_id`. Docs: auth-and-keys.md.
+Covered by `tests/unit/test_team_scoped_admin_reads.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
