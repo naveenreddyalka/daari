@@ -84,6 +84,12 @@ outbound calls to Ollama, OpenAI-compat, MLX, and frontier providers. One
 request then appears as a single trace in Jaeger/Tempo — client → daari
 routing steps → provider — instead of three disconnected trees.
 
+Responses also carry a W3C `traceresponse` header (`00-<trace-id>-<child-id>-<flags>`)
+when `observability.otel` is on and a valid inbound or active span context
+exists. The `trace-id` matches the caller's context; `child-id` is the gateway
+span (or a synthesized child when no SDK span was started). Missing OTel
+packages or no inbound context omit the header — never a 5xx.
+
 Propagation is a no-op when `observability.otel` is off or the
 `opentelemetry` packages are missing (same guard pattern as export).
 

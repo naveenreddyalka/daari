@@ -6953,6 +6953,14 @@ filtered `GET /v1/models` against key/team allowlists. Covered by
 deprecated ids keep working. Covered by
 `tests/unit/test_lifecycle_facade_410.py`.
 
+### W3C traceresponse reply header ([#1682](https://github.com/naveenreddyalka/daari/issues/1682))
+
+<!-- tracking:#1682 -->
+**Status:** Done (2026-10-15). OTel middleware emits W3C `traceresponse`
+(`00-<trace-id>-<child-id>-<flags>`) when inbound/active span context
+exists; absent when otel off or no context. Docs: otel-genai.md. Covered by
+`tests/unit/test_otel_genai.py`, `tests/unit/test_otel_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

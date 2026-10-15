@@ -22,3 +22,11 @@ def test_otel_genai_documents_conversation_id_from_session() -> None:
     )
     assert "gen_ai.conversation.id" in text
     assert "X-Daari-Session" in text
+
+
+def test_otel_genai_documents_traceresponse() -> None:
+    text = (ROOT / "docs/developer/guides/observability/otel-genai.md").read_text(
+        encoding="utf-8"
+    )
+    assert "traceresponse" in text
+    assert "traceparent" in text

@@ -14,7 +14,9 @@ real counts (`usage_estimated` is False) so the attributes stay truthful.
 
 W3C `traceparent` / `tracestate` (#485): inbound headers are extracted into a
 contextvar so the exported tree is parented to the caller's span, and outbound
-HTTP calls inject the same context when it is present.
+HTTP calls inject the same context when it is present. Responses may carry a
+W3C ``traceresponse`` reply header (#1682) so callers can join the gateway
+span when they did not retain the child id.
 """
 
 from __future__ import annotations
@@ -157,6 +159,67 @@ def inject_trace_headers(
     if rid and not any(key.lower() == "x-request-id" for key in out):
         out["X-Request-ID"] = rid
     return out
+
+
+def format_traceresponse() -> str | None:
+    """Build a W3C ``traceresponse`` value from inbound/active context (#1682).
+
+    Returns ``00-<trace-id>-<child-id>-<flags>`` when a valid span context
+    exists. With inbound ``traceparent``, ``trace-id`` matches the caller and
+    ``child-id`` is the active gateway span when it shares that trace
+    (otherwise a synthesized child). With only an active span (e.g. FastAPI's
+    own span), that span is echoed. Missing OTel packages or no valid
+    context → ``None`` (never raises).
+    """
+    try:
+        from opentelemetry import trace as otel_trace
+    except ImportError:
+        return None
+    try:
+        inbound = _inbound_context.get()
+        remote_ctx = None
+        if inbound is not None:
+            remote = otel_trace.get_current_span(inbound).get_span_context()
+            if remote.is_valid:
+                remote_ctx = remote
+        active_ctx = otel_trace.get_current_span().get_span_context()
+        if remote_ctx is not None:
+            trace_id = remote_ctx.trace_id
+            flags = int(remote_ctx.trace_flags)
+            if active_ctx.is_valid and active_ctx.trace_id == trace_id:
+                child_id = active_ctx.span_id
+            else:
+                child_id = int.from_bytes(os.urandom(8), "big")
+            return f"00-{trace_id:032x}-{child_id:016x}-{flags:02x}"
+        if active_ctx.is_valid:
+            return (
+                f"00-{active_ctx.trace_id:032x}-"
+                f"{active_ctx.span_id:016x}-"
+                f"{int(active_ctx.trace_flags):02x}"
+            )
+        return None
+    except Exception:
+        return None
+
+
+def apply_traceresponse_header(response: Any) -> None:
+    """Set ``traceresponse`` on *response* when a valid context exists (#1682).
+
+    Fail-open: missing packages, invalid context, or header-write errors are
+    ignored so request handling never 5xx for OTel.
+    """
+    value = format_traceresponse()
+    if not value:
+        return
+    try:
+        headers = getattr(response, "headers", None)
+        if headers is None:
+            return
+        if any(str(key).lower() == "traceresponse" for key in headers):
+            return
+        headers["traceresponse"] = value
+    except Exception:
+        pass
 
 
 def configure_providers(
