@@ -27,6 +27,7 @@ from daari.observability.otel import (  # noqa: E402
     configure_providers,
     export_trace,
     extract_inbound_context,
+    format_traceresponse,
     inject_trace_headers,
     reset_inbound_context,
 )
@@ -464,6 +465,67 @@ def test_inject_noop_without_inbound_context():
     assert inject_trace_headers({"Authorization": "Bearer x"}) == {
         "Authorization": "Bearer x"
     }
+
+
+def test_format_traceresponse_none_without_context():
+    assert format_traceresponse() is None
+
+
+def test_format_traceresponse_matches_inbound_trace_id():
+    parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    token = extract_inbound_context({"traceparent": parent})
+    try:
+        value = format_traceresponse()
+    finally:
+        reset_inbound_context(token)
+    assert value is not None
+    version, trace_id, child_id, flags = value.split("-")
+    assert version == "00"
+    assert trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert child_id != "00f067aa0ba902b7"
+    assert len(child_id) == 16
+    assert flags == "01"
+
+
+@pytest.mark.asyncio
+async def test_http_traceresponse_header_from_inbound_traceparent(settings):
+    from httpx import ASGITransport, AsyncClient
+
+    from daari.router.router import AppContext
+    from daari.server.app import create_app
+
+    settings.observability.otel = True
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/health", headers={"traceparent": parent})
+    assert response.status_code == 200
+    tr = response.headers.get("traceresponse")
+    assert tr is not None
+    assert tr.split("-")[1] == "4bf92f3577b34da6a3ce929d0e0e4736"
+
+
+@pytest.mark.asyncio
+async def test_http_no_traceresponse_when_otel_disabled(settings):
+    """Without observability.otel, middleware does not invent traceresponse."""
+    from httpx import ASGITransport, AsyncClient
+
+    from daari.router.router import AppContext
+    from daari.server.app import create_app
+
+    settings.observability.otel = False
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    parent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/health", headers={"traceparent": parent})
+    assert response.status_code == 200
+    assert "traceresponse" not in {k.lower() for k in response.headers.keys()}
 
 
 def test_inject_adds_x_request_id_from_context():

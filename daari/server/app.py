@@ -239,15 +239,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         @app.middleware("http")
         async def otel_trace_context(request: Request, call_next):
-            """Extract inbound W3C traceparent for parenting + outbound inject (#485)."""
+            """Extract inbound W3C traceparent; reply with traceresponse (#485 / #1682)."""
             from daari.observability.otel import (
+                apply_traceresponse_header,
                 extract_inbound_context,
                 reset_inbound_context,
             )
 
             token = extract_inbound_context(request.headers)
             try:
-                return await call_next(request)
+                response = await call_next(request)
+                apply_traceresponse_header(response)
+                return response
             finally:
                 reset_inbound_context(token)
 
