@@ -365,6 +365,7 @@ _PROMETHEUS_RULE_METRICS = (
     "daari_rate_limit_queued",
     "daari_guardrail_trips_total",
     "daari_virtual_keys",
+    "daari_cache_invalidate_total",
 )
 
 
@@ -437,6 +438,7 @@ class TestHelmPrometheusRules:
         assert "DaariAdmissionQueueDeep" in alert_names
         assert "DaariGuardrailTripSpike" in alert_names
         assert "DaariKeysExpiringSoon" in alert_names
+        assert "DaariCacheInvalidateErrors" in alert_names
         for group in groups:
             for alert in group.get("rules") or []:
                 if "alert" not in alert:
@@ -459,6 +461,8 @@ class TestHelmPrometheusRules:
             "--set",
             "prometheusRules.guardrails.rateThreshold=3",
             "--set",
+            "prometheusRules.cacheInvalidate.rateThreshold=0.2",
+            "--set",
             "prometheusRules.backend.for=2m",
         )
         pr = rendered.split("kind: PrometheusRule")[1]
@@ -467,10 +471,12 @@ class TestHelmPrometheusRules:
         assert "0.2" in pr
         assert "3" in pr
         assert "for: 2m" in pr
+        assert 'result="error"' in pr or 'result=\\"error\\"' in pr or "result=\"error\"" in pr
         values = _load_yaml(VALUES)
         pr_vals = values["prometheusRules"]
         assert pr_vals["budget"]["fraction"] == 0.1
         assert pr_vals["queue"]["threshold"] == 10
+        assert pr_vals["cacheInvalidate"]["rateThreshold"] == 0.05
 
 
 class TestHelmMetricsPort:
