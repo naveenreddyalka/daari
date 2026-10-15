@@ -6937,6 +6937,13 @@ Covered by `tests/unit/test_stats_cli_help.py`.
 in 1.105 RC and on-box `/v1/decisions` + `/v1/systemone`; 1.104 remains GA
 floor. Covered by `tests/unit/test_compare_litellm_1104.py`.
 
+### Docs pin: virtual-keys.md GET /v1/models allowlist ([#1585](https://github.com/naveenreddyalka/daari/issues/1585))
+
+<!-- tracking:#1585 -->
+**Status:** Done (2026-10-15). Hermetic pin that virtual-keys.md documents
+filtered `GET /v1/models` against key/team allowlists. Covered by
+`tests/unit/test_virtual_keys_priority_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
