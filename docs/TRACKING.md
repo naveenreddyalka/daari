@@ -6923,6 +6923,13 @@ web-ui Errors breakdown; `DaariErrorRateHigh` uses `sum(rate(...))`.
 Covered by `tests/unit/test_metrics.py`, `tests/unit/test_prometheus.py`,
 web-ui dashboard tests.
 
+### CLI: mention virtual_keys in daari stats --help ([#1583](https://github.com/naveenreddyalka/daari/issues/1583))
+
+<!-- tracking:#1583 -->
+**Status:** Done (2026-10-15). `daari stats` docstring lists `virtual_keys`
+lifecycle counts alongside cliff maps / backend_summary / compact-to-fit.
+Covered by `tests/unit/test_stats_cli_help.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
