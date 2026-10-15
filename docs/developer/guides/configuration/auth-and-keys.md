@@ -284,6 +284,7 @@ when `postgres.enabled` is true.
 | `config.patch` | Admin config patch | changed keys |
 | `admin.keys.list` | `GET /v1/daari/keys` | `limit`, `offset`, `total`, `returned` |
 | `admin.teams.list` | `GET /v1/daari/teams` | `limit`, `offset`, `total`, `returned` |
+| `cache.invalidate` | `POST /v1/daari/cache/invalidate` | `scope` (model\|hash\|team\|key\|all), `l0_removed`, `l1_removed` (no entry bodies) |
 | `retention.prune` | Retention sweep | counts |
 | `mcp.tools/call` / `mcp.guardrail` | MCP policy | tool / decision |
 
