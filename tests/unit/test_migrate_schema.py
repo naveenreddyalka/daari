@@ -182,3 +182,114 @@ def test_sync_policy_once_refuses_unknown_schema(monkeypatch):
     result = sync_policy_once(settings, router=None, insecure=True)
     assert result["ok"] is False
     assert result["reason"] == "unknown_schema"
+
+
+def _pg_settings(tmp_path: Path) -> Settings:
+    return Settings.model_validate(
+        {
+            "usage": {"path": str(tmp_path / "ledger.sqlite3")},
+            "server": {
+                "virtual_keys": {
+                    "path": str(tmp_path / "vk.sqlite3"),
+                    "backend": "postgres",
+                },
+            },
+            "enterprise": {
+                "audit_path": str(tmp_path / "audit.sqlite3"),
+                "audit_backend": "postgres",
+            },
+            "trace": {"path": str(tmp_path / "traces" / "traces.sqlite3")},
+            "integrations": {"mcp_tasks": {"path": str(tmp_path / "mcp-tasks")}},
+            "observability": {
+                "postgres_url": "postgresql://migrate-test.invalid/daari",
+                "request_log": {"backend": "postgres"},
+            },
+        }
+    )
+
+
+def test_pg_dry_run_reports_pending_and_version(tmp_path: Path):
+    from daari.setup.migrate import DictPgInspector, PG_SCHEMA_VERSIONS
+
+    settings = _pg_settings(tmp_path)
+    inspector = DictPgInspector(
+        tables={"daari_request_log": {"id", "ts", "event"}},  # missing payload
+    )
+    lines = run_migrate(settings, dry_run=True, pg_inspector=inspector)
+    joined = "\n".join(lines)
+    assert "postgres.request-log" in joined
+    assert "postgres.virtual-keys" in joined
+    assert "postgres.audit" in joined
+    assert "pending" in joined
+    assert f"v{PG_SCHEMA_VERSIONS['postgres.request-log']}" in joined or "payload" in joined
+    notes = inspect_stores(settings, pg_inspector=inspector)
+    by_name = {n.name: n for n in notes}
+    assert by_name["postgres.request-log"].status == "pending"
+    assert any("payload" in p for p in by_name["postgres.request-log"].pending)
+
+
+def test_pg_dry_run_reports_unreachable(tmp_path: Path):
+    from daari.setup.migrate import DictPgInspector
+
+    settings = _pg_settings(tmp_path)
+    inspector = DictPgInspector(reachable=False, error="connection refused")
+    lines = run_migrate(settings, dry_run=True, pg_inspector=inspector)
+    joined = "\n".join(lines)
+    assert "postgres.request-log" in joined
+    assert "unreachable" in joined.lower() or "error" in joined
+    notes = inspect_stores(settings, pg_inspector=inspector)
+    assert all(
+        n.status == "error"
+        for n in notes
+        if n.name.startswith("postgres.")
+    )
+
+
+def test_pg_migrate_applies_additive_via_inspector(tmp_path: Path):
+    from daari.setup.migrate import DictPgInspector, PG_STORE_COLUMNS
+
+    settings = _pg_settings(tmp_path)
+    # Start with empty tables → pending create; apply fills expected columns.
+    inspector = DictPgInspector(tables={})
+    before = inspect_stores(settings, pg_inspector=inspector)
+    assert any(n.status == "pending" for n in before if n.name.startswith("postgres."))
+    lines = run_migrate(settings, dry_run=False, pg_inspector=inspector)
+    joined = "\n".join(lines)
+    assert "postgres.request-log" in joined
+    after = inspect_stores(settings, pg_inspector=inspector)
+    for name, tables in PG_STORE_COLUMNS.items():
+        note = next(n for n in after if n.name == name)
+        assert note.status == "current", (name, note.pending)
+        for table, cols in tables.items():
+            assert cols <= inspector.columns(table)
+
+
+def test_doctor_warns_on_pg_schema_lag(tmp_path: Path, monkeypatch):
+    from daari.setup.doctor import _check_store_migrate
+    from daari.setup.migrate import DictPgInspector
+
+    settings = _pg_settings(tmp_path)
+    inspector = DictPgInspector(
+        tables={"daari_request_log": {"id", "ts", "event"}},
+    )
+    monkeypatch.setattr(
+        "daari.setup.migrate.inspect_stores",
+        lambda s, **kw: inspect_stores(s, pg_inspector=inspector),
+    )
+    result = _check_store_migrate(settings)
+    assert result.ok is False
+    assert "postgres.request-log" in result.detail
+    assert result.optional is True
+
+
+def test_upgrade_docs_mention_pg_migrate_order():
+    text = (
+        Path(__file__).resolve().parents[2]
+        / "docs/developer/guides/operations/upgrade.md"
+    ).read_text(encoding="utf-8")
+    assert "postgres.request-log" in text
+    assert "daari migrate" in text
+    assert "before" in text.lower() and "roll" in text.lower()
+    from daari.gateway.postgres_request_log import SCHEMA_VERSION
+
+    assert SCHEMA_VERSION >= 1
