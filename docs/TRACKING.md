@@ -6930,6 +6930,13 @@ web-ui dashboard tests.
 lifecycle counts alongside cliff maps / backend_summary / compact-to-fit.
 Covered by `tests/unit/test_stats_cli_help.py`.
 
+### Docs: LiteLLM 1.105 RC Decisions vs daari ([#1584](https://github.com/naveenreddyalka/daari/issues/1584))
+
+<!-- tracking:#1584 -->
+**Status:** Done (2026-10-15). compare-litellm RC watch notes Decisions API
+in 1.105 RC and on-box `/v1/decisions` + `/v1/systemone`; 1.104 remains GA
+floor. Covered by `tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

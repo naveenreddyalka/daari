@@ -45,3 +45,18 @@ def test_compare_litellm_pins_1105_rc_watch() -> None:
     assert "lens" in lower or "litellm.agent" in lower
     assert "does **not** ship" in lower or "does not ship" in lower
     assert "watch" in lower
+
+
+def test_compare_litellm_pins_1105_rc_decisions_parity() -> None:
+    """1.105 RC Decisions routes vs on-box /v1/decisions + /v1/systemone (#1584)."""
+    text = DOC.read_text(encoding="utf-8")
+    lower = text.lower()
+    assert "1.105" in text
+    assert "1.104" in text
+    assert "decisions" in lower
+    assert "/v1/decisions" in text
+    assert "/v1/systemone" in text
+    assert "already" in lower
+    # Floor stays GA; do not claim 1.105 as GA.
+    assert "prerelease" in lower or "rc" in lower
+    assert "stable" in lower or "1.104.0 ga" in lower
