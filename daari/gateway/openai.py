@@ -1081,7 +1081,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             except BackendUnavailable as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()
-                ctx.metrics.record_error()
+                ctx.metrics.record_error(status=503)
                 return JSONResponse(
                     status_code=503,
                     content={
@@ -1098,7 +1098,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             except Exception as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()
-                ctx.metrics.record_error()
+                ctx.metrics.record_error(status=503)
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
 
             if internal.provider and result.daari_meta.provider_prefs is None:
@@ -1703,6 +1703,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             return {
                 "total_requests": total,
                 "errors": full["errors"],
+                "errors_by_status": full.get("errors_by_status") or {},
                 "tiers": tiers,
                 "backends": backends,
                 "backend_summary": backend_summary,

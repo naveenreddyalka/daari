@@ -9,6 +9,7 @@ const tiersNode = document.getElementById("tiers-table");
 const tiersChartNode = document.getElementById("tiers-chart");
 const softWarningsNode = document.getElementById("soft-warnings-table");
 const rejectsNode = document.getElementById("rejects-table");
+const errorsByStatusNode = document.getElementById("errors-by-status-table");
 const mcpToolCallsNode = document.getElementById("mcp-tool-calls-table");
 const mcpTasksNode = document.getElementById("mcp-tasks-table");
 const mcpTasksSummaryNode = document.getElementById("mcp-tasks-summary");
@@ -691,6 +692,7 @@ async function loadStats() {
     renderTiers(stats.tiers || {});
     renderKindCounts(softWarningsNode, stats.soft_warnings, "No soft warnings yet.");
     renderKindCounts(rejectsNode, stats.rejects, "No hard rejects yet.");
+    renderKindCounts(errorsByStatusNode, stats.errors_by_status, "No errors yet.");
     renderMcpStats(stats.mcp_tool_calls, stats.mcp_tasks);
     renderTeamRateLimits(stats.team_rate_limits);
     renderKeyRateLimits(stats.key_rate_limits);
@@ -733,6 +735,7 @@ async function loadStats() {
     renderTiers({});
     renderKindCounts(softWarningsNode, {}, "No soft warnings yet.");
     renderKindCounts(rejectsNode, {}, "No hard rejects yet.");
+    renderKindCounts(errorsByStatusNode, {}, "No errors yet.");
     renderMcpStats({}, {});
     renderTeamRateLimits([]);
     renderKeyRateLimits([]);

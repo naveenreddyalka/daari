@@ -25,3 +25,16 @@ class TestMetrics:
         metrics = Metrics()
         metrics.record_error()
         assert metrics.errors == 1
+        assert metrics.errors_by_status == {"0": 1}
+
+    def test_record_error_by_status(self):
+        metrics = Metrics()
+        metrics.record_error(status=503)
+        metrics.record_error(status=503)
+        metrics.record_error(status=500)
+        metrics.record_error()
+        assert metrics.errors == 4
+        assert metrics.errors_by_status == {"503": 2, "500": 1, "0": 1}
+        snap = metrics.snapshot(include_histograms=True)
+        assert snap["errors"] == 4
+        assert snap["errors_by_status"] == {"503": 2, "500": 1, "0": 1}
