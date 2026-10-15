@@ -6944,6 +6944,23 @@ floor. Covered by `tests/unit/test_compare_litellm_1104.py`.
 filtered `GET /v1/models` against key/team allowlists. Covered by
 `tests/unit/test_virtual_keys_priority_docs.py`.
 
+### Lifecycle 410 on every inference facade ([#1676](https://github.com/naveenreddyalka/daari/issues/1676))
+
+<!-- tracking:#1676 -->
+**Status:** Done (2026-10-15). `reject_retired_model` gates Ollama
+`/api/chat` + `/api/generate`, `/v1/decisions`, `/v1/embeddings`,
+`/v1/ocr`, and `/v1/systemone` with the existing retired-model 410 shape;
+deprecated ids keep working. Covered by
+`tests/unit/test_lifecycle_facade_410.py`.
+
+### W3C traceresponse reply header ([#1682](https://github.com/naveenreddyalka/daari/issues/1682))
+
+<!-- tracking:#1682 -->
+**Status:** Done (2026-10-15). OTel middleware emits W3C `traceresponse`
+(`00-<trace-id>-<child-id>-<flags>`) when inbound/active span context
+exists; absent when otel off or no context. Docs: otel-genai.md. Covered by
+`tests/unit/test_otel_genai.py`, `tests/unit/test_otel_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

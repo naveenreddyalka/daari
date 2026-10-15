@@ -215,8 +215,8 @@ def _resolve_model(client_model: str, ctx: AppContext) -> str:
 
 
 def _enforce_ollama_model(request: Request, ctx: AppContext, meta: RequestMeta, *models: str):
-    """Bind virtual-key allowlists and 403 if any candidate model is outside them."""
-    from daari.gateway.model_access import reject_disallowed_model
+    """Bind virtual-key allowlists and 403/410 if any candidate model is blocked."""
+    from daari.gateway.model_access import reject_disallowed_model, reject_retired_model
     from daari.server.auth import apply_auth_claims_to_meta
 
     apply_auth_claims_to_meta(
@@ -233,6 +233,9 @@ def _enforce_ollama_model(request: Request, ctx: AppContext, meta: RequestMeta, 
         denied = reject_disallowed_model(request, name, ctx.settings, meta)
         if denied is not None:
             return denied
+        retired = reject_retired_model(request, name, ctx.settings)
+        if retired is not None:
+            return retired
     return None
 
 

@@ -278,11 +278,14 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
     if not model:
         return _error(400, "invalid_request", "model: Field required")
 
-    from daari.gateway.model_access import reject_disallowed_model
+    from daari.gateway.model_access import reject_disallowed_model, reject_retired_model
 
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         return denied
+    retired = reject_retired_model(request, model, settings)
+    if retired is not None:
+        return retired
 
     metrics = getattr(ctx, "metrics", None)
     from daari.gateway.guardrails import (
