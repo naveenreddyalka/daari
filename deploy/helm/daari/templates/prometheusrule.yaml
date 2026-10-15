@@ -41,13 +41,13 @@ spec:
         {{- end }}
         {{- if ($pr.errors).enabled | default true }}
         - alert: DaariErrorRateHigh
-          expr: rate(daari_errors_total[{{ ($pr.errors).window | default "5m" }}]) > {{ ($pr.errors).rateThreshold | default 0.05 }}
+          expr: sum(rate(daari_errors_total[{{ ($pr.errors).window | default "5m" }}])) > {{ ($pr.errors).rateThreshold | default 0.05 }}
           for: {{ ($pr.errors).for | default "5m" }}
           labels:
             severity: {{ ($pr.errors).severity | default "critical" | quote }}
           annotations:
             summary: "daari error rate elevated"
-            description: "rate(daari_errors_total) exceeds {{ ($pr.errors).rateThreshold | default 0.05 }}."
+            description: "sum(rate(daari_errors_total)) exceeds {{ ($pr.errors).rateThreshold | default 0.05 }} (status-labeled series)."
             runbook_url: {{ ($pr.errors).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
         {{- end }}
         {{- if ($pr.queue).enabled | default true }}

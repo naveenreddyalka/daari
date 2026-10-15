@@ -22,6 +22,7 @@ async def test_stats_includes_empty_cliff_maps(settings):
     body = response.json()
     assert body["soft_warnings"] == {}
     assert body["rejects"] == {}
+    assert body.get("errors_by_status") == {}
     assert body["backend_summary"] == {
         "total": 0,
         "healthy": 0,
@@ -42,6 +43,9 @@ async def test_stats_includes_soft_warnings_and_rejects(settings):
     metrics.record_reject("budget")
     metrics.record_reject("rate_limit")
     metrics.record_reject("rate_limit")
+    metrics.record_error(status=503)
+    metrics.record_error(status=503)
+    metrics.record_error(status=500)
 
     async def fake_execute(request: InternalRequest) -> InternalResponse:
         return InternalResponse(
@@ -68,6 +72,8 @@ async def test_stats_includes_soft_warnings_and_rejects(settings):
     body = response.json()
     assert body["soft_warnings"] == {"rate_limit": 1, "request_quota": 1}
     assert body["rejects"] == {"budget": 1, "rate_limit": 2}
+    assert body["errors_by_status"] == {"503": 2, "500": 1}
+    assert body["errors"] == 3
     assert body["total_requests"] >= 1
 
 

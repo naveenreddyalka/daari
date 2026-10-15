@@ -72,7 +72,7 @@ label and a `runbook_url` annotation pointing here.
 |-------|-----------|-----------------|
 | `DaariBackendDown` | `daari_backend_up` | `== 0` for 5m |
 | `DaariBudgetLow` | `daari_team_budget_remaining_usd` / `daari_team_budget_limit_usd` | remaining/limit &lt; 0.1 for 10m |
-| `DaariErrorRateHigh` | `daari_errors_total` | `rate(...) > 0.05` for 5m |
+| `DaariErrorRateHigh` | `daari_errors_total{status}` | `sum(rate(...)) > 0.05` for 5m |
 | `DaariAdmissionQueueDeep` | `daari_rate_limit_queued` | `> 10` for 5m |
 | `DaariGuardrailTripSpike` | `daari_guardrail_trips_total` | `sum(rate(...)) > 1` for 5m |
 | `DaariKeysExpiringSoon` | `daari_virtual_keys{status="expiring_soon"}` | `> 0` for 1h |
@@ -107,7 +107,7 @@ prometheus-operator), same as `ServiceMonitor`.
 | `daari_mcp_grant_denied_total` | MCP `initialize` / `tools/list` / `tools/call` (and legacy `/v1/mcp/query`) when `require_key_access_defined` fail-closed applies because the virtual key has no MCP grant. Ordinary tool-name `deny` does not increment. No-op when `observability.prometheus=false`. Overview Grafana charts under **MCP grant denied**. |
 | `daari_decision_classifier_total{outcome}` | Optional `/v1/systemone` difficulty hop (`routing.decision_classifier.enabled`) by `outcome` (`success`, `heuristic_fallback`, `error`, `skipped`). `skipped` is enabled-but-bypassed (agent turn, tier override, empty text); disabled classifier does not increment. No-op when `observability.prometheus=false`. Overview Grafana charts under **Decision classifier by outcome**. |
 | `daari_decision_classifier_latency_ms` | Histogram of classifier hop wall time (ms) for `success` / `heuristic_fallback` / `error` — not recorded on `skipped`. No-op when `observability.prometheus=false`. Overview Grafana charts p50/p95 under **Decision classifier latency p50 / p95**. |
-| `daari_escalations_total` / `daari_errors_total` | Local→frontier (L6) escalations and gateway/router errors. Overview Grafana charts both under **Escalations & errors**. |
+| `daari_escalations_total` / `daari_errors_total{status}` | Local→frontier (L6) escalations and gateway/router errors. `status` is the HTTP status returned to the client (`503`, `500`, …); unlabeled call sites bucket as `status="0"`. Alert pack uses `sum(rate(daari_errors_total[…]))` so labeled series stay compatible. Stats counterpart: `errors_by_status` on `GET /v1/daari/stats`. Overview Grafana charts both under **Escalations & errors**. |
 
 The same `soft_warnings` / `rejects` maps are also on `GET /v1/daari/stats` (and the
 local web-ui) so operators can see cliff pressure without scraping Prometheus.

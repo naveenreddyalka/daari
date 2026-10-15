@@ -34,11 +34,14 @@ transport); watch if a buyer asks. A2A and admin UI stay demand-triggered.
 
 ## LiteLLM 1.105 RC (watch)
 
-LiteLLM [v1.105.0-rc.1](https://github.com/BerriAI/litellm/releases)
-(4 Oct 2026) is **prerelease**. Do not treat it as the comparison floor —
-**1.104.0 GA** above is still the stable bar. The RC advertises a Microsoft 365
-MCP catalog, Straiker v3 fail-closed routing, and Lens / `litellm.agent()`
-traces. daari does **not** ship those RC items; this page only records them
-as a watch list so buyers are not told we lag an unreleased cut.
+LiteLLM [v1.105.0-rc.3](https://docs.litellm.ai/release_notes/v1.105.0rc3/v1-105-0-rc-3)
+(and earlier [rc.1](https://github.com/BerriAI/litellm/releases)) is
+**prerelease**. Do not treat it as the comparison floor — **1.104.0 GA**
+above is still the stable bar. The RC advertises a Microsoft 365 MCP catalog,
+Straiker v3 fail-closed routing, Lens / `litellm.agent()` traces, and proxy
+Decisions routes (`POST /v1/decisions`, `/v1/systemone`). daari already serves
+`/v1/decisions` and `/v1/systemone` locally; it does **not** ship the M365 /
+Straiker / Lens RC items. This page only records the rest as a watch list so
+buyers are not told we lag an unreleased cut.
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).

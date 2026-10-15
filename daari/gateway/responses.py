@@ -1196,7 +1196,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             except BackendUnavailable as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()
-                ctx.metrics.record_error()
+                ctx.metrics.record_error(status=503)
                 return JSONResponse(
                     status_code=503,
                     content={
@@ -1213,7 +1213,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
             except Exception as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()
-                ctx.metrics.record_error()
+                ctx.metrics.record_error(status=503)
                 raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
             if mcp_server_ids:
                 try:
@@ -1249,7 +1249,7 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 except Exception as exc:
                     if idem_slot is not None:
                         idem_slot.abandon()
-                    ctx.metrics.record_error()
+                    ctx.metrics.record_error(status=503)
                     raise HTTPException(status_code=503, detail=routing_failure_detail(exc)) from exc
             if getattr(request.state, "request_quota_soft", False):
                 result.daari_meta.warning = "request_quota_warning"

@@ -99,6 +99,22 @@ def genai_operation_name(modality: str | None = None, *, tier: str = "") -> str:
     return GENAI_OPERATION_NAMES.get(infer_modality(tier, modality), "chat")
 
 
+def error_status_label(status: int | str | None = None) -> str:
+    """Bounded HTTP status label for ``daari_errors_total`` (#1661).
+
+    Unlabeled / invalid call sites bucket as ``"0"`` (unknown).
+    """
+    if status is None or status == "":
+        return "0"
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        return "0"
+    if code < 100 or code > 599:
+        return "0"
+    return str(code)
+
+
 def histogram_percentile_ms(
     buckets: dict[float | str, int],
     *,
@@ -177,6 +193,8 @@ class Metrics:
     # (modality, tier, direction) → token count; direction is input|output.
     tokens: dict[tuple[str, str, str], int] = field(default_factory=dict)
     errors: int = 0
+    # status label → count; "0" = unlabeled/unknown (#1661).
+    errors_by_status: dict[str, int] = field(default_factory=dict)
     escalations: int = 0
     guardrails: dict[str, int] = field(default_factory=dict)
     boundaries: dict[str, int] = field(default_factory=dict)
@@ -242,9 +260,12 @@ class Metrics:
         with self._lock:
             self.ttft.setdefault(tier, TtftStats()).observe(ttft_ms)
 
-    def record_error(self) -> None:
+    def record_error(self, status: int | str | None = None) -> None:
+        """Count a gateway/router error; optional HTTP status for Prom labels (#1661)."""
+        label = error_status_label(status)
         with self._lock:
             self.errors += 1
+            self.errors_by_status[label] = self.errors_by_status.get(label, 0) + 1
 
     def record_escalation(self) -> None:
         with self._lock:
@@ -408,6 +429,7 @@ class Metrics:
                 "tiers": tiers,
                 "ttft": ttft,
                 "errors": self.errors,
+                "errors_by_status": dict(self.errors_by_status),
                 "escalations": self.escalations,
                 "guardrails": dict(self.guardrails),
                 "boundaries": dict(self.boundaries),
