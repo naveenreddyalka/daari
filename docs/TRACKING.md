@@ -6906,6 +6906,14 @@ PATCH merges ceilings by id; Helm `integrations.mcpServers` renders
 `DAARI_INTEGRATIONS__MCP_SERVERS`. Docs: mcp.md, http-api.md, config.md.
 Covered by `tests/unit/test_config_ownership.py`, `tests/unit/test_helm_chart.py`.
 
+### Grafana + PrometheusRule for cache_invalidate ([#1660](https://github.com/naveenreddyalka/daari/issues/1660))
+
+<!-- tracking:#1660 -->
+**Status:** Done (2026-10-15). Overview dashboard panels for
+`daari_cache_invalidate_total` and entries-removed; opt-in
+`DaariCacheInvalidateErrors` alert; metrics-prometheus.md alert-pack table.
+Covered by `tests/unit/test_grafana_dashboard.py`, `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

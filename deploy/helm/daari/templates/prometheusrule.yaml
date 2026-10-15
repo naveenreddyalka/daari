@@ -83,4 +83,15 @@ spec:
             description: "One or more virtual keys are in status=expiring_soon; rotate before expiry."
             runbook_url: {{ ($pr.keys).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
         {{- end }}
+        {{- if ($pr.cacheInvalidate).enabled | default true }}
+        - alert: DaariCacheInvalidateErrors
+          expr: sum(rate(daari_cache_invalidate_total{result="error"}[{{ ($pr.cacheInvalidate).window | default "5m" }}])) > {{ ($pr.cacheInvalidate).rateThreshold | default 0.05 }}
+          for: {{ ($pr.cacheInvalidate).for | default "5m" }}
+          labels:
+            severity: {{ ($pr.cacheInvalidate).severity | default "warning" | quote }}
+          annotations:
+            summary: "daari cache invalidate errors elevated"
+            description: "sum(rate(daari_cache_invalidate_total{result=\"error\"})) exceeds {{ ($pr.cacheInvalidate).rateThreshold | default 0.05 }}."
+            runbook_url: {{ ($pr.cacheInvalidate).runbookUrl | default "https://github.com/naveenreddyalka/daari/blob/main/docs/developer/guides/observability/metrics-prometheus.md#alert-pack" | quote }}
+        {{- end }}
 {{- end }}

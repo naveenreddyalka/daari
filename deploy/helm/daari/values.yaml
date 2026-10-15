@@ -187,6 +187,13 @@ prometheusRules:
     enabled: true
     for: 1h
     severity: warning
+  # Elevated admin cache-invalidate errors (#1660).
+  cacheInvalidate:
+    enabled: true
+    window: 5m
+    rateThreshold: 0.05
+    for: 5m
+    severity: warning
 
 # Optional private Prometheus scrape listener (app observability.metrics_port).
 # 0 / unset = off (scrape API port /metrics). Non-zero binds 127.0.0.1-style
