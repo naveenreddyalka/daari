@@ -25,6 +25,13 @@ def test_stats_help_mentions_compact_to_fit_tokens_dropped() -> None:
     assert "compact_to_fit_tokens_dropped" in result.output
 
 
+def test_stats_help_mentions_virtual_keys() -> None:
+    """`daari stats --help` surfaces virtual_keys lifecycle counts (#1583)."""
+    result = CliRunner().invoke(cli_app, ["stats", "--help"])
+    assert result.exit_code == 0
+    assert "virtual_keys" in result.output
+
+
 def test_cli_md_stats_mentions_compact_to_fit_applied() -> None:
     from pathlib import Path
 
