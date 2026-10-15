@@ -928,6 +928,24 @@ class TestHelmAuthRateLimitFrontier:
         assert values["rateLimit"].get("maxInFlight", 0) == 0
         assert values["rateLimit"].get("models", {}) == {}
 
+    def test_integrations_mcp_servers_env_render(self, helm_available: None) -> None:
+        """Helm values.integrations.mcpServers → DAARI_INTEGRATIONS__MCP_SERVERS (#1659)."""
+        values = _load_yaml(VALUES)
+        assert values.get("integrations", {}).get("mcpServers") == []
+        rendered_default = _helm_template()
+        assert "DAARI_INTEGRATIONS__MCP_SERVERS" not in rendered_default
+
+        rendered = _helm_template(
+            "--set-json",
+            'integrations.mcpServers=[{"id":"tools","url":"http://mcp:8080/mcp","rpm":60,"tpm":100000}]',
+        )
+        assert "DAARI_INTEGRATIONS__MCP_SERVERS" in rendered
+        assert "tools" in rendered
+        assert "http://mcp:8080/mcp" in rendered
+        assert "100000" in rendered
+        notes = NOTES.read_text(encoding="utf-8")
+        assert "integrations.mcpServers" in notes
+
     def test_rate_limit_reuses_cache_redis_without_duplicate_url(
         self, helm_available: None
     ) -> None:

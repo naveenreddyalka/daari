@@ -6897,6 +6897,15 @@ OpenAI/Ollama tags unchanged; non-decision cards keep thinking/server_tools
 only. Docs: ollama.md, config.md. Covered by
 `tests/unit/test_models_catalog.py`.
 
+### MCP server rpm/tpm in config editor + Helm ([#1659](https://github.com/naveenreddyalka/daari/issues/1659))
+
+<!-- tracking:#1659 -->
+**Status:** Done (2026-10-15). Config editor ownership exposes
+`integrations.mcp_servers` as `{id, rpm, tpm}` ceiling rows (secrets omitted);
+PATCH merges ceilings by id; Helm `integrations.mcpServers` renders
+`DAARI_INTEGRATIONS__MCP_SERVERS`. Docs: mcp.md, http-api.md, config.md.
+Covered by `tests/unit/test_config_ownership.py`, `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

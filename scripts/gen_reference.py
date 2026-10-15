@@ -151,9 +151,10 @@ def render_api_reference() -> str:
             "(`integrations.mcp_oauth.local_as` / `protected_resource`, "
             "`integrations.mcp_aggregate_egress.enabled`, "
             "`integrations.mcp_registry.enabled`, "
-            "`integrations.mcp_policy.require_key_access_defined`). Secrets such as "
-            "`integrations.mcp_oauth.signing_secret` stay non-editable and are omitted "
-            "from the payload.",
+            "`integrations.mcp_policy.require_key_access_defined`, "
+            "`integrations.mcp_servers` as `{id, rpm, tpm}` ceiling rows). Secrets such as "
+            "`integrations.mcp_oauth.signing_secret` and MCP server tokens stay "
+            "non-editable and are omitted from the payload.",
             "",
             "**Auth:** With SSO off and a master key set, `PATCH` (and other admin "
             "surfaces) require the master key — virtual keys get **403**. `GET` keeps "

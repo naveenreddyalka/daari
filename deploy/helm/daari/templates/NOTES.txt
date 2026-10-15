@@ -79,6 +79,12 @@ Master API key: DAARI_SERVER__API_KEY from Secret {{ .name }} (key {{ .key | def
 {{- end }}
 {{- end }}
 
+{{- with .Values.integrations.mcpServers }}
+
+MCP servers: DAARI_INTEGRATIONS__MCP_SERVERS from values.integrations.mcpServers
+  ({{ len . }} entr{{ if eq (len .) 1 }}y{{ else }}ies{{ end }}; optional per-server rpm/tpm).
+{{- end }}
+
 {{- if .Values.rateLimit.enabled }}
 
 Rate limits enabled: DAARI_RATE_LIMIT__RPM/TPM (and model_*) are set from values.rateLimit.

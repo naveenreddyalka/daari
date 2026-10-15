@@ -89,7 +89,32 @@ def persist_safe_config(
                 cache["l1"] = l1
             existing["cache"] = cache
             continue
+        body = patch[section]
+        if section == "integrations" and "mcp_servers" in body:
+            # Merge rpm/tpm by id; never replace the full server list with the
+            # editor-safe ceiling rows (would wipe url/token) (#1659).
+            integrations = dict(existing.get("integrations") or {})
+            servers = list(integrations.get("mcp_servers") or [])
+            by_id = {
+                str(entry.get("id") or "").strip(): dict(entry)
+                for entry in servers
+                if isinstance(entry, dict) and str(entry.get("id") or "").strip()
+            }
+            for row in body.get("mcp_servers") or []:
+                if not isinstance(row, dict):
+                    continue
+                server_id = str(row.get("id") or "").strip()
+                if not server_id or server_id not in by_id:
+                    continue
+                if "rpm" in row:
+                    by_id[server_id]["rpm"] = row["rpm"]
+                if "tpm" in row:
+                    by_id[server_id]["tpm"] = row["tpm"]
+            integrations["mcp_servers"] = list(by_id.values()) or servers
+            sibling = {k: v for k, v in body.items() if k != "mcp_servers"}
+            existing["integrations"] = _deep_merge(integrations, sibling)
+            continue
         base = dict(existing.get(section) or {})
-        existing[section] = _deep_merge(base, patch[section])
+        existing[section] = _deep_merge(base, body)
     write_config_atomically(path, existing)
     return path

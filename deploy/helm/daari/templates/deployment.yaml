@@ -189,6 +189,10 @@ spec:
               value: {{ $tls.clientCAFile | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.integrations.mcpServers }}
+            - name: DAARI_INTEGRATIONS__MCP_SERVERS
+              value: {{ . | toJson | quote }}
+            {{- end }}
             {{- if .Values.rateLimit.enabled }}
             - name: DAARI_RATE_LIMIT__RPM
               value: {{ .Values.rateLimit.rpm | default 0 | quote }}

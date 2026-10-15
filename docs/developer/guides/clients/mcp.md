@@ -302,7 +302,12 @@ Each `integrations.mcp_servers[]` entry may also set optional `rpm` / `tpm`
 `tools/list` for that server id across all callers. Exhaustion returns HTTP
 **429** with `Retry-After` and `X-RateLimit-Scope: mcp_server:<id>`. These
 counters are independent of the key-family `mcp` budget — both are enforced
-(whichever is tighter denies first).
+(whichever is tighter denies first). Day-2 ops can PATCH
+`integrations.mcp_servers` as `{id, rpm, tpm}` rows via the config editor
+(`GET`/`PATCH /v1/daari/config` when `observability.config_editor` is on), or
+set `integrations.mcpServers` in the Helm chart (rendered as
+`DAARI_INTEGRATIONS__MCP_SERVERS`) without hand-editing `config.yaml` on every
+pod.
 
 daari's MCP egress client sends the MCP 2026-07-28 routing headers
 `Mcp-Method` and `Mcp-Name` on outbound requests, and the ingress honours the
