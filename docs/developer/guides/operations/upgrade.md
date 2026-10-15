@@ -167,12 +167,20 @@ on first open and, where the schema has changed, migrates in place on that
 same open. Operators can also run the same opens explicitly:
 
 ```bash
-daari migrate --dry-run   # inspect pending additive migrations; exit 0 if safe
+daari migrate --dry-run   # inspect pending additive migrations (SQLite + Postgres);
+                          # exit 0 if additive-safe
 daari migrate             # open ledger / virtual-keys / audit / responses /
-                          # mcp-tasks and report what changed
-daari doctor              # warns on pending migrate (optional)
+                          # mcp-tasks and configured Postgres stores; report changes
+daari doctor              # warns on pending migrate / PG schema lag (optional)
 daari doctor --strict     # pending migrate fails the exit code
 ```
+
+**Rolling upgrade order (fleets with Postgres):** run `daari migrate` (or
+`--dry-run` then apply) on a single operator host **before** rolling replicas
+to the new image. Migrate is additive and idempotent; mixed N/N+1 replicas are
+safe once the shared PG schema is at the shipped version. An unreachable
+`observability.postgres_url` is reported as an error row (not omitted) so
+`migrate --dry-run` never silently skips fleet stores.
 
 | Store | Location | Across an upgrade |
 |-------|----------|-------------------|
@@ -186,7 +194,8 @@ daari doctor --strict     # pending migrate fails the exit code
 | Audit log | `~/.daari/audit/audit.sqlite3` | Append-only, durable (`daari/enterprise/audit.py`). Back up for compliance. `observability.retention.audit_days` defaults to **0 (keep forever)** so an upgrade never silently deletes audit history; set it only when you want a stated retention period. |
 | Feedback / training examples | `~/.daari/feedback/`, `~/.daari/training/` | Durable, create-if-missing only. |
 | Postgres (`observability.backend=postgres`) | `usage`, `client_usage`, `traces` | Create-if-missing on connect; on failure the store disables itself (`daari/observability/postgres_usage.py`). No destructive migrations are ever run against Postgres. |
-| Request log | `~/.daari/cursor-requests.log` | Rotated per `observability.request_log_*`; disposable. `observability.retention.request_log_days` (default 0) drops lines and old rotations past that window on `daari prune`. |
+| Postgres request-log / keys / audit | `observability.postgres_url` | **Fleet-durable.** `daari migrate --dry-run` lists current vs expected schema (`postgres.request-log`, `postgres.virtual-keys`, `postgres.audit`); `daari migrate` opens each store and applies additive `ADD COLUMN IF NOT EXISTS`. Mixed replicas are safe after migrate (#1655). |
+| Request log (JSONL) | `~/.daari/cursor-requests.log` | Rotated per `observability.request_log_*`; disposable. `observability.retention.request_log_days` (default 0) drops lines and old rotations past that window on `daari prune`. Prefer `observability.request_log.backend=postgres` for fleets. |
 
 Rule of thumb: **caches and counters are disposable, `.sqlite3` files are
 not.** A backup of `~/.daari/config.yaml`, `auth/`, `usage/`, `audit/` and
@@ -249,9 +258,11 @@ developer laptops that pull policy from it.
    each replica to confirm the hash matches what you expect; exit code 1 means
    `policy_sync_url` is set but nothing has applied yet. `daari doctor` surfaces
    the same never-applied case on the optional `policy_status` check.
-2. **Shared Redis/Postgres tolerate mixed versions.** L0/L1 entries are
-   version-agnostic (see the table); Postgres tables are create-if-missing.
-   Run mixed replicas during a rolling update without draining the cache.
+2. **Shared Redis/Postgres tolerate mixed versions after migrate.** L0/L1
+   entries are version-agnostic (see the table). Postgres tables are
+   create-if-missing plus additive `ALTER … ADD COLUMN`; run `daari migrate`
+   before the rollout so mixed N/N+1 replicas share one schema. Do not drain
+   the cache.
 3. **Rotate the signing secret only after both sides are upgraded** if a
    release changes the signature scheme; the release notes will say so.
 4. **Laptops upgrade independently.** Each laptop is its own install; use the

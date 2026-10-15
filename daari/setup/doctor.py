@@ -1961,7 +1961,7 @@ def _check_key_expiry_webhook_secret(settings: Settings) -> CheckResult:
 
 
 def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckResult:
-    """Warn when SQLite stores have pending additive migrations (#942)."""
+    """Warn when SQLite/Postgres stores have pending additive migrations (#942/#1655)."""
     from daari.setup.migrate import inspect_stores
 
     try:
@@ -1974,16 +1974,20 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
             optional=not strict,
         )
     pending = [n for n in notes if n.status == "pending"]
-    if not pending:
+    errors = [n for n in notes if n.status == "error" and n.name.startswith("postgres.")]
+    if not pending and not errors:
         return CheckResult(
             name="store_migrate",
             ok=True,
             detail="no pending store migrations",
             optional=not strict,
         )
-    detail = (
-        "; ".join(f"{n.name}: {', '.join(n.pending)}" for n in pending) + " — run: daari migrate"
-    )
+    parts: list[str] = []
+    for n in pending:
+        parts.append(f"{n.name}: {', '.join(n.pending)}")
+    for n in errors:
+        parts.append(f"{n.name}: {'; '.join(n.notes) or 'error'}")
+    detail = "; ".join(parts) + " — run: daari migrate"
     return CheckResult(
         name="store_migrate",
         ok=False,

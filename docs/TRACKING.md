@@ -6871,6 +6871,15 @@ chat soft path) bump `daari_rejects_total{kind="rate_limit"}` and write
 `rate_limit.exceeded` audit with `bucket=mcp_server:<id>`; Retry-After /
 X-RateLimit-Scope unchanged. Covered by `tests/unit/test_mcp_server_rate_limits.py`.
 
+### Postgres store schema visibility in migrate + doctor ([#1655](https://github.com/naveenreddyalka/daari/issues/1655))
+
+<!-- tracking:#1655 -->
+**Status:** Done (2026-10-15). `daari migrate --dry-run` lists
+`postgres.request-log` / `virtual-keys` / `audit` with schema version status
+(unreachable reported, not omitted); apply is additive/idempotent; doctor
+`store_migrate` warns on PG lag; upgrade.md documents migrate-before-rollout.
+Covered by `tests/unit/test_migrate_schema.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
