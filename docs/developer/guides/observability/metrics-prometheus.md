@@ -65,8 +65,8 @@ helm upgrade --install daari ./deploy/helm/daari \
 Thresholds and `for` durations live under `prometheusRules.*` in
 `deploy/helm/daari/values.yaml` (`backend`, `budget.fraction`,
 `errors.rateThreshold`, `queue.threshold`, `guardrails.rateThreshold`,
-`keys`). Each alert carries a `severity` label and a `runbook_url`
-annotation pointing here.
+`keys`, `cacheInvalidate.rateThreshold`). Each alert carries a `severity`
+label and a `runbook_url` annotation pointing here.
 
 | Alert | Metric(s) | Default trigger |
 |-------|-----------|-----------------|
@@ -76,6 +76,7 @@ annotation pointing here.
 | `DaariAdmissionQueueDeep` | `daari_rate_limit_queued` | `> 10` for 5m |
 | `DaariGuardrailTripSpike` | `daari_guardrail_trips_total` | `sum(rate(...)) > 1` for 5m |
 | `DaariKeysExpiringSoon` | `daari_virtual_keys{status="expiring_soon"}` | `> 0` for 1h |
+| `DaariCacheInvalidateErrors` | `daari_cache_invalidate_total{result="error"}` | `sum(rate(...)) > 0.05` for 5m |
 
 Requires the `monitoring.coreos.com` CRDs (kube-prometheus /
 prometheus-operator), same as `ServiceMonitor`.

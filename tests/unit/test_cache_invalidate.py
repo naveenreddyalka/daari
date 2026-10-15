@@ -121,6 +121,70 @@ async def test_admin_invalidate_returns_counts_and_logs(settings, monkeypatch):
     assert app.state.ctx.router.cache.get(_req("cached")) is None
 
 
+@pytest.mark.asyncio
+async def test_admin_invalidate_writes_audit_row(settings, tmp_path, monkeypatch):
+    """Successful admin invalidate writes cache.invalidate audit (#1657)."""
+    from daari.enterprise.audit import AuditLog
+
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    app.state.ctx.router.cache.put(_req("cached"), _resp("answer", "llama"))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/v1/daari/cache/invalidate",
+            json={"model": "llama"},
+            headers={"x-daari-actor": "ops-alice"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    rows = AuditLog(settings.enterprise.audit_path).list(action="cache.invalidate")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["actor"] == "ops-alice"
+    assert row["role"] == "admin"
+    detail = row["detail"]
+    assert detail["scope"] == "model"
+    assert detail["l0_removed"] == body["l0_removed"]
+    assert detail["l1_removed"] == body["l1_removed"]
+    assert "Authorization" not in str(detail)
+    assert "sk-" not in str(detail)
+
+
+@pytest.mark.asyncio
+async def test_admin_invalidate_error_skips_success_audit(settings, tmp_path):
+    """Invalidate failure bumps Prom error and does not write success audit (#1657)."""
+    from daari.enterprise.audit import AuditLog
+    from daari.observability.prometheus import render_prometheus
+
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    settings.observability.prometheus = True
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+
+    class _Boom:
+        def invalidate(self, **_kwargs):
+            raise RuntimeError("boom")
+
+    app.state.ctx.router.cache = _Boom()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        with pytest.raises(RuntimeError, match="boom"):
+            await client.post("/v1/daari/cache/invalidate", json={"model": "llama"})
+    rows = AuditLog(settings.enterprise.audit_path).list(action="cache.invalidate")
+    assert rows == []
+    text = render_prometheus(app.state.ctx.metrics)
+    assert 'daari_cache_invalidate_total{scope="model",result="error"}' in text
+
+
+def test_auth_guide_lists_cache_invalidate_audit():
+    text = (
+        __import__("pathlib").Path(__file__).resolve().parents[2]
+        / "docs/developer/guides/configuration/auth-and-keys.md"
+    ).read_text(encoding="utf-8")
+    assert "`cache.invalidate`" in text
+    assert "/v1/daari/cache/invalidate" in text
+
+
 def test_cache_prune_notes_redis_ttl(monkeypatch, settings):
     settings.cache.backend = "redis"
     settings.cache.l0.ttl_seconds = 120

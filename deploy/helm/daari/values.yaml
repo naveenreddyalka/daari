@@ -187,6 +187,13 @@ prometheusRules:
     enabled: true
     for: 1h
     severity: warning
+  # Elevated admin cache-invalidate errors (#1660).
+  cacheInvalidate:
+    enabled: true
+    window: 5m
+    rateThreshold: 0.05
+    for: 5m
+    severity: warning
 
 # Optional private Prometheus scrape listener (app observability.metrics_port).
 # 0 / unset = off (scrape API port /metrics). Non-zero binds 127.0.0.1-style
@@ -282,6 +289,20 @@ tls:
   keyFile: /etc/daari/tls/tls.key
   # Empty omits DAARI_SERVER__TLS__CLIENT_CA (no mTLS).
   clientCAFile: ""
+
+# Per-server MCP egress ceilings (#1659 / #1620). Rendered as
+# DAARI_INTEGRATIONS__MCP_SERVERS JSON when non-empty. Each entry needs id + url;
+# optional rpm/tpm (0 = unlimited), token, triggers. Chart install can set
+# ceilings without hand-editing config.yaml on every pod.
+# Example:
+#   integrations:
+#     mcpServers:
+#       - id: tools
+#         url: http://mcp-tools:8080/mcp
+#         rpm: 60
+#         tpm: 100000
+integrations:
+  mcpServers: []
 
 # Global RPM/TPM caps (#842). When enabled with redis.enabled (or rateLimit.redisUrl),
 # fleet counters share Redis via cache.backend=redis. Without Redis, limits are

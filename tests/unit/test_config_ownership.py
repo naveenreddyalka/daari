@@ -37,6 +37,7 @@ _MCP_LEAVES = (
     "integrations.mcp_aggregate_egress.enabled",
     "integrations.mcp_registry.enabled",
     "integrations.mcp_policy.require_key_access_defined",
+    "integrations.mcp_servers",
 )
 _OBS_JSON_LOGS = "observability.structured_json_logs"
 
@@ -92,6 +93,7 @@ def _base_live() -> dict:
             "mcp_aggregate_egress": {"enabled": False},
             "mcp_registry": {"enabled": False},
             "mcp_policy": {"require_key_access_defined": False},
+            "mcp_servers": [],
         },
         "observability": {"structured_json_logs": False},
     }
@@ -435,8 +437,28 @@ def test_live_config_payload_matches_editor_shape(settings):
     assert "signing_secret" not in payload["integrations"]["mcp_oauth"]
     assert set(payload["integrations"]["mcp_policy"]) == {"require_key_access_defined"}
     assert payload["integrations"]["mcp_policy"]["require_key_access_defined"] is False
+    assert payload["integrations"]["mcp_servers"] == []
     assert set(payload["observability"]) == {"structured_json_logs"}
     assert payload["observability"]["structured_json_logs"] is False
+
+
+def test_live_config_payload_mcp_servers_ceilings_omit_secrets(settings):
+    from daari.config.settings import McpServerSettings
+
+    settings.integrations.mcp_servers = [
+        McpServerSettings(
+            id="tools",
+            url="http://mcp.local/mcp",
+            token="sekret",
+            client_secret="also-secret",
+            rpm=60,
+            tpm=1000,
+        )
+    ]
+    payload = live_config_payload(settings)
+    assert payload["integrations"]["mcp_servers"] == [
+        {"id": "tools", "rpm": 60, "tpm": 1000}
+    ]
 
 
 @pytest.mark.asyncio
@@ -546,6 +568,97 @@ async def test_patch_structured_json_logs_round_trip(settings, tmp_path, monkeyp
         request_log.configure_request_log(structured_json_logs=previous_stdout)
 
 
+@pytest.mark.asyncio
+async def test_patch_mcp_server_ceilings_round_trip(settings, tmp_path, monkeypatch):
+    from daari.config.settings import McpServerSettings
+
+    settings.observability.config_editor = True
+    settings.integrations.mcp_servers = [
+        McpServerSettings(
+            id="tools",
+            url="http://mcp.local/mcp",
+            token="keep-me",
+            rpm=0,
+            tpm=0,
+        )
+    ]
+    monkeypatch.setenv("HOME", str(tmp_path))
+    daari_dir = tmp_path / ".daari"
+    daari_dir.mkdir()
+    (daari_dir / "config.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "integrations": {
+                    "mcp_servers": [
+                        {
+                            "id": "tools",
+                            "url": "http://mcp.local/mcp",
+                            "token": "keep-me",
+                            "rpm": 0,
+                            "tpm": 0,
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    app = create_app(settings)
+    app.state.ctx = AppContext.from_settings(settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        got = await client.get("/v1/daari/config")
+        assert got.status_code == 200
+        body = got.json()
+        assert "integrations.mcp_servers" in body["ownership"]
+        assert body["integrations"]["mcp_servers"] == [
+            {"id": "tools", "rpm": 0, "tpm": 0}
+        ]
+        assert "token" not in str(body["integrations"]["mcp_servers"])
+
+        bad_secret = await client.patch(
+            "/v1/daari/config",
+            json={
+                "integrations": {
+                    "mcp_servers": [{"id": "tools", "rpm": 10, "token": "nope"}]
+                }
+            },
+        )
+        assert bad_secret.status_code == 400
+
+        bad_neg = await client.patch(
+            "/v1/daari/config",
+            json={"integrations": {"mcp_servers": [{"id": "tools", "rpm": -1}]}},
+        )
+        assert bad_neg.status_code == 400
+        assert settings.integrations.mcp_servers[0].rpm == 0
+
+        persisted = await client.patch(
+            "/v1/daari/config",
+            json={
+                "integrations": {
+                    "mcp_servers": [{"id": "tools", "rpm": 60, "tpm": 5000}]
+                },
+                "persist": True,
+            },
+        )
+        assert persisted.status_code == 200
+        payload = persisted.json()
+        assert payload["integrations"]["mcp_servers"] == [
+            {"id": "tools", "rpm": 60, "tpm": 5000}
+        ]
+        assert settings.integrations.mcp_servers[0].rpm == 60
+        assert settings.integrations.mcp_servers[0].tpm == 5000
+        assert settings.integrations.mcp_servers[0].token == "keep-me"
+        written = yaml.safe_load((daari_dir / "config.yaml").read_text(encoding="utf-8"))
+        entry = written["integrations"]["mcp_servers"][0]
+        assert entry["rpm"] == 60
+        assert entry["tpm"] == 5000
+        assert entry["url"] == "http://mcp.local/mcp"
+        assert entry["token"] == "keep-me"
+
+
 def test_docs_pin_classifier_mcp_config_ownership():
     config = CONFIG_MD.read_text(encoding="utf-8")
     http_api = HTTP_API.read_text(encoding="utf-8")
@@ -558,3 +671,4 @@ def test_docs_pin_classifier_mcp_config_ownership():
     assert "compact_to_fit" in http_api
     assert "require_key_access_defined" in http_api or "mcp_policy" in http_api
     assert "structured_json_logs" in http_api
+    assert "mcp_servers" in http_api

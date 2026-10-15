@@ -51,9 +51,9 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `models.reject_retired` | bool | `True` | When true (default), chat/messages/responses to a model whose catalog lifecycle is retired return HTTP 410 instead of routing (fail-closed). |
 | `models.timeout_s` | dict | `{}` | Optional per-tier request timeout in seconds (keys L3/L4/L5). Unset tiers use `upstream.local_timeout_seconds`. |
 | `ollama.base_url` | str | `'http://127.0.0.1:11434'` |  |
-| `systemone.enabled` | bool | `True` | When true, POST /v1/systemone proxies to ollama.base_url and local decisions ids are advertised on GET /v1/models and Ollama /api/tags with capability decision. When false, the route returns 501 not_implemented and discovery omits those ids. |
+| `systemone.enabled` | bool | `True` | When true, POST /v1/systemone proxies to ollama.base_url and local decisions ids are advertised on GET /v1/models (OpenAI list tag `decision` and Anthropic `capabilities.decision.supported`) and Ollama /api/tags with capability decision. When false, the route returns 501 not_implemented and discovery omits those ids. |
 | `decisions.cache_enabled` | bool | `True` | When true (default), identical typed decision requests are served from the L0 exact cache. Requires cache.l0.enabled. Clients can bypass with X-Daari-No-Cache: true. |
-| `decisions.local_models` | list | `[]` | Extra local decisions model ids that extend the built-in catalog (clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). Operators can add future Ollama judge models without a daari release. Advertised on /v1/models and /api/tags when systemone.enabled. |
+| `decisions.local_models` | list | `[]` | Extra local decisions model ids that extend the built-in catalog (clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). Operators can add future Ollama judge models without a daari release. Advertised on OpenAI + Anthropic-shaped /v1/models and /api/tags when systemone.enabled. |
 | `mlx.enabled` | bool | `False` |  |
 | `mlx.base_url` | str | `'http://127.0.0.1:11440'` |  |
 | `mlx.models` | dict | `{}` |  |
@@ -264,7 +264,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `integrations.ghe.triggers` | list | `[]` |  |
 | `integrations.gitlab.url` | str | *(required)* |  |
 | `integrations.gitlab.triggers` | list | `[]` |  |
-| `integrations.mcp_servers` | list | `[]` | External MCP servers daari can call. Each entry: id, url, optional token/triggers; optional rpm/tpm (0=unlimited) per-server egress ceilings on tools/call and tools/list (429 + Retry-After + X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; both apply) (#1620). Opt-in OBO (#1319): auth_type=oauth2_token_exchange with token_exchange_endpoint, client_id, client_secret; optional audience, scopes, subject_token_type (default access_token). |
+| `integrations.mcp_servers` | list | `[]` | External MCP servers daari can call. Each entry: id, url, optional token/triggers; optional rpm/tpm (0=unlimited) per-server egress ceilings on tools/call and tools/list (429 + Retry-After + X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; both apply) (#1620). Per-server rpm/tpm are editable via GET/PATCH /v1/daari/config ownership (config editor; id + rpm/tpm only; secrets omitted) (#1659). Opt-in OBO (#1319): auth_type=oauth2_token_exchange with token_exchange_endpoint, client_id, client_secret; optional audience, scopes, subject_token_type (default access_token). |
 | `integrations.mcp_policy.allow` | list | `[]` | MCP tool names (glob) the caller may call. Empty = every tool not denied. |
 | `integrations.mcp_policy.deny` | list | `[]` | MCP tool names (glob) the caller may never call. Deny beats allow. |
 | `integrations.mcp_policy.servers.allow` | list | `[]` | MCP egress server ids (glob) the caller may reach. Empty = every server not denied. |

@@ -365,6 +365,7 @@ _PROMETHEUS_RULE_METRICS = (
     "daari_rate_limit_queued",
     "daari_guardrail_trips_total",
     "daari_virtual_keys",
+    "daari_cache_invalidate_total",
 )
 
 
@@ -437,6 +438,7 @@ class TestHelmPrometheusRules:
         assert "DaariAdmissionQueueDeep" in alert_names
         assert "DaariGuardrailTripSpike" in alert_names
         assert "DaariKeysExpiringSoon" in alert_names
+        assert "DaariCacheInvalidateErrors" in alert_names
         for group in groups:
             for alert in group.get("rules") or []:
                 if "alert" not in alert:
@@ -459,6 +461,8 @@ class TestHelmPrometheusRules:
             "--set",
             "prometheusRules.guardrails.rateThreshold=3",
             "--set",
+            "prometheusRules.cacheInvalidate.rateThreshold=0.2",
+            "--set",
             "prometheusRules.backend.for=2m",
         )
         pr = rendered.split("kind: PrometheusRule")[1]
@@ -467,10 +471,12 @@ class TestHelmPrometheusRules:
         assert "0.2" in pr
         assert "3" in pr
         assert "for: 2m" in pr
+        assert 'result="error"' in pr or 'result=\\"error\\"' in pr or "result=\"error\"" in pr
         values = _load_yaml(VALUES)
         pr_vals = values["prometheusRules"]
         assert pr_vals["budget"]["fraction"] == 0.1
         assert pr_vals["queue"]["threshold"] == 10
+        assert pr_vals["cacheInvalidate"]["rateThreshold"] == 0.05
 
 
 class TestHelmMetricsPort:
@@ -927,6 +933,24 @@ class TestHelmAuthRateLimitFrontier:
         values = _load_yaml(VALUES)
         assert values["rateLimit"].get("maxInFlight", 0) == 0
         assert values["rateLimit"].get("models", {}) == {}
+
+    def test_integrations_mcp_servers_env_render(self, helm_available: None) -> None:
+        """Helm values.integrations.mcpServers → DAARI_INTEGRATIONS__MCP_SERVERS (#1659)."""
+        values = _load_yaml(VALUES)
+        assert values.get("integrations", {}).get("mcpServers") == []
+        rendered_default = _helm_template()
+        assert "DAARI_INTEGRATIONS__MCP_SERVERS" not in rendered_default
+
+        rendered = _helm_template(
+            "--set-json",
+            'integrations.mcpServers=[{"id":"tools","url":"http://mcp:8080/mcp","rpm":60,"tpm":100000}]',
+        )
+        assert "DAARI_INTEGRATIONS__MCP_SERVERS" in rendered
+        assert "tools" in rendered
+        assert "http://mcp:8080/mcp" in rendered
+        assert "100000" in rendered
+        notes = NOTES.read_text(encoding="utf-8")
+        assert "integrations.mcpServers" in notes
 
     def test_rate_limit_reuses_cache_redis_without_duplicate_url(
         self, helm_available: None

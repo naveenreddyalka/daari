@@ -409,13 +409,18 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
         created = int(card.get("created") or 0)
         created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         model_id = str(card["id"])
+        caps = anthropic_capabilities(model_id)
+        # Carry OpenAI/Ollama `decision` tag into Anthropic capabilities (#1658).
+        openai_caps = card.get("capabilities") or []
+        if "decision" in openai_caps:
+            caps = {**caps, "decision": {"supported": True}}
         row: dict[str, Any] = {
             "id": model_id,
             "type": "model",
             "display_name": _anthropic_display_name(model_id),
             "created_at": created_at,
             "line": anthropic_model_line(model_id),
-            "capabilities": anthropic_capabilities(model_id),
+            "capabilities": caps,
             **anthropic_lifecycle_fields(model_id, settings),
         }
         row.update(anthropic_model_limits(model_id))

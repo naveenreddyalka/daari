@@ -6863,6 +6863,57 @@ probes; outage matrix in auth-and-keys.md. Covered by
 `gpt-6-luna`; doctor flags deprecated defaults; retired wave models 410
 without operator config. Covered by `tests/unit/test_default_model_lifecycle.py`.
 
+### MCP per-server 429 audit + reject metrics ([#1654](https://github.com/naveenreddyalka/daari/issues/1654))
+
+<!-- tracking:#1654 -->
+**Status:** Done (2026-10-15). Per-server MCP rpm/tpm 429s (ingress HTTP and
+chat soft path) bump `daari_rejects_total{kind="rate_limit"}` and write
+`rate_limit.exceeded` audit with `bucket=mcp_server:<id>`; Retry-After /
+X-RateLimit-Scope unchanged. Covered by `tests/unit/test_mcp_server_rate_limits.py`.
+
+### Postgres store schema visibility in migrate + doctor ([#1655](https://github.com/naveenreddyalka/daari/issues/1655))
+
+<!-- tracking:#1655 -->
+**Status:** Done (2026-10-15). `daari migrate --dry-run` lists
+`postgres.request-log` / `virtual-keys` / `audit` with schema version status
+(unreachable reported, not omitted); apply is additive/idempotent; doctor
+`store_migrate` warns on PG lag; upgrade.md documents migrate-before-rollout.
+Covered by `tests/unit/test_migrate_schema.py`.
+
+### Enterprise audit row for admin cache invalidate ([#1657](https://github.com/naveenreddyalka/daari/issues/1657))
+
+<!-- tracking:#1657 -->
+**Status:** Done (2026-10-15). Successful `POST /v1/daari/cache/invalidate`
+writes `cache.invalidate` audit (actor, role, scope, l0/l1 removed); error
+path bumps Prom `result=error` without a success audit row; auth-and-keys
+catalog lists the action. Covered by `tests/unit/test_cache_invalidate.py`.
+
+### Anthropic /v1/models decision capability parity ([#1658](https://github.com/naveenreddyalka/daari/issues/1658))
+
+<!-- tracking:#1658 -->
+**Status:** Done (2026-10-15). Local decisions ids on Anthropic-shaped
+`GET /v1/models` (and retrieve) expose `capabilities.decision.supported`;
+OpenAI/Ollama tags unchanged; non-decision cards keep thinking/server_tools
+only. Docs: ollama.md, config.md. Covered by
+`tests/unit/test_models_catalog.py`.
+
+### MCP server rpm/tpm in config editor + Helm ([#1659](https://github.com/naveenreddyalka/daari/issues/1659))
+
+<!-- tracking:#1659 -->
+**Status:** Done (2026-10-15). Config editor ownership exposes
+`integrations.mcp_servers` as `{id, rpm, tpm}` ceiling rows (secrets omitted);
+PATCH merges ceilings by id; Helm `integrations.mcpServers` renders
+`DAARI_INTEGRATIONS__MCP_SERVERS`. Docs: mcp.md, http-api.md, config.md.
+Covered by `tests/unit/test_config_ownership.py`, `tests/unit/test_helm_chart.py`.
+
+### Grafana + PrometheusRule for cache_invalidate ([#1660](https://github.com/naveenreddyalka/daari/issues/1660))
+
+<!-- tracking:#1660 -->
+**Status:** Done (2026-10-15). Overview dashboard panels for
+`daari_cache_invalidate_total` and entries-removed; opt-in
+`DaariCacheInvalidateErrors` alert; metrics-prometheus.md alert-pack table.
+Covered by `tests/unit/test_grafana_dashboard.py`, `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -427,6 +427,32 @@ def test_grafana_dashboard_includes_retired_rejects_series():
     assert any("rate(" in expr for expr in exprs)
 
 
+def test_grafana_dashboard_includes_cache_invalidate_panels():
+    """Admin cache-invalidate series should be visible on the overview (#1660)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    by_scope = next(
+        (p for p in payload["panels"] if "Cache invalidate by scope" in p.get("title", "")),
+        None,
+    )
+    assert by_scope is not None, "expected a cache-invalidate scope/result panel"
+    exprs = [t.get("expr", "") for t in by_scope.get("targets", [])]
+    assert any("daari_cache_invalidate_total" in expr for expr in exprs)
+    assert any("rate(" in expr for expr in exprs)
+
+    removed = next(
+        (
+            p
+            for p in payload["panels"]
+            if "Cache invalidate entries removed" in p.get("title", "")
+        ),
+        None,
+    )
+    assert removed is not None, "expected a cache-invalidate entries-removed panel"
+    removed_exprs = [t.get("expr", "") for t in removed.get("targets", [])]
+    assert any("daari_cache_invalidate_entries_removed_total" in expr for expr in removed_exprs)
+    assert any("rate(" in expr for expr in removed_exprs)
+
+
 def test_grafana_dashboard_panel_ids_are_unique() -> None:
     """Duplicate panel ids break Grafana import silently (#1574)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))

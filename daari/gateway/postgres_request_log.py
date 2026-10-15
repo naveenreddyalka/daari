@@ -11,6 +11,9 @@ import threading
 from datetime import UTC, datetime
 from typing import Any
 
+# Shipped schema marker for ``daari migrate`` / doctor (#1655).
+SCHEMA_VERSION = 1
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS daari_request_log (
     id BIGSERIAL PRIMARY KEY,

@@ -1948,7 +1948,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/daari/cache/invalidate")
         async def daari_cache_invalidate(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            _require_admin_role(request, ctx)
+            role = _require_admin_role(request, ctx)
             raw = await request.body()
             payload: dict[str, Any] = {}
             if raw:
@@ -2021,6 +2021,22 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "key_id": key_s or "",
                     "l0_removed": l0_removed,
                     "l1_removed": l1_removed,
+                },
+            )
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="cache.invalidate",
+                detail={
+                    "scope": scope,
+                    "l0_removed": l0_removed,
+                    "l1_removed": l1_removed,
+                    "model": model_s or "",
+                    "hash": hash_s or "",
+                    "team_id": team_s or "",
+                    "key_id": key_s or "",
                 },
             )
             return {
@@ -2261,6 +2277,29 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ctx.settings.integrations.mcp_policy.require_key_access_defined = mcp_policy[
                     "require_key_access_defined"
                 ]
+            if "mcp_servers" in integrations:
+                ceilings = {
+                    str(row["id"]): row for row in integrations["mcp_servers"] if "id" in row
+                }
+                known = {s.id for s in ctx.settings.integrations.mcp_servers}
+                unknown = sorted(set(ceilings) - known)
+                if unknown:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=safe_detail(
+                            ConfigValidationError(
+                                f"mcp_servers unknown ids (ceilings merge only): {unknown}"
+                            )
+                        ),
+                    )
+                for server in ctx.settings.integrations.mcp_servers:
+                    row = ceilings.get(server.id)
+                    if row is None:
+                        continue
+                    if "rpm" in row:
+                        server.rpm = row["rpm"]
+                    if "tpm" in row:
+                        server.tpm = row["tpm"]
             if "structured_json_logs" in observability:
                 ctx.settings.observability.structured_json_logs = observability[
                     "structured_json_logs"

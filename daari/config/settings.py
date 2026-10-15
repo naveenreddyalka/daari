@@ -299,9 +299,10 @@ class SystemOneSettings(BaseModel):
         default=True,
         description=(
             "When true, POST /v1/systemone proxies to ollama.base_url and "
-            "local decisions ids are advertised on GET /v1/models and Ollama "
-            "/api/tags with capability decision. When false, the route returns "
-            "501 not_implemented and discovery omits those ids."
+            "local decisions ids are advertised on GET /v1/models (OpenAI list "
+            "tag `decision` and Anthropic `capabilities.decision.supported`) "
+            "and Ollama /api/tags with capability decision. When false, the "
+            "route returns 501 not_implemented and discovery omits those ids."
         ),
     )
 
@@ -323,7 +324,8 @@ class DecisionsSettings(BaseModel):
             "Extra local decisions model ids that extend the built-in catalog "
             "(clef, clef-flash, nimble, tev1, drex-1.5, microsoft-decision-1). "
             "Operators can add future Ollama judge models without a daari release. "
-            "Advertised on /v1/models and /api/tags when systemone.enabled."
+            "Advertised on OpenAI + Anthropic-shaped /v1/models and /api/tags "
+            "when systemone.enabled."
         ),
     )
 
@@ -2074,7 +2076,9 @@ class IntegrationsSettings(BaseModel):
             "token/triggers; optional rpm/tpm (0=unlimited) per-server egress "
             "ceilings on tools/call and tools/list (429 + Retry-After + "
             "X-RateLimit-Scope mcp_server:<id>; independent of key-family mcp; "
-            "both apply) (#1620). Opt-in OBO (#1319): auth_type=oauth2_token_exchange "
+            "both apply) (#1620). Per-server rpm/tpm are editable via GET/PATCH "
+            "/v1/daari/config ownership (config editor; id + rpm/tpm only; secrets "
+            "omitted) (#1659). Opt-in OBO (#1319): auth_type=oauth2_token_exchange "
             "with token_exchange_endpoint, client_id, client_secret; optional "
             "audience, scopes, subject_token_type (default access_token)."
         ),
