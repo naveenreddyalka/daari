@@ -913,11 +913,14 @@ async def _handle_local(
         log_gateway_event("decisions_local_unavailable", {"reason": "no_ollama_base_url"})
         return _error(503, "backend_unavailable", _UNAVAILABLE_LOCAL)
 
-    from daari.gateway.model_access import reject_disallowed_model
+    from daari.gateway.model_access import reject_disallowed_model, reject_retired_model
 
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         return denied
+    retired = reject_retired_model(request, model, settings)
+    if retired is not None:
+        return retired
     budget_denied = _reject_decisions_budget(
         request, model, settings, user_id=body.user
     )
@@ -1102,7 +1105,11 @@ async def _handle_frontier(
     *,
     model: str,
 ) -> Any:
-    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
+    from daari.gateway.model_access import (
+        reject_disallowed_model,
+        reject_frontier_passthrough,
+        reject_retired_model,
+    )
 
     blocked = reject_frontier_passthrough(request)
     if blocked is not None:
@@ -1123,6 +1130,9 @@ async def _handle_frontier(
     denied = reject_disallowed_model(request, model, settings)
     if denied is not None:
         return denied
+    retired = reject_retired_model(request, model, settings)
+    if retired is not None:
+        return retired
     budget_denied = _reject_decisions_budget(
         request, model, settings, user_id=body.user
     )
@@ -1357,6 +1367,13 @@ async def _dispatch_decisions(request: Request, body: DecisionsRequest) -> Any:
     ctx = request.app.state.ctx
     settings = ctx.settings
     requested = (body.model or "").strip()
+
+    if requested:
+        from daari.gateway.model_access import reject_retired_model
+
+        retired = reject_retired_model(request, requested, settings)
+        if retired is not None:
+            return retired
 
     if not requested:
         return await _handle_local(request, body, model=default_local_model(settings))

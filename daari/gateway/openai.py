@@ -1348,7 +1348,10 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             x_daari_deadline_ms: str | None = Header(default=None, alias="X-Daari-Deadline-Ms"),
         ) -> Any:
             ctx: AppContext = request.app.state.ctx
-            from daari.gateway.model_access import reject_disallowed_model
+            from daari.gateway.model_access import (
+                reject_disallowed_model,
+                reject_retired_model,
+            )
             from daari.router.deadline import (
                 RequestDeadlineExceeded,
                 bind_request_deadline,
@@ -1361,6 +1364,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             denied = reject_disallowed_model(request, body.model or "daari", ctx.settings)
             if denied is not None:
                 return denied
+            retired = reject_retired_model(request, body.model or "daari", ctx.settings)
+            if retired is not None:
+                return retired
             model = resolve_embedding_model(ctx, body.model)
             texts = embedding_texts(body.input)
             deadline_ms = parse_deadline_ms(x_daari_deadline_ms)

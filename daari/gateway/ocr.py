@@ -418,7 +418,11 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
         complete_json_slot,
         resolve_idempotency,
     )
-    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
+    from daari.gateway.model_access import (
+        reject_disallowed_model,
+        reject_frontier_passthrough,
+        reject_retired_model,
+    )
 
     invalid = _validate_document(body.document)
     if invalid is not None:
@@ -455,6 +459,10 @@ async def handle_ocr(request: Request, body: OcrRequest) -> Any:
     if denied is not None:
         abandon_slot(idem_slot)
         return denied
+    retired = reject_retired_model(request, model, settings)
+    if retired is not None:
+        abandon_slot(idem_slot)
+        return retired
 
     assert body.document is not None
     doc_kind, source = _document_source(body.document)
