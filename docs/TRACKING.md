@@ -6880,6 +6880,14 @@ X-RateLimit-Scope unchanged. Covered by `tests/unit/test_mcp_server_rate_limits.
 `store_migrate` warns on PG lag; upgrade.md documents migrate-before-rollout.
 Covered by `tests/unit/test_migrate_schema.py`.
 
+### Enterprise audit row for admin cache invalidate ([#1657](https://github.com/naveenreddyalka/daari/issues/1657))
+
+<!-- tracking:#1657 -->
+**Status:** Done (2026-10-15). Successful `POST /v1/daari/cache/invalidate`
+writes `cache.invalidate` audit (actor, role, scope, l0/l1 removed); error
+path bumps Prom `result=error` without a success audit row; auth-and-keys
+catalog lists the action. Covered by `tests/unit/test_cache_invalidate.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

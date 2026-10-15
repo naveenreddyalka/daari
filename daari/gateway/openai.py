@@ -1948,7 +1948,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.post("/v1/daari/cache/invalidate")
         async def daari_cache_invalidate(request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            _require_admin_role(request, ctx)
+            role = _require_admin_role(request, ctx)
             raw = await request.body()
             payload: dict[str, Any] = {}
             if raw:
@@ -2021,6 +2021,22 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "key_id": key_s or "",
                     "l0_removed": l0_removed,
                     "l1_removed": l1_removed,
+                },
+            )
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="cache.invalidate",
+                detail={
+                    "scope": scope,
+                    "l0_removed": l0_removed,
+                    "l1_removed": l1_removed,
+                    "model": model_s or "",
+                    "hash": hash_s or "",
+                    "team_id": team_s or "",
+                    "key_id": key_s or "",
                 },
             )
             return {
