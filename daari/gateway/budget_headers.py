@@ -22,6 +22,8 @@ BUDGET_WINDOW_HEADER = "x-daari-budget-window"
 BUDGET_RESET_HEADER = "x-daari-budget-reset"
 BUDGET_SCOPE_HEADER = "x-daari-budget-scope"
 BUDGET_WARNING_HEADER = "x-daari-budget-warning"
+# Ledger unreachable: soft-allow spend checks + operator signal (#1652).
+BUDGET_DEGRADED_HEADER = "X-Daari-Budget-Degraded"
 QUOTA_REQUESTS_REMAINING_HEADER = "x-daari-quota-requests-remaining"
 QUOTA_REQUESTS_LIMIT_HEADER = "x-daari-quota-requests-limit"
 QUOTA_REQUESTS_WARNING_HEADER = "x-daari-quota-requests-warning"

@@ -147,6 +147,23 @@ ceilings.
 
 With `cache.backend: redis`, every Redis client uses `cache.redis_timeout_seconds` (default 2s) for connect and command timeouts so a hung Redis cannot stall requests for the OS TCP timeout. If Redis counters raise or time out, the gateway logs one `rate_limit.degraded` event and switches rate-limit counting to the per-replica SQLite backend (or allows without counting when `rate_limit.fail_open: true`). Requests never 500 because Redis is down. When Redis answers again, counting returns to Redis without a restart. `/ready` includes a `redis` check; Redis down with fallback active is **degraded but HTTP 200** (same pattern as a partial local-pool outage). L0/L1 cache misses already degrade gracefully on Redis errors.
 
+### Postgres outage semantics (control plane)
+
+When any store uses `observability.postgres_url` (`server.virtual_keys.backend`,
+`observability.backend`, `observability.request_log.backend`,
+`enterprise.audit_backend`, or batches/files/responses backends), `/ready`
+exposes `checks.postgres` and `daari doctor` reports per-store reachability
+(`postgres.virtual_keys`, `postgres.usage`, …). Sharp stores fail closed;
+telemetry fails open:
+
+| Store | Redis down | Postgres down |
+|-------|------------|---------------|
+| Auth (virtual keys) | n/a (VK is SQLite/PG) | **fail-closed** — `503` with `error.code=postgres_unavailable` (never open, never raw 500) |
+| Budgets (usage ledger) | n/a | **soft-allow** — spend reads return `0.0`, response carries `X-Daari-Budget-Degraded: soft_allow`, Prom `daari_budget_degraded{mode="soft_allow"}=1` |
+| Rate limit | **sqlite_fallback** (default) or **fail_open** when `rate_limit.fail_open: true`; `/ready` degraded | n/a (counters are Redis/SQLite) |
+| Audit | n/a | **fail-open** (writes swallowed; undocumented prior behavior, now explicit) |
+| Request log | n/a | **fail-open** (writes swallowed; telemetry must not block inference) |
+
 ## SSO (admin)
 
 OIDC/JWKS for admin surfaces — see ADR and enterprise settings (`enterprise.sso`).

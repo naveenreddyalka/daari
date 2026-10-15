@@ -15,7 +15,10 @@ from daari.auth.rate_limit import (
     request_model,
     should_buffer_body_for_rate_limit,
 )
-from daari.auth.postgres_virtual_keys import virtual_key_store_from_settings
+from daari.auth.postgres_virtual_keys import (
+    PostgresBackendUnavailable,
+    virtual_key_store_from_settings,
+)
 from daari.auth.virtual_keys import VirtualKeyStore
 from daari.config.settings import Settings
 from daari.gateway.anthropic import AnthropicGatewayAdapter
@@ -25,7 +28,23 @@ from daari.gateway.openai import create_gateway_router
 from daari.gateway.request_log import configure_request_log
 from daari.gateway.responses import ResponsesGatewayAdapter
 from daari.router.router import AppContext
-from daari.server.auth import extract_api_key, resolve_auth
+from daari.server.auth import extract_api_key, resolve_auth, store_enforces_auth
+
+
+def _postgres_unavailable_response(detail: str = "") -> JSONResponse:
+    message = "Postgres control-plane store is unreachable."
+    if detail:
+        message = f"{message} ({detail})"
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {
+                "type": "service_unavailable",
+                "code": "postgres_unavailable",
+                "message": message,
+            }
+        },
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -279,13 +298,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return await call_next(request)
             # When no master key and the VK store is empty, stay open so
             # local single-user installs aren't suddenly locked out.
+            # Unreachable Postgres VK still enforces auth (fail-closed, #1652).
             store: VirtualKeyStore | None = getattr(request.app.state, "virtual_key_store", None)
-            has_virtual = bool(store and store.enabled and store.list())
+            has_virtual = store_enforces_auth(store)
             if not master_keys and not has_virtual:
                 return await call_next(request)
 
             supplied = extract_api_key(request.headers)
-            claims = resolve_auth(supplied, master_key=master_keys, store=store)
+            from daari.server.auth import master_key_matches
+
+            # Unreachable Postgres VK: fail closed unless master key matches (#1652).
+            if (
+                store is not None
+                and getattr(store, "unreachable", False)
+                and not master_key_matches(supplied, master_keys)
+            ):
+                return _postgres_unavailable_response(
+                    getattr(store, "_unreach_detail", "") or "virtual_keys"
+                )
+            try:
+                claims = resolve_auth(supplied, master_key=master_keys, store=store)
+            except PostgresBackendUnavailable as exc:
+                return _postgres_unavailable_response(exc.detail or str(exc.store))
             if claims is None and supplied and resolved.integrations.mcp_oauth.local_as:
                 from daari.gateway.mcp_oauth import verify_access_token
 
@@ -445,7 +479,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     resolve_team_header,
                 )
 
-                selected, team_err = resolve_team_header(request.headers, claims, store)
+                try:
+                    selected, team_err = resolve_team_header(request.headers, claims, store)
+                except PostgresBackendUnavailable as exc:
+                    return _postgres_unavailable_response(exc.detail or str(exc.store))
                 if team_err is not None:
                     from daari.enterprise.postgres_audit import audit_log_from_settings
 
@@ -487,6 +524,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         tightest_window,
                     )
                     from daari.gateway.budget_headers import (
+                        BUDGET_DEGRADED_HEADER,
                         BUDGET_WARNING_HEADER,
                         QUOTA_REQUESTS_LIMIT_HEADER,
                         QUOTA_REQUESTS_REMAINING_HEADER,
@@ -523,10 +561,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             if refreshed is not None:
                                 key = refreshed
                                 claims.virtual_key = refreshed
-                    team = store.get_team(key.team_id) if key is not None else None
-                    if claims.selected_team_id:
-                        team = store.get_team(claims.selected_team_id) or team
-                    team_ids = store.team_client_ids(team.team_id) if team is not None else []
+                    try:
+                        team = store.get_team(key.team_id) if key is not None else None
+                        if claims.selected_team_id:
+                            team = store.get_team(claims.selected_team_id) or team
+                        team_ids = (
+                            store.team_client_ids(team.team_id) if team is not None else []
+                        )
+                    except PostgresBackendUnavailable as exc:
+                        return _postgres_unavailable_response(exc.detail or str(exc.store))
                     statuses = budget_status(
                         key,
                         team,
@@ -536,6 +579,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         pricing=pricing,
                         fallback_per_1k=fallback,
                     )
+                    degrade_snap = getattr(ledger, "budget_degrade_snapshot", None)
+                    if callable(degrade_snap):
+                        snap = degrade_snap()
+                        if snap.get("degraded"):
+                            mode = str(snap.get("degrade_mode") or "soft_allow")
+                            budget_response_headers[BUDGET_DEGRADED_HEADER] = mode
                     exceeded = next((status for status in statuses if status.exceeded), None)
                     if exceeded is not None:
                         # #319: the 402 carries the same budget headers as a 2xx
@@ -707,11 +756,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claims = getattr(request.state, "auth_claims", None)
         if claims is None:
             store = getattr(request.app.state, "virtual_key_store", None)
-            claims = resolve_auth(
-                extract_api_key(request.headers),
-                master_key=master_keys,
-                store=store,
-            )
+            try:
+                claims = resolve_auth(
+                    extract_api_key(request.headers),
+                    master_key=master_keys,
+                    store=store,
+                )
+            except PostgresBackendUnavailable as exc:
+                return _postgres_unavailable_response(exc.detail or str(exc.store))
         virtual = getattr(claims, "virtual_key", None) if claims is not None else None
         key_id = (getattr(claims, "key_id", None) if claims is not None else None) or (
             "master" if getattr(claims, "kind", None) == "master" else "anonymous"

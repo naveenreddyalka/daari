@@ -77,6 +77,9 @@ class PostgresUsageLedger:
         self.dsn = dsn
         self.enabled = enabled
         self.path = dsn  # Compatibility with code that logs ledger.path
+        self.unreachable = False
+        self._budget_degraded = False
+        self._budget_degrade_mode: str | None = None
         self._lock = threading.Lock()
         if self.enabled:
             try:
@@ -87,7 +90,10 @@ class PostgresUsageLedger:
                             cur.execute(statement)
                     conn.commit()
             except Exception:
-                self.enabled = False
+                # Spend reads soft-allow with a signal; keep enabled so pre-checks run (#1652).
+                self.unreachable = True
+                self.enabled = True
+                self._mark_budget_degraded()
 
     def _connect(self) -> Any:
         try:
@@ -98,6 +104,29 @@ class PostgresUsageLedger:
                 "pip install 'psycopg[binary]>=3' (or daari[postgres])"
             ) from exc
         return psycopg.connect(self.dsn)
+
+    def _mark_budget_degraded(self) -> None:
+        self._budget_degraded = True
+        self._budget_degrade_mode = "soft_allow"
+        self.unreachable = True
+
+    def budget_degrade_snapshot(self) -> dict[str, Any]:
+        return {
+            "degraded": bool(self._budget_degraded),
+            "degrade_mode": self._budget_degrade_mode,
+        }
+
+    def probe(self) -> str:
+        """Return ``ok`` or the exception type name for ``/ready`` / doctor (#1652)."""
+        try:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+            self.unreachable = False
+            return "ok"
+        except Exception as exc:
+            self.unreachable = True
+            return type(exc).__name__
 
     def record(
         self,
@@ -368,6 +397,7 @@ class PostgresUsageLedger:
                     )
                     row = cur.fetchone()
         except Exception:
+            self._mark_budget_degraded()
             return 0.0
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * rate
@@ -414,6 +444,7 @@ class PostgresUsageLedger:
                     )
                     row = cur.fetchone()
         except Exception:
+            self._mark_budget_degraded()
             return 0.0
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * rate
@@ -444,6 +475,7 @@ class PostgresUsageLedger:
                     )
                     row = cur.fetchone()
         except Exception:
+            self._mark_budget_degraded()
             return 0.0
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * rate
@@ -500,6 +532,7 @@ class PostgresUsageLedger:
                     )
                     rows = cur.fetchall()
         except Exception:
+            self._mark_budget_degraded()
             return 0.0
         total = 0.0
         for model, input_tokens, output_tokens in rows:
@@ -558,6 +591,7 @@ class PostgresUsageLedger:
                     )
                     row = cur.fetchone()
         except Exception:
+            self._mark_budget_degraded()
             return 0
         if row is None:
             return 0
@@ -576,6 +610,7 @@ class PostgresUsageLedger:
                     )
                     row = cur.fetchone()
         except Exception:
+            self._mark_budget_degraded()
             return 0.0
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * price_per_1k_tokens
@@ -596,6 +631,7 @@ class PostgresUsageLedger:
                     )
                     row = cur.fetchone()
         except Exception:
+            self._mark_budget_degraded()
             return 0.0
         chars = row[0] if row else 0
         return (chars / 4) / 1000 * price_per_1k_tokens

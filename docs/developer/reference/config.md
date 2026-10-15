@@ -132,7 +132,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `routing.local_pool.backends` | list | `[]` |  |
 | `frontier.enabled` | bool | `False` |  |
 | `frontier.provider` | str | `'openai'` |  |
-| `frontier.model` | str | `'gpt-4o-mini'` |  |
+| `frontier.model` | str | `'gpt-6-luna'` |  |
 | `frontier.confidence_threshold` | float | `0.7` |  |
 | `frontier.base_url` | str | `'https://api.openai.com/v1'` |  |
 | `frontier.providers` | list | `[]` | Ordered L6 failover chain. Optional per-entry `timeout_s`, `retry_attempts`, and `retry_backoff_s` fall back to `upstream.frontier_timeout_seconds` / `upstream.retry` when unset. |

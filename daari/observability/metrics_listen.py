@@ -64,6 +64,12 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
 
     limiter = getattr(app.state, "rate_limiter", None)
     rate_limit = limiter.snapshot() if limiter is not None else None
+    budget_degrade: dict[str, Any] | None = None
+    if ledger is not None and hasattr(ledger, "budget_degrade_snapshot"):
+        try:
+            budget_degrade = ledger.budget_degrade_snapshot()
+        except Exception:
+            budget_degrade = None
     pool = getattr(ctx, "local_pool", None) or getattr(ctx.router, "local_pool", None)
     backend_pool = pool.snapshot() if pool is not None else None
     team_budgets: list[dict[str, Any]] | None = None
@@ -137,6 +143,7 @@ def prometheus_text_for_app(app: FastAPI) -> str | None:
     return render_prometheus(
         ctx.metrics,
         budget_state=budget_state,
+        budget_degrade=budget_degrade,
         false_hit_rate=false_hit_rate,
         rate_limit=rate_limit,
         backend_pool=backend_pool,
