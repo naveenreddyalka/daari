@@ -48,7 +48,11 @@ from daari.gateway.responses_mcp import (
     function_name_for,
     parse_mcp_function_name,
 )
-from daari.providers.mcp_egress import McpEgressProvider, McpServerRateLimited
+from daari.providers.mcp_egress import (
+    McpEgressProvider,
+    McpServerRateLimited,
+    record_mcp_server_rate_limit_reject,
+)
 from daari.router.deadline import (
     RequestDeadlineExceeded,
     bind_request_deadline,
@@ -1144,8 +1148,21 @@ def _token_exchange_error_response(
     return None
 
 
-def _mcp_server_rate_limited_response(exc: McpServerRateLimited) -> JSONResponse:
-    """HTTP 429 for per-server egress rpm/tpm ceilings (#1620)."""
+def _mcp_server_rate_limited_response(
+    exc: McpServerRateLimited,
+    *,
+    request: Request | None = None,
+) -> JSONResponse:
+    """HTTP 429 for per-server egress rpm/tpm ceilings (#1620 / #1654)."""
+    ctx = None
+    if request is not None:
+        state = getattr(getattr(request, "app", None), "state", None)
+        ctx = getattr(state, "ctx", None) if state is not None else None
+    metrics = getattr(ctx, "metrics", None) if ctx is not None else None
+    if metrics is None and ctx is not None:
+        metrics = getattr(getattr(ctx, "router", None), "metrics", None)
+    settings = getattr(ctx, "settings", None) if ctx is not None else None
+    record_mcp_server_rate_limit_reject(exc, metrics=metrics, settings=settings)
     decision = exc.decision
     scope = getattr(decision, "scope", None) or "rate"
     bucket = getattr(decision, "bucket", None) or f"mcp_server:{exc.server_id}"
@@ -1335,7 +1352,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                 except ModelNotAllowed as exc:
                     return exc.response
                 except McpServerRateLimited as exc:
-                    return _mcp_server_rate_limited_response(exc)
+                    return _mcp_server_rate_limited_response(exc, request=request)
                 except ClientDisconnected:
                     return _client_disconnected_response()
                 except RequestDeadlineExceeded as exc:
@@ -1374,7 +1391,7 @@ class MCPGatewayAdapter(GatewayAdapter):
             except ModelNotAllowed as exc:
                 return exc.response
             except McpServerRateLimited as exc:
-                return _mcp_server_rate_limited_response(exc)
+                return _mcp_server_rate_limited_response(exc, request=request)
             except ClientDisconnected:
                 return _client_disconnected_response()
             except RequestDeadlineExceeded as exc:
@@ -1608,7 +1625,7 @@ class MCPGatewayAdapter(GatewayAdapter):
             except ModelNotAllowed as exc:
                 return exc.response
             except McpServerRateLimited as exc:
-                return _mcp_server_rate_limited_response(exc)
+                return _mcp_server_rate_limited_response(exc, request=request)
             except ClientDisconnected:
                 return _client_disconnected_response()
             except RequestDeadlineExceeded as exc:

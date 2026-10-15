@@ -180,6 +180,153 @@ async def test_per_server_rpm_trips_while_key_family_allows(settings, monkeypatc
     assert calls == 1
 
 
+@pytest.mark.asyncio
+async def test_per_server_429_records_reject_metric_and_audit(
+    settings, monkeypatch, tmp_path
+):
+    """Per-server MCP 429 bumps daari_rejects_total and rate_limit.exceeded (#1654)."""
+    from daari.enterprise.audit import AuditLog
+    from daari.observability.prometheus import render_prometheus
+
+    settings.server.api_key = "master"
+    settings.server.virtual_keys.path = str(tmp_path / "vk.sqlite3")
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    settings.rate_limit.rpm = 0
+    settings.rate_limit.tpm = 0
+    settings.observability.prometheus = True
+    settings.integrations.mcp_aggregate_egress.enabled = True
+    settings.integrations.mcp_servers = [
+        McpServerSettings(id="demo", url="http://mcp.test/rpc", rpm=1, tpm=0),
+    ]
+    store = VirtualKeyStore(settings.virtual_keys_path)
+    created = store.create("scoped", metadata={})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        method = body.get("method")
+        if method == "tools/list":
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": body.get("id", 1),
+                    "result": {
+                        "tools": [
+                            {
+                                "name": "ping",
+                                "description": "ping",
+                                "inputSchema": {"type": "object", "properties": {}},
+                            }
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body.get("id", 1),
+                "result": {"content": [{"type": "text", "text": "pong"}]},
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    app = _wire_app(settings)
+    app.state.virtual_key_store = store
+    app.state.ctx.virtual_key_store = store
+    headers = {"Authorization": f"Bearer {created.plaintext}"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "demo__ping", "arguments": {}},
+            },
+            headers=headers,
+        )
+        second = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "demo__ping", "arguments": {}},
+            },
+            headers=headers,
+        )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 429, second.text
+    assert second.headers.get("Retry-After")
+    assert second.headers.get("X-RateLimit-Scope") == "mcp_server:demo"
+
+    text = render_prometheus(app.state.ctx.metrics)
+    assert 'daari_rejects_total{kind="rate_limit"} 1' in text
+
+    rows = AuditLog(settings.enterprise.audit_path).list(action="rate_limit.exceeded")
+    assert len(rows) == 1
+    detail = rows[0]["detail"]
+    assert detail["bucket"] == "mcp_server:demo"
+    assert detail["scope"] == "rpm"
+
+
+@pytest.mark.asyncio
+async def test_chat_path_soft_rate_limit_records_reject(settings, monkeypatch, tmp_path):
+    """MCP egress soft deny on chat path also records reject + audit (#1654)."""
+    from daari.enterprise.audit import AuditLog
+    from daari.gateway.internal import InternalRequest, Message, RequestMeta
+    from daari.observability.metrics import Metrics
+    from daari.observability.prometheus import render_prometheus
+
+    settings.enterprise.audit_path = str(tmp_path / "audit.sqlite3")
+    settings.observability.prometheus = True
+    settings.integrations.mcp_servers = [
+        McpServerSettings(id="demo", url="http://mcp.test/rpc", rpm=1, tpm=0),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode())
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body.get("id", 1),
+                "result": {"content": [{"type": "text", "text": "pong"}]},
+            },
+        )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client(handler))
+    limiter = RateLimiter(MemoryCounterBackend(), default_rpm=0, default_tpm=0)
+    providers = build_mcp_providers(
+        settings.integrations.mcp_servers,
+        metrics=Metrics(),
+        rate_limiter=limiter,
+        settings=settings,
+    )
+    assert len(providers) == 1
+    provider = providers[0]
+
+    req = InternalRequest(
+        messages=[Message(role="user", content="@mcp:demo ping")],
+        model="llama3.2:3b",
+        meta=RequestMeta(),
+    )
+    first = await provider.execute(req)
+    assert first.daari_meta.warning != "mcp_server_rate_limited"
+    second = await provider.execute(req)
+    assert second.daari_meta.warning == "mcp_server_rate_limited"
+
+    text = render_prometheus(provider.metrics)
+    assert 'daari_rejects_total{kind="rate_limit"} 1' in text
+    rows = AuditLog(settings.enterprise.audit_path).list(action="rate_limit.exceeded")
+    assert len(rows) == 1
+    assert rows[0]["detail"]["bucket"] == "mcp_server:demo"
+    assert rows[0]["detail"]["scope"] == "rpm"
+
+
 def test_doctor_tip_when_server_rpm_set(settings):
     settings.integrations.mcp_servers = [
         McpServerSettings(id="noisy", url="http://mcp.test/rpc", rpm=30),
