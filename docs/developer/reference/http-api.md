@@ -33,6 +33,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `POST` | `/v1/daari/cache/invalidate` | Daari Cache Invalidate |
 | `GET` | `/v1/daari/config` | Daari Config Get |
 | `PATCH` | `/v1/daari/config` | Daari Config Patch |
+| `GET` | `/v1/daari/events` | Daari Events List |
 | `POST` | `/v1/daari/feedback` | Daari Feedback |
 | `GET` | `/v1/daari/keys` | Daari Keys List |
 | `GET` | `/v1/daari/learn/stats` | Daari Learn Stats |
@@ -80,6 +81,10 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 ## Admin keys / teams inventory
 
 `GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return redacted rows plus pagination metadata: query `limit` (default **100**, max **500**) and `offset` (default **0**); response includes `total`, `has_more`, `limit`, and `offset`. Successful reads emit `admin.keys.list` / `admin.teams.list` audit events (`limit` / `offset` / `total` / `returned` — never secrets).
+
+## Request / event log
+
+`GET /v1/daari/events` (analyst / master, or a virtual key on the same read floor as other `/v1/daari` reads) lists newest-first gateway events when `observability.request_log.backend=postgres`. Query `limit` (default **100**, max **1000**), `offset`, or exclusive `cursor` (event id), plus optional `team_id` and `key_id`. JSONL-only installs return **501**.
 
 ## Config editor ownership
 
