@@ -133,6 +133,18 @@ def _json_schema_from_output_format(output_format: Any) -> dict[str, Any] | None
     return _json_schema_from_response_format(output_format)
 
 
+def _normalize_speed(raw: Any) -> str | None:
+    """Anthropic top-level ``speed`` (fast|standard) (#1702)."""
+    if not isinstance(raw, str):
+        return None
+    key = raw.strip().lower()
+    if key in {"fast", "standard"}:
+        return key
+    if key:
+        return key
+    return None
+
+
 def _normalize_service_tier(raw: Any) -> str | None:
     if not isinstance(raw, str):
         return None
@@ -320,6 +332,10 @@ class SamplingParams(BaseModel):
     reasoning_effort: str | None = None
     # Client service_tier (flex|standard|priority|fast|ultrafast); forwarded / mapped (#430, #1519).
     service_tier: str | None = None
+    # Anthropic Messages ``speed`` (fast|standard). Gated before egress (#1702).
+    speed: str | None = None
+    # Set by the router when speed/service_tier was cleared. Not forwarded.
+    gate_warning: str | None = None
     # Agent SDK / OpenAI chat knobs (#940).
     parallel_tool_calls: bool | None = None
     logit_bias: dict[str, float] | None = None
@@ -415,6 +431,7 @@ class SamplingParams(BaseModel):
             logprobs=_normalize_bool(body.get("logprobs")),
             reasoning_effort=normalize_reasoning_effort(body.get("reasoning_effort")),
             service_tier=_normalize_service_tier(body.get("service_tier")),
+            speed=_normalize_speed(body.get("speed")),
             parallel_tool_calls=_normalize_parallel_tool_calls(
                 body.get("parallel_tool_calls")
             ),
@@ -485,6 +502,7 @@ class SamplingParams(BaseModel):
             json_schema=json_schema,
             tool_choice=tool_choice,
             service_tier=_normalize_service_tier(body.get("service_tier")),
+            speed=_normalize_speed(body.get("speed")),
             thinking=thinking,
             output_config=output_config,
             metadata=_normalize_dict(body.get("metadata")),

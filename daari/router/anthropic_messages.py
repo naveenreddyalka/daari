@@ -255,6 +255,8 @@ def to_anthropic_payload(
         payload["stop_sequences"] = list(request.sampling.stop)
     if request.sampling.service_tier:
         payload["service_tier"] = request.sampling.service_tier
+    if request.sampling.speed:
+        payload["speed"] = request.sampling.speed
     if request.sampling.thinking:
         payload["thinking"] = dict(request.sampling.thinking)
     if request.sampling.metadata:

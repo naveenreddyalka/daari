@@ -700,6 +700,36 @@ class Router:
             f"{existing}; model_deprecated" if existing else "model_deprecated"
         )
 
+    def _gate_client_tiers(self, request: InternalRequest) -> str | None:
+        """Clear unsupported Ultrafast / Anthropic fast mode before egress (#1519, #1702)."""
+        from daari.pricing import resolve_anthropic_speed, resolve_service_tier_for_request
+
+        tier_decision = resolve_service_tier_for_request(
+            model=request.model,
+            service_tier=getattr(request.sampling, "service_tier", None),
+            region_pin=getattr(request.meta, "region_pin", None),
+        )
+        if request.sampling.service_tier != tier_decision.service_tier:
+            request.sampling.service_tier = tier_decision.service_tier
+        speed_decision = resolve_anthropic_speed(
+            model=request.model,
+            speed=getattr(request.sampling, "speed", None),
+            anthropic_beta=getattr(request.meta, "anthropic_beta", None),
+        )
+        if request.sampling.speed != speed_decision.speed:
+            request.sampling.speed = speed_decision.speed
+        warnings = [w for w in (tier_decision.warning, speed_decision.warning) if w]
+        request.sampling.gate_warning = "; ".join(warnings) or None
+        return request.sampling.gate_warning
+
+    def _merge_gate_warning(self, response: InternalResponse, warning: str | None) -> None:
+        if not warning:
+            return
+        existing = response.daari_meta.warning
+        if existing and warning in existing:
+            return
+        response.daari_meta.warning = f"{existing}; {warning}" if existing else warning
+
     def _tier_models(self) -> dict[str, str]:
         return {
             "L3": self.ollama_l3.default_model,
@@ -1050,8 +1080,6 @@ class Router:
             deadline_active,
             resolve_deadline_seconds,
         )
-        from daari.pricing import resolve_service_tier_for_request
-
         if not deadline_active():
             seconds = resolve_deadline_seconds(
                 getattr(request.meta, "deadline_ms", None),
@@ -1060,15 +1088,8 @@ class Router:
             if seconds is not None:
                 with bind_request_deadline(seconds, metrics=self.metrics):
                     return await self.route(request)
-        # Ultrafast: gate to published models/residency before L6 / cost (#1519).
-        tier_decision = resolve_service_tier_for_request(
-            model=request.model,
-            service_tier=getattr(request.sampling, "service_tier", None),
-            region_pin=getattr(request.meta, "region_pin", None),
-        )
-        if request.sampling.service_tier != tier_decision.service_tier:
-            request.sampling.service_tier = tier_decision.service_tier
-        ultrafast_warning = tier_decision.warning
+        # Ultrafast / Anthropic fast mode: gate before L6 / cost (#1519, #1702).
+        ultrafast_warning = self._gate_client_tiers(request)
         profile, reused = self._resolve_prompt_profile(request)
         trace = start_trace() if self.trace_store is not None else None
         if reused:
@@ -1273,6 +1294,12 @@ class Router:
             or response.daari_meta.trace_id
             or uuid.uuid4().hex[:16],
         )
+        from daari.observability.spend import current_spend_context
+
+        bound = current_spend_context()
+        reported_speed = getattr(response.daari_meta, "usage_speed", None)
+        if bound is not None and reported_speed:
+            bound.usage_speed = reported_speed
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,
@@ -2145,6 +2172,7 @@ class Router:
                     async for chunk in self.stream_openai_chunks(request, outcome=outcome):
                         yield chunk
                 return
+        self._gate_client_tiers(request)
         draft_used = False
         started = time.perf_counter()
         created = int(time.time())
@@ -3259,6 +3287,7 @@ class Router:
                     async for chunk in self.stream_anthropic_events(request, outcome=outcome):
                         yield chunk
                 return
+        self._gate_client_tiers(request)
         from daari.gateway.content import sanitize_messages_for_ollama
         from daari.gateway.request_log import log_gateway_event
 
@@ -5434,6 +5463,9 @@ class Router:
         if served is not None:
             region_pin = served.daari_meta.region_pin
             service_tier = served.daari_meta.service_tier
+        usage_speed = None
+        if served is not None:
+            usage_speed = getattr(served.daari_meta, "usage_speed", None)
         return stream_usage_cost(
             tier=billed,
             model=model,
@@ -5445,6 +5477,7 @@ class Router:
             reported_cost=reported,
             service_tier=service_tier,
             region_pin=region_pin,
+            usage_speed=usage_speed,
         )
 
     def _stream_cached_tokens(
@@ -5521,6 +5554,11 @@ class Router:
         )
         if rollup is not None:
             usage["session_cost_avoided"] = rollup
+        speed = None
+        if served is not None:
+            speed = getattr(served.daari_meta, "usage_speed", None)
+        if isinstance(speed, str) and speed.strip():
+            usage["speed"] = speed.strip().lower()
         return usage
 
     def _record(self, response: InternalResponse, started: float) -> None:
