@@ -102,6 +102,8 @@ def test_judgment_corpus_has_decisions_and_systemone(bench):
     assert "systemone" in kinds
     assert "/v1/decisions" in paths
     assert "/v1/systemone" in paths
+    assert "DEC-02" in {row["id"] for row in rows}
+    assert next(row["repeat"] for row in rows if row["id"] == "DEC-02") == 2
     assert bench.judgment_path({"kind": "decisions"}) == "/v1/decisions"
     assert bench.judgment_path({"kind": "systemone"}) == "/v1/systemone"
     assert bench.judgment_path({"path": "/v1/decisions"}) == "/v1/decisions"
@@ -150,13 +152,30 @@ def test_run_judgment_notes_missing_litellm_route(bench, monkeypatch):
         model="nimble",
         corpus=bench.JUDGMENT_CORPUS,
     )
-    assert len(rows) == 2
+    assert len(rows) == 3
     assert {r["path"] for r in rows} == {"/v1/decisions", "/v1/systemone"}
+    dec02 = next(r for r in rows if r["id"] == "DEC-02")
+    assert dec02["daari_cold_ms"] == 25.0
+    assert dec02["daari_warm_ms"] == 25.0
+    assert "cold" in dec02["note"] and "warm" in dec02["note"]
+    daari_decision_posts = [c for c in calls if c[0] == "http://daari.test" and c[1] == "/v1/decisions"]
+    assert len(daari_decision_posts) == 3
     assert all(r["daari_ms"] == 25.0 for r in rows)
     assert all(r["litellm_ms"] is None for r in rows)
     assert all("LiteLLM build lacks" in r["note"] for r in rows)
     assert ("http://litellm.test", "/v1/decisions") in calls
     assert ("http://daari.test", "/v1/systemone") in calls
+
+
+def test_benchmarks_doc_pins_judgment_scenarios():
+    text = (
+        Path(__file__).resolve().parents[2] / "docs" / "BENCHMARKS.md"
+    ).read_text(encoding="utf-8")
+    assert "DEC-01" in text
+    assert "SYS-01" in text
+    assert "DEC-02" in text
+    assert "bench_vs_litellm" in text
+    assert "cold" in text.lower() and "warm" in text.lower()
 
 
 def test_main_skips_without_ollama(bench, capsys):
