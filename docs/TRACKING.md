@@ -6961,6 +6961,22 @@ deprecated ids keep working. Covered by
 exists; absent when otel off or no context. Docs: otel-genai.md. Covered by
 `tests/unit/test_otel_genai.py`, `tests/unit/test_otel_docs.py`.
 
+### Team-scoped admin reads ([#1677](https://github.com/naveenreddyalka/daari/issues/1677))
+
+<!-- tracking:#1677 -->
+**Status:** Done (2026-10-15). `?team_id=` on `/v1/daari/traces`, `/stats`,
+`/report`; VK/SSO analysts restricted to their team (cross-team → 403);
+SQLite + Postgres trace stores filter by `team_id`. Docs: auth-and-keys.md.
+Covered by `tests/unit/test_team_scoped_admin_reads.py`.
+
+### Consistent cross-store backup ([#1678](https://github.com/naveenreddyalka/daari/issues/1678))
+
+<!-- tracking:#1678 -->
+**Status:** Done (2026-10-15). `daari backup create --consistent` refuses a
+live `/health`, checkpoints SQLite WAL, and embeds one shared `pg_dump`
+(`stores/pg/consistent.sql`). Fast path unchanged. Docs: guarantees matrix in
+backup-restore.md. Covered by `tests/unit/test_backup_restore.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

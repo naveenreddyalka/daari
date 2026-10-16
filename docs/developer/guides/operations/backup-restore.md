@@ -102,6 +102,22 @@ and run `psql --dbname="$DSN" -f stores/pg/<name>.sql` yourself. External
   back up while running, run `sqlite3 <db> 'PRAGMA wal_checkpoint(FULL);'` per
   file first, or accept a best-effort snapshot.
 
+## Consistency guarantees (`--consistent`)
+
+```bash
+daari backup create ARCHIVE.tar.gz --consistent
+```
+
+| Mode | SQLite | Postgres embeds | Live `/health` | Point-in-time? |
+|------|--------|-----------------|----------------|----------------|
+| Default (fast) | File copy; WAL pages may be missed | One `pg_dump` **per store** (sequential; can skew mid-write) | Allowed | Best-effort only |
+| `--consistent` | `PRAGMA wal_checkpoint(FULL)` then copy | **One** `pg_dump` for all catalogued tables → `stores/pg/consistent.sql` | Refused (override: `--i-know-server-is-running`) | App-consistent across daari stores on one box |
+| Managed cloud PITR | N/A | Provider WAL / PITR | N/A | True cluster PITR — not replaced by daari |
+
+`--consistent` is the local-first answer when spend rows must not outlive their
+virtual keys after restore. The fast path stays available for cron that already
+stops the daemon or accepts skew.
+
 ## Postgres runbook
 
 1. Prefer `pg_dump` on PATH so `daari backup create` embeds dumps under

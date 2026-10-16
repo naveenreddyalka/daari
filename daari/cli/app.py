@@ -1941,6 +1941,20 @@ def backup_create(
             "(pg_dump missing or dump error). Default: leave those stores external."
         ),
     ),
+    consistent: bool = typer.Option(
+        False,
+        "--consistent",
+        help=(
+            "App-consistent snapshot: refuse a live /health, checkpoint SQLite WAL, "
+            "and dump all Postgres tables in one pg_dump (#1678). Fast path remains "
+            "the default without this flag."
+        ),
+    ),
+    allow_running_server: bool = typer.Option(
+        False,
+        "--i-know-server-is-running",
+        help="With --consistent, proceed even if GET /health succeeds (best-effort).",
+    ),
 ) -> None:
     """Snapshot durable sqlite/JSONL/dir stores into one versioned archive."""
     from daari.ops.backup import BackupError, create_backup, encrypt_backup_archive
@@ -1951,7 +1965,13 @@ def backup_create(
         typer.echo("--encrypt must be openssl or age", err=True)
         raise typer.Exit(code=1)
     try:
-        manifest = create_backup(settings, archive, require_pg_dump=require_pg_dump)
+        manifest = create_backup(
+            settings,
+            archive,
+            require_pg_dump=require_pg_dump,
+            consistent=consistent,
+            allow_running_server=allow_running_server,
+        )
         written: Path = archive
         if method is not None:
             written = encrypt_backup_archive(

@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS traces (
     ts TEXT NOT NULL,
     tier TEXT,
     category TEXT,
-    steps TEXT NOT NULL
+    steps TEXT NOT NULL,
+    team_id TEXT NOT NULL DEFAULT ''
 );
 """
 
@@ -33,6 +34,7 @@ class PostgresTraceStore:
                 with self._connect() as conn:
                     with conn.cursor() as cur:
                         cur.execute(_SCHEMA)
+                        self._ensure_team_column(cur)
                     conn.commit()
             except Exception:
                 self.enabled = False
@@ -47,23 +49,40 @@ class PostgresTraceStore:
             ) from exc
         return psycopg.connect(self.dsn)
 
+    @staticmethod
+    def _ensure_team_column(cur: Any) -> None:
+        cur.execute(
+            "ALTER TABLE traces ADD COLUMN IF NOT EXISTS"
+            " team_id TEXT NOT NULL DEFAULT ''"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_traces_team ON traces (team_id)"
+        )
+
     def save(
-        self, trace: RequestTrace, *, tier: str | None = None, category: str | None = None
+        self,
+        trace: RequestTrace,
+        *,
+        tier: str | None = None,
+        category: str | None = None,
+        team_id: str | None = None,
     ) -> None:
         if not self.enabled:
             return
         try:
             with self._lock, self._connect() as conn:
                 with conn.cursor() as cur:
+                    self._ensure_team_column(cur)
                     cur.execute(
                         """
-                        INSERT INTO traces (trace_id, ts, tier, category, steps)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO traces (trace_id, ts, tier, category, steps, team_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         ON CONFLICT (trace_id) DO UPDATE SET
                             ts = EXCLUDED.ts,
                             tier = EXCLUDED.tier,
                             category = EXCLUDED.category,
-                            steps = EXCLUDED.steps
+                            steps = EXCLUDED.steps,
+                            team_id = EXCLUDED.team_id
                         """,
                         (
                             trace.trace_id,
@@ -71,6 +90,7 @@ class PostgresTraceStore:
                             tier,
                             category,
                             json.dumps(trace.steps),
+                            (team_id or "").strip(),
                         ),
                     )
                     cur.execute(
@@ -88,8 +108,9 @@ class PostgresTraceStore:
         try:
             with self._lock, self._connect() as conn:
                 with conn.cursor() as cur:
+                    self._ensure_team_column(cur)
                     cur.execute(
-                        "SELECT trace_id, ts, tier, category, steps FROM traces"
+                        "SELECT trace_id, ts, tier, category, steps, team_id FROM traces"
                         " WHERE trace_id = %s",
                         (trace_id,),
                     )
@@ -102,21 +123,31 @@ class PostgresTraceStore:
                 "tier": row[2],
                 "category": row[3],
                 "steps": json.loads(row[4]),
+                "team_id": row[5] or "",
             }
         except Exception:
             return None
 
-    def list(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list(self, limit: int = 50, *, team_id: str | None = None) -> list[dict[str, Any]]:
         if not self.enabled:
             return []
         try:
             with self._lock, self._connect() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT trace_id, ts, tier, category, steps FROM traces"
-                        " ORDER BY seq DESC LIMIT %s",
-                        (max(1, limit),),
-                    )
+                    self._ensure_team_column(cur)
+                    wanted = (team_id or "").strip()
+                    if wanted:
+                        cur.execute(
+                            "SELECT trace_id, ts, tier, category, steps, team_id FROM traces"
+                            " WHERE team_id = %s ORDER BY seq DESC LIMIT %s",
+                            (wanted, max(1, limit)),
+                        )
+                    else:
+                        cur.execute(
+                            "SELECT trace_id, ts, tier, category, steps, team_id FROM traces"
+                            " ORDER BY seq DESC LIMIT %s",
+                            (max(1, limit),),
+                        )
                     rows = cur.fetchall()
             return [
                 {
@@ -125,6 +156,7 @@ class PostgresTraceStore:
                     "tier": row[2],
                     "category": row[3],
                     "steps": json.loads(row[4]),
+                    "team_id": row[5] or "",
                 }
                 for row in rows
             ]

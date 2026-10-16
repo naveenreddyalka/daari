@@ -434,6 +434,37 @@ def decrypt_backup_archive(
     return dest
 
 
+def _checkpoint_sqlite(path: Path) -> None:
+    """Flush WAL into the main DB file before a consistent copy (#1678)."""
+    import sqlite3
+
+    conn = sqlite3.connect(str(path), timeout=30.0)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(FULL)")
+    finally:
+        conn.close()
+
+
+def _pg_tables_from_dump_cmd(pg_dump: str) -> list[str]:
+    """Extract ``--table`` / ``-t`` targets from a catalogued pg_dump command."""
+    try:
+        argv = shlex.split(pg_dump)
+    except ValueError:
+        return []
+    tables: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in {"--table", "-t"} and i + 1 < len(argv):
+            tables.append(argv[i + 1])
+            i += 2
+            continue
+        if arg.startswith("--table="):
+            tables.append(arg.split("=", 1)[1])
+        i += 1
+    return tables
+
+
 def _embed_pg_dump(entry: StoreEntry, root: Path) -> dict[str, Any] | None:
     """Run catalogued ``pg_dump`` into ``stores/pg/<name>.sql`` when the binary exists.
 
@@ -477,17 +508,87 @@ def _embed_pg_dump(entry: StoreEntry, root: Path) -> dict[str, Any] | None:
     }
 
 
+def _embed_pg_dump_consistent(
+    entries: list[StoreEntry],
+    root: Path,
+    *,
+    pg_url: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """One ``pg_dump`` for every Postgres store table (shared snapshot) (#1678).
+
+    Returns ``(embedded_rows, failure_names)``. On success every PG entry shares
+    ``stores/pg/consistent.sql``; on failure all stay external.
+    """
+    pg_entries = [e for e in entries if e.backend == "postgres" and e.pg_dump]
+    if not pg_entries:
+        return [], []
+    if shutil.which("pg_dump") is None:
+        return [], [e.name for e in pg_entries]
+    tables: list[str] = []
+    seen: set[str] = set()
+    for entry in pg_entries:
+        for table in _pg_tables_from_dump_cmd(entry.pg_dump or ""):
+            if table not in seen:
+                seen.add(table)
+                tables.append(table)
+    if not tables:
+        return [], [e.name for e in pg_entries]
+    rel = "stores/pg/consistent.sql"
+    dest = root / rel
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    argv = [shutil.which("pg_dump") or "pg_dump", f"--dbname={pg_url}"]
+    for table in tables:
+        argv.extend(["--table", table])
+    proc = subprocess.run(argv, capture_output=True, check=False)
+    if proc.returncode != 0:
+        return [], [e.name for e in pg_entries]
+    dest.write_bytes(proc.stdout or b"")
+    digest = hashlib.sha256(dest.read_bytes()).hexdigest()
+    size = dest.stat().st_size
+    rows = [
+        {
+            "name": entry.name,
+            "backend": "embedded",
+            "schema_version": entry.schema_version,
+            "source_path": entry.source_path,
+            "archive_path": rel,
+            "present": True,
+            "pg_dump": entry.pg_dump,
+            "external": False,
+            "consistent": True,
+            "size_bytes": size,
+            "sha256": digest,
+        }
+        for entry in pg_entries
+    ]
+    return rows, []
+
+
 def create_backup(
     settings: Any,
     archive: Path,
     *,
     require_pg_dump: bool = False,
+    consistent: bool = False,
+    allow_running_server: bool = False,
 ) -> BackupManifest:
-    """Write ``archive`` (.tar.gz) with manifest + durable sqlite/JSONL/dir stores."""
+    """Write ``archive`` (.tar.gz) with manifest + durable sqlite/JSONL/dir stores.
+
+    ``consistent=True`` refuses a live ``/health`` (unless
+    ``allow_running_server``), checkpoints SQLite WAL files, and dumps every
+    Postgres table in one ``pg_dump`` invocation (#1678).
+    """
     archive = Path(archive).expanduser()
     if archive.suffixes[-2:] != [".tar", ".gz"] and not str(archive).endswith(".tar.gz"):
         raise BackupError("archive path must end with .tar.gz")
     archive.parent.mkdir(parents=True, exist_ok=True)
+
+    if consistent and not allow_running_server and server_appears_running(settings):
+        raise BackupError(
+            "daari server appears to be running (GET /health succeeded); "
+            "stop it before --consistent backup, or pass "
+            "--i-know-server-is-running for a best-effort snapshot"
+        )
 
     entries = catalog_stores(settings)
     manifest = BackupManifest(
@@ -502,7 +603,26 @@ def create_backup(
         root = Path(tmp)
         stores_dir = root / "stores"
         stores_dir.mkdir()
+
+        pg_entries = [e for e in entries if e.backend == "postgres"]
+        consistent_pg_done = False
+        if consistent and pg_entries:
+            rows, fails = _embed_pg_dump_consistent(
+                entries, root, pg_url=_pg_url(settings)
+            )
+            if rows:
+                for row in rows:
+                    rel = str(row["archive_path"])
+                    if rel not in embedded_paths:
+                        embedded_paths.append(rel)
+                    manifest.stores.append(row)
+                consistent_pg_done = True
+            else:
+                pg_failures.extend(fails)
+
         for entry in entries:
+            if consistent_pg_done and entry.backend == "postgres":
+                continue
             row = {
                 "name": entry.name,
                 "backend": entry.backend,
@@ -527,6 +647,13 @@ def create_backup(
                 row["present"] = False
                 manifest.stores.append(row)
                 continue
+            if consistent and entry.backend == "sqlite" and src.is_file():
+                try:
+                    _checkpoint_sqlite(src)
+                except Exception as exc:
+                    raise BackupError(
+                        f"sqlite checkpoint failed for {entry.name}: {exc}"
+                    ) from exc
             dest = root / (entry.archive_path or f"stores/{entry.name}")
             dest.parent.mkdir(parents=True, exist_ok=True)
             if entry.backend == "directory":
@@ -536,6 +663,8 @@ def create_backup(
             else:
                 shutil.copy2(src, dest)
             row["present"] = True
+            if consistent:
+                row["consistent"] = True
             manifest.stores.append(row)
 
         if require_pg_dump and pg_failures:

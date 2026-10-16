@@ -203,6 +203,21 @@ traces) stay viewer-style for virtual keys. With no master key (sandbox hatch
 `dangerously_permit_weak_or_unset_api_key`), gates stay open; `daari doctor`
 warns that the config editor is ungoverned.
 
+### Scoped reads (`?team_id=`)
+
+`GET /v1/daari/traces`, `/v1/daari/stats`, and `/v1/daari/report` accept an
+optional `?team_id=` filter so analysts can mirror CLI `daari spend export
+--team` on the HTTP plane (#1677).
+
+| Caller | Behavior |
+|--------|----------|
+| Master key / SSO `admin` | May omit `team_id` (org-wide) or pass any team id |
+| SSO `analyst` or virtual key bound to a team | Restricted to that team: omitting `team_id` auto-scopes; requesting another team's id returns **403** `team scope denied` |
+| Virtual key with no team pin | Unfiltered (same as today) unless `?team_id=` is passed |
+
+Trace rows store `team_id` on write (from the request's VK/team attribution).
+SQLite and Postgres trace stores both honor the list filter.
+
 ### IdP-minted virtual keys (MDM)
 
 Alongside `daari enterprise bootstrap`, map an IdP claim to key policy so
