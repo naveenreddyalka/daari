@@ -47,17 +47,57 @@ def sign_webhook(body: bytes, secret: str, timestamp: str) -> str:
     ).hexdigest()
 
 
+def signature_header_value(
+    body: bytes,
+    secret: str,
+    timestamp: str,
+    *,
+    previous_secret: str = "",
+) -> str:
+    """Build ``X-Daari-Signature``; include previous during rotation grace (#1680).
+
+    Current secret is always first. When ``previous_secret`` is set, appends
+    a second digest (Stripe-style dual ``v1``) so receivers can verify against
+    either secret without a hard cutover.
+    """
+    primary = sign_webhook(body, secret, timestamp)
+    prev = (previous_secret or "").strip()
+    if not prev:
+        return primary
+    return f"{primary},{sign_webhook(body, prev, timestamp)}"
+
+
+def _signature_candidates(signature_hex: str) -> list[str]:
+    """Split a signature header into digests (plain or ``v1=`` Stripe form)."""
+    out: list[str] = []
+    for part in (signature_hex or "").split(","):
+        token = part.strip().lower()
+        if not token:
+            continue
+        if token.startswith("v1="):
+            token = token[3:].strip()
+        if token:
+            out.append(token)
+    return out
+
+
 def verify_webhook_signature(
     body: bytes,
     signature_hex: str,
     secret: str,
     timestamp: str,
     *,
+    previous_secret: str = "",
     now: int | None = None,
     tolerance_seconds: int = DEFAULT_REPLAY_TOLERANCE_SECONDS,
 ) -> bool:
-    """Receiver-side check: HMAC match and timestamp within replay window."""
-    if not secret or not signature_hex or not timestamp:
+    """Receiver-side check: HMAC match and timestamp within replay window.
+
+    During secret rotation (#1680), pass ``previous_secret`` so either the
+    current or previous signing key accepts the header (which may list both).
+    """
+    secrets = [s.strip() for s in (secret, previous_secret) if (s or "").strip()]
+    if not secrets or not signature_hex or not timestamp:
         return False
     try:
         ts = int(timestamp)
@@ -66,8 +106,15 @@ def verify_webhook_signature(
     moment = int(time.time()) if now is None else int(now)
     if abs(moment - ts) > int(tolerance_seconds):
         return False
-    expected = sign_webhook(body, secret, timestamp)
-    return hmac.compare_digest(expected, signature_hex.strip().lower())
+    candidates = _signature_candidates(signature_hex)
+    if not candidates:
+        return False
+    for sec in secrets:
+        expected = sign_webhook(body, sec, timestamp)
+        for cand in candidates:
+            if hmac.compare_digest(expected, cand):
+                return True
+    return False
 
 
 def _ratio(status: WindowStatus) -> float:
@@ -126,6 +173,7 @@ class BudgetAlerter:
     webhook_url: str
     thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS
     webhook_secret: str = ""
+    webhook_secret_previous: str = ""
     audit: Any | None = None
     metrics: Any | None = None
     transport: Any | None = None
@@ -267,8 +315,11 @@ class BudgetAlerter:
             content = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
             timestamp = str(int(time.time()))
             headers[TIMESTAMP_HEADER] = timestamp
-            headers[SIGNATURE_HEADER] = sign_webhook(
-                content, self.webhook_secret, timestamp
+            headers[SIGNATURE_HEADER] = signature_header_value(
+                content,
+                self.webhook_secret,
+                timestamp,
+                previous_secret=self.webhook_secret_previous,
             )
             headers["Content-Type"] = "application/json"
             json_body = None

@@ -6986,6 +6986,14 @@ backup-restore.md. Covered by `tests/unit/test_backup_restore.py`.
 sockets stay quiet. Docs: config.md + Helm values TLS examples +
 doctor-health. Covered by `tests/unit/test_doctor_data_plane_tls.py`.
 
+### Webhook signing-secret rotation ([#1680](https://github.com/naveenreddyalka/daari/issues/1680))
+
+<!-- tracking:#1680 -->
+**Status:** Done (2026-10-16). `daari alerts rotate-secret` moves current→
+previous with audit row; dual digests on `X-Daari-Signature` during grace;
+doctor tips stale previous (~7d). Docs: budgets-frontier + doctor-health.
+Covered by `tests/unit/test_webhook_secret_rotation.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

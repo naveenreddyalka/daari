@@ -355,9 +355,13 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.audit_backend` | Literal | `'sqlite'` | sqlite (default, per-node file) or postgres (observability.postgres_url) for a single fleet-wide hash chain (#483). |
 | `alerts.budget_webhook_url` | str | `''` |  |
 | `alerts.budget_webhook_secret` | str | `''` |  |
+| `alerts.budget_webhook_secret_previous` | str | `''` | Previous budget webhook HMAC secret kept during rotation grace (#1680). Signing always uses budget_webhook_secret; receivers should verify against current or previous. Set via `daari alerts rotate-secret budget`. |
+| `alerts.budget_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when budget_webhook_secret_previous was last set by rotation (#1680). Doctor tips when the previous secret has been in place a long time. |
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
 | `alerts.key_expiry_webhook_url` | str | `''` | Opt-in webhook for virtual keys entering the expiring-soon window (#1546). Empty disables. |
 | `alerts.key_expiry_webhook_secret` | str | `''` | HMAC secret for key_expiry webhooks (X-Daari-Signature). Supports secret:// refs (#1546). |
+| `alerts.key_expiry_webhook_secret_previous` | str | `''` | Previous key_expiry webhook HMAC secret during rotation grace (#1680). Signing uses key_expiry_webhook_secret; receivers verify against either. Set via `daari alerts rotate-secret key-expiry`. |
+| `alerts.key_expiry_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when key_expiry_webhook_secret_previous was last set by rotation (#1680). |
 | `alerts.key_expiry_warn_days` | int | `14` | Days before expires_at for doctor warnings, Prometheus expiring_soon gauge, and key_expiry webhooks (#1546). Env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS. |
 | `skills_system_prefix` | str | `''` |  |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |

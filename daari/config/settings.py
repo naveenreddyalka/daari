@@ -2181,6 +2181,23 @@ class AlertSettings(BaseModel):
 
     budget_webhook_url: str = ""
     budget_webhook_secret: str = ""
+    budget_webhook_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous budget webhook HMAC secret kept during rotation grace "
+            "(#1680). Signing always uses budget_webhook_secret; receivers "
+            "should verify against current or previous. Set via "
+            "`daari alerts rotate-secret budget`."
+        ),
+    )
+    budget_webhook_secret_rotated_at: str = Field(
+        default="",
+        description=(
+            "ISO-8601 timestamp when budget_webhook_secret_previous was last "
+            "set by rotation (#1680). Doctor tips when the previous secret "
+            "has been in place a long time."
+        ),
+    )
     budget_thresholds: list[float] = Field(default_factory=lambda: [0.8, 1.0])
     key_expiry_webhook_url: str = Field(
         default="",
@@ -2194,6 +2211,21 @@ class AlertSettings(BaseModel):
         description=(
             "HMAC secret for key_expiry webhooks (X-Daari-Signature). "
             "Supports secret:// refs (#1546)."
+        ),
+    )
+    key_expiry_webhook_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous key_expiry webhook HMAC secret during rotation grace "
+            "(#1680). Signing uses key_expiry_webhook_secret; receivers verify "
+            "against either. Set via `daari alerts rotate-secret key-expiry`."
+        ),
+    )
+    key_expiry_webhook_secret_rotated_at: str = Field(
+        default="",
+        description=(
+            "ISO-8601 timestamp when key_expiry_webhook_secret_previous was "
+            "last set by rotation (#1680)."
         ),
     )
     key_expiry_warn_days: int = Field(

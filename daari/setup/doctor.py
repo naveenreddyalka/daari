@@ -126,6 +126,9 @@ def run_doctor(
     results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
+    stale_tip = _check_webhook_secret_previous_stale(cfg)
+    if stale_tip is not None:
+        results.append(stale_tip)
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
     results.extend(_check_postgres_stores(cfg))
@@ -1959,6 +1962,56 @@ def _check_key_expiry_webhook_secret(settings: Settings) -> CheckResult:
         detail = "key_expiry webhook disabled (empty URL)"
     return CheckResult(
         name="key_expiry_webhook_secret", ok=True, detail=detail, optional=True
+    )
+
+
+_WEBHOOK_PREVIOUS_STALE_DAYS = 7
+
+
+def _check_webhook_secret_previous_stale(settings: Settings) -> CheckResult | None:
+    """Tip when a rotated previous webhook secret has lingered (#1680)."""
+    alerts = settings.alerts
+    stale: list[str] = []
+    now = datetime.now(timezone.utc)
+    for family, previous, rotated_at in (
+        (
+            "budget",
+            getattr(alerts, "budget_webhook_secret_previous", "") or "",
+            getattr(alerts, "budget_webhook_secret_rotated_at", "") or "",
+        ),
+        (
+            "key_expiry",
+            getattr(alerts, "key_expiry_webhook_secret_previous", "") or "",
+            getattr(alerts, "key_expiry_webhook_secret_rotated_at", "") or "",
+        ),
+    ):
+        if not str(previous).strip():
+            continue
+        age_days: float | None = None
+        raw = str(rotated_at).strip()
+        if raw:
+            try:
+                when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                age_days = (now - when.astimezone(timezone.utc)).total_seconds() / 86400.0
+            except ValueError:
+                age_days = None
+        if age_days is None or age_days >= _WEBHOOK_PREVIOUS_STALE_DAYS:
+            label = f"{family} ({age_days:.0f}d)" if age_days is not None else family
+            stale.append(label)
+    if not stale:
+        return None
+    return CheckResult(
+        name="webhook_secret_previous",
+        ok=False,
+        detail=(
+            "previous webhook signing secret still set for "
+            + ", ".join(stale)
+            + f" — clear alerts.*_webhook_secret_previous after receivers "
+            f"accept the new secret (grace tip after {_WEBHOOK_PREVIOUS_STALE_DAYS}d; #1680)"
+        ),
+        optional=True,
     )
 
 

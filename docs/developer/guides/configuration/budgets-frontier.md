@@ -158,20 +158,35 @@ When `budget_webhook_secret` is set (plaintext or a `secret://` ref), every
 POST carries `X-Daari-Timestamp` (unix seconds) and `X-Daari-Signature`
 (HMAC-SHA256 hex of `timestamp + "." + body` over the exact request bytes).
 Unset keeps the previous unsigned POST (no new headers). Reject timestamps
-older than ~5 minutes to block replays:
+older than ~5 minutes to block replays.
+
+Rotate without a hard cutover via `daari alerts rotate-secret budget --secret NEW`
+(or `key-expiry`). That moves the current secret to
+`budget_webhook_secret_previous` (and stamps
+`budget_webhook_secret_rotated_at`). Signing always uses the new current;
+during grace the header lists both digests comma-separated
+(`current,previous`) so receivers can verify against either secret. Clear
+`*_webhook_secret_previous` after all receivers accept the new secret —
+`daari doctor` tips when a previous secret has been in place for ~7 days.
 
 ```python
 import hashlib, hmac, time
 
 TOLERANCE = 300  # seconds
 
-def verify(body: bytes, signature: str, secret: str, timestamp: str) -> bool:
+def verify(body: bytes, signature: str, secret: str, timestamp: str,
+           previous: str = "") -> bool:
     if abs(time.time() - int(timestamp)) > TOLERANCE:
         return False
-    expected = hmac.new(
-        secret.encode(), f"{timestamp}.".encode() + body, hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature.strip().lower())
+    secrets = [s for s in (secret, previous) if s]
+    digests = [p.strip().lower().removeprefix("v1=") for p in signature.split(",") if p.strip()]
+    for sec in secrets:
+        expected = hmac.new(
+            sec.encode(), f"{timestamp}.".encode() + body, hashlib.sha256
+        ).hexdigest()
+        if any(hmac.compare_digest(expected, d) for d in digests):
+            return True
+    return False
 ```
 
 Each `(scope, id, window, threshold, reset_epoch)` fires at most once until
@@ -225,7 +240,9 @@ Payload (never includes key material or the secret prefix):
 `key_expiry_webhook_secret` reuses the budget signing headers:
 `X-Daari-Timestamp` + `X-Daari-Signature` (HMAC-SHA256 of
 `timestamp + "." + body`). Verify with the same helper as budget webhooks
-above. Unset keeps an unsigned POST.
+above (including `key_expiry_webhook_secret_previous` during rotation).
+Unset keeps an unsigned POST. Rotate with
+`daari alerts rotate-secret key-expiry --secret NEW`.
 
 Existing keys that only have `daily_budget_usd` / `monthly_budget_usd` are
 migrated to `day` / `month` windows on first open; behavior is unchanged.
