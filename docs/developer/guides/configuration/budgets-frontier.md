@@ -331,7 +331,11 @@ id. Anything unmatched falls back to the flat
 `usage.frontier_price_per_1k_tokens`, which ignores direction and will misprice a
 model whose output rate differs sharply from its input rate. `daari doctor` warns
 about models being billed at that fallback, so add an entry when you adopt a new
-model or your budgets will drift from your real invoice.
+model or your budgets will drift from your real invoice. Ollama ids that end
+with `:cloud` (`clef:cloud`, `clef-flash:cloud`) are metered the same way even
+when a local tier serves them: a `pricing.models` entry sets the ledger cost,
+and a missing entry warns from `daari doctor` and `daari_meta.warning` instead
+of recording $0. Other L3–L5 models stay $0.
 
 ### Shipped list prices (captured 2026-09-07)
 

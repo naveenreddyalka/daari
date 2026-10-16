@@ -7072,6 +7072,15 @@ warning. Spend, cost headers, and stream usage bill 2× from provider
 `usage.speed`, and the spend row stores `usage_speed`. Covered by
 `tests/unit/test_anthropic_fast_mode.py`.
 
+### Ollama cloud model spend ([#1707](https://github.com/naveenreddyalka/daari/issues/1707))
+
+<!-- tracking:#1707 -->
+**Status:** Done (2026-10-16). Model ids ending in `:cloud` are metered from
+`pricing.models` on chat, the Ollama facade, cost headers, and budget/report
+spend. Unpriced cloud ids warn from `daari doctor` and `daari_meta.warning`
+and use the flat fallback instead of $0. Other L3–L5 models stay $0. Covered
+by `tests/unit/test_ollama_cloud_pricing.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

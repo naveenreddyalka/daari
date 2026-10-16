@@ -22,7 +22,7 @@ from starlette.responses import StreamingResponse
 from starlette.types import Send
 
 from daari.gateway.internal import DaariMeta
-from daari.pricing import cost_usd
+from daari.pricing import cost_usd, is_ollama_cloud_model
 
 COST_HEADER = "x-daari-response-cost"
 COST_AVOIDED_HEADER = "x-daari-response-cost-avoided"
@@ -60,6 +60,11 @@ def _frontier_price_per_1k(settings: Any) -> float:
 
 def _is_frontier(meta: DaariMeta) -> bool:
     return meta.tier == FRONTIER_TIER or (meta.executor or "") == "frontier"
+
+
+def _is_metered(meta: DaariMeta) -> bool:
+    """L6 and Ollama ``:cloud`` ids are real spend; other local tiers are not."""
+    return _is_frontier(meta) or is_ollama_cloud_model(meta.model)
 
 
 class SessionAvoidedStore:
@@ -197,7 +202,7 @@ def avoided_usd(
     completion_chars: int = 0,
 ) -> float:
     """Frontier-implied USD of a local serve; 0 on L6."""
-    if _is_frontier(meta):
+    if _is_metered(meta):
         return 0.0
     tokens = (max(0, prompt_chars) + max(0, completion_chars)) / 4
     return tokens / 1000 * _frontier_price_per_1k(settings)
@@ -217,7 +222,7 @@ def response_cost_headers(
     avoided = avoided_usd(
         meta, settings, prompt_chars=prompt_chars, completion_chars=completion_chars
     )
-    if _is_frontier(meta):
+    if _is_metered(meta):
         if meta.cost_usd is not None:
             spent = float(meta.cost_usd)
         else:
@@ -312,8 +317,8 @@ def stream_usage_cost(
     region_pin: str | None = None,
     usage_speed: str | None = None,
 ) -> float:
-    """USD for a streamed usage object. Local tiers are $0; L6 matches headers."""
-    if (tier or "").upper() != FRONTIER_TIER:
+    """USD for a streamed usage object. Local tiers are $0; L6 and :cloud match headers."""
+    if (tier or "").upper() != FRONTIER_TIER and not is_ollama_cloud_model(model):
         return 0.0
     if reported_cost is not None:
         return float(reported_cost)

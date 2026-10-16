@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS budget_window_state (
 # rebuilds the table and copies the old rows across.
 _MIGRATED_TABLES = ("usage", "client_usage")
 _SPEND_TABLES = ("usage", "client_usage", "user_usage")
+# Ollama cloud ids stay on local tiers but are not free (#1707).
+_CLOUD_MODEL_LIKE = "%:cloud"
+
+
+def _metered_spend_sql(placeholder: str = "?") -> str:
+    return f"(tier = {placeholder} OR model LIKE {placeholder})"
 
 
 def _today() -> str:
@@ -443,8 +449,8 @@ class UsageLedger:
             with self._lock, self._connect() as conn:
                 rows = conn.execute(
                     "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
-                    f" FROM {table} WHERE {where} AND tier = ? GROUP BY model",
-                    (*params, FRONTIER_TIER),
+                    f" FROM {table} WHERE {where} AND {_metered_spend_sql()} GROUP BY model",
+                    (*params, FRONTIER_TIER, _CLOUD_MODEL_LIKE),
                 ).fetchall()
         except Exception:
             return 0.0
@@ -648,8 +654,8 @@ class UsageLedger:
                     "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
                     f" FROM {table} WHERE "
                     + where
-                    + " AND tier = ? GROUP BY model",
-                    (*params, FRONTIER_TIER),
+                    + f" AND {_metered_spend_sql()} GROUP BY model",
+                    (*params, FRONTIER_TIER, _CLOUD_MODEL_LIKE),
                 ).fetchall()
         except Exception:
             return 0.0

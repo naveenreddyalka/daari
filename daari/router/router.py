@@ -37,7 +37,7 @@ from daari.observability.trace import TraceStore, add_step, end_trace, start_tra
 from daari.observability.tokens import ollama_token_usage, response_token_usage
 from daari.observability.usage import UsageLedger
 from daari.policy.engine import PolicyEngine
-from daari.pricing import cost_usd
+from daari.pricing import cost_usd, is_ollama_cloud_model
 from daari.providers.integrations import GitHubEnterpriseProvider, GitLabProvider, SourcegraphProvider
 from daari.providers.registry import ProviderRegistry
 from daari.rules.dev_commands import DevCommandMatch, match_dev_command
@@ -1205,6 +1205,7 @@ class Router:
 
                 export_trace(trace, request=request, response=response)
         end_trace()
+        self._note_cloud_billing(response)
         self._ledger_record(request, response)
         self._feedback_record(profile, response)
         self._example_record(request, profile, response)
@@ -1278,6 +1279,17 @@ class Router:
                 pricing=self.pricing,
                 fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
             )
+        )
+
+    def _note_cloud_billing(self, response: InternalResponse) -> None:
+        """Flag an unpriced Ollama ``:cloud`` serve on daari_meta (#1707)."""
+        from daari.pricing import apply_cloud_billing_warning
+
+        apply_cloud_billing_warning(
+            response.daari_meta,
+            self.pricing,
+            fallback_per_1k=float(self.frontier_price_per_1k_tokens or 0.002),
+            model=response.daari_meta.model or response.model,
         )
 
     def _ledger_record(self, request: InternalRequest, response: InternalResponse) -> None:
@@ -5511,7 +5523,10 @@ class Router:
         if not sid:
             return None
         billed = (served.daari_meta.tier if served is not None else None) or tier
-        if (billed or "").upper() == FRONTIER_TIER:
+        served_model = None
+        if served is not None:
+            served_model = served.daari_meta.model or served.model
+        if (billed or "").upper() == FRONTIER_TIER or is_ollama_cloud_model(served_model):
             hop = 0.0
         else:
             hop = (
