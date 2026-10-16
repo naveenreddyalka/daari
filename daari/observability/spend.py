@@ -37,6 +37,7 @@ _COLUMNS = (
     "cost_usd",
     "cost_avoided_usd",
     "cache_hit",
+    "usage_speed",
 )
 
 EXPORT_FIELDS = (
@@ -57,6 +58,7 @@ EXPORT_FIELDS = (
     "cost_usd",
     "cost_avoided_usd",
     "cache_hit",
+    "usage_speed",
 )
 
 _SQLITE_SCHEMA = """
@@ -77,7 +79,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd REAL NOT NULL DEFAULT 0,
     cost_avoided_usd REAL NOT NULL DEFAULT 0,
-    cache_hit INTEGER NOT NULL DEFAULT 0
+    cache_hit INTEGER NOT NULL DEFAULT 0,
+    usage_speed TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -102,7 +105,8 @@ CREATE TABLE IF NOT EXISTS spend_requests (
     cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
     cost_avoided_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
-    cache_hit INTEGER NOT NULL DEFAULT 0
+    cache_hit INTEGER NOT NULL DEFAULT 0,
+    usage_speed TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_spend_requests_ts ON spend_requests (ts);
 CREATE INDEX IF NOT EXISTS idx_spend_requests_key ON spend_requests (key_id);
@@ -123,6 +127,12 @@ _PG_SPEND_USER_ID_MIGRATE = (
 _SPEND_PROVIDER_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN provider TEXT NOT NULL DEFAULT ''"
 )
+_SPEND_USAGE_SPEED_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN usage_speed TEXT NOT NULL DEFAULT ''"
+)
+_PG_SPEND_USAGE_SPEED_MIGRATE = (
+    "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS usage_speed TEXT NOT NULL DEFAULT ''"
+)
 _PG_SPEND_PROVIDER_MIGRATE = (
     "ALTER TABLE spend_requests ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT ''"
 )
@@ -138,6 +148,7 @@ class SpendContext:
     requested_model: str = ""
     service_tier: str | None = None
     region_pin: str | None = None
+    usage_speed: str | None = None
     pricing: Any = None
     fallback_per_1k: float = 0.002
     reported_cost: float | None = None
@@ -173,6 +184,7 @@ def compute_request_usd(
     reported_cost: float | None = None,
     service_tier: str | None = None,
     region_pin: str | None = None,
+    usage_speed: str | None = None,
     avoided_model: str | None = None,
     cache_write_tokens: int = 0,
     cache_ttl: str | None = None,
@@ -193,6 +205,7 @@ def compute_request_usd(
                 cache_ttl=cache_ttl,
                 service_tier=service_tier,
                 region_pin=region_pin,
+                usage_speed=usage_speed,
             )
         return round(max(0.0, spent), 8), 0.0
     avoided = cost_usd(
@@ -229,6 +242,7 @@ def export_dict(row: dict[str, Any]) -> dict[str, Any]:
         "cost_usd": float(row["cost_usd"]),
         "cost_avoided_usd": float(row["cost_avoided_usd"]),
         "cache_hit": bool(row["cache_hit"]),
+        "usage_speed": row.get("usage_speed") or "",
     }
 
 
@@ -302,6 +316,8 @@ class SpendLedger:
             conn.execute(_SPEND_USER_ID_MIGRATE)
         if columns and "provider" not in columns:
             conn.execute(_SPEND_PROVIDER_MIGRATE)
+        if columns and "usage_speed" not in columns:
+            conn.execute(_SPEND_USAGE_SPEED_MIGRATE)
         if columns:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_spend_requests_user ON spend_requests (user_id)"
@@ -333,6 +349,7 @@ class SpendLedger:
         cost_usd: float = 0.0,
         cost_avoided_usd: float = 0.0,
         cache_hit: bool = False,
+        usage_speed: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -343,8 +360,8 @@ class SpendLedger:
                     INSERT INTO spend_requests (
                         ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                         input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-                        cost_usd, cost_avoided_usd, cache_hit
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        cost_usd, cost_avoided_usd, cache_hit, usage_speed
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         ts or _now_iso(),
@@ -363,6 +380,7 @@ class SpendLedger:
                         float(cost_usd),
                         float(cost_avoided_usd),
                         1 if cache_hit else 0,
+                        usage_speed or "",
                     ),
                 )
         except Exception:
@@ -400,6 +418,7 @@ class SpendLedger:
             reported_cost=reported,
             service_tier=bound.service_tier,
             region_pin=bound.region_pin,
+            usage_speed=getattr(bound, "usage_speed", None),
         )
         client = kwargs.get("client_id") or bound.client_id or ""
         user = kwargs.get("user_id")
@@ -422,6 +441,7 @@ class SpendLedger:
             cost_usd=cost,
             cost_avoided_usd=avoided,
             cache_hit=bool(kwargs.get("cache_hit")),
+            usage_speed=str(getattr(bound, "usage_speed", None) or ""),
         )
 
     def iter_rows(
@@ -439,7 +459,7 @@ class SpendLedger:
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
-            " cost_usd, cost_avoided_usd, cache_hit"
+            " cost_usd, cost_avoided_usd, cache_hit, usage_speed"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         try:
@@ -608,6 +628,7 @@ class PostgresSpendLedger(SpendLedger):
                     cur.execute(_PG_SPEND_CACHE_WRITE_MIGRATE)
                     cur.execute(_PG_SPEND_USER_ID_MIGRATE)
                     cur.execute(_PG_SPEND_PROVIDER_MIGRATE)
+                    cur.execute(_PG_SPEND_USAGE_SPEED_MIGRATE)
                     cur.execute(
                         "CREATE INDEX IF NOT EXISTS idx_spend_requests_user "
                         "ON spend_requests (user_id)"
@@ -644,6 +665,7 @@ class PostgresSpendLedger(SpendLedger):
         cost_usd: float = 0.0,
         cost_avoided_usd: float = 0.0,
         cache_hit: bool = False,
+        usage_speed: str = "",
     ) -> None:
         if not self.enabled:
             return
@@ -655,8 +677,8 @@ class PostgresSpendLedger(SpendLedger):
                         INSERT INTO spend_requests (
                             ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,
                             input_tokens, output_tokens, cached_tokens, cache_write_tokens,
-                            cost_usd, cost_avoided_usd, cache_hit
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            cost_usd, cost_avoided_usd, cache_hit, usage_speed
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             ts or _now_iso(),
@@ -675,6 +697,7 @@ class PostgresSpendLedger(SpendLedger):
                             float(cost_usd),
                             float(cost_avoided_usd),
                             1 if cache_hit else 0,
+                            usage_speed or "",
                         ),
                     )
                 conn.commit()
@@ -696,7 +719,7 @@ class PostgresSpendLedger(SpendLedger):
         sql = (
             "SELECT ts, request_id, key_id, team_id, client_id, user_id, model, provider, tier,"
             " input_tokens, output_tokens, cached_tokens, cache_write_tokens,"
-            " cost_usd, cost_avoided_usd, cache_hit"
+            " cost_usd, cost_avoided_usd, cache_hit, usage_speed"
             f" FROM spend_requests WHERE {where} ORDER BY ts, id"
         )
         try:

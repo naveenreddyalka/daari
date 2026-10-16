@@ -200,6 +200,8 @@ class DaariMeta(BaseModel):
     reasoning_effort: str | None = None
     # Client service_tier when present (#430).
     service_tier: str | None = None
+    # Provider-reported Anthropic usage.speed (fast|standard) (#1702).
+    usage_speed: str | None = None
     # Key/team residency pin for regional-processing cost uplift (#1531).
     region_pin: str | None = None
     # True when tools / tool history make this an agent turn (ADR-0004 / #604).

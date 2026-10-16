@@ -59,6 +59,19 @@ def _tool_calls_from_anthropic_content(content: Any) -> list[dict[str, Any]] | N
     return calls or None
 
 
+def _anthropic_usage_speed(data: dict[str, Any]) -> str | None:
+    usage = data.get("usage") if isinstance(data, dict) else None
+    if not isinstance(usage, dict):
+        return None
+    speed = usage.get("speed")
+    if not isinstance(speed, str):
+        return None
+    key = speed.strip().lower()
+    if key in {"fast", "standard"}:
+        return key
+    return None
+
+
 @dataclass
 class FrontierExecutor:
     base_url: str
@@ -383,7 +396,12 @@ class FrontierExecutor:
             daari_cost_usd=0.0,
             service_tier=request.sampling.service_tier,
             agent_usage=agent_usage,
+            usage_speed=_anthropic_usage_speed(data) if anthropic else None,
         )
+        gate_warning = getattr(request.sampling, "gate_warning", None)
+        if gate_warning:
+            existing = meta.warning
+            meta.warning = f"{existing}; {gate_warning}" if existing else gate_warning
         self._apply_param_compat_meta(meta)
         return InternalResponse(
             content=content or "",

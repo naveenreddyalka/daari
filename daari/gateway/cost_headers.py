@@ -231,6 +231,7 @@ def response_cost_headers(
                 cache_write_tokens=int(meta.cache_write_tokens or 0),
                 service_tier=meta.service_tier,
                 region_pin=meta.region_pin,
+                usage_speed=getattr(meta, "usage_speed", None),
             )
     else:
         spent = 0.0
@@ -309,6 +310,7 @@ def stream_usage_cost(
     reported_cost: float | None = None,
     service_tier: str | None = None,
     region_pin: str | None = None,
+    usage_speed: str | None = None,
 ) -> float:
     """USD for a streamed usage object. Local tiers are $0; L6 matches headers."""
     if (tier or "").upper() != FRONTIER_TIER:
@@ -324,6 +326,7 @@ def stream_usage_cost(
         cached_input_tokens=int(cached_input_tokens),
         service_tier=service_tier,
         region_pin=region_pin,
+        usage_speed=usage_speed,
     )
 
 

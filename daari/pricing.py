@@ -29,6 +29,17 @@ _SERVICE_TIER_FACTORS = {
 
 # OpenAI Ultrafast is only published for these Responses models (#1519).
 _ULTRAFAST_MODELS = ("gpt-6.1-sol", "gpt-6-astra")
+
+# Anthropic fast mode (#1702). Opus 5.5 is GA; Opus 5 / 4.8 still need the beta.
+ANTHROPIC_FAST_MODE_BETA = "fast-mode-2026-02-01"
+_ANTHROPIC_FAST_GA = "claude-opus-5-5"
+_ANTHROPIC_FAST_MODELS = (
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-opus-4.8",
+    "claude-opus-4-8",
+)
+_ANTHROPIC_FAST_PREVIEW = frozenset({"claude-opus-5", "claude-opus-4.8", "claude-opus-4-8"})
 # Astra Ultrafast supports US residency + global only; EU pin is unsupported.
 _ULTRAFAST_EU_UNSUPPORTED = frozenset({"gpt-6-astra"})
 
@@ -43,6 +54,15 @@ _REGIONAL_PREMIUM_MODEL_KEYS = (
     "gpt-6",
     "chat-latest",
 )
+
+
+def anthropic_speed_factor(speed: str | None) -> float:
+    """2× input and output when the provider reports ``usage.speed == fast`` (#1702)."""
+    if speed is None or not str(speed).strip():
+        return 1.0
+    if str(speed).strip().lower() == "fast":
+        return 2.0
+    return 1.0
 
 
 def service_tier_factor(tier: str | None) -> float:
@@ -103,6 +123,44 @@ def resolve_service_tier_for_request(
             service_tier=None, warning="ultrafast_eu_unsupported"
         )
     return ServiceTierDecision(service_tier="ultrafast")
+
+
+@dataclass(frozen=True)
+class AnthropicSpeedDecision:
+    """Effective Anthropic ``speed`` after model and beta gating (#1702)."""
+
+    speed: str | None
+    warning: str | None = None
+
+
+def resolve_anthropic_speed(
+    *,
+    model: str | None,
+    speed: str | None,
+    anthropic_beta: str | None = None,
+) -> AnthropicSpeedDecision:
+    """Forward ``speed: fast`` only when the model publishes fast mode.
+
+    ``claude-opus-5-5`` is GA. ``claude-opus-5`` and ``claude-opus-4.8`` need
+    the ``fast-mode-2026-02-01`` beta header. Anything else is cleared so we
+    do not advertise a speed the provider will reject.
+    """
+    if speed is None or not str(speed).strip():
+        return AnthropicSpeedDecision(speed=None)
+    key = str(speed).strip().lower()
+    if key == "standard":
+        return AnthropicSpeedDecision(speed="standard")
+    if key != "fast":
+        return AnthropicSpeedDecision(speed=None, warning="fast_unsupported_speed")
+    matched = matching_model_key(model or "", _ANTHROPIC_FAST_MODELS) if model else None
+    if matched == _ANTHROPIC_FAST_GA:
+        return AnthropicSpeedDecision(speed="fast")
+    if matched in _ANTHROPIC_FAST_PREVIEW:
+        beta = anthropic_beta or ""
+        if ANTHROPIC_FAST_MODE_BETA in beta:
+            return AnthropicSpeedDecision(speed="fast")
+        return AnthropicSpeedDecision(speed=None, warning="fast_mode_beta_required")
+    return AnthropicSpeedDecision(speed=None, warning="fast_unsupported_model")
 
 
 @dataclass(frozen=True)
@@ -212,6 +270,7 @@ def cost_usd(
     service_tier: str | None = None,
     region_pin: str | None = None,
     billing_path: str | None = None,
+    usage_speed: str | None = None,
 ) -> float:
     price = resolve_price(
         model,
@@ -234,6 +293,7 @@ def cost_usd(
         total
         * service_tier_factor(service_tier)
         * regional_processing_factor(region_pin, model)
+        * anthropic_speed_factor(usage_speed)
     )
 
 
