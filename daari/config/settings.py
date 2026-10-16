@@ -2199,6 +2199,16 @@ class AlertSettings(BaseModel):
         ),
     )
     budget_thresholds: list[float] = Field(default_factory=lambda: [0.8, 1.0])
+    member_budget_thresholds: list[float] = Field(
+        default_factory=list,
+        description=(
+            "Optional ratios of a key's user_daily_usd_cap. When set, a named "
+            "end user on a team key crossing one of these ratios POSTs a "
+            "budget webhook with scope=member (#1633). Empty disables member "
+            "alerts and leaves key/team alerts unchanged. "
+            "Env: DAARI_ALERTS__MEMBER_BUDGET_THRESHOLDS."
+        ),
+    )
     key_expiry_webhook_url: str = Field(
         default="",
         description=(
@@ -2243,6 +2253,11 @@ class AlertSettings(BaseModel):
     def _thresholds(cls, value: list[float]) -> list[float]:
         cleaned = sorted({float(item) for item in value if 0 < float(item) <= 1.0})
         return cleaned or [0.8, 1.0]
+
+    @field_validator("member_budget_thresholds")
+    @classmethod
+    def _member_thresholds(cls, value: list[float]) -> list[float]:
+        return sorted({float(item) for item in value if 0 < float(item) <= 1.0})
 
 
 class KeyLockoutSettings(BaseModel):

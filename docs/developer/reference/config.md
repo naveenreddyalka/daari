@@ -362,6 +362,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `alerts.budget_webhook_secret_previous` | str | `''` | Previous budget webhook HMAC secret kept during rotation grace (#1680). Signing always uses budget_webhook_secret; receivers should verify against current or previous. Set via `daari alerts rotate-secret budget`. |
 | `alerts.budget_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when budget_webhook_secret_previous was last set by rotation (#1680). Doctor tips when the previous secret has been in place a long time. |
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
+| `alerts.member_budget_thresholds` | list | `[]` | Optional ratios of a key's user_daily_usd_cap. When set, a named end user on a team key crossing one of these ratios POSTs a budget webhook with scope=member (#1633). Empty disables member alerts and leaves key/team alerts unchanged. Env: DAARI_ALERTS__MEMBER_BUDGET_THRESHOLDS. |
 | `alerts.key_expiry_webhook_url` | str | `''` | Opt-in webhook for virtual keys entering the expiring-soon window (#1546). Empty disables. |
 | `alerts.key_expiry_webhook_secret` | str | `''` | HMAC secret for key_expiry webhooks (X-Daari-Signature). Supports secret:// refs (#1546). |
 | `alerts.key_expiry_webhook_secret_previous` | str | `''` | Previous key_expiry webhook HMAC secret during rotation grace (#1680). Signing uses key_expiry_webhook_secret; receivers verify against either. Set via `daari alerts rotate-secret key-expiry`. |

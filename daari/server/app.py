@@ -102,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.budget_alerter = BudgetAlerter(
             webhook_url=resolved.alerts.budget_webhook_url,
             thresholds=tuple(resolved.alerts.budget_thresholds),
+            member_thresholds=tuple(resolved.alerts.member_budget_thresholds),
             webhook_secret=resolved.alerts.budget_webhook_secret,
             webhook_secret_previous=resolved.alerts.budget_webhook_secret_previous,
             audit=audit,
@@ -509,6 +510,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     },
                 )
             budget_response_headers: dict[str, str] = {}
+            member_alert: dict | None = None
             # Optional X-Daari-Team selection with membership enforcement (#1107).
             if claims.kind == "virtual" and claims.virtual_key is not None and store is not None:
                 from daari.server.auth import (
@@ -681,6 +683,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         if request_tightest.in_soft_band(soft_ratio):
                             budget_response_headers[QUOTA_REQUESTS_WARNING_HEADER] = "soft"
                             request.state.request_quota_soft = True
+                    member_thresholds = tuple(
+                        getattr(
+                            getattr(request.app.state, "budget_alerter", None),
+                            "member_thresholds",
+                            (),
+                        )
+                        or ()
+                    )
+                    if (
+                        member_thresholds
+                        and team is not None
+                        and key is not None
+                        and float(getattr(key, "user_daily_usd_cap", 0.0) or 0) > 0
+                    ):
+                        from daari.observability.budget_alerts import user_id_from_body
+
+                        raw_user_body = b""
+                        if request.method in {"POST", "PUT", "PATCH"}:
+                            raw_user_body = await request.body()
+                        member_user = user_id_from_body(raw_user_body)
+                        spend_fn = getattr(ledger, "frontier_spend_usd_for_user", None)
+                        if member_user and callable(spend_fn):
+                            try:
+                                before_member = float(
+                                    spend_fn(
+                                        client,
+                                        member_user,
+                                        window="day",
+                                        pricing=pricing,
+                                        fallback_per_1k=fallback,
+                                    )
+                                    or 0.0
+                                )
+                            except Exception:
+                                before_member = None
+                            if before_member is not None:
+                                member_alert = {
+                                    "user_id": member_user,
+                                    "before": before_member,
+                                    "limit": float(key.user_daily_usd_cap),
+                                }
             request.state.auth_claims = claims
             # Throttled last_used_at stamp for virtual keys (#1545).
             if (
@@ -748,6 +791,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
                     ),
                 )
+            if (
+                member_alert
+                and alerter is not None
+                and getattr(alerter, "enabled", False)
+                and team is not None
+                and claims.virtual_key is not None
+                and ledger is not None
+            ):
+                spend_fn = getattr(ledger, "frontier_spend_usd_for_user", None)
+                if callable(spend_fn):
+                    try:
+                        after_member = float(
+                            spend_fn(
+                                client,
+                                member_alert["user_id"],
+                                window="day",
+                                pricing=pricing,
+                                fallback_per_1k=fallback,
+                            )
+                            or 0.0
+                        )
+                    except Exception:
+                        after_member = None
+                    if after_member is not None:
+                        import asyncio
+
+                        from daari.server.shutdown import track_budget_alert_task
+
+                        track_budget_alert_task(
+                            request.app,
+                            asyncio.create_task(
+                                asyncio.to_thread(
+                                    alerter.notify_member,
+                                    member_alert["before"],
+                                    after_member,
+                                    key=claims.virtual_key,
+                                    team=team,
+                                    user_id=member_alert["user_id"],
+                                    limit_usd=member_alert["limit"],
+                                )
+                            ),
+                        )
             return response
 
     open_rate_paths = {"/health", "/ready", "/v1/messages/health", "/metrics", "/v1/daari/stats"}

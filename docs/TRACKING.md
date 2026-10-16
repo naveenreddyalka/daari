@@ -7028,6 +7028,15 @@ the 11434 reminder, and `X-Daari-Client-Id: chatgpt-desktop`. App preferences
 are not written. Docs: chatgpt-desktop.md. Covered by
 `tests/unit/test_configure_cli.py`.
 
+### Per-member budget threshold webhooks ([#1633](https://github.com/naveenreddyalka/daari/issues/1633))
+
+<!-- tracking:#1633 -->
+**Status:** Done (2026-10-16). `alerts.member_budget_thresholds` (empty by
+default) POSTs `scope=member` when a named user crosses a ratio of
+`user_daily_usd_cap` on a team key. Redis dedupe fail-open matches team
+alerts; signing reuses `X-Daari-Signature`. Docs: budgets-frontier, config.md.
+Covered by `tests/unit/test_budget_alerts.py`.
+
 ### LiteLLM 1.106 decision-model guardrail watch ([#1598](https://github.com/naveenreddyalka/daari/issues/1598))
 
 <!-- tracking:#1598 -->
