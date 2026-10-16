@@ -3,6 +3,8 @@
 **Outcome:** ChatGPT Desktop uses daari via the Ollama-compatible facade
 (Ollama v0.34+ can point local model traffic at a custom Ollama host).
 
+**Fast path:** `daari configure chatgpt-desktop` (prints the Ollama host and a verify curl; see also `daari setup chatgpt-desktop`). Does not edit ChatGPT Desktop preferences.
+
 ## Prerequisites
 
 - `daari serve` running

@@ -18,6 +18,7 @@ class ClientRegistry:
 
 
 def default_registry() -> ClientRegistry:
+    from daari.clients.chatgpt_desktop.recipe import ChatGPTDesktopSetupRecipe
     from daari.clients.claude_code.recipe import ClaudeCodeSetupRecipe
     from daari.clients.claude_desktop.recipe import ClaudeDesktopSetupRecipe
     from daari.clients.cursor.recipe import CursorSetupRecipe
@@ -25,6 +26,7 @@ def default_registry() -> ClientRegistry:
     from daari.clients.vscode.recipe import VSCodeSetupRecipe
 
     registry = ClientRegistry()
+    registry.register(ChatGPTDesktopSetupRecipe())
     registry.register(ClaudeCodeSetupRecipe())
     registry.register(ClaudeDesktopSetupRecipe())
     registry.register(CursorSetupRecipe())

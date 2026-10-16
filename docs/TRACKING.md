@@ -7019,6 +7019,15 @@ traces-stats.md. Covered by `tests/unit/test_request_log_events_http.py`.
 to `deploy/grafana/daari-dashboard.json`. Covered by
 `tests/unit/test_grafana_dashboard.py`.
 
+### ChatGPT Desktop configure recipe ([#1686](https://github.com/naveenreddyalka/daari/issues/1686))
+
+<!-- tracking:#1686 -->
+**Status:** Done (2026-10-16). `daari configure chatgpt-desktop` and
+`daari setup chatgpt-desktop` print the Ollama host (port 11435, no `/v1`),
+the 11434 reminder, and `X-Daari-Client-Id: chatgpt-desktop`. App preferences
+are not written. Docs: chatgpt-desktop.md. Covered by
+`tests/unit/test_configure_cli.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
