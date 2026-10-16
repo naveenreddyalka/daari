@@ -7081,6 +7081,16 @@ spend. Unpriced cloud ids warn from `daari doctor` and `daari_meta.warning`
 and use the flat fallback instead of $0. Other L3–L5 models stay $0. Covered
 by `tests/unit/test_ollama_cloud_pricing.py`.
 
+### Scoped admin reads ([#1703](https://github.com/naveenreddyalka/daari/issues/1703))
+
+<!-- tracking:#1703 -->
+**Status:** Done (2026-10-16). Team-scoped analysts get 404 on another team's
+trace detail. Scoped report totals and frontier spend come from that team's
+client rows; request quotas and `team_model_spend` stay on that team;
+`model_group_spend` is omitted because it is org-wide. Scoped stats zero
+fleet `tiers` / `errors` / `total_requests`. Admin reads without `team_id`
+stay fleet-wide. Covered by `tests/unit/test_team_scoped_admin_reads.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
