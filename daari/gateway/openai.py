@@ -736,6 +736,21 @@ def _caller_team_id(request: Request) -> str | None:
     return team_id_from_claims(sso if isinstance(sso, dict) else None)
 
 
+def _parse_event_cursor(cursor: str | None) -> int | None:
+    """Exclusive newest-first cursor: return rows with id < cursor (#1683)."""
+    if cursor is None or not str(cursor).strip():
+        return None
+    try:
+        value = int(str(cursor).strip())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400, detail="cursor must be an integer event id"
+        ) from exc
+    if value < 1:
+        raise HTTPException(status_code=400, detail="cursor must be an integer event id")
+    return value
+
+
 def _admin_team_scope(request: Request, role: str, team_id: str | None) -> str | None:
     """Resolve ``?team_id=`` for analyst read surfaces; 403 cross-team (#1677)."""
     from daari.enterprise.rbac import resolve_team_read_filter
@@ -2509,6 +2524,53 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 "entries": entries,
                 **_page_meta(total, limit=lim, offset=off, returned=len(entries)),
             }
+
+        @router.get("/v1/daari/events")
+        async def daari_events_list(
+            request: Request,
+            limit: int | None = None,
+            offset: int | None = None,
+            cursor: str | None = None,
+            team_id: str | None = None,
+            key_id: str | None = None,
+        ) -> dict[str, Any]:
+            """Newest-first gateway request/event log (#1683)."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_role(request, ctx, "analyst")
+            scope = _admin_team_scope(request, role, team_id)
+            from daari.gateway.admin_read import MAX_EVENTS_LIMIT, _clamp_page, _page_meta
+            from daari.gateway.postgres_request_log import request_log_store_from_settings
+
+            store = request_log_store_from_settings(ctx.settings)
+            if store is None:
+                raise HTTPException(
+                    status_code=501,
+                    detail=(
+                        "request-log listing requires "
+                        "observability.request_log.backend=postgres"
+                    ),
+                )
+            lim, off = _clamp_page(limit=limit, offset=offset, maximum=MAX_EVENTS_LIMIT)
+            before_id = _parse_event_cursor(cursor)
+            key = (key_id or "").strip() or None
+            events, total = store.query_events(
+                limit=lim,
+                offset=off,
+                before_id=before_id,
+                team_id=scope,
+                key_id=key,
+            )
+            page = _page_meta(total, limit=lim, offset=off, returned=len(events))
+            result: dict[str, Any] = {"events": events, **page}
+            if events and page["has_more"]:
+                result["next_cursor"] = str(events[-1]["id"])
+            else:
+                result["next_cursor"] = None
+            if scope:
+                result["team_id"] = scope
+            if key:
+                result["key_id"] = key
+            return result
 
         @router.get("/v1/daari/keys")
         async def daari_keys_list(

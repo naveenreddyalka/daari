@@ -104,6 +104,68 @@ class PostgresRequestLogStore:
         except Exception:
             pass
 
+    def query_events(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        before_id: int | None = None,
+        team_id: str | None = None,
+        key_id: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Newest-first page plus total matches (#1683).
+
+        ``before_id`` keeps rows with ``id`` strictly less than that cursor.
+        ``team_id`` / ``key_id`` match those payload fields when set.
+        """
+        lim = max(1, min(int(limit), 1000))
+        off = max(0, int(offset))
+        team = (team_id or "").strip() or None
+        key = (key_id or "").strip() or None
+        if self._memory:
+            rows, lock = _memory_bucket(self.dsn)
+            with lock:
+                matched = [
+                    dict(r)
+                    for r in rows
+                    if _row_in_query(
+                        r,
+                        before_id=before_id,
+                        team_id=team,
+                        key_id=key,
+                    )
+                ]
+            matched.sort(key=lambda r: int(r["id"]), reverse=True)
+            return matched[off : off + lim], len(matched)
+        if not self.enabled:
+            return [], 0
+        clauses: list[str] = []
+        params: list[Any] = []
+        if before_id is not None:
+            clauses.append("id < %s")
+            params.append(int(before_id))
+        if team is not None:
+            clauses.append("(payload::json->>'team_id') = %s")
+            params.append(team)
+        if key is not None:
+            clauses.append("(payload::json->>'key_id') = %s")
+            params.append(key)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        with self._lock, self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT COUNT(*) FROM daari_request_log{where}",
+                    params,
+                )
+                total = int(cur.fetchone()[0] or 0)
+                cur.execute(
+                    "SELECT id, ts, event, payload FROM daari_request_log"
+                    f"{where} ORDER BY id DESC LIMIT %s OFFSET %s",
+                    [*params, lim, off],
+                )
+                fetched = cur.fetchall()
+        return [_decode_row(row) for row in fetched], total
+
     def list_events(self, *, limit: int = 1000) -> list[dict[str, Any]]:
         """Return recent rows oldest-first (tests / tooling)."""
         if self._memory:
@@ -120,23 +182,7 @@ class PostgresRequestLogStore:
                     (limit,),
                 )
                 fetched = cur.fetchall()
-        out: list[dict[str, Any]] = []
-        for row in fetched:
-            payload = row[3]
-            if isinstance(payload, str):
-                try:
-                    payload = json.loads(payload)
-                except json.JSONDecodeError:
-                    payload = {"raw": payload}
-            out.append(
-                {
-                    "id": int(row[0]),
-                    "ts": row[1],
-                    "event": row[2],
-                    "payload": payload if isinstance(payload, dict) else {"raw": payload},
-                }
-            )
-        return out
+        return [_decode_row(row) for row in fetched]
 
     def prune_before(self, cutoff: datetime, *, dry_run: bool = False) -> int:
         """Delete rows with ts strictly before cutoff. Returns count removed."""
@@ -237,6 +283,38 @@ class PostgresRequestLogStore:
                 return len(doomed)
         except Exception:
             return 0
+
+
+def _decode_row(row: Any) -> dict[str, Any]:
+    payload = row[3]
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            payload = {"raw": payload}
+    return {
+        "id": int(row[0]),
+        "ts": row[1],
+        "event": row[2],
+        "payload": payload if isinstance(payload, dict) else {"raw": payload},
+    }
+
+
+def _row_in_query(
+    row: dict[str, Any],
+    *,
+    before_id: int | None,
+    team_id: str | None,
+    key_id: str | None,
+) -> bool:
+    if before_id is not None and int(row.get("id") or 0) >= int(before_id):
+        return False
+    payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+    if team_id is not None and str(payload.get("team_id") or "") != team_id:
+        return False
+    if key_id is not None and str(payload.get("key_id") or "") != key_id:
+        return False
+    return True
 
 
 def _payload_matches_subject(payload: dict[str, Any], kind: str, value: str) -> bool:

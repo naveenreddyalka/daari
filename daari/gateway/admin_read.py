@@ -7,10 +7,18 @@ from typing import Any
 # Default page size for GET /v1/daari/keys and /teams (#1499).
 DEFAULT_INVENTORY_LIMIT = 100
 MAX_INVENTORY_LIMIT = 500
+# GET /v1/daari/events hard cap (#1683). Default stays 100.
+MAX_EVENTS_LIMIT = 1000
 
 
-def _clamp_page(*, limit: int | None, offset: int | None) -> tuple[int, int]:
+def _clamp_page(
+    *,
+    limit: int | None,
+    offset: int | None,
+    maximum: int | None = None,
+) -> tuple[int, int]:
     """Normalize limit/offset; default cap is DEFAULT_INVENTORY_LIMIT."""
+    cap = MAX_INVENTORY_LIMIT if maximum is None else int(maximum)
     try:
         lim = DEFAULT_INVENTORY_LIMIT if limit is None else int(limit)
     except (TypeError, ValueError):
@@ -19,7 +27,7 @@ def _clamp_page(*, limit: int | None, offset: int | None) -> tuple[int, int]:
         off = 0 if offset is None else int(offset)
     except (TypeError, ValueError):
         off = 0
-    lim = max(1, min(lim, MAX_INVENTORY_LIMIT))
+    lim = max(1, min(lim, cap))
     off = max(0, off)
     return lim, off
 
