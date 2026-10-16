@@ -6994,6 +6994,14 @@ previous with audit row; dual digests on `X-Daari-Signature` during grace;
 doctor tips stale previous (~7d). Docs: budgets-frontier + doctor-health.
 Covered by `tests/unit/test_webhook_secret_rotation.py`.
 
+### HTTP GET /v1/daari/events ([#1683](https://github.com/naveenreddyalka/daari/issues/1683))
+
+<!-- tracking:#1683 -->
+**Status:** Done (2026-10-16). Newest-first `GET /v1/daari/events` over the
+postgres request log (`limit`/`offset`/`cursor`, optional `team_id`/`key_id`,
+default 100, max 1000). JSONL-only returns 501. Docs: http-api.md,
+traces-stats.md. Covered by `tests/unit/test_request_log_events_http.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

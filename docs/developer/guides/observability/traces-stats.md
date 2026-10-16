@@ -10,6 +10,8 @@ daari trace <trace_id>
 curl -s http://127.0.0.1:11435/v1/daari/traces?limit=10 | python -m json.tool
 ```
 
+`GET /v1/daari/events` lists newest-first gateway events when `observability.request_log.backend=postgres` (analyst/master or virtual-key read; JSONL-only returns **501**; `limit` default 100, max 1000; optional `team_id` / `key_id`).
+
 Pass `X-Daari-Meta: true` on chat calls to embed `daari_meta` (tier, cache_hit, trace_id, boundary, `agent_turn`).
 
 Web UI: `daari web-ui serve` → `http://127.0.0.1:11437`.
