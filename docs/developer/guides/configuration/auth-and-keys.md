@@ -290,6 +290,7 @@ when `postgres.enabled` is true.
 | `auth.key_expired` | Expired virtual key 401 | `key_id`, `expires_at` |
 | `auth.sso_key_required` | Raw SSO bearer on inference route 401 | `path`, `sub` |
 | `auth.invalid_key` | Invalid/missing key 401 | `prefix` (≤10 chars), `path`; identical `(prefix, path)` deduped for 60s |
+| `auth.key_locked` | Same key prefix exceeded `auth.key_lockout.max_failures` | `prefix` (≤10), `failures`, `retry_after`, `scope=key` |
 | `budget.exceeded` | Frontier/key budget or request-quota 402 | `key_id`, `team_id`, `scope`, `window`, `remaining`, `limit`, `quota` (no prompts/secrets) |
 | `rate_limit.exceeded` | RPM/TPM/RPD 429 | `key_id`, `team_id`, `model`, `scope`, `bucket`, `remaining`, `limit` |
 | `concurrency.exceeded` | In-flight concurrency 503 | `key_id`, `team_id`, `model`, `scope`, `remaining`, `limit` |
