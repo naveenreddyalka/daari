@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from daari.auth.budgets import WindowStatus, window_label
+from daari.auth.budgets import BudgetWindow, WindowStatus, window_label
 from daari.auth.virtual_keys import Team, VirtualKey
 
 DEFAULT_THRESHOLDS = (0.8, 1.0)
@@ -172,6 +172,7 @@ def crossings(
 class BudgetAlerter:
     webhook_url: str
     thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS
+    member_thresholds: tuple[float, ...] = ()
     webhook_secret: str = ""
     webhook_secret_previous: str = ""
     audit: Any | None = None
@@ -379,3 +380,78 @@ class BudgetAlerter:
         for body in payloads:
             self.deliver(body)
         return payloads
+
+    def notify_member(
+        self,
+        before_spend: float,
+        after_spend: float,
+        *,
+        key: VirtualKey,
+        team: Team | None,
+        user_id: str,
+        limit_usd: float | None = None,
+        now: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """POST when one end-user crosses a share of ``user_daily_usd_cap`` (#1633).
+
+        Empty ``member_thresholds`` is a no-op so key/team alerts stay unchanged.
+        Dedupe is once per team member, daily window, and threshold.
+        """
+        if not self.enabled or not self.member_thresholds:
+            return []
+        member = (user_id or "").strip()
+        if team is None or not member:
+            return []
+        cap = float(key.user_daily_usd_cap if limit_usd is None else limit_usd)
+        if cap <= 0:
+            return []
+        moment = now or datetime.now(timezone.utc)
+        window = BudgetWindow("day", cap)
+        before = WindowStatus(window=window, scope="user", spend=float(before_spend), now=moment)
+        after = WindowStatus(window=window, scope="user", spend=float(after_spend), now=moment)
+        out: list[dict[str, Any]] = []
+        for status, threshold in crossings([before], [after], self.member_thresholds):
+            stamp = self._dedupe_key(status, f"{team.team_id}:{member}", threshold)
+            stamp = ("member", stamp[1], stamp[2], stamp[3], stamp[4])
+            with self._lock:
+                if stamp in self._seen:
+                    continue
+                self._seen.add(stamp)
+            if self._redis_enabled() and not self._claim_redis(stamp, status):
+                continue
+            out.append(
+                {
+                    "scope": "member",
+                    "id": member,
+                    "team_id": team.team_id,
+                    "user_id": member,
+                    "name": member,
+                    "window": window_label(status.window.duration),
+                    "threshold": float(threshold),
+                    "limit": float(status.limit),
+                    "spent": round(float(status.spend), 6),
+                    "limit_usd": float(status.limit),
+                    "spent_usd": round(float(status.spend), 6),
+                    "remaining_usd": round(status.remaining, 6),
+                    "reset_epoch": status.reset_epoch,
+                }
+            )
+        for body in out:
+            self.deliver(body)
+        return out
+
+
+def user_id_from_body(raw: bytes) -> str:
+    """OpenAI ``user`` field from a JSON body; empty when absent or unreadable."""
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    raw_user = parsed.get("user")
+    if raw_user is None:
+        return ""
+    return str(raw_user).strip()

@@ -145,7 +145,9 @@ class TestAlerter:
         assert alerts.budget_webhook_url == ""
         assert alerts.budget_webhook_secret == ""
         assert alerts.budget_thresholds == [0.8, 1.0]
+        assert alerts.member_budget_thresholds == []
         assert BudgetAlerter(webhook_url="").enabled is False
+        assert BudgetAlerter(webhook_url="https://hooks.example/budget").member_thresholds == ()
 
     def test_payload_has_no_key_material(self, tmp_path):
         posted: list[dict] = []
@@ -379,3 +381,115 @@ class TestRedisFleetDedupe:
         names = [name for name, _detail in events]
         assert "budget.alert_dedupe_degraded" in names
         assert "budget.alert" in names
+
+
+MEMBER_KEY = VirtualKey(
+    key_id="k1",
+    name="shared",
+    prefix="dk_ci",
+    team_id="t1",
+    user_daily_usd_cap=10.0,
+)
+
+
+class TestMemberBudgetAlerts:
+    """Per-member threshold webhooks on a shared team key (#1633)."""
+
+    def _alerter(self, **kwargs: object) -> tuple[BudgetAlerter, list]:
+        hits: list = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            hits.append(request)
+            return httpx.Response(204)
+
+        alerter = BudgetAlerter(
+            webhook_url="https://hooks.example/budget",
+            member_thresholds=(0.8, 1.0),
+            transport=httpx.MockTransport(handler),
+            **kwargs,
+        )
+        return alerter, hits
+
+    def test_crossing_posts_member_payload_once(self):
+        alerter, hits = self._alerter(webhook_secret="whsec_member")
+        bodies = alerter.notify_member(
+            7.0,
+            8.5,
+            key=MEMBER_KEY,
+            team=TEAM,
+            user_id="agent-7",
+            now=NOW,
+        )
+        assert len(bodies) == 1
+        body = bodies[0]
+        assert body["scope"] == "member"
+        assert body["team_id"] == "t1"
+        assert body["user_id"] == "agent-7"
+        assert body["id"] == "agent-7"
+        assert body["window"] == "daily"
+        assert body["spent"] == 8.5
+        assert body["limit"] == 10.0
+        assert body["threshold"] == 0.8
+        assert len(hits) == 1
+        raw = hits[0].content
+        assert verify_webhook_signature(
+            raw,
+            hits[0].headers["x-daari-signature"],
+            "whsec_member",
+            hits[0].headers["x-daari-timestamp"],
+        )
+        again = alerter.notify_member(
+            8.5,
+            9.0,
+            key=MEMBER_KEY,
+            team=TEAM,
+            user_id="agent-7",
+            now=NOW,
+        )
+        assert again == []
+        assert len(hits) == 1
+
+    def test_redis_dedupe_suppresses_second_replica(self):
+        shared = FakeRedis()
+        first, hits_a = self._alerter(redis=shared)
+        second, hits_b = self._alerter(redis=shared)
+        first.notify_member(7.0, 8.5, key=MEMBER_KEY, team=TEAM, user_id="agent-7", now=NOW)
+        second.notify_member(7.0, 8.5, key=MEMBER_KEY, team=TEAM, user_id="agent-7", now=NOW)
+        assert len(hits_a) + len(hits_b) == 1
+
+    def test_redis_error_still_delivers(self, monkeypatch):
+        events: list[tuple[str, dict]] = []
+        monkeypatch.setattr(
+            "daari.gateway.request_log.log_gateway_event",
+            lambda name, detail=None: events.append((name, detail or {})),
+        )
+        alerter, hits = self._alerter(redis=BoomRedis())
+        bodies = alerter.notify_member(
+            7.0, 8.5, key=MEMBER_KEY, team=TEAM, user_id="agent-7", now=NOW
+        )
+        assert len(bodies) == 1
+        assert len(hits) == 1
+        assert any(name == "budget.alert_dedupe_degraded" for name, _ in events)
+
+    def test_unset_member_thresholds_do_not_change_key_alerts(self):
+        hits: list = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            hits.append(request)
+            return httpx.Response(204)
+
+        alerter = BudgetAlerter(
+            webhook_url="https://hooks.example/budget",
+            transport=httpx.MockTransport(handler),
+        )
+        assert alerter.member_thresholds == ()
+        assert (
+            alerter.notify_member(
+                7.0, 8.5, key=MEMBER_KEY, team=TEAM, user_id="agent-7", now=NOW
+            )
+            == []
+        )
+        bodies = alerter.notify([_status(7.0)], [_status(8.2)], key=KEY, team=TEAM)
+        assert len(bodies) == 1
+        assert bodies[0]["scope"] == "key"
+        assert len(hits) == 1

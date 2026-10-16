@@ -132,7 +132,17 @@ alerts:
   budget_webhook_url: https://hooks.example/daari-budget   # Slack / ntfy / PagerDuty
   budget_webhook_secret: secret://env-file/~/.daari/secrets.env#BUDGET_WEBHOOK  # optional
   budget_thresholds: [0.8, 1.0]
+  member_budget_thresholds: []   # optional; e.g. [0.8, 1.0]
 ```
+
+`member_budget_thresholds` is empty by default, so key and team alerts are
+unchanged. When a team key sets `user_daily_usd_cap` and this list is
+non-empty, a named `user` crossing one of those ratios of the daily cap
+POSTs the same webhook with `scope: "member"`, `team_id`, `user_id`,
+`window`, `spent`, and `limit`. That crossing fires once per member, window,
+and threshold (Redis `SET NX EX` when configured; a Redis error still
+delivers and logs `budget.alert_dedupe_degraded`). Signing uses the same
+`X-Daari-Signature` secret.
 
 Payload (never includes key material):
 
