@@ -20,6 +20,7 @@ Entry point: `daari` (Typer).
 | `profile` | Local hardware profile |
 | `route` | Routing helpers (`preview`) |
 | `audit` | Enterprise audit log (`list` / `export` / `verify`) |
+| `alerts` | Webhook signing-secret rotation (`rotate-secret`) — dual-secret grace for budget / key-expiry |
 | `configure` | Interactive config helpers |
 | `config` | Validate `config.yaml` (`validate`) |
 | `prune` | Retention prune (traces / usage / feedback) |
@@ -78,6 +79,7 @@ Encryption env / flags: `DAARI_BACKUP_PASS` (or `--passphrase-env`),
 | `enterprise` | `bootstrap`, `policy-sync`, `policy-status` |
 | `service` | `install`, `status`, `restart`, `uninstall` (user systemd / launchd) |
 | `audit` | `list`, `export`, `verify` |
+| `alerts` | `rotate-secret` (`budget` / `key-expiry`, `--secret`, `--config`) |
 
 ## `keys`
 
