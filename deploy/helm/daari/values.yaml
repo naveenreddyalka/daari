@@ -215,6 +215,12 @@ observability:
     requestLogDays: ""
 
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
+# In-cluster redis://host is fine on a private CNI; for managed/remote Redis
+# use rediss:// and optionally ?ssl_ca_certs=/path/to/ca.pem (#1679).
+# Example TLS:
+#   redis:
+#     enabled: true
+#     url: rediss://:PASSWORD@redis.example:6380/0?ssl_ca_certs=/etc/ssl/certs/ca.pem
 redis:
   enabled: false
   url: redis://redis:6379/0
@@ -229,6 +235,11 @@ redis:
 #   postgres:
 #     enabled: true
 #     url: postgresql://daari:daari@postgres:5432/daari
+# Remote/managed Postgres should set sslmode=require (or verify-ca /
+# verify-full) and optionally sslrootcert (#1679):
+#   postgres:
+#     enabled: true
+#     url: postgresql://daari:daari@db.example:5432/daari?sslmode=require&sslrootcert=/etc/ssl/certs/ca.pem
 postgres:
   enabled: false
   url: ""
