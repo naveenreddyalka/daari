@@ -106,3 +106,33 @@ def test_configure_claude_desktop_writes_config(home, monkeypatch):
     assert data["inferenceProvider"] == "gateway"
     assert data["inferenceGatewayBaseUrl"] == "http://127.0.0.1:11435"
     assert data["inferenceGatewayApiKey"] == "daari-local"
+
+
+def test_supported_clients_includes_chatgpt_desktop():
+    assert "chatgpt-desktop" in supported_clients()
+
+
+def test_configure_chatgpt_desktop_dry_run_prints_ollama_host(home):
+    result = runner.invoke(app, ["configure", "chatgpt-desktop", "--dry-run"])
+    assert result.exit_code == 0
+    assert "http://127.0.0.1:11435 (no /v1)" in result.output
+    assert "11434" in result.output
+    assert "X-Daari-Client-Id: chatgpt-desktop" in result.output
+    assert "Dry-run complete" in result.output
+
+
+def test_setup_chatgpt_desktop_dry_run(home):
+    result = runner.invoke(app, ["setup", "chatgpt-desktop", "--dry-run"])
+    assert result.exit_code == 0
+    assert "http://127.0.0.1:11435" in result.output
+    assert "11435/v1" not in result.output
+    assert "Dry-run complete" in result.output
+
+
+def test_configure_chatgpt_desktop_does_not_write_prefs(home):
+    before = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    result = runner.invoke(app, ["configure", "chatgpt-desktop"])
+    assert result.exit_code == 0
+    assert "were not modified" in result.output
+    after = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    assert after == before

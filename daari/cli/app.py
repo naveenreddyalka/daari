@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from daari.cli.setup_actions import (
     apply_all_setups,
+    apply_chatgpt_desktop_setup,
     apply_claude_code_setup,
     apply_claude_desktop_setup,
     apply_cursor_setup,
@@ -2869,6 +2870,23 @@ def setup_vscode(
 ) -> None:
     """Configure VS Code settings for daari OpenAI-compatible setup."""
     apply_vscode_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("chatgpt-desktop")
+def setup_chatgpt_desktop(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show the Ollama host steps without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Accepted for parity; ChatGPT Desktop preferences are not written.",
+    ),
+) -> None:
+    """Print ChatGPT Desktop Ollama-host steps (no app preference writes)."""
+    apply_chatgpt_desktop_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("claude-code")
