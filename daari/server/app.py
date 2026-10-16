@@ -181,8 +181,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.virtual_key_store = vk_store
     app.state.rate_limiter = build_rate_limiter(resolved)
     from daari.auth.invalid_key_throttle import build_auth_throttle
+    from daari.auth.key_lockout import build_key_lockout
 
     app.state.auth_throttle = build_auth_throttle(resolved)
+    app.state.key_lockout = build_key_lockout(resolved)
 
     cors_origins = [origin.strip() for origin in resolved.server.cors_origins if origin.strip()]
     cors_allow_headers = "Authorization, Content-Type, x-api-key, X-Daari-Meta"
@@ -455,6 +457,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             headers={"Retry-After": str(max(1, decision.retry_after))},
                         )
                     throttle.record_failure(client_ip)
+                lockout = getattr(request.app.state, "key_lockout", None)
+                if lockout is not None:
+                    locked = lockout.check(supplied, client_ip=client_ip)
+                    if not locked.allowed:
+                        metrics = getattr(getattr(request.app.state, "ctx", None), "metrics", None)
+                        if metrics is not None and hasattr(metrics, "record_reject"):
+                            metrics.record_reject("auth_key_locked")
+                        from daari.enterprise.audit import record_auth_key_locked
+
+                        record_auth_key_locked(
+                            audit,
+                            prefix=locked.prefix,
+                            failures=locked.failures,
+                            retry_after=locked.retry_after,
+                        )
+                        return JSONResponse(
+                            status_code=429,
+                            content={
+                                "error": {
+                                    "type": "rate_limit_error",
+                                    "code": "auth_key_locked",
+                                    "message": (
+                                        "Too many invalid API key attempts for this "
+                                        "key. Retry later."
+                                    ),
+                                }
+                            },
+                            headers={"Retry-After": str(max(1, locked.retry_after))},
+                        )
+                    lockout.record_failure(supplied, client_ip=client_ip)
                 record_invalid_key(
                     audit,
                     supplied=supplied,

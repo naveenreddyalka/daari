@@ -28,6 +28,10 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds between streamed chunks before emitting a keepalive frame for the entire stream lifetime (#972) (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow streams (including mid-generation pauses). 0 disables. |
 | `server.stream_idle_timeout_seconds` | float | `0.0` | If upstream produces no chunk for this many seconds mid-stream, end with an in-band error event instead of hanging (#972). 0 disables (default). |
 | `server.graceful_timeout_seconds` | float | `30.0` | Seconds uvicorn waits for in-flight requests (including SSE) after SIGTERM/SIGINT before force-closing (#1104). Wire via `daari serve --graceful-timeout` or DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS. Size terminationGracePeriodSeconds above this plus preStop sleep. |
+| `auth.key_lockout.enabled` | bool | `True` | When false, invalid attempts are not counted per key prefix. Env: DAARI_AUTH__KEY_LOCKOUT__ENABLED. |
+| `auth.key_lockout.max_failures` | int | `10` | Invalid-auth attempts for one key prefix within window_seconds before lockout. 0 disables the counter. Matches auth.max_failures. Env: DAARI_AUTH__KEY_LOCKOUT__MAX_FAILURES. |
+| `auth.key_lockout.window_seconds` | float | `60.0` | Sliding window for auth.key_lockout.max_failures. Env: DAARI_AUTH__KEY_LOCKOUT__WINDOW_SECONDS. |
+| `auth.key_lockout.lockout_seconds` | int | `60` | How long a tripped key prefix stays locked (Retry-After). Env: DAARI_AUTH__KEY_LOCKOUT__LOCKOUT_SECONDS. |
 | `auth.throttle_enabled` | bool | `True` | When false, invalid-key attempts are never rate-limited. |
 | `auth.max_failures` | int | `10` | Invalid-key failures per client IP within window_seconds before 429. 0 disables the counter. Env: DAARI_AUTH__MAX_FAILURES. |
 | `auth.window_seconds` | float | `60.0` | Sliding window for auth.max_failures. Env: DAARI_AUTH__WINDOW_SECONDS. |

@@ -2245,9 +2245,47 @@ class AlertSettings(BaseModel):
         return cleaned or [0.8, 1.0]
 
 
-class AuthSettings(BaseModel):
-    """Invalid API-key brute-force throttle (#935)."""
+class KeyLockoutSettings(BaseModel):
+    """Per-key (prefix) soft lockout, independent of the IP throttle (#1684)."""
 
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "When false, invalid attempts are not counted per key prefix. "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__ENABLED."
+        ),
+    )
+    max_failures: int = Field(
+        default=10,
+        ge=0,
+        description=(
+            "Invalid-auth attempts for one key prefix within window_seconds "
+            "before lockout. 0 disables the counter. Matches auth.max_failures. "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__MAX_FAILURES."
+        ),
+    )
+    window_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description=(
+            "Sliding window for auth.key_lockout.max_failures. "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__WINDOW_SECONDS."
+        ),
+    )
+    lockout_seconds: int = Field(
+        default=60,
+        ge=1,
+        description=(
+            "How long a tripped key prefix stays locked (Retry-After). "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__LOCKOUT_SECONDS."
+        ),
+    )
+
+
+class AuthSettings(BaseModel):
+    """Invalid API-key brute-force throttle (#935) and per-key lockout (#1684)."""
+
+    key_lockout: KeyLockoutSettings = Field(default_factory=KeyLockoutSettings)
     throttle_enabled: bool = Field(
         default=True,
         description="When false, invalid-key attempts are never rate-limited.",

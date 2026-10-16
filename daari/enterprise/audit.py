@@ -452,6 +452,28 @@ def record_invalid_key(
     return True
 
 
+def record_auth_key_locked(
+    audit: AuditLog,
+    *,
+    prefix: str,
+    failures: int,
+    retry_after: int,
+) -> None:
+    """Record ``auth.key_locked`` when a key-prefix lockout trips (#1684)."""
+    shown = (prefix or "anonymous")[:10]
+    audit.record(
+        actor=shown or "anonymous",
+        role="anonymous",
+        action="auth.key_locked",
+        detail={
+            "prefix": shown,
+            "failures": int(failures),
+            "retry_after": int(retry_after),
+            "scope": "key",
+        },
+    )
+
+
 def record_auth_throttled(
     audit: AuditLog,
     *,
