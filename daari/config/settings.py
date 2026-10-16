@@ -478,7 +478,16 @@ class CacheSettings(RuntimeSettings):
     l1: L1CacheSettings = Field(default_factory=L1CacheSettings)
     # F4: disk (default) or redis for shared L0/L1 across replicas (#112, #135).
     backend: Literal["disk", "redis"] = "disk"
-    redis_url: str = "redis://127.0.0.1:6379/0"
+    redis_url: str = Field(
+        default="redis://127.0.0.1:6379/0",
+        description=(
+            "Redis URL for L0/L1 and shared counters when cache.backend=redis. "
+            "Localhost may use redis://; remote hosts should use rediss:// (TLS). "
+            "Optional CA pass-through: "
+            "rediss://user:pass@redis.example:6379/0?ssl_ca_certs=/etc/ssl/certs/ca.pem. "
+            "daari doctor warns on cleartext remote URLs (redis_tls, #1679)."
+        ),
+    )
     redis_prefix: str = "daari:l0:"
     redis_l1_prefix: str = "daari:l1:"
     redis_timeout_seconds: float = Field(
@@ -1535,7 +1544,18 @@ class ObservabilitySettings(RuntimeSettings):
     config_editor: bool = False
     # sqlite (default) or postgres for ledger + traces (issue #116).
     backend: Literal["sqlite", "postgres"] = "sqlite"
-    postgres_url: str = ""
+    postgres_url: str = Field(
+        default="",
+        description=(
+            "Shared Postgres DSN for fleet stores (ledger, virtual keys, "
+            "batches/files/responses, request log, audit). Localhost/unix "
+            "sockets may omit TLS; remote DSNs should include sslmode=require "
+            "(or verify-ca / verify-full). Optional CA: "
+            "?sslmode=verify-full&sslrootcert=/etc/ssl/certs/ca.pem. Example: "
+            "postgresql://daari:daari@db.example:5432/daari?sslmode=require. "
+            "daari doctor warns on cleartext remote DSNs (postgres_tls, #1679)."
+        ),
+    )
     # In-process pool for Postgres-backed stores (#975). Laptop-friendly defaults.
     postgres_pool_min: int = Field(default=1, ge=0)
     postgres_pool_max: int = Field(default=4, ge=1)
