@@ -478,7 +478,14 @@ class CacheSettings(RuntimeSettings):
     l1: L1CacheSettings = Field(default_factory=L1CacheSettings)
     # F4: disk (default) or redis for shared L0/L1 across replicas (#112, #135).
     backend: Literal["disk", "redis"] = "disk"
-    redis_url: str = "redis://127.0.0.1:6379/0"
+    redis_url: str = Field(
+        default="redis://127.0.0.1:6379/0",
+        description=(
+            "Use rediss:// for remote Redis (TLS). Optional CA: "
+            "?ssl_ca_certs=/path/ca.pem. daari doctor warns on redis:// to a "
+            "non-localhost host (#1679)."
+        ),
+    )
     redis_prefix: str = "daari:l0:"
     redis_l1_prefix: str = "daari:l1:"
     redis_timeout_seconds: float = Field(
@@ -1535,7 +1542,15 @@ class ObservabilitySettings(RuntimeSettings):
     config_editor: bool = False
     # sqlite (default) or postgres for ledger + traces (issue #116).
     backend: Literal["sqlite", "postgres"] = "sqlite"
-    postgres_url: str = ""
+    postgres_url: str = Field(
+        default="",
+        description=(
+            "Shared DSN for postgres-backed stores. Remote hosts need "
+            "?sslmode=require (or verify-ca / verify-full); optional "
+            "sslrootcert=/path/ca.pem. daari doctor warns when a non-localhost "
+            "DSN lacks a strong sslmode (#1679)."
+        ),
+    )
     # In-process pool for Postgres-backed stores (#975). Laptop-friendly defaults.
     postgres_pool_min: int = Field(default=1, ge=0)
     postgres_pool_max: int = Field(default=4, ge=1)

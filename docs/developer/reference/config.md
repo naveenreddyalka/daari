@@ -81,7 +81,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `cache.l1.verify` | Literal | `'lexical'` | Second-stage check before serving a semantic hit, because a cosine threshold alone cannot separate a paraphrase from a near-miss. `none` serves any hit above the threshold; `lexical` (default) vetoes hits whose numbers, units, or negation differ; `model` additionally asks a local model to confirm equivalence. |
 | `cache.l1.shadow_sample_rate` | float | `0.05` |  |
 | `cache.backend` | Literal | `'disk'` |  |
-| `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` |  |
+| `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` | Use rediss:// for remote Redis (TLS). Optional CA: ?ssl_ca_certs=/path/ca.pem. daari doctor warns on redis:// to a non-localhost host (#1679). |
 | `cache.redis_prefix` | str | `'daari:l0:'` |  |
 | `cache.redis_l1_prefix` | str | `'daari:l1:'` |  |
 | `cache.redis_timeout_seconds` | float | `2.0` | socket_connect_timeout and socket_timeout for every Redis client (rate-limit counters, L0/L1 cache, budget-alert dedupe). Keeps a hung Redis from blocking gateway requests indefinitely (#463). |
@@ -197,7 +197,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.otel` | bool | `False` |  |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |
-| `observability.postgres_url` | str | `''` |  |
+| `observability.postgres_url` | str | `''` | Shared DSN for postgres-backed stores. Remote hosts need ?sslmode=require (or verify-ca / verify-full); optional sslrootcert=/path/ca.pem. daari doctor warns when a non-localhost DSN lacks a strong sslmode (#1679). |
 | `observability.postgres_pool_min` | int | `1` |  |
 | `observability.postgres_pool_max` | int | `4` |  |
 | `observability.structured_json_logs` | bool | `False` | Emit gateway request logs as single-line JSON to stdout (containers/SIEM). Default off. Editable via GET/PATCH /v1/daari/config ownership (config editor). |

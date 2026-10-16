@@ -126,7 +126,9 @@ def run_doctor(
     results.append(_check_key_expiry_webhook_secret(cfg))
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
+    results.append(_check_remote_redis_tls(cfg))
     results.extend(_check_postgres_stores(cfg))
+    results.append(_check_remote_postgres_tls(cfg))
     results.append(_check_store_migrate(cfg, strict=strict))
     results.append(_check_recent_backup(cfg))
     daemon = _check_daemon(cfg, httpx_client)
@@ -1018,6 +1020,142 @@ def _check_warm_models(
     finally:
         if own_client:
             http.close()
+
+
+def _url_host(url: str) -> str:
+    """Hostname from a redis/postgres URL (empty when unparseable)."""
+    from urllib.parse import urlparse
+
+    text = (url or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = urlparse(text)
+    except Exception:
+        return ""
+    host = (parsed.hostname or "").strip().lower().strip("[]")
+    if host:
+        return host
+    # unix sockets / bare paths — treat as local
+    if text.startswith("unix:") or text.startswith("/"):
+        return "localhost"
+    return ""
+
+
+def _pg_sslmode(dsn: str) -> str:
+    """Return sslmode query param (lowercased) or empty."""
+    from urllib.parse import parse_qs, urlparse
+
+    text = (dsn or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = urlparse(text)
+        values = parse_qs(parsed.query).get("sslmode") or []
+        if values:
+            return str(values[0]).strip().lower()
+    except Exception:
+        return ""
+    # libpq also accepts sslmode= in key=value DSNs
+    for part in text.replace(";", " ").split():
+        if part.lower().startswith("sslmode="):
+            return part.split("=", 1)[1].strip().lower()
+    return ""
+
+
+_STRONG_PG_SSLMODES = frozenset({"require", "verify-ca", "verify-full"})
+
+
+def _check_remote_postgres_tls(settings: Settings) -> CheckResult:
+    """Warn when a remote Postgres DSN lacks sslmode=require+ (#1679)."""
+    pg_url = (getattr(settings.observability, "postgres_url", "") or "").strip()
+    if not pg_url:
+        return CheckResult(
+            name="postgres_tls",
+            ok=True,
+            detail="skipped (observability.postgres_url unset)",
+            optional=True,
+        )
+    host = _url_host(pg_url)
+    if not host or _is_loopback_host(host):
+        return CheckResult(
+            name="postgres_tls",
+            ok=True,
+            detail=f"local DSN host ({host or 'unix'}) — plaintext acceptable",
+            optional=True,
+        )
+    mode = _pg_sslmode(pg_url)
+    if mode in _STRONG_PG_SSLMODES:
+        return CheckResult(
+            name="postgres_tls",
+            ok=True,
+            detail=f"sslmode={mode} for remote host {host}",
+            optional=True,
+        )
+    return CheckResult(
+        name="postgres_tls",
+        ok=False,
+        detail=(
+            f"remote Postgres host {host!r} without sslmode=require "
+            f"(or verify-ca/verify-full)"
+            + (f"; got sslmode={mode!r}" if mode else "")
+            + " — virtual keys/spend/traces cross the wire in plaintext; "
+            "append ?sslmode=require (optional sslrootcert=/path/ca.pem) "
+            "to observability.postgres_url"
+        ),
+        optional=True,
+    )
+
+
+def _check_remote_redis_tls(settings: Settings) -> CheckResult:
+    """Warn when a remote Redis URL uses redis:// instead of rediss:// (#1679)."""
+    if getattr(settings.cache, "backend", "disk") != "redis":
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail="skipped (cache.backend!=redis)",
+            optional=True,
+        )
+    redis_url = str(getattr(settings.cache, "redis_url", "") or "").strip()
+    if not redis_url:
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail="skipped (cache.redis_url empty)",
+            optional=True,
+        )
+    host = _url_host(redis_url)
+    if not host or _is_loopback_host(host):
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail=f"local Redis host ({host or 'unix'}) — plaintext acceptable",
+            optional=True,
+        )
+    scheme = ""
+    try:
+        from urllib.parse import urlparse
+
+        scheme = (urlparse(redis_url).scheme or "").lower()
+    except Exception:
+        scheme = ""
+    if scheme == "rediss":
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail=f"rediss:// for remote host {host}",
+            optional=True,
+        )
+    return CheckResult(
+        name="redis_tls",
+        ok=False,
+        detail=(
+            f"remote Redis host {host!r} uses {scheme or 'redis'}:// — "
+            "cache keys transit plaintext; switch cache.redis_url to rediss:// "
+            "(optional ?ssl_ca_certs=/path/ca.pem)"
+        ),
+        optional=True,
+    )
 
 
 def _check_redis(settings: Settings) -> CheckResult:

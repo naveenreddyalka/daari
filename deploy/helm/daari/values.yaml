@@ -215,20 +215,25 @@ observability:
     requestLogDays: ""
 
 # External Redis for L0/L1 when cache.backend=redis (issue #112).
+# Remote hosts: use rediss:// (TLS). Optional CA via ?ssl_ca_certs=/path/ca.pem.
+# Doctor warns on redis:// to a non-localhost host (#1679).
 redis:
   enabled: false
   url: redis://redis:6379/0
+  # url: rediss://redis.example.com:6379/0?ssl_ca_certs=/etc/ssl/certs/ca.pem
 
 # External Postgres for ledger/traces/batches/files (issues #116, #465, #1631).
 # When enabled, the Deployment sets DAARI_OBSERVABILITY__BACKEND,
 # DAARI_OBSERVABILITY__REQUEST_LOG__BACKEND, DAARI_BATCHES__BACKEND,
 # DAARI_FILES__BACKEND, and DAARI_RESPONSES__BACKEND to postgres (shared fleet).
+# Remote hosts: append ?sslmode=require (or verify-full) + optional sslrootcert.
+# Doctor warns when a non-localhost DSN lacks sslmode=require+ (#1679).
 # Example multi-replica fleet:
 #   replicaCount: 2
 #   autoscaling.minReplicas: 2
 #   postgres:
 #     enabled: true
-#     url: postgresql://daari:daari@postgres:5432/daari
+#     url: postgresql://daari:daari@postgres:5432/daari?sslmode=require
 postgres:
   enabled: false
   url: ""

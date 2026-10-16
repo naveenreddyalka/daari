@@ -6977,6 +6977,13 @@ live `/health`, checkpoints SQLite WAL, and embeds one shared `pg_dump`
 (`stores/pg/consistent.sql`). Fast path unchanged. Docs: guarantees matrix in
 backup-restore.md. Covered by `tests/unit/test_backup_restore.py`.
 
+### Doctor TLS for remote Postgres/Redis ([#1679](https://github.com/naveenreddyalka/daari/issues/1679))
+
+<!-- tracking:#1679 -->
+**Status:** Done (2026-10-15). Doctor warns on remote PG without
+`sslmode=require+` and remote Redis using `redis://`; localhost silent.
+Docs + Helm comments. Covered by `tests/unit/test_doctor_data_plane_tls.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
