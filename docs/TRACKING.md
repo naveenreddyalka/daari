@@ -7028,6 +7028,13 @@ the 11434 reminder, and `X-Daari-Client-Id: chatgpt-desktop`. App preferences
 are not written. Docs: chatgpt-desktop.md. Covered by
 `tests/unit/test_configure_cli.py`.
 
+### Decisions bench cache-hit scenario ([#1634](https://github.com/naveenreddyalka/daari/issues/1634))
+
+<!-- tracking:#1634 -->
+**Status:** Done (2026-10-16). `docs/BENCHMARKS.md` documents DEC-01/SYS-01
+and DEC-02 (identical `/v1/decisions` twice, cold vs warm). `bench_vs_litellm.py`
+registers DEC-02. Covered by `tests/unit/test_bench_vs_litellm.py`.
+
 ### Per-member budget threshold webhooks ([#1633](https://github.com/naveenreddyalka/daari/issues/1633))
 
 <!-- tracking:#1633 -->
