@@ -275,12 +275,16 @@ async def handle_speech(
         abandon_slot(idem_slot)
         return _error(400, "invalid_request_error", "model is required")
 
-    from daari.gateway.model_access import reject_disallowed_model
+    from daari.gateway.model_access import reject_disallowed_model, reject_retired_model
 
     denied = reject_disallowed_model(request, model_name, ctx.settings)
     if denied is not None:
         abandon_slot(idem_slot)
         return denied
+    retired = reject_retired_model(request, model_name, ctx.settings)
+    if retired is not None:
+        abandon_slot(idem_slot)
+        return retired
 
     from daari.gateway.guardrails import (
         apply_endpoint_input_policy,

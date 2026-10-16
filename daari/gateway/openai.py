@@ -326,6 +326,27 @@ async def _execute_batch_chat_body(
     """Run one batch item through the same router path as /v1/chat/completions."""
     from daari.gateway.batches import BatchGovernance, BatchItemRejected
 
+    body = ChatCompletionRequest.model_validate(body_dict)
+    gov = governance if isinstance(governance, BatchGovernance) else None
+    body_user = (body.user or "").strip() or None
+    meta = RequestMeta(
+        tier_cap=gov.tier_cap if gov else None,
+        latency_budget_ms=gov.latency_budget_ms if gov else None,
+        deadline_ms=gov.deadline_ms if gov else None,
+        client_id=gov.client_id if gov else None,
+        user_agent=gov.user_agent if gov else None,
+        user=body_user or (gov.user if gov else None),
+        session_id=gov.session_id if gov else None,
+        no_frontier=bool(gov.no_frontier) if gov else False,
+        boundary_profile=gov.boundary_profile if gov else None,
+        key_id=gov.key_id if gov else None,
+        team_id=gov.team_id if gov else None,
+        cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
+    )
+    apply_cost_tier(body, meta)
+    # Lifecycle denial before admission so a retired id does not take a slot (#1701).
+    _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
+
     acquired = False
     if rate_limiter is not None and int(getattr(rate_limiter, "max_in_flight", 0) or 0) > 0:
         slot = await rate_limiter.acquire(priority="low")
@@ -338,25 +359,6 @@ async def _execute_batch_chat_body(
             )
         acquired = True
     try:
-        body = ChatCompletionRequest.model_validate(body_dict)
-        gov = governance if isinstance(governance, BatchGovernance) else None
-        body_user = (body.user or "").strip() or None
-        meta = RequestMeta(
-            tier_cap=gov.tier_cap if gov else None,
-            latency_budget_ms=gov.latency_budget_ms if gov else None,
-            deadline_ms=gov.deadline_ms if gov else None,
-            client_id=gov.client_id if gov else None,
-            user_agent=gov.user_agent if gov else None,
-            user=body_user or (gov.user if gov else None),
-            session_id=gov.session_id if gov else None,
-            no_frontier=bool(gov.no_frontier) if gov else False,
-            boundary_profile=gov.boundary_profile if gov else None,
-            key_id=gov.key_id if gov else None,
-            team_id=gov.team_id if gov else None,
-            cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
-        )
-        apply_cost_tier(body, meta)
-        _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
         _enforce_batch_item_rate_limits(ctx, body_dict, governance=gov)
         _enforce_batch_item_budgets(ctx, meta, governance=gov)
         internal = _prepare_internal_request(
@@ -380,6 +382,39 @@ async def _execute_batch_chat_body(
             await rate_limiter.release()
 
 
+def _batch_retired_request(ctx: AppContext, governance: Any | None) -> Any:
+    """Minimal request so retired denial can audit and count without a live ASGI call."""
+    captured = ctx
+
+    class _URL:
+        path = "/v1/batches"
+
+    class _Claims:
+        key_id = getattr(governance, "key_id", None)
+        client_id = getattr(governance, "client_id", None)
+        selected_team_id = getattr(governance, "team_id", None)
+        virtual_key = None
+
+    class _State:
+        auth_claims = _Claims()
+
+    class _AppState:
+        pass
+
+    app_state = _AppState()
+    app_state.ctx = captured
+
+    class _App:
+        state = app_state
+
+    class _Req:
+        state = _State()
+        url = _URL()
+        app = _App()
+
+    return _Req()
+
+
 def _batch_lookup_virtual_key(ctx: AppContext, governance: Any) -> Any | None:
     store = getattr(ctx, "virtual_key_store", None)
     if store is None or not getattr(governance, "key_id", None):
@@ -397,7 +432,7 @@ def _enforce_batch_item_model_access(
     *,
     governance: Any | None,
 ) -> None:
-    """Reject items whose model is outside the creating key's allowlist (#840)."""
+    """Reject items whose model is retired or outside the creating key's allowlist."""
     from daari.auth.model_access import (
         denial_body,
         effective_patterns,
@@ -405,6 +440,12 @@ def _enforce_batch_item_model_access(
         record_model_denial,
     )
     from daari.gateway.batches import BatchGovernance, BatchItemRejected
+    from daari.gateway.model_access import deny_retired_model
+
+    model_name = (body.model or ctx.settings.models.l3 or "").strip()
+    retired = deny_retired_model(_batch_retired_request(ctx, governance), model_name, ctx.settings)
+    if retired is not None:
+        raise BatchItemRejected(retired)
 
     if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
         return

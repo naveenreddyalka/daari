@@ -459,6 +459,8 @@ class PostgresBatchStore(BatchStore):
                                 status_code = 429
                             elif error_type == "model_not_allowed":
                                 status_code = 403
+                            elif error_type == "model_retired":
+                                status_code = 410
                             else:
                                 status_code = 400
                             job.results.append(

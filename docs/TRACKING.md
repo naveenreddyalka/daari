@@ -7052,6 +7052,16 @@ decision-model guardrail and states daari does not ship one yet (heuristic
 guardrails + `/v1/decisions`). Comparison floor stays 1.104.0 GA. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Retired-model 410 on remaining doors ([#1701](https://github.com/naveenreddyalka/daari/issues/1701))
+
+<!-- tracking:#1701 -->
+**Status:** Done (2026-10-16). Images (generate/edit/variation), speech,
+transcriptions, moderations, rerank, and MCP tools/call provider paths return
+410 `model_retired` with `models.retired_denied` and `kind="retired"`. Batch
+items fail at validation (410) before admission. Chat 410s before RPM or
+in-flight slots. Covered by `tests/unit/test_lifecycle_modality_doors.py` and
+`tests/integration/test_gateway_flow.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

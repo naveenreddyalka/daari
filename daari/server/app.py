@@ -916,6 +916,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 team_rpm = int(getattr(team, "rpm", 0) or 0) or None
                 team_tpm = int(getattr(team, "tpm", 0) or 0) or None
                 team_rpd = int(getattr(team, "rpd", 0) or 0) or None
+        # Retired models 410 before RPM/in-flight admission so a 429 cannot mask them (#1701).
+        ctx = getattr(request.app.state, "ctx", None)
+        settings = getattr(ctx, "settings", None) if ctx is not None else None
+        if settings is not None:
+            from daari.gateway.model_access import reject_retired_model
+
+            if getattr(request.state, "auth_claims", None) is None and claims is not None:
+                request.state.auth_claims = claims
+            retired = reject_retired_model(request, model, settings)
+            if retired is not None:
+                return retired
         decision = limiter.check(
             key_id=key_id,
             model=model,
