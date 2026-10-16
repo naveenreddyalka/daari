@@ -597,7 +597,15 @@ class PostgresUsageLedger:
             return 0
         return max(0, int(row[0] or 0) - int(row[1] or 0))
 
-    def frontier_spend_usd(self, *, price_per_1k_tokens: float, day: str | None = None) -> float:
+    def frontier_spend_usd(
+        self,
+        *,
+        price_per_1k_tokens: float,
+        day: str | None = None,
+        pricing: Any = None,
+        fallback_per_1k: float | None = None,
+    ) -> float:
+        del pricing, fallback_per_1k
         if not self.enabled:
             return 0.0
         try:
@@ -616,8 +624,14 @@ class PostgresUsageLedger:
         return (chars / 4) / 1000 * price_per_1k_tokens
 
     def frontier_spend_usd_month(
-        self, *, price_per_1k_tokens: float, month: str | None = None
+        self,
+        *,
+        price_per_1k_tokens: float,
+        month: str | None = None,
+        pricing: Any = None,
+        fallback_per_1k: float | None = None,
     ) -> float:
+        del pricing, fallback_per_1k
         if not self.enabled:
             return 0.0
         prefix = (month or _today()[:7]) + "-%"

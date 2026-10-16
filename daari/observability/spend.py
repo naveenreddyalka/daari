@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from daari.pricing import cost_usd
+from daari.pricing import cost_usd, is_ollama_cloud_model
 
 FRONTIER_TIER = "L6"
 
@@ -189,8 +189,12 @@ def compute_request_usd(
     cache_write_tokens: int = 0,
     cache_ttl: str | None = None,
 ) -> tuple[float, float]:
-    """Return (cost_usd, cost_avoided_usd). Local tiers cost $0."""
-    if (tier or "").upper() == FRONTIER_TIER:
+    """Return (cost_usd, cost_avoided_usd).
+
+    Local tiers cost $0. Ollama ``:cloud`` ids are billed on ollama.com even
+    when the executor records a local tier, so they are metered like L6.
+    """
+    if (tier or "").upper() == FRONTIER_TIER or is_ollama_cloud_model(model):
         if reported_cost is not None:
             spent = float(reported_cost)
         else:

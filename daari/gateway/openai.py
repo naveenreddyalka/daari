@@ -1888,14 +1888,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload["frontier"] = {
                 "today_spend_usd": round(
                     ledger.frontier_spend_usd(
-                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens
+                        pricing=ctx.settings.pricing,
+                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens,
                     ),
                     4,
                 ),
                 "daily_budget_usd": ctx.settings.frontier.daily_budget_usd,
                 "month_spend_usd": round(
                     ledger.frontier_spend_usd_month(
-                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens
+                        pricing=ctx.settings.pricing,
+                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens,
                     ),
                     4,
                 ),
