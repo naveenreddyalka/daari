@@ -6977,6 +6977,81 @@ live `/health`, checkpoints SQLite WAL, and embeds one shared `pg_dump`
 (`stores/pg/consistent.sql`). Fast path unchanged. Docs: guarantees matrix in
 backup-restore.md. Covered by `tests/unit/test_backup_restore.py`.
 
+### Doctor TLS for remote Postgres/Redis ([#1679](https://github.com/naveenreddyalka/daari/issues/1679))
+
+<!-- tracking:#1679 -->
+**Status:** Done (2026-10-16). `daari doctor` warns on non-localhost
+`observability.postgres_url` without `sslmode=require+` and on
+`redis://` remote `cache.redis_url` (prefer `rediss://`); localhost/unix
+sockets stay quiet. Docs: config.md + Helm values TLS examples +
+doctor-health. Covered by `tests/unit/test_doctor_data_plane_tls.py`.
+
+### Webhook signing-secret rotation ([#1680](https://github.com/naveenreddyalka/daari/issues/1680))
+
+<!-- tracking:#1680 -->
+**Status:** Done (2026-10-16). `daari alerts rotate-secret` moves current→
+previous with audit row; dual digests on `X-Daari-Signature` during grace;
+doctor tips stale previous (~7d). Docs: budgets-frontier + doctor-health.
+Covered by `tests/unit/test_webhook_secret_rotation.py`.
+
+### Per-key invalid-auth lockout ([#1684](https://github.com/naveenreddyalka/daari/issues/1684))
+
+<!-- tracking:#1684 -->
+**Status:** Done (2026-10-16). `auth.key_lockout` counts invalid attempts by
+key prefix (independent of the IP throttle), returns 429 `auth_key_locked`
+with `Retry-After`, and writes `auth.key_locked`. Redis fail-open; loopback
+follows `auth.exempt_loopback`. Docs: config.md, auth-and-keys.md. Covered by
+`tests/unit/test_key_lockout.py`.
+
+### HTTP GET /v1/daari/events ([#1683](https://github.com/naveenreddyalka/daari/issues/1683))
+
+<!-- tracking:#1683 -->
+**Status:** Done (2026-10-16). Newest-first `GET /v1/daari/events` over the
+postgres request log (`limit`/`offset`/`cursor`, optional `team_id`/`key_id`,
+default 100, max 1000). JSONL-only returns 501. Docs: http-api.md,
+traces-stats.md. Covered by `tests/unit/test_request_log_events_http.py`.
+
+### Grafana errors by HTTP status ([#1685](https://github.com/naveenreddyalka/daari/issues/1685))
+
+<!-- tracking:#1685 -->
+**Status:** Done (2026-10-16). Overview dashboard adds "Errors by HTTP status"
+(`sum by (status) (rate(daari_errors_total[5m]))`). Helm copy stays identical
+to `deploy/grafana/daari-dashboard.json`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
+### ChatGPT Desktop configure recipe ([#1686](https://github.com/naveenreddyalka/daari/issues/1686))
+
+<!-- tracking:#1686 -->
+**Status:** Done (2026-10-16). `daari configure chatgpt-desktop` and
+`daari setup chatgpt-desktop` print the Ollama host (port 11435, no `/v1`),
+the 11434 reminder, and `X-Daari-Client-Id: chatgpt-desktop`. App preferences
+are not written. Docs: chatgpt-desktop.md. Covered by
+`tests/unit/test_configure_cli.py`.
+
+### Decisions bench cache-hit scenario ([#1634](https://github.com/naveenreddyalka/daari/issues/1634))
+
+<!-- tracking:#1634 -->
+**Status:** Done (2026-10-16). `docs/BENCHMARKS.md` documents DEC-01/SYS-01
+and DEC-02 (identical `/v1/decisions` twice, cold vs warm). `bench_vs_litellm.py`
+registers DEC-02. Covered by `tests/unit/test_bench_vs_litellm.py`.
+
+### Per-member budget threshold webhooks ([#1633](https://github.com/naveenreddyalka/daari/issues/1633))
+
+<!-- tracking:#1633 -->
+**Status:** Done (2026-10-16). `alerts.member_budget_thresholds` (empty by
+default) POSTs `scope=member` when a named user crosses a ratio of
+`user_daily_usd_cap` on a team key. Redis dedupe fail-open matches team
+alerts; signing reuses `X-Daari-Signature`. Docs: budgets-frontier, config.md.
+Covered by `tests/unit/test_budget_alerts.py`.
+
+### LiteLLM 1.106 decision-model guardrail watch ([#1598](https://github.com/naveenreddyalka/daari/issues/1598))
+
+<!-- tracking:#1598 -->
+**Status:** Done (2026-10-16). `compare-litellm.md` watches LiteLLM 1.106's
+decision-model guardrail and states daari does not ship one yet (heuristic
+guardrails + `/v1/decisions`). Comparison floor stays 1.104.0 GA. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -478,7 +478,16 @@ class CacheSettings(RuntimeSettings):
     l1: L1CacheSettings = Field(default_factory=L1CacheSettings)
     # F4: disk (default) or redis for shared L0/L1 across replicas (#112, #135).
     backend: Literal["disk", "redis"] = "disk"
-    redis_url: str = "redis://127.0.0.1:6379/0"
+    redis_url: str = Field(
+        default="redis://127.0.0.1:6379/0",
+        description=(
+            "Redis URL for L0/L1 and shared counters when cache.backend=redis. "
+            "Localhost may use redis://; remote hosts should use rediss:// (TLS). "
+            "Optional CA pass-through: "
+            "rediss://user:pass@redis.example:6379/0?ssl_ca_certs=/etc/ssl/certs/ca.pem. "
+            "daari doctor warns on cleartext remote URLs (redis_tls, #1679)."
+        ),
+    )
     redis_prefix: str = "daari:l0:"
     redis_l1_prefix: str = "daari:l1:"
     redis_timeout_seconds: float = Field(
@@ -1535,7 +1544,18 @@ class ObservabilitySettings(RuntimeSettings):
     config_editor: bool = False
     # sqlite (default) or postgres for ledger + traces (issue #116).
     backend: Literal["sqlite", "postgres"] = "sqlite"
-    postgres_url: str = ""
+    postgres_url: str = Field(
+        default="",
+        description=(
+            "Shared Postgres DSN for fleet stores (ledger, virtual keys, "
+            "batches/files/responses, request log, audit). Localhost/unix "
+            "sockets may omit TLS; remote DSNs should include sslmode=require "
+            "(or verify-ca / verify-full). Optional CA: "
+            "?sslmode=verify-full&sslrootcert=/etc/ssl/certs/ca.pem. Example: "
+            "postgresql://daari:daari@db.example:5432/daari?sslmode=require. "
+            "daari doctor warns on cleartext remote DSNs (postgres_tls, #1679)."
+        ),
+    )
     # In-process pool for Postgres-backed stores (#975). Laptop-friendly defaults.
     postgres_pool_min: int = Field(default=1, ge=0)
     postgres_pool_max: int = Field(default=4, ge=1)
@@ -2161,7 +2181,34 @@ class AlertSettings(BaseModel):
 
     budget_webhook_url: str = ""
     budget_webhook_secret: str = ""
+    budget_webhook_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous budget webhook HMAC secret kept during rotation grace "
+            "(#1680). Signing always uses budget_webhook_secret; receivers "
+            "should verify against current or previous. Set via "
+            "`daari alerts rotate-secret budget`."
+        ),
+    )
+    budget_webhook_secret_rotated_at: str = Field(
+        default="",
+        description=(
+            "ISO-8601 timestamp when budget_webhook_secret_previous was last "
+            "set by rotation (#1680). Doctor tips when the previous secret "
+            "has been in place a long time."
+        ),
+    )
     budget_thresholds: list[float] = Field(default_factory=lambda: [0.8, 1.0])
+    member_budget_thresholds: list[float] = Field(
+        default_factory=list,
+        description=(
+            "Optional ratios of a key's user_daily_usd_cap. When set, a named "
+            "end user on a team key crossing one of these ratios POSTs a "
+            "budget webhook with scope=member (#1633). Empty disables member "
+            "alerts and leaves key/team alerts unchanged. "
+            "Env: DAARI_ALERTS__MEMBER_BUDGET_THRESHOLDS."
+        ),
+    )
     key_expiry_webhook_url: str = Field(
         default="",
         description=(
@@ -2174,6 +2221,21 @@ class AlertSettings(BaseModel):
         description=(
             "HMAC secret for key_expiry webhooks (X-Daari-Signature). "
             "Supports secret:// refs (#1546)."
+        ),
+    )
+    key_expiry_webhook_secret_previous: str = Field(
+        default="",
+        description=(
+            "Previous key_expiry webhook HMAC secret during rotation grace "
+            "(#1680). Signing uses key_expiry_webhook_secret; receivers verify "
+            "against either. Set via `daari alerts rotate-secret key-expiry`."
+        ),
+    )
+    key_expiry_webhook_secret_rotated_at: str = Field(
+        default="",
+        description=(
+            "ISO-8601 timestamp when key_expiry_webhook_secret_previous was "
+            "last set by rotation (#1680)."
         ),
     )
     key_expiry_warn_days: int = Field(
@@ -2192,10 +2254,53 @@ class AlertSettings(BaseModel):
         cleaned = sorted({float(item) for item in value if 0 < float(item) <= 1.0})
         return cleaned or [0.8, 1.0]
 
+    @field_validator("member_budget_thresholds")
+    @classmethod
+    def _member_thresholds(cls, value: list[float]) -> list[float]:
+        return sorted({float(item) for item in value if 0 < float(item) <= 1.0})
+
+
+class KeyLockoutSettings(BaseModel):
+    """Per-key (prefix) soft lockout, independent of the IP throttle (#1684)."""
+
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "When false, invalid attempts are not counted per key prefix. "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__ENABLED."
+        ),
+    )
+    max_failures: int = Field(
+        default=10,
+        ge=0,
+        description=(
+            "Invalid-auth attempts for one key prefix within window_seconds "
+            "before lockout. 0 disables the counter. Matches auth.max_failures. "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__MAX_FAILURES."
+        ),
+    )
+    window_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description=(
+            "Sliding window for auth.key_lockout.max_failures. "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__WINDOW_SECONDS."
+        ),
+    )
+    lockout_seconds: int = Field(
+        default=60,
+        ge=1,
+        description=(
+            "How long a tripped key prefix stays locked (Retry-After). "
+            "Env: DAARI_AUTH__KEY_LOCKOUT__LOCKOUT_SECONDS."
+        ),
+    )
+
 
 class AuthSettings(BaseModel):
-    """Invalid API-key brute-force throttle (#935)."""
+    """Invalid API-key brute-force throttle (#935) and per-key lockout (#1684)."""
 
+    key_lockout: KeyLockoutSettings = Field(default_factory=KeyLockoutSettings)
     throttle_enabled: bool = Field(
         default=True,
         description="When false, invalid-key attempts are never rate-limited.",

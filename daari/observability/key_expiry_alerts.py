@@ -24,7 +24,7 @@ from daari.auth.virtual_keys import VirtualKey, key_expiry_bucket
 from daari.observability.budget_alerts import (
     SIGNATURE_HEADER,
     TIMESTAMP_HEADER,
-    sign_webhook,
+    signature_header_value,
 )
 
 REDIS_KEY_PREFIX = "daari:key-expiry-alert:"
@@ -54,6 +54,7 @@ class KeyExpiryAlerter:
     webhook_url: str
     warn_days: int = 14
     webhook_secret: str = ""
+    webhook_secret_previous: str = ""
     audit: Any | None = None
     metrics: Any | None = None
     transport: Any | None = None
@@ -159,8 +160,11 @@ class KeyExpiryAlerter:
             content = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
             timestamp = str(int(time.time()))
             headers[TIMESTAMP_HEADER] = timestamp
-            headers[SIGNATURE_HEADER] = sign_webhook(
-                content, self.webhook_secret, timestamp
+            headers[SIGNATURE_HEADER] = signature_header_value(
+                content,
+                self.webhook_secret,
+                timestamp,
+                previous_secret=self.webhook_secret_previous,
             )
             headers["Content-Type"] = "application/json"
             json_body = None

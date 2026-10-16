@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from daari.cli.setup_actions import (
     apply_all_setups,
+    apply_chatgpt_desktop_setup,
     apply_claude_code_setup,
     apply_claude_desktop_setup,
     apply_cursor_setup,
@@ -87,6 +88,7 @@ spend_app = typer.Typer(help="Per-request spend rows for finance chargeback.")
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
 backup_app = typer.Typer(help="Full-state backup and restore of durable stores.")
 config_app = typer.Typer(help="Validate daari.yaml before restart.")
+alerts_app = typer.Typer(help="Operator webhook secrets and alert settings.")
 enterprise_app = typer.Typer(help="Enterprise fleet bootstrap and policy sync.")
 service_app = typer.Typer(help="User-level stay-up service (systemd / launchd).")
 route_app = typer.Typer(help="Inspect routing without sending a generation.")
@@ -103,6 +105,7 @@ app.add_typer(audit_app, name="audit")
 app.add_typer(backup_app, name="backup")
 app.add_typer(config_app, name="config")
 app.add_typer(spend_app, name="spend")
+app.add_typer(alerts_app, name="alerts")
 app.add_typer(route_app, name="route")
 
 
@@ -699,6 +702,67 @@ def keys_rotate(
             "key_id": created.key.key_id,
             "grace": grace,
             "grace_until": created.key.previous_expires_at,
+        },
+    )
+
+
+@alerts_app.command("rotate-secret")
+def alerts_rotate_secret(
+    family: str = typer.Argument(
+        ...,
+        help="Webhook family: budget or key-expiry.",
+    ),
+    secret: str = typer.Option(
+        ...,
+        "--secret",
+        help="New signing secret (becomes current; old current → previous).",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        help="Config path (default ~/.daari/config.yaml).",
+    ),
+) -> None:
+    """Rotate a webhook HMAC secret with dual-secret grace (#1680)."""
+    import os
+
+    from daari.observability.webhook_secrets import rotate_webhook_secret_in_config
+
+    normalized = family.strip().lower().replace("_", "-")
+    if normalized not in {"budget", "key-expiry"}:
+        typer.echo("family must be 'budget' or 'key-expiry'", err=True)
+        raise typer.Exit(code=1)
+    new_secret = (secret or "").strip()
+    if not new_secret:
+        typer.echo("--secret must be non-empty", err=True)
+        raise typer.Exit(code=1)
+    path = config or Path.home() / ".daari" / "config.yaml"
+    try:
+        result = rotate_webhook_secret_in_config(
+            path, family=normalized, new_secret=new_secret
+        )
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
+    except OSError as exc:
+        typer.echo(f"could not write {path}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"family:      {normalized}")
+    typer.echo(f"config:      {path}")
+    typer.echo(f"rotated_at:  {result['rotated_at']}")
+    typer.echo(
+        "Current secret updated; previous retained for receiver grace. "
+        "Clear *_webhook_secret_previous after receivers accept the new secret."
+    )
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="alerts.rotate_secret",
+        detail={
+            "family": normalized,
+            "rotated_at": result["rotated_at"],
+            "had_previous": result["had_previous"],
+            "config": str(path),
         },
     )
 
@@ -2806,6 +2870,23 @@ def setup_vscode(
 ) -> None:
     """Configure VS Code settings for daari OpenAI-compatible setup."""
     apply_vscode_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("chatgpt-desktop")
+def setup_chatgpt_desktop(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show the Ollama host steps without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Accepted for parity; ChatGPT Desktop preferences are not written.",
+    ),
+) -> None:
+    """Print ChatGPT Desktop Ollama-host steps (no app preference writes)."""
+    apply_chatgpt_desktop_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("claude-code")

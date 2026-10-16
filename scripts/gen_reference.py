@@ -142,6 +142,14 @@ def render_api_reference() -> str:
             "`admin.keys.list` / `admin.teams.list` audit events "
             "(`limit` / `offset` / `total` / `returned` — never secrets).",
             "",
+            "## Request / event log",
+            "",
+            "`GET /v1/daari/events` (analyst / master, or a virtual key on the same "
+            "read floor as other `/v1/daari` reads) lists newest-first gateway events "
+            "when `observability.request_log.backend=postgres`. Query `limit` (default "
+            "**100**, max **1000**), `offset`, or exclusive `cursor` (event id), plus "
+            "optional `team_id` and `key_id`. JSONL-only installs return **501**.",
+            "",
             "## Config editor ownership",
             "",
             "`GET` / `PATCH /v1/daari/config` (when `observability.config_editor` is on) "

@@ -106,6 +106,8 @@ def run_doctor(
         results.append(json_logs_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
+    results.append(_check_postgres_tls(cfg))
+    results.append(_check_redis_tls(cfg))
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
@@ -124,6 +126,9 @@ def run_doctor(
     results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
+    stale_tip = _check_webhook_secret_previous_stale(cfg)
+    if stale_tip is not None:
+        results.append(stale_tip)
     results.append(_check_helm_image_tag())
     results.append(_check_redis(cfg))
     results.extend(_check_postgres_stores(cfg))
@@ -1960,6 +1965,56 @@ def _check_key_expiry_webhook_secret(settings: Settings) -> CheckResult:
     )
 
 
+_WEBHOOK_PREVIOUS_STALE_DAYS = 7
+
+
+def _check_webhook_secret_previous_stale(settings: Settings) -> CheckResult | None:
+    """Tip when a rotated previous webhook secret has lingered (#1680)."""
+    alerts = settings.alerts
+    stale: list[str] = []
+    now = datetime.now(timezone.utc)
+    for family, previous, rotated_at in (
+        (
+            "budget",
+            getattr(alerts, "budget_webhook_secret_previous", "") or "",
+            getattr(alerts, "budget_webhook_secret_rotated_at", "") or "",
+        ),
+        (
+            "key_expiry",
+            getattr(alerts, "key_expiry_webhook_secret_previous", "") or "",
+            getattr(alerts, "key_expiry_webhook_secret_rotated_at", "") or "",
+        ),
+    ):
+        if not str(previous).strip():
+            continue
+        age_days: float | None = None
+        raw = str(rotated_at).strip()
+        if raw:
+            try:
+                when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                age_days = (now - when.astimezone(timezone.utc)).total_seconds() / 86400.0
+            except ValueError:
+                age_days = None
+        if age_days is None or age_days >= _WEBHOOK_PREVIOUS_STALE_DAYS:
+            label = f"{family} ({age_days:.0f}d)" if age_days is not None else family
+            stale.append(label)
+    if not stale:
+        return None
+    return CheckResult(
+        name="webhook_secret_previous",
+        ok=False,
+        detail=(
+            "previous webhook signing secret still set for "
+            + ", ".join(stale)
+            + f" — clear alerts.*_webhook_secret_previous after receivers "
+            f"accept the new secret (grace tip after {_WEBHOOK_PREVIOUS_STALE_DAYS}d; #1680)"
+        ),
+        optional=True,
+    )
+
+
 def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckResult:
     """Warn when SQLite/Postgres stores have pending additive migrations (#942/#1655)."""
     from daari.setup.migrate import inspect_stores
@@ -2267,11 +2322,135 @@ def _check_request_deadline(settings: Settings) -> CheckResult:
 
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost", "0:0:0:0:0:0:0:1"})
+_STRONG_PG_SSLMODES = frozenset({"require", "verify-ca", "verify-full"})
 
 
 def _is_loopback_host(host: str) -> bool:
     normalized = (host or "").strip().lower().strip("[]")
     return normalized in _LOOPBACK_HOSTS
+
+
+def _url_host(url: str) -> str | None:
+    """Hostname from a URL/DSN, or None for unix sockets / missing host."""
+    from urllib.parse import urlparse
+
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    host = (parsed.hostname or "").strip()
+    if not host:
+        return None
+    # libpq-style ?host=/var/run/postgresql is a unix socket, not TCP.
+    from urllib.parse import parse_qs
+
+    qs_host = (parse_qs(parsed.query).get("host") or [""])[0].strip()
+    if qs_host.startswith("/"):
+        return None
+    return host
+
+
+def _postgres_sslmode(dsn: str) -> str | None:
+    from urllib.parse import parse_qs, urlparse
+
+    modes = parse_qs(urlparse(dsn).query).get("sslmode") or []
+    if not modes:
+        return None
+    return str(modes[0]).strip().lower() or None
+
+
+def _check_postgres_tls(settings: Settings) -> CheckResult:
+    """Warn when a remote observability.postgres_url lacks sslmode=require+ (#1679)."""
+    dsn = str(getattr(settings.observability, "postgres_url", "") or "").strip()
+    if not dsn:
+        return CheckResult(
+            name="postgres_tls",
+            ok=True,
+            detail="skipped (observability.postgres_url unset)",
+            optional=True,
+        )
+    host = _url_host(dsn)
+    if host is None or _is_loopback_host(host):
+        where = "unix socket" if host is None else f"loopback ({host})"
+        return CheckResult(
+            name="postgres_tls",
+            ok=True,
+            detail=f"{where} — cleartext acceptable for local-only",
+            optional=True,
+        )
+    mode = _postgres_sslmode(dsn)
+    if mode in _STRONG_PG_SSLMODES:
+        return CheckResult(
+            name="postgres_tls",
+            ok=True,
+            detail=f"sslmode={mode} on remote host {host!r}",
+            optional=True,
+        )
+    hint = (
+        f"sslmode={mode!r} is weaker than require"
+        if mode
+        else "sslmode missing"
+    )
+    return CheckResult(
+        name="postgres_tls",
+        ok=False,
+        detail=(
+            f"remote Postgres DSN host {host!r} with {hint} — virtual keys / "
+            "spend / request logs transit cleartext; append "
+            "?sslmode=require (or verify-ca / verify-full) and optionally "
+            "sslrootcert=/path/to/ca.pem"
+        ),
+        optional=True,
+    )
+
+
+def _check_redis_tls(settings: Settings) -> CheckResult:
+    """Warn when a remote cache.redis_url uses redis:// instead of rediss:// (#1679)."""
+    if getattr(settings.cache, "backend", "disk") != "redis":
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail="skipped (cache.backend!=redis)",
+            optional=True,
+        )
+    redis_url = str(getattr(settings.cache, "redis_url", "") or "").strip()
+    if not redis_url:
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail="skipped (cache.redis_url empty)",
+            optional=True,
+        )
+    from urllib.parse import urlparse
+
+    parsed = urlparse(redis_url)
+    scheme = (parsed.scheme or "").strip().lower()
+    host = _url_host(redis_url)
+    if host is None or _is_loopback_host(host):
+        where = "unix socket" if host is None else f"loopback ({host})"
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail=f"{where} — cleartext acceptable for local-only",
+            optional=True,
+        )
+    if scheme == "rediss":
+        return CheckResult(
+            name="redis_tls",
+            ok=True,
+            detail=f"rediss:// on remote host {host!r}",
+            optional=True,
+        )
+    return CheckResult(
+        name="redis_tls",
+        ok=False,
+        detail=(
+            f"remote Redis URL host {host!r} uses {scheme or 'redis'}:// — "
+            "L0 / rate-limit counters transit cleartext; use rediss:// and "
+            "pass CA via the URL (e.g. rediss://host:6379/0?ssl_ca_certs=/path/to/ca.pem)"
+        ),
+        optional=True,
+    )
 
 
 def _check_tls_exposure(settings: Settings) -> CheckResult:

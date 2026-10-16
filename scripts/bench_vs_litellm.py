@@ -81,6 +81,28 @@ JUDGMENT_CORPUS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "id": "DEC-02",
+        "kind": "decisions",
+        "repeat": 2,
+        "body": {
+            "model": "nimble",
+            "input": "I was charged twice for my order.",
+            "questions": [
+                {
+                    "type": "choice",
+                    "name": "department",
+                    "instructions": "Which department should handle this complaint?",
+                    "choices": [
+                        {"value": "billing", "description": "Payments and refunds"},
+                        {"value": "technical", "description": "Product problems"},
+                        {"value": "shipping", "description": "Delivery"},
+                        {"value": "other", "description": "Everything else"},
+                    ],
+                }
+            ],
+        },
+    },
 ]
 
 
@@ -114,12 +136,16 @@ def load_judgment_corpus(rows: list[dict[str, Any]] | None = None) -> list[dict[
         body = row.get("body")
         if not isinstance(body, dict):
             raise ValueError(f"judgment scenario {row.get('id')!r} needs a body object")
+        repeat = int(row.get("repeat") or 1)
+        if repeat < 1:
+            raise ValueError(f"judgment scenario {row.get('id')!r} repeat must be >= 1")
         out.append(
             {
                 "id": str(row.get("id") or path),
                 "kind": "decisions" if path.endswith("/decisions") else "systemone",
                 "path": path,
                 "body": body,
+                "repeat": repeat,
             }
         )
     return out
@@ -391,7 +417,12 @@ def run_judgment(
         path = scenario["path"]
         body = {**scenario["body"], "model": scenario["body"].get("model") or model}
         lite = post_json_path(litellm_url, path, body, timeout)
-        daari = post_json_path(daari_url, path, body, timeout)
+        samples = [
+            post_json_path(daari_url, path, body, timeout)
+            for _ in range(int(scenario.get("repeat") or 1))
+        ]
+        daari = samples[-1]
+        cold = samples[0]
         note = ""
         if lite.get("skipped"):
             note = f"LiteLLM build lacks {path}"
@@ -401,16 +432,22 @@ def run_judgment(
             note = f"daari error: {daari.get('error') or 'failed'}"
         elif not daari.get("ok") and note:
             note = f"{note}; daari error: {daari.get('error') or 'failed'}"
-        rows.append(
-            {
-                "id": scenario["id"],
-                "kind": scenario["kind"],
-                "path": path,
-                "litellm_ms": lite["ms"] if lite.get("ok") else None,
-                "daari_ms": daari["ms"] if daari.get("ok") else None,
-                "note": note,
-            }
-        )
+        row: dict[str, Any] = {
+            "id": scenario["id"],
+            "kind": scenario["kind"],
+            "path": path,
+            "litellm_ms": lite["ms"] if lite.get("ok") else None,
+            "daari_ms": daari["ms"] if daari.get("ok") else None,
+            "note": note,
+        }
+        if int(scenario.get("repeat") or 1) > 1 and cold.get("ok") and daari.get("ok"):
+            row["daari_cold_ms"] = cold["ms"]
+            row["daari_warm_ms"] = daari["ms"]
+            cache_note = (
+                f"daari cold {cold['ms']:.1f} ms, warm {daari['ms']:.1f} ms (L0 repeat)"
+            )
+            row["note"] = f"{note}; {cache_note}" if note else cache_note
+        rows.append(row)
     return rows
 
 

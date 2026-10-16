@@ -39,6 +39,19 @@ of L1 hits, re-runs them against the model, and reports a measured **false-hit r
 category (`daari report`, `/v1/daari/cache/diversity`). Tune `cache.l1.similarity_threshold`
 until the false-hit rate for your workload is acceptable — measured, not vibes.
 
+## Decisions and System One
+
+Typed judgments are timed by [`scripts/bench_vs_litellm.py`](scripts/bench_vs_litellm.py)
+(same Ollama on both sides; LiteLLM rows skip when that build has no route):
+
+| ID | What it measures | How to run |
+|----|------------------|------------|
+| DEC-01 | One `/v1/decisions` choice question (cold call) | `python scripts/bench_vs_litellm.py --spawn` |
+| SYS-01 | One `/v1/systemone` label question | same command |
+| DEC-02 | Identical `/v1/decisions` body issued twice; reports daari **cold** vs **warm** latency (L0 cache hit on the repeat) | same command |
+
+Results land in [benchmark vs LiteLLM](developer/resources/benchmark-vs-litellm.md).
+
 ## Notes
 
 - L3 latency scales with output length; the bench uses short prompts. Longer generations

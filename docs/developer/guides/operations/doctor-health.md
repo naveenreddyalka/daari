@@ -23,6 +23,8 @@ package `version` for upgrade/rollback discovery.
 | `/health` | Process not listening |
 | `/ready` | Dependency (Ollama/cache) not ready |
 | doctor `redis` | Optional: when `cache.backend=redis`, PING `cache.redis_url` — timeout/unreachable means shared L0/rate-limit counters are dark |
+| doctor `postgres_tls` | Optional: non-localhost `observability.postgres_url` without `sslmode=require` (or `verify-ca` / `verify-full`) — keys/spend/request logs would transit cleartext; localhost/unix sockets stay quiet. Optional CA: `sslrootcert=/path/to/ca.pem` in the DSN |
+| doctor `redis_tls` | Optional: when `cache.backend=redis`, non-localhost `cache.redis_url` using `redis://` instead of `rediss://` — L0/rate-limit counters would transit cleartext; localhost stays quiet. Optional CA: `?ssl_ca_certs=/path/to/ca.pem` on a `rediss://` URL |
 | doctor `ready` | Optional: when the daemon answers, `GET /ready` — warn on `degraded` / `not_ready` (same signal as kube probes) |
 | doctor `metrics_auth` | Optional: when the daemon answers, prometheus is on, and `server.api_key` is set — unauthenticated `GET /metrics` returning 401 means scrapers need Bearer / Helm `serviceMonitor.bearerTokenSecret` (or `observability.metrics_port`) |
 | doctor mlx | Optional backend misconfigured |
@@ -47,6 +49,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `vk_empty_allowlist` | Optional tip: active virtual key `allowed_models` / `model_groups` match zero cards in the effective `/v1/models` catalog (typo or stale pattern) |
 | doctor `budget_webhook_secret` | Optional: `alerts.budget_webhook_url` set without `alerts.budget_webhook_secret` — spoofable pages |
 | doctor `key_expiry_webhook_secret` | Optional: `alerts.key_expiry_webhook_url` set without `alerts.key_expiry_webhook_secret` — spoofable pages |
+| doctor `webhook_secret_previous` | Optional tip: `*_webhook_secret_previous` still set after ~7 days (or missing `*_rotated_at`) — clear previous after receivers accept the new secret (`daari alerts rotate-secret`) |
 | doctor `helm_image_tag` | Optional: checkout `deploy/helm/daari/values.yaml` `image.tag` behind the running package version |
 | doctor `backup` | Optional: no recent archive under `~/.daari/backups`, or recent backups are all **plaintext** — tip suggests `daari backup create … --encrypt openssl` (or `age`); see [backup-restore.md](backup-restore.md#optional-encryption-1176) |
 | doctor `header_policy` | Optional: `server.header_policy.enabled` is true but `required` / `deny` / `allow` are empty — enable at least one rule or set `enabled: false`; see [auth-and-keys.md](../configuration/auth-and-keys.md#header-policy-pre-auth) |

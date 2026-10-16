@@ -28,6 +28,10 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `server.sse_keepalive_seconds` | float | `10.0` | Idle seconds between streamed chunks before emitting a keepalive frame for the entire stream lifetime (#972) (SSE comment `: keepalive` on OpenAI/Anthropic/Responses routes, a blank line on the NDJSON Ollama facade). Keeps proxies and SDK read timeouts from dropping slow streams (including mid-generation pauses). 0 disables. |
 | `server.stream_idle_timeout_seconds` | float | `0.0` | If upstream produces no chunk for this many seconds mid-stream, end with an in-band error event instead of hanging (#972). 0 disables (default). |
 | `server.graceful_timeout_seconds` | float | `30.0` | Seconds uvicorn waits for in-flight requests (including SSE) after SIGTERM/SIGINT before force-closing (#1104). Wire via `daari serve --graceful-timeout` or DAARI_SERVER__GRACEFUL_TIMEOUT_SECONDS. Size terminationGracePeriodSeconds above this plus preStop sleep. |
+| `auth.key_lockout.enabled` | bool | `True` | When false, invalid attempts are not counted per key prefix. Env: DAARI_AUTH__KEY_LOCKOUT__ENABLED. |
+| `auth.key_lockout.max_failures` | int | `10` | Invalid-auth attempts for one key prefix within window_seconds before lockout. 0 disables the counter. Matches auth.max_failures. Env: DAARI_AUTH__KEY_LOCKOUT__MAX_FAILURES. |
+| `auth.key_lockout.window_seconds` | float | `60.0` | Sliding window for auth.key_lockout.max_failures. Env: DAARI_AUTH__KEY_LOCKOUT__WINDOW_SECONDS. |
+| `auth.key_lockout.lockout_seconds` | int | `60` | How long a tripped key prefix stays locked (Retry-After). Env: DAARI_AUTH__KEY_LOCKOUT__LOCKOUT_SECONDS. |
 | `auth.throttle_enabled` | bool | `True` | When false, invalid-key attempts are never rate-limited. |
 | `auth.max_failures` | int | `10` | Invalid-key failures per client IP within window_seconds before 429. 0 disables the counter. Env: DAARI_AUTH__MAX_FAILURES. |
 | `auth.window_seconds` | float | `60.0` | Sliding window for auth.max_failures. Env: DAARI_AUTH__WINDOW_SECONDS. |
@@ -81,7 +85,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `cache.l1.verify` | Literal | `'lexical'` | Second-stage check before serving a semantic hit, because a cosine threshold alone cannot separate a paraphrase from a near-miss. `none` serves any hit above the threshold; `lexical` (default) vetoes hits whose numbers, units, or negation differ; `model` additionally asks a local model to confirm equivalence. |
 | `cache.l1.shadow_sample_rate` | float | `0.05` |  |
 | `cache.backend` | Literal | `'disk'` |  |
-| `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` |  |
+| `cache.redis_url` | str | `'redis://127.0.0.1:6379/0'` | Redis URL for L0/L1 and shared counters when cache.backend=redis. Localhost may use redis://; remote hosts should use rediss:// (TLS). Optional CA pass-through: rediss://user:pass@redis.example:6379/0?ssl_ca_certs=/etc/ssl/certs/ca.pem. daari doctor warns on cleartext remote URLs (redis_tls, #1679). |
 | `cache.redis_prefix` | str | `'daari:l0:'` |  |
 | `cache.redis_l1_prefix` | str | `'daari:l1:'` |  |
 | `cache.redis_timeout_seconds` | float | `2.0` | socket_connect_timeout and socket_timeout for every Redis client (rate-limit counters, L0/L1 cache, budget-alert dedupe). Keeps a hung Redis from blocking gateway requests indefinitely (#463). |
@@ -197,7 +201,7 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `observability.otel` | bool | `False` |  |
 | `observability.config_editor` | bool | `False` |  |
 | `observability.backend` | Literal | `'sqlite'` |  |
-| `observability.postgres_url` | str | `''` |  |
+| `observability.postgres_url` | str | `''` | Shared Postgres DSN for fleet stores (ledger, virtual keys, batches/files/responses, request log, audit). Localhost/unix sockets may omit TLS; remote DSNs should include sslmode=require (or verify-ca / verify-full). Optional CA: ?sslmode=verify-full&sslrootcert=/etc/ssl/certs/ca.pem. Example: postgresql://daari:daari@db.example:5432/daari?sslmode=require. daari doctor warns on cleartext remote DSNs (postgres_tls, #1679). |
 | `observability.postgres_pool_min` | int | `1` |  |
 | `observability.postgres_pool_max` | int | `4` |  |
 | `observability.structured_json_logs` | bool | `False` | Emit gateway request logs as single-line JSON to stdout (containers/SIEM). Default off. Editable via GET/PATCH /v1/daari/config ownership (config editor). |
@@ -355,9 +359,14 @@ in `.daari.yaml`, and every key is also settable via environment variable:
 | `enterprise.audit_backend` | Literal | `'sqlite'` | sqlite (default, per-node file) or postgres (observability.postgres_url) for a single fleet-wide hash chain (#483). |
 | `alerts.budget_webhook_url` | str | `''` |  |
 | `alerts.budget_webhook_secret` | str | `''` |  |
+| `alerts.budget_webhook_secret_previous` | str | `''` | Previous budget webhook HMAC secret kept during rotation grace (#1680). Signing always uses budget_webhook_secret; receivers should verify against current or previous. Set via `daari alerts rotate-secret budget`. |
+| `alerts.budget_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when budget_webhook_secret_previous was last set by rotation (#1680). Doctor tips when the previous secret has been in place a long time. |
 | `alerts.budget_thresholds` | list | `[0.8, 1.0]` |  |
+| `alerts.member_budget_thresholds` | list | `[]` | Optional ratios of a key's user_daily_usd_cap. When set, a named end user on a team key crossing one of these ratios POSTs a budget webhook with scope=member (#1633). Empty disables member alerts and leaves key/team alerts unchanged. Env: DAARI_ALERTS__MEMBER_BUDGET_THRESHOLDS. |
 | `alerts.key_expiry_webhook_url` | str | `''` | Opt-in webhook for virtual keys entering the expiring-soon window (#1546). Empty disables. |
 | `alerts.key_expiry_webhook_secret` | str | `''` | HMAC secret for key_expiry webhooks (X-Daari-Signature). Supports secret:// refs (#1546). |
+| `alerts.key_expiry_webhook_secret_previous` | str | `''` | Previous key_expiry webhook HMAC secret during rotation grace (#1680). Signing uses key_expiry_webhook_secret; receivers verify against either. Set via `daari alerts rotate-secret key-expiry`. |
+| `alerts.key_expiry_webhook_secret_rotated_at` | str | `''` | ISO-8601 timestamp when key_expiry_webhook_secret_previous was last set by rotation (#1680). |
 | `alerts.key_expiry_warn_days` | int | `14` | Days before expires_at for doctor warnings, Prometheus expiring_soon gauge, and key_expiry webhooks (#1546). Env: DAARI_ALERTS__KEY_EXPIRY_WARN_DAYS. |
 | `skills_system_prefix` | str | `''` |  |
 | `model_groups` | dict | `{}` | Named model groups (exact names or globs such as claude-*). Keys and teams reference them by name; enforcement is the union of allowed_models and the referenced groups, intersected across team and key. |

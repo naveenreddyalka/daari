@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from daari.auth.budgets import WindowStatus, window_label
+from daari.auth.budgets import BudgetWindow, WindowStatus, window_label
 from daari.auth.virtual_keys import Team, VirtualKey
 
 DEFAULT_THRESHOLDS = (0.8, 1.0)
@@ -47,17 +47,57 @@ def sign_webhook(body: bytes, secret: str, timestamp: str) -> str:
     ).hexdigest()
 
 
+def signature_header_value(
+    body: bytes,
+    secret: str,
+    timestamp: str,
+    *,
+    previous_secret: str = "",
+) -> str:
+    """Build ``X-Daari-Signature``; include previous during rotation grace (#1680).
+
+    Current secret is always first. When ``previous_secret`` is set, appends
+    a second digest (Stripe-style dual ``v1``) so receivers can verify against
+    either secret without a hard cutover.
+    """
+    primary = sign_webhook(body, secret, timestamp)
+    prev = (previous_secret or "").strip()
+    if not prev:
+        return primary
+    return f"{primary},{sign_webhook(body, prev, timestamp)}"
+
+
+def _signature_candidates(signature_hex: str) -> list[str]:
+    """Split a signature header into digests (plain or ``v1=`` Stripe form)."""
+    out: list[str] = []
+    for part in (signature_hex or "").split(","):
+        token = part.strip().lower()
+        if not token:
+            continue
+        if token.startswith("v1="):
+            token = token[3:].strip()
+        if token:
+            out.append(token)
+    return out
+
+
 def verify_webhook_signature(
     body: bytes,
     signature_hex: str,
     secret: str,
     timestamp: str,
     *,
+    previous_secret: str = "",
     now: int | None = None,
     tolerance_seconds: int = DEFAULT_REPLAY_TOLERANCE_SECONDS,
 ) -> bool:
-    """Receiver-side check: HMAC match and timestamp within replay window."""
-    if not secret or not signature_hex or not timestamp:
+    """Receiver-side check: HMAC match and timestamp within replay window.
+
+    During secret rotation (#1680), pass ``previous_secret`` so either the
+    current or previous signing key accepts the header (which may list both).
+    """
+    secrets = [s.strip() for s in (secret, previous_secret) if (s or "").strip()]
+    if not secrets or not signature_hex or not timestamp:
         return False
     try:
         ts = int(timestamp)
@@ -66,8 +106,15 @@ def verify_webhook_signature(
     moment = int(time.time()) if now is None else int(now)
     if abs(moment - ts) > int(tolerance_seconds):
         return False
-    expected = sign_webhook(body, secret, timestamp)
-    return hmac.compare_digest(expected, signature_hex.strip().lower())
+    candidates = _signature_candidates(signature_hex)
+    if not candidates:
+        return False
+    for sec in secrets:
+        expected = sign_webhook(body, sec, timestamp)
+        for cand in candidates:
+            if hmac.compare_digest(expected, cand):
+                return True
+    return False
 
 
 def _ratio(status: WindowStatus) -> float:
@@ -125,7 +172,9 @@ def crossings(
 class BudgetAlerter:
     webhook_url: str
     thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS
+    member_thresholds: tuple[float, ...] = ()
     webhook_secret: str = ""
+    webhook_secret_previous: str = ""
     audit: Any | None = None
     metrics: Any | None = None
     transport: Any | None = None
@@ -267,8 +316,11 @@ class BudgetAlerter:
             content = json.dumps(body, separators=(",", ":"), sort_keys=True).encode()
             timestamp = str(int(time.time()))
             headers[TIMESTAMP_HEADER] = timestamp
-            headers[SIGNATURE_HEADER] = sign_webhook(
-                content, self.webhook_secret, timestamp
+            headers[SIGNATURE_HEADER] = signature_header_value(
+                content,
+                self.webhook_secret,
+                timestamp,
+                previous_secret=self.webhook_secret_previous,
             )
             headers["Content-Type"] = "application/json"
             json_body = None
@@ -328,3 +380,78 @@ class BudgetAlerter:
         for body in payloads:
             self.deliver(body)
         return payloads
+
+    def notify_member(
+        self,
+        before_spend: float,
+        after_spend: float,
+        *,
+        key: VirtualKey,
+        team: Team | None,
+        user_id: str,
+        limit_usd: float | None = None,
+        now: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """POST when one end-user crosses a share of ``user_daily_usd_cap`` (#1633).
+
+        Empty ``member_thresholds`` is a no-op so key/team alerts stay unchanged.
+        Dedupe is once per team member, daily window, and threshold.
+        """
+        if not self.enabled or not self.member_thresholds:
+            return []
+        member = (user_id or "").strip()
+        if team is None or not member:
+            return []
+        cap = float(key.user_daily_usd_cap if limit_usd is None else limit_usd)
+        if cap <= 0:
+            return []
+        moment = now or datetime.now(timezone.utc)
+        window = BudgetWindow("day", cap)
+        before = WindowStatus(window=window, scope="user", spend=float(before_spend), now=moment)
+        after = WindowStatus(window=window, scope="user", spend=float(after_spend), now=moment)
+        out: list[dict[str, Any]] = []
+        for status, threshold in crossings([before], [after], self.member_thresholds):
+            stamp = self._dedupe_key(status, f"{team.team_id}:{member}", threshold)
+            stamp = ("member", stamp[1], stamp[2], stamp[3], stamp[4])
+            with self._lock:
+                if stamp in self._seen:
+                    continue
+                self._seen.add(stamp)
+            if self._redis_enabled() and not self._claim_redis(stamp, status):
+                continue
+            out.append(
+                {
+                    "scope": "member",
+                    "id": member,
+                    "team_id": team.team_id,
+                    "user_id": member,
+                    "name": member,
+                    "window": window_label(status.window.duration),
+                    "threshold": float(threshold),
+                    "limit": float(status.limit),
+                    "spent": round(float(status.spend), 6),
+                    "limit_usd": float(status.limit),
+                    "spent_usd": round(float(status.spend), 6),
+                    "remaining_usd": round(status.remaining, 6),
+                    "reset_epoch": status.reset_epoch,
+                }
+            )
+        for body in out:
+            self.deliver(body)
+        return out
+
+
+def user_id_from_body(raw: bytes) -> str:
+    """OpenAI ``user`` field from a JSON body; empty when absent or unreadable."""
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+    raw_user = parsed.get("user")
+    if raw_user is None:
+        return ""
+    return str(raw_user).strip()

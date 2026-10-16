@@ -181,6 +181,15 @@ def apply_vscode_setup(
     apply_setup_recipe("vscode", dry_run=dry_run, force=force, settings=settings)
 
 
+def apply_chatgpt_desktop_setup(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    apply_setup_recipe("chatgpt-desktop", dry_run=dry_run, force=force, settings=settings)
+
+
 def apply_claude_code_setup(
     *,
     dry_run: bool = False,
