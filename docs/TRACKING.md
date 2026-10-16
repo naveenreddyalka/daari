@@ -6994,6 +6994,15 @@ previous with audit row; dual digests on `X-Daari-Signature` during grace;
 doctor tips stale previous (~7d). Docs: budgets-frontier + doctor-health.
 Covered by `tests/unit/test_webhook_secret_rotation.py`.
 
+### Per-key invalid-auth lockout ([#1684](https://github.com/naveenreddyalka/daari/issues/1684))
+
+<!-- tracking:#1684 -->
+**Status:** Done (2026-10-16). `auth.key_lockout` counts invalid attempts by
+key prefix (independent of the IP throttle), returns 429 `auth_key_locked`
+with `Retry-After`, and writes `auth.key_locked`. Redis fail-open; loopback
+follows `auth.exempt_loopback`. Docs: config.md, auth-and-keys.md. Covered by
+`tests/unit/test_key_lockout.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

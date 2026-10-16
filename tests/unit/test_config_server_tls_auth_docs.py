@@ -18,6 +18,10 @@ def test_config_documents_body_tls_and_auth() -> None:
         "auth.max_failures",
         "auth.window_seconds",
         "auth.exempt_loopback",
+        "auth.key_lockout.enabled",
+        "auth.key_lockout.max_failures",
+        "auth.key_lockout.window_seconds",
+        "auth.key_lockout.lockout_seconds",
     ):
         assert key in config, key
     # Hand-written rpd footnote must survive (#733 / #998).
