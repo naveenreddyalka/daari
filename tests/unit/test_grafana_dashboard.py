@@ -453,6 +453,19 @@ def test_grafana_dashboard_includes_cache_invalidate_panels():
     assert any("rate(" in expr for expr in removed_exprs)
 
 
+def test_grafana_dashboard_includes_errors_by_status_panel():
+    """Errors series should break out HTTP status (#1685)."""
+    payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))
+    panel = next(
+        (p for p in payload["panels"] if "Errors by HTTP status" in p.get("title", "")),
+        None,
+    )
+    assert panel is not None, "expected an errors-by-status panel"
+    exprs = [t.get("expr", "") for t in panel.get("targets", [])]
+    assert any("sum by (status)" in expr and "daari_errors_total" in expr for expr in exprs)
+    assert any("status" in expr for expr in exprs)
+
+
 def test_grafana_dashboard_panel_ids_are_unique() -> None:
     """Duplicate panel ids break Grafana import silently (#1574)."""
     payload = json.loads(DASHBOARD.read_text(encoding="utf-8"))

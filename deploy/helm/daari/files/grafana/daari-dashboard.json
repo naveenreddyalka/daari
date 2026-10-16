@@ -818,6 +818,25 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 40,
+      "title": "Errors by HTTP status",
+      "description": "Gateway/router errors split by status (`sum by (status) (rate(daari_errors_total[5m]))`) so 401, 429, and 5xx are visible without Explore.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 152
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(daari_errors_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "refresh": "30s",

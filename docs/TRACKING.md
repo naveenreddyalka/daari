@@ -7011,6 +7011,14 @@ postgres request log (`limit`/`offset`/`cursor`, optional `team_id`/`key_id`,
 default 100, max 1000). JSONL-only returns 501. Docs: http-api.md,
 traces-stats.md. Covered by `tests/unit/test_request_log_events_http.py`.
 
+### Grafana errors by HTTP status ([#1685](https://github.com/naveenreddyalka/daari/issues/1685))
+
+<!-- tracking:#1685 -->
+**Status:** Done (2026-10-16). Overview dashboard adds "Errors by HTTP status"
+(`sum by (status) (rate(daari_errors_total[5m]))`). Helm copy stays identical
+to `deploy/grafana/daari-dashboard.json`. Covered by
+`tests/unit/test_grafana_dashboard.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
