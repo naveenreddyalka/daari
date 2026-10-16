@@ -47,6 +47,21 @@ def test_compare_litellm_pins_1105_rc_watch() -> None:
     assert "watch" in lower
 
 
+def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
+    """1.106 watch: decision-model guardrail is not shipped yet (#1598)."""
+    text = DOC.read_text(encoding="utf-8")
+    lower = text.lower()
+    assert "1.106" in text
+    assert "1.104" in text
+    assert "decision" in lower
+    assert "guardrail" in lower
+    assert "docs.litellm.ai" in text
+    assert "does **not** ship" in lower or "does not ship" in lower
+    assert "/v1/decisions" in text
+    # Floor stays 1.104.x GA.
+    assert "1.104.0 ga" in lower or "1.104.x" in lower or "1.104 ga" in lower
+
+
 def test_compare_litellm_pins_1105_rc_decisions_parity() -> None:
     """1.105 RC Decisions routes vs on-box /v1/decisions + /v1/systemone (#1584)."""
     text = DOC.read_text(encoding="utf-8")

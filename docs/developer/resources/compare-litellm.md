@@ -44,4 +44,17 @@ Decisions routes (`POST /v1/decisions`, `/v1/systemone`). daari already serves
 Straiker / Lens RC items. This page only records the rest as a watch list so
 buyers are not told we lag an unreleased cut.
 
+## LiteLLM 1.106 RC (watch)
+
+LiteLLM [v1.106.0-rc.3](https://docs.litellm.ai/release_notes/v1.106.0rc3/v1-106-0-rc-3)
+(RC / backport wave, 2026-10) includes a native
+[decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
+(`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
+model, blocking or logging at a probability threshold. This is still
+**prerelease**. The stable comparison floor stays **1.104.0 GA**.
+
+daari does **not** ship a decision-model guardrail yet. Heuristic / regex
+guardrails plus the on-box `/v1/decisions` path remain the local route for
+operators who pull clef or nimble.
+
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).

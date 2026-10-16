@@ -7028,6 +7028,14 @@ the 11434 reminder, and `X-Daari-Client-Id: chatgpt-desktop`. App preferences
 are not written. Docs: chatgpt-desktop.md. Covered by
 `tests/unit/test_configure_cli.py`.
 
+### LiteLLM 1.106 decision-model guardrail watch ([#1598](https://github.com/naveenreddyalka/daari/issues/1598))
+
+<!-- tracking:#1598 -->
+**Status:** Done (2026-10-16). `compare-litellm.md` watches LiteLLM 1.106's
+decision-model guardrail and states daari does not ship one yet (heuristic
+guardrails + `/v1/decisions`). Comparison floor stays 1.104.0 GA. Covered by
+`tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
