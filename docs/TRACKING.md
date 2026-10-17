@@ -7221,6 +7221,15 @@ from `WindowStatus.reset_at` (ISO-8601 UTC). Lifetime windows keep an empty
 reset, the same as `reset_at("lifetime")`. Existing spend fields and team
 scoping are unchanged. Covered by `tests/unit/test_model_max_budget.py`.
 
+### Doctor warns when Ollama is older than the q2_0 floor ([#1734](https://github.com/naveenreddyalka/daari/issues/1734))
+
+<!-- tracking:#1734 -->
+**Status:** Done (2026-10-17). When `GET /api/version` is below 0.40.6,
+optional check `ollama_q2_0` names the running version and says `q2_0` GGUF
+tensors need Ollama 0.40.6 or newer. 0.40.6+ and a missing or unparseable
+version stay quiet. Tag checks are unchanged. Docs: doctor-health.md.
+Covered by `tests/unit/test_doctor_ollama_q2_floor.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

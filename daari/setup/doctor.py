@@ -343,6 +343,43 @@ def _ollama_cloud_detail(model: str) -> str:
     return f"{model} runs through Ollama cloud (ollama.com), not a local blob"
 
 
+_OLLAMA_Q2_0_FLOOR = (0, 40, 6)
+
+
+def _parse_ollama_semver(raw: str) -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", raw.strip())
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def _ollama_q2_0_warning(http: httpx.Client, base: str) -> CheckResult | None:
+    """Warn when the local daemon cannot load q2_0 GGUF tensors (Ollama < 0.40.6)."""
+    try:
+        response = http.get(f"{base}/api/version")
+        if response.status_code != 200:
+            return None
+        payload = response.json()
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get("version")
+    if not isinstance(raw, str):
+        return None
+    parsed = _parse_ollama_semver(raw)
+    if parsed is None or parsed >= _OLLAMA_Q2_0_FLOOR:
+        return None
+    return CheckResult(
+        name="ollama_q2_0",
+        ok=False,
+        detail=(
+            f"Ollama {raw.strip()} — q2_0 GGUF tensors need Ollama 0.40.6 or newer"
+        ),
+        optional=True,
+    )
+
+
 def _check_ollama(
     settings: Settings,
     client: httpx.Client | None,
@@ -409,7 +446,7 @@ def _check_ollama(
         l5_present = _present(l5_model)
         embedding_present = _present(embedding_model)
         embed_required = settings.cache.l1.enabled
-        return [
+        results = [
             CheckResult(name="ollama", ok=True, detail=f"reachable at {base}"),
             CheckResult(
                 name="model",
@@ -457,6 +494,10 @@ def _check_ollama(
                 optional=not embed_required,
             ),
         ]
+        warning = _ollama_q2_0_warning(http, base)
+        if warning is not None:
+            results.append(warning)
+        return results
     except Exception as exc:
         return [
             CheckResult(name="ollama", ok=False, detail=f"unreachable at {base}: {exc}"),
