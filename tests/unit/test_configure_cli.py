@@ -183,3 +183,51 @@ def test_codex_guide_linked_from_clients_nav():
     assert "X-Daari-Client-Id: codex" in guide
     nav = Path("mkdocs.yml").read_text(encoding="utf-8")
     assert "developer/guides/clients/codex.md" in nav
+
+
+def test_supported_clients_includes_opencode():
+    assert "opencode" in supported_clients()
+
+
+def test_configure_opencode_dry_run_prints_v2_snippet(home):
+    result = runner.invoke(app, ["configure", "opencode", "--dry-run"])
+    assert result.exit_code == 0
+    assert "http://127.0.0.1:11435/v1" in result.output
+    assert "providers" in result.output
+    assert "@opencode/ai/providers/openai-compatible" in result.output
+    assert "settings.baseURL" in result.output
+    assert "provider.daari.options.baseURL" in result.output
+    assert "X-Daari-Client-Id: opencode" in result.output
+    assert "{env:DAARI_API_KEY}" in result.output
+    assert "curl" in result.output
+    assert "Dry-run complete" in result.output
+
+
+def test_setup_opencode_dry_run(home):
+    result = runner.invoke(app, ["setup", "opencode", "--dry-run"])
+    assert result.exit_code == 0
+    assert "http://127.0.0.1:11435/v1" in result.output
+    assert "@opencode/ai/providers/openai-compatible" in result.output
+    assert "X-Daari-Client-Id: opencode" in result.output
+    assert "Dry-run complete" in result.output
+
+
+def test_configure_opencode_does_not_write_config(home):
+    before = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    result = runner.invoke(app, ["configure", "opencode"])
+    assert result.exit_code == 0
+    assert "were not modified" in result.output
+    assert "{env:DAARI_API_KEY}" in result.output
+    after = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    assert after == before
+
+
+def test_opencode_guide_linked_from_clients_nav():
+    guide = Path("docs/developer/guides/clients/opencode.md").read_text(encoding="utf-8")
+    assert "http://127.0.0.1:11435/v1" in guide
+    assert "@opencode/ai/providers/openai-compatible" in guide
+    assert "provider.daari.options.baseURL" in guide
+    assert "X-Daari-Client-Id: opencode" in guide
+    assert "{env:DAARI_API_KEY}" in guide
+    nav = Path("mkdocs.yml").read_text(encoding="utf-8")
+    assert "developer/guides/clients/opencode.md" in nav
