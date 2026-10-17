@@ -1695,7 +1695,9 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             is 503. When ``cache.backend=redis``, also probe Redis — down with
             rate-limit fallback active is degraded-but-200 (#463). During
             coordinated shutdown, returns 503 ``shutting_down`` immediately
-            so load balancers stop sending traffic (#1104)."""
+            so load balancers stop sending traffic (#1104). ``schema_ok`` is
+            false and the probe is 503 ``not_ready`` when a local SQLite file
+            lags ``STORE_SCHEMA_VERSIONS`` (#1727)."""
             if getattr(request.app.state, "shutting_down", False):
                 return JSONResponse(status_code=503, content={"status": "shutting_down"})
             ctx: AppContext = request.app.state.ctx
@@ -1746,7 +1748,17 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 checks["postgres"] = pg_check
                 if pg_check != "ok" and http_status == 200 and status in ("ready", "degraded"):
                     status = "degraded"
-            content: dict[str, Any] = {"status": status, "checks": checks}
+            from daari.ops.backup import local_sqlite_schema_status
+
+            schema = local_sqlite_schema_status(ctx.settings)
+            if not schema.schema_ok and http_status == 200:
+                status = "not_ready"
+                http_status = 503
+            content: dict[str, Any] = {
+                "status": status,
+                "checks": checks,
+                "schema_ok": schema.schema_ok,
+            }
             if backends:
                 content["backends"] = backends
             return JSONResponse(status_code=http_status, content=content)
