@@ -24,6 +24,32 @@ def bind_model_patterns(meta: Any, claims: Any, catalog: dict[str, list[str]] | 
     meta.team_model_patterns = team_patterns
 
 
+def cloud_egress_blocked_response(exc: Any) -> JSONResponse:
+    """403/400 when a local-only fence refuses an Ollama :cloud hop (#1736)."""
+    reason = str(getattr(exc, "reason", "") or "no_frontier")
+    if reason == "region_pin":
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "type": "region_unavailable",
+                    "code": "region_pin",
+                    "message": "Ollama cloud models cannot satisfy region_pin.",
+                }
+            },
+        )
+    return JSONResponse(
+        status_code=403,
+        content={
+            "error": {
+                "type": "frontier_not_allowed",
+                "code": reason,
+                "message": "Frontier (L6) is not permitted for this key.",
+            }
+        },
+    )
+
+
 def reject_frontier_passthrough(request: Any) -> JSONResponse | None:
     """403 when no_frontier or a local tier_cap forbids L6-only routes (#1058)."""
     headers = getattr(request, "headers", None)

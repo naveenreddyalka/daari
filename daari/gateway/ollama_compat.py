@@ -28,7 +28,7 @@ from daari.gateway.sampling import SamplingParams
 from daari.gateway.disconnect import ClientDisconnected, await_unless_disconnected, note_request_cancelled
 from daari.gateway.streaming import NDJSON_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.router.capabilities import UnsupportedCapability
-from daari.router.local_pool import BackendUnavailable
+from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 from daari.router.router import AppContext
 
 DEFAULT_CLIENT_ID = "ollama-compat"
@@ -360,6 +360,10 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 )
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
+            except CloudEgressBlocked as exc:
+                from daari.gateway.model_access import cloud_egress_blocked_response
+
+                return cloud_egress_blocked_response(exc)
             except BackendUnavailable as exc:
                 ctx.metrics.record_error(status=503)
                 return JSONResponse(

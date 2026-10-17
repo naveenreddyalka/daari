@@ -20,6 +20,16 @@ class BackendUnavailable(Exception):
         super().__init__(message)
 
 
+class CloudEgressBlocked(Exception):
+    """A local-only fence refused every non-cloud host for this tier (#1736)."""
+
+    def __init__(self, reason: str, *, tier: str = "", model: str = "") -> None:
+        self.reason = reason
+        self.tier = tier
+        self.model = model
+        super().__init__(reason)
+
+
 @dataclass
 class LocalBackendSlot:
     id: str
@@ -126,7 +136,12 @@ class LocalBackendPool:
         executors: dict[str, Any] | None = None,
         template: Any | None = None,
         warm_models: set[str] | None = None,
+        skip_cloud_reason: str | None = None,
+        on_cloud_skip: Any | None = None,
+        scrub: Any | None = None,
     ) -> InternalResponse:
+        from daari.pricing import is_ollama_cloud_model
+
         errors: list[str] = []
         tried: set[str] = set()
         while True:
@@ -139,6 +154,12 @@ class LocalBackendPool:
                 break
             slot = self._choose(remaining, tier)
             tried.add(slot.id)
+            served_model = slot.model or request.model or getattr(template, "default_model", "") or ""
+            if skip_cloud_reason and is_ollama_cloud_model(served_model):
+                if on_cloud_skip is not None:
+                    on_cloud_skip(slot, served_model)
+                errors.append(f"{slot.id}:cloud_egress")
+                continue
             executor = (executors or {}).get(slot.id)
             if executor is None and template is not None:
                 executor = self.bind_executor(slot, template)
@@ -146,6 +167,9 @@ class LocalBackendPool:
                 errors.append(f"{slot.id}:no_executor")
                 continue
             self.acquire(slot)
+            outbound = request
+            if scrub is not None and is_ollama_cloud_model(served_model):
+                outbound = scrub(request)
             try:
                 add_step(
                     "backend_pick",
@@ -154,8 +178,8 @@ class LocalBackendPool:
                     strategy=self.strategy,
                 )
                 if slot.model:
-                    request = request.model_copy(update={"model": slot.model})
-                response = await executor.execute(request)
+                    outbound = outbound.model_copy(update={"model": slot.model})
+                response = await executor.execute(outbound)
                 slot.breaker.record_success()
                 slot.requests += 1
                 response.daari_meta.backend_id = slot.id
@@ -171,6 +195,8 @@ class LocalBackendPool:
                 )
             finally:
                 self.release(slot)
+        if skip_cloud_reason and errors and all(item.endswith(":cloud_egress") for item in errors):
+            raise CloudEgressBlocked(skip_cloud_reason, tier=tier)
         raise BackendUnavailable(tier, ", ".join(errors) or "none tried")
 
     def readiness(self) -> dict[str, Any]:
