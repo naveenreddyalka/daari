@@ -7184,6 +7184,16 @@ previous payload shape. Covered by `tests/unit/test_mcp_server.py`.
 `frontier.scrub_pii` scrubs before a permitted `:cloud` hop. Docs:
 auth-and-keys.md. Covered by `tests/unit/test_ollama_cloud_egress.py`.
 
+### Ready schema_ok when a local store lags the binary ([#1727](https://github.com/naveenreddyalka/daari/issues/1727))
+
+<!-- tracking:#1727 -->
+**Status:** Done (2026-10-17). `GET /ready` includes boolean `schema_ok`.
+A configured local SQLite file whose `PRAGMA user_version` is behind
+`STORE_SCHEMA_VERSIONS` sets `schema_ok` false and returns HTTP 503
+`not_ready`. Missing files stay ok. `user_version` 0 matches expected
+version 1. `daari doctor` check `schema_ok` reports the same mismatch.
+Docs: doctor-health.md. Covered by `tests/unit/test_ready_schema_ok.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

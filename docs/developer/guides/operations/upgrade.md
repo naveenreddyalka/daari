@@ -71,7 +71,10 @@ Pin an explicit tag in `docker-compose.yml`; `latest` makes rollback a guess.
 
 The chart is `deploy/helm/daari/`; the image tag is `image.tag` in
 `values.yaml` and probes are `/health` (liveness) and `/ready` (readiness)
-([Capacity and Helm](capacity-helm.md)):
+([Capacity and Helm](capacity-helm.md)). `/ready` includes `schema_ok`; a
+local SQLite file whose `PRAGMA user_version` lags `STORE_SCHEMA_VERSIONS`
+returns 503 `not_ready` so a rolling upgrade does not look healthy while a
+store is behind:
 
 ```bash
 helm upgrade daari deploy/helm/daari \
