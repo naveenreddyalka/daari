@@ -21,6 +21,7 @@ def default_registry() -> ClientRegistry:
     from daari.clients.chatgpt_desktop.recipe import ChatGPTDesktopSetupRecipe
     from daari.clients.claude_code.recipe import ClaudeCodeSetupRecipe
     from daari.clients.codex.recipe import CodexSetupRecipe
+    from daari.clients.opencode.recipe import OpenCodeSetupRecipe
     from daari.clients.claude_desktop.recipe import ClaudeDesktopSetupRecipe
     from daari.clients.cursor.recipe import CursorSetupRecipe
     from daari.clients.intellij.recipe import IntelliJSetupRecipe
@@ -30,6 +31,7 @@ def default_registry() -> ClientRegistry:
     registry.register(ChatGPTDesktopSetupRecipe())
     registry.register(ClaudeCodeSetupRecipe())
     registry.register(CodexSetupRecipe())
+    registry.register(OpenCodeSetupRecipe())
     registry.register(ClaudeDesktopSetupRecipe())
     registry.register(CursorSetupRecipe())
     registry.register(IntelliJSetupRecipe())

@@ -18,6 +18,7 @@ from daari.cli.setup_actions import (
     apply_all_setups,
     apply_chatgpt_desktop_setup,
     apply_codex_setup,
+    apply_opencode_setup,
     apply_claude_code_setup,
     apply_claude_desktop_setup,
     apply_cursor_setup,
@@ -2944,6 +2945,23 @@ def setup_codex(
 ) -> None:
     """Print Codex CLI steps (OpenAI /v1 or Ollama host; no config writes)."""
     apply_codex_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("opencode")
+def setup_opencode(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show OpenCode steps without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Accepted for parity; OpenCode config files are not written.",
+    ),
+) -> None:
+    """Print OpenCode steps (OpenAI /v1 provider snippet; no config writes)."""
+    apply_opencode_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("chatgpt-desktop")

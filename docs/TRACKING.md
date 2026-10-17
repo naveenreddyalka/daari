@@ -7156,6 +7156,16 @@ Covered by `tests/unit/test_admin_team_filter.py`.
 plane with on-box `multi_agent` ledger attribution. 1.106 stays a prerelease
 watch. Covered by `tests/unit/test_compare_litellm_1104.py`.
 
+### OpenCode print-only configure recipe ([#1724](https://github.com/naveenreddyalka/daari/issues/1724))
+
+<!-- tracking:#1724 -->
+**Status:** Done (2026-10-17). `daari configure opencode` and `daari setup opencode`
+print an OpenCode v2 `providers` snippet (`settings.baseURL` ending in `/v1`,
+package `@opencode/ai/providers/openai-compatible`, `{env:DAARI_API_KEY}`) plus
+the older `provider.daari.options.baseURL` key and `X-Daari-Client-Id: opencode`.
+Config files are not written. Docs: opencode.md. Covered by
+`tests/unit/test_configure_cli.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
