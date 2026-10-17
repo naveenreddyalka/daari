@@ -7184,6 +7184,16 @@ previous payload shape. Covered by `tests/unit/test_mcp_server.py`.
 `frontier.scrub_pii` scrubs before a permitted `:cloud` hop. Docs:
 auth-and-keys.md. Covered by `tests/unit/test_ollama_cloud_egress.py`.
 
+### Doctor skips ollama pull for :cloud models ([#1731](https://github.com/naveenreddyalka/daari/issues/1731))
+
+<!-- tracking:#1731 -->
+**Status:** Done (2026-10-17). L3/L4/L5, the embedding model, and
+decisions-catalog ids ending in `:cloud` stay successful without a local
+`/api/tags` hit. The detail says the id runs through Ollama cloud
+(ollama.com), not a local blob. A missing non-cloud model still suggests
+`ollama pull`. Docs: doctor-health.md. Covered by
+`tests/unit/test_doctor_ollama_cloud.py`.
+
 ### Ready schema_ok when a local store lags the binary ([#1727](https://github.com/naveenreddyalka/daari/issues/1727))
 
 <!-- tracking:#1727 -->

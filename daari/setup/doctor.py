@@ -333,6 +333,16 @@ def _check_secret_refs(settings: Settings) -> CheckResult:
     )
 
 
+def _ollama_cloud_route(model: str) -> bool:
+    from daari.pricing import is_ollama_cloud_model
+
+    return is_ollama_cloud_model(model)
+
+
+def _ollama_cloud_detail(model: str) -> str:
+    return f"{model} runs through Ollama cloud (ollama.com), not a local blob"
+
+
 def _check_ollama(
     settings: Settings,
     client: httpx.Client | None,
@@ -381,51 +391,68 @@ def _check_ollama(
             ]
         data: dict[str, Any] = response.json()
         models = [m.get("name", "") for m in data.get("models", [])]
-        l3_present = any(name == l3_model or name.startswith(f"{l3_model}:") for name in models)
-        l4_present = any(name == l4_model or name.startswith(f"{l4_model}:") for name in models)
-        l5_present = any(name == l5_model or name.startswith(f"{l5_model}:") for name in models)
-        embedding_present = any(
-            name == embedding_model or name.startswith(f"{embedding_model}:") for name in models
-        )
+
+        def _present(model: str) -> bool:
+            if _ollama_cloud_route(model):
+                return True
+            return any(name == model or name.startswith(f"{model}:") for name in models)
+
+        def _detail(model: str, present: bool, missing: str) -> str:
+            if _ollama_cloud_route(model):
+                return _ollama_cloud_detail(model)
+            if present:
+                return f"{model} found"
+            return missing
+
+        l3_present = _present(l3_model)
+        l4_present = _present(l4_model)
+        l5_present = _present(l5_model)
+        embedding_present = _present(embedding_model)
         embed_required = settings.cache.l1.enabled
         return [
             CheckResult(name="ollama", ok=True, detail=f"reachable at {base}"),
             CheckResult(
                 name="model",
                 ok=l3_present,
-                detail=f"{l3_model} {'found' if l3_present else 'missing — run: ollama pull ' + l3_model}",
+                detail=_detail(
+                    l3_model,
+                    l3_present,
+                    f"{l3_model} missing — run: ollama pull {l3_model}",
+                ),
             ),
             CheckResult(
                 name="model_l4",
                 ok=l4_present,
-                detail=(
-                    f"{l4_model} found"
-                    if l4_present
-                    else (
-                        f"{l4_model} missing — run: ollama pull {l4_model} "
-                        + (
-                            "(required: Cursor is configured and long prompts route to L4)"
-                            if l4_required
-                            else "(L4 falls back to L3)"
-                        )
-                    )
+                detail=_detail(
+                    l4_model,
+                    l4_present,
+                    f"{l4_model} missing — run: ollama pull {l4_model} "
+                    + (
+                        "(required: Cursor is configured and long prompts route to L4)"
+                        if l4_required
+                        else "(L4 falls back to L3)"
+                    ),
                 ),
                 optional=not l4_required,
             ),
             CheckResult(
                 name="model_l5",
                 ok=l5_present,
-                detail=(
-                    f"{l5_model} {'found' if l5_present else 'missing — run: ollama pull ' + l5_model + ' (L5 optional large tier)'}"
+                detail=_detail(
+                    l5_model,
+                    l5_present,
+                    f"{l5_model} missing — run: ollama pull {l5_model} (L5 optional large tier)",
                 ),
                 optional=True,
             ),
             CheckResult(
                 name="embedding_model",
                 ok=embedding_present,
-                detail=(
-                    f"{embedding_model} "
-                    f"{'found' if embedding_present else 'missing — run: ollama pull ' + embedding_model + ' (required for L1 semantic cache)'}"
+                detail=_detail(
+                    embedding_model,
+                    embedding_present,
+                    f"{embedding_model} missing — run: ollama pull {embedding_model} "
+                    "(required for L1 semantic cache)",
                 ),
                 optional=not embed_required,
             ),
@@ -724,21 +751,32 @@ def _check_decisions_local_models(
         names = [
             str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
         ]
+        cloud = [model for model in catalog if _ollama_cloud_route(model)]
+        local_ids = [model for model in catalog if not _ollama_cloud_route(model)]
+        if not local_ids:
+            shown = ", ".join(cloud)
+            return CheckResult(
+                name="decisions_local_models",
+                ok=True,
+                detail=_ollama_cloud_detail(shown),
+                optional=True,
+            )
         present = [
             model
-            for model in catalog
+            for model in local_ids
             if any(name == model or name.startswith(f"{model}:") for name in names if name)
         ]
         if present:
             return None
-        shown = ", ".join(catalog[:8])
-        extra = f" (+{len(catalog) - 8} more)" if len(catalog) > 8 else ""
+        shown = ", ".join(local_ids[:8])
+        extra = f" (+{len(local_ids) - 8} more)" if len(local_ids) > 8 else ""
+        example = local_ids[0]
         return CheckResult(
             name="decisions_local_models",
             ok=False,
             detail=(
                 "POST /v1/decisions local catalog models not in Ollama tags at "
-                f"{base}: {shown}{extra} — pull one (e.g. `ollama pull nimble`) "
+                f"{base}: {shown}{extra} — pull one (e.g. `ollama pull {example}`) "
                 "or extend decisions.local_models (see ollama.md)"
             ),
             optional=True,
