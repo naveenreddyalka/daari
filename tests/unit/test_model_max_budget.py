@@ -6,10 +6,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from daari.auth.budgets import (
+    BudgetWindow,
     effective_model_max_budget,
     model_max_budget_of,
     model_max_budget_status,
     parse_model_max_budget,
+    reset_at,
     team_model_spend_report_rows,
 )
 from daari.auth.virtual_keys import VirtualKeyStore
@@ -256,6 +258,33 @@ async def test_report_exposes_team_model_spend(settings, tmp_path):
         body = report.json()
         assert "team_model_spend" in body
         assert any(r["model_pattern"] == "gpt-4*" for r in body["team_model_spend"])
+
+
+def test_team_model_spend_row_includes_window_reset_at(tmp_path):
+    store = VirtualKeyStore(tmp_path / "vk.sqlite3")
+    ledger = UsageLedger(tmp_path / "usage.sqlite3")
+    eng = store.create_team("eng", model_max_budget={"gpt-4*": 10.0})
+    ops = store.create_team(
+        "ops",
+        model_max_budget={"claude-*": [BudgetWindow("lifetime", 5.0)]},
+    )
+    rows = team_model_spend_report_rows(store, ledger, soft_ratio=0.8)
+    daily = next(row for row in rows if row["team_id"] == eng.team_id)
+    lifetime = next(row for row in rows if row["team_id"] == ops.team_id)
+    assert daily["reset_at"] == reset_at("day")
+    assert daily["model_pattern"] == "gpt-4*"
+    assert daily["spend_usd"] == 0.0
+    assert daily["budget_usd"] == 10.0
+    assert "remaining_usd" in daily
+    assert "soft" in daily
+    assert "exceeded" in daily
+    assert lifetime["reset_at"] == ""
+    assert lifetime["window"] == "lifetime"
+    scoped = team_model_spend_report_rows(
+        store, ledger, soft_ratio=0.8, team_id=eng.team_id
+    )
+    assert [row["team_id"] for row in scoped] == [eng.team_id]
+    assert scoped[0]["reset_at"] == daily["reset_at"]
 
 
 def test_missing_map_is_unlimited(tmp_path):
