@@ -72,6 +72,44 @@ def _anthropic_usage_speed(data: dict[str, Any]) -> str | None:
     return None
 
 
+def _remember_anthropic_stream_usage(executor: FrontierExecutor, event: dict[str, Any]) -> None:
+    """Keep message_start usage.speed, else the message_delta fallback (#1737)."""
+    event_type = event.get("type")
+    if event_type == "message_start":
+        message = event.get("message")
+        if not isinstance(message, dict):
+            return
+        usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
+        speed = _anthropic_usage_speed(message)
+        if speed:
+            executor.last_stream_usage_speed = speed
+        _remember_stream_token_counts(executor, usage, prefer_output=False)
+        return
+    if event_type == "message_delta":
+        usage = event.get("usage") if isinstance(event.get("usage"), dict) else {}
+        if not executor.last_stream_usage_speed:
+            speed = _anthropic_usage_speed(event)
+            if speed:
+                executor.last_stream_usage_speed = speed
+        _remember_stream_token_counts(executor, usage, prefer_output=True)
+
+
+def _remember_stream_token_counts(
+    executor: FrontierExecutor,
+    usage: dict[str, Any],
+    *,
+    prefer_output: bool,
+) -> None:
+    raw_in = usage.get("input_tokens")
+    raw_out = usage.get("output_tokens")
+    if isinstance(raw_in, int) and not isinstance(raw_in, bool):
+        if executor.last_stream_input_tokens is None or prefer_output:
+            executor.last_stream_input_tokens = raw_in
+    if isinstance(raw_out, int) and not isinstance(raw_out, bool):
+        if executor.last_stream_output_tokens is None or prefer_output:
+            executor.last_stream_output_tokens = raw_out
+
+
 @dataclass
 class FrontierExecutor:
     base_url: str
@@ -229,6 +267,10 @@ class FrontierExecutor:
         if not self.api_key:
             raise RuntimeError("frontier API key not configured")
 
+        self.last_stream_usage_speed = None
+        self.last_stream_input_tokens = None
+        self.last_stream_output_tokens = None
+
         if self._is_anthropic():
             payload = to_anthropic_payload(
                 request,
@@ -274,6 +316,12 @@ class FrontierExecutor:
                     data = line[len("data:") :].strip()
                     if not data:
                         continue
+                    try:
+                        parsed = json.loads(data)
+                    except ValueError:
+                        parsed = None
+                    if isinstance(parsed, dict):
+                        _remember_anthropic_stream_usage(self, parsed)
                     tool_event = anthropic_tool_event_from_sse_data(data)
                     if tool_event is not None:
                         event_type = tool_event.get("type")
