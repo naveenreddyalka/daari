@@ -17,6 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from daari.cli.setup_actions import (
     apply_all_setups,
     apply_chatgpt_desktop_setup,
+    apply_codex_setup,
+    apply_opencode_setup,
     apply_claude_code_setup,
     apply_claude_desktop_setup,
     apply_cursor_setup,
@@ -639,6 +641,52 @@ def keys_team_budget_boost(
         action="budget.boost.grant",
         detail={"scope": "team", "team_id": row.team_id, "team": row.name, **boost},
     )
+
+
+def _daemon_unlock_prefix(settings: Settings, prefix: str) -> tuple[bool, str]:
+    """Ask a running daemon to drop its in-process lock for ``prefix``."""
+    if not _daemon_is_running(settings):
+        return False, "daemon not running"
+    url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/keys/unlock"
+    auth = (settings.server.primary_master_key() or "").strip()
+    headers: dict[str, str] = {}
+    if auth:
+        headers["Authorization"] = f"Bearer {auth}"
+    try:
+        response = httpx.post(url, json={"prefix": prefix}, headers=headers, timeout=5.0)
+        response.raise_for_status()
+        payload = response.json()
+        shown = payload.get("prefix", prefix) if isinstance(payload, dict) else prefix
+        return True, f"daemon cleared prefix {shown}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+@keys_app.command("unlock-prefix")
+def keys_unlock_prefix(
+    prefix: str = typer.Argument(..., help="Key prefix (first 10 characters) to unlock."),
+) -> None:
+    """Clear an active key-prefix lockout (in-process state and Redis)."""
+    import os
+
+    from daari.auth.key_lockout import build_key_lockout
+    from daari.auth.key_lockout_alerts import clear_key_locked_alert
+
+    settings = get_settings()
+    lock = build_key_lockout(settings)
+    shown = lock.subject(prefix)
+    cleared = lock.unlock(prefix)
+    clear_key_locked_alert(shown, redis=getattr(lock, "redis", None))
+    daemon_ok, daemon_msg = _daemon_unlock_prefix(settings, shown)
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="auth.key_unlocked",
+        detail={"prefix": shown, "scope": "key"},
+    )
+    typer.echo(f"Unlocked prefix {shown} (cleared={cleared})")
+    if daemon_ok:
+        typer.echo(daemon_msg)
 
 
 @keys_app.command("revoke")
@@ -2121,6 +2169,16 @@ def backup_restore(
         raise typer.Exit(code=1) from exc
     typer.echo(f"restored {archive}")
     typer.echo(f"daari={manifest.daari_version} schema={manifest.archive_schema_version}")
+    from daari.ops.backup import archive_is_consistent
+    from daari.setup.doctor import _postgres_store_backends
+
+    if _postgres_store_backends(settings) and not archive_is_consistent(manifest):
+        typer.echo(
+            "warning: restoring a non-consistent archive onto a Postgres-backed "
+            "fleet; spend and keys may not match. Prefer an archive created with "
+            "--consistent.",
+            err=True,
+        )
     for row in manifest.stores:
         if row.get("backend") != "embedded" or not row.get("present"):
             continue
@@ -2870,6 +2928,40 @@ def setup_vscode(
 ) -> None:
     """Configure VS Code settings for daari OpenAI-compatible setup."""
     apply_vscode_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("codex")
+def setup_codex(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show Codex CLI steps without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Accepted for parity; Codex config files are not written.",
+    ),
+) -> None:
+    """Print Codex CLI steps (OpenAI /v1 or Ollama host; no config writes)."""
+    apply_codex_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("opencode")
+def setup_opencode(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show OpenCode steps without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Accepted for parity; OpenCode config files are not written.",
+    ),
+) -> None:
+    """Print OpenCode steps (OpenAI /v1 provider snippet; no config writes)."""
+    apply_opencode_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("chatgpt-desktop")

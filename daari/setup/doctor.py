@@ -106,8 +106,9 @@ def run_doctor(
         results.append(json_logs_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
-    results.append(_check_postgres_tls(cfg))
-    results.append(_check_redis_tls(cfg))
+    results.append(_check_postgres_tls(cfg, strict=strict))
+    results.append(_check_redis_tls(cfg, strict=strict))
+    results.append(_check_egress_https(cfg, strict=strict))
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
@@ -123,6 +124,7 @@ def run_doctor(
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_key_expiry(cfg))
+    results.append(_check_key_lockout(cfg))
     results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
@@ -1919,6 +1921,73 @@ def _check_vk_empty_allowlist(settings: Settings) -> CheckResult:
     )
 
 
+def _check_key_lockout(settings: Settings) -> CheckResult:
+    """Tip when prefix lockout is off; list Redis-locked prefixes when reachable (#1704)."""
+    block = getattr(settings.auth, "key_lockout", None)
+    enabled = bool(getattr(block, "enabled", True)) and int(
+        getattr(block, "max_failures", 0) or 0
+    ) > 0
+    if not enabled:
+        return CheckResult(
+            name="key_lockout",
+            ok=False,
+            detail=(
+                "auth.key_lockout is disabled — invalid-auth storms are not "
+                "locked per key prefix"
+            ),
+            optional=True,
+        )
+    cache = settings.cache
+    if getattr(cache, "backend", "disk") != "redis":
+        return CheckResult(
+            name="key_lockout",
+            ok=True,
+            detail="key-prefix lockout enabled (in-process)",
+            optional=True,
+        )
+    redis_url = str(getattr(cache, "redis_url", "") or "").strip()
+    if not redis_url:
+        return CheckResult(
+            name="key_lockout",
+            ok=True,
+            detail="key-prefix lockout enabled; cache.redis_url empty",
+            optional=True,
+        )
+    try:
+        from daari.auth.key_lockout import KeyLockout
+        from daari.cache.redis_client import connect_redis
+
+        timeout = float(getattr(cache, "redis_timeout_seconds", 2.0) or 2.0)
+        client = connect_redis(redis_url, timeout_seconds=timeout)
+        client.ping()
+        prefixes = KeyLockout(redis=client).locked_prefixes()
+    except Exception as exc:
+        return CheckResult(
+            name="key_lockout",
+            ok=True,
+            detail=(
+                f"key-prefix lockout enabled; Redis locked prefixes not listed "
+                f"({type(exc).__name__})"
+            ),
+            optional=True,
+        )
+    if prefixes:
+        shown = ", ".join(prefixes[:20])
+        extra = f" (+{len(prefixes) - 20} more)" if len(prefixes) > 20 else ""
+        return CheckResult(
+            name="key_lockout",
+            ok=False,
+            detail=f"locked prefixes: {shown}{extra}",
+            optional=True,
+        )
+    return CheckResult(
+        name="key_lockout",
+        ok=True,
+        detail="key-prefix lockout enabled; no locked prefixes in Redis",
+        optional=True,
+    )
+
+
 def _check_budget_webhook_secret(settings: Settings) -> CheckResult:
     """Warn when a budget webhook URL is set without a signing secret (#496)."""
     url = (settings.alerts.budget_webhook_url or "").strip()
@@ -2053,16 +2122,33 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
 
 def _check_recent_backup(settings: Settings) -> CheckResult:
     """Informational hint when no recent full-state backup archive is found (#1131)."""
-    from daari.ops.backup import recent_backup_manifests, recent_backups_all_plaintext
+    from daari.ops.backup import (
+        read_archive_consistent,
+        recent_backup_manifests,
+        recent_backups_all_plaintext,
+    )
 
     found = recent_backup_manifests()
     if found:
-        detail = f"recent backup: {found[-1].name}"
+        latest = max(found, key=lambda path: path.stat().st_mtime)
+        detail = f"recent backup: {latest.name}"
+        ok = True
         if recent_backups_all_plaintext(found):
-            detail += " (all plaintext — consider: daari backup create … --encrypt openssl)"
+            detail += (
+                " (all plaintext — consider: daari backup create … "
+                "--encrypt openssl --consistent)"
+            )
+        if _postgres_store_backends(settings):
+            marker = read_archive_consistent(latest)
+            if marker is False:
+                ok = False
+                detail += (
+                    " (latest archive lacks --consistent marker — Postgres fleet "
+                    "snapshots can skew; re-run: daari backup create … --consistent)"
+                )
         return CheckResult(
             name="backup",
-            ok=True,
+            ok=ok,
             detail=detail,
             optional=True,
         )
@@ -2071,7 +2157,7 @@ def _check_recent_backup(settings: Settings) -> CheckResult:
         ok=False,
         detail=(
             "no recent backup under ~/.daari/backups — "
-            "run: daari backup create ~/.daari/backups/daari.tar.gz"
+            "run: daari backup create ~/.daari/backups/daari.tar.gz --consistent"
         ),
         optional=True,
     )
@@ -2359,8 +2445,11 @@ def _postgres_sslmode(dsn: str) -> str | None:
     return str(modes[0]).strip().lower() or None
 
 
-def _check_postgres_tls(settings: Settings) -> CheckResult:
-    """Warn when a remote observability.postgres_url lacks sslmode=require+ (#1679)."""
+def _check_postgres_tls(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn when a remote observability.postgres_url lacks sslmode=require+ (#1679).
+
+    With ``strict=True`` (#1708) a failing remote check is required (exit 1).
+    """
     dsn = str(getattr(settings.observability, "postgres_url", "") or "").strip()
     if not dsn:
         return CheckResult(
@@ -2400,12 +2489,15 @@ def _check_postgres_tls(settings: Settings) -> CheckResult:
             "?sslmode=require (or verify-ca / verify-full) and optionally "
             "sslrootcert=/path/to/ca.pem"
         ),
-        optional=True,
+        optional=not strict,
     )
 
 
-def _check_redis_tls(settings: Settings) -> CheckResult:
-    """Warn when a remote cache.redis_url uses redis:// instead of rediss:// (#1679)."""
+def _check_redis_tls(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn when a remote cache.redis_url uses redis:// instead of rediss:// (#1679).
+
+    With ``strict=True`` (#1708) a failing remote check is required (exit 1).
+    """
     if getattr(settings.cache, "backend", "disk") != "redis":
         return CheckResult(
             name="redis_tls",
@@ -2449,7 +2541,67 @@ def _check_redis_tls(settings: Settings) -> CheckResult:
             "L0 / rate-limit counters transit cleartext; use rediss:// and "
             "pass CA via the URL (e.g. rediss://host:6379/0?ssl_ca_certs=/path/to/ca.pem)"
         ),
-        optional=True,
+        optional=not strict,
+    )
+
+
+def _remote_http_host(url: str) -> str | None:
+    """Hostname when ``url`` is ``http://`` to a non-loopback host."""
+    from urllib.parse import urlparse
+
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if (parsed.scheme or "").strip().lower() != "http":
+        return None
+    host = _url_host(raw)
+    if host is None or _is_loopback_host(host):
+        return None
+    return host
+
+
+def _check_egress_https(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn (or require under --strict) on remote ``http://`` operator egress (#1708)."""
+    offenders: list[str] = []
+    alerts = settings.alerts
+    for label, url in (
+        ("budget_webhook", getattr(alerts, "budget_webhook_url", "") or ""),
+        ("key_expiry_webhook", getattr(alerts, "key_expiry_webhook_url", "") or ""),
+    ):
+        host = _remote_http_host(str(url))
+        if host:
+            offenders.append(f"{label}→{host}")
+
+    otlp_on = bool(getattr(settings.observability, "otlp_logs", False))
+    endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    if otlp_on and endpoint:
+        host = _remote_http_host(endpoint)
+        if host:
+            offenders.append(f"OTEL_EXPORTER_OTLP_ENDPOINT→{host}")
+
+    for server in list(settings.integrations.mcp_servers or []):
+        sid = str(getattr(server, "id", "") or "").strip() or "unnamed"
+        host = _remote_http_host(str(getattr(server, "url", "") or ""))
+        if host:
+            offenders.append(f"mcp:{sid}→{host}")
+
+    if not offenders:
+        return CheckResult(
+            name="egress_https",
+            ok=True,
+            detail="no remote http:// webhooks / OTLP / MCP URLs",
+            optional=True,
+        )
+    return CheckResult(
+        name="egress_https",
+        ok=False,
+        detail=(
+            "remote http:// egress: "
+            + ", ".join(offenders)
+            + " — use https:// (loopback http:// stays ok)"
+        ),
+        optional=not strict,
     )
 
 

@@ -19,6 +19,23 @@ from daari.enterprise.audit import (
     compute_row_hash,
 )
 
+
+def _detail_has_team(detail: Any, team_id: str) -> bool:
+    """True when stored audit detail JSON includes this team id."""
+    if isinstance(detail, dict):
+        payload = detail
+    else:
+        try:
+            payload = json.loads(detail or "")
+        except (TypeError, json.JSONDecodeError):
+            return False
+    if not isinstance(payload, dict):
+        return False
+    value = payload.get("team_id")
+    if value is None:
+        return False
+    return str(value).strip() == team_id
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS daari_audit (
     seq BIGSERIAL PRIMARY KEY,
@@ -154,12 +171,14 @@ class PostgresAuditLog:
         actor: str | None = None,
         action: str | None = None,
         since: str | None = None,
+        team_id: str | None = None,
     ) -> int:
         """Total matching rows for admin pagination (#1530)."""
         if not self.enabled:
             return 0
         action_prefix = (action or "").strip()
         actor_filter = (actor or "").strip() or None
+        team_filter = (team_id or "").strip() or None
         if self._memory:
             rows, lock = _memory_bucket(self.dsn)
             with lock:
@@ -171,6 +190,8 @@ class PostgresAuditLog:
                 if action_prefix and not str(row["action"]).startswith(action_prefix):
                     continue
                 if since and row["ts"] < since:
+                    continue
+                if team_filter and not _detail_has_team(row.get("detail"), team_filter):
                     continue
                 total += 1
             return total
@@ -185,6 +206,9 @@ class PostgresAuditLog:
         if since:
             clauses.append("ts >= %s")
             params.append(since)
+        if team_filter:
+            clauses.append("detail::jsonb ->> 'team_id' = %s")
+            params.append(team_filter)
         sql = "SELECT COUNT(*) FROM daari_audit WHERE " + " AND ".join(clauses)
         try:
             with self._lock:
@@ -204,6 +228,7 @@ class PostgresAuditLog:
         actor: str | None = None,
         action: str | None = None,
         since: str | None = None,
+        team_id: str | None = None,
     ) -> list[dict[str, Any]]:
         off = max(0, int(offset or 0))
         lim = max(0, int(limit))
@@ -214,6 +239,7 @@ class PostgresAuditLog:
                 actor=actor,
                 action=action,
                 since=since,
+                team_id=team_id,
                 batch_size=max(lim, 1) if lim else 500,
             )
         )
@@ -228,6 +254,7 @@ class PostgresAuditLog:
         actor: str | None = None,
         action: str | None = None,
         since: str | None = None,
+        team_id: str | None = None,
         batch_size: int = 500,
     ) -> Iterator[dict[str, Any]]:
         if not self.enabled:
@@ -235,6 +262,7 @@ class PostgresAuditLog:
         remaining = None if limit is None else max(0, int(limit))
         if remaining == 0:
             return
+        team_filter = (team_id or "").strip() or None
         if self._memory:
             rows, lock = _memory_bucket(self.dsn)
             with lock:
@@ -248,6 +276,8 @@ class PostgresAuditLog:
                 if action_prefix and not str(row["action"]).startswith(action_prefix):
                     continue
                 if since and row["ts"] < since:
+                    continue
+                if team_filter and not _detail_has_team(row.get("detail"), team_filter):
                     continue
                 yield _row_dict(
                     row["seq"],
@@ -282,6 +312,9 @@ class PostgresAuditLog:
             if since:
                 clauses.append("ts >= %s")
                 params.append(since)
+            if team_filter:
+                clauses.append("detail::jsonb ->> 'team_id' = %s")
+                params.append(team_filter)
             if cursor_seq is not None:
                 clauses.append("seq < %s")
                 params.append(cursor_seq)

@@ -1,6 +1,12 @@
 {{- if .Values.backup.enabled }}
 {{- $backup := .Values.backup }}
 {{- $encrypt := $backup.encrypt | default "" | lower }}
+{{- $consistent := false }}
+{{- if kindIs "bool" $backup.consistent }}
+{{- $consistent = $backup.consistent }}
+{{- else if .Values.postgres.enabled }}
+{{- $consistent = true }}
+{{- end }}
 {{- if and $encrypt (ne $encrypt "openssl") (ne $encrypt "age") }}
 {{- fail "backup.encrypt must be empty, openssl, or age" }}
 {{- end }}
@@ -62,11 +68,11 @@ spec:
                   set -eu
                   DEST="/backups/daari-$(date -u +%Y%m%d%H%M%S).tar.gz"
                   {{- if eq $encrypt "openssl" }}
-                  daari backup create "$DEST" --encrypt openssl --passphrase-env {{ $backup.passphraseEnv | default "DAARI_BACKUP_PASS" }}
+                  daari backup create "$DEST"{{ if $consistent }} --consistent{{ end }} --encrypt openssl --passphrase-env {{ $backup.passphraseEnv | default "DAARI_BACKUP_PASS" }}
                   {{- else if eq $encrypt "age" }}
-                  daari backup create "$DEST" --encrypt age
+                  daari backup create "$DEST"{{ if $consistent }} --consistent{{ end }} --encrypt age
                   {{- else }}
-                  daari backup create "$DEST"
+                  daari backup create "$DEST"{{ if $consistent }} --consistent{{ end }}
                   {{- end }}
                   RETAIN={{ int ($backup.retain | default 0) }}
                   if [ "$RETAIN" -gt 0 ]; then

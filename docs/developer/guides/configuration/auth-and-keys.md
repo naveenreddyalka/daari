@@ -52,7 +52,10 @@ daari keys list
 daari keys rotate <key_id>            # new secret; old works for 24h
 daari keys rotate <key_id> --grace 0  # immediate cutover
 daari keys revoke <key_id>
+daari keys unlock-prefix <prefix>  # clear auth.key_lockout for that prefix
 ```
+
+`auth.key_lockout` returns 429 `auth_key_locked` after too many invalid attempts for one key prefix. Recovery is not TTL-only: an admin `POST /v1/daari/keys/unlock` with `{"prefix": "<first 10 chars>"}` (master key) or `daari keys unlock-prefix` clears the in-process map and the Redis lock keys, and writes `auth.key_unlocked`. `daari doctor` tips when lockout is disabled and, when Redis answers, lists locked prefixes (`key_lockout`). If `alerts.budget_webhook_url` is set (otherwise `alerts.key_expiry_webhook_url`), a lock posts one signed `event: key_locked` body (same `X-Daari-Signature` scheme; deduped per prefix until unlock).
 
 Hashed storage; plaintext shown once. Supports daily/monthly budgets, RPM, TPM, tier caps, and an optional expiry (`--expires 30d|12h|45m` or an ISO-8601 timestamp). Existing keys with no expiry never expire. An expired key is a 401 `key_expired` (distinct from invalid/revoked) and writes an `auth.key_expired` audit row. `daari keys list` shows `expires`, `grace_until` (pending rotation), and a `status` of `active` / `expired` / `revoked`.
 
@@ -302,6 +305,7 @@ when `postgres.enabled` is true.
 | `auth.sso_key_required` | Raw SSO bearer on inference route 401 | `path`, `sub` |
 | `auth.invalid_key` | Invalid/missing key 401 | `prefix` (≤10 chars), `path`; identical `(prefix, path)` deduped for 60s |
 | `auth.key_locked` | Same key prefix exceeded `auth.key_lockout.max_failures` | `prefix` (≤10), `failures`, `retry_after`, `scope=key` |
+| `auth.key_unlocked` | `POST /v1/daari/keys/unlock` or `daari keys unlock-prefix` | `prefix` (≤10), `scope=key` |
 | `budget.exceeded` | Frontier/key budget or request-quota 402 | `key_id`, `team_id`, `scope`, `window`, `remaining`, `limit`, `quota` (no prompts/secrets) |
 | `rate_limit.exceeded` | RPM/TPM/RPD 429 | `key_id`, `team_id`, `model`, `scope`, `bucket`, `remaining`, `limit` |
 | `concurrency.exceeded` | In-flight concurrency 503 | `key_id`, `team_id`, `model`, `scope`, `remaining`, `limit` |

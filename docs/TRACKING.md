@@ -7091,6 +7091,81 @@ client rows; request quotas and `team_model_spend` stay on that team;
 fleet `tiers` / `errors` / `total_requests`. Admin reads without `team_id`
 stay fleet-wide. Covered by `tests/unit/test_team_scoped_admin_reads.py`.
 
+### Key-prefix lockout unlock ([#1704](https://github.com/naveenreddyalka/daari/issues/1704))
+
+<!-- tracking:#1704 -->
+**Status:** Done (2026-10-16). Admin `POST /v1/daari/keys/unlock` and
+`daari keys unlock-prefix` clear in-process and Redis lockout state and write
+`auth.key_unlocked`. Doctor tips when lockout is disabled and lists Redis
+locked prefixes. A configured budget (or key-expiry) webhook receives one
+signed `key_locked` event per prefix. Docs: auth-and-keys.md, doctor-health.md.
+Covered by `tests/unit/test_key_lockout.py`.
+
+### Consistent backup as the deployed default ([#1705](https://github.com/naveenreddyalka/daari/issues/1705))
+
+<!-- tracking:#1705 -->
+**Status:** Done (2026-10-16). Helm `backup.consistent` (null) passes
+`--consistent` on the CronJob when `postgres.enabled`. Doctor mentions
+`--consistent` and warns when a Postgres-backed config's newest archive lacks
+the marker. Restore prints a warning for a non-consistent archive on a
+Postgres fleet. Docs: backup-restore.md restore drill coherence step.
+Covered by `tests/unit/test_backup_restore.py` and `tests/unit/test_helm_chart.py`.
+
+### Doctor --strict cleartext data plane ([#1708](https://github.com/naveenreddyalka/daari/issues/1708))
+
+<!-- tracking:#1708 -->
+**Status:** Done (2026-10-16). `daari doctor --strict` makes remote Postgres
+without strong `sslmode`, remote `redis://`, and remote `http://` webhooks /
+OTLP / MCP URLs required failures (exit 1). Soft mode stays optional
+warnings. Docs: doctor-health.md. Covered by
+`tests/unit/test_doctor_data_plane_tls.py`.
+
+### Codex CLI configure recipe ([#1709](https://github.com/naveenreddyalka/daari/issues/1709))
+
+<!-- tracking:#1709 -->
+**Status:** Done (2026-10-17). `daari configure codex` and `daari setup codex`
+print the OpenAI-compatible base URL (`/v1`), the `ollama launch codex` host
+(no `/v1`), `X-Daari-Client-Id: codex`, and a curl against `/v1/models`.
+Codex config files are not written. Docs: codex.md. Covered by
+`tests/unit/test_configure_cli.py`.
+
+### Gzip JSON responses over 16 KiB ([#1710](https://github.com/naveenreddyalka/daari/issues/1710))
+
+<!-- tracking:#1710 -->
+**Status:** Done (2026-10-17). Buffered `application/json` larger than 16 KiB
+is gzip-compressed off the event loop when the client sends
+`Accept-Encoding: gzip` (`Content-Encoding` and `Vary: Accept-Encoding`).
+SSE and bodies at or under 16 KiB stay plain. Covered by
+`tests/unit/test_gzip_json.py`.
+
+### Admin events audit and team filters ([#1711](https://github.com/naveenreddyalka/daari/issues/1711))
+
+<!-- tracking:#1711 -->
+**Status:** Done (2026-10-17). `GET /v1/daari/events` writes `admin.events.list`
+(actor, role, limit, team scope, returned count; no event bodies).
+`GET /v1/daari/keys`, `/teams`, and `/audit` accept optional `team_id`;
+a pinned caller requesting another team receives 403. Unscoped admins
+still see the full inventory when the filter is omitted. Docs: http-api.md.
+Covered by `tests/unit/test_admin_team_filter.py`.
+
+### Docs: LiteLLM 1.105.0 GA in compare-litellm ([#1640](https://github.com/naveenreddyalka/daari/issues/1640))
+
+<!-- tracking:#1640 -->
+**Status:** Done (2026-10-17). compare-litellm treats LiteLLM 1.105.0 as GA
+(Decisions routes, `litellm.agent()`, Lens) and contrasts that cloud agent
+plane with on-box `multi_agent` ledger attribution. 1.106 stays a prerelease
+watch. Covered by `tests/unit/test_compare_litellm_1104.py`.
+
+### OpenCode print-only configure recipe ([#1724](https://github.com/naveenreddyalka/daari/issues/1724))
+
+<!-- tracking:#1724 -->
+**Status:** Done (2026-10-17). `daari configure opencode` and `daari setup opencode`
+print an OpenCode v2 `providers` snippet (`settings.baseURL` ending in `/v1`,
+package `@opencode/ai/providers/openai-compatible`, `{env:DAARI_API_KEY}`) plus
+the older `provider.daari.options.baseURL` key and `X-Daari-Client-Id: opencode`.
+Config files are not written. Docs: opencode.md. Covered by
+`tests/unit/test_configure_cli.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

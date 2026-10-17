@@ -36,6 +36,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/events` | Daari Events List |
 | `POST` | `/v1/daari/feedback` | Daari Feedback |
 | `GET` | `/v1/daari/keys` | Daari Keys List |
+| `POST` | `/v1/daari/keys/unlock` | Daari Keys Unlock |
 | `GET` | `/v1/daari/learn/stats` | Daari Learn Stats |
 | `GET` | `/v1/daari/mcp/activity` | Daari Mcp Activity List |
 | `POST` | `/v1/daari/mcp/activity/{request_id}/abort` | Daari Mcp Activity Abort |
@@ -80,7 +81,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 
 ## Admin keys / teams inventory
 
-`GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return redacted rows plus pagination metadata: query `limit` (default **100**, max **500**) and `offset` (default **0**); response includes `total`, `has_more`, `limit`, and `offset`. Successful reads emit `admin.keys.list` / `admin.teams.list` audit events (`limit` / `offset` / `total` / `returned` — never secrets).
+`GET /v1/daari/keys` and `GET /v1/daari/teams` (admin / master key) return redacted rows plus pagination metadata: query `limit` (default **100**, max **500**), `offset` (default **0**), and optional `team_id`. Response includes `total`, `has_more`, `limit`, and `offset`. A caller pinned to a team who requests a different `team_id` receives **403**. Omitting `team_id` keeps the full inventory for an unscoped admin. Successful reads emit `admin.keys.list` / `admin.teams.list` audit events (`limit` / `offset` / `total` / `returned` / `team_id` — never secrets). `GET /v1/daari/audit` accepts the same optional `team_id` and returns only rows whose detail includes that id (`total` / `has_more` match the filtered set). `GET /v1/daari/events` records `admin.events.list` (actor, role, limit, team scope, returned count; event bodies are not copied).
 
 ## Request / event log
 

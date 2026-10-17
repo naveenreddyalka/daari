@@ -23,6 +23,7 @@ daari setup claude-code
 daari setup claude-desktop
 daari setup intellij
 daari setup vscode
+daari setup codex
 daari setup openai-compat
 ```
 

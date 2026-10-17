@@ -203,6 +203,7 @@ class AuditLog:
         actor: str | None = None,
         action: str | None = None,
         since: str | None = None,
+        team_id: str | None = None,
     ) -> int:
         """Total matching rows for admin pagination (#1530)."""
         if not self.enabled:
@@ -211,6 +212,7 @@ class AuditLog:
         params: list[Any] = []
         action_prefix = (action or "").strip()
         actor_filter = (actor or "").strip() or None
+        team_filter = (team_id or "").strip() or None
         if actor_filter:
             clauses.append("actor = ?")
             params.append(actor_filter)
@@ -220,6 +222,9 @@ class AuditLog:
         if since:
             clauses.append("ts >= ?")
             params.append(since)
+        if team_filter:
+            clauses.append("json_extract(detail, '$.team_id') = ?")
+            params.append(team_filter)
         sql = "SELECT COUNT(*) FROM audit WHERE " + " AND ".join(clauses)
         try:
             with self._lock, self._connect() as conn:
@@ -236,6 +241,7 @@ class AuditLog:
         actor: str | None = None,
         action: str | None = None,
         since: str | None = None,
+        team_id: str | None = None,
     ) -> list[dict[str, Any]]:
         off = max(0, int(offset or 0))
         lim = max(0, int(limit))
@@ -246,6 +252,7 @@ class AuditLog:
                 actor=actor,
                 action=action,
                 since=since,
+                team_id=team_id,
                 batch_size=max(lim, 1) if lim else 500,
             )
         )
@@ -260,6 +267,7 @@ class AuditLog:
         actor: str | None = None,
         action: str | None = None,
         since: str | None = None,
+        team_id: str | None = None,
         batch_size: int = 500,
     ) -> Iterator[dict[str, Any]]:
         """Newest-first filtered scan in seq batches (no full-table load)."""
@@ -273,6 +281,7 @@ class AuditLog:
         action_prefix = (action or "").strip()
         actor_filter = (actor or "").strip() or None
         since_cutoff = since
+        team_filter = (team_id or "").strip() or None
         while True:
             take = batch if remaining is None else min(batch, remaining)
             if take <= 0:
@@ -288,6 +297,9 @@ class AuditLog:
             if since_cutoff:
                 clauses.append("ts >= ?")
                 params.append(since_cutoff)
+            if team_filter:
+                clauses.append("json_extract(detail, '$.team_id') = ?")
+                params.append(team_filter)
             if cursor_seq is not None:
                 clauses.append("seq < ?")
                 params.append(cursor_seq)
@@ -471,6 +483,23 @@ def record_auth_key_locked(
             "retry_after": int(retry_after),
             "scope": "key",
         },
+    )
+
+
+def record_auth_key_unlocked(
+    audit: AuditLog,
+    *,
+    prefix: str,
+    actor: str,
+    role: str,
+) -> None:
+    """Record ``auth.key_unlocked`` when an operator clears a prefix lock (#1704)."""
+    shown = (prefix or "")[:10]
+    audit.record(
+        actor=(actor or "api")[:64],
+        role=(role or "admin")[:32],
+        action="auth.key_unlocked",
+        detail={"prefix": shown, "scope": "key"},
     )
 
 
