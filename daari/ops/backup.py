@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import shutil
+import sqlite3
 import subprocess
 import tarfile
 import tempfile
@@ -74,6 +75,97 @@ class BackupManifest:
 
 class BackupError(ValueError):
     """Operator-facing backup/restore failure."""
+
+
+@dataclass(frozen=True)
+class SqliteSchemaRow:
+    """On-disk ``PRAGMA user_version`` compared with ``STORE_SCHEMA_VERSIONS``."""
+
+    name: str
+    path: str
+    expected: int
+    actual: int | None
+    state: str  # match | behind | ahead | absent | error
+
+
+@dataclass(frozen=True)
+class SqliteSchemaStatus:
+    schema_ok: bool
+    rows: list[SqliteSchemaRow]
+
+
+def _read_sqlite_user_version(path: Path) -> int:
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        row = conn.execute("PRAGMA user_version").fetchone()
+        return int(row[0] if row else 0)
+    finally:
+        conn.close()
+
+
+def _sqlite_schema_state(actual: int, expected: int) -> str:
+    if actual == expected:
+        return "match"
+    # Files written before user_version was recorded are the additive schema
+    # this map calls 1. A later bump makes 0 (and any lower stamp) behind.
+    if actual == 0 and expected == 1:
+        return "match"
+    if actual < expected:
+        return "behind"
+    return "ahead"
+
+
+def local_sqlite_schema_status(settings: Any) -> SqliteSchemaStatus:
+    """Compare configured local SQLite files to ``STORE_SCHEMA_VERSIONS``.
+
+    Missing files (feature off, store not created yet) stay absent and do not
+    clear ``schema_ok``. Postgres, JSONL, and directory stores are skipped.
+    """
+    rows: list[SqliteSchemaRow] = []
+    schema_ok = True
+    for entry in catalog_stores(settings):
+        if entry.backend != "sqlite" or not entry.source_path:
+            continue
+        expected = int(STORE_SCHEMA_VERSIONS.get(entry.name, entry.schema_version))
+        path = Path(entry.source_path)
+        if not path.is_file():
+            rows.append(
+                SqliteSchemaRow(
+                    name=entry.name,
+                    path=str(path),
+                    expected=expected,
+                    actual=None,
+                    state="absent",
+                )
+            )
+            continue
+        try:
+            actual = _read_sqlite_user_version(path)
+        except sqlite3.Error:
+            rows.append(
+                SqliteSchemaRow(
+                    name=entry.name,
+                    path=str(path),
+                    expected=expected,
+                    actual=None,
+                    state="error",
+                )
+            )
+            schema_ok = False
+            continue
+        state = _sqlite_schema_state(actual, expected)
+        if state != "match":
+            schema_ok = False
+        rows.append(
+            SqliteSchemaRow(
+                name=entry.name,
+                path=str(path),
+                expected=expected,
+                actual=actual,
+                state=state,
+            )
+        )
+    return SqliteSchemaStatus(schema_ok=schema_ok, rows=rows)
 
 
 def _obs_backend(settings: Any) -> str:

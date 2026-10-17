@@ -135,6 +135,7 @@ def run_doctor(
     results.append(_check_redis(cfg))
     results.extend(_check_postgres_stores(cfg))
     results.append(_check_store_migrate(cfg, strict=strict))
+    results.append(_check_schema_ok(cfg))
     results.append(_check_recent_backup(cfg))
     daemon = _check_daemon(cfg, httpx_client)
     results.append(daemon)
@@ -2117,6 +2118,39 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
         ok=False,
         detail=detail,
         optional=not strict,
+    )
+
+
+def _check_schema_ok(settings: Settings) -> CheckResult:
+    """Warn when a local SQLite file's user_version lags STORE_SCHEMA_VERSIONS (#1727)."""
+    from daari.ops.backup import local_sqlite_schema_status
+
+    try:
+        status = local_sqlite_schema_status(settings)
+    except Exception as exc:
+        return CheckResult(
+            name="schema_ok",
+            ok=False,
+            detail=f"schema check failed: {exc}",
+            optional=True,
+        )
+    skewed = [row for row in status.rows if row.state in ("behind", "ahead", "error")]
+    if not skewed:
+        return CheckResult(
+            name="schema_ok",
+            ok=True,
+            detail="local sqlite schemas match the binary",
+            optional=True,
+        )
+    parts = [
+        f"{row.name} user_version={row.actual} expected={row.expected} ({row.state})"
+        for row in skewed
+    ]
+    return CheckResult(
+        name="schema_ok",
+        ok=False,
+        detail="; ".join(parts) + " — store lags this binary; run: daari migrate",
+        optional=True,
     )
 
 
