@@ -7120,6 +7120,15 @@ OTLP / MCP URLs required failures (exit 1). Soft mode stays optional
 warnings. Docs: doctor-health.md. Covered by
 `tests/unit/test_doctor_data_plane_tls.py`.
 
+### Codex CLI configure recipe ([#1709](https://github.com/naveenreddyalka/daari/issues/1709))
+
+<!-- tracking:#1709 -->
+**Status:** Done (2026-10-17). `daari configure codex` and `daari setup codex`
+print the OpenAI-compatible base URL (`/v1`), the `ollama launch codex` host
+(no `/v1`), `X-Daari-Client-Id: codex`, and a curl against `/v1/models`.
+Codex config files are not written. Docs: codex.md. Covered by
+`tests/unit/test_configure_cli.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

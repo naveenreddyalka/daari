@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from daari.cli.setup_actions import (
     apply_all_setups,
     apply_chatgpt_desktop_setup,
+    apply_codex_setup,
     apply_claude_code_setup,
     apply_claude_desktop_setup,
     apply_cursor_setup,
@@ -2926,6 +2927,23 @@ def setup_vscode(
 ) -> None:
     """Configure VS Code settings for daari OpenAI-compatible setup."""
     apply_vscode_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("codex")
+def setup_codex(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show Codex CLI steps without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Accepted for parity; Codex config files are not written.",
+    ),
+) -> None:
+    """Print Codex CLI steps (OpenAI /v1 or Ollama host; no config writes)."""
+    apply_codex_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("chatgpt-desktop")
