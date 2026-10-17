@@ -123,6 +123,7 @@ def run_doctor(
     results.append(_check_soft_budget_ratio(cfg))
     results.append(_check_unbounded_rpd(cfg))
     results.append(_check_key_expiry(cfg))
+    results.append(_check_key_lockout(cfg))
     results.append(_check_vk_empty_allowlist(cfg))
     results.append(_check_budget_webhook_secret(cfg))
     results.append(_check_key_expiry_webhook_secret(cfg))
@@ -1915,6 +1916,73 @@ def _check_vk_empty_allowlist(settings: Settings) -> CheckResult:
             "active virtual keys with allowed_models/model_groups matching "
             f"zero catalog cards: {shown}{extra}"
         ),
+        optional=True,
+    )
+
+
+def _check_key_lockout(settings: Settings) -> CheckResult:
+    """Tip when prefix lockout is off; list Redis-locked prefixes when reachable (#1704)."""
+    block = getattr(settings.auth, "key_lockout", None)
+    enabled = bool(getattr(block, "enabled", True)) and int(
+        getattr(block, "max_failures", 0) or 0
+    ) > 0
+    if not enabled:
+        return CheckResult(
+            name="key_lockout",
+            ok=False,
+            detail=(
+                "auth.key_lockout is disabled — invalid-auth storms are not "
+                "locked per key prefix"
+            ),
+            optional=True,
+        )
+    cache = settings.cache
+    if getattr(cache, "backend", "disk") != "redis":
+        return CheckResult(
+            name="key_lockout",
+            ok=True,
+            detail="key-prefix lockout enabled (in-process)",
+            optional=True,
+        )
+    redis_url = str(getattr(cache, "redis_url", "") or "").strip()
+    if not redis_url:
+        return CheckResult(
+            name="key_lockout",
+            ok=True,
+            detail="key-prefix lockout enabled; cache.redis_url empty",
+            optional=True,
+        )
+    try:
+        from daari.auth.key_lockout import KeyLockout
+        from daari.cache.redis_client import connect_redis
+
+        timeout = float(getattr(cache, "redis_timeout_seconds", 2.0) or 2.0)
+        client = connect_redis(redis_url, timeout_seconds=timeout)
+        client.ping()
+        prefixes = KeyLockout(redis=client).locked_prefixes()
+    except Exception as exc:
+        return CheckResult(
+            name="key_lockout",
+            ok=True,
+            detail=(
+                f"key-prefix lockout enabled; Redis locked prefixes not listed "
+                f"({type(exc).__name__})"
+            ),
+            optional=True,
+        )
+    if prefixes:
+        shown = ", ".join(prefixes[:20])
+        extra = f" (+{len(prefixes) - 20} more)" if len(prefixes) > 20 else ""
+        return CheckResult(
+            name="key_lockout",
+            ok=False,
+            detail=f"locked prefixes: {shown}{extra}",
+            optional=True,
+        )
+    return CheckResult(
+        name="key_lockout",
+        ok=True,
+        detail="key-prefix lockout enabled; no locked prefixes in Redis",
         optional=True,
     )
 

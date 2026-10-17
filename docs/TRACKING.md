@@ -7091,6 +7091,16 @@ client rows; request quotas and `team_model_spend` stay on that team;
 fleet `tiers` / `errors` / `total_requests`. Admin reads without `team_id`
 stay fleet-wide. Covered by `tests/unit/test_team_scoped_admin_reads.py`.
 
+### Key-prefix lockout unlock ([#1704](https://github.com/naveenreddyalka/daari/issues/1704))
+
+<!-- tracking:#1704 -->
+**Status:** Done (2026-10-16). Admin `POST /v1/daari/keys/unlock` and
+`daari keys unlock-prefix` clear in-process and Redis lockout state and write
+`auth.key_unlocked`. Doctor tips when lockout is disabled and lists Redis
+locked prefixes. A configured budget (or key-expiry) webhook receives one
+signed `key_locked` event per prefix. Docs: auth-and-keys.md, doctor-health.md.
+Covered by `tests/unit/test_key_lockout.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
