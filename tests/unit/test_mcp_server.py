@@ -394,3 +394,67 @@ async def test_tools_list_meta_private_when_policy_filtered(settings):
     assert "route" in names
     assert result["_meta"]["cacheScope"] == "private"
     assert result["_meta"]["ttlMs"] == 60_000
+    assert "resultType" not in result
+
+
+def _modern_list_meta(version: str = "2026-07-28") -> dict:
+    return {"_meta": {"io.modelcontextprotocol/protocolVersion": version}}
+
+
+@pytest.mark.asyncio
+async def test_modern_protocol_lists_advertise_result_type_and_cache_meta(settings):
+    """Protocol >= 2026-07-28 list results include resultType and cache hints (#1730)."""
+    settings.integrations.mcp_list_cache.ttl_ms = 12_000
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tools = await _rpc(client, "tools/list", _modern_list_meta())
+        resources = await _rpc(client, "resources/list", _modern_list_meta(), rpc_id=2)
+        prompts = await _rpc(client, "prompts/list", _modern_list_meta(), rpc_id=3)
+        legacy_tools = await _rpc(
+            client,
+            "tools/list",
+            _modern_list_meta("2025-03-26"),
+            rpc_id=4,
+        )
+        legacy_resources = await _rpc(client, "resources/list", rpc_id=5)
+        legacy_prompts = await _rpc(
+            client,
+            "prompts/list",
+            _modern_list_meta("2025-11-25"),
+            rpc_id=6,
+        )
+    for response, key in (
+        (tools, "tools"),
+        (resources, "resources"),
+        (prompts, "prompts"),
+    ):
+        assert response.status_code == 200
+        result = response.json()["result"]
+        assert key in result
+        assert result["resultType"] == "complete"
+        assert "nextCursor" not in result
+        meta = result["_meta"]
+        assert isinstance(meta["ttlMs"], int)
+        assert meta["ttlMs"] == 12_000
+        assert meta["cacheScope"] == "public"
+    legacy_tool_result = legacy_tools.json()["result"]
+    assert "resultType" not in legacy_tool_result
+    assert legacy_tool_result["_meta"]["ttlMs"] == 12_000
+    assert legacy_resources.json()["result"] == {"resources": []}
+    assert legacy_prompts.json()["result"] == {"prompts": []}
+
+
+@pytest.mark.asyncio
+async def test_modern_list_cache_scope_private_when_policy_filters(settings):
+    """Filtered catalogs advertise private cacheScope on every modern list (#1730)."""
+    settings.integrations.mcp_policy.deny = ["stats"]
+    transport = ASGITransport(app=_app(settings))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        tools = await _rpc(client, "tools/list", _modern_list_meta())
+        resources = await _rpc(client, "resources/list", _modern_list_meta(), rpc_id=2)
+        prompts = await _rpc(client, "prompts/list", _modern_list_meta(), rpc_id=3)
+    for response in (tools, resources, prompts):
+        result = response.json()["result"]
+        assert result["resultType"] == "complete"
+        assert result["_meta"]["cacheScope"] == "private"
+        assert result["_meta"]["ttlMs"] >= 0

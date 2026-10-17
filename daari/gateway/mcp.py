@@ -419,6 +419,43 @@ def _list_cache_scope(
     return "public"
 
 
+def _protocol_requires_list_result_type(protocol: str | None) -> bool:
+    """MCP list pages gained resultType in 2026-07-28 (Claude Code 2.1.302)."""
+    if protocol not in SUPPORTED_PROTOCOL_VERSIONS:
+        return False
+    return protocol >= MODERN_PROTOCOL_VERSION
+
+
+def _list_cache_meta(
+    ctx: AppContext,
+    policy: McpToolPolicy | None,
+    server_policy: McpServerPolicy | None,
+) -> dict[str, Any]:
+    cache = getattr(getattr(ctx.settings, "integrations", None), "mcp_list_cache", None)
+    ttl_ms = int(getattr(cache, "ttl_ms", 60_000) or 0)
+    if ttl_ms < 0:
+        ttl_ms = 0
+    return {
+        "ttlMs": ttl_ms,
+        "cacheScope": _list_cache_scope(policy, server_policy),
+    }
+
+
+def _empty_catalog_list(
+    key: str,
+    ctx: AppContext,
+    policy: McpToolPolicy | None,
+    server_policy: McpServerPolicy | None,
+    protocol: str | None,
+) -> dict[str, Any]:
+    """resources/list and prompts/list: one page, no cursor (#1730)."""
+    payload: dict[str, Any] = {key: []}
+    if _protocol_requires_list_result_type(protocol):
+        payload["resultType"] = "complete"
+        payload["_meta"] = _list_cache_meta(ctx, policy, server_policy)
+    return payload
+
+
 async def _tools_list_payload(
     ctx: AppContext,
     policy: McpToolPolicy | None = None,
@@ -426,21 +463,20 @@ async def _tools_list_payload(
     *,
     legacy: bool = False,
     request: Request | None = None,
+    protocol: str | None = None,
 ) -> dict[str, Any]:
-    """tools/list body with MCP 2026-07-28 _meta cache hints (#979, #1294)."""
+    """tools/list body with MCP 2026-07-28 _meta cache hints (#979, #1294, #1730)."""
     catalog = list(_tool_catalog(ctx, policy, server_policy))
     if ingress_aggregate_egress_enabled(ctx.settings):
         catalog.extend(await _aggregated_egress_catalog(ctx, request, policy, server_policy))
     tools = catalog if legacy else _mcp_list_tools_from_catalog(catalog)
-    cache = getattr(getattr(ctx.settings, "integrations", None), "mcp_list_cache", None)
-    ttl_ms = int(getattr(cache, "ttl_ms", 60_000) or 0)
-    return {
+    payload: dict[str, Any] = {
         "tools": tools,
-        "_meta": {
-            "ttlMs": ttl_ms,
-            "cacheScope": _list_cache_scope(policy, server_policy),
-        },
+        "_meta": _list_cache_meta(ctx, policy, server_policy),
     }
+    if not legacy and _protocol_requires_list_result_type(protocol):
+        payload["resultType"] = "complete"
+    return payload
 
 
 def _legacy(payload: dict[str, Any]) -> JSONResponse:
@@ -1496,16 +1532,37 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 governance.policy,
                                 governance.server_policy,
                                 request=request,
+                                protocol=requested_meta or DEFAULT_PROTOCOL_VERSION,
                             ),
                         ),
                     )
                 if method == "resources/list":
                     return _rpc_response(
-                        request, _jsonrpc_result(rpc_id, {"resources": []})
+                        request,
+                        _jsonrpc_result(
+                            rpc_id,
+                            _empty_catalog_list(
+                                "resources",
+                                ctx,
+                                governance.policy,
+                                governance.server_policy,
+                                requested_meta or DEFAULT_PROTOCOL_VERSION,
+                            ),
+                        ),
                     )
                 if method == "prompts/list":
                     return _rpc_response(
-                        request, _jsonrpc_result(rpc_id, {"prompts": []})
+                        request,
+                        _jsonrpc_result(
+                            rpc_id,
+                            _empty_catalog_list(
+                                "prompts",
+                                ctx,
+                                governance.policy,
+                                governance.server_policy,
+                                requested_meta or DEFAULT_PROTOCOL_VERSION,
+                            ),
+                        ),
                     )
                 if method == "tasks/get":
                     return await _handle_tasks_get(ctx, request, rpc_id, params)
