@@ -227,6 +227,34 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
 
         for model_id in sorted(local_decisions_models(settings)):
             add(model_id, "ollama", ("decision",))
+
+    def alias_of(source_id: str, alias_id: str) -> None:
+        """Copy a tier card onto a :floor / :nitro id (#1733)."""
+        source = (source_id or "").strip()
+        alias = (alias_id or "").strip()
+        if not source or not alias or alias in seen:
+            return
+        target = next((card for card in cards if card["id"] == source), None)
+        if target is None:
+            return
+        cloned = dict(target)
+        cloned["id"] = alias
+        seen.add(alias)
+        cards.append(cloned)
+
+    floor_id = (settings.models.l3 or "").strip()
+    nitro_id = ""
+    for candidate in (settings.models.l5, settings.models.l4, settings.models.l3):
+        text = (candidate or "").strip()
+        if text:
+            nitro_id = text
+            break
+    alias_of(floor_id, "daari:floor")
+    alias_of(nitro_id, "daari:nitro")
+    if floor_id:
+        alias_of(floor_id, f"{floor_id}:floor")
+    if nitro_id:
+        alias_of(nitro_id, f"{nitro_id}:nitro")
     return cards
 
 

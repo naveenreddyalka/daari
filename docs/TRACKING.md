@@ -7204,6 +7204,15 @@ A configured local SQLite file whose `PRAGMA user_version` is behind
 version 1. `daari doctor` check `schema_ok` reports the same mismatch.
 Docs: doctor-health.md. Covered by `tests/unit/test_ready_schema_ok.py`.
 
+### Floor and nitro catalog cards ([#1733](https://github.com/naveenreddyalka/daari/issues/1733))
+
+<!-- tracking:#1733 -->
+**Status:** Done (2026-10-17). `GET /v1/models` includes `daari:floor` and
+`daari:nitro`, plus `<l3>:floor` and `<nitro-target>:nitro`. Each card copies
+capabilities, context length, lifecycle, and `server_tools` from the target
+tier (floor = L3, nitro = L5 else L4 else L3) and keeps the alias id.
+Unknown ids stay stubs. Covered by `tests/unit/test_floor_nitro_model_cards.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
