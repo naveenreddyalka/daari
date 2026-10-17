@@ -326,6 +326,27 @@ async def _execute_batch_chat_body(
     """Run one batch item through the same router path as /v1/chat/completions."""
     from daari.gateway.batches import BatchGovernance, BatchItemRejected
 
+    body = ChatCompletionRequest.model_validate(body_dict)
+    gov = governance if isinstance(governance, BatchGovernance) else None
+    body_user = (body.user or "").strip() or None
+    meta = RequestMeta(
+        tier_cap=gov.tier_cap if gov else None,
+        latency_budget_ms=gov.latency_budget_ms if gov else None,
+        deadline_ms=gov.deadline_ms if gov else None,
+        client_id=gov.client_id if gov else None,
+        user_agent=gov.user_agent if gov else None,
+        user=body_user or (gov.user if gov else None),
+        session_id=gov.session_id if gov else None,
+        no_frontier=bool(gov.no_frontier) if gov else False,
+        boundary_profile=gov.boundary_profile if gov else None,
+        key_id=gov.key_id if gov else None,
+        team_id=gov.team_id if gov else None,
+        cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
+    )
+    apply_cost_tier(body, meta)
+    # Lifecycle denial before admission so a retired id does not take a slot (#1701).
+    _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
+
     acquired = False
     if rate_limiter is not None and int(getattr(rate_limiter, "max_in_flight", 0) or 0) > 0:
         slot = await rate_limiter.acquire(priority="low")
@@ -338,25 +359,6 @@ async def _execute_batch_chat_body(
             )
         acquired = True
     try:
-        body = ChatCompletionRequest.model_validate(body_dict)
-        gov = governance if isinstance(governance, BatchGovernance) else None
-        body_user = (body.user or "").strip() or None
-        meta = RequestMeta(
-            tier_cap=gov.tier_cap if gov else None,
-            latency_budget_ms=gov.latency_budget_ms if gov else None,
-            deadline_ms=gov.deadline_ms if gov else None,
-            client_id=gov.client_id if gov else None,
-            user_agent=gov.user_agent if gov else None,
-            user=body_user or (gov.user if gov else None),
-            session_id=gov.session_id if gov else None,
-            no_frontier=bool(gov.no_frontier) if gov else False,
-            boundary_profile=gov.boundary_profile if gov else None,
-            key_id=gov.key_id if gov else None,
-            team_id=gov.team_id if gov else None,
-            cache_scope=(gov.cache_scope if gov and gov.cache_scope else "global"),
-        )
-        apply_cost_tier(body, meta)
-        _enforce_batch_item_model_access(ctx, body, meta, governance=gov)
         _enforce_batch_item_rate_limits(ctx, body_dict, governance=gov)
         _enforce_batch_item_budgets(ctx, meta, governance=gov)
         internal = _prepare_internal_request(
@@ -380,6 +382,39 @@ async def _execute_batch_chat_body(
             await rate_limiter.release()
 
 
+def _batch_retired_request(ctx: AppContext, governance: Any | None) -> Any:
+    """Minimal request so retired denial can audit and count without a live ASGI call."""
+    captured = ctx
+
+    class _URL:
+        path = "/v1/batches"
+
+    class _Claims:
+        key_id = getattr(governance, "key_id", None)
+        client_id = getattr(governance, "client_id", None)
+        selected_team_id = getattr(governance, "team_id", None)
+        virtual_key = None
+
+    class _State:
+        auth_claims = _Claims()
+
+    class _AppState:
+        pass
+
+    app_state = _AppState()
+    app_state.ctx = captured
+
+    class _App:
+        state = app_state
+
+    class _Req:
+        state = _State()
+        url = _URL()
+        app = _App()
+
+    return _Req()
+
+
 def _batch_lookup_virtual_key(ctx: AppContext, governance: Any) -> Any | None:
     store = getattr(ctx, "virtual_key_store", None)
     if store is None or not getattr(governance, "key_id", None):
@@ -397,7 +432,7 @@ def _enforce_batch_item_model_access(
     *,
     governance: Any | None,
 ) -> None:
-    """Reject items whose model is outside the creating key's allowlist (#840)."""
+    """Reject items whose model is retired or outside the creating key's allowlist."""
     from daari.auth.model_access import (
         denial_body,
         effective_patterns,
@@ -405,6 +440,12 @@ def _enforce_batch_item_model_access(
         record_model_denial,
     )
     from daari.gateway.batches import BatchGovernance, BatchItemRejected
+    from daari.gateway.model_access import deny_retired_model
+
+    model_name = (body.model or ctx.settings.models.l3 or "").strip()
+    retired = deny_retired_model(_batch_retired_request(ctx, governance), model_name, ctx.settings)
+    if retired is not None:
+        raise BatchItemRejected(retired)
 
     if not isinstance(governance, BatchGovernance) or governance.kind != "virtual":
         return
@@ -1777,6 +1818,19 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     mcp_tasks = dict(store.snapshot() or {})
                 except Exception:
                     mcp_tasks = {}
+            if scope:
+                # In-process counters are fleet-wide and have no team label (#1703).
+                tiers = {}
+                total = 0
+                full = {
+                    **full,
+                    "errors": 0,
+                    "errors_by_status": {},
+                    "mcp_tool_calls": {},
+                    "compact_to_fit_applied": 0,
+                    "compact_to_fit_tokens_dropped": 0,
+                    "mcp_grant_denied": 0,
+                }
             payload: dict[str, Any] = {
                 "total_requests": total,
                 "errors": full["errors"],
@@ -1821,12 +1875,15 @@ class OpenAIGatewayAdapter(GatewayAdapter):
         @router.get("/v1/daari/traces/{trace_id}")
         async def daari_trace_detail(trace_id: str, request: Request) -> dict[str, Any]:
             ctx: AppContext = request.app.state.ctx
-            _require_role(request, ctx, "analyst")
+            role = _require_role(request, ctx, "analyst")
+            scope = _admin_team_scope(request, role, None)
             store = ctx.router.trace_store
             if store is None:
                 raise HTTPException(status_code=404, detail="trace store is not configured")
             trace = store.get(trace_id)
             if trace is None:
+                raise HTTPException(status_code=404, detail=f"trace {trace_id} not found")
+            if scope and (trace.get("team_id") or "") != scope:
                 raise HTTPException(status_code=404, detail=f"trace {trace_id} not found")
             return trace
 
@@ -1847,14 +1904,16 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             payload["frontier"] = {
                 "today_spend_usd": round(
                     ledger.frontier_spend_usd(
-                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens
+                        pricing=ctx.settings.pricing,
+                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens,
                     ),
                     4,
                 ),
                 "daily_budget_usd": ctx.settings.frontier.daily_budget_usd,
                 "month_spend_usd": round(
                     ledger.frontier_spend_usd_month(
-                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens
+                        pricing=ctx.settings.pricing,
+                        price_per_1k_tokens=ctx.settings.frontier.price_per_1k_tokens,
                     ),
                     4,
                 ),
@@ -1908,6 +1967,59 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     payload["teams"] = store.report_by_team(payload["clients"])
                 else:
                     payload["teams"] = []
+                reporter = getattr(ledger, "report_for_clients", None)
+                if callable(reporter):
+                    scoped_body = reporter(
+                        sorted(team_clients),
+                        days=max(1, days),
+                        frontier_price_per_1k_tokens=ctx.settings.usage.frontier_price_per_1k_tokens,
+                    )
+                    payload["days"] = scoped_body.get("days") or []
+                    payload["totals"] = scoped_body.get("totals") or payload["totals"]
+                else:
+                    from daari.observability.usage import _empty_totals
+
+                    payload["days"] = []
+                    payload["totals"] = _empty_totals()
+                today_spend = 0.0
+                month_spend = 0.0
+                for client_id in sorted(team_clients):
+                    today_spend += float(
+                        ledger.frontier_spend_usd_for_client(
+                            client_id,
+                            window="day",
+                            pricing=ctx.settings.pricing,
+                            fallback_per_1k=float(
+                                ctx.settings.frontier.price_per_1k_tokens or 0.002
+                            ),
+                        )
+                    )
+                    month_spend += float(
+                        ledger.frontier_spend_usd_for_client(
+                            client_id,
+                            window="month",
+                            pricing=ctx.settings.pricing,
+                            fallback_per_1k=float(
+                                ctx.settings.frontier.price_per_1k_tokens or 0.002
+                            ),
+                        )
+                    )
+                daily_cap = float(ctx.settings.frontier.daily_budget_usd or 0.0)
+                monthly_cap = float(ctx.settings.frontier.monthly_budget_usd or 0.0)
+                ratio = float(ctx.settings.frontier.soft_budget_ratio or 0.0)
+                budget_state = "ok"
+                for spent, cap in ((today_spend, daily_cap), (month_spend, monthly_cap)):
+                    if cap and spent >= cap:
+                        budget_state = "exceeded"
+                        break
+                    if cap and ratio and spent >= cap * ratio:
+                        budget_state = "soft"
+                payload["frontier"] = {
+                    **payload.get("frontier", {}),
+                    "today_spend_usd": round(today_spend, 4),
+                    "month_spend_usd": round(month_spend, 4),
+                    "budget_state": budget_state,
+                }
             from daari.auth.budgets import request_quota_report_rows
 
             payload["request_quotas"] = request_quota_report_rows(
@@ -1918,6 +2030,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 fallback_per_1k=float(
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
+                team_id=scope,
             )
             from daari.auth.budgets import (
                 model_group_spend_report_rows,
@@ -1933,6 +2046,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 fallback_per_1k=float(
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
+                team_id=scope,
             )
             payload["team_model_spend"] = team_model_spend_report_rows(
                 store,
@@ -1942,6 +2056,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 fallback_per_1k=float(
                     getattr(ctx.settings.usage, "frontier_price_per_1k_tokens", 0.002) or 0.002
                 ),
+                team_id=scope,
             )
             # Trust PRD T1d: false-hit rates + answer diversity per category.
             trust: dict[str, Any] = {}

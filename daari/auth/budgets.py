@@ -1007,6 +1007,7 @@ def request_quota_report_rows(
     soft_ratio: float,
     pricing: Any = None,
     fallback_per_1k: float = 0.002,
+    team_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Per-key request-quota used/cap/soft for report + FinOps (#519)."""
     rows: list[dict[str, Any]] = []
@@ -1016,7 +1017,10 @@ def request_quota_report_rows(
         keys = store.list()
     except Exception:
         return rows
+    wanted = (team_id or "").strip()
     for key in keys:
+        if wanted and (getattr(key, "team_id", None) or "") != wanted:
+            continue
         try:
             team = store.get_team(key.team_id) if key.team_id else None
             client_id = key.client_id or key.key_id
@@ -1341,9 +1345,16 @@ def model_group_spend_report_rows(
     soft_ratio: float,
     pricing: Any = None,
     fallback_per_1k: float = 0.002,
+    team_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Per-model_group USD totals for report / FinOps (#1109)."""
+    """Per-model_group USD totals for report / FinOps (#1109).
+
+    Group spend is summed org-wide. A team-scoped report omits the section
+    rather than mixing another team's dollars into the caller's view (#1703).
+    """
     rows: list[dict[str, Any]] = []
+    if (team_id or "").strip():
+        return rows
     if store is None or not getattr(ledger, "enabled", False):
         return rows
     # Prefer the tightest attached budget per group for report caps.
@@ -1621,6 +1632,7 @@ def team_model_spend_report_rows(
     soft_ratio: float,
     pricing: Any = None,
     fallback_per_1k: float = 0.002,
+    team_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Per-team USD spend broken down by model_max_budget pattern (#1113)."""
     rows: list[dict[str, Any]] = []
@@ -1630,7 +1642,10 @@ def team_model_spend_report_rows(
         teams = store.list_teams() if hasattr(store, "list_teams") else []
     except Exception:
         return rows
+    wanted = (team_id or "").strip()
     for team in teams:
+        if wanted and team.team_id != wanted:
+            continue
         budgets = model_max_budget_of(team)
         if not budgets:
             continue

@@ -98,12 +98,21 @@ def reject_disallowed_model(
     return JSONResponse(status_code=403, content=denial_body(name))
 
 
-def reject_retired_model(
+def retired_model_error(model: str) -> dict[str, str]:
+    name = (model or "").strip()
+    return {
+        "type": "model_retired",
+        "code": "model_retired",
+        "message": f"Model '{name}' is retired and cannot be used.",
+    }
+
+
+def deny_retired_model(
     request: Any,
     model: str,
     settings: Any,
-) -> JSONResponse | None:
-    """410 when catalog lifecycle is retired and models.reject_retired (#1521)."""
+) -> dict[str, str] | None:
+    """Audit + Prometheus for a retired id, or None when the request may proceed."""
     models = getattr(settings, "models", None)
     if models is not None and getattr(models, "reject_retired", True) is False:
         return None
@@ -141,16 +150,19 @@ def reject_retired_model(
         "model_retired",
         {"model": name, "path": path, "key_id": key_id, "team_id": team_id},
     )
-    return JSONResponse(
-        status_code=410,
-        content={
-            "error": {
-                "type": "model_retired",
-                "code": "model_retired",
-                "message": f"Model '{name}' is retired and cannot be used.",
-            }
-        },
-    )
+    return retired_model_error(name)
+
+
+def reject_retired_model(
+    request: Any,
+    model: str,
+    settings: Any,
+) -> JSONResponse | None:
+    """410 when catalog lifecycle is retired and models.reject_retired (#1521)."""
+    error = deny_retired_model(request, model, settings)
+    if error is None:
+        return None
+    return JSONResponse(status_code=410, content={"error": error})
 
 
 def reject_model_group_budget(

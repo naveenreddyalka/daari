@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS budget_window_state (
 # rebuilds the table and copies the old rows across.
 _MIGRATED_TABLES = ("usage", "client_usage")
 _SPEND_TABLES = ("usage", "client_usage", "user_usage")
+# Ollama cloud ids stay on local tiers but are not free (#1707).
+_CLOUD_MODEL_LIKE = "%:cloud"
+
+
+def _metered_spend_sql(placeholder: str = "?") -> str:
+    return f"(tier = {placeholder} OR model LIKE {placeholder})"
 
 
 def _today() -> str:
@@ -443,8 +449,8 @@ class UsageLedger:
             with self._lock, self._connect() as conn:
                 rows = conn.execute(
                     "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
-                    f" FROM {table} WHERE {where} AND tier = ? GROUP BY model",
-                    (*params, FRONTIER_TIER),
+                    f" FROM {table} WHERE {where} AND {_metered_spend_sql()} GROUP BY model",
+                    (*params, FRONTIER_TIER, _CLOUD_MODEL_LIKE),
                 ).fetchall()
         except Exception:
             return 0.0
@@ -648,8 +654,8 @@ class UsageLedger:
                     "SELECT model, COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0)"
                     f" FROM {table} WHERE "
                     + where
-                    + " AND tier = ? GROUP BY model",
-                    (*params, FRONTIER_TIER),
+                    + f" AND {_metered_spend_sql()} GROUP BY model",
+                    (*params, FRONTIER_TIER, _CLOUD_MODEL_LIKE),
                 ).fetchall()
         except Exception:
             return 0.0
@@ -842,43 +848,79 @@ class UsageLedger:
                 ).fetchall()
         except Exception:
             return {"enabled": False, "days": [], "totals": _empty_totals()}
+        return _usage_rows_to_report(rows, frontier_price_per_1k_tokens=frontier_price_per_1k_tokens)
 
-        per_day: dict[str, dict[str, Any]] = {}
-        totals = _empty_totals()
-        for day, tier, requests, cache_hits, prompt_chars, completion_chars in rows:
-            entry = per_day.setdefault(
-                day,
-                {
-                    "day": day,
-                    "requests": 0,
-                    "cache_hits": 0,
-                    "prompt_chars": 0,
-                    "completion_chars": 0,
-                    "tiers": {},
-                },
-            )
-            entry["requests"] += requests
-            entry["cache_hits"] += cache_hits
-            entry["prompt_chars"] += prompt_chars
-            entry["completion_chars"] += completion_chars
-            # One tier can now have several rows, one per model, so accumulate
-            # rather than assign (#156).
-            tier_entry = entry["tiers"].setdefault(
-                tier,
-                {"requests": 0, "cache_hits": 0, "prompt_chars": 0, "completion_chars": 0},
-            )
-            tier_entry["requests"] += requests
-            tier_entry["cache_hits"] += cache_hits
-            tier_entry["prompt_chars"] += prompt_chars
-            tier_entry["completion_chars"] += completion_chars
-            totals["requests"] += requests
-            totals["cache_hits"] += cache_hits
-            if tier == FRONTIER_TIER:
-                totals["frontier_requests"] += requests
-            else:
-                totals["local_requests"] += requests
-                # chars/4 ~ tokens, priced as if a frontier model had served them.
-                tokens = (prompt_chars + completion_chars) / 4
-                totals["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
-        totals["estimated_saved_usd"] = round(totals["estimated_saved_usd"], 4)
-        return {"enabled": True, "days": list(per_day.values()), "totals": totals}
+    def report_for_clients(
+        self,
+        client_ids: list[str] | tuple[str, ...],
+        days: int = 7,
+        *,
+        frontier_price_per_1k_tokens: float = 0.002,
+    ) -> dict[str, Any]:
+        """Day totals from ``client_usage`` for one team's client ids (#1703)."""
+        if not self.enabled:
+            return {"enabled": False, "days": [], "totals": _empty_totals()}
+        ids = [str(client).strip() for client in client_ids if str(client).strip()]
+        if not ids:
+            return {"enabled": True, "days": [], "totals": _empty_totals()}
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=max(0, days - 1))).strftime(
+            "%Y-%m-%d"
+        )
+        placeholders = ",".join("?" for _ in ids)
+        try:
+            with self._lock, self._connect() as conn:
+                rows = conn.execute(
+                    "SELECT day, tier, SUM(requests), SUM(cache_hits),"
+                    " SUM(prompt_chars), SUM(completion_chars)"
+                    " FROM client_usage WHERE day >= ?"
+                    f" AND client_id IN ({placeholders})"
+                    " GROUP BY day, tier ORDER BY day",
+                    (cutoff, *ids),
+                ).fetchall()
+        except Exception:
+            return {"enabled": False, "days": [], "totals": _empty_totals()}
+        return _usage_rows_to_report(rows, frontier_price_per_1k_tokens=frontier_price_per_1k_tokens)
+
+
+def _usage_rows_to_report(
+    rows: list[Any], *, frontier_price_per_1k_tokens: float
+) -> dict[str, Any]:
+    per_day: dict[str, dict[str, Any]] = {}
+    totals = _empty_totals()
+    for day, tier, requests, cache_hits, prompt_chars, completion_chars in rows:
+        entry = per_day.setdefault(
+            day,
+            {
+                "day": day,
+                "requests": 0,
+                "cache_hits": 0,
+                "prompt_chars": 0,
+                "completion_chars": 0,
+                "tiers": {},
+            },
+        )
+        entry["requests"] += requests
+        entry["cache_hits"] += cache_hits
+        entry["prompt_chars"] += prompt_chars
+        entry["completion_chars"] += completion_chars
+        # One tier can now have several rows, one per model, so accumulate
+        # rather than assign (#156).
+        tier_entry = entry["tiers"].setdefault(
+            tier,
+            {"requests": 0, "cache_hits": 0, "prompt_chars": 0, "completion_chars": 0},
+        )
+        tier_entry["requests"] += requests
+        tier_entry["cache_hits"] += cache_hits
+        tier_entry["prompt_chars"] += prompt_chars
+        tier_entry["completion_chars"] += completion_chars
+        totals["requests"] += requests
+        totals["cache_hits"] += cache_hits
+        if tier == FRONTIER_TIER:
+            totals["frontier_requests"] += requests
+        else:
+            totals["local_requests"] += requests
+            # chars/4 ~ tokens, priced as if a frontier model had served them.
+            tokens = (prompt_chars + completion_chars) / 4
+            totals["estimated_saved_usd"] += tokens / 1000 * frontier_price_per_1k_tokens
+    totals["estimated_saved_usd"] = round(totals["estimated_saved_usd"], 4)
+    return {"enabled": True, "days": list(per_day.values()), "totals": totals}

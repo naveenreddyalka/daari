@@ -29,6 +29,17 @@ _SERVICE_TIER_FACTORS = {
 
 # OpenAI Ultrafast is only published for these Responses models (#1519).
 _ULTRAFAST_MODELS = ("gpt-6.1-sol", "gpt-6-astra")
+
+# Anthropic fast mode (#1702). Opus 5.5 is GA; Opus 5 / 4.8 still need the beta.
+ANTHROPIC_FAST_MODE_BETA = "fast-mode-2026-02-01"
+_ANTHROPIC_FAST_GA = "claude-opus-5-5"
+_ANTHROPIC_FAST_MODELS = (
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-opus-4.8",
+    "claude-opus-4-8",
+)
+_ANTHROPIC_FAST_PREVIEW = frozenset({"claude-opus-5", "claude-opus-4.8", "claude-opus-4-8"})
 # Astra Ultrafast supports US residency + global only; EU pin is unsupported.
 _ULTRAFAST_EU_UNSUPPORTED = frozenset({"gpt-6-astra"})
 
@@ -43,6 +54,15 @@ _REGIONAL_PREMIUM_MODEL_KEYS = (
     "gpt-6",
     "chat-latest",
 )
+
+
+def anthropic_speed_factor(speed: str | None) -> float:
+    """2× input and output when the provider reports ``usage.speed == fast`` (#1702)."""
+    if speed is None or not str(speed).strip():
+        return 1.0
+    if str(speed).strip().lower() == "fast":
+        return 2.0
+    return 1.0
 
 
 def service_tier_factor(tier: str | None) -> float:
@@ -106,6 +126,44 @@ def resolve_service_tier_for_request(
 
 
 @dataclass(frozen=True)
+class AnthropicSpeedDecision:
+    """Effective Anthropic ``speed`` after model and beta gating (#1702)."""
+
+    speed: str | None
+    warning: str | None = None
+
+
+def resolve_anthropic_speed(
+    *,
+    model: str | None,
+    speed: str | None,
+    anthropic_beta: str | None = None,
+) -> AnthropicSpeedDecision:
+    """Forward ``speed: fast`` only when the model publishes fast mode.
+
+    ``claude-opus-5-5`` is GA. ``claude-opus-5`` and ``claude-opus-4.8`` need
+    the ``fast-mode-2026-02-01`` beta header. Anything else is cleared so we
+    do not advertise a speed the provider will reject.
+    """
+    if speed is None or not str(speed).strip():
+        return AnthropicSpeedDecision(speed=None)
+    key = str(speed).strip().lower()
+    if key == "standard":
+        return AnthropicSpeedDecision(speed="standard")
+    if key != "fast":
+        return AnthropicSpeedDecision(speed=None, warning="fast_unsupported_speed")
+    matched = matching_model_key(model or "", _ANTHROPIC_FAST_MODELS) if model else None
+    if matched == _ANTHROPIC_FAST_GA:
+        return AnthropicSpeedDecision(speed="fast")
+    if matched in _ANTHROPIC_FAST_PREVIEW:
+        beta = anthropic_beta or ""
+        if ANTHROPIC_FAST_MODE_BETA in beta:
+            return AnthropicSpeedDecision(speed="fast")
+        return AnthropicSpeedDecision(speed=None, warning="fast_mode_beta_required")
+    return AnthropicSpeedDecision(speed=None, warning="fast_unsupported_model")
+
+
+@dataclass(frozen=True)
 class ResolvedPrice:
     input_per_1m: float
     output_per_1m: float
@@ -127,6 +185,37 @@ _DECISIONS_MODEL_PRICES: dict[str, dict[str, float]] = {
         "cache_write_1h_per_1m": 0.0,
     },
 }
+
+
+def is_ollama_cloud_model(model: str | None) -> bool:
+    """True for Ollama cloud ids such as ``clef:cloud`` (billed on ollama.com)."""
+    return (model or "").strip().endswith(":cloud")
+
+
+def apply_cloud_billing_warning(
+    meta: object,
+    pricing: object,
+    *,
+    fallback_per_1k: float,
+    model: str | None = None,
+) -> None:
+    """Warn on ``daari_meta`` when a served ``:cloud`` id has no configured price.
+
+    Priced cloud models stay silent. Unpriced ones use the flat fallback in the
+    ledger, and the warning says so instead of leaving spend at a quiet $0.
+    """
+    name = (model or getattr(meta, "model", None) or "").strip()
+    if not is_ollama_cloud_model(name):
+        return
+    if not resolve_price(name, pricing, fallback_per_1k=fallback_per_1k).is_fallback:
+        return
+    note = (
+        f"no price configured for Ollama cloud model {name!r}; "
+        f"costing it at the flat ${float(fallback_per_1k)}/1k fallback. "
+        "Set pricing.models to report real spend."
+    )
+    existing = getattr(meta, "warning", None)
+    meta.warning = f"{existing}; {note}" if existing else note
 
 
 def matching_model_key(model: str, keys: object) -> str | None:
@@ -212,6 +301,7 @@ def cost_usd(
     service_tier: str | None = None,
     region_pin: str | None = None,
     billing_path: str | None = None,
+    usage_speed: str | None = None,
 ) -> float:
     price = resolve_price(
         model,
@@ -234,6 +324,7 @@ def cost_usd(
         total
         * service_tier_factor(service_tier)
         * regional_processing_factor(region_pin, model)
+        * anthropic_speed_factor(usage_speed)
     )
 
 
@@ -289,30 +380,75 @@ def _resolved_from_entry(entry: object, *, input_tokens: int = 0) -> ResolvedPri
     )
 
 
+def _configured_model_ids(settings: object) -> list[str]:
+    """Model ids an operator pointed at a local or org executor."""
+    found: list[str] = []
+
+    def add(value: object) -> None:
+        if isinstance(value, str) and value.strip():
+            found.append(value.strip())
+
+    models = getattr(settings, "models", None)
+    for name in ("l3", "l4", "l5"):
+        add(getattr(models, name, None) if models is not None else None)
+    decisions = getattr(settings, "decisions", None)
+    for value in getattr(decisions, "local_models", None) or []:
+        add(value)
+    routing = getattr(settings, "routing", None)
+    org = getattr(routing, "org_pool", None) if routing is not None else None
+    add(getattr(org, "model", None) if org is not None else None)
+    pool = getattr(routing, "local_pool", None) if routing is not None else None
+    for backend in getattr(pool, "backends", None) or []:
+        if isinstance(backend, dict):
+            add(backend.get("model"))
+        else:
+            add(getattr(backend, "model", None))
+    classifier = getattr(routing, "decision_classifier", None) if routing is not None else None
+    add(getattr(classifier, "model", None) if classifier is not None else None)
+    mlx = getattr(settings, "mlx", None)
+    for value in (getattr(mlx, "models", None) or {}).values():
+        add(value)
+    return found
+
+
 def pricing_warnings(settings: object) -> list[str]:
-    """Frontier models that will be costed at the flat fallback rate.
+    """Models that will be costed at the flat fallback rate.
 
     Surfaced by `daari doctor` so silently-wrong spend reporting is visible
-    rather than discovered on a bill.
+    rather than discovered on a bill. Frontier warnings require
+    ``frontier.enabled``. Ollama ``:cloud`` ids are billed on the operator's
+    Ollama account even when frontier is off, so those warn whenever a
+    configured tier or pool model ends with ``:cloud`` and has no price.
     """
     frontier = getattr(settings, "frontier", None)
-    if frontier is None or not getattr(frontier, "enabled", False):
-        return []
     pricing = getattr(settings, "pricing", None)
-    fallback = float(getattr(frontier, "price_per_1k_tokens", 0.002))
-    models: list[str] = []
-    scalar = getattr(frontier, "model", None)
-    if scalar:
-        models.append(scalar)
-    for entry in getattr(frontier, "pool", None) or []:
-        name = entry.get("model") if isinstance(entry, dict) else getattr(entry, "model", None)
-        if name:
-            models.append(name)
+    fallback = 0.002
+    if frontier is not None:
+        fallback = float(getattr(frontier, "price_per_1k_tokens", 0.002) or 0.002)
     warnings: list[str] = []
-    for model in dict.fromkeys(models):
+    frontier_models: list[str] = []
+    if frontier is not None and getattr(frontier, "enabled", False):
+        scalar = getattr(frontier, "model", None)
+        if scalar:
+            frontier_models.append(scalar)
+        for entry in getattr(frontier, "pool", None) or []:
+            name = entry.get("model") if isinstance(entry, dict) else getattr(entry, "model", None)
+            if name:
+                frontier_models.append(name)
+    for model in dict.fromkeys(frontier_models):
         if resolve_price(model, pricing, fallback_per_1k=fallback).is_fallback:
             warnings.append(
                 f"no price configured for frontier model {model!r}; "
+                f"costing it at the flat ${fallback}/1k fallback. "
+                "Set pricing.models to report real spend."
+            )
+    cloud_models = [
+        model for model in _configured_model_ids(settings) if is_ollama_cloud_model(model)
+    ]
+    for model in dict.fromkeys(cloud_models):
+        if resolve_price(model, pricing, fallback_per_1k=fallback).is_fallback:
+            warnings.append(
+                f"no price configured for Ollama cloud model {model!r}; "
                 f"costing it at the flat ${fallback}/1k fallback. "
                 "Set pricing.models to report real spend."
             )

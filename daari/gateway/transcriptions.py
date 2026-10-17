@@ -408,7 +408,11 @@ async def handle_transcription(
         is_slot_failure,
         region_pin_from_request,
     )
-    from daari.gateway.model_access import reject_disallowed_model, reject_frontier_passthrough
+    from daari.gateway.model_access import (
+        reject_disallowed_model,
+        reject_frontier_passthrough,
+        reject_retired_model,
+    )
 
     pin = region_pin_from_request(request)
     try:
@@ -432,6 +436,9 @@ async def handle_transcription(
     denied = reject_disallowed_model(request, model_name, ctx.settings)
     if denied is not None:
         return denied
+    retired = reject_retired_model(request, model_name, ctx.settings)
+    if retired is not None:
+        return retired
 
     from daari.gateway.guardrails import (
         apply_endpoint_input_policy,

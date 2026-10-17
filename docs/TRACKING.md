@@ -7052,6 +7052,45 @@ decision-model guardrail and states daari does not ship one yet (heuristic
 guardrails + `/v1/decisions`). Comparison floor stays 1.104.0 GA. Covered by
 `tests/unit/test_compare_litellm_1104.py`.
 
+### Retired-model 410 on remaining doors ([#1701](https://github.com/naveenreddyalka/daari/issues/1701))
+
+<!-- tracking:#1701 -->
+**Status:** Done (2026-10-16). Images (generate/edit/variation), speech,
+transcriptions, moderations, rerank, and MCP tools/call provider paths return
+410 `model_retired` with `models.retired_denied` and `kind="retired"`. Batch
+items fail at validation (410) before admission. Chat 410s before RPM or
+in-flight slots. Covered by `tests/unit/test_lifecycle_modality_doors.py` and
+`tests/integration/test_gateway_flow.py`.
+
+### Anthropic Opus fast mode ([#1702](https://github.com/naveenreddyalka/daari/issues/1702))
+
+<!-- tracking:#1702 -->
+**Status:** Done (2026-10-16). `speed: "fast"` is forwarded on Anthropic
+egress for claude-opus-5-5, and for opus-5 / opus-4.8 only with the
+`fast-mode-2026-02-01` beta; other models are cleared with a daari_meta
+warning. Spend, cost headers, and stream usage bill 2× from provider
+`usage.speed`, and the spend row stores `usage_speed`. Covered by
+`tests/unit/test_anthropic_fast_mode.py`.
+
+### Ollama cloud model spend ([#1707](https://github.com/naveenreddyalka/daari/issues/1707))
+
+<!-- tracking:#1707 -->
+**Status:** Done (2026-10-16). Model ids ending in `:cloud` are metered from
+`pricing.models` on chat, the Ollama facade, cost headers, and budget/report
+spend. Unpriced cloud ids warn from `daari doctor` and `daari_meta.warning`
+and use the flat fallback instead of $0. Other L3–L5 models stay $0. Covered
+by `tests/unit/test_ollama_cloud_pricing.py`.
+
+### Scoped admin reads ([#1703](https://github.com/naveenreddyalka/daari/issues/1703))
+
+<!-- tracking:#1703 -->
+**Status:** Done (2026-10-16). Team-scoped analysts get 404 on another team's
+trace detail. Scoped report totals and frontier spend come from that team's
+client rows; request quotas and `team_model_spend` stay on that team;
+`model_group_spend` is omitted because it is org-wide. Scoped stats zero
+fleet `tiers` / `errors` / `total_requests`. Admin reads without `team_id`
+stay fleet-wide. Covered by `tests/unit/test_team_scoped_admin_reads.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

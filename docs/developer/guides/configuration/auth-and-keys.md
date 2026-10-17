@@ -216,7 +216,18 @@ optional `?team_id=` filter so analysts can mirror CLI `daari spend export
 | Virtual key with no team pin | Unfiltered (same as today) unless `?team_id=` is passed |
 
 Trace rows store `team_id` on write (from the request's VK/team attribution).
-SQLite and Postgres trace stores both honor the list filter.
+SQLite and Postgres trace stores both honor the list filter. `GET
+/v1/daari/traces/{trace_id}` uses the same scope: a team-scoped caller
+receives **404** for another team's trace; an admin with no `team_id` still
+reads any trace.
+
+Scoped `GET /v1/daari/stats` zeroes fleet counters that have no team label
+(`total_requests`, `errors`, `tiers`, and the MCP/compact counters). Rate-limit
+and virtual-key slices stay team-filtered. Scoped `GET /v1/daari/report`
+rebuilds day totals and frontier spend from that team's client rows, keeps
+request quotas and `team_model_spend` on that team, and omits
+`model_group_spend` because those dollars are summed org-wide. Admin reads
+without `team_id` stay fleet-wide.
 
 ### IdP-minted virtual keys (MDM)
 

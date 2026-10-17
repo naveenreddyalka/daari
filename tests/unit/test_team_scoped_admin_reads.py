@@ -124,6 +124,100 @@ async def test_master_may_filter_any_team(settings, tmp_path):
         assert resp.json()["traces"][0]["team_id"] == team_b.team_id
 
 
+@pytest.mark.asyncio
+async def test_scoped_trace_detail_hides_other_team(settings, tmp_path):
+    app, _store, key_a, _key_b, team_a, team_b = _app_with_teams(settings, tmp_path)
+    ctx = app.state.ctx
+    trace_b = RequestTrace()
+    trace_b.add("served", tier="L3")
+    ctx.router.trace_store.save(trace_b, tier="L3", category="chat", team_id=team_b.team_id)
+    trace_a = RequestTrace()
+    trace_a.add("served", tier="L3")
+    ctx.router.trace_store.save(trace_a, tier="L3", category="chat", team_id=team_a.team_id)
+    alice = {"Authorization": f"Bearer {key_a.plaintext}"}
+    master = {"Authorization": "Bearer master-sekret"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        denied = await client.get(f"/v1/daari/traces/{trace_b.trace_id}", headers=alice)
+        assert denied.status_code in (403, 404)
+        own = await client.get(f"/v1/daari/traces/{trace_a.trace_id}", headers=alice)
+        assert own.status_code == 200
+        assert own.json()["team_id"] == team_a.team_id
+        admin = await client.get(f"/v1/daari/traces/{trace_b.trace_id}", headers=master)
+        assert admin.status_code == 200
+        assert admin.json()["trace_id"] == trace_b.trace_id
+
+
+@pytest.mark.asyncio
+async def test_scoped_report_hides_other_team_dollars(settings, tmp_path):
+    app, _store, key_a, _key_b, team_a, _team_b = _app_with_teams(settings, tmp_path)
+    ledger = app.state.ctx.router.usage_ledger
+    ledger.record(
+        tier="L6",
+        client_id="alice",
+        model="gpt-4o",
+        input_tokens=1_000_000,
+        output_tokens=0,
+    )
+    ledger.record(
+        tier="L6",
+        client_id="bob",
+        model="gpt-4o",
+        input_tokens=2_000_000,
+        output_tokens=0,
+    )
+    alice = {"Authorization": f"Bearer {key_a.plaintext}"}
+    master = {"Authorization": "Bearer master-sekret"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        scoped = await client.get(
+            f"/v1/daari/report?team_id={team_a.team_id}&days=1",
+            headers=alice,
+        )
+        assert scoped.status_code == 200
+        body = scoped.json()
+        assert body["frontier"]["today_spend_usd"] == pytest.approx(2.5, abs=0.02)
+        assert body["frontier"]["month_spend_usd"] == pytest.approx(2.5, abs=0.02)
+        assert body["totals"]["frontier_requests"] == 1
+        for row in body.get("team_model_spend") or []:
+            assert row.get("team_id") == team_a.team_id
+        admin = await client.get("/v1/daari/report?days=1", headers=master)
+        assert admin.status_code == 200
+        fleet = admin.json()
+        assert fleet["frontier"]["today_spend_usd"] == pytest.approx(7.5, abs=0.05)
+        assert fleet["totals"]["frontier_requests"] == 2
+
+
+@pytest.mark.asyncio
+async def test_scoped_stats_zero_fleet_counters(settings, tmp_path):
+    app, _store, key_a, _key_b, team_a, _team_b = _app_with_teams(settings, tmp_path)
+    metrics = app.state.ctx.metrics
+    metrics.record("L3", cache_hit=False, latency_ms=12)
+    metrics.record_error(status=500)
+    alice = {"Authorization": f"Bearer {key_a.plaintext}"}
+    master = {"Authorization": "Bearer master-sekret"}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        scoped = await client.get(
+            f"/v1/daari/stats?team_id={team_a.team_id}",
+            headers=alice,
+        )
+        assert scoped.status_code == 200
+        data = scoped.json()
+        assert data["total_requests"] == 0
+        assert data["errors"] == 0
+        assert data["tiers"] == {}
+        admin = await client.get("/v1/daari/stats", headers=master)
+        assert admin.status_code == 200
+        fleet = admin.json()
+        assert fleet["total_requests"] >= 1
+        assert fleet["errors"] >= 1
+        assert fleet["tiers"]
+
+
 def test_auth_and_keys_docs_scoped_reads() -> None:
     from pathlib import Path
 

@@ -232,6 +232,8 @@ class AnthropicRequest(BaseModel):
     plugins: list[Any] | None = None
     # Anthropic/OpenRouter service_tier (flex|standard|priority|fast) (#1005).
     service_tier: str | None = None
+    # Opus fast mode (`speed: "fast"`) (#1702).
+    speed: str | None = None
     # Request-level extended thinking + metadata (#1009).
     thinking: Any | None = None
     metadata: Any | None = None
@@ -254,7 +256,7 @@ class AnthropicMessageResponse(BaseModel):
     content: list[AnthropicTextBlock]
     stop_reason: str = "end_turn"
     stop_sequence: str | None = None
-    usage: dict[str, int] = Field(default_factory=lambda: {"input_tokens": 0, "output_tokens": 0})
+    usage: dict[str, Any] = Field(default_factory=lambda: {"input_tokens": 0, "output_tokens": 0})
     daari_meta: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -600,10 +602,18 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 result.daari_meta.warning = "budget_warning"
             elif getattr(request.state, "rate_limit_soft", False):
                 result.daari_meta.warning = "rate_limit_warning"
+            usage: dict[str, Any] = {
+                "input_tokens": int(result.daari_meta.input_tokens or 0),
+                "output_tokens": int(result.daari_meta.output_tokens or 0),
+            }
+            reported_speed = getattr(result.daari_meta, "usage_speed", None)
+            if isinstance(reported_speed, str) and reported_speed.strip():
+                usage["speed"] = reported_speed.strip().lower()
             payload = AnthropicMessageResponse(
                 id=f"msg_{uuid.uuid4().hex[:12]}",
                 model=result.model,
                 content=[AnthropicTextBlock(text=result.content)],
+                usage=usage,
                 daari_meta=result.daari_meta.model_dump(exclude_none=True),
             ).model_dump(exclude_none=True)
             prompt_chars = sum(len(message.content or "") for message in internal.messages)

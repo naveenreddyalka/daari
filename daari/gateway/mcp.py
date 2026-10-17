@@ -808,11 +808,14 @@ def _resolve_tool_model(
 def _enforce_mcp_model(request: Request | None, ctx: AppContext, meta: RequestMeta, model: str) -> None:
     if request is None:
         return
-    from daari.gateway.model_access import reject_disallowed_model
+    from daari.gateway.model_access import reject_disallowed_model, reject_retired_model
 
     denied = reject_disallowed_model(request, model, ctx.settings, meta)
     if denied is not None:
         raise ModelNotAllowed(denied)
+    retired = reject_retired_model(request, model, ctx.settings)
+    if retired is not None:
+        raise ModelNotAllowed(retired)
 
 
 def _meter_mcp_tool_call(

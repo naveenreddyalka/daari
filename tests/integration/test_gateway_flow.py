@@ -3973,3 +3973,56 @@ async def test_decisions_l0_exact_cache_gateway(app, monkeypatch):
     assert second.json()["daari_meta"]["tier"] == "L0"
     assert second.json()["daari_meta"]["cache_hit"] is True
     assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retired_chat_410_before_admission(settings, monkeypatch):
+    """Retired ids 410 without consuming RPM or an in-flight slot (#1701)."""
+    settings.models.lifecycle = {"retired-model": {"lifecycle": "retired"}}
+    settings.models.reject_retired = True
+    settings.rate_limit.rpm = 1
+    settings.rate_limit.max_in_flight = 1
+    application = create_app(settings)
+    application.state.ctx = AppContext.from_settings(settings)
+    routed = {"n": 0}
+
+    async def fake_execute(request: InternalRequest) -> InternalResponse:
+        routed["n"] += 1
+        return InternalResponse(
+            content="from-ollama",
+            model=request.model or "llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+
+    monkeypatch.setattr(application.state.ctx.router.ollama, "execute", fake_execute)
+    limiter = application.state.rate_limiter
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        retired = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "retired-model",
+                "messages": [{"role": "user", "content": "hi"}],
+            },
+        )
+        assert limiter.in_flight == 0
+        allowed = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "llama3.2:3b",
+                "messages": [{"role": "user", "content": "still open"}],
+            },
+        )
+        masked = await client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "retired-model",
+                "messages": [{"role": "user", "content": "after cap"}],
+            },
+        )
+    assert retired.status_code == 410
+    assert retired.json()["error"]["code"] == "model_retired"
+    assert allowed.status_code == 200
+    assert masked.status_code == 410
+    assert routed["n"] == 1
+    assert limiter.in_flight == 0
