@@ -33,18 +33,33 @@ def test_compare_litellm_pins_compact_to_fit_token_telemetry() -> None:
     )
 
 
-def test_compare_litellm_pins_1105_rc_watch() -> None:
+def _markdown_section(text: str, heading_prefix: str) -> str:
+    start = text.find(heading_prefix)
+    assert start >= 0, heading_prefix
+    rest = text[start + len(heading_prefix) :]
+    nxt = rest.find("\n## ")
+    return text[start:] if nxt < 0 else text[start : start + len(heading_prefix) + nxt]
+
+
+def test_compare_litellm_pins_1105_ga_agent_vs_multi_agent() -> None:
+    """1.105.0 is GA; agent/Lens vs on-box multi_agent, no Lens parity (#1640)."""
     text = DOC.read_text(encoding="utf-8")
-    lower = text.lower()
-    assert "1.105" in text
-    assert "rc" in lower or "prerelease" in lower
-    assert "1.104" in text
-    assert "microsoft 365" in lower or "m365" in lower
-    assert "mcp" in lower
-    assert "straiker" in lower
-    assert "lens" in lower or "litellm.agent" in lower
+    section = _markdown_section(text, "## LiteLLM 1.105")
+    lower = section.lower()
+    assert "1.105.0" in section
+    assert "ga" in lower
+    assert "prerelease" not in lower
+    assert "do not treat" not in lower
+    assert "-rc" not in lower
+    assert "litellm.agent" in lower
+    assert "lens" in lower
+    assert "multi_agent" in section
+    assert "ledger" in lower
     assert "does **not** ship" in lower or "does not ship" in lower
-    assert "watch" in lower
+    assert "lens parity" not in lower
+    assert "/v1/decisions" in section
+    assert "/v1/systemone" in section
+    assert "1.104" in text
 
 
 def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
@@ -62,16 +77,18 @@ def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
     assert "1.104.0 ga" in lower or "1.104.x" in lower or "1.104 ga" in lower
 
 
-def test_compare_litellm_pins_1105_rc_decisions_parity() -> None:
-    """1.105 RC Decisions routes vs on-box /v1/decisions + /v1/systemone (#1584)."""
+def test_compare_litellm_pins_1105_ga_decisions_parity() -> None:
+    """1.105.0 GA Decisions routes vs on-box /v1/decisions + /v1/systemone (#1584, #1640)."""
     text = DOC.read_text(encoding="utf-8")
-    lower = text.lower()
-    assert "1.105" in text
-    assert "1.104" in text
+    section = _markdown_section(text, "## LiteLLM 1.105")
+    lower = section.lower()
+    assert "1.105.0" in section
+    assert "ga" in lower
+    assert "prerelease" not in lower
     assert "decisions" in lower
-    assert "/v1/decisions" in text
-    assert "/v1/systemone" in text
+    assert "/v1/decisions" in section
+    assert "/v1/systemone" in section
     assert "already" in lower
-    # Floor stays GA; do not claim 1.105 as GA.
-    assert "prerelease" in lower or "rc" in lower
-    assert "stable" in lower or "1.104.0 ga" in lower
+    # 1.106 stays a prerelease watch; 1.105 itself is GA.
+    watch = _markdown_section(text, "## LiteLLM 1.106")
+    assert "prerelease" in watch.lower() or "rc" in watch.lower()

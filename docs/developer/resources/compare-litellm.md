@@ -32,17 +32,22 @@ LiteLLM [v1.104.0](https://docs.litellm.ai/release_notes/v1.104.0/v1-104-0)
 **stdio MCP off by default** in LiteLLM is N/A for daari today (no stdio MCP
 transport); watch if a buyer asks. A2A and admin UI stay demand-triggered.
 
-## LiteLLM 1.105 RC (watch)
+## LiteLLM 1.105.0 GA
 
-LiteLLM [v1.105.0-rc.3](https://docs.litellm.ai/release_notes/v1.105.0rc3/v1-105-0-rc-3)
-(and earlier [rc.1](https://github.com/BerriAI/litellm/releases)) is
-**prerelease**. Do not treat it as the comparison floor — **1.104.0 GA**
-above is still the stable bar. The RC advertises a Microsoft 365 MCP catalog,
-Straiker v3 fail-closed routing, Lens / `litellm.agent()` traces, and proxy
-Decisions routes (`POST /v1/decisions`, `/v1/systemone`). daari already serves
-`/v1/decisions` and `/v1/systemone` locally; it does **not** ship the M365 /
-Straiker / Lens RC items. This page only records the rest as a watch list so
-buyers are not told we lag an unreleased cut.
+LiteLLM [v1.105.0](https://docs.litellm.ai/release_notes/v1.105.0/v1-105-0)
+(11 Oct 2026) is **GA**. It includes proxy Decisions routes
+(`POST /v1/decisions`, `/v1/systemone`), `litellm.agent()` (coding agents
+through the cloud gateway), and Lens / agent traces. daari already serves
+`/v1/decisions` and `/v1/systemone` on-box.
+
+`litellm.agent()` and Lens are a cloud agent control plane. daari does **not**
+ship Lens or a hosted agent runner. Responses `multi_agent`
+forwards to frontier (L6) when enabled, and nested agent token rows land on
+the local usage ledger. That path skips local tiers. Requests without
+`multi_agent` still take cache → tools → Ollama/MLX before frontier.
+
+Microsoft 365 MCP catalog and Straiker v3 fail-closed routing also landed in
+this GA cut. daari does **not** ship those.
 
 ## LiteLLM 1.106 RC (watch)
 
@@ -51,7 +56,8 @@ LiteLLM [v1.106.0-rc.3](https://docs.litellm.ai/release_notes/v1.106.0rc3/v1-106
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
 model, blocking or logging at a probability threshold. This is still
-**prerelease**. The stable comparison floor stays **1.104.0 GA**.
+**prerelease**. The stable comparison floor stays **1.105.0 GA** (1.104.0 GA
+above remains the prior stable bar).
 
 daari does **not** ship a decision-model guardrail yet. Heuristic / regex
 guardrails plus the on-box `/v1/decisions` path remain the local route for

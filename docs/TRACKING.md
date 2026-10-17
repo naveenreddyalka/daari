@@ -7148,6 +7148,14 @@ a pinned caller requesting another team receives 403. Unscoped admins
 still see the full inventory when the filter is omitted. Docs: http-api.md.
 Covered by `tests/unit/test_admin_team_filter.py`.
 
+### Docs: LiteLLM 1.105.0 GA in compare-litellm ([#1640](https://github.com/naveenreddyalka/daari/issues/1640))
+
+<!-- tracking:#1640 -->
+**Status:** Done (2026-10-17). compare-litellm treats LiteLLM 1.105.0 as GA
+(Decisions routes, `litellm.agent()`, Lens) and contrasts that cloud agent
+plane with on-box `multi_agent` ledger attribution. 1.106 stays a prerelease
+watch. Covered by `tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

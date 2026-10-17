@@ -56,7 +56,7 @@ recovery is TTL-or-restart.
 | 119 | Tenancy leaks in scoped admin reads: trace detail, report totals, stats counters | 5 | 3 | Portkey / LiteLLM team dashboards | Rows carry team_id; isolation needs no SaaS plane | Filed [#1703](https://github.com/naveenreddyalka/daari/issues/1703) |
 | 120 | Key-prefix lockout: unlock verb + doctor + alert webhook | 4 | 2 | OpenRouter Security Center | On-box unlock is one audited call, no WAF ticket | Filed [#1704](https://github.com/naveenreddyalka/daari/issues/1704) |
 | 121 | Consistent backup as the deployed default (Helm flag, doctor, restore drill) | 4 | 2 | Managed Postgres PITR | Air-gapped app-consistent DR operators actually run | Filed [#1705](https://github.com/naveenreddyalka/daari/issues/1705) |
-| 96 | compare-litellm: 1.105.0 GA framing + `litellm.agent()`/Lens vs multi_agent | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Open [#1640] |
+| 96 | compare-litellm: 1.105.0 GA framing + `litellm.agent()`/Lens vs multi_agent | 2 | 1 | LiteLLM release notes | Honest local-first positioning | Shipped |
 | 62 | End-user inventory + per-user block/cap overrides | 5 | 3 | OpenRouter end-users / LiteLLM | Ledger already knows every user | Open |
 | 63 | Named guardrail profiles bindable per key/team | 5 | 3 | OpenRouter / Portkey | Per-tenant policy, zero hops | Open |
 | 65 | Web-ui: honor keys/teams `has_more` + render `report.users` | 4 | 2 | LiteLLM admin UI | Same-box console finishes the job | Open |
