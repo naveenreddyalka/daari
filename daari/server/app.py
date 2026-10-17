@@ -1167,6 +1167,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from daari.server.header_policy import install_header_policy
 
     install_header_policy(app, resolved)
+    from daari.server.gzip_json import install_gzip_json
+
+    install_gzip_json(app)
     # Outermost: reject oversized bodies before rate-limit buffering (#933).
     from daari.server.body_limit import install_body_size_limit
 
