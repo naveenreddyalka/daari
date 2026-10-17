@@ -1680,6 +1680,7 @@ def team_model_spend_report_rows(
                     "remaining_usd": round(float(status.remaining), 6),
                     "soft": status.in_soft_band(soft_ratio),
                     "exceeded": status.exceeded,
+                    "reset_at": status.reset_at,
                 }
             )
     return rows

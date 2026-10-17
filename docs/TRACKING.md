@@ -7213,6 +7213,14 @@ capabilities, context length, lifecycle, and `server_tools` from the target
 tier (floor = L3, nitro = L5 else L4 else L3) and keeps the alias id.
 Unknown ids stay stubs. Covered by `tests/unit/test_floor_nitro_model_cards.py`.
 
+### Per-model budget rows include reset_at ([#1732](https://github.com/naveenreddyalka/daari/issues/1732))
+
+<!-- tracking:#1732 -->
+**Status:** Done (2026-10-17). `team_model_spend` rows include `reset_at`
+from `WindowStatus.reset_at` (ISO-8601 UTC). Lifetime windows keep an empty
+reset, the same as `reset_at("lifetime")`. Existing spend fields and team
+scoping are unchanged. Covered by `tests/unit/test_model_max_budget.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
