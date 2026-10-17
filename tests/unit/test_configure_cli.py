@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -136,3 +137,49 @@ def test_configure_chatgpt_desktop_does_not_write_prefs(home):
     assert "were not modified" in result.output
     after = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
     assert after == before
+
+
+def test_supported_clients_includes_codex():
+    assert "codex" in supported_clients()
+
+
+def test_configure_codex_dry_run_prints_openai_and_ollama_hosts(home):
+    result = runner.invoke(app, ["configure", "codex", "--dry-run"])
+    assert result.exit_code == 0
+    assert "http://127.0.0.1:11435/v1" in result.output
+    assert "ollama launch codex" in result.output
+    assert "http://127.0.0.1:11435 (no /v1)" in result.output
+    assert "X-Daari-Client-Id: codex" in result.output
+    assert "curl" in result.output
+    assert "/v1/models" in result.output
+    assert "Dry-run complete" in result.output
+
+
+def test_setup_codex_dry_run(home):
+    result = runner.invoke(app, ["setup", "codex", "--dry-run"])
+    assert result.exit_code == 0
+    assert "http://127.0.0.1:11435/v1" in result.output
+    assert "ollama launch codex" in result.output
+    assert "http://127.0.0.1:11435 (no /v1)" in result.output
+    assert "X-Daari-Client-Id: codex" in result.output
+    assert "curl" in result.output
+    assert "/v1/models" in result.output
+    assert "Dry-run complete" in result.output
+
+
+def test_configure_codex_does_not_write_config(home):
+    before = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    result = runner.invoke(app, ["configure", "codex"])
+    assert result.exit_code == 0
+    assert "were not modified" in result.output
+    after = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    assert after == before
+
+
+def test_codex_guide_linked_from_clients_nav():
+    guide = Path("docs/developer/guides/clients/codex.md").read_text(encoding="utf-8")
+    assert "http://127.0.0.1:11435/v1" in guide
+    assert "ollama launch codex" in guide
+    assert "X-Daari-Client-Id: codex" in guide
+    nav = Path("mkdocs.yml").read_text(encoding="utf-8")
+    assert "developer/guides/clients/codex.md" in nav
