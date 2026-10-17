@@ -40,6 +40,7 @@ package `version` for upgrade/rollback discovery.
 | doctor `cors_origins` | Optional: empty allowlist is an advisory tip for `daari web-ui` (`http://127.0.0.1:11437`); a non-empty list that omits that origin (or `DAARI_WEB_UI_ORIGIN`) warns — browsers will block credentialed dashboard calls |
 | doctor `request_deadline` | Optional: `upstream.request_deadline_seconds` unset or `<= 0` — per-tier timeouts only; set a positive budget (or send `X-Daari-Deadline-Ms`) so escalation stops with 504 |
 | doctor `local_pool_frontier_fallback` | Optional: `routing.local_pool.frontier_fallback` true while `frontier.enabled` is false |
+| doctor `ollama_q2_0` | Optional: Ollama `GET /api/version` is a semantic version below 0.40.6 — `q2_0` GGUF tensors need Ollama 0.40.6 or newer. Missing or unparseable `/api/version` stays quiet |
 
 | doctor `otlp_logs` | Optional: `observability.otlp_logs` true without `OTEL_EXPORTER_OTLP_ENDPOINT` — log export is a silent no-op |
 | doctor `fleet_artifacts` | Optional: fleet signals (`DAARI_FLEET_REPLICAS` > 1, `cache.backend=redis`, or `observability.backend=postgres`) with sqlite `batches` / `files` / `responses` / ledger / `enterprise.audit_backend` — split-brain, 404, or incomplete audit-export risk |
