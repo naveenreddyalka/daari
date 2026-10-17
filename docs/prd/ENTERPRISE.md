@@ -13,37 +13,34 @@
 
 ## Where daari stands (verified in-tree, 2026-10-17)
 
-**Loop velocity.** Rows 117–121 shipped the day they were filed (modality
-410, Opus fast-mode billing, team-scoped reads, lockout unlock, Helm
-`--consistent`). The same window shipped Ollama `:cloud` metering, doctor
+**Loop velocity.** Rows 117–122 shipped (modality 410, Opus fast-mode
+billing, team-scoped reads, lockout unlock, Helm `--consistent`, OpenCode
+print-only). The same window shipped Ollama `:cloud` metering, doctor
 `--strict` egress/TLS, Codex print-only configure, gzip JSON over 16 KiB,
 admin events audit + team filters, and LiteLLM 1.105.0 GA compare. Still
-open and `agent:working`: rows 6/62–63/65–67. Refill this run: OpenCode
-configure, Gemini CLI protocol honesty, `/ready` status docs, `schema_ok`.
+open: Gemini CLI protocol honesty, `/ready` status docs, `schema_ok`, plus
+`agent:working` rows 6/62–63/65–67. Refill this run: MCP list `resultType`,
+doctor `:cloud` honesty, per-model budget `reset_at`, `:floor`/`:nitro`
+catalog cards, Ollama `q2_0` version warning.
 
-**Outward.** **Anthropic took Opus 5.5 fast mode GA (10-15)**: top-level
-`speed: "fast"` on Messages, `usage.speed` in the reply, separate fast rate
-limits, 2× pricing ($8/$40) — and Claude Code ships a `/fast` toggle, so a
-flagship daari client now sends a field daari silently strips and would
-misbill. **Ollama 0.40.5 stable (10-14)**: decision models on ollama.com
-cloud (`clef:cloud`, `clef-flash:cloud`) and Nemotron 3.5 Super/Bolt — cloud
-model usage through the facade would meter as $0 local. OpenAI added GPT-Live
-native Decisions delegation (realtime stays a non-goal). LiteLLM stable holds
-at 1.105.1 (1.105.0 is GA; compare page updated). 1.107-dev.3 scopes
-`/spend/tags` to permitted teams and returns a generic 401 for unknown keys.
-Portkey v2.29.0, Kong 2.2.0, vLLM 0.31.0, OpenRouter (Oct 9), MCP blog
-(Aug 22) flat. OpenCode v2 documents `providers.*.settings.baseURL` for
-OpenAI-compatible servers; Gemini CLI still speaks the native Gemini API
-via `GOOGLE_GEMINI_BASE_URL`, which daari does not implement.
+**Outward.** **Claude Code 2.1.302 (10-16)** drops tools, or fails every
+tool call, when an MCP server negotiates `2026-07-28` and a list result
+omits `resultType`, `ttlMs`, or `cacheScope`. daari's `tools/list` has the
+cache hints and not `resultType`; `resources/list` and `prompts/list` have
+neither. **Ollama 0.40.6 (10-16)** adds `q2_0` GGUF tensor/file types and
+launches Clef in Ollama cloud. Doctor still says `ollama pull` for a
+`:cloud` id, and it never reads `/api/version`. `--ask` question keys are
+now identifiers; `/v1/systemone` already forwards `questions` as a string
+map, so no new parser. **LiteLLM 1.107.0-dev.3 (10-16)** reports when each
+per-model budget window resets; stable remains 1.105.1. Anthropic platform
+notes still stop at 10-15 (fast mode GA, Compliance API — watch). Portkey,
+Kong 2.2.0, vLLM 0.31.0, OpenRouter (Oct 9) flat.
 
-**Inward theme: the 10-16 edge gaps shipped; the next thin edges are
-client recipes and upgrade skew.** Retired-410 covers modality/MCP/batch
-doors before admission. Team-scoped admin reads no longer return other
-teams' traces, report totals, or stats. Helm backups default to
-`--consistent` when Postgres is configured. Lockout has an unlock verb.
-`/ready` still has no `schema_ok`. OpenCode and Gemini CLI have no
-configure recipe; Gemini must not be pointed at the daemon as if it spoke
-the native API.
+**Inward theme: client protocol honesty and catalog truth.** `/ready` still
+has no `schema_ok`. Gemini CLI still must not be aimed at the daemon.
+`team_model_spend` omits `reset_at` even though budget errors include it.
+`GET /v1/models` omits `:floor` / `:nitro`, and retrieve returns an empty
+capability stub for those ids.
 
 ---
 
@@ -51,7 +48,12 @@ the native API.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
-| 122 | OpenCode print-only configure (`providers` + `/v1` base URL) | 3 | 1 | OpenCode v2 providers | On-box OpenAI-compatible client, no config write | Filed [#1724](https://github.com/naveenreddyalka/daari/issues/1724) |
+| 126 | MCP `2026-07-28` list results include `resultType` (+ cache hints on resources/prompts) | 4 | 1 | Claude Code 2.1.302 | On-box MCP matches the client cache contract | Filed [#1730](https://github.com/naveenreddyalka/daari/issues/1730) |
+| 127 | Doctor must not `ollama pull` a `:cloud` id | 3 | 1 | Ollama 0.40.6 cloud Clef | Cloud route is already metered on-box | Filed [#1731](https://github.com/naveenreddyalka/daari/issues/1731) |
+| 128 | `team_model_spend` rows include `reset_at` | 3 | 1 | LiteLLM 1.107-dev.3 | Window clock already on the ledger | Filed [#1732](https://github.com/naveenreddyalka/daari/issues/1732) |
+| 129 | `:floor` / `:nitro` catalog cards copy target metadata | 3 | 2 | LiteLLM alias listing | Routing hint, same capabilities as the tier | Filed [#1733](https://github.com/naveenreddyalka/daari/issues/1733) |
+| 130 | Doctor warns when Ollama is older than the `q2_0` floor (0.40.6) | 2 | 1 | Ollama 0.40.6 release notes | Version is on the same machine | Filed [#1734](https://github.com/naveenreddyalka/daari/issues/1734) |
+| 122 | OpenCode print-only configure (`providers` + `/v1` base URL) | 3 | 1 | OpenCode v2 providers | On-box OpenAI-compatible client, no config write | Shipped |
 | 125 | `/ready` `schema_ok` when a local SQLite store lags the binary | 4 | 3 | — | Upgrade skew visible on the box that owns the files | Filed [#1727](https://github.com/naveenreddyalka/daari/issues/1727) |
 | 123 | Gemini CLI configure must not aim the native API at daari | 2 | 1 | Gemini CLI `GOOGLE_GEMINI_BASE_URL` | Honest protocol boundary | Filed [#1725](https://github.com/naveenreddyalka/daari/issues/1725) |
 | 124 | One operator page for `GET /ready` statuses | 2 | 1 | — | Probe contract next to the daemon | Filed [#1726](https://github.com/naveenreddyalka/daari/issues/1726) |
@@ -102,26 +104,30 @@ OpenAI GPT-Live (non-goals).
 Verified fine this run — don't re-audit: retired-410 on modality/MCP/batch
 before admission; team-scoped traces/report/stats; lockout unlock; Helm
 backup `--consistent` when Postgres is on; doctor `--strict` for remote
-cleartext; gzip JSON over 16 KiB; Codex print-only configure; events list
-audit row and team filters on keys/teams/audit; LiteLLM 1.105.0 marked GA
-in compare-litellm.
+cleartext; gzip JSON over 16 KiB; Codex and OpenCode print-only configure;
+events list audit row and team filters on keys/teams/audit; LiteLLM 1.105.0
+marked GA in compare-litellm; `/v1/systemone` question maps already accept
+identifier keys; signed empty thinking blocks with a signature are kept.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Upgrade skew on `/ready`** — `schema_ok` when a local store lags the
+1. **MCP list contract for Claude Code 2.1.302** — `resultType` plus cache
+   hints on modern `tools/list`, `resources/list`, and `prompts/list`
+   (row 126).
+2. **Upgrade skew on `/ready`** — `schema_ok` when a local store lags the
    binary (row 125). No downgrade command until a fleet asks.
-2. **Client recipes that match the protocol** — OpenCode print-only
-   (row 122); Gemini CLI must not aim `GOOGLE_GEMINI_BASE_URL` at daari
-   (row 123). Cursor-agent CLI stays on watch.
-3. **Operator-facing probe contract** — one page for `/ready` statuses
-   (row 124).
-4. **Admin-plane depth** — end-user inventory, guardrail profiles, web-ui
+3. **Ollama cloud and quant honesty** — doctor must not `ollama pull` a
+   `:cloud` id (row 127) and should warn below the `q2_0` version floor
+   (row 130).
+4. **Catalog and budget truth** — `:floor` / `:nitro` cards copy target
+   metadata (row 129); per-model spend rows include `reset_at` (row 128).
+   Gemini CLI protocol honesty and the `/ready` status page stay open
+   (rows 123–124).
+5. **Admin-plane depth** — end-user inventory, guardrail profiles, web-ui
    pagination, report bounds, multi_agent pricing (rows 62–67) as the
-   `agent:working` sessions land.
-5. **Trace-native packaging** — Responses background webhooks, Prometheus
-   exemplars, `gen_ai.agent.*` spans (watch rows → file as sessions open).
+   `agent:working` sessions land. Trace-native packaging stays on watch.
 
 Compliance non-goals (SCIM, WIF depth, A2A, SOC 2 program, Realtime/WS,
 FIPS builds, HIPAA BAA) stay deferred until buyer demand.
@@ -129,6 +135,15 @@ FIPS builds, HIPAA BAA) stay deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-17 (protocol cache hints + Ollama cloud/quant honesty)** —
+  Marked OpenCode print-only (row 122) Shipped. Filed MCP `2026-07-28`
+  list `resultType`, doctor `:cloud` pull honesty, `team_model_spend`
+  `reset_at`, `:floor`/`:nitro` catalog metadata, and an optional doctor
+  warning below Ollama 0.40.6 for `q2_0` GGUF. Outward: Claude Code
+  2.1.302, Ollama 0.40.6, LiteLLM 1.107.0-dev.3 budget-reset reporting.
+  Anthropic, Portkey, Kong, vLLM, and OpenRouter unchanged since the
+  morning scan.
 
 - **2026-10-17 (client recipes + upgrade skew)** — Marked rows 117–121 and
   the same-day follow-through Shipped (fast mode, `:cloud` metering, scoped
