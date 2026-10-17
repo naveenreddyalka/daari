@@ -7166,6 +7166,15 @@ the older `provider.daari.options.baseURL` key and `X-Daari-Client-Id: opencode`
 Config files are not written. Docs: opencode.md. Covered by
 `tests/unit/test_configure_cli.py`.
 
+### MCP list resultType on protocol 2026-07-28 ([#1730](https://github.com/naveenreddyalka/daari/issues/1730))
+
+<!-- tracking:#1730 -->
+**Status:** Done (2026-10-17). When the negotiated protocol is `2026-07-28`
+or newer, `tools/list`, `resources/list`, and `prompts/list` include
+`resultType: complete` plus `_meta.ttlMs` and `_meta.cacheScope` (`private`
+when a tool or server policy filters the catalog). Older protocols keep the
+previous payload shape. Covered by `tests/unit/test_mcp_server.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
