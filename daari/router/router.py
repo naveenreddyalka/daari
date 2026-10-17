@@ -2936,10 +2936,31 @@ class Router:
 
                         guard_upstream("L6")
                         l6_request = await self._frontier_request(stream_request)
+                        anthropic_relay = getattr(self.frontier, "provider", "") == "anthropic"
+                        prefetched: list[Any] | None = None
+                        if anthropic_relay:
+                            prefetched = [
+                                event
+                                async for event in self.frontier.stream(
+                                    l6_request,
+                                    escalated_from=tier,
+                                    local_confidence=confidence,
+                                )
+                            ]
+                            self._note_anthropic_stream_cost(outcome)
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
-                        async for event in self.frontier.stream(
-                            l6_request, escalated_from=tier, local_confidence=confidence
-                        ):
+
+                        async def _relay_events():
+                            if prefetched is not None:
+                                for event in prefetched:
+                                    yield event
+                                return
+                            async for event in self.frontier.stream(
+                                l6_request, escalated_from=tier, local_confidence=confidence
+                            ):
+                                yield event
+
+                        async for event in _relay_events():
                             if isinstance(event, dict) and event.get("tool_calls"):
                                 relayed_tool_calls = True
                                 yield f"data: {json.dumps(chunk_payload(delta={'tool_calls': event['tool_calls']}))}\n\n"
@@ -3025,7 +3046,15 @@ class Router:
                         return
                     finish_reason = "tool_calls" if relayed_tool_calls else "stop"
                     yield f"data: {json.dumps(chunk_payload(delta={}, finish_reason=finish_reason))}\n\n"
-                    yield usage_chunk(len(relayed_text), stream_tier="L6")
+                    bill = self._anthropic_stream_bill(
+                        relayed_text, fallback_model=served.model
+                    )
+                    yield usage_chunk(
+                        len(relayed_text),
+                        stream_tier="L6",
+                        tokens=bill[1],
+                        served=bill[0],
+                    )
                     yield "data: [DONE]\n\n"
                     latency_ms = int((time.perf_counter() - started) * 1000)
                     self.metrics.record("L6", cache_hit=False, latency_ms=latency_ms)
@@ -3038,14 +3067,26 @@ class Router:
                     if budget_state == "soft":
                         add_step("budget_check", exceeded=False, soft=True)
                     if self.usage_ledger is not None:
-                        self.usage_ledger.record(
-                            tier="L6",
-                            cache_hit=False,
-                            prompt_chars=prompt_chars,
-                            completion_chars=len(relayed_text),
-                            client_id=request.meta.client_id,
-                            user_id=request.meta.user,
-                        )
+                        from daari.observability.spend import current_spend_context
+
+                        bound = current_spend_context()
+                        speed = getattr(self.frontier, "last_stream_usage_speed", None)
+                        if bound is not None and speed:
+                            bound.usage_speed = speed
+                        record_kwargs: dict[str, Any] = {
+                            "tier": "L6",
+                            "cache_hit": False,
+                            "prompt_chars": prompt_chars,
+                            "completion_chars": len(relayed_text),
+                            "client_id": request.meta.client_id,
+                            "user_id": request.meta.user,
+                        }
+                        if bill[0] is not None and bill[1] is not None and speed:
+                            record_kwargs["model"] = bill[0].daari_meta.model
+                            record_kwargs["provider"] = bill[0].daari_meta.provider_id
+                            record_kwargs["input_tokens"] = bill[1][0]
+                            record_kwargs["output_tokens"] = bill[1][1]
+                        self.usage_ledger.record(**record_kwargs)
                     add_step("served", tier="L6", cache_hit=False, latency_ms=latency_ms)
                     flight_meta = DaariMeta(
                         tier="L6",
@@ -3053,6 +3094,12 @@ class Router:
                         executor="frontier",
                         provider_id="frontier",
                     )
+                    if bill[0] is not None:
+                        flight_meta.model = bill[0].daari_meta.model
+                        flight_meta.provider_id = bill[0].daari_meta.provider_id
+                        flight_meta.usage_speed = bill[0].daari_meta.usage_speed
+                        flight_meta.input_tokens = bill[0].daari_meta.input_tokens
+                        flight_meta.output_tokens = bill[0].daari_meta.output_tokens
                     # Attach frontier param-compat drops/warnings for stream
                     # parity with non-stream execute (#1173).
                     apply_meta = getattr(
@@ -5586,6 +5633,50 @@ class Router:
 
     def _frontier_budget_exceeded(self) -> bool:
         return self._frontier_budget_state() == "exceeded"
+
+    def _anthropic_stream_bill(
+        self,
+        content: str,
+        *,
+        fallback_model: str | None,
+    ) -> tuple[InternalResponse | None, tuple[int, int] | None]:
+        """Served meta for a relayed Anthropic stream that reported usage.speed."""
+        speed = getattr(self.frontier, "last_stream_usage_speed", None)
+        if not isinstance(speed, str) or not speed.strip():
+            return None, None
+        in_tok = getattr(self.frontier, "last_stream_input_tokens", None)
+        out_tok = getattr(self.frontier, "last_stream_output_tokens", None)
+        tokens = (int(in_tok or 0), int(out_tok or 0))
+        model = getattr(self.frontier, "default_model", None) or fallback_model
+        served = InternalResponse(
+            content=content,
+            model=model or "",
+            daari_meta=DaariMeta(
+                tier="L6",
+                cache_hit=False,
+                executor="frontier",
+                provider_id=getattr(self.frontier, "provider", None) or "frontier",
+                model=model,
+                input_tokens=tokens[0],
+                output_tokens=tokens[1],
+                usage_speed=speed.strip().lower(),
+            ),
+        )
+        return served, tokens
+
+    def _note_anthropic_stream_cost(self, outcome: StreamOutcome) -> None:
+        served, tokens = self._anthropic_stream_bill("", fallback_model=None)
+        if served is None or tokens is None:
+            return
+        cost = self._stream_usage_cost(
+            "L6",
+            prompt_tokens=tokens[0],
+            completion_tokens=tokens[1],
+            served=served,
+        )
+        from daari.gateway.cost_headers import usd_string
+
+        outcome.response_cost = usd_string(cost)
 
     def _stream_usage_cost(
         self,

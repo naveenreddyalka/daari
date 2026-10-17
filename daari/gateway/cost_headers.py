@@ -364,6 +364,8 @@ class StreamOutcome:
     dropped_params: list[str] | None = None
     # Ollama 0.34 knobs to append when the hop cannot honor them (#1066).
     _ollama_034_knobs: list[str] | None = None
+    # Final streamed frontier USD, set before the first relayed chunk (#1737).
+    response_cost: str | None = None
 
     def note(
         self, tier: str | None, *, cache_hit: bool = False, draft: bool = False
@@ -391,6 +393,8 @@ class StreamOutcome:
         # param-compat drops after L6 note() (#1013 / #1173).
         if self.dropped_params:
             out[DROPPED_PARAMS_HEADER] = ",".join(self.dropped_params)
+        if self.response_cost is not None:
+            out[COST_HEADER] = self.response_cost
         return out
 
 

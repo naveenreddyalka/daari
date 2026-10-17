@@ -7230,6 +7230,15 @@ tensors need Ollama 0.40.6 or newer. 0.40.6+ and a missing or unparseable
 version stay quiet. Tag checks are unchanged. Docs: doctor-health.md.
 Covered by `tests/unit/test_doctor_ollama_q2_floor.py`.
 
+### Streamed Anthropic fast mode bills from usage.speed ([#1737](https://github.com/naveenreddyalka/daari/issues/1737))
+
+<!-- tracking:#1737 -->
+**Status:** Done (2026-10-17). The Anthropic frontier stream relay reads
+`usage.speed` from `message_start`, falling back to `message_delta`. Fast
+streams bill at 2× in the usage-chunk `cost`, `x-daari-response-cost` on the
+stream, and the spend ledger `usage_speed` column. A missing speed stays on
+the standard rate. Covered by `tests/unit/test_anthropic_fast_mode.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
