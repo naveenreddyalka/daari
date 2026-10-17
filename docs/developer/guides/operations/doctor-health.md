@@ -23,8 +23,9 @@ package `version` for upgrade/rollback discovery.
 | `/health` | Process not listening |
 | `/ready` | Dependency (Ollama/cache) not ready |
 | doctor `redis` | Optional: when `cache.backend=redis`, PING `cache.redis_url` — timeout/unreachable means shared L0/rate-limit counters are dark |
-| doctor `postgres_tls` | Optional: non-localhost `observability.postgres_url` without `sslmode=require` (or `verify-ca` / `verify-full`) — keys/spend/request logs would transit cleartext; localhost/unix sockets stay quiet. Optional CA: `sslrootcert=/path/to/ca.pem` in the DSN |
-| doctor `redis_tls` | Optional: when `cache.backend=redis`, non-localhost `cache.redis_url` using `redis://` instead of `rediss://` — L0/rate-limit counters would transit cleartext; localhost stays quiet. Optional CA: `?ssl_ca_certs=/path/to/ca.pem` on a `rediss://` URL |
+| doctor `postgres_tls` | Optional (required under `daari doctor --strict`): non-localhost `observability.postgres_url` without `sslmode=require` (or `verify-ca` / `verify-full`) — keys/spend/request logs would transit cleartext; localhost/unix sockets stay quiet. Optional CA: `sslrootcert=/path/to/ca.pem` in the DSN |
+| doctor `redis_tls` | Optional (required under `--strict`): when `cache.backend=redis`, non-localhost `cache.redis_url` using `redis://` instead of `rediss://` — L0/rate-limit counters would transit cleartext; localhost stays quiet. Optional CA: `?ssl_ca_certs=/path/to/ca.pem` on a `rediss://` URL |
+| doctor `egress_https` | Optional (required under `--strict`): remote `http://` on `alerts.budget_webhook_url` / `alerts.key_expiry_webhook_url`, `OTEL_EXPORTER_OTLP_ENDPOINT` when `observability.otlp_logs` is on, or `integrations.mcp_servers[].url` — use `https://`; loopback `http://` stays ok |
 | doctor `ready` | Optional: when the daemon answers, `GET /ready` — warn on `degraded` / `not_ready` (same signal as kube probes) |
 | doctor `metrics_auth` | Optional: when the daemon answers, prometheus is on, and `server.api_key` is set — unauthenticated `GET /metrics` returning 401 means scrapers need Bearer / Helm `serviceMonitor.bearerTokenSecret` (or `observability.metrics_port`) |
 | doctor mlx | Optional backend misconfigured |

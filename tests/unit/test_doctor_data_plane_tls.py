@@ -119,12 +119,62 @@ def test_run_doctor_includes_data_plane_tls_checks(settings: Settings) -> None:
     assert by_name["redis_tls"].ok is False
 
 
+def test_strict_makes_remote_cleartext_required(settings: Settings) -> None:
+    from daari.setup.doctor import doctor_exit_code
+
+    settings.observability.postgres_url = "postgresql://daari@db.example.com/daari"
+    settings.cache.backend = "redis"
+    settings.cache.redis_url = "redis://redis.example.com:6379/0"
+    soft = run_doctor(settings, httpx_client=_down_client(), strict=False)
+    soft_by = {r.name: r for r in soft}
+    assert soft_by["postgres_tls"].optional is True
+    assert soft_by["redis_tls"].optional is True
+    assert doctor_exit_code([soft_by["postgres_tls"], soft_by["redis_tls"]]) == 0
+    hard = run_doctor(settings, httpx_client=_down_client(), strict=True)
+    hard_by = {r.name: r for r in hard}
+    assert hard_by["postgres_tls"].optional is False
+    assert hard_by["postgres_tls"].ok is False
+    assert hard_by["redis_tls"].optional is False
+    assert hard_by["redis_tls"].ok is False
+    assert doctor_exit_code([hard_by["postgres_tls"], hard_by["redis_tls"]]) == 1
+
+
+def test_strict_http_webhook_and_otlp_and_mcp(settings: Settings, monkeypatch) -> None:
+    from daari.config.settings import McpServerSettings
+    from daari.setup.doctor import doctor_exit_code
+
+    settings.alerts.budget_webhook_url = "http://hooks.example.com/budget"
+    settings.alerts.key_expiry_webhook_url = "https://hooks.example.com/expiry"
+    settings.observability.otlp_logs = True
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel.example.com:4318")
+    settings.integrations.mcp_servers = [
+        McpServerSettings(id="remote", url="http://mcp.example.com/sse"),
+        McpServerSettings(id="local", url="http://127.0.0.1:8080/sse"),
+    ]
+    soft = run_doctor(settings, httpx_client=_down_client(), strict=False)
+    soft_by = {r.name: r for r in soft}
+    assert soft_by["egress_https"].ok is False
+    assert soft_by["egress_https"].optional is True
+    assert doctor_exit_code([soft_by["egress_https"]]) == 0
+    hard = run_doctor(settings, httpx_client=_down_client(), strict=True)
+    hard_by = {r.name: r for r in hard}
+    assert hard_by["egress_https"].ok is False
+    assert hard_by["egress_https"].optional is False
+    assert "budget_webhook" in hard_by["egress_https"].detail
+    assert "otel" in hard_by["egress_https"].detail.lower() or "OTLP" in hard_by["egress_https"].detail
+    assert "mcp:remote" in hard_by["egress_https"].detail
+    assert "mcp:local" not in hard_by["egress_https"].detail
+    assert doctor_exit_code([hard_by["egress_https"]]) == 1
+
+
 def test_doctor_health_documents_data_plane_tls() -> None:
     from pathlib import Path
 
     text = Path(DOCTOR_HEALTH).read_text()
     assert "doctor `postgres_tls`" in text
     assert "doctor `redis_tls`" in text
+    assert "doctor `egress_https`" in text
+    assert "--strict" in text
 
 
 def test_config_docs_mention_data_plane_tls() -> None:
