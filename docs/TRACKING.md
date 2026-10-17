@@ -7129,6 +7129,15 @@ print the OpenAI-compatible base URL (`/v1`), the `ollama launch codex` host
 Codex config files are not written. Docs: codex.md. Covered by
 `tests/unit/test_configure_cli.py`.
 
+### Gzip JSON responses over 16 KiB ([#1710](https://github.com/naveenreddyalka/daari/issues/1710))
+
+<!-- tracking:#1710 -->
+**Status:** Done (2026-10-17). Buffered `application/json` larger than 16 KiB
+is gzip-compressed off the event loop when the client sends
+`Accept-Encoding: gzip` (`Content-Encoding` and `Vary: Accept-Encoding`).
+SSE and bodies at or under 16 KiB stay plain. Covered by
+`tests/unit/test_gzip_json.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
