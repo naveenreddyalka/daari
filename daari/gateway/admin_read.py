@@ -195,6 +195,7 @@ def keys_inventory(
     offset: int | None = None,
     status: str | None = None,
     idle_days: int | None = None,
+    team_id: str | None = None,
 ) -> dict[str, Any]:
     lim, off = _clamp_page(limit=limit, offset=offset)
     empty = {"keys": [], **_page_meta(0, limit=lim, offset=off, returned=0)}
@@ -208,6 +209,9 @@ def keys_inventory(
         from daari.auth.virtual_keys import filter_virtual_keys
 
         keys = filter_virtual_keys(keys, status=status, idle_days=idle_days)
+    wanted = (team_id or "").strip()
+    if wanted:
+        keys = [key for key in keys if str(getattr(key, "team_id", None) or "") == wanted]
     total = len(keys)
     page_keys = keys[off : off + lim]
     rows: list[dict[str, Any]] = []
@@ -238,6 +242,7 @@ def teams_inventory(
     fallback_per_1k: float = 0.002,
     limit: int | None = None,
     offset: int | None = None,
+    team_id: str | None = None,
 ) -> dict[str, Any]:
     lim, off = _clamp_page(limit=limit, offset=offset)
     empty = {"teams": [], **_page_meta(0, limit=lim, offset=off, returned=0)}
@@ -247,6 +252,9 @@ def teams_inventory(
         teams = list(store.list_teams() or [])
     except Exception:
         return empty
+    wanted = (team_id or "").strip()
+    if wanted:
+        teams = [team for team in teams if str(getattr(team, "team_id", None) or "") == wanted]
     try:
         all_keys = list(store.list() or []) if hasattr(store, "list") else []
     except Exception:

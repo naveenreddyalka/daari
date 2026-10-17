@@ -7138,6 +7138,16 @@ is gzip-compressed off the event loop when the client sends
 SSE and bodies at or under 16 KiB stay plain. Covered by
 `tests/unit/test_gzip_json.py`.
 
+### Admin events audit and team filters ([#1711](https://github.com/naveenreddyalka/daari/issues/1711))
+
+<!-- tracking:#1711 -->
+**Status:** Done (2026-10-17). `GET /v1/daari/events` writes `admin.events.list`
+(actor, role, limit, team scope, returned count; no event bodies).
+`GET /v1/daari/keys`, `/teams`, and `/audit` accept optional `team_id`;
+a pinned caller requesting another team receives 403. Unscoped admins
+still see the full inventory when the filter is omitted. Docs: http-api.md.
+Covered by `tests/unit/test_admin_team_filter.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -806,6 +806,23 @@ def _admin_team_scope(request: Request, role: str, team_id: str | None) -> str |
         raise HTTPException(status_code=403, detail="team scope denied") from exc
 
 
+def _inventory_team_scope(request: Request, role: str, team_id: str | None) -> str | None:
+    """Team filter for keys, teams, and audit (#1711).
+
+    Unscoped admins may omit ``team_id`` (full inventory) or pass any team.
+    A caller already pinned to team A who requests team B is denied.
+    """
+    from daari.enterprise.rbac import role_at_least
+
+    own = _caller_team_id(request)
+    wanted = (team_id or "").strip() or None
+    if own and wanted and own != wanted:
+        raise HTTPException(status_code=403, detail="team scope denied")
+    if role_at_least(role, "admin"):
+        return wanted
+    return _admin_team_scope(request, role, team_id)
+
+
 def _stats_team_rate_limits(
     request: Request, *, team_id: str | None = None
 ) -> list[dict[str, Any]]:
@@ -2624,17 +2641,19 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             request: Request,
             limit: int | None = None,
             offset: int | None = None,
+            team_id: str | None = None,
         ) -> dict[str, Any]:
             """Hash-chained audit feed with keys/teams pagination (#1530)."""
             ctx: AppContext = request.app.state.ctx
-            _require_role(request, ctx, "analyst")
+            role = _require_role(request, ctx, "analyst")
+            scope = _inventory_team_scope(request, role, team_id)
             from daari.enterprise.postgres_audit import audit_log_from_settings
             from daari.gateway.admin_read import _clamp_page, _page_meta
 
             lim, off = _clamp_page(limit=limit, offset=offset)
             log = audit_log_from_settings(ctx.settings)
-            total = log.count()
-            entries = log.list(limit=lim, offset=off)
+            total = log.count(team_id=scope)
+            entries = log.list(limit=lim, offset=off, team_id=scope)
             return {
                 "entries": entries,
                 **_page_meta(total, limit=lim, offset=off, returned=len(entries)),
@@ -2685,6 +2704,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 result["team_id"] = scope
             if key:
                 result["key_id"] = key
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.events.list",
+                detail={
+                    "limit": page.get("limit"),
+                    "team_id": scope,
+                    "returned": len(events),
+                },
+            )
             return result
 
         @router.get("/v1/daari/keys")
@@ -2694,10 +2725,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             offset: int | None = None,
             status: str | None = None,
             idle_days: int | None = None,
+            team_id: str | None = None,
         ) -> dict[str, Any]:
             """Redacted virtual-key inventory for the local admin plane (#1477/#1499/#1545)."""
             ctx: AppContext = request.app.state.ctx
             role = _require_admin_role(request, ctx)
+            scope = _inventory_team_scope(request, role, team_id)
             from daari.enterprise.postgres_audit import audit_log_from_settings
             from daari.gateway.admin_read import keys_inventory
 
@@ -2717,6 +2750,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     offset=offset,
                     status=status,
                     idle_days=idle_days,
+                    team_id=scope,
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2729,6 +2763,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                     "offset": result.get("offset"),
                     "total": result.get("total"),
                     "returned": len(result.get("keys") or []),
+                    "team_id": scope,
                 },
             )
             return result
@@ -2770,10 +2805,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             request: Request,
             limit: int | None = None,
             offset: int | None = None,
+            team_id: str | None = None,
         ) -> dict[str, Any]:
             """Redacted team inventory for the local admin plane (#1477/#1499)."""
             ctx: AppContext = request.app.state.ctx
             role = _require_admin_role(request, ctx)
+            scope = _inventory_team_scope(request, role, team_id)
             from daari.enterprise.postgres_audit import audit_log_from_settings
             from daari.gateway.admin_read import teams_inventory
 
@@ -2790,6 +2827,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 ),
                 limit=limit,
                 offset=offset,
+                team_id=scope,
             )
             audit_log_from_settings(ctx.settings).record(
                 actor=request.headers.get("x-daari-actor", "api"),
