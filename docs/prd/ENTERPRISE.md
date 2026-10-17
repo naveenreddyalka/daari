@@ -42,12 +42,26 @@ has no `schema_ok`. Gemini CLI still must not be aimed at the daemon.
 `GET /v1/models` omits `:floor` / `:nitro`, and retrieve returns an empty
 capability stub for those ids.
 
+**Evening depth pass (same day): governance and billing behind the 24h
+wave.** `:cloud` ids are metered as real spend but every egress fence
+(`no_frontier`, PII scrub, region pin) still treats them as local — a
+local-only key can silently egress to ollama.com. The frontier stream relay
+forwards `speed` but never reads streamed `usage.speed`, so fast-mode
+streams bill at the standard rate. `RETRYABLE_STATUS` has no 529. Events
+and lockouts stop at raw HTTP (no CLI verb, no web-ui panel). Catalog cards
+never advertise fast-mode support.
+
 ---
 
 ## Scored gap table
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 131 | Ollama `:cloud` counts as remote egress for `no_frontier` / PII scrub / region fences | 5 | 2 | Portkey egress fences | "Local-only means local-only" is the core promise | Filed [#1736](https://github.com/naveenreddyalka/daari/issues/1736) |
+| 132 | Bill streamed Anthropic fast mode from streamed `usage.speed` | 4 | 2 | Anthropic usage.speed | On-box ledger must match the invoice on the default stream path | Filed [#1737](https://github.com/naveenreddyalka/daari/issues/1737) |
+| 133 | Events + lockout inventory in CLI and web-ui | 4 | 2 | LiteLLM admin UI | Event log and lockout store are already on-box | Filed [#1738](https://github.com/naveenreddyalka/daari/issues/1738) |
+| 134 | Retry Anthropic 529; degrade fast→standard before failing the slot | 4 | 2 | LiteLLM retry maps | Owns the retry/breaker ladder, can degrade in-slot | Filed [#1739](https://github.com/naveenreddyalka/daari/issues/1739) |
+| 135 | Advertise Opus fast-mode capability on catalog cards | 3 | 1 | Anthropic Models API | Same catalog that encodes thinking/server_tools | Filed [#1740](https://github.com/naveenreddyalka/daari/issues/1740) |
 | 126 | MCP `2026-07-28` list results include `resultType` (+ cache hints on resources/prompts) | 4 | 1 | Claude Code 2.1.302 | On-box MCP matches the client cache contract | Filed [#1730](https://github.com/naveenreddyalka/daari/issues/1730) |
 | 127 | Doctor must not `ollama pull` a `:cloud` id | 3 | 1 | Ollama 0.40.6 cloud Clef | Cloud route is already metered on-box | Filed [#1731](https://github.com/naveenreddyalka/daari/issues/1731) |
 | 128 | `team_model_spend` rows include `reset_at` | 3 | 1 | LiteLLM 1.107-dev.3 | Window clock already on the ledger | Filed [#1732](https://github.com/naveenreddyalka/daari/issues/1732) |
@@ -90,7 +104,11 @@ budget alerts; W3C `traceresponse` reply header; `GET /v1/daari/events`
 audited, Prom reject); Grafana errors-by-status panel; `daari configure
 chatgpt-desktop`; per-member budget threshold webhooks; DEC/SYS bench docs.
 
-Watch rows (do not file yet): cursor-agent CLI configure (distinct from
+Watch rows (do not file yet): gzip compression Prom metrics (ratio/CPU —
+operator ask); warn when `speed` is requested but the active L6 provider is
+not Anthropic (fold into the next param-compat slice); `CONFIGURE_CLIENTS`
+first-wave tuple lags the registry (trivial, fold into the next recipe);
+cursor-agent CLI configure (distinct from
 the Cursor IDE recipe); `migrate --downgrade` (schema_ok is filed; a
 downgrade command stays demand-triggered); Responses background
 completion webhooks + wider `include` allowlist (one include today,
@@ -108,23 +126,30 @@ cleartext; gzip JSON over 16 KiB; Codex and OpenCode print-only configure;
 events list audit row and team filters on keys/teams/audit; LiteLLM 1.105.0
 marked GA in compare-litellm; `/v1/systemone` question maps already accept
 identifier keys; signed empty thinking blocks with a signature are kept.
+Evening pass verified fine: gzip exempts SSE/pre-encoded bodies, sets
+`Vary`, passes through multi-chunk streams (incl. deferred-header streams);
+lockout already pages via a signed webhook; budget rollups and cost headers
+include `:cloud` spend; non-stream fast-mode billing is cost-true; pricing
+falls back to standard when `usage.speed` is absent.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **MCP list contract for Claude Code 2.1.302** — `resultType` plus cache
+1. **Close the `:cloud` egress hole** — `no_frontier`, PII scrub, and
+   region fences must treat Ollama cloud ids as remote (row 131). This is
+   the data-sovereignty promise enterprises buy daari for.
+2. **Fast-mode billing truth on streams** — streamed `usage.speed` capture
+   (row 132), 529 retry + in-slot degrade (row 134), and catalog
+   visibility (row 135), so the flagship Claude Code `/fast` path is
+   cost-true end to end.
+3. **MCP list contract for Claude Code 2.1.302** — `resultType` plus cache
    hints on modern `tools/list`, `resources/list`, and `prompts/list`
    (row 126).
-2. **Upgrade skew on `/ready`** — `schema_ok` when a local store lags the
-   binary (row 125). No downgrade command until a fleet asks.
-3. **Ollama cloud and quant honesty** — doctor must not `ollama pull` a
-   `:cloud` id (row 127) and should warn below the `q2_0` version floor
-   (row 130).
-4. **Catalog and budget truth** — `:floor` / `:nitro` cards copy target
-   metadata (row 129); per-model spend rows include `reset_at` (row 128).
-   Gemini CLI protocol honesty and the `/ready` status page stay open
-   (rows 123–124).
+4. **Operator console depth** — events + lockout inventory in CLI/web-ui
+   (row 133); upgrade skew via `schema_ok` on `/ready` (row 125); doctor
+   `:cloud`/`q2_0` honesty (rows 127/130); catalog and budget truth
+   (rows 128–129, 123–124).
 5. **Admin-plane depth** — end-user inventory, guardrail profiles, web-ui
    pagination, report bounds, multi_agent pricing (rows 62–67) as the
    `agent:working` sessions land. Trace-native packaging stays on watch.
@@ -135,6 +160,16 @@ FIPS builds, HIPAA BAA) stay deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-17 evening (depth behind the 24h wave: egress truth, stream
+  billing, ops surfaces)** — Third scan today; outward flat since the
+  afternoon run (LiteLLM v1.103.5 is a Responses backport patch, stable
+  stays 1.105.1; Portkey v2.29.0, Kong 2.2.0, vLLM 0.31.0 unchanged).
+  Drained the dead 10-16 eve sibling PRD PR to main. Filed rows 131–135:
+  `:cloud` remote-egress fences, streamed fast-mode `usage.speed` billing,
+  events/lockout operator surfaces, 529 retry + fast→standard degrade,
+  fast-mode catalog capability. Verified fine: gzip edges, lockout webhook
+  paging, `:cloud` spend rollups, non-stream fast billing.
 
 - **2026-10-17 (protocol cache hints + Ollama cloud/quant honesty)** —
   Marked OpenCode print-only (row 122) Shipped. Filed MCP `2026-07-28`
