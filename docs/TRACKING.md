@@ -7101,6 +7101,16 @@ locked prefixes. A configured budget (or key-expiry) webhook receives one
 signed `key_locked` event per prefix. Docs: auth-and-keys.md, doctor-health.md.
 Covered by `tests/unit/test_key_lockout.py`.
 
+### Consistent backup as the deployed default ([#1705](https://github.com/naveenreddyalka/daari/issues/1705))
+
+<!-- tracking:#1705 -->
+**Status:** Done (2026-10-16). Helm `backup.consistent` (null) passes
+`--consistent` on the CronJob when `postgres.enabled`. Doctor mentions
+`--consistent` and warns when a Postgres-backed config's newest archive lacks
+the marker. Restore prints a warning for a non-consistent archive on a
+Postgres fleet. Docs: backup-restore.md restore drill coherence step.
+Covered by `tests/unit/test_backup_restore.py` and `tests/unit/test_helm_chart.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

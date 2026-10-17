@@ -789,12 +789,41 @@ class TestHelmBackupCronJob:
         assert 'schedule: "0 2 * * *"' in rendered
         assert "daari backup create" in rendered
         assert "--encrypt openssl" in rendered
+        assert "--consistent" not in rendered
         assert "secretKeyRef" in rendered
         assert 'name: "daari-backup"' in rendered
         assert 'key: "passphrase"' in rendered
         assert "kind: PersistentVolumeClaim" in rendered
         assert "name: daari-backups" in rendered
         assert "RETAIN=5" in rendered
+
+    def test_cronjob_passes_consistent_when_postgres_enabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "backup.enabled=true",
+            "--set",
+            "backup.encryptSecret.name=daari-backup",
+            "--set",
+            "postgres.enabled=true",
+        )
+        assert "daari backup create" in rendered
+        assert "--consistent" in rendered
+        values = _load_yaml(VALUES)
+        assert "consistent" in values["backup"]
+
+    def test_cronjob_omits_consistent_when_disabled(self, helm_available: None) -> None:
+        rendered = _helm_template(
+            "--set",
+            "backup.enabled=true",
+            "--set",
+            "backup.encryptSecret.name=daari-backup",
+            "--set",
+            "postgres.enabled=true",
+            "--set",
+            "backup.consistent=false",
+        )
+        assert "daari backup create" in rendered
+        assert "--consistent" not in rendered
 
     def test_cronjob_refuses_encrypt_without_secret(self, helm_available: None) -> None:
         with pytest.raises(subprocess.CalledProcessError) as exc:
