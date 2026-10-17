@@ -7204,6 +7204,14 @@ A configured local SQLite file whose `PRAGMA user_version` is behind
 version 1. `daari doctor` check `schema_ok` reports the same mismatch.
 Docs: doctor-health.md. Covered by `tests/unit/test_ready_schema_ok.py`.
 
+### Per-model budget rows include reset_at ([#1732](https://github.com/naveenreddyalka/daari/issues/1732))
+
+<!-- tracking:#1732 -->
+**Status:** Done (2026-10-17). `team_model_spend` rows include `reset_at`
+from `WindowStatus.reset_at` (ISO-8601 UTC). Lifetime windows keep an empty
+reset, the same as `reset_at("lifetime")`. Existing spend fields and team
+scoping are unchanged. Covered by `tests/unit/test_model_max_budget.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
