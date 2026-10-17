@@ -156,6 +156,59 @@ class KeyLockout:
                 self._locked_until[prefix] = moment + max(1, int(self.lockout_seconds))
             return count
 
+    def unlock(self, supplied: str | None) -> bool:
+        """Clear failure counts and an active lock for this key prefix.
+
+        Works for the in-process maps and, when configured, the Redis keys.
+        Redis errors are logged and do not raise; local state is still cleared.
+        """
+        prefix = self.subject(supplied)
+        cleared = False
+        if self.redis is not None:
+            try:
+                delete = getattr(self.redis, "delete", None)
+                if callable(delete):
+                    removed = delete(self._count_key(prefix), self._lock_key(prefix))
+                    cleared = bool(removed)
+            except Exception:
+                log_gateway_event(
+                    "auth_key_lockout_redis_error", {"op": "unlock", "prefix": prefix}
+                )
+        with self._lock:
+            had = prefix in self._hits or prefix in self._locked_until
+            self._hits.pop(prefix, None)
+            self._locked_until.pop(prefix, None)
+            if had:
+                cleared = True
+        return cleared
+
+    def locked_prefixes(self) -> list[str]:
+        """Prefixes with an active lock (Redis lock keys and in-process timers)."""
+        found: list[str] = []
+        marker = f"{self.redis_key_prefix}lock:"
+        if self.redis is not None:
+            try:
+                raw_keys: list[Any] = []
+                scan = getattr(self.redis, "scan_iter", None)
+                if callable(scan):
+                    raw_keys = list(scan(match=f"{marker}*"))
+                else:
+                    keys_fn = getattr(self.redis, "keys", None)
+                    if callable(keys_fn):
+                        raw_keys = list(keys_fn(f"{marker}*"))
+                for key in raw_keys:
+                    text = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+                    if text.startswith(marker) and text[len(marker) :]:
+                        found.append(text[len(marker) :])
+            except Exception:
+                log_gateway_event("auth_key_lockout_redis_error", {"op": "scan"})
+        moment = time.monotonic()
+        with self._lock:
+            for prefix, until in self._locked_until.items():
+                if until > moment and prefix not in found:
+                    found.append(prefix)
+        return sorted(set(found))
+
     def _count_key(self, prefix: str) -> str:
         return f"{self.redis_key_prefix}{prefix}"
 

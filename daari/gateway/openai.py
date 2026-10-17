@@ -2733,6 +2733,38 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             )
             return result
 
+        @router.post("/v1/daari/keys/unlock")
+        async def daari_keys_unlock(request: Request) -> dict[str, Any]:
+            """Clear an active key-prefix lockout (#1704). Admin / master key."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_admin_role(request, ctx)
+            try:
+                body = await request.json()
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="prefix is required") from exc
+            raw = ""
+            if isinstance(body, dict):
+                raw = str(body.get("prefix") or "").strip()
+            if not raw:
+                raise HTTPException(status_code=400, detail="prefix is required")
+            lockout = getattr(request.app.state, "key_lockout", None)
+            if lockout is None:
+                raise HTTPException(status_code=503, detail="key lockout is not configured")
+            prefix = lockout.subject(raw)
+            cleared = bool(lockout.unlock(raw))
+            from daari.auth.key_lockout_alerts import clear_key_locked_alert
+            from daari.enterprise.audit import record_auth_key_unlocked
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+
+            clear_key_locked_alert(prefix, redis=getattr(lockout, "redis", None))
+            record_auth_key_unlocked(
+                audit_log_from_settings(ctx.settings),
+                prefix=prefix,
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+            )
+            return {"status": "ok", "prefix": prefix, "cleared": cleared}
+
         @router.get("/v1/daari/teams")
         async def daari_teams_list(
             request: Request,

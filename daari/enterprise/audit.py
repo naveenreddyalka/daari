@@ -474,6 +474,23 @@ def record_auth_key_locked(
     )
 
 
+def record_auth_key_unlocked(
+    audit: AuditLog,
+    *,
+    prefix: str,
+    actor: str,
+    role: str,
+) -> None:
+    """Record ``auth.key_unlocked`` when an operator clears a prefix lock (#1704)."""
+    shown = (prefix or "")[:10]
+    audit.record(
+        actor=(actor or "api")[:64],
+        role=(role or "admin")[:32],
+        action="auth.key_unlocked",
+        detail={"prefix": shown, "scope": "key"},
+    )
+
+
 def record_auth_throttled(
     audit: AuditLog,
     *,

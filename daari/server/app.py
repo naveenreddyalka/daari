@@ -31,6 +31,34 @@ from daari.router.router import AppContext
 from daari.server.auth import extract_api_key, resolve_auth, store_enforces_auth
 
 
+def _notify_key_locked(
+    settings: Settings,
+    *,
+    prefix: str,
+    failures: int,
+    retry_after: int,
+    redis: object | None,
+) -> None:
+    """Best-effort signed webhook; never delays the 429."""
+    import threading
+
+    def _send() -> None:
+        try:
+            from daari.auth.key_lockout_alerts import notify_key_locked
+
+            notify_key_locked(
+                settings,
+                prefix=prefix,
+                failures=failures,
+                retry_after=retry_after,
+                redis=redis,
+            )
+        except Exception:
+            return
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
 def _postgres_unavailable_response(detail: str = "") -> JSONResponse:
     message = "Postgres control-plane store is unreachable."
     if detail:
@@ -472,6 +500,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             prefix=locked.prefix,
                             failures=locked.failures,
                             retry_after=locked.retry_after,
+                        )
+                        _notify_key_locked(
+                            resolved,
+                            prefix=locked.prefix,
+                            failures=locked.failures,
+                            retry_after=locked.retry_after,
+                            redis=getattr(lockout, "redis", None),
                         )
                         return JSONResponse(
                             status_code=429,

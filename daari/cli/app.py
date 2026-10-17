@@ -641,6 +641,52 @@ def keys_team_budget_boost(
     )
 
 
+def _daemon_unlock_prefix(settings: Settings, prefix: str) -> tuple[bool, str]:
+    """Ask a running daemon to drop its in-process lock for ``prefix``."""
+    if not _daemon_is_running(settings):
+        return False, "daemon not running"
+    url = f"http://{settings.server.host}:{settings.server.port}/v1/daari/keys/unlock"
+    auth = (settings.server.primary_master_key() or "").strip()
+    headers: dict[str, str] = {}
+    if auth:
+        headers["Authorization"] = f"Bearer {auth}"
+    try:
+        response = httpx.post(url, json={"prefix": prefix}, headers=headers, timeout=5.0)
+        response.raise_for_status()
+        payload = response.json()
+        shown = payload.get("prefix", prefix) if isinstance(payload, dict) else prefix
+        return True, f"daemon cleared prefix {shown}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+@keys_app.command("unlock-prefix")
+def keys_unlock_prefix(
+    prefix: str = typer.Argument(..., help="Key prefix (first 10 characters) to unlock."),
+) -> None:
+    """Clear an active key-prefix lockout (in-process state and Redis)."""
+    import os
+
+    from daari.auth.key_lockout import build_key_lockout
+    from daari.auth.key_lockout_alerts import clear_key_locked_alert
+
+    settings = get_settings()
+    lock = build_key_lockout(settings)
+    shown = lock.subject(prefix)
+    cleared = lock.unlock(prefix)
+    clear_key_locked_alert(shown, redis=getattr(lock, "redis", None))
+    daemon_ok, daemon_msg = _daemon_unlock_prefix(settings, shown)
+    _audit_log_from_settings().record(
+        actor=os.environ.get("USER") or "cli",
+        role="admin",
+        action="auth.key_unlocked",
+        detail={"prefix": shown, "scope": "key"},
+    )
+    typer.echo(f"Unlocked prefix {shown} (cleared={cleared})")
+    if daemon_ok:
+        typer.echo(daemon_msg)
+
+
 @keys_app.command("revoke")
 def keys_revoke(key_id: str = typer.Argument(..., help="key_id from `daari keys list`")) -> None:
     """Revoke a virtual key immediately."""
