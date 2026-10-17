@@ -7111,6 +7111,15 @@ the marker. Restore prints a warning for a non-consistent archive on a
 Postgres fleet. Docs: backup-restore.md restore drill coherence step.
 Covered by `tests/unit/test_backup_restore.py` and `tests/unit/test_helm_chart.py`.
 
+### Doctor --strict cleartext data plane ([#1708](https://github.com/naveenreddyalka/daari/issues/1708))
+
+<!-- tracking:#1708 -->
+**Status:** Done (2026-10-16). `daari doctor --strict` makes remote Postgres
+without strong `sslmode`, remote `redis://`, and remote `http://` webhooks /
+OTLP / MCP URLs required failures (exit 1). Soft mode stays optional
+warnings. Docs: doctor-health.md. Covered by
+`tests/unit/test_doctor_data_plane_tls.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

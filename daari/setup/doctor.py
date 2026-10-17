@@ -106,8 +106,9 @@ def run_doctor(
         results.append(json_logs_tip)
     results.append(_check_request_deadline(cfg))
     results.append(_check_tls_exposure(cfg))
-    results.append(_check_postgres_tls(cfg))
-    results.append(_check_redis_tls(cfg))
+    results.append(_check_postgres_tls(cfg, strict=strict))
+    results.append(_check_redis_tls(cfg, strict=strict))
+    results.append(_check_egress_https(cfg, strict=strict))
     results.append(_check_local_pool_frontier_fallback(cfg))
     results.append(_check_otlp_logs(cfg))
     results.append(_check_frontier(cfg))
@@ -2444,8 +2445,11 @@ def _postgres_sslmode(dsn: str) -> str | None:
     return str(modes[0]).strip().lower() or None
 
 
-def _check_postgres_tls(settings: Settings) -> CheckResult:
-    """Warn when a remote observability.postgres_url lacks sslmode=require+ (#1679)."""
+def _check_postgres_tls(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn when a remote observability.postgres_url lacks sslmode=require+ (#1679).
+
+    With ``strict=True`` (#1708) a failing remote check is required (exit 1).
+    """
     dsn = str(getattr(settings.observability, "postgres_url", "") or "").strip()
     if not dsn:
         return CheckResult(
@@ -2485,12 +2489,15 @@ def _check_postgres_tls(settings: Settings) -> CheckResult:
             "?sslmode=require (or verify-ca / verify-full) and optionally "
             "sslrootcert=/path/to/ca.pem"
         ),
-        optional=True,
+        optional=not strict,
     )
 
 
-def _check_redis_tls(settings: Settings) -> CheckResult:
-    """Warn when a remote cache.redis_url uses redis:// instead of rediss:// (#1679)."""
+def _check_redis_tls(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn when a remote cache.redis_url uses redis:// instead of rediss:// (#1679).
+
+    With ``strict=True`` (#1708) a failing remote check is required (exit 1).
+    """
     if getattr(settings.cache, "backend", "disk") != "redis":
         return CheckResult(
             name="redis_tls",
@@ -2534,7 +2541,67 @@ def _check_redis_tls(settings: Settings) -> CheckResult:
             "L0 / rate-limit counters transit cleartext; use rediss:// and "
             "pass CA via the URL (e.g. rediss://host:6379/0?ssl_ca_certs=/path/to/ca.pem)"
         ),
-        optional=True,
+        optional=not strict,
+    )
+
+
+def _remote_http_host(url: str) -> str | None:
+    """Hostname when ``url`` is ``http://`` to a non-loopback host."""
+    from urllib.parse import urlparse
+
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    parsed = urlparse(raw)
+    if (parsed.scheme or "").strip().lower() != "http":
+        return None
+    host = _url_host(raw)
+    if host is None or _is_loopback_host(host):
+        return None
+    return host
+
+
+def _check_egress_https(settings: Settings, *, strict: bool = False) -> CheckResult:
+    """Warn (or require under --strict) on remote ``http://`` operator egress (#1708)."""
+    offenders: list[str] = []
+    alerts = settings.alerts
+    for label, url in (
+        ("budget_webhook", getattr(alerts, "budget_webhook_url", "") or ""),
+        ("key_expiry_webhook", getattr(alerts, "key_expiry_webhook_url", "") or ""),
+    ):
+        host = _remote_http_host(str(url))
+        if host:
+            offenders.append(f"{label}→{host}")
+
+    otlp_on = bool(getattr(settings.observability, "otlp_logs", False))
+    endpoint = (os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
+    if otlp_on and endpoint:
+        host = _remote_http_host(endpoint)
+        if host:
+            offenders.append(f"OTEL_EXPORTER_OTLP_ENDPOINT→{host}")
+
+    for server in list(settings.integrations.mcp_servers or []):
+        sid = str(getattr(server, "id", "") or "").strip() or "unnamed"
+        host = _remote_http_host(str(getattr(server, "url", "") or ""))
+        if host:
+            offenders.append(f"mcp:{sid}→{host}")
+
+    if not offenders:
+        return CheckResult(
+            name="egress_https",
+            ok=True,
+            detail="no remote http:// webhooks / OTLP / MCP URLs",
+            optional=True,
+        )
+    return CheckResult(
+        name="egress_https",
+        ok=False,
+        detail=(
+            "remote http:// egress: "
+            + ", ".join(offenders)
+            + " — use https:// (loopback http:// stays ok)"
+        ),
+        optional=not strict,
     )
 
 
