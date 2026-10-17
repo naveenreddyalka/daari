@@ -64,7 +64,7 @@ from daari.observability.tokens import estimate_tokens, response_token_usage
 from daari.router.router import AppContext
 from daari.router.capabilities import UnsupportedCapability
 from daari.gateway.sampling import WebSearchUnavailable
-from daari.router.local_pool import BackendUnavailable
+from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 
 OPENAI_SSE_HEADERS = {
     "Cache-Control": "no-cache",
@@ -1204,6 +1204,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 if idem_slot is not None:
                     idem_slot.abandon()
                 return _web_search_unavailable_response(exc)
+            except CloudEgressBlocked as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
+                from daari.gateway.model_access import cloud_egress_blocked_response
+
+                return cloud_egress_blocked_response(exc)
             except BackendUnavailable as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()

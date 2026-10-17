@@ -41,7 +41,7 @@ from daari.gateway.disconnect import (
 from daari.gateway.streaming import SSE_KEEPALIVE_FRAME, stream_with_keepalive
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
-from daari.router.local_pool import BackendUnavailable
+from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 from daari.router.router import AppContext
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
@@ -1193,6 +1193,12 @@ class ResponsesGatewayAdapter(GatewayAdapter):
                 if idem_slot is not None:
                     idem_slot.abandon()
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
+            except CloudEgressBlocked as exc:
+                if idem_slot is not None:
+                    idem_slot.abandon()
+                from daari.gateway.model_access import cloud_egress_blocked_response
+
+                return cloud_egress_blocked_response(exc)
             except BackendUnavailable as exc:
                 if idem_slot is not None:
                     idem_slot.abandon()

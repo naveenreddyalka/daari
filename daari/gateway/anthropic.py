@@ -37,7 +37,7 @@ from daari.gateway.provider_prefs import (
 from daari.gateway.sampling import SamplingParams
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
-from daari.router.local_pool import BackendUnavailable
+from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 from daari.router.router import AppContext
 
 
@@ -544,6 +544,10 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                 raise HTTPException(status_code=400, detail=safe_detail(exc)) from exc
             except UnsupportedCapability as exc:
                 raise HTTPException(status_code=422, detail=safe_detail(exc)) from exc
+            except CloudEgressBlocked as exc:
+                from daari.gateway.model_access import cloud_egress_blocked_response
+
+                return cloud_egress_blocked_response(exc)
             except BackendUnavailable as exc:
                 ctx.metrics.record_error(status=503)
                 return JSONResponse(

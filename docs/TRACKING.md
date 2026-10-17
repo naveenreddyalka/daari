@@ -7175,6 +7175,15 @@ or newer, `tools/list`, `resources/list`, and `prompts/list` include
 when a tool or server policy filters the catalog). Older protocols keep the
 previous payload shape. Covered by `tests/unit/test_mcp_server.py`.
 
+### Ollama :cloud ids count as remote egress ([#1736](https://github.com/naveenreddyalka/daari/issues/1736))
+
+<!-- tracking:#1736 -->
+**Status:** Done (2026-10-17). `no_frontier`, a local `tier_cap`, and
+`region_pin` skip Ollama `:cloud` hosts. A cloud-only stack fails with
+403 `frontier_not_allowed` (or 400 `region_unavailable` for a pin).
+`frontier.scrub_pii` scrubs before a permitted `:cloud` hop. Docs:
+auth-and-keys.md. Covered by `tests/unit/test_ollama_cloud_egress.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

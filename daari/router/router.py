@@ -2024,7 +2024,15 @@ class Router:
 
             reraise_deadline(exc)
             try:
-                if initial_tier == "L3":
+                from daari.router.local_pool import CloudEgressBlocked
+
+                if isinstance(exc, CloudEgressBlocked):
+                    alt = self._alternate_non_cloud_tier(request, skip={initial_tier})
+                    if alt is None:
+                        raise
+                    response = await self._run_model_tier(alt, gen_request)
+                    response.daari_meta.warning = "cloud_egress_skipped"
+                elif initial_tier == "L3":
                     from daari.router.failover import is_context_length_error
 
                     if is_context_length_error(exc):
@@ -2602,16 +2610,27 @@ class Router:
                     stream_executor = self._executor_for_tier(tier)
                     if self.local_pool is not None:
                         try:
+                            self._exclude_cloud_hosts(tier, stream_request, tried_hosts)
                             stream_slot = self.local_pool.pick(
                                 tier,
                                 warm_models=self._warm_models,
                                 exclude=tried_hosts,
                             )
                         except Exception as pick_exc:
-                            from daari.router.local_pool import BackendUnavailable
+                            from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 
+                            if isinstance(pick_exc, CloudEgressBlocked):
+                                raise
                             if not isinstance(pick_exc, BackendUnavailable):
                                 raise
+                            block_reason = self._cloud_block_reason(stream_request)
+                            if (
+                                block_reason
+                                and block_reason != "region_pin"
+                                and not self._tier_has_non_cloud_host(tier)
+                                and tier_index >= len(tier_chain) - 1
+                            ):
+                                raise CloudEgressBlocked(block_reason, tier=tier) from pick_exc
                             last_error = pick_exc
                             if tried_hosts and tier_index < len(tier_chain) - 1:
                                 add_step(
@@ -2707,12 +2726,15 @@ class Router:
                         from daari.router.deadline import guard_upstream
 
                         guard_upstream(tier)
-                        ollama_request = stream_request.model_copy(
-                            update={
-                                "messages": hoist_system_messages(
-                                    list(stream_request.messages)
-                                )
-                            }
+                        ollama_request = self._maybe_scrub_cloud(
+                            stream_request.model_copy(
+                                update={
+                                    "messages": hoist_system_messages(
+                                        list(stream_request.messages)
+                                    )
+                                }
+                            ),
+                            ollama_model,
                         )
                         async for event in stream_executor.stream(ollama_request):
                             if event.get("prompt_eval_count") is not None:
@@ -3506,16 +3528,27 @@ class Router:
                 stream_executor = self._executor_for_tier(tier)
                 if self.local_pool is not None:
                     try:
+                        self._exclude_cloud_hosts(tier, stream_request, tried_hosts)
                         stream_slot = self.local_pool.pick(
                             tier,
                             warm_models=self._warm_models,
                             exclude=tried_hosts,
                         )
                     except Exception as pick_exc:
-                        from daari.router.local_pool import BackendUnavailable
+                        from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 
+                        if isinstance(pick_exc, CloudEgressBlocked):
+                            raise
                         if not isinstance(pick_exc, BackendUnavailable):
                             raise
+                        block_reason = self._cloud_block_reason(stream_request)
+                        if (
+                            block_reason
+                            and block_reason != "region_pin"
+                            and not self._tier_has_non_cloud_host(tier)
+                            and tier_index >= len(tier_chain) - 1
+                        ):
+                            raise CloudEgressBlocked(block_reason, tier=tier) from pick_exc
                         last_error = pick_exc
                         if tier_index < len(tier_chain) - 1:
                             break
@@ -3624,10 +3657,15 @@ class Router:
 
                     guard_upstream(tier)
                     # Local llama templates need leading system turns (#94/#1154).
-                    ollama_request = stream_request.model_copy(
-                        update={
-                            "messages": hoist_system_messages(list(stream_request.messages))
-                        }
+                    ollama_request = self._maybe_scrub_cloud(
+                        stream_request.model_copy(
+                            update={
+                                "messages": hoist_system_messages(
+                                    list(stream_request.messages)
+                                )
+                            }
+                        ),
+                        model_name,
                     )
                     async for event in stream_executor.stream(ollama_request):
                         if event.get("prompt_eval_count") is not None:
@@ -4280,6 +4318,83 @@ class Router:
         response.daari_meta.warning = "context_too_long_compressed"
         return response
 
+    def _cloud_block_reason(self, request: InternalRequest) -> str | None:
+        """Why :cloud hops are remote egress for this request, or None (#1736)."""
+        if request.meta.no_frontier:
+            return "no_frontier"
+        cap = self._effective_tier_cap(request)
+        if cap in self._TIER_ORDER:
+            return f"tier_cap:{cap}"
+        if getattr(request.meta, "region_pin", None):
+            return "region_pin"
+        return None
+
+    def _note_cloud_skip(
+        self, tier: str, model: str, reason: str, backend_id: str | None = None
+    ) -> None:
+        from daari.gateway.request_log import log_gateway_event
+
+        detail = {"tier": tier, "model": model, "reason": reason}
+        if backend_id:
+            detail["backend_id"] = backend_id
+        add_step("cloud_egress_skipped", **detail)
+        log_gateway_event("cloud_egress_skipped", detail)
+
+    def _tier_has_non_cloud_host(self, tier: str) -> bool:
+        from daari.pricing import is_ollama_cloud_model
+
+        fallback = self._executor_for_tier(tier).default_model
+        if self.local_pool is None:
+            return not is_ollama_cloud_model(fallback)
+        slots = self.local_pool.slots_for(tier)
+        if not slots:
+            return not is_ollama_cloud_model(fallback)
+        return any(not is_ollama_cloud_model(slot.model or fallback) for slot in slots)
+
+    def _alternate_non_cloud_tier(self, request: InternalRequest, *, skip: set[str]) -> str | None:
+        if self._cloud_block_reason(request) is None:
+            return None
+        for tier in self._TIER_ORDER:
+            if tier in skip:
+                continue
+            if self._tier_has_non_cloud_host(tier):
+                return tier
+        return None
+
+    def _exclude_cloud_hosts(self, tier: str, request: InternalRequest, tried: set[str]) -> None:
+        reason = self._cloud_block_reason(request)
+        if not reason:
+            return
+        fallback = self._executor_for_tier(tier).default_model
+        slots = {
+            slot.id: (slot.model or fallback)
+            for slot in (self.local_pool.slots_for(tier) if self.local_pool is not None else [])
+        }
+        for slot_id in self._cloud_backend_ids(tier):
+            if slot_id in tried:
+                continue
+            self._note_cloud_skip(tier, slots.get(slot_id, fallback), reason, backend_id=slot_id)
+            tried.add(slot_id)
+
+    def _maybe_scrub_cloud(self, request: InternalRequest, model: str) -> InternalRequest:
+        from daari.pricing import is_ollama_cloud_model
+
+        if is_ollama_cloud_model(model):
+            return self._scrub_for_frontier(request)
+        return request
+
+    def _cloud_backend_ids(self, tier: str) -> set[str]:
+        from daari.pricing import is_ollama_cloud_model
+
+        if self.local_pool is None:
+            return set()
+        fallback = self._executor_for_tier(tier).default_model
+        return {
+            slot.id
+            for slot in self.local_pool.slots_for(tier)
+            if is_ollama_cloud_model(slot.model or fallback)
+        }
+
     async def _run_model_tier(self, tier: str, request: InternalRequest) -> InternalResponse:
         from daari.gateway.anthropic import hoist_system_messages
         from daari.router.deadline import guard_upstream
@@ -4291,16 +4406,35 @@ class Router:
         request = request.model_copy(
             update={"messages": hoist_system_messages(list(request.messages))}
         )
+        from daari.pricing import is_ollama_cloud_model
+
         executor = self._executor_for_tier(tier)
         req = request.model_copy(deep=True)
         req.model = executor.default_model
+        reason = self._cloud_block_reason(request)
         if self.local_pool is not None:
             return await self.local_pool.execute(
                 tier,
                 req,
                 template=executor,
                 warm_models=self._warm_models,
+                skip_cloud_reason=reason,
+                on_cloud_skip=(
+                    (lambda slot, model, tier=tier, reason=reason: self._note_cloud_skip(
+                        tier, model, reason or "", backend_id=slot.id
+                    ))
+                    if reason
+                    else None
+                ),
+                scrub=self._scrub_for_frontier if self.frontier_scrub_pii else None,
             )
+        if reason and is_ollama_cloud_model(req.model):
+            self._note_cloud_skip(tier, req.model, reason)
+            from daari.router.local_pool import CloudEgressBlocked
+
+            raise CloudEgressBlocked(reason, tier=tier, model=req.model)
+        if is_ollama_cloud_model(req.model):
+            req = self._scrub_for_frontier(req)
         provider = self.provider_registry.get(f"ollama:{tier.lower()}")
         if provider is not None:
             provider_request = request.model_copy(deep=True)
