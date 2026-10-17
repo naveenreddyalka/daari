@@ -2167,6 +2167,16 @@ def backup_restore(
         raise typer.Exit(code=1) from exc
     typer.echo(f"restored {archive}")
     typer.echo(f"daari={manifest.daari_version} schema={manifest.archive_schema_version}")
+    from daari.ops.backup import archive_is_consistent
+    from daari.setup.doctor import _postgres_store_backends
+
+    if _postgres_store_backends(settings) and not archive_is_consistent(manifest):
+        typer.echo(
+            "warning: restoring a non-consistent archive onto a Postgres-backed "
+            "fleet; spend and keys may not match. Prefer an archive created with "
+            "--consistent.",
+            err=True,
+        )
     for row in manifest.stores:
         if row.get("backend") != "embedded" or not row.get("present"):
             continue

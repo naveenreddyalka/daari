@@ -2121,16 +2121,33 @@ def _check_store_migrate(settings: Settings, *, strict: bool = False) -> CheckRe
 
 def _check_recent_backup(settings: Settings) -> CheckResult:
     """Informational hint when no recent full-state backup archive is found (#1131)."""
-    from daari.ops.backup import recent_backup_manifests, recent_backups_all_plaintext
+    from daari.ops.backup import (
+        read_archive_consistent,
+        recent_backup_manifests,
+        recent_backups_all_plaintext,
+    )
 
     found = recent_backup_manifests()
     if found:
-        detail = f"recent backup: {found[-1].name}"
+        latest = max(found, key=lambda path: path.stat().st_mtime)
+        detail = f"recent backup: {latest.name}"
+        ok = True
         if recent_backups_all_plaintext(found):
-            detail += " (all plaintext — consider: daari backup create … --encrypt openssl)"
+            detail += (
+                " (all plaintext — consider: daari backup create … "
+                "--encrypt openssl --consistent)"
+            )
+        if _postgres_store_backends(settings):
+            marker = read_archive_consistent(latest)
+            if marker is False:
+                ok = False
+                detail += (
+                    " (latest archive lacks --consistent marker — Postgres fleet "
+                    "snapshots can skew; re-run: daari backup create … --consistent)"
+                )
         return CheckResult(
             name="backup",
-            ok=True,
+            ok=ok,
             detail=detail,
             optional=True,
         )
@@ -2139,7 +2156,7 @@ def _check_recent_backup(settings: Settings) -> CheckResult:
         ok=False,
         detail=(
             "no recent backup under ~/.daari/backups — "
-            "run: daari backup create ~/.daari/backups/daari.tar.gz"
+            "run: daari backup create ~/.daari/backups/daari.tar.gz --consistent"
         ),
         optional=True,
     )

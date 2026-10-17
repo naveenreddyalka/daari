@@ -58,14 +58,18 @@ class BackupManifest:
     archive_schema_version: int
     created_at: str
     stores: list[dict[str, Any]] = field(default_factory=list)
+    consistent: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "daari_version": self.daari_version,
             "archive_schema_version": self.archive_schema_version,
             "created_at": self.created_at,
             "stores": list(self.stores),
         }
+        if self.consistent:
+            payload["consistent"] = True
+        return payload
 
 
 class BackupError(ValueError):
@@ -595,6 +599,7 @@ def create_backup(
         daari_version=__version__,
         archive_schema_version=ARCHIVE_SCHEMA_VERSION,
         created_at=datetime.now(UTC).isoformat(),
+        consistent=bool(consistent),
     )
     embedded_paths: list[str] = []
     pg_failures: list[str] = []
@@ -708,7 +713,25 @@ def _read_manifest(archive: Path) -> BackupManifest:
         archive_schema_version=int(data.get("archive_schema_version") or 0),
         created_at=str(data.get("created_at") or ""),
         stores=list(data.get("stores") or []),
+        consistent=bool(data.get("consistent")),
     )
+
+
+def archive_is_consistent(manifest: BackupManifest) -> bool:
+    """True when the archive was taken with ``--consistent`` (#1705)."""
+    if manifest.consistent:
+        return True
+    return any(bool(row.get("consistent")) for row in manifest.stores)
+
+
+def read_archive_consistent(path: Path) -> bool | None:
+    """Consistent marker, or None when the archive is encrypted or unreadable."""
+    if detect_encrypt_method(path) is not None:
+        return None
+    try:
+        return archive_is_consistent(_read_manifest(path))
+    except Exception:
+        return None
 
 
 def server_appears_running(settings: Any) -> bool:

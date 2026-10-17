@@ -136,13 +136,16 @@ stops the daemon or accepts skew.
 4. Restore any remaining external postgres dumps.
 5. `daari doctor` and `daari keys list` / `daari audit list --limit 5`.
 6. Confirm spend / usage counts match the pre-backup baseline.
+7. Consistent-restore coherence: take the archive with `daari backup create ARCHIVE.tar.gz --consistent`, restore it, then assert every spend `key_id` still exists on a restored virtual key (orphan spend means the snapshot skewed). A non-consistent archive restored onto a Postgres-backed fleet prints a warning. The unit drill is `test_consistent_restore_drill_spend_keys_exist`.
 
 ## Doctor
 
 `daari doctor` emits an optional hint when no `*.tar.gz` (or encrypted
 `.tar.gz.enc` / `.tar.gz.age`) newer than 7 days is found under
-`~/.daari/backups/`. When recent backups exist but are all plaintext, doctor
-suggests `--encrypt openssl`.
+`~/.daari/backups/` and mentions `--consistent`. When recent backups exist but
+are all plaintext, doctor suggests `--encrypt openssl --consistent`. On a
+Postgres-backed config, doctor warns when the newest readable archive lacks
+the `--consistent` marker.
 
 ## Scheduled backups (#1216)
 
@@ -150,7 +153,9 @@ suggests `--encrypt openssl`.
 
 The chart ships an optional CronJob (`backup.enabled`, default off). It runs
 `daari backup create` on `backup.schedule` into a PVC, with `--encrypt openssl`
-or `age` when `backup.encrypt` is set. Create the encrypt secret first:
+or `age` when `backup.encrypt` is set. `backup.consistent` defaults to null,
+which passes `--consistent` when `postgres.enabled` is true (set `false` for
+the fast path). Create the encrypt secret first:
 
 ```bash
 kubectl create secret generic daari-backup \

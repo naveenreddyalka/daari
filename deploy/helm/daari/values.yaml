@@ -384,6 +384,7 @@ env:
 
 # Scheduled encrypted backups (#1216). Off by default. When enabled, a CronJob
 # runs `daari backup create` into a PVC (or emptyDir) on `backup.schedule`.
+# backup.consistent null passes --consistent when postgres.enabled (#1705).
 # encrypt: "" (plaintext), openssl, or age. openssl/age require encryptSecret:
 #   kubectl create secret generic daari-backup \
 #     --from-literal=passphrase='…'            # openssl → passphraseKey
@@ -392,6 +393,8 @@ env:
 backup:
   enabled: false
   schedule: "0 2 * * *"
+  # null: --consistent when postgres.enabled; set false for the fast path.
+  consistent: null
   encrypt: openssl
   retain: 7
   passphraseEnv: DAARI_BACKUP_PASS

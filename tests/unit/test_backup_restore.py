@@ -144,6 +144,7 @@ def test_doctor_backup_hint(tmp_path, monkeypatch):
     assert result.optional is True
     assert result.ok is False
     assert "daari backup create" in result.detail
+    assert "--consistent" in result.detail
 
 
 def test_catalog_postgres_batches_and_files(tmp_path):
@@ -663,6 +664,55 @@ def test_consistent_single_pg_dump_invocation(tmp_path, monkeypatch):
     assert embedded
     assert all(s.get("archive_path") == "stores/pg/consistent.sql" for s in embedded)
     assert all(s.get("consistent") for s in embedded)
+
+
+def test_doctor_warns_when_postgres_backup_lacks_consistent_marker(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _settings(src)
+    settings.observability.postgres_url = "postgresql://localhost/daari"
+    settings.batches.backend = "postgres"
+    monkeypatch.setattr("daari.ops.backup.server_appears_running", lambda _s: False)
+    archive = tmp_path / "fast.tar.gz"
+    create_backup(settings, archive, consistent=False)
+    monkeypatch.setattr(
+        "daari.ops.backup.recent_backup_manifests",
+        lambda **kwargs: [archive],
+    )
+    result = _check_recent_backup(settings)
+    assert result.optional is True
+    assert result.ok is False
+    assert "--consistent" in result.detail
+    assert "lacks" in result.detail.lower() or "not consistent" in result.detail.lower()
+
+
+def test_restore_warns_on_non_consistent_multi_store(tmp_path, monkeypatch, capsys):
+    src = tmp_path / "src"
+    src.mkdir()
+    monkeypatch.setattr("daari.gateway.request_log.LOG_PATH", src / "requests.log")
+    (src / "requests.log").write_text("{}\n", encoding="utf-8")
+    settings = _settings(src)
+    _seed(settings)
+    monkeypatch.setattr("daari.ops.backup.server_appears_running", lambda _s: False)
+    archive = tmp_path / "fast.tar.gz"
+    create_backup(settings, archive, consistent=False)
+    settings.observability.postgres_url = "postgresql://localhost/daari"
+    settings.batches.backend = "postgres"
+    monkeypatch.setattr("daari.cli.app.get_settings", lambda: settings)
+    result = CliRunner().invoke(cli_app, ["backup", "restore", str(archive), "--force"])
+    assert result.exit_code == 0, result.output
+    assert "non-consistent" in result.output.lower() or "not taken with --consistent" in result.output.lower()
+
+
+def test_docs_consistent_restore_drill_mentions_coherence():
+    doc = Path("docs/developer/guides/operations/backup-restore.md").read_text(encoding="utf-8")
+    assert "--consistent" in doc
+    assert "coherence" in doc.lower() or "key_id" in doc
+    section = doc.split("## Restore drill checklist", 1)[1]
+    assert "consistent" in section.lower()
+    assert "spend" in section.lower()
 
 
 def test_docs_guarantees_matrix_mentions_consistent():
