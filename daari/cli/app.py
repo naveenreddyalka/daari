@@ -18,6 +18,7 @@ from daari.cli.setup_actions import (
     apply_all_setups,
     apply_chatgpt_desktop_setup,
     apply_codex_setup,
+    apply_gemini_cli_setup,
     apply_opencode_setup,
     apply_claude_code_setup,
     apply_claude_desktop_setup,
@@ -3013,6 +3014,23 @@ def setup_codex(
 ) -> None:
     """Print Codex CLI steps (OpenAI /v1 or Ollama host; no config writes)."""
     apply_codex_setup(dry_run=dry_run, force=force)
+
+
+@setup_app.command("gemini-cli")
+def setup_gemini_cli(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show the Gemini CLI notice without writing files.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Accepted for parity; Gemini CLI config files are not written.",
+    ),
+) -> None:
+    """Explain that the native Gemini API is not a daari surface (no config writes)."""
+    apply_gemini_cli_setup(dry_run=dry_run, force=force)
 
 
 @setup_app.command("opencode")

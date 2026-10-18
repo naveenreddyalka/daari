@@ -190,6 +190,15 @@ def apply_codex_setup(
     apply_setup_recipe("codex", dry_run=dry_run, force=force, settings=settings)
 
 
+def apply_gemini_cli_setup(
+    *,
+    dry_run: bool = False,
+    force: bool = False,
+    settings: Settings | None = None,
+) -> None:
+    apply_setup_recipe("gemini-cli", dry_run=dry_run, force=force, settings=settings)
+
+
 def apply_opencode_setup(
     *,
     dry_run: bool = False,

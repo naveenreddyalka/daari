@@ -222,6 +222,22 @@ def test_configure_opencode_does_not_write_config(home):
     assert after == before
 
 
+def test_configure_and_setup_gemini_cli_do_not_point_native_api_at_daari(home):
+    before = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    for args in (
+        ["configure", "gemini-cli"],
+        ["setup", "gemini-cli"],
+    ):
+        result = runner.invoke(app, args)
+        assert result.exit_code == 0
+        assert "native Gemini API is not a daari surface" in result.output
+        assert "codex" in result.output
+        assert "GOOGLE_GEMINI_BASE_URL" not in result.output
+        assert "settings.json" not in result.output
+    after = {p.relative_to(home) for p in home.rglob("*") if p.is_file()}
+    assert after == before
+
+
 def test_opencode_guide_linked_from_clients_nav():
     guide = Path("docs/developer/guides/clients/opencode.md").read_text(encoding="utf-8")
     assert "http://127.0.0.1:11435/v1" in guide
