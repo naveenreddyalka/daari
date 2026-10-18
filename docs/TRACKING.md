@@ -7298,6 +7298,14 @@ per-request protocol is `2026-07-28` or newer. The default `2025-03-26`
 protocol omits the field. Call results do not advertise `ttlMs` or
 `cacheScope`. Covered by `tests/unit/test_mcp_server.py`.
 
+### LiteLLM 1.106.0 GA comparison floor ([#1758](https://github.com/naveenreddyalka/daari/issues/1758))
+
+<!-- tracking:#1758 -->
+**Status:** Done (2026-10-18). `compare-litellm.md` treats LiteLLM 1.106.0
+(18 Oct 2026) as GA and keeps the decision-model guardrail as not shipped.
+1.107.0-rc.1 is the prerelease watch. The stable floor is 1.106.0 GA.
+Covered by `tests/unit/test_compare_litellm_1104.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
