@@ -37,6 +37,8 @@ from daari.gateway.provider_prefs import (
 from daari.gateway.sampling import SamplingParams
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
+from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
+from daari.router.router import AppContext
 
 
 def fast_rate_headers_for_client(ctx: Any, *, tier: str | None) -> dict[str, str]:
@@ -51,8 +53,6 @@ def fast_rate_headers_for_client(ctx: Any, *, tier: str | None) -> dict[str, str
         return {}
     stored = getattr(frontier, "last_fast_rate_headers", None) or {}
     return {str(name): str(value) for name, value in stored.items() if str(value).strip()}
-from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
-from daari.router.router import AppContext
 
 
 def wants_anthropic_models(request: Request) -> bool:
