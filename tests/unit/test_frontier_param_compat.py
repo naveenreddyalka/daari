@@ -232,6 +232,34 @@ def test_anthropic_egress_applies_param_compat_table():
     assert "top_p" in executor.last_param_compat.dropped_params
 
 
+def test_adaptive_thinking_drops_legacy_keys_and_keeps_message_blocks():
+    """type adaptive cannot carry budget_tokens; enabled thinking can (#1757)."""
+    adaptive = {
+        "thinking": {"type": "adaptive", "budget_tokens": 1024, "signature": "sig"},
+        "messages": [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "kept", "signature": "block-sig"}
+                ],
+            }
+        ],
+    }
+    result = apply_frontier_param_compat(adaptive, "claude-opus-5-5")
+    assert adaptive["thinking"] == {"type": "adaptive"}
+    assert "budget_tokens" in result.dropped_params
+    assert "signature" in result.dropped_params
+    assert any("adaptive" in warning for warning in result.warnings)
+    block = adaptive["messages"][0]["content"][0]
+    assert block["signature"] == "block-sig"
+    assert block["thinking"] == "kept"
+
+    enabled = {"thinking": {"type": "enabled", "budget_tokens": 1024}}
+    enabled_result = apply_frontier_param_compat(enabled, "claude-opus-4-5")
+    assert enabled["thinking"] == {"type": "enabled", "budget_tokens": 1024}
+    assert "budget_tokens" not in enabled_result.dropped_params
+
+
 def test_stream_path_attaches_param_compat_to_daari_meta():
     """Stream OpenAI payload sets last_param_compat for daari_meta parity (#1173)."""
     from daari.gateway.internal import DaariMeta
