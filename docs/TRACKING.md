@@ -7239,6 +7239,18 @@ streams bill at 2× in the usage-chunk `cost`, `x-daari-response-cost` on the
 stream, and the spend ledger `usage_speed` column. A missing speed stays on
 the standard rate. Covered by `tests/unit/test_anthropic_fast_mode.py`.
 
+### Events and lockout inventory in CLI and web-ui ([#1738](https://github.com/naveenreddyalka/daari/issues/1738))
+
+<!-- tracking:#1738 -->
+**Status:** Done (2026-10-18). `daari events list` reads the postgres request
+log with `--team`, `--kind`, `--limit`, and `--cursor`. `GET /v1/daari/lockouts`
+lists locked prefixes with `expires_in_seconds` and writes `admin.lockouts.list`.
+`daari keys lockouts` prints that inventory. The web-ui Events panel honors
+team filter and cursor pagination, and locked prefixes sit next to keys with
+unlock wired to `POST /v1/daari/keys/unlock`. Docs: http-api.md. Covered by
+`tests/unit/test_events_lockouts_admin.py` and
+`packages/web-ui/test/dashboard.test.js`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

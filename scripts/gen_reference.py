@@ -154,7 +154,17 @@ def render_api_reference() -> str:
             "read floor as other `/v1/daari` reads) lists newest-first gateway events "
             "when `observability.request_log.backend=postgres`. Query `limit` (default "
             "**100**, max **1000**), `offset`, or exclusive `cursor` (event id), plus "
-            "optional `team_id` and `key_id`. JSONL-only installs return **501**.",
+            "optional `team_id`, `key_id`, and `kind` (event name). JSONL-only installs "
+            "return **501**. `daari events list` reads the same store (`--team`, `--kind`, "
+            "`--limit`, `--cursor`).",
+            "",
+            "## Key lockouts",
+            "",
+            "`GET /v1/daari/lockouts` (analyst / admin / master) lists currently locked "
+            "key prefixes as `{prefix, expires_in_seconds}` and records "
+            "`admin.lockouts.list` (returned count and prefixes; no secrets). "
+            "`POST /v1/daari/keys/unlock` remains admin-only. `daari keys lockouts` "
+            "prints the same inventory.",
             "",
             "## Config editor ownership",
             "",

@@ -14,13 +14,19 @@ export function fakeFetch(routes) {
   const calls = [];
   const fetcher = async (url, init = {}) => {
     calls.push({ url: String(url), init });
+    let best = null;
+    let bestLen = -1;
     for (const [needle, payload] of Object.entries(routes)) {
-      if (String(url).includes(needle)) {
-        if (payload && typeof payload === "object" && "status" in payload && payload.status >= 400) {
-          return { ok: false, status: payload.status, statusText: "Error", json: async () => ({}) };
-        }
-        return { ok: true, status: 200, statusText: "OK", json: async () => payload };
+      if (String(url).includes(needle) && needle.length > bestLen) {
+        best = payload;
+        bestLen = needle.length;
       }
+    }
+    if (best !== null) {
+      if (best && typeof best === "object" && "status" in best && best.status >= 400) {
+        return { ok: false, status: best.status, statusText: "Error", json: async () => ({}) };
+      }
+      return { ok: true, status: 200, statusText: "OK", json: async () => best };
     }
     throw new TypeError("fetch failed");
   };

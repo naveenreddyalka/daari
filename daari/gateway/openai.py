@@ -2685,6 +2685,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             cursor: str | None = None,
             team_id: str | None = None,
             key_id: str | None = None,
+            kind: str | None = None,
         ) -> dict[str, Any]:
             """Newest-first gateway request/event log (#1683)."""
             ctx: AppContext = request.app.state.ctx
@@ -2705,12 +2706,14 @@ class OpenAIGatewayAdapter(GatewayAdapter):
             lim, off = _clamp_page(limit=limit, offset=offset, maximum=MAX_EVENTS_LIMIT)
             before_id = _parse_event_cursor(cursor)
             key = (key_id or "").strip() or None
+            kind_norm = (kind or "").strip().lower() or None
             events, total = store.query_events(
                 limit=lim,
                 offset=off,
                 before_id=before_id,
                 team_id=scope,
                 key_id=key,
+                kind=kind_norm,
             )
             page = _page_meta(total, limit=lim, offset=off, returned=len(events))
             result: dict[str, Any] = {"events": events, **page}
@@ -2785,6 +2788,28 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 },
             )
             return result
+
+        @router.get("/v1/daari/lockouts")
+        async def daari_lockouts_list(request: Request) -> dict[str, Any]:
+            """Currently locked key prefixes and seconds until expiry."""
+            ctx: AppContext = request.app.state.ctx
+            role = _require_role(request, ctx, "analyst")
+            lockout = getattr(request.app.state, "key_lockout", None)
+            if lockout is None:
+                raise HTTPException(status_code=503, detail="key lockout is not configured")
+            rows = lockout.locked_inventory()
+            from daari.enterprise.postgres_audit import audit_log_from_settings
+
+            audit_log_from_settings(ctx.settings).record(
+                actor=request.headers.get("x-daari-actor", "api"),
+                role=role,
+                action="admin.lockouts.list",
+                detail={
+                    "returned": len(rows),
+                    "prefixes": [str(row.get("prefix") or "") for row in rows],
+                },
+            )
+            return {"lockouts": rows}
 
         @router.post("/v1/daari/keys/unlock")
         async def daari_keys_unlock(request: Request) -> dict[str, Any]:

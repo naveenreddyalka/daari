@@ -351,6 +351,19 @@
           <tbody id="admin-keys-table"></tbody>
         </table>
         <p id="admin-keys-status" class="subtle">Loading...</p>
+        <h3>Locked prefixes</h3>
+        <p class="subtle">From <code>GET /v1/daari/lockouts</code>. Unlock calls <code>POST /v1/daari/keys/unlock</code>.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Prefix</th>
+              <th>Expires in (s)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="lockouts-table"></tbody>
+        </table>
+        <p id="lockouts-status" class="subtle">Loading...</p>
       </section>
 
       <section class="card">
@@ -373,6 +386,32 @@
           <tbody id="admin-teams-table"></tbody>
         </table>
         <p id="admin-teams-status" class="subtle">Loading...</p>
+      </section>
+
+      <section class="card">
+        <div class="card-heading">
+          <h2>Events</h2>
+          <div class="controls">
+            <label>
+              Team
+              <input id="events-team-filter" type="text" placeholder="team_id" aria-label="Events team filter" />
+            </label>
+            <button id="events-next" type="button">Next page</button>
+          </div>
+        </div>
+        <p class="subtle">Newest-first from <code>GET /v1/daari/events</code> (team filter and cursor pagination).</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Id</th>
+              <th>Time</th>
+              <th>Kind</th>
+              <th>Team</th>
+            </tr>
+          </thead>
+          <tbody id="events-table"></tbody>
+        </table>
+        <p id="events-status" class="subtle">Loading...</p>
       </section>
 
       <section class="card">

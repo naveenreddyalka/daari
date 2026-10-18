@@ -112,16 +112,19 @@ class PostgresRequestLogStore:
         before_id: int | None = None,
         team_id: str | None = None,
         key_id: str | None = None,
+        kind: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         """Newest-first page plus total matches (#1683).
 
         ``before_id`` keeps rows with ``id`` strictly less than that cursor.
         ``team_id`` / ``key_id`` match those payload fields when set.
+        ``kind`` matches the event name (case-insensitive).
         """
         lim = max(1, min(int(limit), 1000))
         off = max(0, int(offset))
         team = (team_id or "").strip() or None
         key = (key_id or "").strip() or None
+        kind_norm = (kind or "").strip().lower() or None
         if self._memory:
             rows, lock = _memory_bucket(self.dsn)
             with lock:
@@ -133,6 +136,7 @@ class PostgresRequestLogStore:
                         before_id=before_id,
                         team_id=team,
                         key_id=key,
+                        kind=kind_norm,
                     )
                 ]
             matched.sort(key=lambda r: int(r["id"]), reverse=True)
@@ -150,6 +154,9 @@ class PostgresRequestLogStore:
         if key is not None:
             clauses.append("(payload::json->>'key_id') = %s")
             params.append(key)
+        if kind_norm is not None:
+            clauses.append("lower(event) = %s")
+            params.append(kind_norm)
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         with self._lock, self._connect() as conn:
             with conn.cursor() as cur:
@@ -306,6 +313,7 @@ def _row_in_query(
     before_id: int | None,
     team_id: str | None,
     key_id: str | None,
+    kind: str | None = None,
 ) -> bool:
     if before_id is not None and int(row.get("id") or 0) >= int(before_id):
         return False
@@ -313,6 +321,8 @@ def _row_in_query(
     if team_id is not None and str(payload.get("team_id") or "") != team_id:
         return False
     if key_id is not None and str(payload.get("key_id") or "") != key_id:
+        return False
+    if kind is not None and str(row.get("event") or "").strip().lower() != kind:
         return False
     return True
 

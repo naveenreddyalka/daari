@@ -38,6 +38,7 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 | `GET` | `/v1/daari/keys` | Daari Keys List |
 | `POST` | `/v1/daari/keys/unlock` | Daari Keys Unlock |
 | `GET` | `/v1/daari/learn/stats` | Daari Learn Stats |
+| `GET` | `/v1/daari/lockouts` | Daari Lockouts List |
 | `GET` | `/v1/daari/mcp/activity` | Daari Mcp Activity List |
 | `POST` | `/v1/daari/mcp/activity/{request_id}/abort` | Daari Mcp Activity Abort |
 | `POST` | `/v1/daari/reload-caches` | Daari Reload Caches |
@@ -85,7 +86,11 @@ OpenAPI version: 3.1.0 · daari gateway on `127.0.0.1:11435` by default.
 
 ## Request / event log
 
-`GET /v1/daari/events` (analyst / master, or a virtual key on the same read floor as other `/v1/daari` reads) lists newest-first gateway events when `observability.request_log.backend=postgres`. Query `limit` (default **100**, max **1000**), `offset`, or exclusive `cursor` (event id), plus optional `team_id` and `key_id`. JSONL-only installs return **501**.
+`GET /v1/daari/events` (analyst / master, or a virtual key on the same read floor as other `/v1/daari` reads) lists newest-first gateway events when `observability.request_log.backend=postgres`. Query `limit` (default **100**, max **1000**), `offset`, or exclusive `cursor` (event id), plus optional `team_id`, `key_id`, and `kind` (event name). JSONL-only installs return **501**. `daari events list` reads the same store (`--team`, `--kind`, `--limit`, `--cursor`).
+
+## Key lockouts
+
+`GET /v1/daari/lockouts` (analyst / admin / master) lists currently locked key prefixes as `{prefix, expires_in_seconds}` and records `admin.lockouts.list` (returned count and prefixes; no secrets). `POST /v1/daari/keys/unlock` remains admin-only. `daari keys lockouts` prints the same inventory.
 
 ## Config editor ownership
 
