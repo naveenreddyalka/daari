@@ -7332,6 +7332,15 @@ Other upstream headers are not copied. Covered by
 1.107.0-rc.1 is the prerelease watch. The stable floor is 1.106.0 GA.
 Covered by `tests/unit/test_compare_litellm_1104.py`.
 
+### Trailing empty user turns on Messages (#1768)
+
+<!-- tracking:#1768 -->
+**Status:** Done (2026-10-18). `POST /v1/messages` accepts a trailing user
+message whose content is `null`, `""`, or `[]` and keeps that turn last on
+the internal request and the outbound Anthropic `messages` list. A non-trailing
+empty user turn is still dropped. Covered by
+`tests/unit/test_anthropic_trailing_empty_user.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
