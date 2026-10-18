@@ -11,27 +11,28 @@
 
 ---
 
-## Where daari stands (verified in-tree, 2026-10-18 evening)
+## Where daari stands (verified in-tree, 2026-10-18 third scan)
 
 **Loop velocity.** Morning board is on main: `tools/call` `resultType`
 (row 136) and compare-litellm 1.106.0 GA floor (row 139). Still open from
-the morning filing: fast-mode rate-limit header copy, adaptive thinking
-key strip, chat-completions header copy, header docs, and `tasks/get`
-`resultType`. `agent:working` rows 6/62–63/65–67 unchanged.
+today's filings: fast-mode header copy, adaptive thinking key strip,
+`tasks/get` `resultType`, and the evening replay/ledger set (rows
+140–144). `agent:working` rows 6/62–63/65–67 unchanged.
 
-**Outward.** LiteLLM stable stays **1.106.0 GA**. **1.107.0-rc.1 (10-18)**
-is still prerelease: empty trailing user content, count-token honesty,
-web-search tool cost, and provider request ids on stream failures are the
-slices worth taking now. `agent_access_default_deny` stays on watch until
-1.107 is GA. **Ollama 0.40.7-rc0** unchanged (do not file). Portkey v2.20.0
-enterprise notes, Kong 2.2.0, vLLM 0.31.0, and OpenRouter unchanged since
-the morning scan. Anthropic platform notes still stop at 10-15.
+**Outward.** LiteLLM stable stays **1.106.0 GA**; 1.107.0-rc.1 prerelease.
+**vLLM 0.32.0 (10-18) is a bar move the earlier scans missed:** it serves
+`POST /v1/systemone` by default (`Cloudflare/clef-omni`, `LiquidAI/d1-3B`,
+DiffusionGemma), adds a generic `hf` tool/reasoning parser, drops Python
+3.10, restricts default CORS origins, and renames Responses reasoning
+stream events. daari's local decisions call sites are Ollama-only (row
+149). **Ollama 0.40.7-rc0** unchanged (do not file). Portkey v2.29.0,
+Kong 2.2.0, OpenRouter, and Anthropic (10-15) unchanged.
 
-**Inward theme: replay and ledger honesty.** Trailing empty user turns are
-dropped before Anthropic egress. `count_tokens` ignores image and document
-blocks. Web-search calls are absent from frontier cost. Frontier HTTP
-failures omit the provider request id. `speed` on a non-Anthropic L6 slot
-is silent.
+**Inward theme: depth behind the egress/fast wave.** Streamed fast-mode
+calls fail hard on 429/529 where non-stream degrades. Session pins replay
+onto fully cloud-fenced tiers every turn. Catalog surfaces show `:cloud`
+ids as ordinary local models. The OpenAPI MCP proxy omits `resultType`.
+Local decisions require Ollama even though vLLM now serves systemone.
 
 ---
 
@@ -39,6 +40,11 @@ is silent.
 
 | # | Gap | Impact | Effort | Who does it best today | Why daari wins local-first | Action |
 |---|-----|:--:|:--:|------------------------|----------------------------|--------|
+| 145 | Degrade streamed fast-mode 429/529 to `standard` (non-stream already does) | 4 | 2 | Anthropic fast mode | Streaming UIs keep flowing without a client retry | Filed [#1774](https://github.com/naveenreddyalka/daari/issues/1774) |
+| 146 | Break session pins on fully cloud-fenced tiers | 3 | 1 | — (daari-only topology) | Local-only sessions stop burning a blocked attempt per turn | Filed [#1775](https://github.com/naveenreddyalka/daari/issues/1775) |
+| 147 | Mark Ollama `:cloud` ids as remote on `/api/tags`, `/api/show`, and model cards | 4 | 2 | Ollama cloud catalog | Air-gapped operators see what leaves the box before routing does | Filed [#1776](https://github.com/naveenreddyalka/daari/issues/1776) |
+| 148 | Stamp `resultType` on OpenAPI proxy `tools/call` results | 3 | 1 | Claude Code 2.1.302 | Both MCP ingress doors speak the same call-result contract | Filed [#1777](https://github.com/naveenreddyalka/daari/issues/1777) |
+| 149 | Configurable systemone upstream for OpenAI-compatible backends | 4 | 3 | vLLM 0.32.0 native `/v1/systemone` | Decisions stay on the operator's GPU without installing Ollama | Filed [#1778](https://github.com/naveenreddyalka/daari/issues/1778) |
 | 140 | Keep trailing user turns whose content is null, `""`, or `[]` | 4 | 1 | LiteLLM 1.107-rc.1 empty content | Agent loops replay without a 400 | Filed [#1768](https://github.com/naveenreddyalka/daari/issues/1768) |
 | 141 | `count_tokens` includes image and document blocks | 3 | 2 | LiteLLM 1.107-rc.1 count honesty | Vision budget is known before any hop | Filed [#1769](https://github.com/naveenreddyalka/daari/issues/1769) |
 | 142 | Bill frontier web-search calls at $0.01 on the local ledger | 4 | 2 | LiteLLM 1.107-rc.1 tool cost | Spend matches the invoice on-box | Filed [#1770](https://github.com/naveenreddyalka/daari/issues/1770) |
@@ -86,8 +92,11 @@ audited, Prom reject); Grafana errors-by-status panel; `daari configure
 chatgpt-desktop`; per-member budget threshold webhooks; DEC/SYS bench docs.
 
 Watch rows (do not file yet): gzip compression Prom metrics (ratio/CPU —
-operator ask); warn when `speed` is requested but the active L6 provider is
-not Anthropic (fold into the next param-compat slice); `CONFIGURE_CLIENTS`
+operator ask); `schema_ok` Prometheus gauge + web-ui banner (today it is
+`/ready` + doctor only); budget threshold webhooks: ISO `reset_at` parity
+with the report path + model-budget (`model_max_budget`) alert coverage;
+events web-ui `key_id`/`kind` filters + payload column (API already
+returns them); `CONFIGURE_CLIENTS`
 first-wave tuple lags the registry (trivial, fold into the next recipe);
 cursor-agent CLI configure (distinct from
 the Cursor IDE recipe); `migrate --downgrade` (schema_ok is filed; a
@@ -97,8 +106,12 @@ poll-only); per-user request-count RPD (USD caps only); SCIM + multi-issuer/
 audience SSO (multi-JWKS yes, single issuer/audience str); Prometheus
 exemplars + `gen_ai.agent.*` spans + PG request-log concurrency/soak tests;
 Portkey v2.29 JWT claims→metadata conditional routing (buyer ask); LiteLLM
-1.107 GA watchables; Anthropic Compliance API user-preferences export +
-OpenAI GPT-Live (non-goals).
+1.107 GA watchables (`agent_access_default_deny`); native-API refusal
+recipes beyond Gemini CLI as such clients appear; vLLM 0.32 Responses
+reasoning stream event renames (daari talks chat-completions to `kind:
+openai` backends, so no in-tree impact today); Anthropic Compliance API
+user-preferences export + OpenAI GPT-Live incl. prompt-to-voice
+(non-goals).
 
 Verified fine this run — don't re-audit: retired-410 on modality/MCP/batch
 before admission; team-scoped traces/report/stats; lockout unlock; Helm
@@ -112,25 +125,34 @@ Evening pass verified fine: gzip exempts SSE/pre-encoded bodies, sets
 lockout already pages via a signed webhook; budget rollups and cost headers
 include `:cloud` spend; non-stream fast-mode billing is cost-true; pricing
 falls back to standard when `usage.speed` is absent.
+Third pass verified fine: `:cloud` fences hold at execute time
+(`CloudEgressBlocked` → non-cloud alternate tier, scrub on `:cloud` hops);
+non-stream fast degrade sets `fast_degraded_to_standard` + soft-warning
+metric and bills from provider `usage.speed`; JSON-RPC `tools/call` stamps
+`resultType` on success and validation `isError` results; budget reset is
+on headers and 402 bodies; events/lockouts API carries `team_id`/`key_id`/
+`kind` filters with audit rows on both admin reads.
 
 ---
 
 ## Path to enterprise-grade — next 5 milestones
 
-1. **Replay honesty** — keep a trailing user turn when content is null,
-   `""`, or `[]` (row 140) so Anthropic and local tiers see the same last
-   role the agent sent.
-2. **Fast-mode client backoff** — copy the six `anthropic-fast-*-tokens-*`
-   headers onto Messages responses (row 137) and warn when `speed` is set
-   on a non-Anthropic L6 slot (row 144).
-3. **Adaptive thinking payload hygiene** — drop non-`type` keys when
-   outbound `thinking.type` is `adaptive` (row 138). Leave `type: enabled`
-   budgets and assistant thinking blocks alone.
-4. **Ledger honesty** — add $0.01 per frontier web-search call (row 142)
-   and include image and document blocks in local `count_tokens` (row 141).
-5. **Failure correlation** — put the upstream request id on frontier HTTP
-   failures (row 143). Admin-plane rows 62–67 stay with their
-   `agent:working` sessions. Trace-native packaging stays on watch.
+1. **Fast mode on the streaming path** — degrade streamed 429/529 to
+   `standard` (row 145), copy the fast rate-limit headers (row 137), and
+   warn on non-Anthropic `speed` (row 144) so the flagship client's main
+   path gets the resilience the non-stream path already has.
+2. **Egress truth end-to-end** — fence-aware session pins (row 146) and
+   `:cloud` markers on every catalog surface (row 147) finish what the
+   `:cloud` execute-time fences started.
+3. **Replay and ledger honesty** — trailing empty user turns (row 140),
+   vision `count_tokens` (row 141), web-search call fees (row 142), and
+   upstream request ids on failures (row 143).
+4. **Decisions without Ollama** — configurable systemone upstream
+   (row 149) rides vLLM 0.32.0's native `/v1/systemone`; MCP proxy
+   `resultType` (row 148) keeps both ingress doors on one contract.
+5. **Admin-plane depth** — rows 62–67 stay with their `agent:working`
+   sessions; adaptive thinking hygiene (row 138) and `tasks/get`
+   `resultType` land from today's earlier filings.
 
 Compliance non-goals (SCIM, WIF depth, A2A, SOC 2 program, Realtime/WS,
 FIPS builds, HIPAA BAA) stay deferred until buyer demand.
@@ -138,6 +160,15 @@ FIPS builds, HIPAA BAA) stay deferred until buyer demand.
 ---
 
 ## Changelog
+
+- **2026-10-18 third scan (stream-path fast mode, egress truth, vLLM 0.32)**
+  — Corrected the outward board: vLLM 0.32.0 (10-18) serves
+  `POST /v1/systemone` by default — the earlier scans still pinned 0.31.0.
+  Filed rows 145–149: streamed fast-mode degrade, fence-aware session
+  pins, `:cloud` catalog markers, OpenAPI proxy `resultType`, and a
+  configurable systemone upstream for OpenAI-compatible backends.
+  LiteLLM 1.106.0 GA, Ollama 0.40.7-rc0, Portkey v2.29.0, Kong 2.2.0,
+  OpenRouter, and Anthropic (10-15) unchanged since the evening scan.
 
 - **2026-10-18 evening (replay, count, and ledger honesty)** — Marked
   rows 136 and 139 Shipped (`tools/call` `resultType`, compare-litellm
