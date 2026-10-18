@@ -7289,6 +7289,14 @@ names checks `cache`, `model_backend`, `redis`, and `postgres`, and states
 `/health` is liveness. Linked from the operations nav. Covered by
 `tests/unit/test_ready_status_docs.py`.
 
+### Anthropic fast-mode rate-limit headers ([#1756](https://github.com/naveenreddyalka/daari/issues/1756))
+
+<!-- tracking:#1756 -->
+**Status:** Done (2026-10-18). Non-streaming `POST /v1/messages` and the
+streaming fallback copy the six `anthropic-fast-*-tokens-*` headers from an
+Anthropic L6 response. Unrelated upstream headers are not copied. Missing
+headers stay absent. Covered by `tests/unit/test_anthropic_fast_rate_headers.py`.
+
 ### MCP tools/call resultType for protocol 2026-07-28 ([#1755](https://github.com/naveenreddyalka/daari/issues/1755))
 
 <!-- tracking:#1755 -->
