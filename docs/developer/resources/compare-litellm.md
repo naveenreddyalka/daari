@@ -49,18 +49,26 @@ the local usage ledger. That path skips local tiers. Requests without
 Microsoft 365 MCP catalog and Straiker v3 fail-closed routing also landed in
 this GA cut. daari does **not** ship those.
 
-## LiteLLM 1.106 RC (watch)
+## LiteLLM 1.106.0 GA
 
-LiteLLM [v1.106.0-rc.3](https://docs.litellm.ai/release_notes/v1.106.0rc3/v1-106-0-rc-3)
-(RC / backport wave, 2026-10) includes a native
+LiteLLM [v1.106.0](https://github.com/BerriAI/litellm/releases/tag/v1.106.0)
+(18 Oct 2026) is **GA**. The stable comparison floor is **1.106.0 GA**.
+The cut includes a native
 [decision-model guardrail](https://docs.litellm.ai/docs/proxy/guardrails/decision_model)
 (`guardrail: decision_model`): yes/no questions against any `/v1/decisions`
-model, blocking or logging at a probability threshold. This is still
-**prerelease**. The stable comparison floor stays **1.105.0 GA** (1.104.0 GA
-above remains the prior stable bar).
+model, blocking or logging at a probability threshold.
 
 daari does **not** ship a decision-model guardrail yet. Heuristic / regex
 guardrails plus the on-box `/v1/decisions` path remain the local route for
-operators who pull clef or nimble.
+operators who pull clef or nimble. daari also does **not** ship LiteLLM's
+cosign image signing, one-command Docker quickstart, or JWT
+`auto_register_map_existing_key`. stdio MCP stays N/A (no stdio transport).
+
+## LiteLLM 1.107 RC (watch)
+
+LiteLLM [v1.107.0-rc.1](https://github.com/BerriAI/litellm/releases/tag/v1.107.0-rc.1)
+(18 Oct 2026) is **prerelease**. The stable comparison floor stays
+**1.106.0 GA**. Do not treat 1.107 features (including
+`agent_access_default_deny`) as the comparison bar until that line is GA.
 
 Measured on the same Ollama corpus: [benchmark vs LiteLLM](benchmark-vs-litellm.md). Short matrix: [compare](compare.md).
