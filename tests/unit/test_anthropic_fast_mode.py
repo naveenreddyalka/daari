@@ -402,3 +402,103 @@ async def test_non_fast_529_retries_without_speed_degrade():
     assert speeds == [None, None]
     assert response.daari_meta.usage_speed == "standard"
     assert "fast_degraded_to_standard" not in (response.daari_meta.warning or "")
+
+
+def _stream_sse(*, speed: str) -> bytes:
+    delta = {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {"type": "text_delta", "text": "ok"},
+    }
+    usage = {
+        "type": "message_delta",
+        "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+        "usage": {"output_tokens": 2, "speed": speed},
+    }
+    return (
+        f"event: content_block_delta\ndata: {json.dumps(delta)}\n\n"
+        f"event: message_delta\ndata: {json.dumps(usage)}\n\n"
+    ).encode()
+
+
+@pytest.mark.asyncio
+async def test_streamed_fast_529_retries_once_at_standard():
+    from daari.gateway.cost_headers import WARNING_HEADER, StreamOutcome
+    from daari.observability.metrics import Metrics
+
+    speeds: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        speeds.append(body.get("speed"))
+        if body.get("speed") == "fast":
+            return httpx.Response(529, json={"type": "error", "error": {"type": "overloaded_error"}})
+        return httpx.Response(
+            200,
+            content=_stream_sse(speed="standard"),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    metrics = Metrics()
+    executor = FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model="claude-opus-5-5",
+        api_key="sk-test",
+        provider="anthropic",
+        metrics=metrics,
+        transport=httpx.MockTransport(handler),
+    )
+    events = [
+        event
+        async for event in executor.stream(
+            _request(model="claude-opus-5-5", speed="fast"),
+            escalated_from="L3",
+            local_confidence=0.2,
+        )
+    ]
+    assert speeds == ["fast", "standard"]
+    assert events == ["ok"]
+    assert executor.last_stream_usage_speed == "standard"
+    meta = DaariMeta(tier="L6", executor="frontier")
+    outcome = StreamOutcome(tier="L6", cache="miss")
+    executor.apply_fast_degraded_warning(meta)
+    executor.apply_fast_degraded_warning(outcome)
+    assert meta.warning == "fast_degraded_to_standard"
+    assert outcome.headers()[WARNING_HEADER] == "fast_degraded_to_standard"
+    assert metrics.soft_warnings.get("fast_degraded_to_standard") == 1
+
+
+@pytest.mark.asyncio
+async def test_streamed_fast_success_does_not_retry():
+    speeds: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        speeds.append(body.get("speed"))
+        return httpx.Response(
+            200,
+            content=_stream_sse(speed="fast"),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    executor = FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model="claude-opus-5-5",
+        api_key="sk-test",
+        provider="anthropic",
+        transport=httpx.MockTransport(handler),
+    )
+    events = [
+        event
+        async for event in executor.stream(
+            _request(model="claude-opus-5-5", speed="fast"),
+            escalated_from="L3",
+            local_confidence=0.2,
+        )
+    ]
+    assert speeds == ["fast"]
+    assert events == ["ok"]
+    assert executor.last_fast_degraded is False
+    meta = DaariMeta(tier="L6", executor="frontier")
+    executor.apply_fast_degraded_warning(meta)
+    assert meta.warning is None

@@ -7388,6 +7388,17 @@ budget, quota, or rate-limit warning is kept, and the event still fires.
 Anthropic slots still forward `speed` and do not set `speed_ignored`.
 Covered by `tests/unit/test_speed_ignored_non_anthropic.py`.
 
+### Streamed fast mode degrades on 429/529 ([#1774](https://github.com/naveenreddyalka/daari/issues/1774))
+
+<!-- tracking:#1774 -->
+**Status:** Done (2026-10-18). A streamed Anthropic Messages call with
+`speed: fast` that receives 429 or 529 before any SSE body is consumed is
+retried once at `speed: standard`. The stream carries
+`fast_degraded_to_standard` on `daari_meta` and `x-daari-warning`, and the
+existing soft-warning metric records that note. Billing follows the
+provider-reported `usage.speed`. A fast success is not retried. Covered by
+`tests/unit/test_anthropic_fast_mode.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

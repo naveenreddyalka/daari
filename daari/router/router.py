@@ -2950,6 +2950,9 @@ class Router:
                                 )
                             ]
                             self._note_anthropic_stream_cost(outcome)
+                        stamp = getattr(self.frontier, "apply_fast_degraded_warning", None)
+                        if callable(stamp):
+                            stamp(outcome)
                         yield f"data: {json.dumps(chunk_payload(delta={'role': 'assistant'}))}\n\n"
 
                         async def _relay_events():
@@ -3119,6 +3122,9 @@ class Router:
                     note_speed = getattr(self.frontier, "note_ignored_speed", None)
                     if callable(note_speed):
                         note_speed(request, flight_meta)
+                    stamp = getattr(self.frontier, "apply_fast_degraded_warning", None)
+                    if callable(stamp):
+                        stamp(flight_meta)
                     if flight_meta.dropped_params:
                         outcome.dropped_params = list(flight_meta.dropped_params)
                     stream_flight_result = InternalResponse(

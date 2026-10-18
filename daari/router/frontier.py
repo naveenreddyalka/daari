@@ -178,6 +178,7 @@ class FrontierExecutor:
     last_fast_rate_headers: dict[str, str] = field(
         default_factory=dict, init=False, repr=False
     )
+    last_fast_degraded: bool = field(default=False, init=False, repr=False)
 
     def _remember_fast_rate_headers(self, response: Any) -> None:
         headers = getattr(response, "headers", None)
@@ -242,6 +243,16 @@ class FrontierExecutor:
         if _keeps_existing_warning(meta.warning):
             return
         meta.warning = "speed_ignored"
+
+    def apply_fast_degraded_warning(self, target: Any) -> None:
+        """Copy the stream fast-mode degrade note onto meta or a stream outcome."""
+        if not self.last_fast_degraded:
+            return
+        note = "fast_degraded_to_standard"
+        existing = getattr(target, "warning", None)
+        if existing and note in str(existing):
+            return
+        target.warning = f"{existing}; {note}" if existing else note
 
     def _openai_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
         payload = {
@@ -340,6 +351,7 @@ class FrontierExecutor:
         self.last_stream_input_tokens = None
         self.last_stream_output_tokens = None
         self.last_fast_rate_headers = {}
+        self.last_fast_degraded = False
 
         if self._is_anthropic():
             payload = to_anthropic_payload(
@@ -369,64 +381,82 @@ class FrontierExecutor:
         )
 
         guard_upstream("L6")
-        async with deadline_bounded_stream(
-            self._client(),
-            "POST",
-            path,
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        ) as response:
-            note_frontier_http_failure(response)
-            response.raise_for_status()
-            self._remember_fast_rate_headers(response)
-            tool_block_open = False
-            async for line in aiter_with_ttft_deadline(response.aiter_lines()):
-                if self._is_anthropic():
+        degraded_fast = False
+        while True:
+            async with deadline_bounded_stream(
+                self._client(),
+                "POST",
+                path,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            ) as response:
+                if (
+                    self._is_anthropic()
+                    and payload.get("speed") == "fast"
+                    and not degraded_fast
+                    and response.status_code in {429, 529}
+                ):
+                    note_frontier_http_failure(response)
+                    degraded_fast = True
+                    payload["speed"] = "standard"
+                    self.last_fast_degraded = True
+                    if self.metrics is not None and hasattr(
+                        self.metrics, "record_soft_warning"
+                    ):
+                        self.metrics.record_soft_warning("fast_degraded_to_standard")
+                    continue
+                note_frontier_http_failure(response)
+                response.raise_for_status()
+                self._remember_fast_rate_headers(response)
+                tool_block_open = False
+                async for line in aiter_with_ttft_deadline(response.aiter_lines()):
+                    if self._is_anthropic():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[len("data:") :].strip()
+                        if not data:
+                            continue
+                        try:
+                            parsed = json.loads(data)
+                        except ValueError:
+                            parsed = None
+                        if isinstance(parsed, dict):
+                            _remember_anthropic_stream_usage(self, parsed)
+                        tool_event = anthropic_tool_event_from_sse_data(data)
+                        if tool_event is not None:
+                            event_type = tool_event.get("type")
+                            if event_type == "content_block_start":
+                                tool_block_open = True
+                                yield {"anthropic_event": tool_event}
+                            elif event_type == "content_block_delta":
+                                yield {"anthropic_event": tool_event}
+                            elif event_type == "content_block_stop" and tool_block_open:
+                                tool_block_open = False
+                                yield {"anthropic_event": tool_event}
+                            continue
+                        delta = text_delta_from_sse_data(data)
+                        if delta:
+                            yield delta
+                        continue
                     if not line.startswith("data:"):
                         continue
                     data = line[len("data:") :].strip()
-                    if not data:
+                    if not data or data == "[DONE]":
                         continue
                     try:
-                        parsed = json.loads(data)
+                        chunk = json.loads(data)
                     except ValueError:
-                        parsed = None
-                    if isinstance(parsed, dict):
-                        _remember_anthropic_stream_usage(self, parsed)
-                    tool_event = anthropic_tool_event_from_sse_data(data)
-                    if tool_event is not None:
-                        event_type = tool_event.get("type")
-                        if event_type == "content_block_start":
-                            tool_block_open = True
-                            yield {"anthropic_event": tool_event}
-                        elif event_type == "content_block_delta":
-                            yield {"anthropic_event": tool_event}
-                        elif event_type == "content_block_stop" and tool_block_open:
-                            tool_block_open = False
-                            yield {"anthropic_event": tool_event}
                         continue
-                    delta = text_delta_from_sse_data(data)
-                    if delta:
-                        yield delta
-                    continue
-                if not line.startswith("data:"):
-                    continue
-                data = line[len("data:") :].strip()
-                if not data or data == "[DONE]":
-                    continue
-                try:
-                    chunk = json.loads(data)
-                except ValueError:
-                    continue
-                for choice in chunk.get("choices", []):
-                    delta_obj = choice.get("delta") or {}
-                    tool_calls = delta_obj.get("tool_calls")
-                    if tool_calls:
-                        yield {"tool_calls": tool_calls}
-                    text = delta_obj.get("content")
-                    if text:
-                        yield text
+                    for choice in chunk.get("choices", []):
+                        delta_obj = choice.get("delta") or {}
+                        tool_calls = delta_obj.get("tool_calls")
+                        if tool_calls:
+                            yield {"tool_calls": tool_calls}
+                        text = delta_obj.get("content")
+                        if text:
+                            yield text
+                return
 
     async def execute(
         self,
