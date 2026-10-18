@@ -19,6 +19,7 @@ from daari.gateway.client_errors import (
     routing_failure_detail,
     safe_detail,
 )
+from daari.gateway.anthropic import fast_rate_headers_for_client
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
 from daari.gateway.content import (
@@ -1161,11 +1162,18 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                             },
                         )
 
+                def _stream_headers() -> dict[str, str]:
+                    headers = outcome.headers()
+                    headers.update(
+                        fast_rate_headers_for_client(ctx, tier=outcome.tier)
+                    )
+                    return headers
+
                 return DeferredHeadersStreamingResponse(
                     event_stream(),
                     media_type="text/event-stream",
                     headers={**OPENAI_SSE_HEADERS, "X-Request-ID": request_id},
-                    late_headers=outcome.headers,
+                    late_headers=_stream_headers,
                 )
 
             try:
@@ -1270,6 +1278,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         session_id=internal.meta.session_id,
                         savings=ctx.router.session_savings,
                     ),
+                    **fast_rate_headers_for_client(ctx, tier=result.daari_meta.tier),
                     "X-Request-ID": request_id,
                 },
             )

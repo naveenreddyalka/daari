@@ -7341,6 +7341,15 @@ the internal request and the outbound Anthropic `messages` list. A non-trailing
 empty user turn is still dropped. Covered by
 `tests/unit/test_anthropic_trailing_empty_user.py`.
 
+### Chat completions copy fast-mode rate-limit headers ([#1766](https://github.com/naveenreddyalka/daari/issues/1766))
+
+<!-- tracking:#1766 -->
+**Status:** Done (2026-10-18). Non-streaming `POST /v1/chat/completions` and
+the streaming response copy present `anthropic-fast-*-tokens-*` headers when
+Anthropic L6 captured them before the first body chunk. Unrelated upstream
+headers are dropped. An OpenAI-provider L6 response does not gain them.
+Covered by `tests/unit/test_chat_fast_rate_headers.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
