@@ -3116,6 +3116,9 @@ class Router:
                             if getattr(compat, "warnings", None):
                                 notes = "; ".join(compat.warnings)
                                 flight_meta.warning = notes
+                    note_speed = getattr(self.frontier, "note_ignored_speed", None)
+                    if callable(note_speed):
+                        note_speed(request, flight_meta)
                     if flight_meta.dropped_params:
                         outcome.dropped_params = list(flight_meta.dropped_params)
                     stream_flight_result = InternalResponse(

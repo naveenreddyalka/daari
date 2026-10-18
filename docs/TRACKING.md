@@ -7378,6 +7378,16 @@ first present header among `request-id`, `x-request-id`, and
 present. `upstream_retry` steps copy the same id. Success responses are
 unchanged. Covered by `tests/unit/test_frontier_provider_request_id.py`.
 
+### Speed ignored when L6 is not Anthropic ([#1772](https://github.com/naveenreddyalka/daari/issues/1772))
+
+<!-- tracking:#1772 -->
+**Status:** Done (2026-10-18). A request that sets `speed` while the serving
+L6 slot is not Anthropic sets `daari_meta.warning` to `speed_ignored` and
+logs `speed_ignored` with the requested speed and provider id. An existing
+budget, quota, or rate-limit warning is kept, and the event still fires.
+Anthropic slots still forward `speed` and do not set `speed_ignored`.
+Covered by `tests/unit/test_speed_ignored_non_anthropic.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
