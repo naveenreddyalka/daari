@@ -68,6 +68,7 @@ nav:
           - Claude Desktop: developer/guides/clients/claude-desktop.md
           - ChatGPT Desktop: developer/guides/clients/chatgpt-desktop.md
           - Codex CLI: developer/guides/clients/codex.md
+          - Gemini CLI: developer/guides/clients/gemini-cli.md
           - OpenCode: developer/guides/clients/opencode.md
           - JetBrains: developer/guides/clients/intellij.md
           - VS Code: developer/guides/clients/vscode.md

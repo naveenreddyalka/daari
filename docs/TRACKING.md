@@ -7271,6 +7271,15 @@ circuit. Covered by `tests/unit/test_upstream_retry.py`,
 retrieve stubs carry the same `speed` extras. Covered by
 `tests/unit/test_fast_mode_capability.py`.
 
+### Gemini CLI configure does not point the native API at daari ([#1725](https://github.com/naveenreddyalka/daari/issues/1725))
+
+<!-- tracking:#1725 -->
+**Status:** Done (2026-10-18). `daari configure gemini-cli` and
+`daari setup gemini-cli` exit 0, write no config files, and say the native
+Gemini API is not a daari surface. They name `codex` and `opencode` as the
+OpenAI-compatible path. Docs: gemini-cli.md. Covered by
+`tests/unit/test_configure_cli.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
