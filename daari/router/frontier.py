@@ -29,7 +29,7 @@ from daari.router.param_compat import (
     FrontierParamCompatResult,
     apply_frontier_param_compat,
 )
-from daari.router.retry import RetryPolicy, run_upstream
+from daari.router.retry import RetryPolicy, provider_request_id, run_upstream
 
 
 # Stream events: plain str for text, or a dict tagged for tool-call relay (#934).
@@ -44,6 +44,20 @@ ANTHROPIC_FAST_RATE_HEADERS = (
     "anthropic-fast-output-tokens-remaining",
     "anthropic-fast-output-tokens-reset",
 )
+
+
+def note_frontier_http_failure(response: Any) -> None:
+    """Record a non-2xx frontier response, including a provider request id when sent."""
+    status = getattr(response, "status_code", None)
+    if not isinstance(status, int) or 200 <= status < 300:
+        return
+    from daari.gateway.request_log import log_gateway_event
+
+    payload: dict[str, Any] = {"status": status}
+    request_id = provider_request_id(getattr(response, "headers", None))
+    if request_id:
+        payload["provider_request_id"] = request_id
+    log_gateway_event("frontier_http_error", payload)
 
 
 def anthropic_fast_rate_headers(headers: httpx.Headers) -> dict[str, str]:
@@ -340,6 +354,7 @@ class FrontierExecutor:
             headers=headers,
             timeout=self.timeout,
         ) as response:
+            note_frontier_http_failure(response)
             response.raise_for_status()
             self._remember_fast_rate_headers(response)
             tool_block_open = False
@@ -443,6 +458,7 @@ class FrontierExecutor:
             ):
                 degraded_fast = True
                 payload["speed"] = "standard"
+            note_frontier_http_failure(response)
             response.raise_for_status()
             self._remember_fast_rate_headers(response)
             return response.json()
