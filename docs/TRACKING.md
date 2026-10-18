@@ -7368,6 +7368,16 @@ Covered by `tests/unit/test_count_tokens_media.py`.
 When both shapes are present the larger count is billed once. `open_page` and
 `find_in_page` are not searches. Covered by `tests/unit/test_web_search_cost.py`.
 
+### Frontier HTTP failures record provider request ids ([#1771](https://github.com/naveenreddyalka/daari/issues/1771))
+
+<!-- tracking:#1771 -->
+**Status:** Done (2026-10-18). A non-2xx frontier response (stream or
+non-stream) logs `frontier_http_error` with `provider_request_id` from the
+first present header among `request-id`, `x-request-id`, and
+`anthropic-request-id`. The field is omitted when none of those headers are
+present. `upstream_retry` steps copy the same id. Success responses are
+unchanged. Covered by `tests/unit/test_frontier_provider_request_id.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

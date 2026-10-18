@@ -54,6 +54,34 @@ class RetryBudgetExhausted(Exception):
         super().__init__(f"upstream failed after {attempts} attempt(s): {last}")
 
 
+PROVIDER_REQUEST_ID_HEADERS = ("request-id", "x-request-id", "anthropic-request-id")
+
+
+def _header_text(headers: Any, name: str) -> str | None:
+    getter = getattr(headers, "get", None)
+    raw = getter(name) if callable(getter) else None
+    if raw is not None and str(raw).strip():
+        return str(raw).strip()
+    items = getattr(headers, "items", None)
+    if not callable(items):
+        return None
+    for key, value in items():
+        if str(key).lower() == name and value is not None and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def provider_request_id(headers: Any) -> str | None:
+    """First non-empty id among request-id, x-request-id, anthropic-request-id."""
+    if headers is None:
+        return None
+    for name in PROVIDER_REQUEST_ID_HEADERS:
+        text = _header_text(headers, name)
+        if text:
+            return text
+    return None
+
+
 def status_of(exc: BaseException) -> int | None:
     response = getattr(exc, "response", None)
     if response is not None and hasattr(response, "status_code"):
@@ -199,14 +227,18 @@ async def run_upstream(
     from daari.observability.trace import add_step
 
     def report(attempt: int, exc: BaseException, delay: float) -> None:
-        add_step(
-            "upstream_retry",
-            upstream=upstream,
-            attempt=attempt,
-            error_type=type(exc).__name__,
-            status=status_of(exc),
-            delay_ms=int(delay * 1000),
-        )
+        detail: dict[str, Any] = {
+            "upstream": upstream,
+            "attempt": attempt,
+            "error_type": type(exc).__name__,
+            "status": status_of(exc),
+            "delay_ms": int(delay * 1000),
+        }
+        response = getattr(exc, "response", None)
+        request_id = provider_request_id(getattr(response, "headers", None))
+        if request_id:
+            detail["provider_request_id"] = request_id
+        add_step("upstream_retry", **detail)
         if metrics is not None:
             try:
                 metrics.record_upstream_retry()
