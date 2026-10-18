@@ -162,6 +162,11 @@ def openai_model_cards(settings: Any) -> list[dict[str, Any]]:
         # OpenAI facade: lifecycle + shutdown_date + server_tools (#1521 / #1653).
         card.update(openai_lifecycle_fields(model_id, settings))
         card["server_tools"] = anthropic_server_tools(model_id)
+        speed = anthropic_speed_capability(
+            model_id, pricing=getattr(settings, "pricing", None)
+        )
+        if speed is not None:
+            card["speed"] = speed
         cards.append(card)
 
     local_union: set[str] = set()
@@ -399,8 +404,39 @@ def openai_lifecycle_fields(model_id: str, settings: Any = None) -> dict[str, An
     return fields
 
 
-def anthropic_capabilities(model_id: str) -> dict[str, Any]:
-    """Anthropic Models API ``capabilities`` object (#1481 / #1507)."""
+def anthropic_speed_capability(
+    model_id: str,
+    *,
+    pricing: Any = None,
+    fallback_per_1k: float = 0.002,
+) -> dict[str, Any] | None:
+    """``capabilities.speed`` for fast-mode ids, including the 2× list rate (#1740)."""
+    from daari.pricing import (
+        anthropic_fast_mode_spec,
+        anthropic_speed_factor,
+        resolve_price,
+    )
+
+    spec = anthropic_fast_mode_spec(model_id)
+    if spec is None:
+        return None
+    if pricing is None:
+        from daari.config.settings import PricingSettings
+
+        pricing = PricingSettings()
+    price = resolve_price(model_id, pricing, fallback_per_1k=fallback_per_1k)
+    factor = anthropic_speed_factor("fast")
+    return {
+        "fast": {
+            **spec,
+            "input_per_1m": price.input_per_1m * factor,
+            "output_per_1m": price.output_per_1m * factor,
+        }
+    }
+
+
+def anthropic_capabilities(model_id: str, settings: Any = None) -> dict[str, Any]:
+    """Anthropic Models API ``capabilities`` object (#1481 / #1507 / #1740)."""
     thinking_types: dict[str, Any] = {
         "disabled": {
             "supported": anthropic_thinking_disabled_supported(model_id),
@@ -416,6 +452,12 @@ def anthropic_capabilities(model_id: str) -> dict[str, Any]:
     if matching_model_key(model_id, ("claude-haiku-5-5",)) is not None:
         thinking_types["adaptive"] = {"supported": True, "default": True}
         caps["thinking"]["default_effort"] = "medium"
+    speed = anthropic_speed_capability(
+        model_id,
+        pricing=getattr(settings, "pricing", None) if settings is not None else None,
+    )
+    if speed is not None:
+        caps["speed"] = speed
     return caps
 
 
@@ -437,7 +479,7 @@ def anthropic_model_cards(settings: Any) -> list[dict[str, Any]]:
         created = int(card.get("created") or 0)
         created_at = datetime.fromtimestamp(created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         model_id = str(card["id"])
-        caps = anthropic_capabilities(model_id)
+        caps = anthropic_capabilities(model_id, settings)
         # Carry OpenAI/Ollama `decision` tag into Anthropic capabilities (#1658).
         openai_caps = card.get("capabilities") or []
         if "decision" in openai_caps:
