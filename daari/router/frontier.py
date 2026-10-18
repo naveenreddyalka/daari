@@ -46,6 +46,14 @@ ANTHROPIC_FAST_RATE_HEADERS = (
 )
 
 
+def _keeps_existing_warning(warning: str | None) -> bool:
+    """Budget, quota, and rate-limit warnings outrank speed_ignored."""
+    if not warning:
+        return False
+    text = warning.lower()
+    return "budget" in text or "quota" in text or "rate_limit" in text or "rate-limit" in text
+
+
 def note_frontier_http_failure(response: Any) -> None:
     """Record a non-2xx frontier response, including a provider request id when sent."""
     status = getattr(response, "status_code", None)
@@ -219,6 +227,21 @@ class FrontierExecutor:
 
     def _is_anthropic(self) -> bool:
         return infer_frontier_kind(self.provider, self.base_url) == "anthropic"
+
+    def note_ignored_speed(self, request: InternalRequest, meta: DaariMeta) -> None:
+        """Warn when the client set speed and this slot will not forward it."""
+        speed = getattr(getattr(request, "sampling", None), "speed", None)
+        if not isinstance(speed, str) or not speed.strip() or self._is_anthropic():
+            return
+        from daari.gateway.request_log import log_gateway_event
+
+        log_gateway_event(
+            "speed_ignored",
+            {"speed": speed.strip(), "provider": self.provider},
+        )
+        if _keeps_existing_warning(meta.warning):
+            return
+        meta.warning = "speed_ignored"
 
     def _openai_payload(self, request: InternalRequest, *, stream: bool) -> dict[str, Any]:
         payload = {
@@ -521,6 +544,7 @@ class FrontierExecutor:
             if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
                 self.metrics.record_soft_warning(note)
         self._apply_param_compat_meta(meta)
+        self.note_ignored_speed(request, meta)
         return InternalResponse(
             content=content or "",
             model=model,
