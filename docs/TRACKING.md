@@ -7359,6 +7359,15 @@ block. Text-only bodies stay on `estimate_tokens` of system, message text, and
 tools JSON. The handler still returns `input_tokens` and does not call L6.
 Covered by `tests/unit/test_count_tokens_media.py`.
 
+### Frontier web-search call fee ([#1770](https://github.com/naveenreddyalka/daari/issues/1770))
+
+<!-- tracking:#1770 -->
+**Status:** Done (2026-10-18). Each Responses `web_search_call` with action
+`search` (or a missing action) and each Anthropic
+`usage.server_tool_use.web_search_requests` adds $0.01 on top of token cost.
+When both shapes are present the larger count is billed once. `open_page` and
+`find_in_page` are not searches. Covered by `tests/unit/test_web_search_cost.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
