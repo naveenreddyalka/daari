@@ -7289,6 +7289,15 @@ names checks `cache`, `model_backend`, `redis`, and `postgres`, and states
 `/health` is liveness. Linked from the operations nav. Covered by
 `tests/unit/test_ready_status_docs.py`.
 
+### Adaptive thinking drops legacy keys ([#1757](https://github.com/naveenreddyalka/daari/issues/1757))
+
+<!-- tracking:#1757 -->
+**Status:** Done (2026-10-18). Outbound `thinking` objects with `type: adaptive`
+keep only `type`. Dropped key names land on the param-compat dropped-params
+and warning path. `type: enabled` still carries `budget_tokens`. Assistant
+message thinking blocks are unchanged. Covered by
+`tests/unit/test_frontier_param_compat.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
