@@ -73,7 +73,7 @@ def wants_anthropic_models(request: Request) -> bool:
 
 class AnthropicMessageIn(BaseModel):
     role: str
-    content: str | list[dict[str, Any]]
+    content: str | list[dict[str, Any]] | None = None
 
 
 def anthropic_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -133,13 +133,24 @@ def system_blocks_to_messages(system: str | list[dict[str, Any]] | None) -> list
     return messages
 
 
-def anthropic_message_to_internal(message: AnthropicMessageIn) -> list[Message]:
+def _is_blank_user_content(content: str | list[dict[str, Any]] | None) -> bool:
+    return content is None or content == "" or content == []
+
+
+def anthropic_message_to_internal(
+    message: AnthropicMessageIn, *, keep_empty: bool = False
+) -> list[Message]:
     """Expand one Anthropic message into internal messages.
 
     Assistant `tool_use` blocks become OpenAI-style tool_calls; user
     `tool_result` blocks become role=tool messages (issue #84). Plain text
-    stays a single message.
+    stays a single message. A trailing empty user turn is kept so the
+    previous assistant turn is not last on replay (#1768).
     """
+    if keep_empty and message.role == "user" and _is_blank_user_content(message.content):
+        return [Message(role="user", content="")]
+    if message.content is None:
+        return []
     if isinstance(message.content, str):
         text = content_to_text(message.content)
         return [Message(role=message.role, content=text)] if text else []
@@ -346,8 +357,14 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             )
             internal_messages: list[Message] = []
             internal_messages.extend(system_blocks_to_messages(body.system))
-            for message in body.messages:
-                internal_messages.extend(anthropic_message_to_internal(message))
+            last_index = len(body.messages) - 1
+            for index, message in enumerate(body.messages):
+                internal_messages.extend(
+                    anthropic_message_to_internal(
+                        message,
+                        keep_empty=index == last_index and message.role == "user",
+                    )
+                )
             # Trailing system turns are preserved here so Anthropic-native /
             # frontier egress keeps mid-conversation system layout (#1154).
             # Local Ollama tiers hoist in OllamaExecutor._payload instead.
