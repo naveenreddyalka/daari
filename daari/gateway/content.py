@@ -5,6 +5,7 @@ from typing import Any
 from daari.gateway.internal import ContentAudio, ContentImage, Message
 
 _TEXT_BLOCK_TYPES = frozenset({"text", "input_text", "output_text"})
+_MEDIA_BLOCK_TYPES = frozenset({"image", "image_url", "document"})
 _THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
 _AUDIO_FORMATS = frozenset({"wav", "mp3"})
 
@@ -69,6 +70,18 @@ def extract_thinking_blocks(
             if isinstance(data, str) and data.strip():
                 kept.append(dict(block))
     return kept
+
+
+def count_media_blocks(content: str | list[dict[str, Any]] | dict[str, Any] | None) -> int:
+    """Count image and document blocks that text extraction skips (#1769)."""
+    if content is None or isinstance(content, str):
+        return 0
+    blocks = [content] if isinstance(content, dict) else content
+    count = 0
+    for block in blocks:
+        if isinstance(block, dict) and block.get("type") in _MEDIA_BLOCK_TYPES:
+            count += 1
+    return count
 
 
 def extract_images(content: str | list[dict[str, Any]] | dict[str, Any] | None) -> list[ContentImage]:

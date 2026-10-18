@@ -7350,6 +7350,15 @@ Anthropic L6 captured them before the first body chunk. Unrelated upstream
 headers are dropped. An OpenAI-provider L6 response does not gain them.
 Covered by `tests/unit/test_chat_fast_rate_headers.py`.
 
+### count_tokens includes image and document blocks ([#1769](https://github.com/naveenreddyalka/daari/issues/1769))
+
+<!-- tracking:#1769 -->
+**Status:** Done (2026-10-18). `POST /v1/messages/count_tokens` adds one local
+token per Anthropic `image` / `document` block and per OpenAI `image_url`
+block. Text-only bodies stay on `estimate_tokens` of system, message text, and
+tools JSON. The handler still returns `input_tokens` and does not call L6.
+Covered by `tests/unit/test_count_tokens_media.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -93,7 +93,9 @@ to a cloud endpoint unless you turn that flag on. See
 See [local text-to-speech](../guides/backends/tts.md).
 
 `POST /v1/messages/count_tokens` is a local estimate (`estimate_tokens` on system +
-messages + tools), not an L6 round-trip. When L6 itself is Anthropic (`provider`
+messages + tools), not an L6 round-trip. Image and document blocks are included
+in that local estimate: each Anthropic `image` or `document` block and each
+OpenAI `image_url` block adds one token beyond the text-only count. When L6 itself is Anthropic (`provider`
 `anthropic`/`claude`, or `anthropic.com` in `base_url`), the frontier executor POSTs
 native `/v1/messages` with `x-api-key` / `anthropic-version` headers, not an OpenAI
 body at `/chat/completions`. Prompt-cache hints land on the last system block as
