@@ -22,7 +22,7 @@ from daari.gateway.provider_prefs import (
     require_zdr_slot,
 )
 from daari.observability.trace import add_step
-from daari.router.circuit_breaker import CircuitBreaker
+from daari.router.circuit_breaker import CircuitBreaker, counts_as_hard_provider_failure
 from daari.router.retry import RetryPolicy, is_retryable, resolve_upstream_policy, status_of
 from daari.router.frontier import FrontierExecutor
 from daari.router.http_pool import pool_limits_from_settings
@@ -203,7 +203,9 @@ class FrontierPool:
                 # failures, so reaching here means this provider is genuinely
                 # unhealthy (#159). Auth failures never retry and fail over at
                 # once, since another key or provider is the only way forward.
-                slot.breaker.record_failure()
+                # 429/529 stay transient overloads and do not open the circuit.
+                if counts_as_hard_provider_failure(exc):
+                    slot.breaker.record_failure()
                 errors.append(f"{slot.id}:{type(exc).__name__}")
                 add_step(
                     "frontier_fail",
@@ -273,7 +275,8 @@ class FrontierPool:
                 slot.breaker.record_success()
                 return
             except Exception as exc:  # noqa: BLE001 — try next provider
-                slot.breaker.record_failure()
+                if counts_as_hard_provider_failure(exc):
+                    slot.breaker.record_failure()
                 errors.append(f"{slot.id}:{type(exc).__name__}")
                 add_step(
                     "frontier_fail",

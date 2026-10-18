@@ -11,6 +11,16 @@ from dataclasses import dataclass, field
 from threading import Lock
 
 
+def counts_as_hard_provider_failure(exc: BaseException) -> bool:
+    """429 and 529 are transient overloads, not hard provider failures.
+
+    They share a class: retry with backoff, and do not open the circuit.
+    """
+    from daari.router.retry import status_of
+
+    return status_of(exc) not in {429, 529}
+
+
 @dataclass
 class CircuitBreaker:
     failure_threshold: int = 3

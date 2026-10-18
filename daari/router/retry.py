@@ -28,7 +28,7 @@ import httpx
 
 T = TypeVar("T")
 
-RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504})
+RETRYABLE_STATUS = frozenset({408, 429, 500, 502, 503, 504, 529})
 
 RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     httpx.ConnectError,

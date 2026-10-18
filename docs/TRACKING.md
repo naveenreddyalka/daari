@@ -7251,6 +7251,16 @@ unlock wired to `POST /v1/daari/keys/unlock`. Docs: http-api.md. Covered by
 `tests/unit/test_events_lockouts_admin.py` and
 `packages/web-ui/test/dashboard.test.js`.
 
+### Retry Anthropic 529 and degrade fast mode ([#1739](https://github.com/naveenreddyalka/daari/issues/1739))
+
+<!-- tracking:#1739 -->
+**Status:** Done (2026-10-18). 529 is retryable with the same backoff and
+`Retry-After` path as 429. A fast-mode 429/529 is retried once at
+`speed: standard`; the reply's `usage_speed` is kept and `daari_meta.warning`
+notes `fast_degraded_to_standard`. 429 and 529 do not open the frontier
+circuit. Covered by `tests/unit/test_upstream_retry.py`,
+`tests/unit/test_anthropic_fast_mode.py`, and `tests/unit/test_frontier_pool.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -393,11 +393,21 @@ class FrontierExecutor:
         from daari.router.deadline import nonstream_timeout
 
         timeout = nonstream_timeout(self.timeout, "L6")
+        degraded_fast = False
 
         async def attempt() -> dict[str, Any]:
+            nonlocal degraded_fast
             response = await self._client().post(
                 path, json=payload, headers=headers, timeout=timeout
             )
+            if (
+                anthropic
+                and payload.get("speed") == "fast"
+                and not degraded_fast
+                and response.status_code in {429, 529}
+            ):
+                degraded_fast = True
+                payload["speed"] = "standard"
             response.raise_for_status()
             return response.json()
 
@@ -450,6 +460,12 @@ class FrontierExecutor:
         if gate_warning:
             existing = meta.warning
             meta.warning = f"{existing}; {gate_warning}" if existing else gate_warning
+        if degraded_fast:
+            note = "fast_degraded_to_standard"
+            existing = meta.warning
+            meta.warning = f"{existing}; {note}" if existing else note
+            if self.metrics is not None and hasattr(self.metrics, "record_soft_warning"):
+                self.metrics.record_soft_warning(note)
         self._apply_param_compat_meta(meta)
         return InternalResponse(
             content=content or "",
