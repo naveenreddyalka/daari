@@ -7298,6 +7298,15 @@ per-request protocol is `2026-07-28` or newer. The default `2025-03-26`
 protocol omits the field. Call results do not advertise `ttlMs` or
 `cacheScope`. Covered by `tests/unit/test_mcp_server.py`.
 
+### Fast-mode rate-limit header docs ([#1764](https://github.com/naveenreddyalka/daari/issues/1764))
+
+<!-- tracking:#1764 -->
+**Status:** Done (2026-10-18). `docs/developer/guides/operations/fast-mode-headers.md`
+names the six `anthropic-fast-*-tokens-*` headers and states they are copied
+only from an Anthropic L6 Messages response. Omitted headers stay absent.
+Other upstream headers are not copied. Covered by
+`tests/unit/test_fast_mode_header_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
