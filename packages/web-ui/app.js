@@ -44,11 +44,18 @@ const adminKeysStatusFilterNode = document.getElementById("admin-keys-status-fil
 const adminKeysIdleDaysNode = document.getElementById("admin-keys-idle-days");
 const adminTeamsTableNode = document.getElementById("admin-teams-table");
 const adminTeamsStatusNode = document.getElementById("admin-teams-status");
+const lockoutsTableNode = document.getElementById("lockouts-table");
+const lockoutsStatusNode = document.getElementById("lockouts-status");
+const eventsTableNode = document.getElementById("events-table");
+const eventsStatusNode = document.getElementById("events-status");
+const eventsTeamFilterNode = document.getElementById("events-team-filter");
+const eventsNextButton = document.getElementById("events-next");
 const tracesTableNode = document.getElementById("traces-table");
 const traceDetailNode = document.getElementById("trace-detail");
 const tracesStatusNode = document.getElementById("traces-status");
 const THEME_KEY = "daari.webui.theme";
 const API_KEY_STORAGE = "daari.webui.apiKey";
+let eventsCursor = "";
 let refreshTimerId = null;
 let latestStats = null;
 let latestOrgProfile = null;
@@ -587,6 +594,131 @@ async function loadAdminKeys() {
   }
 }
 
+function eventsUrl() {
+  const params = new URLSearchParams();
+  params.set("limit", "20");
+  const team =
+    eventsTeamFilterNode && typeof eventsTeamFilterNode.value === "string"
+      ? eventsTeamFilterNode.value.trim()
+      : "";
+  if (team) {
+    params.set("team_id", team);
+  }
+  if (eventsCursor) {
+    params.set("cursor", eventsCursor);
+  }
+  return `${apiBaseUrl}/v1/daari/events?${params.toString()}`;
+}
+
+function renderEvents(events) {
+  if (!eventsTableNode) {
+    return;
+  }
+  const rows = Array.isArray(events) ? events : [];
+  if (rows.length === 0) {
+    setEmptyRow(eventsTableNode, 4, "No events recorded yet.");
+    return;
+  }
+  clearNode(eventsTableNode);
+  for (const event of rows) {
+    const payload = event && typeof event.payload === "object" && event.payload ? event.payload : {};
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      event && event.id != null ? event.id : "",
+      (event && event.ts) || "-",
+      (event && event.event) || "-",
+      payload.team_id || "-",
+    ]);
+    eventsTableNode.appendChild(row);
+  }
+}
+
+async function loadEvents() {
+  if (!eventsTableNode || !eventsStatusNode) {
+    return;
+  }
+  try {
+    const payload = await fetchJson(eventsUrl());
+    renderEvents(payload.events);
+    const next = payload && payload.next_cursor ? String(payload.next_cursor) : "";
+    if (eventsNextButton) {
+      eventsNextButton.dataset.cursor = next;
+      eventsNextButton.disabled = !next;
+    }
+    const count = Array.isArray(payload.events) ? payload.events.length : 0;
+    eventsStatusNode.textContent = payload.has_more
+      ? `${count} event(s). More available.`
+      : `${count} event(s).`;
+  } catch (error) {
+    renderEvents([]);
+    if (eventsNextButton) {
+      eventsNextButton.dataset.cursor = "";
+      eventsNextButton.disabled = true;
+    }
+    eventsStatusNode.textContent = `Events unavailable (${error.message}).`;
+  }
+}
+
+function renderLockouts(lockouts) {
+  if (!lockoutsTableNode) {
+    return;
+  }
+  const rows = Array.isArray(lockouts) ? lockouts : [];
+  if (rows.length === 0) {
+    setEmptyRow(lockoutsTableNode, 3, "No locked prefixes.");
+    return;
+  }
+  clearNode(lockoutsTableNode);
+  for (const entry of rows) {
+    const row = document.createElement("tr");
+    appendTextCells(row, [
+      entry && entry.prefix != null ? entry.prefix : "",
+      entry && entry.expires_in_seconds != null ? entry.expires_in_seconds : "",
+    ]);
+    const td = document.createElement("td");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "lockout-unlock";
+    button.textContent = "Unlock";
+    button.dataset.prefix = entry && entry.prefix != null ? String(entry.prefix) : "";
+    td.appendChild(button);
+    row.appendChild(td);
+    lockoutsTableNode.appendChild(row);
+  }
+}
+
+async function loadLockouts() {
+  if (!lockoutsTableNode || !lockoutsStatusNode) {
+    return;
+  }
+  try {
+    const payload = await fetchJson(`${apiBaseUrl}/v1/daari/lockouts`);
+    const rows = Array.isArray(payload.lockouts) ? payload.lockouts : [];
+    renderLockouts(rows);
+    lockoutsStatusNode.textContent = `${rows.length} locked prefix(es).`;
+  } catch (error) {
+    renderLockouts([]);
+    lockoutsStatusNode.textContent = `Lockouts unavailable (${error.message}).`;
+  }
+}
+
+async function unlockPrefix(prefix) {
+  if (!prefix || !lockoutsStatusNode) {
+    return;
+  }
+  lockoutsStatusNode.textContent = "Unlocking…";
+  try {
+    await fetchJson(`${apiBaseUrl}/v1/daari/keys/unlock`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prefix }),
+    });
+    await loadLockouts();
+  } catch (error) {
+    lockoutsStatusNode.textContent = `Unlock failed (${error.message}).`;
+  }
+}
+
 async function loadAdminTeams() {
   if (!adminTeamsTableNode || !adminTeamsStatusNode) {
     return;
@@ -720,6 +852,8 @@ async function loadStats() {
     void loadReport();
     void loadAdminKeys();
     void loadAdminTeams();
+    void loadLockouts();
+    void loadEvents();
     void loadTraces();
   } catch (error) {
     latestStats = null;
@@ -740,6 +874,14 @@ async function loadStats() {
     renderTeamRateLimits([]);
     renderKeyRateLimits([]);
     renderBackends([]);
+    renderLockouts([]);
+    if (lockoutsStatusNode) {
+      lockoutsStatusNode.textContent = "";
+    }
+    renderEvents([]);
+    if (eventsStatusNode) {
+      eventsStatusNode.textContent = "";
+    }
     orgSummaryNode.textContent = "Not available";
     orgNode.textContent = "Not available";
     statusNode.textContent = `Could not reach ${apiBaseUrl}/v1/daari/stats (${error.message})`;
@@ -812,6 +954,30 @@ if (adminKeysStatusFilterNode) {
 if (adminKeysIdleDaysNode) {
   adminKeysIdleDaysNode.addEventListener("change", () => {
     void loadAdminKeys();
+  });
+}
+if (eventsTeamFilterNode) {
+  eventsTeamFilterNode.addEventListener("change", () => {
+    eventsCursor = "";
+    void loadEvents();
+  });
+}
+if (eventsNextButton) {
+  eventsNextButton.addEventListener("click", () => {
+    const next = eventsNextButton.dataset.cursor || "";
+    if (!next) {
+      return;
+    }
+    eventsCursor = next;
+    void loadEvents();
+  });
+}
+if (lockoutsTableNode) {
+  lockoutsTableNode.addEventListener("click", (event) => {
+    const target = event.target.closest("button.lockout-unlock");
+    if (target) {
+      void unlockPrefix(target.dataset.prefix || "");
+    }
   });
 }
 tracesTableNode.addEventListener("click", (event) => {

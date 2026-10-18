@@ -184,7 +184,11 @@ class KeyLockout:
 
     def locked_prefixes(self) -> list[str]:
         """Prefixes with an active lock (Redis lock keys and in-process timers)."""
-        found: list[str] = []
+        return [str(row["prefix"]) for row in self.locked_inventory()]
+
+    def locked_inventory(self, *, now: float | None = None) -> list[dict[str, Any]]:
+        """Active locks with seconds remaining until expiry."""
+        found: dict[str, int] = {}
         marker = f"{self.redis_key_prefix}lock:"
         if self.redis is not None:
             try:
@@ -199,15 +203,19 @@ class KeyLockout:
                 for key in raw_keys:
                     text = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
                     if text.startswith(marker) and text[len(marker) :]:
-                        found.append(text[len(marker) :])
+                        prefix = text[len(marker) :]
+                        found[prefix] = self._redis_retry(text)
             except Exception:
                 log_gateway_event("auth_key_lockout_redis_error", {"op": "scan"})
-        moment = time.monotonic()
+        moment = time.monotonic() if now is None else float(now)
         with self._lock:
             for prefix, until in self._locked_until.items():
-                if until > moment and prefix not in found:
-                    found.append(prefix)
-        return sorted(set(found))
+                if until > moment:
+                    found[prefix] = max(1, math.ceil(until - moment))
+        return [
+            {"prefix": prefix, "expires_in_seconds": int(seconds)}
+            for prefix, seconds in sorted(found.items())
+        ]
 
     def _count_key(self, prefix: str) -> str:
         return f"{self.redis_key_prefix}{prefix}"

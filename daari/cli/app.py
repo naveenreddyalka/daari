@@ -88,6 +88,7 @@ project_app = typer.Typer(help="Manage per-project .daari.yaml profiles.")
 keys_app = typer.Typer(help="Virtual API keys — per-key budgets, RPM, tier caps.")
 spend_app = typer.Typer(help="Per-request spend rows for finance chargeback.")
 audit_app = typer.Typer(help="Read and export the local admin audit log.")
+events_app = typer.Typer(help="List gateway request/event log rows.")
 backup_app = typer.Typer(help="Full-state backup and restore of durable stores.")
 config_app = typer.Typer(help="Validate daari.yaml before restart.")
 alerts_app = typer.Typer(help="Operator webhook secrets and alert settings.")
@@ -104,6 +105,7 @@ app.add_typer(web_ui_app, name="web-ui")
 app.add_typer(project_app, name="project")
 app.add_typer(keys_app, name="keys")
 app.add_typer(audit_app, name="audit")
+app.add_typer(events_app, name="events")
 app.add_typer(backup_app, name="backup")
 app.add_typer(config_app, name="config")
 app.add_typer(spend_app, name="spend")
@@ -662,6 +664,20 @@ def _daemon_unlock_prefix(settings: Settings, prefix: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+@keys_app.command("lockouts")
+def keys_lockouts() -> None:
+    """List currently locked key prefixes and seconds until expiry."""
+    from daari.auth.key_lockout import build_key_lockout
+
+    lock = build_key_lockout(get_settings())
+    rows = lock.locked_inventory()
+    if not rows:
+        typer.echo("No locked prefixes.")
+        return
+    for row in rows:
+        typer.echo(f"{row['prefix']}\t{row['expires_in_seconds']}")
+
+
 @keys_app.command("unlock-prefix")
 def keys_unlock_prefix(
     prefix: str = typer.Argument(..., help="Key prefix (first 10 characters) to unlock."),
@@ -1157,6 +1173,58 @@ def keys_import(
 
 
 app.add_typer(enterprise_app, name="enterprise")
+
+
+@events_app.command("list")
+def events_list(
+    team: str | None = typer.Option(None, "--team", help="Filter by payload team_id."),
+    kind: str | None = typer.Option(None, "--kind", help="Filter by event name."),
+    limit: int = typer.Option(50, "--limit", help="Max rows (newest first, cap 1000)."),
+    cursor: str | None = typer.Option(
+        None, "--cursor", help="Exclusive event id; return older rows only."
+    ),
+) -> None:
+    """List gateway events from the same store as GET /v1/daari/events."""
+    from daari.gateway.admin_read import MAX_EVENTS_LIMIT, _clamp_page, _page_meta
+    from daari.gateway.postgres_request_log import request_log_store_from_settings
+
+    store = request_log_store_from_settings(get_settings())
+    if store is None:
+        typer.echo(
+            "request-log listing requires observability.request_log.backend=postgres",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    cursor_id = None
+    if cursor is not None and str(cursor).strip():
+        try:
+            cursor_id = int(str(cursor).strip())
+        except ValueError as exc:
+            typer.echo("cursor must be an integer event id", err=True)
+            raise typer.Exit(code=1) from exc
+        if cursor_id < 1:
+            typer.echo("cursor must be an integer event id", err=True)
+            raise typer.Exit(code=1)
+    lim, off = _clamp_page(limit=limit, offset=0, maximum=MAX_EVENTS_LIMIT)
+    events, total = store.query_events(
+        limit=lim,
+        offset=off,
+        before_id=cursor_id,
+        team_id=(team or "").strip() or None,
+        kind=(kind or "").strip() or None,
+    )
+    page = _page_meta(total, limit=lim, offset=off, returned=len(events))
+    if not events:
+        typer.echo("No events.")
+        typer.echo("next_cursor: -")
+        return
+    for row in events:
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        typer.echo(
+            f"{row.get('id')}\t{row.get('ts')}\t{row.get('event')}\t{payload.get('team_id') or ''}"
+        )
+    next_cursor = str(events[-1]["id"]) if page.get("has_more") else "-"
+    typer.echo(f"next_cursor: {next_cursor}")
 
 
 def _audit_log_from_settings():

@@ -782,3 +782,68 @@ test("401 on stats shows auth hint in status", async (t) => {
   const status = dom.window.document.getElementById("status").textContent;
   assert.match(status, /API key|Bearer|401/i);
 });
+
+test("events panel fetches team filter and renders rows as text", async (t) => {
+  const xss = '<img src=x onerror=window.__xss=1><script>window.__xss=1</script>';
+  const fetch = fakeFetch(
+    routes({
+      "/v1/daari/events": {
+        events: [
+          {
+            id: 9,
+            ts: xss,
+            event: "chat",
+            payload: { team_id: "eng" },
+          },
+        ],
+        total: 2,
+        limit: 20,
+        offset: 0,
+        has_more: true,
+        next_cursor: "9",
+      },
+      "/v1/daari/lockouts": {
+        lockouts: [{ prefix: xss, expires_in_seconds: 12 }],
+      },
+      "/v1/daari/keys/unlock": { status: "ok", prefix: "abcdefghij", cleared: true },
+    })
+  );
+  const dom = loadDashboard({ fetch });
+  t.after(() => dom.window.close());
+  await settle();
+
+  const doc = dom.window.document;
+  const team = doc.getElementById("events-team-filter");
+  team.value = "eng";
+  team.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  await settle();
+
+  const eventCalls = fetch.calls.filter((c) => c.url.includes("/v1/daari/events"));
+  assert.ok(eventCalls.some((c) => c.url.includes("limit=20")));
+  assert.ok(eventCalls.some((c) => c.url.includes("team_id=eng")));
+  const eventsText = doc.getElementById("events-table").textContent;
+  assert.match(eventsText, /chat/);
+  assert.match(eventsText, /eng/);
+  assert.match(eventsText, /onerror/);
+  assert.equal(doc.querySelectorAll("#events-table script").length, 0);
+  assert.equal(doc.querySelectorAll("#events-table img").length, 0);
+  assert.equal(dom.window.__xss, undefined);
+
+  const lockText = doc.getElementById("lockouts-table").textContent;
+  assert.match(lockText, /onerror/);
+  assert.match(lockText, /Unlock/);
+  assert.equal(doc.querySelectorAll("#lockouts-table script").length, 0);
+
+  doc.getElementById("events-next").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+  assert.ok(fetch.calls.some((c) => c.url.includes("/v1/daari/events") && c.url.includes("cursor=9")));
+
+  const unlock = doc.querySelector("#lockouts-table button.lockout-unlock");
+  unlock.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+  await settle();
+  const unlockCall = fetch.calls.find(
+    (c) => c.url.includes("/v1/daari/keys/unlock") && c.init?.method === "POST"
+  );
+  assert.ok(unlockCall);
+  assert.match(unlockCall.init.body, /onerror/);
+});
