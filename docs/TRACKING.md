@@ -7280,6 +7280,15 @@ Gemini API is not a daari surface. They name `codex` and `opencode` as the
 OpenAI-compatible path. Docs: gemini-cli.md. Covered by
 `tests/unit/test_configure_cli.py`.
 
+### GET /ready status values ([#1726](https://github.com/naveenreddyalka/daari/issues/1726))
+
+<!-- tracking:#1726 -->
+**Status:** Done (2026-10-18). `docs/developer/guides/operations/ready.md`
+lists `ready` 200, `degraded` 200, `not_ready` 503, and `shutting_down` 503,
+names checks `cache`, `model_backend`, `redis`, and `postgres`, and states
+`/health` is liveness. Linked from the operations nav. Covered by
+`tests/unit/test_ready_status_docs.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
