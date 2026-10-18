@@ -34,6 +34,27 @@ from daari.router.retry import RetryPolicy, run_upstream
 # Stream events: plain str for text, or a dict tagged for tool-call relay (#934).
 FrontierStreamEvent = str | dict[str, Any]
 
+# Dedicated fast-mode bucket headers (Anthropic, 2026-10-15). Nothing else is copied.
+ANTHROPIC_FAST_RATE_HEADERS = (
+    "anthropic-fast-input-tokens-limit",
+    "anthropic-fast-input-tokens-remaining",
+    "anthropic-fast-input-tokens-reset",
+    "anthropic-fast-output-tokens-limit",
+    "anthropic-fast-output-tokens-remaining",
+    "anthropic-fast-output-tokens-reset",
+)
+
+
+def anthropic_fast_rate_headers(headers: httpx.Headers) -> dict[str, str]:
+    """Allowlist of fast-mode rate-limit headers present on an upstream response."""
+    found: dict[str, str] = {}
+    for name in ANTHROPIC_FAST_RATE_HEADERS:
+        value = headers.get(name)
+        if value is None or not str(value).strip():
+            continue
+        found[name] = str(value)
+    return found
+
 
 def _tool_calls_from_anthropic_content(content: Any) -> list[dict[str, Any]] | None:
     """Convert Anthropic tool_use blocks to OpenAI-shaped tool_calls."""
@@ -131,6 +152,16 @@ class FrontierExecutor:
     last_param_compat: FrontierParamCompatResult | None = field(
         default=None, init=False, repr=False
     )
+    last_fast_rate_headers: dict[str, str] = field(
+        default_factory=dict, init=False, repr=False
+    )
+
+    def _remember_fast_rate_headers(self, response: Any) -> None:
+        headers = getattr(response, "headers", None)
+        if not self._is_anthropic() or headers is None:
+            self.last_fast_rate_headers = {}
+            return
+        self.last_fast_rate_headers = anthropic_fast_rate_headers(headers)
 
     def _client(self) -> httpx.AsyncClient:
         if self._http is None or getattr(self._http, "is_closed", False):
@@ -270,6 +301,7 @@ class FrontierExecutor:
         self.last_stream_usage_speed = None
         self.last_stream_input_tokens = None
         self.last_stream_output_tokens = None
+        self.last_fast_rate_headers = {}
 
         if self._is_anthropic():
             payload = to_anthropic_payload(
@@ -308,6 +340,7 @@ class FrontierExecutor:
             timeout=self.timeout,
         ) as response:
             response.raise_for_status()
+            self._remember_fast_rate_headers(response)
             tool_block_open = False
             async for line in aiter_with_ttft_deadline(response.aiter_lines()):
                 if self._is_anthropic():
@@ -394,6 +427,7 @@ class FrontierExecutor:
 
         timeout = nonstream_timeout(self.timeout, "L6")
         degraded_fast = False
+        self.last_fast_rate_headers = {}
 
         async def attempt() -> dict[str, Any]:
             nonlocal degraded_fast
@@ -409,6 +443,7 @@ class FrontierExecutor:
                 degraded_fast = True
                 payload["speed"] = "standard"
             response.raise_for_status()
+            self._remember_fast_rate_headers(response)
             return response.json()
 
         data = await run_upstream(

@@ -37,6 +37,20 @@ from daari.gateway.provider_prefs import (
 from daari.gateway.sampling import SamplingParams
 from daari.observability.tokens import estimate_tokens
 from daari.router.capabilities import UnsupportedCapability
+
+
+def fast_rate_headers_for_client(ctx: Any, *, tier: str | None) -> dict[str, str]:
+    """Anthropic fast-mode rate-limit headers for an L6 Messages response (#1756)."""
+    if (tier or "").upper() != "L6":
+        return {}
+    frontier = getattr(getattr(ctx, "router", None), "frontier", None)
+    if frontier is None:
+        return {}
+    is_anthropic = getattr(frontier, "_is_anthropic", None)
+    if not callable(is_anthropic) or not is_anthropic():
+        return {}
+    stored = getattr(frontier, "last_fast_rate_headers", None) or {}
+    return {str(name): str(value) for name, value in stored.items() if str(value).strip()}
 from daari.router.local_pool import BackendUnavailable, CloudEgressBlocked
 from daari.router.router import AppContext
 
@@ -475,11 +489,18 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                             "type": "error",
                             "error": {"type": "stream_error", "message": safe_detail(exc)},
                         }
-                        yield f"event: error\ndata: {json.dumps(error_payload)}\n\n"
-                        # Gracefully fall back to a non-streamed route and re-emit as a single SSE message.
+                        error_frame = f"event: error\ndata: {json.dumps(error_payload)}\n\n"
+                        # Resolve the non-stream fallback before the first SSE byte so
+                        # fast-mode rate-limit headers from that hop are on the response.
                         fallback = internal.model_copy(deep=True)
                         fallback.stream = False
-                        fallback_result = await ctx.router.route(fallback)
+                        try:
+                            fallback_result = await ctx.router.route(fallback)
+                        except Exception:
+                            yield error_frame
+                            raise
+                        outcome.note(fallback_result.daari_meta.tier)
+                        yield error_frame
                         fallback_meta = fallback_result.daari_meta.model_dump()
                         fallback_meta["warning"] = "stream_failed_fell_back_to_non_stream"
                         message_start = {
@@ -515,11 +536,18 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn', 'stop_sequence': None}, 'usage': {'output_tokens': 0, 'cost': 0.0}, 'daari_meta': fallback_meta})}\n\n"
                         yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop', 'daari_meta': fallback_meta})}\n\n"
 
+                def _stream_headers() -> dict[str, str]:
+                    headers = outcome.headers()
+                    headers.update(
+                        fast_rate_headers_for_client(ctx, tier=outcome.tier)
+                    )
+                    return headers
+
                 return DeferredHeadersStreamingResponse(
                     event_stream(),
                     media_type="text/event-stream",
                     headers={"X-Request-ID": request_id},
-                    late_headers=outcome.headers,
+                    late_headers=_stream_headers,
                 )
 
             try:
@@ -632,6 +660,7 @@ class AnthropicGatewayAdapter(GatewayAdapter):
                         session_id=internal.meta.session_id,
                         savings=ctx.router.session_savings,
                     ),
+                    **fast_rate_headers_for_client(ctx, tier=result.daari_meta.tier),
                     "X-Request-ID": request_id,
                 },
             )
