@@ -445,6 +445,63 @@ async def test_modern_protocol_lists_advertise_result_type_and_cache_meta(settin
 
 
 @pytest.mark.asyncio
+async def test_modern_tools_call_includes_result_type(settings, monkeypatch):
+    """Protocol >= 2026-07-28 tools/call results include resultType (#1755)."""
+    app = _app(settings)
+
+    async def fake_execute(_request: InternalRequest) -> InternalResponse:
+        return InternalResponse(
+            content="from-mcp",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama:l3"),
+        )
+
+    mock_all_ollama_executors(monkeypatch, app.state.ctx.router, fake_execute)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        modern = await _rpc(
+            client,
+            "tools/call",
+            {"name": "route", "arguments": {"input": "hello"}, **_modern_list_meta()},
+        )
+        invalid = await _rpc(
+            client,
+            "tools/call",
+            {"name": "route", "arguments": {"input": 1}, **_modern_list_meta()},
+            rpc_id=2,
+        )
+        legacy = await _rpc(
+            client,
+            "tools/call",
+            {
+                "name": "route",
+                "arguments": {"input": "hello"},
+                **_modern_list_meta("2025-03-26"),
+            },
+            rpc_id=3,
+        )
+        default = await _rpc(
+            client,
+            "tools/call",
+            {"name": "route", "arguments": {"input": "hello"}},
+            rpc_id=4,
+        )
+    modern_result = modern.json()["result"]
+    assert modern_result["resultType"] == "complete"
+    assert modern_result["isError"] is not True
+    assert "ttlMs" not in modern_result
+    assert "cacheScope" not in modern_result
+    invalid_result = invalid.json()["result"]
+    assert invalid_result["isError"] is True
+    assert invalid_result["resultType"] == "complete"
+    assert "ttlMs" not in invalid_result
+    for response in (legacy, default):
+        result = response.json()["result"]
+        assert result["content"][0]["text"] == "from-mcp"
+        assert "resultType" not in result
+
+
+@pytest.mark.asyncio
 async def test_modern_list_cache_scope_private_when_policy_filters(settings):
     """Filtered catalogs advertise private cacheScope on every modern list (#1730)."""
     settings.integrations.mcp_policy.deny = ["stats"]
