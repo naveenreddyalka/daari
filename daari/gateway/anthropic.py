@@ -13,7 +13,12 @@ from daari.config.project import apply_profile_to_meta, load_project_profile
 from daari.gateway.client_errors import backend_unavailable_message, request_deadline_response, routing_failure_detail, safe_detail
 from daari.gateway.base import GatewayAdapter
 from daari.gateway.cost_tier import apply_cost_tier
-from daari.gateway.content import content_to_text, extract_images, extract_thinking_blocks
+from daari.gateway.content import (
+    content_to_text,
+    count_media_blocks,
+    extract_images,
+    extract_thinking_blocks,
+)
 from daari.gateway.internal import InternalRequest, Message, RequestMeta
 from daari.gateway.disconnect import (
     ClientDisconnected,
@@ -689,16 +694,19 @@ class AnthropicGatewayAdapter(GatewayAdapter):
             Count locally: this is an ingress helper, not an L6 round-trip.
             """
             chars = 0
+            media = 0
             if body.system:
                 chars += len(content_to_text(body.system) or "")
+                media += count_media_blocks(body.system)
             for message in body.messages:
                 if isinstance(message.content, str):
                     chars += len(message.content)
                 else:
                     chars += len(content_to_text(message.content) or "")
+                    media += count_media_blocks(message.content)
             if body.tools:
                 chars += len(json.dumps(body.tools))
-            return {"input_tokens": max(1, estimate_tokens(chars))}
+            return {"input_tokens": max(1, estimate_tokens(chars)) + media}
 
         @router.post("/v1/messages/moderations", response_model=None)
         async def messages_moderations(body: dict[str, Any], request: Request) -> Any:
