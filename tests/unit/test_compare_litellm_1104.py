@@ -63,18 +63,20 @@ def test_compare_litellm_pins_1105_ga_agent_vs_multi_agent() -> None:
 
 
 def test_compare_litellm_pins_1106_decision_model_guardrail() -> None:
-    """1.106 watch: decision-model guardrail is not shipped yet (#1598)."""
+    """1.106.0 is GA; decision-model guardrail is still not shipped (#1758)."""
     text = DOC.read_text(encoding="utf-8")
-    lower = text.lower()
-    assert "1.106" in text
-    assert "1.104" in text
+    section = _markdown_section(text, "## LiteLLM 1.106")
+    lower = section.lower()
+    assert "1.106.0" in section
+    assert "ga" in lower
+    assert "prerelease" not in lower
+    assert "-rc" not in lower
+    assert " rc" not in lower
     assert "decision" in lower
     assert "guardrail" in lower
-    assert "docs.litellm.ai" in text
     assert "does **not** ship" in lower or "does not ship" in lower
-    assert "/v1/decisions" in text
-    # Floor stays 1.104.x GA.
-    assert "1.104.0 ga" in lower or "1.104.x" in lower or "1.104 ga" in lower
+    assert "/v1/decisions" in section
+    assert "1.104" in text
 
 
 def test_compare_litellm_pins_1105_ga_decisions_parity() -> None:
@@ -89,6 +91,9 @@ def test_compare_litellm_pins_1105_ga_decisions_parity() -> None:
     assert "/v1/decisions" in section
     assert "/v1/systemone" in section
     assert "already" in lower
-    # 1.106 stays a prerelease watch; 1.105 itself is GA.
-    watch = _markdown_section(text, "## LiteLLM 1.106")
-    assert "prerelease" in watch.lower() or "rc" in watch.lower()
+    # 1.105 itself is GA. The prerelease watch moved to 1.107 (#1758).
+    watch = _markdown_section(text, "## LiteLLM 1.107")
+    watch_lower = watch.lower()
+    assert "prerelease" in watch_lower or "rc" in watch_lower
+    assert "1.106.0" in watch
+    assert "ga" in watch_lower
