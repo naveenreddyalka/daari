@@ -7289,6 +7289,23 @@ names checks `cache`, `model_backend`, `redis`, and `postgres`, and states
 `/health` is liveness. Linked from the operations nav. Covered by
 `tests/unit/test_ready_status_docs.py`.
 
+### Adaptive thinking drops legacy keys ([#1757](https://github.com/naveenreddyalka/daari/issues/1757))
+
+<!-- tracking:#1757 -->
+**Status:** Done (2026-10-18). Outbound `thinking` objects with `type: adaptive`
+keep only `type`. Dropped key names land on the param-compat dropped-params
+and warning path. `type: enabled` still carries `budget_tokens`. Assistant
+message thinking blocks are unchanged. Covered by
+`tests/unit/test_frontier_param_compat.py`.
+
+### Anthropic fast-mode rate-limit headers ([#1756](https://github.com/naveenreddyalka/daari/issues/1756))
+
+<!-- tracking:#1756 -->
+**Status:** Done (2026-10-18). Non-streaming `POST /v1/messages` and the
+streaming fallback copy the six `anthropic-fast-*-tokens-*` headers from an
+Anthropic L6 response. Unrelated upstream headers are not copied. Missing
+headers stay absent. Covered by `tests/unit/test_anthropic_fast_rate_headers.py`.
+
 ### MCP tools/call resultType for protocol 2026-07-28 ([#1755](https://github.com/naveenreddyalka/daari/issues/1755))
 
 <!-- tracking:#1755 -->
@@ -7306,6 +7323,14 @@ names the six `anthropic-fast-*-tokens-*` headers and states they are copied
 only from an Anthropic L6 Messages response. Omitted headers stay absent.
 Other upstream headers are not copied. Covered by
 `tests/unit/test_fast_mode_header_docs.py`.
+
+### LiteLLM 1.106.0 GA comparison floor ([#1758](https://github.com/naveenreddyalka/daari/issues/1758))
+
+<!-- tracking:#1758 -->
+**Status:** Done (2026-10-18). `compare-litellm.md` treats LiteLLM 1.106.0
+(18 Oct 2026) as GA and keeps the decision-model guardrail as not shipped.
+1.107.0-rc.1 is the prerelease watch. The stable floor is 1.106.0 GA.
+Covered by `tests/unit/test_compare_litellm_1104.py`.
 
 ## How to update
 

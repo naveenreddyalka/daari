@@ -125,10 +125,12 @@ def apply_frontier_param_compat(
     """Mutate ``payload`` to honor the model's declared constraints.
 
     Returns dropped param names and human-readable warnings for ``daari_meta``.
-    Models with no table entry leave the payload untouched.
+    Models with no table entry leave the payload untouched, except adaptive
+    ``thinking`` objects, which cannot carry legacy keys on any Anthropic id.
     """
-    entry = lookup_frontier_param_compat(model, table=table)
     result = FrontierParamCompatResult()
+    _strip_adaptive_thinking_keys(payload, result)
+    entry = lookup_frontier_param_compat(model, table=table)
     if entry is None:
         return result
 
@@ -174,6 +176,32 @@ def apply_frontier_param_compat(
                 result.dropped_params.append("budget_tokens")
 
     return result
+
+
+def _strip_adaptive_thinking_keys(
+    payload: dict[str, Any], result: FrontierParamCompatResult
+) -> None:
+    """Drop legacy keys when ``thinking.type`` is already adaptive (#1757).
+
+    ``type: enabled`` keeps ``budget_tokens``. Assistant-message thinking
+    blocks live on ``messages``, not this request object, and are not touched.
+    """
+    thinking = payload.get("thinking")
+    if not isinstance(thinking, dict):
+        return
+    if str(thinking.get("type") or "").strip().lower() != "adaptive":
+        return
+    extras = [key for key in thinking if key != "type"]
+    if not extras:
+        return
+    payload["thinking"] = {"type": "adaptive"}
+    for key in extras:
+        if key not in result.dropped_params:
+            result.dropped_params.append(key)
+    names = ", ".join(sorted(extras))
+    result.warnings.append(
+        f"thinking type adaptive does not accept {names}; omitted"
+    )
 
 
 def _map_haiku_55_budget_thinking(payload: dict[str, Any]) -> str | None:
