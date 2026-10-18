@@ -1622,6 +1622,7 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 anthropic_model_cards,
                 anthropic_model_line,
                 anthropic_server_tools,
+                anthropic_speed_capability,
                 openai_lifecycle_fields,
                 openai_model_cards,
             )
@@ -1648,13 +1649,13 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                         int(time.time()), tz=timezone.utc
                     ).strftime("%Y-%m-%dT%H:%M:%SZ"),
                     "line": anthropic_model_line(model_id),
-                    "capabilities": anthropic_capabilities(model_id),
+                    "capabilities": anthropic_capabilities(model_id, ctx.settings),
                     **anthropic_lifecycle_fields(model_id, ctx.settings),
                 }
             for card in openai_model_cards(ctx.settings):
                 if card["id"] == model_id:
                     return card
-            return {
+            stub = {
                 "id": model_id,
                 "object": "model",
                 "created": int(time.time()),
@@ -1663,6 +1664,12 @@ class OpenAIGatewayAdapter(GatewayAdapter):
                 **openai_lifecycle_fields(model_id, ctx.settings),
                 "server_tools": anthropic_server_tools(model_id),
             }
+            speed = anthropic_speed_capability(
+                model_id, pricing=getattr(ctx.settings, "pricing", None)
+            )
+            if speed is not None:
+                stub["speed"] = speed
+            return stub
 
         @router.get("/health")
         async def health() -> dict[str, str]:

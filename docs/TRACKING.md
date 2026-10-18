@@ -7261,6 +7261,16 @@ notes `fast_degraded_to_standard`. 429 and 529 do not open the frontier
 circuit. Covered by `tests/unit/test_upstream_retry.py`,
 `tests/unit/test_anthropic_fast_mode.py`, and `tests/unit/test_frontier_pool.py`.
 
+### Opus fast-mode capability on catalog cards ([#1740](https://github.com/naveenreddyalka/daari/issues/1740))
+
+<!-- tracking:#1740 -->
+**Status:** Done (2026-10-18). Anthropic model cards include
+`capabilities.speed.fast` (`supported`, `beta_header`, and 2× `input_per_1m`
+/ `output_per_1m`) for Opus 5.5 (GA, no beta header), Opus 5, and Opus 4.8
+(beta header required). Other ids omit `speed`. OpenAI `/v1/models` cards and
+retrieve stubs carry the same `speed` extras. Covered by
+`tests/unit/test_fast_mode_capability.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

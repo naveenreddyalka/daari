@@ -163,6 +163,18 @@ def resolve_anthropic_speed(
     return AnthropicSpeedDecision(speed=None, warning="fast_unsupported_model")
 
 
+def anthropic_fast_mode_spec(model: str | None) -> dict[str, bool] | None:
+    """Fast-mode catalog flags, or None when the id does not publish fast mode.
+
+    ``beta_header`` is true for Opus 5 / 4.8 (need ``fast-mode-2026-02-01``)
+    and false for Opus 5.5, which is GA (#1740).
+    """
+    matched = matching_model_key(model or "", _ANTHROPIC_FAST_MODELS) if model else None
+    if matched is None:
+        return None
+    return {"supported": True, "beta_header": matched in _ANTHROPIC_FAST_PREVIEW}
+
+
 @dataclass(frozen=True)
 class ResolvedPrice:
     input_per_1m: float
