@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -12,6 +13,8 @@ from daari.gateway.sampling import SamplingParams
 from daari.observability.spend import SpendContext, SpendLedger, compute_request_usd
 from daari.pricing import anthropic_speed_factor, cost_usd, resolve_anthropic_speed
 from daari.router.anthropic_messages import to_anthropic_payload
+from daari.router.frontier import FrontierExecutor
+from daari.router.retry import RetryPolicy
 from daari.router.router import AppContext
 from daari.server.app import create_app
 
@@ -331,3 +334,71 @@ async def test_streamed_anthropic_usage_speed_bills_fast(tmp_path, speed_at):
         assert float(outcome.headers()[COST_HEADER]) == pytest.approx(fast)
         assert rows[-1]["usage_speed"] == "fast"
         assert rows[-1]["cost_usd"] == pytest.approx(fast)
+
+
+def _anthropic_ok(*, speed: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "content": [{"type": "text", "text": "ok"}],
+            "usage": {"input_tokens": 3, "output_tokens": 2, "speed": speed},
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_fast_429_retries_once_at_standard_and_bills_standard():
+    speeds: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        speeds.append(body.get("speed"))
+        if body.get("speed") == "fast":
+            return httpx.Response(429, json={"type": "error", "error": {"type": "rate_limit_error"}})
+        return _anthropic_ok(speed="standard")
+
+    executor = FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model="claude-opus-5-5",
+        api_key="sk-test",
+        provider="anthropic",
+        retry=RetryPolicy(attempts=3, base_delay=0.0, max_delay=0.0, jitter=0.0),
+        transport=httpx.MockTransport(handler),
+    )
+    response = await executor.execute(
+        _request(model="claude-opus-5-5", speed="fast"),
+        escalated_from="L3",
+        local_confidence=0.2,
+    )
+    assert speeds == ["fast", "standard"]
+    assert response.daari_meta.usage_speed == "standard"
+    assert "fast_degraded_to_standard" in (response.daari_meta.warning or "")
+
+
+@pytest.mark.asyncio
+async def test_non_fast_529_retries_without_speed_degrade():
+    speeds: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        speeds.append(body.get("speed"))
+        if len(speeds) == 1:
+            return httpx.Response(529, json={"type": "error", "error": {"type": "overloaded_error"}})
+        return _anthropic_ok(speed="standard")
+
+    executor = FrontierExecutor(
+        base_url="https://api.anthropic.com",
+        default_model="claude-opus-5-5",
+        api_key="sk-test",
+        provider="anthropic",
+        retry=RetryPolicy(attempts=3, base_delay=0.0, max_delay=0.0, jitter=0.0),
+        transport=httpx.MockTransport(handler),
+    )
+    response = await executor.execute(
+        _request(model="claude-opus-5-5", speed=None),
+        escalated_from="L3",
+        local_confidence=0.2,
+    )
+    assert speeds == [None, None]
+    assert response.daari_meta.usage_speed == "standard"
+    assert "fast_degraded_to_standard" not in (response.daari_meta.warning or "")

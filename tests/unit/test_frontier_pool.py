@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from daari.config.settings import FrontierProviderConfig, FrontierSettings, Settings
@@ -156,6 +157,43 @@ class TestFrontierPool:
         pool = FrontierPool.from_single(executor)
         with pytest.raises(RuntimeError, match="all frontier providers failed"):
             await pool.execute(_request(), escalated_from="L3", local_confidence=0.1)
+
+    @pytest.mark.asyncio
+    async def test_529_does_not_open_breaker_like_429(self):
+        executor = FrontierExecutor(
+            base_url="http://p", default_model="m", api_key="k", provider="anthropic"
+        )
+        request = httpx.Request("POST", "http://p/v1/messages")
+
+        async def overload(request_obj, *, escalated_from, local_confidence):
+            raise httpx.HTTPStatusError(
+                "overloaded",
+                request=request,
+                response=httpx.Response(529, request=request),
+            )
+
+        executor.execute = overload  # type: ignore[method-assign]
+        breaker = CircuitBreaker(failure_threshold=1, cooldown_seconds=60)
+        pool = FrontierPool(
+            slots=[ProviderSlot(id="anthropic", executor=executor, keys=["k"], breaker=breaker)]
+        )
+        with pytest.raises(RuntimeError):
+            await pool.execute(_request(), escalated_from="L3", local_confidence=0.1)
+        assert breaker.failures == 0
+        assert breaker.state == "closed"
+
+        async def hard(request_obj, *, escalated_from, local_confidence):
+            raise httpx.HTTPStatusError(
+                "down",
+                request=request,
+                response=httpx.Response(500, request=request),
+            )
+
+        executor.execute = hard  # type: ignore[method-assign]
+        with pytest.raises(RuntimeError):
+            await pool.execute(_request(), escalated_from="L3", local_confidence=0.1)
+        assert breaker.failures == 1
+        assert breaker.state == "open"
 
 
 class TestBuildFromSettings:

@@ -26,7 +26,7 @@ def _status_error(code: int, headers: dict[str, str] | None = None) -> httpx.HTT
 
 
 class TestClassification:
-    @pytest.mark.parametrize("code", [408, 429, 500, 502, 503, 504])
+    @pytest.mark.parametrize("code", [408, 429, 500, 502, 503, 504, 529])
     def test_transient_status_codes_are_retryable(self, code):
         assert is_retryable(_status_error(code)) is True
 
@@ -176,6 +176,26 @@ class TestWithRetries:
             sleep=slept.append,
         )
         assert slept == [2.0]
+
+    @pytest.mark.asyncio
+    async def test_529_overload_retries_then_succeeds_honoring_retry_after(self):
+        slept: list[float] = []
+        attempts = []
+
+        async def overloaded():
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise _status_error(529, {"Retry-After": "3"})
+            return "ok"
+
+        result = await with_retries(
+            overloaded,
+            policy=RetryPolicy(attempts=3, base_delay=0.01, max_delay=0.01, jitter=0.0),
+            sleep=slept.append,
+        )
+        assert result == "ok"
+        assert len(attempts) == 2
+        assert slept == [3.0]
 
     @pytest.mark.asyncio
     async def test_each_retry_is_reported(self):
