@@ -366,6 +366,8 @@ class StreamOutcome:
     _ollama_034_knobs: list[str] | None = None
     # Final streamed frontier USD, set before the first relayed chunk (#1737).
     response_cost: str | None = None
+    # Soft notes such as fast_degraded_to_standard, sent with the first chunk.
+    warning: str | None = None
 
     def note(
         self, tier: str | None, *, cache_hit: bool = False, draft: bool = False
@@ -395,6 +397,8 @@ class StreamOutcome:
             out[DROPPED_PARAMS_HEADER] = ",".join(self.dropped_params)
         if self.response_cost is not None:
             out[COST_HEADER] = self.response_cost
+        if self.warning:
+            out[WARNING_HEADER] = self.warning
         return out
 
 
