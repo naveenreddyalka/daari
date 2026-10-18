@@ -7289,6 +7289,15 @@ names checks `cache`, `model_backend`, `redis`, and `postgres`, and states
 `/health` is liveness. Linked from the operations nav. Covered by
 `tests/unit/test_ready_status_docs.py`.
 
+### MCP tools/call resultType for protocol 2026-07-28 ([#1755](https://github.com/naveenreddyalka/daari/issues/1755))
+
+<!-- tracking:#1755 -->
+**Status:** Done (2026-10-18). Modern `tools/call` JSON-RPC results include
+`resultType: "complete"` on success and `isError` tool results when the
+per-request protocol is `2026-07-28` or newer. The default `2025-03-26`
+protocol omits the field. Call results do not advertise `ttlMs` or
+`cacheScope`. Covered by `tests/unit/test_mcp_server.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

@@ -561,6 +561,15 @@ def _text_result(text: str, *, is_error: bool = False) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
 
+def _stamp_call_result_type(result: dict[str, Any], protocol: str | None) -> dict[str, Any]:
+    """Call results gained resultType in 2026-07-28 (Claude Code 2.1.302)."""
+    if not _protocol_requires_list_result_type(protocol):
+        return result
+    stamped = dict(result)
+    stamped["resultType"] = "complete"
+    return stamped
+
+
 class _Governance:
     """Per-request policy, guardrails and audit sink for the MCP ingress (#277, #317, #1201, #1215)."""
 
@@ -1571,6 +1580,7 @@ class MCPGatewayAdapter(GatewayAdapter):
                 if method == "tasks/cancel":
                     return await _handle_tasks_cancel(ctx, request, rpc_id, params)
                 if method == "tools/call":
+                    call_protocol = requested_meta or DEFAULT_PROTOCOL_VERSION
                     name = str(params.get("name") or "").strip()
                     if not name:
                         return _rpc_response(
@@ -1605,7 +1615,12 @@ class MCPGatewayAdapter(GatewayAdapter):
                                 request,
                                 _jsonrpc_result(
                                     rpc_id,
-                                    _text_result(json.dumps(validation_errors), is_error=True),
+                                    _stamp_call_result_type(
+                                        _text_result(
+                                            json.dumps(validation_errors), is_error=True
+                                        ),
+                                        call_protocol,
+                                    ),
                                 ),
                             )
                     normalized_name = name.strip().lower()
@@ -1674,8 +1689,11 @@ class MCPGatewayAdapter(GatewayAdapter):
                     _record_mcp_tool(
                         ctx, name, "ok" if tool_response.ok else "error"
                     )
-                    payload = governance.guard_tool_result(
-                        name, _tool_call_result_payload(name, tool_response)
+                    payload = _stamp_call_result_type(
+                        governance.guard_tool_result(
+                            name, _tool_call_result_payload(name, tool_response)
+                        ),
+                        call_protocol,
                     )
                     return _rpc_response(request, _jsonrpc_result(rpc_id, payload))
                 return _rpc_response(
