@@ -1312,6 +1312,8 @@ class Router:
         reported_speed = getattr(response.daari_meta, "usage_speed", None)
         if bound is not None and reported_speed:
             bound.usage_speed = reported_speed
+        if bound is not None:
+            bound.tool_cost_usd = float(getattr(response.daari_meta, "tool_cost_usd", 0.0) or 0.0)
         self.usage_ledger.record(
             tier=response.daari_meta.tier,
             cache_hit=response.daari_meta.cache_hit,

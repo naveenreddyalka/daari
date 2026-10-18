@@ -152,6 +152,7 @@ class SpendContext:
     pricing: Any = None
     fallback_per_1k: float = 0.002
     reported_cost: float | None = None
+    tool_cost_usd: float = 0.0
     cached_tokens: int = 0
     cache_write_tokens: int = 0
     cache_ttl: str | None = None
@@ -188,6 +189,7 @@ def compute_request_usd(
     avoided_model: str | None = None,
     cache_write_tokens: int = 0,
     cache_ttl: str | None = None,
+    tool_cost_usd: float = 0.0,
 ) -> tuple[float, float]:
     """Return (cost_usd, cost_avoided_usd).
 
@@ -211,6 +213,7 @@ def compute_request_usd(
                 region_pin=region_pin,
                 usage_speed=usage_speed,
             )
+            spent += max(0.0, float(tool_cost_usd or 0.0))
         return round(max(0.0, spent), 8), 0.0
     avoided = cost_usd(
         avoided_model or model,
@@ -423,6 +426,7 @@ class SpendLedger:
             service_tier=bound.service_tier,
             region_pin=bound.region_pin,
             usage_speed=getattr(bound, "usage_speed", None),
+            tool_cost_usd=float(getattr(bound, "tool_cost_usd", 0.0) or 0.0),
         )
         client = kwargs.get("client_id") or bound.client_id or ""
         user = kwargs.get("user_id")

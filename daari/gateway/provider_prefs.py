@@ -163,3 +163,38 @@ def usage_cost_and_cache(
     )
     write = int(write_raw) if isinstance(write_raw, (int, float)) and write_raw >= 0 else 0
     return cost, cached, write
+
+
+WEB_SEARCH_USD = 0.01
+
+
+def web_search_fee_usd(data: dict[str, Any]) -> float:
+    """Bill Responses web_search_call and Anthropic web_search_requests once.
+
+    Each search is $0.01. ``open_page`` and ``find_in_page`` are not searches.
+    A missing action counts as one search. When both shapes are present, bill
+    the larger count, not the sum (#1770).
+    """
+    output = data.get("output")
+    item_count = 0
+    if isinstance(output, list):
+        for item in output:
+            if not isinstance(item, dict) or item.get("type") != "web_search_call":
+                continue
+            action = item.get("action")
+            if action is None:
+                item_count += 1
+                continue
+            if not isinstance(action, dict):
+                continue
+            action_type = action.get("type")
+            if action_type in {None, "", "search"}:
+                item_count += 1
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    server = usage.get("server_tool_use")
+    server = server if isinstance(server, dict) else {}
+    requests = server.get("web_search_requests")
+    request_count = 0
+    if isinstance(requests, int) and not isinstance(requests, bool) and requests > 0:
+        request_count = requests
+    return max(item_count, request_count) * WEB_SEARCH_USD
