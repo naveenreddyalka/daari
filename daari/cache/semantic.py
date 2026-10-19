@@ -73,7 +73,10 @@ def semantic_context_key(
     *,
     embedding_model: str | None = None,
 ) -> str:
-    """L1 namespace: model/temperature/tools/tier/scope + embedder identity (#845)."""
+    """L1 namespace: model/temperature/tools/tier/scope + embedder identity (#845).
+
+    ``speed`` is appended only when set so pre-change entries stay reachable (#1804).
+    """
     parts = [
         request.model,
         str(request.temperature),
@@ -86,6 +89,9 @@ def semantic_context_key(
     embed = (embedding_model or "").strip()
     if embed:
         parts.append(f"embed:{embed}")
+    speed = str(getattr(request.sampling, "speed", None) or "").strip()
+    if speed:
+        parts.append(f"speed:{speed}")
     return "|".join(parts)
 
 
