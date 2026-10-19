@@ -3294,12 +3294,20 @@ def _check_decision_classifier(settings: Settings) -> CheckResult | None:
     classifier = getattr(routing, "decision_classifier", None) if routing is not None else None
     if classifier is None or not bool(getattr(classifier, "enabled", False)):
         return None
+    from daari.gateway.systemone import explicit_systemone_base
+
+    explicit = explicit_systemone_base(settings)
+    if explicit:
+        hop = f"{explicit}/v1/systemone"
+    else:
+        hop = "an Ollama /v1/systemone"
     return CheckResult(
         name="decision_classifier",
         ok=True,
         detail=(
-            "routing.decision_classifier.enabled runs an Ollama /v1/systemone "
-            "difficulty hop before heuristic tier pick; timeout/failure falls back"
+            "routing.decision_classifier.enabled runs "
+            f"{hop} difficulty hop before heuristic tier pick; "
+            "timeout/failure falls back"
         ),
         optional=True,
     )
@@ -3365,12 +3373,17 @@ def _check_decision_classifier_model(
     if classifier is None or not bool(getattr(classifier, "enabled", False)):
         return None
     model = str(getattr(classifier, "model", "") or "nimble").strip() or "nimble"
-    base = settings.ollama.base_url.rstrip("/")
+    from daari.gateway.systemone import explicit_systemone_base
+
+    explicit = explicit_systemone_base(settings)
+    openai_catalog = bool(explicit)
+    base = explicit or settings.ollama.base_url.rstrip("/")
+    catalog_url = f"{base}/v1/models" if openai_catalog else f"{base}/api/tags"
     own_client = client is None
     http = client or httpx.Client(timeout=5.0)
     try:
         try:
-            response = http.get(f"{base}/api/tags")
+            response = http.get(catalog_url)
         except Exception:
             return None
         if response.status_code != 200:
@@ -3379,20 +3392,33 @@ def _check_decision_classifier_model(
             data = response.json()
         except ValueError:
             return None
+        if not isinstance(data, dict):
+            return None
+        rows = data.get("data") if openai_catalog else data.get("models")
+        id_key = "id" if openai_catalog else "name"
         names = [
-            str(m.get("name") or "") for m in (data.get("models") or []) if isinstance(m, dict)
+            str(m.get(id_key) or "") for m in (rows or []) if isinstance(m, dict)
         ]
         present = any(name == model or name.startswith(f"{model}:") for name in names if name)
         if present:
             return None
-        return CheckResult(
-            name="decision_classifier_model",
-            ok=False,
-            detail=(
+        if openai_catalog:
+            detail = (
+                f"routing.decision_classifier.model={model!r} not in the systemone "
+                f"upstream at {base} — serve that id on {base}/v1/models before "
+                "enabling the systemone difficulty hop "
+                "(see routing / decision_classifier docs)"
+            )
+        else:
+            detail = (
                 f"routing.decision_classifier.model={model!r} not in Ollama tags at "
                 f"{base} — run `ollama pull {model}` before enabling the systemone "
                 "difficulty hop (see routing / decision_classifier docs)"
-            ),
+            )
+        return CheckResult(
+            name="decision_classifier_model",
+            ok=False,
+            detail=detail,
             optional=True,
         )
     finally:
