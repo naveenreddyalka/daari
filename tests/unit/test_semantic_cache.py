@@ -7,9 +7,11 @@ from daari.cache.semantic import (
     agent_prefix_text,
     cosine_similarity,
     extract_embed_text,
+    l1_flight_key,
     semantic_context_key,
 )
 from daari.gateway.internal import DaariMeta, InternalRequest, InternalResponse, Message, RequestMeta
+from daari.gateway.sampling import SamplingParams
 
 
 class StaticEmbedder:
@@ -225,6 +227,32 @@ class TestSemanticHelpers:
         )
         assert semantic_context_key(plain) != semantic_context_key(override)
 
+    def test_semantic_context_key_splits_anthropic_speed(self):
+        """Fast and standard must not share an L1 namespace (#1804)."""
+        messages = [Message(role="user", content="ping")]
+        plain = InternalRequest(messages=messages, model="llama3.2:3b", temperature=0.7)
+        fast = InternalRequest(
+            messages=messages,
+            model="llama3.2:3b",
+            temperature=0.7,
+            sampling=SamplingParams(speed="fast"),
+        )
+        standard = InternalRequest(
+            messages=messages,
+            model="llama3.2:3b",
+            temperature=0.7,
+            sampling=SamplingParams(speed="standard"),
+        )
+        # Entries written before speed was namespaced stay reachable.
+        assert semantic_context_key(plain) == "llama3.2:3b|0.7||"
+        assert "speed:" not in semantic_context_key(plain)
+        assert semantic_context_key(fast).endswith("|speed:fast")
+        assert semantic_context_key(standard).endswith("|speed:standard")
+        assert semantic_context_key(fast) != semantic_context_key(standard)
+        assert l1_flight_key(fast, text="user:ping") != l1_flight_key(standard, text="user:ping")
+        assert "speed:fast" in l1_flight_key(fast, text="user:ping")
+        assert l1_flight_key(plain, text="user:ping").startswith(semantic_context_key(plain))
+
 
 class TestSemanticCache:
     @pytest.mark.asyncio
@@ -276,6 +304,35 @@ class TestSemanticCache:
         assert hit.content == "feat: add widget"
         assert score is not None
         assert score >= 0.92
+
+    @pytest.mark.asyncio
+    async def test_speed_modes_do_not_share_an_l1_hit(self, tmp_path):
+        text = "user:ping"
+        embedder = StaticEmbedder({text: [1.0, 0.0, 0.0]})
+        cache = SemanticCache(str(tmp_path / "l1"), embedder, enabled=True)
+        messages = [Message(role="user", content="ping")]
+        fast = InternalRequest(
+            messages=messages,
+            model="llama3.2:3b",
+            sampling=SamplingParams(speed="fast"),
+        )
+        standard = InternalRequest(
+            messages=messages,
+            model="llama3.2:3b",
+            sampling=SamplingParams(speed="standard"),
+        )
+        response = InternalResponse(
+            content="fast answer",
+            model="llama3.2:3b",
+            daari_meta=DaariMeta(tier="L3", executor="ollama", provider_id="ollama"),
+        )
+        await cache.put(fast, response)
+        hit, _score = await cache.get(standard)
+        assert hit is None
+        same, score = await cache.get(fast)
+        assert same is not None
+        assert same.content == "fast answer"
+        assert score is not None and score >= 0.92
 
     @pytest.mark.asyncio
     async def test_get_misses_below_threshold(self, tmp_path):

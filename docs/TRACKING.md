@@ -7472,6 +7472,14 @@ reads Ollama `/api/tags`. Unreachable upstreams stay quiet. Covered by
 share an L0 entry. An omitted `speed` stays out of the fingerprint. Covered by
 `tests/unit/test_sampling_params.py`.
 
+### L1 semantic context key includes Anthropic speed ([#1804](https://github.com/naveenreddyalka/daari/issues/1804))
+
+<!-- tracking:#1804 -->
+**Status:** Done (2026-10-19). `semantic_context_key` appends `speed:` only when
+`sampling.speed` is set, and `l1_flight_key` inherits that segment. Fast and
+standard prompts no longer share an L1 hit. An unset speed keeps the previous
+context key. Covered by `tests/unit/test_semantic_cache.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
