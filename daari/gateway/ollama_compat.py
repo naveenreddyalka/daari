@@ -114,6 +114,14 @@ def _model_entry(name: str, *, capabilities: list[str] | None = None) -> dict[st
     }
     if capabilities is not None:
         entry["capabilities"] = list(capabilities)
+    from daari.pricing import is_ollama_cloud_model
+
+    if is_ollama_cloud_model(name):
+        entry["details"]["family"] = "ollama-cloud"
+        caps = list(entry.get("capabilities") or [])
+        if "remote" not in caps:
+            caps.append("remote")
+        entry["capabilities"] = caps
     return entry
 
 
@@ -289,7 +297,7 @@ class OllamaCompatGatewayAdapter(GatewayAdapter):
                 "template": "",
                 "details": entry["details"],
                 "model_info": {"general.architecture": "daari-router"},
-                "capabilities": caps,
+                "capabilities": entry.get("capabilities", caps),
             }
             # Ollama ≥0.34.3 advertises think levels only on show (#789).
             if "thinking" in caps:
