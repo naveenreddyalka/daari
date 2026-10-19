@@ -7399,6 +7399,16 @@ existing soft-warning metric records that note. Billing follows the
 provider-reported `usage.speed`. A fast success is not retried. Covered by
 `tests/unit/test_anthropic_fast_mode.py`.
 
+### Session pins break on cloud-fenced tiers ([#1775](https://github.com/naveenreddyalka/daari/issues/1775))
+
+<!-- tracking:#1775 -->
+**Status:** Done (2026-10-19). `_session_pin_tier` drops a continuation pin
+when the request is fenced (`no_frontier`, tier cap, or `region_pin`) and the
+pinned tier has no non-cloud host. The override logs `session_pin_override`
+with reason `cloud_fenced`, normal tier choice runs, and the session re-pins
+to the tier that served the reply. Covered by
+`tests/unit/test_session_affinity.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
