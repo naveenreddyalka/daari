@@ -437,6 +437,14 @@ async def handle_proxy(request: Request, body: dict[str, Any]) -> JSONResponse:
         "status_code": upstream.status_code,
     }
     result, _ = guardrails.check_tool_result(name, result)
+    from daari.gateway.mcp import (
+        DEFAULT_PROTOCOL_VERSION,
+        _per_request_protocol_version,
+        _stamp_call_result_type,
+    )
+
+    protocol = _per_request_protocol_version(body) or DEFAULT_PROTOCOL_VERSION
+    result = _stamp_call_result_type(result, protocol)
     outcome = "error" if upstream.status_code >= 400 or result.get("isError") else "ok"
     _record_proxy_call(ctx, tool=name, outcome=outcome)
     log_gateway_event(

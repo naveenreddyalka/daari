@@ -398,3 +398,74 @@ async def test_proxy_guardrail_blocks_tool_arguments(settings, monkeypatch):
 
     assert response.status_code == 403
     assert response.json()["error"]["type"] == "guardrail_blocked"
+
+
+def _enable_pets(settings) -> None:
+    settings.integrations.mcp_openapi_proxy.enabled = True
+    settings.integrations.mcp_openapi_proxy.specs = [
+        McpOpenApiSpecSettings(
+            id="pets",
+            openapi_url="https://api.example.com/openapi.json",
+            base_url="https://api.example.com",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_proxy_call_stamps_result_type_for_modern_protocol(settings, monkeypatch):
+    """OpenAPI proxy tools/call matches JSON-RPC resultType gating (#1777)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/openapi.json"):
+            return httpx.Response(200, json=_SPEC)
+        if "missing" in str(request.url):
+            return httpx.Response(404, json={"error": "missing"})
+        return httpx.Response(200, json={"id": "42", "name": "fido"})
+
+    _patch_http(monkeypatch, handler)
+    _allow_public_host(monkeypatch)
+    _enable_pets(settings)
+    app = _app(settings)
+    modern = {"_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        ok = await client.post(
+            "/mcp/proxy",
+            json={
+                "action": "tools/call",
+                "spec_id": "pets",
+                "name": "getPet",
+                "arguments": {"petId": "42"},
+                **modern,
+            },
+        )
+        missing = await client.post(
+            "/mcp/proxy",
+            json={
+                "action": "tools/call",
+                "spec_id": "pets",
+                "name": "getPet",
+                "arguments": {"petId": "missing"},
+                **modern,
+            },
+        )
+        legacy = await client.post(
+            "/mcp/proxy",
+            json={
+                "action": "tools/call",
+                "spec_id": "pets",
+                "name": "getPet",
+                "arguments": {"petId": "42"},
+                "_meta": {"io.modelcontextprotocol/protocolVersion": "2025-03-26"},
+            },
+        )
+
+    ok_body = ok.json()
+    assert ok.status_code == 200
+    assert ok_body["isError"] is False
+    assert ok_body["resultType"] == "complete"
+    err_body = missing.json()
+    assert err_body["isError"] is True
+    assert err_body["status_code"] == 404
+    assert err_body["resultType"] == "complete"
+    assert "resultType" not in legacy.json()
