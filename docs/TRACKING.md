@@ -7464,6 +7464,14 @@ A miss names that root and does not suggest `ollama pull`. An empty base still
 reads Ollama `/api/tags`. Unreachable upstreams stay quiet. Covered by
 `tests/unit/test_decisions_local_catalog.py`.
 
+### L0 cache fingerprint includes Anthropic speed ([#1798](https://github.com/naveenreddyalka/daari/issues/1798))
+
+<!-- tracking:#1798 -->
+**Status:** Done (2026-10-19). `SamplingParams.honored_fields()` includes
+`speed` when set, so fast and standard Anthropic Messages bodies no longer
+share an L0 entry. An omitted `speed` stays out of the fingerprint. Covered by
+`tests/unit/test_sampling_params.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

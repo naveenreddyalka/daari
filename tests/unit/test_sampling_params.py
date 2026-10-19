@@ -437,3 +437,30 @@ class TestOllamaFacadeLogprobs:
         ]
         # Not unconditionally dropped — only when the hop is not Ollama (#1066).
         assert "tool_search" not in params.dropped_param_names()
+
+
+class TestAnthropicSpeedCacheFingerprint:
+    """L0 must not share an entry across Anthropic speed modes (#1798)."""
+
+    _body = {
+        "model": "claude-opus-5-5",
+        "max_tokens": 32,
+        "top_p": 0.5,
+        "messages": [{"role": "user", "content": "ping"}],
+    }
+
+    def test_speed_values_produce_distinct_fingerprints(self):
+        fast = SamplingParams.from_anthropic_body({**self._body, "speed": "fast"})
+        standard = SamplingParams.from_anthropic_body({**self._body, "speed": "standard"})
+        assert fast.honored_fields()["speed"] == "fast"
+        assert standard.honored_fields()["speed"] == "standard"
+        assert fast.cache_fingerprint() != standard.cache_fingerprint()
+
+    def test_omitted_speed_keeps_the_unset_fingerprint(self):
+        plain = SamplingParams.from_anthropic_body(self._body)
+        baseline = SamplingParams(max_tokens=32, top_p=0.5)
+        assert "speed" not in plain.honored_fields()
+        assert plain.cache_fingerprint() == baseline.cache_fingerprint()
+        assert plain.cache_fingerprint() != SamplingParams.from_anthropic_body(
+            {**self._body, "speed": "fast"}
+        ).cache_fingerprint()
