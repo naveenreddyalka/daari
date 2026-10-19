@@ -71,6 +71,20 @@ def resolve_systemone_base(settings: Any, *, fallback: str = "") -> str:
     return str(getattr(ollama, "base_url", "") or "").strip().rstrip("/")
 
 
+def _bad_upstream_body(explicit: str, base: str, *, kind: str) -> str:
+    """502 text for a body that is not a JSON object.
+
+    An explicit ``systemone.base_url`` names that host. The Ollama fallback
+    keeps the existing wording.
+    """
+    if explicit:
+        host = httpx.URL(base).host or base
+        return f"systemone upstream at {host} returned {kind}."
+    if kind == "non-JSON":
+        return "Ollama systemone returned non-JSON."
+    return "Ollama systemone returned non-object JSON."
+
+
 def systemone_override_unavailable(base: str) -> str:
     root = (base or "").strip().rstrip("/")
     return (
@@ -392,12 +406,15 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
             }
         return JSONResponse(status_code=upstream.status_code, content=detail)
 
+    upstream_kind = "openai-compat" if explicit else "ollama"
     try:
         data = upstream.json()
     except Exception:
-        return _error(502, "bad_gateway", "Ollama systemone returned non-JSON.")
+        return _error(502, "bad_gateway", _bad_upstream_body(explicit, base, kind="non-JSON"))
     if not isinstance(data, dict):
-        return _error(502, "bad_gateway", "Ollama systemone returned non-object JSON.")
+        return _error(
+            502, "bad_gateway", _bad_upstream_body(explicit, base, kind="non-object JSON")
+        )
 
     data, blocked = _apply_systemone_output_policy(data, engine, metrics=metrics)
     if blocked is not None:
@@ -432,8 +449,8 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
     data = dict(data)
     data["daari_meta"] = {
         "tier": "systemone",
-        "executor": "ollama",
-        "provider_id": "ollama",
+        "executor": upstream_kind,
+        "provider_id": upstream_kind,
         "model": str(data.get("model") or model),
         "latency_ms": latency_ms,
         "input_tokens": input_tokens,
@@ -443,7 +460,12 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
     }
     log_gateway_event(
         "systemone_ok",
-        {"model": model, "latency_ms": latency_ms, "input_tokens": input_tokens},
+        {
+            "model": model,
+            "latency_ms": latency_ms,
+            "input_tokens": input_tokens,
+            "upstream": upstream_kind,
+        },
     )
     from daari.gateway.cost_headers import modality_response_headers, session_id_from_request
 
