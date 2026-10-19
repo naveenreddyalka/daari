@@ -7445,6 +7445,15 @@ include `resultType: complete` when the per-request protocol (else the
 `tools/list` default) is `>= 2026-07-28`. Older protocols omit the field.
 Existing task fields stay. Covered by `tests/unit/test_mcp_tasks.py`.
 
+### Doctor probes the configured systemone catalog ([#1792](https://github.com/naveenreddyalka/daari/issues/1792))
+
+<!-- tracking:#1792 -->
+**Status:** Done (2026-10-19). When `systemone.base_url` is set,
+`decisions_local_models` reads `GET {base}/v1/models` and matches catalog ids.
+A miss names that root and does not suggest `ollama pull`. An empty base still
+reads Ollama `/api/tags`. Unreachable upstreams stay quiet. Covered by
+`tests/unit/test_decisions_local_catalog.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.

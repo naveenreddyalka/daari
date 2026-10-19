@@ -70,6 +70,65 @@ def test_doctor_tips_when_catalog_models_absent():
     assert "drex-1.5" in result.detail or "nimble" in result.detail
 
 
+def test_doctor_probes_explicit_systemone_models_not_ollama_tags():
+    settings = Settings.model_validate(
+        {
+            "systemone": {"enabled": True, "base_url": "http://vllm.test:8000"},
+            "ollama": {"base_url": "http://ollama.test"},
+        }
+    )
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"data": [{"id": "nimble:latest"}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert _check_decisions_local_models(settings, client) is None
+    assert seen == ["http://vllm.test:8000/v1/models"]
+
+
+def test_doctor_explicit_systemone_miss_names_that_base():
+    settings = Settings.model_validate(
+        {
+            "systemone": {"enabled": True, "base_url": "http://vllm.test:8000"},
+            "ollama": {"base_url": "http://ollama.test"},
+            "decisions": {"local_models": ["drex-1.5"]},
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "http://vllm.test:8000/v1/models"
+        return httpx.Response(200, json={"data": [{"id": "other-model"}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    result = _check_decisions_local_models(settings, client)
+    assert result is not None
+    assert result.ok is False
+    assert result.optional is True
+    assert "http://vllm.test:8000" in result.detail
+    assert "drex-1.5" in result.detail
+    assert "ollama pull" not in result.detail
+    assert "ollama.test" not in result.detail
+
+
+def test_doctor_explicit_systemone_unreachable_is_quiet():
+    settings = Settings.model_validate(
+        {
+            "systemone": {"enabled": True, "base_url": "http://vllm.test:8000"},
+            "ollama": {"base_url": "http://ollama.test"},
+        }
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/models":
+            raise httpx.ConnectError("down")
+        return httpx.Response(200, json={"models": []})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert _check_decisions_local_models(settings, client) is None
+
+
 def test_doctor_quiet_when_a_catalog_model_present():
     settings = Settings.model_validate(
         {
