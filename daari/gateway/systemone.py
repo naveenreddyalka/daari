@@ -53,6 +53,32 @@ class SystemOneRequest(BaseModel):
     images: list[str] | None = None
 
 
+def explicit_systemone_base(settings: Any) -> str:
+    """Configured ``systemone.base_url``, or empty when the Ollama fallback applies."""
+    systemone = getattr(settings, "systemone", None)
+    return str(getattr(systemone, "base_url", "") or "").strip().rstrip("/")
+
+
+def resolve_systemone_base(settings: Any, *, fallback: str = "") -> str:
+    """Upstream root: explicit ``systemone.base_url``, else ``fallback``, else Ollama."""
+    explicit = explicit_systemone_base(settings)
+    if explicit:
+        return explicit
+    hinted = (fallback or "").strip().rstrip("/")
+    if hinted:
+        return hinted
+    ollama = getattr(settings, "ollama", None)
+    return str(getattr(ollama, "base_url", "") or "").strip().rstrip("/")
+
+
+def systemone_override_unavailable(base: str) -> str:
+    root = (base or "").strip().rstrip("/")
+    return (
+        "Decision models could not reach the configured systemone upstream "
+        f"at {root}. Start that server or update systemone.base_url."
+    )
+
+
 def _error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(
         status_code=status,
@@ -268,8 +294,8 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
         log_gateway_event("systemone_disabled", {})
         return _error(501, "not_implemented", _DISABLED)
 
-    ollama = getattr(settings, "ollama", None)
-    base = str(getattr(ollama, "base_url", "") or "").strip().rstrip("/")
+    explicit = explicit_systemone_base(settings)
+    base = resolve_systemone_base(settings)
     if not base:
         log_gateway_event("systemone_unavailable", {"reason": "no_ollama_base_url"})
         return _error(503, "backend_unavailable", _UNAVAILABLE)
@@ -343,7 +369,11 @@ async def _dispatch_systemone(request: Request, body: SystemOneRequest) -> Any:
             "systemone_ollama_down",
             {"error": summarize_upstream_failure(exc), "url_host": httpx.URL(url).host},
         )
-        return _error(503, "backend_unavailable", backend_unavailable_message(exc) or _UNAVAILABLE)
+        if explicit:
+            message = systemone_override_unavailable(explicit)
+        else:
+            message = backend_unavailable_message(exc) or _UNAVAILABLE
+        return _error(503, "backend_unavailable", message)
 
     latency_ms = _elapsed_ms(started)
     if upstream.status_code >= 400:

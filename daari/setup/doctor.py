@@ -739,9 +739,16 @@ def _check_decisions(settings: Settings) -> CheckResult:
     if local_ok or frontier_ok:
         parts: list[str] = []
         if local_ok:
+            from daari.gateway.systemone import explicit_systemone_base
+
+            explicit = explicit_systemone_base(settings)
+            upstream = (
+                f"explicit base_url {explicit}" if explicit else "ollama default"
+            )
             parts.append(
                 "local models via systemone "
-                "(clef/nimble/tev1/drex-1.5/microsoft-decision-1 + decisions.local_models)"
+                f"({upstream}; clef/nimble/tev1/drex-1.5/microsoft-decision-1 "
+                "+ decisions.local_models)"
             )
         if frontier_ok:
             parts.append("gpt-6-luna via frontier L6")
