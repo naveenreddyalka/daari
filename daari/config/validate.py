@@ -226,6 +226,30 @@ def validated_observability(patch: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def validated_systemone(patch: dict[str, Any]) -> dict[str, Any]:
+    """Safe systemone upstream override (#1778). Empty clears back to Ollama."""
+    if not isinstance(patch, dict):
+        raise ConfigValidationError("systemone must be an object")
+    allowed = {"base_url"}
+    unknown = sorted(set(patch) - allowed)
+    if unknown:
+        raise ConfigValidationError(f"unknown systemone keys: {unknown}")
+    out: dict[str, Any] = {}
+    if "base_url" in patch:
+        raw = patch["base_url"]
+        if raw is None:
+            out["base_url"] = ""
+        elif not isinstance(raw, str):
+            raise ConfigValidationError("systemone.base_url must be a string")
+        text = raw.strip().rstrip("/")
+        if text and not (text.startswith("http://") or text.startswith("https://")):
+            raise ConfigValidationError(
+                "systemone.base_url must be an http(s) URL or empty"
+            )
+        out["base_url"] = text
+    return out
+
+
 def validated_decisions(patch: dict[str, Any]) -> dict[str, Any]:
     """Safe local decisions catalog extension (#1590)."""
     if not isinstance(patch, dict):
