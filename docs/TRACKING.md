@@ -7409,6 +7409,15 @@ with reason `cloud_fenced`, normal tier choice runs, and the session re-pins
 to the tier that served the reply. Covered by
 `tests/unit/test_session_affinity.py`.
 
+### OpenAPI MCP proxy stamps resultType ([#1777](https://github.com/naveenreddyalka/daari/issues/1777))
+
+<!-- tracking:#1777 -->
+**Status:** Done (2026-10-19). `POST /mcp/proxy` `tools/call` reuses
+`_stamp_call_result_type`, so protocol `2026-07-28` results include
+`resultType: complete` on success and on upstream `isError` responses. Older
+protocol versions stay unstamped. Covered by
+`tests/unit/test_mcp_openapi_proxy.py`.
+
 ## How to update
 
 1. Mark tasks `[x]` when merged to `main`; add commit hash in **Notes** when helpful.
