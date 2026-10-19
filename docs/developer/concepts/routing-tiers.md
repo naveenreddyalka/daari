@@ -92,8 +92,11 @@ otherwise a hash of the user/system prefix. Pins expire after
 tool continuations), and the session cost-avoided rollup are stored in Redis
 with that TTL so a multi-replica fleet shares them; Redis errors fail open
 to in-process memory and log `session_affinity.degraded`. Confidence
-failure, context-length failover, an open circuit, a down model, and
-`X-Daari-Tier-Cap` beat the pin. Hits log `session_pin`; overrides log
+failure, context-length failover, an open circuit, a down model,
+`X-Daari-Tier-Cap`, and a pin whose tier has only `:cloud` hosts while the
+request is fenced (`no_frontier`, a tier cap, or `region_pin`) beat the pin.
+That override logs `session_pin_override` with reason `cloud_fenced` and the
+next reply re-pins the tier that actually served. Hits log `session_pin`; overrides log
 `session_pin_override`.
 
 ## Harness-aware profiling

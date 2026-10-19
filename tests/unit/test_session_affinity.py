@@ -163,6 +163,58 @@ async def test_tier_cap_overrides_pin(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cloud_fenced_pin_breaks_before_egress(tmp_path, monkeypatch):
+    """A pin onto a cloud-only tier is dropped when the request is fenced (#1775)."""
+    from daari.pricing import is_ollama_cloud_model
+    from daari.router.local_pool import LocalBackendPool, LocalBackendSlot
+    from daari.router.session_affinity import conversation_prefix_hash, session_key
+
+    events: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "daari.gateway.request_log.log_gateway_event",
+        lambda event, payload: events.append((event, payload)),
+    )
+    calls: list[str] = []
+    router = _router(tmp_path, calls=calls)
+    router.local_pool = LocalBackendPool(
+        slots=[
+            LocalBackendSlot(
+                id="cloud-l5",
+                base_url="http://cloud.invalid",
+                model="clef:cloud",
+                tiers=["L5"],
+            ),
+            LocalBackendSlot(
+                id="local-l3",
+                base_url="http://local.invalid",
+                model="llama3.2:3b",
+                tiers=["L3"],
+            ),
+        ]
+    )
+    follow = _continuation("short ask")
+    follow.meta.no_frontier = True
+    prefix = conversation_prefix_hash(follow.messages)
+    key = session_key(follow.meta, prefix)
+    router.session_pins.put(key, tier="L5", model="clef:cloud", prefix_hash=prefix)
+
+    response = await router.route(follow)
+
+    assert response.daari_meta.tier == "L3"
+    assert not is_ollama_cloud_model(response.model)
+    assert response.daari_meta.warning != "cloud_egress_skipped"
+    assert not any(event == "cloud_egress_skipped" for event, _ in events)
+    assert calls == ["L3"]
+    assert any(
+        event == "session_pin_override" and payload.get("reason") == "cloud_fenced"
+        for event, payload in events
+    )
+    repinned = router.session_pins.get(key)
+    assert repinned is not None
+    assert repinned.tier == "L3"
+
+
+@pytest.mark.asyncio
 async def test_expired_pin_reroutes(tmp_path):
     now = [100.0]
     calls: list[str] = []

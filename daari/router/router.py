@@ -4654,8 +4654,9 @@ class Router:
     def _session_pin_tier(self, request: InternalRequest) -> str | None:
         """Replay a continuation pin, or None so heuristics run.
 
-        Tier cap, an open circuit, and a down pinned model beat the pin.
-        Confidence and context-length failover still run after the pin is used.
+        Tier cap, an open circuit, a down pinned model, and a cloud-only
+        tier under a local-only fence beat the pin. Confidence and
+        context-length failover still run after the pin is used.
         """
         if not self.session_affinity:
             return None
@@ -4672,6 +4673,12 @@ class Router:
         if pin is None or not is_continuation(request.messages, pin):
             return None
         available, reason = self._pinned_tier_available(pin.tier)
+        if (
+            available
+            and self._cloud_block_reason(request)
+            and not self._tier_has_non_cloud_host(pin.tier)
+        ):
+            available, reason = False, "cloud_fenced"
         if not available:
             self._log_session_pin_override(request, pin.tier, None, reason or "unavailable")
             return None
